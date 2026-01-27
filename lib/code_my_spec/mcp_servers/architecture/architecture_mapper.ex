@@ -1,6 +1,94 @@
 defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
   alias Hermes.Server.Response
   alias CodeMySpec.McpServers.Formatters
+  alias CodeMySpec.Architecture.StoryAnalyzer
+
+  # Story analysis response (hybrid text + JSON)
+  def story_analysis_response(analysis) do
+    markdown = StoryAnalyzer.format_as_markdown(analysis)
+
+    Response.tool()
+    |> Response.text(markdown)
+  end
+
+  # Proposal responses
+  def proposal_created(proposal) do
+    Response.tool()
+    |> Response.json(%{
+      success: true,
+      message: "Architecture proposal created",
+      proposal: format_proposal(proposal)
+    })
+  end
+
+  def proposal_validated(result) do
+    case result do
+      {:ok, proposal} ->
+        Response.tool()
+        |> Response.json(%{
+          valid: true,
+          message: "Proposal is valid and ready for execution",
+          proposal: format_proposal(proposal)
+        })
+
+      {:error, errors} ->
+        Response.tool()
+        |> Response.json(%{
+          valid: false,
+          message: "Proposal has validation errors",
+          errors: errors
+        })
+    end
+  end
+
+  def proposal_executed(result, dry_run) do
+    Response.tool()
+    |> Response.json(%{
+      success: true,
+      dry_run: dry_run,
+      message: if(dry_run, do: "Dry run complete - no changes made", else: "Proposal executed successfully"),
+      created_contexts: result.created_contexts,
+      created_components: result.created_components,
+      linked_stories: result.linked_stories
+    })
+  end
+
+  def context_with_children_created(context, children, spec_paths) do
+    Response.tool()
+    |> Response.json(%{
+      success: true,
+      message: "Context and child components created successfully",
+      context: component_summary(context),
+      children: Enum.map(children, &component_summary/1),
+      spec_paths: spec_paths
+    })
+  end
+
+  defp format_proposal(proposal) do
+    %{
+      contexts: Enum.map(proposal.contexts, &format_proposal_context/1),
+      surface_components: Enum.map(proposal.surface_components, &format_proposal_component/1),
+      unmapped_story_ids: proposal.unmapped_story_ids
+    }
+  end
+
+  defp format_proposal_context(ctx) do
+    %{
+      name: ctx.name,
+      description: ctx.description,
+      children: Enum.map(ctx.children, &format_proposal_component/1),
+      story_ids: ctx.story_ids
+    }
+  end
+
+  defp format_proposal_component(comp) do
+    %{
+      name: comp.name,
+      type: comp.type,
+      description: comp.description,
+      story_ids: Map.get(comp, :story_ids, [])
+    }
+  end
 
   def spec_created(component, spec_path) do
     Response.tool()

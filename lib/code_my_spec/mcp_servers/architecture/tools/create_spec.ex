@@ -7,12 +7,14 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.CreateSpec do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
     field :module_name, :string, required: true
     field :type, :string, required: true
     field :description, :string
     field :dependencies, {:array, :string}, default: []
+    field :story_ids, {:array, :integer}, default: []
   end
 
   @impl true
@@ -22,11 +24,23 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.CreateSpec do
          {:ok, spec_path} <- write_spec_file(env, params),
          {:ok, component} <- sync_to_database(scope, params) do
       Environments.destroy(env)
+      link_stories(scope, component, params[:story_ids] || [])
       {:reply, ArchitectureMapper.spec_created(component, spec_path), frame}
     else
       {:error, reason} ->
         {:reply, ArchitectureMapper.error(reason), frame}
     end
+  end
+
+  defp link_stories(_scope, _component, []), do: :ok
+
+  defp link_stories(scope, component, story_ids) do
+    Enum.each(story_ids, fn story_id ->
+      case Stories.get_story(scope, story_id) do
+        nil -> :ok
+        story -> Stories.set_story_component(scope, story, component.id)
+      end
+    end)
   end
 
   defp write_spec_file(env, %{module_name: module_name} = params) do

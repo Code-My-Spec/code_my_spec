@@ -584,4 +584,114 @@ defmodule CodeMySpec.Components.SyncTest do
       assert user_from_db.parent_component_id == accounts.id
     end
   end
+
+  describe "dependency syncing" do
+    defp write_spec_with_deps(tmp_dir, module_name, deps) do
+      deps_text =
+        case deps do
+          [] -> "- None"
+          list -> Enum.map_join(list, "\n", &"- #{&1}")
+        end
+
+      path = module_to_spec_path(tmp_dir, module_name)
+      File.mkdir_p!(Path.dirname(path))
+
+      File.write!(path, """
+      # #{module_name}
+
+      #{module_name} module.
+
+      ## Dependencies
+
+      #{deps_text}
+
+      ## Functions
+
+      ### list/0
+
+      Lists items.
+
+      ```elixir
+      @spec list() :: list()
+      ```
+
+      **Process**:
+      1. Return list
+
+      **Test Assertions**:
+      - returns list
+      """)
+
+      path
+    end
+
+    test "syncs dependencies from spec files", %{scope: scope, tmp_dir: tmp_dir} do
+      # Create target components first
+      write_spec_with_deps(tmp_dir, "MyApp.Repo", [])
+      write_spec_with_deps(tmp_dir, "MyApp.Accounts.User", [])
+
+      # Create source component with dependencies
+      write_spec_with_deps(tmp_dir, "MyApp.Accounts.UserRepository", [
+        "MyApp.Repo",
+        "MyApp.Accounts.User"
+      ])
+
+      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+
+      assert length(components) == 3
+
+      # Verify dependencies were created
+      user_repo = Enum.find(components, &(&1.module_name == "MyApp.Accounts.UserRepository"))
+      deps = Components.list_component_dependencies(scope, user_repo.id)
+
+      assert length(deps) == 2
+      target_names = Enum.map(deps, & &1.target_component.module_name) |> Enum.sort()
+      assert target_names == ["MyApp.Accounts.User", "MyApp.Repo"]
+    end
+
+    test "removes dependencies that are no longer declared", %{scope: scope, tmp_dir: tmp_dir} do
+      # Initial sync with dependencies
+      write_spec_with_deps(tmp_dir, "MyApp.Repo", [])
+      write_spec_with_deps(tmp_dir, "MyApp.Accounts.User", [])
+      write_spec_with_deps(tmp_dir, "MyApp.Accounts.UserRepository", [
+        "MyApp.Repo",
+        "MyApp.Accounts.User"
+      ])
+
+      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+      user_repo = Enum.find(components, &(&1.module_name == "MyApp.Accounts.UserRepository"))
+
+      assert length(Components.list_component_dependencies(scope, user_repo.id)) == 2
+
+      # Second sync: remove one dependency
+      Process.sleep(1100)
+      write_spec_with_deps(tmp_dir, "MyApp.Accounts.UserRepository", ["MyApp.Repo"])
+
+      {:ok, _components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+
+      deps = Components.list_component_dependencies(scope, user_repo.id)
+      assert length(deps) == 1
+      assert hd(deps).target_component.module_name == "MyApp.Repo"
+    end
+
+    test "skips self-referential dependencies", %{scope: scope, tmp_dir: tmp_dir} do
+      write_spec_with_deps(tmp_dir, "MyApp.Accounts", ["MyApp.Accounts"])
+
+      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+      accounts = Enum.find(components, &(&1.module_name == "MyApp.Accounts"))
+
+      # Should have no dependencies (self-reference filtered out)
+      assert Components.list_component_dependencies(scope, accounts.id) == []
+    end
+
+    test "skips dependencies to non-existent modules", %{scope: scope, tmp_dir: tmp_dir} do
+      write_spec_with_deps(tmp_dir, "MyApp.Accounts", ["MyApp.NonExistent"])
+
+      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+      accounts = Enum.find(components, &(&1.module_name == "MyApp.Accounts"))
+
+      # Should have no dependencies (target doesn't exist)
+      assert Components.list_component_dependencies(scope, accounts.id) == []
+    end
+  end
 end

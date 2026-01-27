@@ -27,6 +27,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     scope = user_scope_fixture(user, account, updated_project)
 
     on_exit(fn ->
+      # Clean up docs/spec files we created (it's a submodule, pool reset won't clean it)
+      docs_spec_dir = Path.join(project_dir, "docs/spec")
+      if File.exists?(docs_spec_dir), do: File.rm_rf!(docs_spec_dir)
+
       CodeMySpec.Support.TestAdapter.checkin(project_dir)
     end)
 

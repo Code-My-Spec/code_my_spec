@@ -36,4 +36,11 @@ defmodule CodeMySpec.McpServers.ArchitectureServer do
   # component(CodeMySpec.McpServers.Architecture.Tools.GetComponentImpact)
   component(CodeMySpec.McpServers.Architecture.Tools.GetComponentView)
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
+
+  # Greenfield architecture design tools
+  component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
+  component(CodeMySpec.McpServers.Architecture.Tools.ProposeArchitecture)
+  component(CodeMySpec.McpServers.Architecture.Tools.ValidateProposal)
+  component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
+  component(CodeMySpec.McpServers.Architecture.Tools.CreateContextWithChildren)
 end

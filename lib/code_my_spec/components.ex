@@ -134,6 +134,7 @@ defmodule CodeMySpec.Components do
 
   defdelegate components_with_unsatisfied_requirements(scope), to: ComponentRepository
   defdelegate list_dependencies(scope), to: DependencyRepository
+  defdelegate list_component_dependencies(scope, component_id), to: DependencyRepository
   defdelegate get_dependency!(scope, id), to: DependencyRepository
   defdelegate create_dependency(scope, attrs), to: DependencyRepository
   defdelegate delete_dependency(scope, dependency), to: DependencyRepository

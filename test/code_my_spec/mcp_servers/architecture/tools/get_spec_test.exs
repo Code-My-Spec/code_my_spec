@@ -290,7 +290,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.GetSpecTest do
 
       # Parse the response content
       [content] = response.content
-      data = Jason.decode!(content.text)
+      data = Jason.decode!(content["text"])
       assert data["spec_exists"] == false
       assert data["message"] == "Spec file does not exist yet. Use create_spec to create it."
       assert data["component"]["module_name"] == "TestApp.NoSpecFile"

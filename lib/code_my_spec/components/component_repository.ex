@@ -141,9 +141,9 @@ defmodule CodeMySpec.Components.ComponentRepository do
       :project,
       :dependencies,
       :dependents,
-      :outgoing_dependencies,
-      :incoming_dependencies,
-      :stories
+      :stories,
+      outgoing_dependencies: :target_component,
+      incoming_dependencies: :source_component
     ])
     |> Repo.all()
   end
@@ -156,9 +156,9 @@ defmodule CodeMySpec.Components.ComponentRepository do
       :project,
       :dependencies,
       :dependents,
-      :outgoing_dependencies,
-      :incoming_dependencies,
-      :stories
+      :stories,
+      outgoing_dependencies: :target_component,
+      incoming_dependencies: :source_component
     ])
     |> Repo.all()
   end
@@ -167,7 +167,12 @@ defmodule CodeMySpec.Components.ComponentRepository do
   def get_component_with_dependencies(%Scope{active_project_id: project_id}, id) do
     Component
     |> where([c], c.id == ^id and c.project_id == ^project_id)
-    |> preload([:dependencies, :dependents, :outgoing_dependencies, :incoming_dependencies])
+    |> preload([
+      :dependencies,
+      :dependents,
+      outgoing_dependencies: :target_component,
+      incoming_dependencies: :source_component
+    ])
     |> Repo.one()
   end
 

@@ -23,6 +23,20 @@ defmodule CodeMySpec.Components.DependencyRepository do
   end
 
   @doc """
+  Returns the list of dependencies for a specific component (outgoing dependencies).
+  """
+  @spec list_component_dependencies(Scope.t(), binary()) :: [Dependency.t()]
+  def list_component_dependencies(%Scope{active_project_id: project_id}, component_id) do
+    from(d in Dependency,
+      join: sc in Component,
+      on: d.source_component_id == sc.id,
+      where: sc.project_id == ^project_id and d.source_component_id == ^component_id,
+      preload: [:target_component]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a single dependency by ID within scope.
   """
   @spec get_dependency!(Scope.t(), non_neg_integer()) :: Dependency.t()

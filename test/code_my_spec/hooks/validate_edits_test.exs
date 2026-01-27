@@ -4,6 +4,8 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Sessions.AgentTasks.ValidateEdits
 
+  import ExUnit.CaptureLog
+
   @moduletag :tmp_dir
 
   # ============================================================================
@@ -198,9 +200,11 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
 
       track_edit(session_id, spec_path)
 
-      assert {:error, errors} = ValidateEdits.run(session_id)
-      assert is_list(errors)
-      assert length(errors) > 0
+      capture_log(fn ->
+        assert {:error, errors} = ValidateEdits.run(session_id)
+        assert is_list(errors)
+        assert length(errors) > 0
+      end)
     end
 
     test "returns {:error, [errors]} when spec file has disallowed sections", %{tmp_dir: tmp_dir} do
@@ -211,9 +215,11 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
 
       track_edit(session_id, spec_path)
 
-      assert {:error, errors} = ValidateEdits.run(session_id)
-      assert is_list(errors)
-      assert Enum.any?(errors, &String.contains?(&1, "Disallowed"))
+      capture_log(fn ->
+        assert {:error, errors} = ValidateEdits.run(session_id)
+        assert is_list(errors)
+        assert Enum.any?(errors, &String.contains?(&1, "Disallowed"))
+      end)
     end
 
     test "includes file path in error message for identification", %{tmp_dir: tmp_dir} do
@@ -224,8 +230,10 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
 
       track_edit(session_id, spec_path)
 
-      assert {:error, errors} = ValidateEdits.run(session_id)
-      assert Enum.any?(errors, &String.contains?(&1, spec_path))
+      capture_log(fn ->
+        assert {:error, errors} = ValidateEdits.run(session_id)
+        assert Enum.any?(errors, &String.contains?(&1, spec_path))
+      end)
     end
 
     test "validates all spec files before returning collected errors", %{tmp_dir: tmp_dir} do
@@ -240,10 +248,12 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
       track_edit(session_id, spec1)
       track_edit(session_id, spec2)
 
-      assert {:error, errors} = ValidateEdits.run(session_id)
-      assert length(errors) >= 2
-      assert Enum.any?(errors, &String.contains?(&1, "bad_one.spec.md"))
-      assert Enum.any?(errors, &String.contains?(&1, "bad_two.spec.md"))
+      capture_log(fn ->
+        assert {:error, errors} = ValidateEdits.run(session_id)
+        assert length(errors) >= 2
+        assert Enum.any?(errors, &String.contains?(&1, "bad_one.spec.md"))
+        assert Enum.any?(errors, &String.contains?(&1, "bad_two.spec.md"))
+      end)
     end
 
     test "handles file read failure gracefully (file deleted after edit)", %{tmp_dir: tmp_dir} do
@@ -253,8 +263,10 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
 
       track_edit(session_id, nonexistent_spec)
 
-      assert {:error, errors} = ValidateEdits.run(session_id)
-      assert is_list(errors)
+      capture_log(fn ->
+        assert {:error, errors} = ValidateEdits.run(session_id)
+        assert is_list(errors)
+      end)
     end
   end
 
@@ -273,32 +285,40 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
       spec_path =
         create_spec_file(tmp_dir, "docs/spec/missing.spec.md", spec_missing_required_sections())
 
-      assert {:error, reason} = ValidateEdits.validate_spec_file(spec_path)
-      assert is_binary(reason)
-      assert reason =~ "Missing required sections"
+      capture_log(fn ->
+        assert {:error, reason} = ValidateEdits.validate_spec_file(spec_path)
+        assert is_binary(reason)
+        assert reason =~ "Missing required sections"
+      end)
     end
 
     test "returns {:error, reason} for spec with invalid sections", %{tmp_dir: tmp_dir} do
       spec_path =
         create_spec_file(tmp_dir, "docs/spec/invalid.spec.md", spec_with_disallowed_sections())
 
-      assert {:error, reason} = ValidateEdits.validate_spec_file(spec_path)
-      assert is_binary(reason)
-      assert reason =~ "Disallowed"
+      capture_log(fn ->
+        assert {:error, reason} = ValidateEdits.validate_spec_file(spec_path)
+        assert is_binary(reason)
+        assert reason =~ "Disallowed"
+      end)
     end
 
     test "returns {:error, reason} when file does not exist", %{tmp_dir: tmp_dir} do
       nonexistent_path = Path.join(tmp_dir, "does_not_exist.spec.md")
 
-      assert {:error, reason} = ValidateEdits.validate_spec_file(nonexistent_path)
-      assert is_binary(reason)
+      capture_log(fn ->
+        assert {:error, reason} = ValidateEdits.validate_spec_file(nonexistent_path)
+        assert is_binary(reason)
+      end)
     end
 
     test "returns {:error, reason} when file is empty", %{tmp_dir: tmp_dir} do
       spec_path = create_spec_file(tmp_dir, "docs/spec/empty.spec.md", empty_content())
 
-      assert {:error, reason} = ValidateEdits.validate_spec_file(spec_path)
-      assert is_binary(reason)
+      capture_log(fn ->
+        assert {:error, reason} = ValidateEdits.validate_spec_file(spec_path)
+        assert is_binary(reason)
+      end)
     end
 
     test "determines document type correctly from path", %{tmp_dir: tmp_dir} do

@@ -118,6 +118,9 @@ defmodule CodeMySpec.Components.Sync do
 
     cleanup_removed(scope, existing_components, all_module_names)
 
+    # Sync dependencies for changed components
+    sync_dependencies(scope, changed_merged, all_components)
+
     {:ok, all_components, changed_component_ids}
   rescue
     error ->
@@ -288,16 +291,22 @@ defmodule CodeMySpec.Components.Sync do
   defp parse_spec_file(%FileInfo{path: path, mtime: mtime}, base_dir) do
     content = File.read!(path)
 
-    # Get module name from H1 title
-    module_name = extract_h1_title(content) || derive_module_from_path(path, base_dir, :spec)
+    # Get module name, preferring path-derived when H1 is incomplete
+    path_module = derive_module_from_path(path, base_dir, :spec)
+    h1_module = extract_h1_title(content)
+    module_name = resolve_module_name(h1_module, path_module)
 
     # Extract description from intro text (content after H1, before first H2)
     description = extract_intro_text(content)
+
+    # Extract dependencies from ## Dependencies section
+    dependencies = extract_dependencies(content)
 
     %{
       module_name: module_name,
       type: type_from_namespace(module_name),
       description: description,
+      dependencies: dependencies,
       spec_path: path,
       impl_path: nil,
       mtime: mtime
@@ -317,6 +326,7 @@ defmodule CodeMySpec.Components.Sync do
       module_name: module_name,
       type: type_from_namespace(module_name),
       description: nil,
+      dependencies: [],
       spec_path: nil,
       impl_path: path,
       mtime: mtime
@@ -327,6 +337,36 @@ defmodule CodeMySpec.Components.Sync do
     case Regex.run(~r/^# ([A-Z][a-zA-Z0-9_.]+)$/m, content) do
       [_, name] -> String.trim(name)
       _ -> nil
+    end
+  end
+
+  # Resolves the correct module name when H1 title might be incomplete.
+  # Uses path-derived name when:
+  # - No H1 title exists
+  # - H1 title appears to be incomplete (path ends with the H1 parts)
+  # Uses H1 title when it has more parts than path (explicit override)
+  defp resolve_module_name(nil, path_module), do: path_module
+
+  defp resolve_module_name(h1_module, path_module) do
+    h1_parts = String.split(h1_module, ".")
+    path_parts = String.split(path_module, ".")
+
+    cond do
+      # H1 has more parts - user explicitly provided a full name
+      length(h1_parts) > length(path_parts) ->
+        h1_module
+
+      # Path ends with H1 parts - H1 is incomplete, use path
+      List.last(path_parts, length(h1_parts)) == h1_parts ->
+        path_module
+
+      # H1 and path have same length - prefer H1 (explicit declaration)
+      length(h1_parts) == length(path_parts) ->
+        h1_module
+
+      # Default: use path-derived (more complete)
+      true ->
+        path_module
     end
   end
 
@@ -342,6 +382,23 @@ defmodule CodeMySpec.Components.Sync do
       "" -> nil
       text -> text
     end
+  end
+
+  defp extract_dependencies(content) do
+    # Find the ## Dependencies section and extract module names
+    content
+    |> String.split("\n")
+    |> Enum.drop_while(&(!String.match?(&1, ~r/^## Dependencies/)))
+    |> Enum.drop(1)
+    |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.starts_with?(&1, "- "))
+    |> Enum.map(fn line ->
+      line
+      |> String.replace_prefix("- ", "")
+      |> String.trim()
+    end)
+    |> Enum.reject(&(&1 == "" || &1 == "None"))
   end
 
   defp derive_module_from_path(path, base_dir, :spec) do
@@ -414,6 +471,7 @@ defmodule CodeMySpec.Components.Sync do
       module_name: impl.module_name,
       type: spec.type || impl.type,
       description: spec.description,
+      dependencies: spec.dependencies || [],
       spec_path: spec.spec_path,
       impl_path: impl.impl_path,
       mtime: latest_mtime(spec.mtime, impl.mtime)
@@ -437,6 +495,51 @@ defmodule CodeMySpec.Components.Sync do
     }
 
     Components.upsert_component(scope, attrs)
+  end
+
+  # --- Dependency syncing ---
+
+  defp sync_dependencies(scope, changed_data, all_components) do
+    # Build module_name -> component lookup
+    component_map = Map.new(all_components, &{&1.module_name, &1})
+
+    Enum.each(changed_data, fn data ->
+      source_component = Map.get(component_map, data.module_name)
+
+      if source_component do
+        # Get current dependencies for this component
+        current_deps = Components.list_component_dependencies(scope, source_component.id)
+        current_target_ids = MapSet.new(current_deps, & &1.target_component_id)
+
+        # Resolve declared dependencies to component IDs
+        declared_deps =
+          (data.dependencies || [])
+          |> Enum.map(&Map.get(component_map, &1))
+          |> Enum.reject(&is_nil/1)
+          |> Enum.reject(&(&1.id == source_component.id))
+
+        declared_target_ids = MapSet.new(declared_deps, & &1.id)
+
+        # Add new dependencies
+        new_deps = MapSet.difference(declared_target_ids, current_target_ids)
+
+        Enum.each(new_deps, fn target_id ->
+          Components.create_dependency(scope, %{
+            source_component_id: source_component.id,
+            target_component_id: target_id
+          })
+        end)
+
+        # Remove old dependencies that are no longer declared
+        removed_deps = MapSet.difference(current_target_ids, declared_target_ids)
+
+        Enum.each(current_deps, fn dep ->
+          if dep.target_component_id in removed_deps do
+            Components.delete_dependency(scope, dep)
+          end
+        end)
+      end
+    end)
   end
 
   # --- Parent relationships (optimized) ---

@@ -50,7 +50,6 @@ defmodule CodeMySpec.ProjectSync.Sync do
   def sync_all(%Scope{} = scope, opts \\ []) do
     total_start = System.monotonic_time(:millisecond)
     base_dir = Keyword.get(opts, :base_dir, File.cwd!())
-    IO.puts(:stderr, "sync_all: base_dir=#{inspect(base_dir)}")
 
     # Phase 1: Sync components (identify what changed)
     contexts_start = System.monotonic_time(:millisecond)

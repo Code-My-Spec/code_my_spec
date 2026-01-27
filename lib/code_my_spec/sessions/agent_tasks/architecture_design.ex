@@ -21,6 +21,9 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
   - Component counts by type
   - References to architecture view files
 
+  For greenfield projects (0 components), uses a specialized workflow
+  with story analysis and proposal tools.
+
   Returns {:ok, prompt_text}
   """
   def command(scope, session, _opts \\ []) do
@@ -40,7 +43,13 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
 
     Architecture.generate_views(scope, output_dir: output_dir)
 
-    prompt = build_design_prompt(project, stories, component_count, output_dir)
+    prompt =
+      if component_count == 0 do
+        build_greenfield_prompt(project, stories, output_dir)
+      else
+        build_design_prompt(project, stories, component_count, output_dir)
+      end
+
     {:ok, prompt}
   end
 
@@ -55,6 +64,136 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
   end
 
   # Private functions
+
+  defp build_greenfield_prompt(project, stories, _output_dir) do
+    stories_section = format_stories(stories)
+
+    """
+    # Greenfield Architecture Design Session
+
+    You are beginning an architecture design session for the **#{project.name}** project.
+    This is a **greenfield project** with no existing components.
+
+    ## Project Overview
+
+    **Name:** #{project.name}
+    **Description:** #{project.description || "No description provided"}
+
+    ## User Stories
+
+    #{stories_section}
+
+    ## Your Task: Design the Architecture from Scratch
+
+    Follow this workflow to design and create the architecture:
+
+    ### Step 1: Analyze the Stories
+
+    Run `analyze_stories` to understand the domain:
+    - This will group stories by theme/domain
+    - Extract potential entities from story text
+    - Detect surface component patterns (real-time, API, file upload, etc.)
+    - Suggest bounded contexts
+
+    ```
+    analyze_stories(app_name: "#{derive_app_name(project.name)}")
+    ```
+
+    ### Step 2: Design the Architecture Proposal
+
+    Based on the analysis, use `propose_architecture` to sketch your design:
+    - Define bounded contexts with their child components
+    - Define surface components (LiveViews, Controllers)
+    - Map stories to the components that satisfy them
+    - Define dependencies between contexts
+
+    Example structure:
+    ```json
+    {
+      "app_name": "#{derive_app_name(project.name)}",
+      "contexts": [
+        {
+          "name": "#{derive_app_name(project.name)}.Verification",
+          "description": "Handles verification workflows",
+          "children": [
+            {"name": "Transaction", "type": "schema", "story_ids": [1, 2]},
+            {"name": "Photo", "type": "schema", "story_ids": [4, 5]}
+          ],
+          "story_ids": [1, 2, 3, 4, 5]
+        }
+      ],
+      "surface_components": [
+        {
+          "name": "#{derive_app_name(project.name)}Web.VerificationLive",
+          "type": "liveview",
+          "description": "Real-time verification dashboard",
+          "story_ids": [13, 14]
+        }
+      ],
+      "dependencies": [
+        {"from": "#{derive_app_name(project.name)}Web.VerificationLive", "to": "#{derive_app_name(project.name)}.Verification"}
+      ]
+    }
+    ```
+
+    ### Step 3: Validate the Proposal
+
+    Use `validate_proposal` to check for issues:
+    - All stories should be mapped to components
+    - No circular dependencies
+    - Valid module naming conventions
+    - No empty contexts
+
+    Fix any validation errors before proceeding.
+
+    ### Step 4: Execute the Proposal
+
+    Once validated, use `execute_proposal` to create all specs:
+    - Use `dry_run: true` first to preview what will be created
+    - Then run without dry_run to create the specs
+
+    ### Alternative: Batch Context Creation
+
+    For creating contexts one at a time with more control, use `create_context_with_children`:
+    ```json
+    {
+      "module_name": "#{derive_app_name(project.name)}.Verification",
+      "description": "Handles verification workflows",
+      "story_ids": [1, 2, 3],
+      "children": [
+        {"name": "Transaction", "type": "schema", "description": "A fuel transaction", "story_ids": [1, 2]},
+        {"name": "Photo", "type": "schema", "description": "Verification photo", "story_ids": [4, 5]}
+      ]
+    }
+    ```
+
+    ## Available Tools
+
+    ### Story Analysis
+    - `analyze_stories` - Analyze stories to understand domain and suggest contexts
+
+    ### Proposal Workflow
+    - `propose_architecture` - Create an architecture proposal
+    - `validate_proposal` - Validate proposal for issues
+    - `execute_proposal` - Create all specs from proposal (supports dry_run)
+
+    ### Batch Creation
+    - `create_context_with_children` - Create a context with all child components
+
+    ### Individual Creation
+    - `create_spec` - Create a single component spec (now supports story_ids)
+
+    ## Begin
+
+    Start by running `analyze_stories` to understand the domain, then design your architecture proposal.
+    """
+  end
+
+  defp derive_app_name(project_name) do
+    project_name
+    |> String.replace(~r/[^a-zA-Z0-9]/, "")
+    |> Macro.camelize()
+  end
 
   defp build_design_prompt(project, stories, component_count, output_dir) do
     stories_section = format_stories(stories)
