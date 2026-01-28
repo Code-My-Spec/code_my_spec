@@ -21,7 +21,6 @@ defmodule CodeMySpec.Sessions.AgentTasks.EvaluateAgentTask do
 
   alias CodeMySpec.Sessions
   alias CodeMySpec.ProjectSync.Sync
-  alias CodeMySpec.Requirements
 
   @doc """
   Run evaluation and return the result map for hook output.
@@ -111,9 +110,6 @@ defmodule CodeMySpec.Sessions.AgentTasks.EvaluateAgentTask do
   end
 
   defp sync_project(scope, working_dir) do
-    # Clear all requirements before resyncing
-    Requirements.clear_all_project_requirements(scope)
-
     opts = if working_dir, do: [base_dir: working_dir], else: []
 
     case Sync.sync_all(scope, opts) do

@@ -152,6 +152,22 @@ defmodule CodeMySpec.Requirements.Sync do
     # Identify components that need requirements recalculation
     affected_ids = identify_affected_components(components_with_deps, changed_component_ids)
 
+    # Safety net: components with 0 requirements should also be treated as affected
+    # This catches cases where components were synced but requirements weren't created
+    components_missing_requirements =
+      components_with_deps
+      |> Enum.filter(fn c -> length(c.requirements || []) == 0 end)
+      |> Enum.map(& &1.id)
+      |> MapSet.new()
+
+    affected_ids = MapSet.union(affected_ids, components_missing_requirements)
+
+    if MapSet.size(components_missing_requirements) > 0 do
+      Logger.info(
+        "[RequirementsSync] Found #{MapSet.size(components_missing_requirements)} components with 0 requirements, adding to affected set"
+      )
+    end
+
     # Clear and recalculate requirements only for affected components
     # Ensure persist: true so clear_requirements actually deletes from DB
     clear_opts = Keyword.put(opts, :persist, true)

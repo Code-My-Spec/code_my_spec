@@ -291,10 +291,20 @@ defmodule CodeMySpec.Components.Sync do
   defp parse_spec_file(%FileInfo{path: path, mtime: mtime}, base_dir) do
     content = File.read!(path)
 
-    # Get module name, preferring path-derived when H1 is incomplete
-    path_module = derive_module_from_path(path, base_dir, :spec)
-    h1_module = extract_h1_title(content)
-    module_name = resolve_module_name(h1_module, path_module)
+    # Validate H1 matches path (strict) - fail if mismatch
+    case CodeMySpec.Documents.validate_h1_matches_path(content, path) do
+      :ok -> :ok
+      {:error, reason} -> raise "Spec validation failed: #{reason}"
+    end
+
+    # Validate internal dependencies exist - log warnings only
+    case CodeMySpec.Documents.validate_internal_dependencies(content, base_dir) do
+      {:ok, []} -> :ok
+      {:ok, warnings} -> Enum.each(warnings, &log_validation_warning(path, &1))
+    end
+
+    # H1 is now validated to match path, so we can use it directly
+    module_name = extract_h1_title(content)
 
     # Extract description from intro text (content after H1, before first H2)
     description = extract_intro_text(content)
@@ -311,6 +321,11 @@ defmodule CodeMySpec.Components.Sync do
       impl_path: nil,
       mtime: mtime
     }
+  end
+
+  defp log_validation_warning(path, message) do
+    require Logger
+    Logger.warning("[Spec Validation] #{path}: #{message}")
   end
 
   defp parse_impl_file(%FileInfo{path: path, mtime: mtime}, base_dir) do
@@ -337,36 +352,6 @@ defmodule CodeMySpec.Components.Sync do
     case Regex.run(~r/^# ([A-Z][a-zA-Z0-9_.]+)$/m, content) do
       [_, name] -> String.trim(name)
       _ -> nil
-    end
-  end
-
-  # Resolves the correct module name when H1 title might be incomplete.
-  # Uses path-derived name when:
-  # - No H1 title exists
-  # - H1 title appears to be incomplete (path ends with the H1 parts)
-  # Uses H1 title when it has more parts than path (explicit override)
-  defp resolve_module_name(nil, path_module), do: path_module
-
-  defp resolve_module_name(h1_module, path_module) do
-    h1_parts = String.split(h1_module, ".")
-    path_parts = String.split(path_module, ".")
-
-    cond do
-      # H1 has more parts - user explicitly provided a full name
-      length(h1_parts) > length(path_parts) ->
-        h1_module
-
-      # Path ends with H1 parts - H1 is incomplete, use path
-      List.last(path_parts, length(h1_parts)) == h1_parts ->
-        path_module
-
-      # H1 and path have same length - prefer H1 (explicit declaration)
-      length(h1_parts) == length(path_parts) ->
-        h1_module
-
-      # Default: use path-derived (more complete)
-      true ->
-        path_module
     end
   end
 

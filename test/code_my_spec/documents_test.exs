@@ -244,4 +244,137 @@ defmodule CodeMySpec.DocumentsTest do
       refute error =~ "delegates OR functions"
     end
   end
+
+  describe "validate_h1_matches_path/2" do
+    test "returns :ok when H1 matches expected module from path" do
+      content = """
+      # CodeMySpec.Accounts.User
+
+      User module description.
+      """
+
+      path = "/some/project/docs/spec/code_my_spec/accounts/user.spec.md"
+
+      assert :ok = Documents.validate_h1_matches_path(content, path)
+    end
+
+    test "returns error when H1 doesn't match path" do
+      content = """
+      # User
+
+      Short module name.
+      """
+
+      path = "/some/project/docs/spec/code_my_spec/accounts/user.spec.md"
+
+      assert {:error, message} = Documents.validate_h1_matches_path(content, path)
+      assert message =~ "does not match expected"
+      assert message =~ "CodeMySpec.Accounts.User"
+    end
+
+    test "returns error when H1 is missing" do
+      content = """
+      Just some content without an H1.
+      """
+
+      path = "/some/project/docs/spec/code_my_spec/accounts/user.spec.md"
+
+      assert {:error, message} = Documents.validate_h1_matches_path(content, path)
+      assert message =~ "Missing H1 title"
+    end
+
+    test "handles nested paths correctly" do
+      content = """
+      # CodeMySpec.McpServers.Architecture.Tools.GetComponentView
+
+      Nested module.
+      """
+
+      path = "/project/docs/spec/code_my_spec/mcp_servers/architecture/tools/get_component_view.spec.md"
+
+      assert :ok = Documents.validate_h1_matches_path(content, path)
+    end
+  end
+
+  describe "validate_internal_dependencies/2" do
+    setup do
+      tmp_dir = System.tmp_dir!() |> Path.join("docs_validation_test_#{:rand.uniform(10000)}")
+      File.mkdir_p!(Path.join(tmp_dir, "docs/spec/code_my_spec/accounts"))
+      File.mkdir_p!(Path.join(tmp_dir, "lib/code_my_spec/accounts"))
+
+      # Create a spec file
+      File.write!(
+        Path.join(tmp_dir, "docs/spec/code_my_spec/accounts/user.spec.md"),
+        "# CodeMySpec.Accounts.User\n"
+      )
+
+      # Create an impl file
+      File.write!(
+        Path.join(tmp_dir, "lib/code_my_spec/accounts/account.ex"),
+        "defmodule CodeMySpec.Accounts.Account do\nend"
+      )
+
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{tmp_dir: tmp_dir}
+    end
+
+    test "returns no warnings when all internal dependencies exist", %{tmp_dir: tmp_dir} do
+      content = """
+      # CodeMySpec.Test
+
+      ## Dependencies
+
+      - CodeMySpec.Accounts.User
+      - CodeMySpec.Accounts.Account
+      """
+
+      assert {:ok, []} = Documents.validate_internal_dependencies(content, tmp_dir)
+    end
+
+    test "returns warnings for missing internal dependencies", %{tmp_dir: tmp_dir} do
+      content = """
+      # CodeMySpec.Test
+
+      ## Dependencies
+
+      - CodeMySpec.Accounts.User
+      - CodeMySpec.Accounts.Missing
+      """
+
+      assert {:ok, warnings} = Documents.validate_internal_dependencies(content, tmp_dir)
+      assert length(warnings) == 1
+      assert hd(warnings) =~ "CodeMySpec.Accounts.Missing"
+      assert hd(warnings) =~ "not found"
+    end
+
+    test "ignores external dependencies", %{tmp_dir: tmp_dir} do
+      content = """
+      # CodeMySpec.Test
+
+      ## Dependencies
+
+      - Ecto.Schema
+      - Phoenix.LiveView
+      - File
+      """
+
+      assert {:ok, []} = Documents.validate_internal_dependencies(content, tmp_dir)
+    end
+
+    test "handles mixed internal and external dependencies", %{tmp_dir: tmp_dir} do
+      content = """
+      # CodeMySpec.Test
+
+      ## Dependencies
+
+      - CodeMySpec.Accounts.User
+      - Ecto.Repo
+      - CodeMySpec.Missing.Module
+      """
+
+      assert {:ok, warnings} = Documents.validate_internal_dependencies(content, tmp_dir)
+      assert length(warnings) == 1
+      assert hd(warnings) =~ "CodeMySpec.Missing.Module"
+    end
+  end
 end
