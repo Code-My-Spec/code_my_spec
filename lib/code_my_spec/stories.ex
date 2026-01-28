@@ -188,7 +188,9 @@ defmodule CodeMySpec.Stories do
 
   """
   def set_story_component(%Scope{} = scope, %Story{} = story, component_id) do
-    true = story.account_id == scope.active_account.id
+    # Support both full account struct and account_id only (CLI context)
+    account_id = if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
+    true = story.account_id == account_id
 
     with {:ok, story = %Story{}} <-
            impl().set_story_component(scope, story, component_id) do

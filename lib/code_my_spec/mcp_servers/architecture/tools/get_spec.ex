@@ -23,7 +23,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.GetSpec do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_project_scope(frame),
-         {:ok, env} <- Environments.create(:cli),
+         {:ok, env} <- Environments.create(:cli, working_dir: Validators.mcp_working_dir()),
          {:ok, component} <- find_component(scope, params),
          {:ok, spec_path} <- build_spec_path(component.module_name) do
       spec_result = read_spec_file(env, spec_path)

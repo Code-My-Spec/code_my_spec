@@ -17,15 +17,15 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.CreateContextWithChildren do
   schema do
     field :module_name, :string, required: true
     field :description, :string
-    field :story_ids, {:array, :integer}, default: []
+    field :story_ids, {:list, :integer}, default: []
 
-    field :children, {:array, :map}, default: []
+    field :children, {:list, :map}, default: []
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_project_scope(frame),
-         {:ok, env} <- Environments.create(:cli),
+         {:ok, env} <- Environments.create(:cli, working_dir: Validators.mcp_working_dir()),
          {:ok, context, children, spec_paths} <- create_context_and_children(scope, env, params) do
       Environments.destroy(env)
       {:reply, ArchitectureMapper.context_with_children_created(context, children, spec_paths), frame}

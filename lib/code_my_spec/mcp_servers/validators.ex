@@ -54,4 +54,12 @@ defmodule CodeMySpec.McpServers.Validators do
       {:ok, frame.assigns.current_scope}
     end
   end
+
+  @doc """
+  Returns the MCP working directory (the project directory where Claude Code is running).
+  Falls back to File.cwd!() if not set.
+  """
+  def mcp_working_dir do
+    Application.get_env(:code_my_spec, :mcp_working_dir, File.cwd!())
+  end
 end

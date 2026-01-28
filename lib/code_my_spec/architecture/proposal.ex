@@ -106,7 +106,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     if dry_run do
       {:ok, preview_execution(proposal)}
     else
-      do_execute(proposal, scope)
+      do_execute(proposal, scope, opts)
     end
   end
 
@@ -205,7 +205,7 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp normalize_contexts(contexts) do
     Enum.map(contexts, fn ctx ->
       %{
-        name: ctx[:name] || ctx["name"],
+        name: ctx[:name] || ctx["name"] || ctx[:module_name] || ctx["module_name"],
         description: ctx[:description] || ctx["description"] || "",
         children: normalize_components(ctx[:children] || ctx["children"] || []),
         story_ids: ctx[:story_ids] || ctx["story_ids"] || []
@@ -216,7 +216,7 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp normalize_components(components) do
     Enum.map(components, fn comp ->
       %{
-        name: comp[:name] || comp["name"],
+        name: comp[:name] || comp["name"] || comp[:module_name] || comp["module_name"],
         type: comp[:type] || comp["type"],
         description: comp[:description] || comp["description"] || "",
         story_ids: comp[:story_ids] || comp["story_ids"] || []
@@ -357,6 +357,8 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
+  defp valid_module_name?(nil), do: false
+
   defp valid_module_name?(name) do
     Regex.match?(~r/^[A-Z][a-zA-Z0-9]*(\.[A-Z][a-zA-Z0-9]*)*$/, name)
   end
@@ -410,10 +412,11 @@ defmodule CodeMySpec.Architecture.Proposal do
     }
   end
 
-  defp do_execute(proposal, scope) do
+  defp do_execute(proposal, scope, opts \\ []) do
     components = to_components(proposal)
+    working_dir = Keyword.get(opts, :working_dir, File.cwd!())
 
-    with {:ok, env} <- Environments.create(:cli) do
+    with {:ok, env} <- Environments.create(:cli, working_dir: working_dir) do
       results =
         Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
           case create_component(scope, env, comp_attrs) do
@@ -444,12 +447,14 @@ defmodule CodeMySpec.Architecture.Proposal do
     spec_content = generate_spec_template(attrs)
 
     with :ok <- Environments.write_file(env, spec_path, spec_content) do
-      component_attrs = %{
-        module_name: attrs.module_name,
-        type: attrs.type,
-        description: attrs.description,
-        name: derive_name(attrs.module_name)
-      }
+      component_attrs =
+        %{
+          module_name: attrs.module_name,
+          type: attrs.type,
+          description: attrs.description,
+          name: derive_name(attrs.module_name)
+        }
+        |> maybe_put_parent_id(scope, attrs[:parent_module])
 
       case Components.upsert_component(scope, component_attrs) do
         %{id: _} = component ->
@@ -525,5 +530,17 @@ defmodule CodeMySpec.Architecture.Proposal do
     name
     |> String.replace(".", "_")
     |> String.replace(~r/[^a-zA-Z0-9_]/, "")
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp maybe_put_parent_id(map, _scope, nil), do: map
+
+  defp maybe_put_parent_id(map, scope, parent_module) do
+    case Components.get_component_by_module_name(scope, parent_module) do
+      nil -> map
+      parent -> Map.put(map, :parent_component_id, parent.id)
+    end
   end
 end
