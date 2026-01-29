@@ -229,6 +229,73 @@ defmodule CodeMySpec.TagsTest do
     end
   end
 
+  describe "sync_tags/3" do
+    test "adds missing tags" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+
+      {:ok, _story} = Tags.sync_tags(scope, story, ["tag-a", "tag-b"])
+
+      tags = Tags.list_story_tags(scope, story)
+      tag_names = Enum.map(tags, & &1.name)
+      assert Enum.sort(tag_names) == ["tag-a", "tag-b"]
+    end
+
+    test "removes extra tags" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+
+      {:ok, _} = Tags.add_tag(scope, story, "keep")
+      {:ok, _} = Tags.add_tag(scope, story, "remove-me")
+
+      {:ok, _story} = Tags.sync_tags(scope, story, ["keep"])
+
+      tags = Tags.list_story_tags(scope, story)
+      tag_names = Enum.map(tags, & &1.name)
+      assert tag_names == ["keep"]
+    end
+
+    test "is idempotent when tags match" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+
+      {:ok, _} = Tags.add_tag(scope, story, "already-there")
+
+      {:ok, _story} = Tags.sync_tags(scope, story, ["already-there"])
+
+      tags = Tags.list_story_tags(scope, story)
+      assert length(tags) == 1
+      assert hd(tags).name == "already-there"
+    end
+
+    test "clears all tags when given empty list" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+
+      {:ok, _} = Tags.add_tag(scope, story, "clear-me")
+      {:ok, _} = Tags.add_tag(scope, story, "clear-me-too")
+
+      {:ok, _story} = Tags.sync_tags(scope, story, [])
+
+      tags = Tags.list_story_tags(scope, story)
+      assert Enum.empty?(tags)
+    end
+
+    test "handles mixed add and remove" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+
+      {:ok, _} = Tags.add_tag(scope, story, "keep")
+      {:ok, _} = Tags.add_tag(scope, story, "old")
+
+      {:ok, _story} = Tags.sync_tags(scope, story, ["keep", "new"])
+
+      tags = Tags.list_story_tags(scope, story)
+      tag_names = Enum.map(tags, & &1.name)
+      assert Enum.sort(tag_names) == ["keep", "new"]
+    end
+  end
+
   describe "Tag schema validation" do
     test "validates name format" do
       scope = full_scope_fixture()

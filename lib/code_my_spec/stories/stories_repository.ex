@@ -12,13 +12,13 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   def list_stories(%Scope{} = scope) do
     Story
     |> Repo.all_by(project_id: scope.active_project.id)
-    |> Repo.preload(:criteria)
+    |> Repo.preload([:criteria, :tags])
   end
 
   def list_project_stories(%Scope{} = scope) do
     Story
     |> Repo.all_by(project_id: scope.active_project.id)
-    |> Repo.preload(:criteria)
+    |> Repo.preload([:criteria, :tags])
   end
 
   @doc """
@@ -29,6 +29,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     limit = Keyword.get(opts, :limit, 20)
     offset = Keyword.get(opts, :offset, 0)
     search = Keyword.get(opts, :search)
+    tag = Keyword.get(opts, :tag)
 
     base_query =
       from(s in Story,
@@ -47,6 +48,19 @@ defmodule CodeMySpec.Stories.StoriesRepository do
         base_query
       end
 
+    query =
+      if tag && tag != "" do
+        from(s in query,
+          join: st in CodeMySpec.Tags.StoryTag,
+          on: st.story_id == s.id,
+          join: t in CodeMySpec.Tags.Tag,
+          on: t.id == st.tag_id,
+          where: t.name == ^tag and t.project_id == ^scope.active_project.id
+        )
+      else
+        query
+      end
+
     total = Repo.aggregate(query, :count, :id)
 
     stories =
@@ -54,7 +68,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       |> limit(^limit)
       |> offset(^offset)
       |> Repo.all()
-      |> Repo.preload(:criteria)
+      |> Repo.preload([:criteria, :tags])
 
     {stories, total}
   end
@@ -93,7 +107,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
         asc_nulls_last: c.priority,
         asc: s.title
       ],
-      preload: [:component, :criteria]
+      preload: [:component, :criteria, :tags]
     )
     |> Repo.all()
   end
@@ -115,13 +129,13 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   def get_story(%Scope{} = scope, id) do
     Story
     |> Repo.get_by(id: id, project_id: scope.active_project_id)
-    |> Repo.preload(:criteria)
+    |> Repo.preload([:criteria, :tags])
   end
 
   def get_story!(%Scope{} = scope, id) do
     Story
     |> Repo.get_by!(id: id, project_id: scope.active_project_id)
-    |> Repo.preload(:criteria)
+    |> Repo.preload([:criteria, :tags])
   end
 
   def create_story(
@@ -137,7 +151,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Ecto.Changeset.put_change(:account_id, account_id)
     |> PaperTrail.insert(originator: scope.user)
     |> case do
-      {:ok, %{model: story}} -> {:ok, Repo.preload(story, :criteria)}
+      {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags])}
       {:error, changeset} -> {:error, changeset}
     end
   end
@@ -147,7 +161,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Story.changeset(attrs)
     |> PaperTrail.insert(originator: scope.user)
     |> case do
-      {:ok, %{model: story}} -> {:ok, Repo.preload(story, :criteria)}
+      {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags])}
       {:error, changeset} -> {:error, changeset}
     end
   end
@@ -159,7 +173,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Story.changeset(attrs_with_ownership)
     |> PaperTrail.update(originator: scope.user)
     |> case do
-      {:ok, %{model: story}} -> {:ok, Repo.preload(story, :criteria, force: true)}
+      {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags], force: true)}
       {:error, changeset} -> {:error, changeset}
     end
   end

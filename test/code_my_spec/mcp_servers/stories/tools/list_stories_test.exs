@@ -4,6 +4,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.McpServers.Stories.Tools.ListStories
+  alias CodeMySpec.Tags
   alias Hermes.Server.Frame
   alias Hermes.Server.Response
 
@@ -95,6 +96,43 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} = ListStories.execute(%{}, frame)
+
+      protocol = Response.to_protocol(response)
+      content = hd(protocol["content"])["text"]
+
+      assert content =~ "No stories found"
+    end
+
+    test "filters by tag" do
+      scope = full_scope_fixture()
+      story1 = story_fixture(scope, %{title: "Tagged Story 1"})
+      story2 = story_fixture(scope, %{title: "Tagged Story 2"})
+      _story3 = story_fixture(scope, %{title: "Untagged Story"})
+
+      # Tag only first two stories
+      Tags.add_tag(scope, story1, "my-tag")
+      Tags.add_tag(scope, story2, "my-tag")
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ListStories.execute(%{tag: "my-tag"}, frame)
+
+      protocol = Response.to_protocol(response)
+      content = hd(protocol["content"])["text"]
+
+      assert content =~ "Showing 1-2 of 2 stories"
+      assert content =~ "Tagged Story 1"
+      assert content =~ "Tagged Story 2"
+      refute content =~ "Untagged Story"
+    end
+
+    test "returns empty when tag has no stories" do
+      scope = full_scope_fixture()
+      _story = story_fixture(scope, %{title: "Some Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ListStories.execute(%{tag: "nonexistent-tag"}, frame)
 
       protocol = Response.to_protocol(response)
       content = hd(protocol["content"])["text"]

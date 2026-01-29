@@ -12,6 +12,7 @@ defmodule CodeMySpec.Stories.Story do
           description: String.t(),
           acceptance_criteria: [String.t()],
           criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
+          tags: [CodeMySpec.Tags.Tag.t()] | Ecto.Association.NotLoaded.t(),
           status: :in_progress | :completed | :dirty,
           locked_at: DateTime.t() | nil,
           lock_expires_at: DateTime.t() | nil,
@@ -37,6 +38,10 @@ defmodule CodeMySpec.Stories.Story do
     field :account_id, :binary_id
 
     has_many :criteria, CodeMySpec.AcceptanceCriteria.Criterion, on_replace: :delete
+
+    many_to_many :tags, CodeMySpec.Tags.Tag,
+      join_through: CodeMySpec.Tags.StoryTag,
+      on_replace: :delete
 
     belongs_to :first_version, PaperTrail.Version
     belongs_to :current_version, PaperTrail.Version, on_replace: :update

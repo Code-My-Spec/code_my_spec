@@ -64,4 +64,25 @@ defmodule CodeMySpec.Tags do
       tag -> TagRepository.find_stories_by_tag_id(scope, tag.id)
     end
   end
+
+  @doc """
+  Syncs story tags to match the provided list.
+  Adds missing tags, removes extras. Idempotent.
+  """
+  @spec sync_tags(Scope.t(), Story.t(), [String.t()]) :: {:ok, Story.t()}
+  def sync_tags(%Scope{} = scope, %Story{} = story, desired_tag_names) when is_list(desired_tag_names) do
+    current_tags = list_story_tags(scope, story)
+    current_names = MapSet.new(current_tags, & &1.name)
+    desired_names = MapSet.new(desired_tag_names)
+
+    # Add missing tags
+    to_add = MapSet.difference(desired_names, current_names)
+    Enum.each(to_add, fn name -> add_tag(scope, story, name) end)
+
+    # Remove extra tags
+    to_remove = MapSet.difference(current_names, desired_names)
+    Enum.each(to_remove, fn name -> remove_tag(scope, story, name) end)
+
+    {:ok, story}
+  end
 end

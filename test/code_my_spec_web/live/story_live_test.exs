@@ -4,8 +4,10 @@ defmodule CodeMySpecWeb.StoryLiveTest do
   import Phoenix.LiveViewTest
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.AcceptanceCriteriaFixtures
+  import CodeMySpec.TagsFixtures
 
   alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Tags
 
   defp create_attrs do
     %{
@@ -49,6 +51,33 @@ defmodule CodeMySpecWeb.StoryLiveTest do
 
       assert html =~ "Listing Stories"
       assert html =~ story.title
+    end
+
+    test "toggle criteria checkbox changes visibility", %{conn: conn, story: story} do
+      {:ok, index_live, _html} = live(conn, ~p"/app/stories")
+
+      # First verify the story appears
+      html = render(index_live)
+      assert html =~ story.title
+      assert html =~ "Acceptance Criteria:"
+
+      # Click toggle to hide criteria - criteria text should disappear
+      html =
+        index_live
+        |> element("input[phx-click='toggle_criteria']")
+        |> render_click()
+
+      assert html =~ story.title
+      refute html =~ "Acceptance Criteria:"
+
+      # Click toggle again - criteria text should reappear
+      html =
+        index_live
+        |> element("input[phx-click='toggle_criteria']")
+        |> render_click()
+
+      assert html =~ story.title
+      assert html =~ "Acceptance Criteria:"
     end
 
     test "saves new story", %{conn: conn} do
@@ -265,6 +294,93 @@ defmodule CodeMySpecWeb.StoryLiveTest do
       updated_story = CodeMySpec.Stories.get_story!(scope, story.id)
       assert length(updated_story.criteria) == 1
       assert List.first(updated_story.criteria).verified == true
+    end
+  end
+
+  describe "Tags" do
+    setup [:create_story]
+
+    test "displays tags on show page", %{conn: conn, scope: scope, story: story} do
+      story_tagging_fixture(scope, story, "my-test-tag")
+
+      {:ok, _show_live, html} = live(conn, ~p"/app/stories/#{story}")
+
+      assert html =~ "my-test-tag"
+    end
+
+    test "displays tags on index page", %{conn: conn, scope: scope, story: story} do
+      story_tagging_fixture(scope, story, "index-tag")
+
+      {:ok, _index_live, html} = live(conn, ~p"/app/stories")
+
+      assert html =~ "index-tag"
+    end
+
+    test "adds tag to story", %{conn: conn, scope: scope, story: story} do
+      {:ok, show_live, _html} = live(conn, ~p"/app/stories/#{story}")
+
+      # Add a tag via the form
+      show_live
+      |> form("form[phx-submit='add_tag']", %{tag: "new-tag"})
+      |> render_submit()
+
+      # Verify the tag appears in the UI
+      html = render(show_live)
+      assert html =~ "new-tag"
+
+      # Verify it was persisted
+      tags = Tags.list_story_tags(scope, story)
+      assert Enum.any?(tags, &(&1.name == "new-tag"))
+    end
+
+    test "removes tag from story", %{conn: conn, scope: scope, story: story} do
+      story_tagging_fixture(scope, story, "remove-me")
+
+      {:ok, show_live, html} = live(conn, ~p"/app/stories/#{story}")
+
+      # Verify tag is initially present
+      assert html =~ "remove-me"
+
+      # Click remove button
+      show_live
+      |> element("button[phx-click='remove_tag'][phx-value-tag='remove-me']")
+      |> render_click()
+
+      # Verify the tag is removed from UI
+      html = render(show_live)
+      refute html =~ "remove-me"
+
+      # Verify it was removed from database
+      tags = Tags.list_story_tags(scope, story)
+      refute Enum.any?(tags, &(&1.name == "remove-me"))
+    end
+
+    test "adding duplicate tag is idempotent", %{conn: conn, scope: scope, story: story} do
+      story_tagging_fixture(scope, story, "existing-tag")
+
+      {:ok, show_live, _html} = live(conn, ~p"/app/stories/#{story}")
+
+      # Try to add the same tag again
+      show_live
+      |> form("form[phx-submit='add_tag']", %{tag: "existing-tag"})
+      |> render_submit()
+
+      # Should still only have one tag
+      tags = Tags.list_story_tags(scope, story)
+      assert length(Enum.filter(tags, &(&1.name == "existing-tag"))) == 1
+    end
+
+    test "ignores empty tag input", %{conn: conn, scope: scope, story: story} do
+      {:ok, show_live, _html} = live(conn, ~p"/app/stories/#{story}")
+
+      # Submit empty tag
+      show_live
+      |> form("form[phx-submit='add_tag']", %{tag: "   "})
+      |> render_submit()
+
+      # Should have no tags
+      tags = Tags.list_story_tags(scope, story)
+      assert Enum.empty?(tags)
     end
   end
 end

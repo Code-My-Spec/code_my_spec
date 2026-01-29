@@ -11,19 +11,31 @@ defmodule CodeMySpecWeb.StoryLive.Index do
       <.header>
         Listing Stories
         <:actions>
-          <button phx-click="export_markdown" class="btn btn-outline mr-3">
-            <.icon name="hero-arrow-down-tray" /> Export
-          </button>
-          <.button navigate={~p"/app/stories/import"} class="btn btn-outline mr-3">
-            <.icon name="hero-arrow-up-tray" /> Import
-          </.button>
-          <.button navigate={~p"/app/stories/new"}>
-            <.icon name="hero-plus" /> New Story
-          </.button>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <span class="text-sm text-base-content/70">Criteria</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-sm toggle-primary"
+                checked={@show_criteria}
+                phx-click="toggle_criteria"
+              />
+            </label>
+            <div class="divider divider-horizontal mx-0"></div>
+            <button phx-click="export_markdown" class="btn btn-sm btn-outline">
+              <.icon name="hero-arrow-down-tray" /> Export
+            </button>
+            <.button navigate={~p"/app/stories/import"} class="btn btn-sm btn-outline">
+              <.icon name="hero-arrow-up-tray" /> Import
+            </.button>
+            <.button navigate={~p"/app/stories/new"} class="btn btn-sm">
+              <.icon name="hero-plus" /> New Story
+            </.button>
+          </div>
         </:actions>
       </.header>
 
-      <div class="space-y-8">
+      <div id="stories" phx-update="stream" class="space-y-8">
         <div :for={{id, story} <- @streams.stories} id={id} class="card bg-base-100 shadow-md">
           <div class="card-body">
             <div class="flex items-start justify-between mb-4">
@@ -46,7 +58,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
               {story.description}
             </p>
 
-            <div class="mb-4">
+            <div :if={@show_criteria} class="mb-4">
               <h3 class="font-semibold mb-2">Acceptance Criteria:</h3>
               <ul class="list-disc list-inside space-y-1 text-base-content/80">
                 <li :for={criterion <- story.criteria} class="flex items-center gap-2">
@@ -74,6 +86,12 @@ defmodule CodeMySpecWeb.StoryLive.Index do
                 <span class="font-semibold">Component:</span>
                 {story.component.name}
               </div>
+            </div>
+
+            <div :if={story.tags != []} class="mb-4 flex flex-wrap gap-1">
+              <span :for={tag <- story.tags} class="badge badge-sm badge-outline">
+                {tag.name}
+              </span>
             </div>
 
             <div class="flex items-center justify-between">
@@ -106,9 +124,24 @@ defmodule CodeMySpecWeb.StoryLive.Index do
     {:ok,
      socket
      |> assign(:page_title, "Listing Stories")
+     |> assign(:show_criteria, true)
      |> stream(
        :stories,
        Stories.list_project_stories_by_component_priority(socket.assigns.current_scope)
+     )}
+  end
+
+  @impl true
+  def handle_event("toggle_criteria", _params, socket) do
+    new_show = !socket.assigns.show_criteria
+
+    {:noreply,
+     socket
+     |> assign(:show_criteria, new_show)
+     |> stream(
+       :stories,
+       Stories.list_project_stories_by_component_priority(socket.assigns.current_scope),
+       reset: true
      )}
   end
 

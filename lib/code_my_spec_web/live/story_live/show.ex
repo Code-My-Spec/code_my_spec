@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Stories
+  alias CodeMySpec.Tags
 
   @impl true
   def render(assigns) do
@@ -54,6 +55,35 @@ defmodule CodeMySpecWeb.StoryLive.Show do
             </li>
           </ul>
         </:item>
+        <:item title="Tags">
+          <div class="flex flex-wrap gap-2 items-center">
+            <span
+              :for={tag <- @tags}
+              class="badge badge-primary gap-1"
+            >
+              {tag.name}
+              <button
+                type="button"
+                phx-click="remove_tag"
+                phx-value-tag={tag.name}
+                class="hover:text-error"
+              >
+                <.icon name="hero-x-mark" class="size-3" />
+              </button>
+            </span>
+            <form phx-submit="add_tag" class="flex items-center gap-1">
+              <input
+                type="text"
+                name="tag"
+                placeholder="Add tag..."
+                class="input input-xs input-bordered w-32"
+              />
+              <button type="submit" class="btn btn-xs btn-ghost">
+                <.icon name="hero-plus" class="size-3" />
+              </button>
+            </form>
+          </div>
+        </:item>
         <:item title="Status">{@story.status}</:item>
         <:item title="Locked at">{@story.locked_at}</:item>
         <:item title="Lock expires at">{@story.lock_expires_at}</:item>
@@ -69,10 +99,46 @@ defmodule CodeMySpecWeb.StoryLive.Show do
       AcceptanceCriteria.subscribe_criteria(socket.assigns.current_scope)
     end
 
+    story = Stories.get_story!(socket.assigns.current_scope, id)
+    tags = Tags.list_story_tags(socket.assigns.current_scope, story)
+
     {:ok,
      socket
      |> assign(:page_title, "Show Story")
-     |> assign(:story, Stories.get_story!(socket.assigns.current_scope, id))}
+     |> assign(:story, story)
+     |> assign(:tags, tags)}
+  end
+
+  @impl true
+  def handle_event("add_tag", %{"tag" => tag_name}, socket) do
+    tag_name = String.trim(tag_name)
+
+    if tag_name == "" do
+      {:noreply, socket}
+    else
+      case Tags.add_tag(socket.assigns.current_scope, socket.assigns.story, tag_name) do
+        {:ok, _story_tag} ->
+          tags = Tags.list_story_tags(socket.assigns.current_scope, socket.assigns.story)
+          {:noreply, assign(socket, :tags, tags)}
+
+        {:error, _changeset} ->
+          # Already tagged or invalid - just refresh
+          tags = Tags.list_story_tags(socket.assigns.current_scope, socket.assigns.story)
+          {:noreply, assign(socket, :tags, tags)}
+      end
+    end
+  end
+
+  @impl true
+  def handle_event("remove_tag", %{"tag" => tag_name}, socket) do
+    case Tags.remove_tag(socket.assigns.current_scope, socket.assigns.story, tag_name) do
+      :ok ->
+        tags = Tags.list_story_tags(socket.assigns.current_scope, socket.assigns.story)
+        {:noreply, assign(socket, :tags, tags)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
   end
 
   @impl true
