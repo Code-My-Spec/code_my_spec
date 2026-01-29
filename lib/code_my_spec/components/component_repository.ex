@@ -89,7 +89,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
     |> Repo.insert()
   end
 
-  @spec upsert_component(Scope.t(), map()) :: Component.t()
+  @spec upsert_component(Scope.t(), map()) :: Component.t() | {:error, Ecto.Changeset.t()}
   def upsert_component(%Scope{} = scope, attrs) do
     %Component{}
     |> Component.changeset(attrs, scope)

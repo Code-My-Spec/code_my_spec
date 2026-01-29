@@ -12,7 +12,7 @@ defmodule CodeMySpec.Accounts.MembersRepository do
 
   @type account_role :: :owner | :admin | :member
 
-  @spec add_user_to_account(integer(), integer(), account_role()) ::
+  @spec add_user_to_account(String.t(), String.t(), account_role()) ::
           {:ok, Member.t()} | {:error, Ecto.Changeset.t() | :user_limit_exceeded}
   def add_user_to_account(user_id, account_id, role \\ :member) do
     case can_add_user_to_account?(account_id) do
@@ -23,7 +23,7 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     end
   end
 
-  @spec remove_user_from_account(integer(), integer()) ::
+  @spec remove_user_from_account(String.t(), String.t()) ::
           {:ok, Member.t()} | {:error, :not_found}
   def remove_user_from_account(user_id, account_id) do
     case Repo.get_by(Member, user_id: user_id, account_id: account_id) do
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     end
   end
 
-  @spec update_user_role(integer(), integer(), account_role()) ::
+  @spec update_user_role(String.t(), String.t(), account_role()) ::
           {:ok, Member.t()} | {:error, Ecto.Changeset.t()}
   def update_user_role(user_id, account_id, role) do
     case Repo.get_by(Member, user_id: user_id, account_id: account_id) do
@@ -65,7 +65,7 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     end
   end
 
-  @spec get_user_role(integer(), integer()) :: account_role() | nil
+  @spec get_user_role(String.t(), String.t()) :: account_role() | nil
   def get_user_role(user_id, account_id) do
     case Repo.get_by(Member, user_id: user_id, account_id: account_id) do
       nil -> nil
@@ -73,23 +73,23 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     end
   end
 
-  @spec user_has_account_access?(integer(), integer()) :: boolean()
+  @spec user_has_account_access?(String.t(), String.t()) :: boolean()
   def user_has_account_access?(user_id, account_id) do
     Repo.exists?(from m in Member, where: m.user_id == ^user_id and m.account_id == ^account_id)
   end
 
   # TODO: Add logic when billing implemented
-  @spec can_add_user_to_account?(integer()) :: true
+  @spec can_add_user_to_account?(String.t()) :: true
   def can_add_user_to_account?(_account_id) do
     true
   end
 
-  @spec count_account_users(integer()) :: non_neg_integer()
+  @spec count_account_users(String.t()) :: non_neg_integer()
   def count_account_users(account_id) do
     Repo.aggregate(from(m in Member, where: m.account_id == ^account_id), :count)
   end
 
-  @spec list_user_accounts(integer()) :: [Account.t()]
+  @spec list_user_accounts(String.t()) :: [Account.t()]
   def list_user_accounts(user_id) do
     from(a in Account,
       join: m in Member,
@@ -99,7 +99,7 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     |> Repo.all()
   end
 
-  @spec list_account_users(integer()) :: [User.t()]
+  @spec list_account_users(String.t()) :: [User.t()]
   def list_account_users(account_id) do
     from(u in User,
       join: m in Member,
@@ -109,7 +109,7 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     |> Repo.all()
   end
 
-  @spec list_account_members(integer()) :: [Member.t()]
+  @spec list_account_members(String.t()) :: [Member.t()]
   def list_account_members(account_id) do
     from(m in Member,
       where: m.account_id == ^account_id,
@@ -118,7 +118,7 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     |> Repo.all()
   end
 
-  @spec list_accounts_with_role(integer(), account_role()) :: [Account.t()]
+  @spec list_accounts_with_role(String.t(), account_role()) :: [Account.t()]
   def list_accounts_with_role(user_id, role) do
     from(a in Account,
       join: m in Member,
@@ -128,12 +128,12 @@ defmodule CodeMySpec.Accounts.MembersRepository do
     |> Repo.all()
   end
 
-  @spec by_user(integer()) :: Ecto.Query.t()
+  @spec by_user(String.t()) :: Ecto.Query.t()
   def by_user(user_id) do
     from m in Member, where: m.user_id == ^user_id
   end
 
-  @spec by_account(integer()) :: Ecto.Query.t()
+  @spec by_account(String.t()) :: Ecto.Query.t()
   def by_account(account_id) do
     from m in Member, where: m.account_id == ^account_id
   end
