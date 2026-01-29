@@ -18,6 +18,14 @@ defmodule CodeMySpec.McpServers.StoriesServer do
   component(CodeMySpec.McpServers.Stories.Tools.UpdateCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.DeleteCriterion)
 
+  # Tagging tools
+  component(CodeMySpec.McpServers.Stories.Tools.AddStoryTag)
+  component(CodeMySpec.McpServers.Stories.Tools.RemoveStoryTag)
+  component(CodeMySpec.McpServers.Stories.Tools.ListStoryTags)
+  component(CodeMySpec.McpServers.Stories.Tools.ListStoriesByTag)
+  component(CodeMySpec.McpServers.Stories.Tools.ListProjectTags)
+  component(CodeMySpec.McpServers.Stories.Tools.TagStories)
+
   component(CodeMySpec.McpServers.Stories.Tools.StartStoryInterview)
   component(CodeMySpec.McpServers.Stories.Tools.StartStoryReview)
 end

@@ -201,6 +201,111 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   end
 
   # ---------------------------------------------------------------------------
+  # Tag Responses
+  # ---------------------------------------------------------------------------
+
+  def tag_added_response(story, tag) do
+    summary = "Tag '#{tag.name}' added to story \"#{story.title}\" (ID: #{story.id})"
+    data = %{story_id: story.id, tag: tag.name}
+    hybrid_response(summary, data)
+  end
+
+  def tag_already_exists_response(story, tag) do
+    summary = "Story \"#{story.title}\" already has tag '#{tag.name}'"
+    data = %{story_id: story.id, tag: tag.name, already_exists: true}
+    hybrid_response(summary, data)
+  end
+
+  def tag_removed_response(story, tag_name) do
+    Response.tool()
+    |> Response.text("Tag '#{tag_name}' removed from story \"#{story.title}\" (ID: #{story.id})")
+  end
+
+  def story_tags_response(story, tags) do
+    tag_names = Enum.map(tags, & &1.name)
+    count = length(tags)
+
+    summary =
+      if count == 0 do
+        "Story \"#{story.title}\" has no tags."
+      else
+        tag_list = Enum.join(tag_names, ", ")
+        "Story \"#{story.title}\" has #{count} tag(s): #{tag_list}"
+      end
+
+    data = %{story_id: story.id, tags: tag_names, count: count}
+    hybrid_response(summary, data)
+  end
+
+  def stories_by_tag_response(stories, tag_name) do
+    count = length(stories)
+
+    summary =
+      if count == 0 do
+        "No stories found with tag '#{tag_name}'."
+      else
+        story_lines =
+          stories
+          |> Enum.map(fn s -> "- #{s.title} (ID: #{s.id})" end)
+          |> Enum.join("\n")
+
+        "#{count} stories with tag '#{tag_name}':\n#{story_lines}"
+      end
+
+    data = %{
+      tag: tag_name,
+      count: count,
+      stories: Enum.map(stories, fn s -> %{id: s.id, title: s.title} end)
+    }
+
+    hybrid_response(summary, data)
+  end
+
+  def project_tags_response(tags) do
+    count = length(tags)
+    tag_names = Enum.map(tags, & &1.name)
+
+    summary =
+      if count == 0 do
+        "No tags found in this project. Use add_story_tag to create tags."
+      else
+        tag_list = Enum.map(tags, fn t -> "- #{t.name}" end) |> Enum.join("\n")
+        "#{count} tags in project:\n#{tag_list}"
+      end
+
+    hybrid_response(summary, %{tags: tag_names, count: count})
+  end
+
+  def bulk_tag_response(successes, failures, tag_name) do
+    success_count = length(successes)
+    failure_count = length(failures)
+
+    summary =
+      cond do
+        failure_count == 0 ->
+          "Tagged #{success_count} stories with '#{tag_name}'."
+
+        success_count == 0 ->
+          failed_ids = Enum.map(failures, fn {:error, id, _} -> id end) |> Enum.join(", ")
+          "Failed to tag stories. Not found: #{failed_ids}"
+
+        true ->
+          failed_ids = Enum.map(failures, fn {:error, id, _} -> id end) |> Enum.join(", ")
+          "Tagged #{success_count} stories with '#{tag_name}'. Not found: #{failed_ids}"
+      end
+
+    data = %{
+      tag: tag_name,
+      success_count: success_count,
+      failure_count: failure_count,
+      tagged_story_ids: successes,
+      not_found_ids: Enum.map(failures, fn {:error, id, _} -> id end)
+    }
+
+    hybrid_response(summary, data)
+  end
+
+  # ---------------------------------------------------------------------------
   # Criterion Responses
   # ---------------------------------------------------------------------------
 
