@@ -11,6 +11,7 @@ defmodule CodeMySpec.Architecture.Proposal do
   Use `validate/1` to check for issues before `execute/2`.
   """
 
+  alias CodeMySpec.Components
   alias CodeMySpec.Environments
 
   defstruct [
@@ -163,6 +164,9 @@ defmodule CodeMySpec.Architecture.Proposal do
   def to_components(%__MODULE__{} = proposal) do
     app_prefix = if proposal.app_name, do: "#{proposal.app_name}.", else: ""
 
+    # Build a map of module_name -> [dependency_module_names]
+    deps_map = build_dependencies_map(proposal.dependencies)
+
     context_components =
       proposal.contexts
       |> Enum.flat_map(fn ctx ->
@@ -172,18 +176,22 @@ defmodule CodeMySpec.Architecture.Proposal do
           module_name: context_module,
           type: "context",
           description: ctx.description,
-          story_ids: ctx.story_ids
+          story_ids: ctx.story_ids,
+          dependencies: Map.get(deps_map, context_module, [])
         }
 
         children =
           ctx.children
           |> Enum.map(fn child ->
+            child_module = "#{context_module}.#{child.name}"
+
             %{
-              module_name: "#{context_module}.#{child.name}",
+              module_name: child_module,
               type: child.type,
               description: child.description,
               parent_module: context_module,
-              story_ids: child.story_ids
+              story_ids: child.story_ids,
+              dependencies: Map.get(deps_map, child_module, [])
             }
           end)
 
@@ -193,15 +201,25 @@ defmodule CodeMySpec.Architecture.Proposal do
     surface =
       proposal.surface_components
       |> Enum.map(fn comp ->
+        comp_module = "#{app_prefix}#{comp.name}"
+
         %{
-          module_name: "#{app_prefix}#{comp.name}",
+          module_name: comp_module,
           type: comp.type,
           description: comp.description,
-          story_ids: comp.story_ids
+          story_ids: comp.story_ids,
+          dependencies: Map.get(deps_map, comp_module, [])
         }
       end)
 
     context_components ++ surface
+  end
+
+  defp build_dependencies_map(dependencies) do
+    dependencies
+    |> Enum.reduce(%{}, fn dep, acc ->
+      Map.update(acc, dep.from, [dep.to], &[dep.to | &1])
+    end)
   end
 
   # Private functions
@@ -422,27 +440,31 @@ defmodule CodeMySpec.Architecture.Proposal do
     }
   end
 
-  defp do_execute(proposal, _scope, opts) do
+  defp do_execute(proposal, scope, opts) do
     components = to_components(proposal)
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
 
     with {:ok, env} <- Environments.create(:cli, working_dir: working_dir) do
-      results =
+      # Write spec files
+      file_results =
         Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
           case write_spec_file(env, comp_attrs) do
-            :ok -> {:cont, {:ok, [comp_attrs.module_name | created]}}
+            :ok -> {:cont, {:ok, [comp_attrs | created]}}
             {:error, reason} -> {:halt, {:error, reason}}
           end
         end)
 
       Environments.destroy(env)
 
-      case results do
-        {:ok, created} ->
+      case file_results do
+        {:ok, created_components} ->
+          # Sync to database
+          Enum.each(created_components, &sync_component_to_db(scope, &1))
+
           {:ok,
            %{
              created_contexts: Enum.count(proposal.contexts),
-             created_components: length(created),
+             created_components: length(created_components),
              linked_stories: count_linked_stories(proposal)
            }}
 
@@ -450,6 +472,17 @@ defmodule CodeMySpec.Architecture.Proposal do
           {:error, reason}
       end
     end
+  end
+
+  defp sync_component_to_db(scope, attrs) do
+    component_attrs = %{
+      module_name: attrs.module_name,
+      type: attrs.type,
+      description: attrs.description,
+      name: attrs.module_name |> String.split(".") |> List.last()
+    }
+
+    Components.upsert_component(scope, component_attrs)
   end
 
   defp write_spec_file(env, attrs) do
@@ -490,11 +523,19 @@ defmodule CodeMySpec.Architecture.Proposal do
 
     ## Dependencies
 
-    - None
+    #{format_dependencies(attrs[:dependencies] || [])}
 
     ## Functions
 
     """
+  end
+
+  defp format_dependencies([]), do: "- None"
+
+  defp format_dependencies(deps) do
+    deps
+    |> Enum.map(&"- #{&1}")
+    |> Enum.join("\n")
   end
 
   defp sanitize_mermaid_id(name) do

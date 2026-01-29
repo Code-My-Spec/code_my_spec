@@ -130,11 +130,6 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
     #{format_tag_groupings(analysis.tag_groupings)}
     #{format_co_occurrences(analysis.co_occurrences)}
     #{format_untagged(analysis.untagged_stories)}
-    ---
-
-    ```json
-    #{Jason.encode!(analysis, pretty: true)}
-    ```
     """
 
     Response.tool()

@@ -58,10 +58,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
   defp update_metadata_sections(content, params) do
     lines = String.split(content, "\n")
 
-    # Find the sections
+    # Find the sections - keep as lists until final join
     {header_lines, rest} = extract_until_section(lines, "## ")
-    {type_section, after_type} = extract_section(rest, "## Type")
-    {deps_section, remaining} = extract_section(after_type, "## Dependencies")
+    {type_lines, after_type} = extract_section_lines(rest, "## Type")
+    {deps_lines, remaining} = extract_section_lines(after_type, "## Dependencies")
 
     # Update header (title + description)
     updated_header = update_header_section(header_lines, params)
@@ -71,7 +71,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
       if Map.has_key?(params, :type) and not is_nil(params[:type]) do
         "## Type\n\n#{params.type}"
       else
-        type_section
+        Enum.join(type_lines, "\n") |> String.trim()
       end
 
     # Update dependencies section if provided
@@ -79,11 +79,14 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
       if Map.has_key?(params, :dependencies) and not is_nil(params[:dependencies]) do
         generate_dependencies_section(params.dependencies)
       else
-        deps_section
+        Enum.join(deps_lines, "\n") |> String.trim()
       end
 
+    # Remaining sections as string
+    remaining_str = Enum.join(remaining, "\n") |> String.trim()
+
     # Reconstruct the file
-    [updated_header, updated_type, updated_deps, remaining]
+    [updated_header, updated_type, updated_deps, remaining_str]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n\n")
   end
@@ -101,11 +104,12 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
     end
   end
 
-  defp extract_section(lines, section_name) do
+  # Returns {section_lines, remaining_lines} - keeps as lists for chaining
+  defp extract_section_lines(lines, section_name) do
     case Enum.find_index(lines, &String.starts_with?(&1, section_name)) do
       nil ->
         # Section not found
-        {"", Enum.join(lines, "\n")}
+        {[], lines}
 
       start_index ->
         # Find the next ## section
@@ -114,16 +118,12 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
         case Enum.find_index(rest_lines, &String.starts_with?(&1, "## ")) do
           nil ->
             # This is the last section
-            section = Enum.drop(lines, start_index) |> Enum.join("\n") |> String.trim()
-            {section, ""}
+            section = Enum.drop(lines, start_index)
+            {section, []}
 
           next_section_index ->
-            section =
-              Enum.slice(lines, start_index, next_section_index + 1)
-              |> Enum.join("\n")
-              |> String.trim()
-
-            remaining = Enum.drop(lines, start_index + next_section_index + 1) |> Enum.join("\n")
+            section = Enum.slice(lines, start_index, next_section_index + 1)
+            remaining = Enum.drop(lines, start_index + next_section_index + 1)
             {section, remaining}
         end
     end
