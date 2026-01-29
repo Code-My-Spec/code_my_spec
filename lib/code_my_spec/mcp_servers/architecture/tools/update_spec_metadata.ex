@@ -60,10 +60,19 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
 
     # Find the sections
     {header_lines, rest} = extract_until_section(lines, "## ")
-    {deps_section, remaining} = extract_section(rest, "## Dependencies")
+    {type_section, after_type} = extract_section(rest, "## Type")
+    {deps_section, remaining} = extract_section(after_type, "## Dependencies")
 
     # Update header (title + description)
     updated_header = update_header_section(header_lines, params)
+
+    # Update type section if provided, otherwise preserve existing
+    updated_type =
+      if Map.has_key?(params, :type) and not is_nil(params[:type]) do
+        "## Type\n\n#{params.type}"
+      else
+        type_section
+      end
 
     # Update dependencies section if provided
     updated_deps =
@@ -74,7 +83,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
       end
 
     # Reconstruct the file
-    [updated_header, updated_deps, remaining]
+    [updated_header, updated_type, updated_deps, remaining]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n\n")
   end

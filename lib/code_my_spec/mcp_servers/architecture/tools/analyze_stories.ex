@@ -14,115 +14,127 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Stories
-  alias CodeMySpec.Tags
   alias Hermes.Server.Response
 
   schema do
-    field :app_name, :string, doc: "Application name for suggested context naming"
   end
 
   @impl true
-  def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_project_scope(frame) do
-      stories = Stories.list_project_stories(scope)
-      all_tags = Tags.list_project_tags(scope)
-
+  def execute(_params, frame) do
+    with {:ok, scope} <- Validators.validate_project_scope(frame),
+         {:ok, stories} <- Stories.list_project_stories(scope) do
       if stories == [] do
         {:reply, ArchitectureMapper.error("No stories found. Import stories first using the stories tools."), frame}
       else
-        app_name = params[:app_name] || derive_app_name(scope)
-        analysis = analyze_by_tags(scope, stories, all_tags, app_name)
-        response = format_analysis_response(analysis)
+        analysis = analyze_stories(stories)
+        response = format_response(analysis)
         {:reply, response, frame}
       end
     else
+      {:error, :authentication_failed} ->
+        {:reply, ArchitectureMapper.error("Authentication failed. Please run 'codemyspec auth login' to re-authenticate."), frame}
+
+      {:error, :needs_authentication} ->
+        {:reply, ArchitectureMapper.error("Authentication required. Please run 'codemyspec auth login' to authenticate."), frame}
+
       {:error, reason} ->
-        {:reply, ArchitectureMapper.error(reason), frame}
+        {:reply, ArchitectureMapper.error("Failed to fetch data: #{inspect(reason)}"), frame}
+
+      other ->
+        Logger.error("analyze_stories unexpected result: #{inspect(other)}")
+        {:reply, ArchitectureMapper.error("Unexpected result: #{inspect(other)}"), frame}
     end
   end
 
-  defp analyze_by_tags(scope, stories, all_tags, app_name) do
-    # Build a map of story_id -> tags
-    story_tags_map =
-      stories
-      |> Enum.map(fn story ->
-        tags = Tags.list_story_tags(scope, story)
-        {story.id, tags}
-      end)
-      |> Map.new()
-
-    # Group stories by each tag
-    tag_groupings =
-      all_tags
-      |> Enum.map(fn tag ->
-        stories_with_tag =
-          stories
-          |> Enum.filter(fn story ->
-            story_tags = Map.get(story_tags_map, story.id, [])
-            Enum.any?(story_tags, &(&1.id == tag.id))
-          end)
-
-        %{
-          tag: tag.name,
-          story_count: length(stories_with_tag),
-          stories: Enum.map(stories_with_tag, fn s ->
-            %{id: s.id, title: s.title}
-          end)
-        }
-      end)
-      |> Enum.filter(&(&1.story_count > 0))
-      |> Enum.sort_by(& &1.story_count, :desc)
-
-    # Find untagged stories
-    untagged_stories =
-      stories
-      |> Enum.filter(fn story ->
-        story_tags = Map.get(story_tags_map, story.id, [])
-        Enum.empty?(story_tags)
-      end)
-      |> Enum.map(fn s -> %{id: s.id, title: s.title} end)
-
-    # Suggest contexts based on tags with 3+ stories
-    suggested_contexts =
-      tag_groupings
-      |> Enum.filter(&(&1.story_count >= 3))
-      |> Enum.map(fn grouping ->
-        context_name = build_context_name(app_name, grouping.tag)
-        %{
-          name: context_name,
-          tag: grouping.tag,
-          story_count: grouping.story_count,
-          story_ids: Enum.map(grouping.stories, & &1.id)
-        }
-      end)
+  defp analyze_stories(stories) do
+    all_tags = extract_all_tags(stories)
+    tag_groupings = build_tag_groupings(stories, all_tags)
+    untagged = find_untagged_stories(stories)
+    co_occurrences = find_tag_co_occurrences(stories, all_tags)
 
     %{
       total_stories: length(stories),
-      tagged_stories: length(stories) - length(untagged_stories),
-      untagged_stories: untagged_stories,
+      tagged_count: length(stories) - length(untagged),
+      untagged_count: length(untagged),
       tag_groupings: tag_groupings,
-      suggested_contexts: suggested_contexts,
-      app_name: app_name
+      untagged_stories: untagged,
+      co_occurrences: co_occurrences
     }
   end
 
-  defp format_analysis_response(analysis) do
-    markdown = """
-    ## Story Analysis by Tags
+  defp extract_all_tags(stories) do
+    stories
+    |> Enum.flat_map(fn story -> story.tags || [] end)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.sort_by(& &1.name)
+  end
 
-    **Total Stories:** #{analysis.total_stories}
-    **Tagged:** #{analysis.tagged_stories}
-    **Untagged:** #{length(analysis.untagged_stories)}
+  defp build_tag_groupings(stories, all_tags) do
+    all_tags
+    |> Enum.map(fn tag ->
+      matching_stories =
+        stories
+        |> Enum.filter(fn story ->
+          story_tags = story.tags || []
+          Enum.any?(story_tags, &(&1.id == tag.id))
+        end)
+
+      %{
+        tag: tag.name,
+        story_count: length(matching_stories),
+        stories: Enum.map(matching_stories, &%{id: &1.id, title: &1.title})
+      }
+    end)
+    |> Enum.filter(&(&1.story_count > 0))
+    |> Enum.sort_by(& &1.story_count, :desc)
+  end
+
+  defp find_untagged_stories(stories) do
+    stories
+    |> Enum.filter(fn story ->
+      tags = story.tags || []
+      Enum.empty?(tags)
+    end)
+    |> Enum.map(&%{id: &1.id, title: &1.title})
+  end
+
+  defp find_tag_co_occurrences(stories, all_tags) do
+    # Build pairs of tags that appear together on stories
+    tag_names = Enum.map(all_tags, & &1.name)
+
+    stories
+    |> Enum.flat_map(fn story ->
+      story_tag_names =
+        (story.tags || [])
+        |> Enum.map(& &1.name)
+        |> Enum.filter(&(&1 in tag_names))
+
+      # Generate all pairs for this story
+      for t1 <- story_tag_names, t2 <- story_tag_names, t1 < t2 do
+        {t1, t2}
+      end
+    end)
+    |> Enum.frequencies()
+    |> Enum.map(fn {{t1, t2}, count} -> %{tags: [t1, t2], count: count} end)
+    |> Enum.filter(&(&1.count >= 2))
+    |> Enum.sort_by(& &1.count, :desc)
+    |> Enum.take(15)
+  end
+
+  defp format_response(analysis) do
+    markdown = """
+    ## Story Analysis
+
+    **Total:** #{analysis.total_stories} | **Tagged:** #{analysis.tagged_count} | **Untagged:** #{analysis.untagged_count}
 
     #{format_tag_groupings(analysis.tag_groupings)}
-
-    #{format_suggested_contexts(analysis.suggested_contexts, analysis.app_name)}
-
-    #{format_untagged_stories(analysis.untagged_stories)}
-
+    #{format_co_occurrences(analysis.co_occurrences)}
+    #{format_untagged(analysis.untagged_stories)}
     ---
 
-    Data: #{Jason.encode!(analysis)}
+    ```json
+    #{Jason.encode!(analysis, pretty: true)}
+    ```
     """
 
     Response.tool()
@@ -131,100 +143,109 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
 
   defp format_tag_groupings([]) do
     """
-    ### Tag Groupings
+    ### Tags
 
-    No tags found. Use `add_story_tag` or `tag_stories` to organize stories by domain first:
-
-    1. Review your stories with `list_stories` or `get_story`
-    2. Identify domain themes (e.g., "accounts", "notifications", "fraud-detection")
-    3. Tag stories with `tag_stories` or `add_story_tag`
-    4. Run `analyze_stories` again to see groupings
+    No tags found. Tag stories first using `tag_stories` or `add_story_tag`.
     """
   end
 
   defp format_tag_groupings(groupings) do
-    lines =
+    # Check if tags have prefixes (contain ":")
+    has_prefixes = Enum.any?(groupings, fn g -> String.contains?(g.tag, ":") end)
+
+    content =
+      if has_prefixes do
+        format_grouped_by_prefix(groupings)
+      else
+        format_flat_tags(groupings)
+      end
+
+    """
+    ### Tags
+
+    #{content}
+    """
+  end
+
+  defp format_flat_tags(groupings) do
+    groupings
+    |> Enum.map(fn g ->
+      ids = g.stories |> Enum.map(& &1.id) |> Enum.join(", ")
+      "- **#{g.tag}** (#{g.story_count}): #{ids}"
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp format_grouped_by_prefix(groupings) do
+    # Group by prefix, with unprefixed tags in their own group
+    grouped =
       groupings
-      |> Enum.map(fn g ->
-        story_ids = Enum.map(g.stories, & &1.id) |> Enum.join(", ")
-        "- **#{g.tag}** (#{g.story_count} stories): IDs #{story_ids}"
+      |> Enum.group_by(fn g ->
+        case String.split(g.tag, ":", parts: 2) do
+          [prefix, _rest] -> prefix
+          [_no_prefix] -> "_other"
+        end
       end)
-      |> Enum.join("\n")
+      |> Enum.sort_by(fn {prefix, _} -> if prefix == "_other", do: "zzz", else: prefix end)
 
-    """
-    ### Tag Groupings
+    grouped
+    |> Enum.map(fn {prefix, tags} ->
+      prefix_label = if prefix == "_other", do: "Other", else: String.capitalize(prefix)
 
-    #{lines}
-    """
+      tag_lines =
+        tags
+        |> Enum.map(fn g ->
+          # Strip prefix for display if grouped
+          display_name =
+            case String.split(g.tag, ":", parts: 2) do
+              [_prefix, rest] -> rest
+              [name] -> name
+            end
+
+          ids = g.stories |> Enum.map(& &1.id) |> Enum.join(", ")
+          "  - #{display_name} (#{g.story_count}): #{ids}"
+        end)
+        |> Enum.join("\n")
+
+      "**#{prefix_label}**\n#{tag_lines}"
+    end)
+    |> Enum.join("\n\n")
   end
 
-  defp format_suggested_contexts([], _app_name) do
-    """
-    ### Suggested Bounded Contexts
+  defp format_co_occurrences([]), do: ""
 
-    No contexts suggested yet. Tag at least 3 stories with the same tag to get context suggestions.
-    """
-  end
-
-  defp format_suggested_contexts(contexts, _app_name) do
+  defp format_co_occurrences(co_occurrences) do
     lines =
-      contexts
-      |> Enum.with_index(1)
-      |> Enum.map(fn {ctx, idx} ->
-        "#{idx}. **#{ctx.name}** (from tag '#{ctx.tag}') - #{ctx.story_count} stories"
+      co_occurrences
+      |> Enum.map(fn %{tags: [t1, t2], count: count} ->
+        "- #{t1} + #{t2} (#{count} stories)"
       end)
       |> Enum.join("\n")
 
     """
-    ### Suggested Bounded Contexts
 
-    Based on tags with 3+ stories:
+    ### Tag Co-occurrence
 
     #{lines}
-
-    Use `propose_architecture` with these contexts to create the component structure.
     """
   end
 
-  defp format_untagged_stories([]), do: ""
+  defp format_untagged([]), do: ""
 
-  defp format_untagged_stories(untagged) do
+  defp format_untagged(untagged) do
     lines =
       untagged
       |> Enum.take(10)
-      |> Enum.map(fn s -> "- #{s.title} (ID: #{s.id})" end)
+      |> Enum.map(fn s -> "- [#{s.id}] #{s.title}" end)
       |> Enum.join("\n")
 
-    more = if length(untagged) > 10, do: "\n... and #{length(untagged) - 10} more", else: ""
+    more = if length(untagged) > 10, do: "\n_...and #{length(untagged) - 10} more_", else: ""
 
     """
+
     ### Untagged Stories
 
-    These stories need to be categorized:
-
     #{lines}#{more}
-
-    Use `tag_stories` with the story IDs and appropriate domain tags.
     """
-  end
-
-  defp build_context_name(app_name, tag) do
-    # Handle component: prefix tags
-    tag_part =
-      tag
-      |> String.replace_prefix("component:", "")
-      |> String.replace(~r/[^a-zA-Z0-9_]/, "_")
-      |> String.split("_")
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.map(&String.capitalize/1)
-      |> Enum.join()
-
-    "#{app_name}.#{tag_part}"
-  end
-
-  defp derive_app_name(scope) do
-    scope.active_project.name
-    |> String.replace(~r/[^a-zA-Z0-9]/, "")
-    |> Macro.camelize()
   end
 end

@@ -33,11 +33,13 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       story = story_fixture(scope)
       other_story = story_fixture(other_scope)
 
-      assert length(StoriesRepository.list_project_stories(scope)) == 1
-      assert hd(StoriesRepository.list_project_stories(scope)).id == story.id
+      {:ok, stories} = StoriesRepository.list_project_stories(scope)
+      assert length(stories) == 1
+      assert hd(stories).id == story.id
 
-      assert length(StoriesRepository.list_project_stories(other_scope)) == 1
-      assert hd(StoriesRepository.list_project_stories(other_scope)).id == other_story.id
+      {:ok, other_stories} = StoriesRepository.list_project_stories(other_scope)
+      assert length(other_stories) == 1
+      assert hd(other_stories).id == other_story.id
     end
 
     test "list_unsatisfied_stories/1 returns only stories without components" do

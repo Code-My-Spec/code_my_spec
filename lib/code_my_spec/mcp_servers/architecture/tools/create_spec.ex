@@ -89,6 +89,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.CreateSpec do
 
     #{params[:description] || "No description provided"}
 
+    ## Type
+
+    #{params.type}
+
     ## Dependencies
 
     #{format_dependencies(params[:dependencies] || [])}

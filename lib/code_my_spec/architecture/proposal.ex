@@ -11,7 +11,6 @@ defmodule CodeMySpec.Architecture.Proposal do
   Use `validate/1` to check for issues before `execute/2`.
   """
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Environments
 
   defstruct [
@@ -162,11 +161,15 @@ defmodule CodeMySpec.Architecture.Proposal do
   """
   @spec to_components(t()) :: [map()]
   def to_components(%__MODULE__{} = proposal) do
+    app_prefix = if proposal.app_name, do: "#{proposal.app_name}.", else: ""
+
     context_components =
       proposal.contexts
       |> Enum.flat_map(fn ctx ->
+        context_module = "#{app_prefix}#{ctx.name}"
+
         parent = %{
-          module_name: ctx.name,
+          module_name: context_module,
           type: "context",
           description: ctx.description,
           story_ids: ctx.story_ids
@@ -176,10 +179,10 @@ defmodule CodeMySpec.Architecture.Proposal do
           ctx.children
           |> Enum.map(fn child ->
             %{
-              module_name: "#{ctx.name}.#{child.name}",
+              module_name: "#{context_module}.#{child.name}",
               type: child.type,
               description: child.description,
-              parent_module: ctx.name,
+              parent_module: context_module,
               story_ids: child.story_ids
             }
           end)
@@ -191,7 +194,7 @@ defmodule CodeMySpec.Architecture.Proposal do
       proposal.surface_components
       |> Enum.map(fn comp ->
         %{
-          module_name: comp.name,
+          module_name: "#{app_prefix}#{comp.name}",
           type: comp.type,
           description: comp.description,
           story_ids: comp.story_ids
@@ -419,15 +422,15 @@ defmodule CodeMySpec.Architecture.Proposal do
     }
   end
 
-  defp do_execute(proposal, scope, opts) do
+  defp do_execute(proposal, _scope, opts) do
     components = to_components(proposal)
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
 
     with {:ok, env} <- Environments.create(:cli, working_dir: working_dir) do
       results =
         Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
-          case create_component(scope, env, comp_attrs) do
-            {:ok, component} -> {:cont, {:ok, [component | created]}}
+          case write_spec_file(env, comp_attrs) do
+            :ok -> {:cont, {:ok, [comp_attrs.module_name | created]}}
             {:error, reason} -> {:halt, {:error, reason}}
           end
         end)
@@ -449,43 +452,10 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
-  defp create_component(scope, env, attrs) do
+  defp write_spec_file(env, attrs) do
     spec_path = build_spec_path(attrs.module_name)
     spec_content = generate_spec_template(attrs)
-
-    with :ok <- Environments.write_file(env, spec_path, spec_content) do
-      component_attrs =
-        %{
-          module_name: attrs.module_name,
-          type: attrs.type,
-          description: attrs.description,
-          name: derive_name(attrs.module_name)
-        }
-        |> maybe_put_parent_id(scope, attrs[:parent_module])
-
-      case Components.upsert_component(scope, component_attrs) do
-        %{id: _} = component ->
-          maybe_link_stories(scope, component, attrs[:story_ids])
-          {:ok, component}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
-    end
-  end
-
-  defp maybe_link_stories(_scope, _component, nil), do: :ok
-  defp maybe_link_stories(_scope, _component, []), do: :ok
-
-  defp maybe_link_stories(scope, component, story_ids) do
-    alias CodeMySpec.Stories
-
-    Enum.each(story_ids, fn story_id ->
-      case Stories.get_story(scope, story_id) do
-        nil -> :ok
-        story -> Stories.set_story_component(scope, story, component.id)
-      end
-    end)
+    Environments.write_file(env, spec_path, spec_content)
   end
 
   defp count_linked_stories(proposal) do
@@ -506,12 +476,6 @@ defmodule CodeMySpec.Architecture.Proposal do
       |> Enum.map(&Macro.underscore/1)
 
     Path.join(["docs/spec" | path_parts]) <> ".spec.md"
-  end
-
-  defp derive_name(module_name) do
-    module_name
-    |> String.split(".")
-    |> List.last()
   end
 
   defp generate_spec_template(attrs) do
@@ -537,14 +501,5 @@ defmodule CodeMySpec.Architecture.Proposal do
     name
     |> String.replace(".", "_")
     |> String.replace(~r/[^a-zA-Z0-9_]/, "")
-  end
-
-  defp maybe_put_parent_id(map, _scope, nil), do: map
-
-  defp maybe_put_parent_id(map, scope, parent_module) do
-    case Components.get_component_by_module_name(scope, parent_module) do
-      nil -> map
-      parent -> Map.put(map, :parent_component_id, parent.id)
-    end
   end
 end

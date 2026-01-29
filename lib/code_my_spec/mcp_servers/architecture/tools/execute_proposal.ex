@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :app_name, :string
+    field :path, :string, required: true
     field :dry_run, :boolean, default: false
   end
 
@@ -46,21 +46,15 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
   end
 
   defp load_proposal(env, params) do
-    file_path = params[:app_name] && ProposalMarkdown.proposal_path(params.app_name)
+    case Environments.read_file(env, params.path) do
+      {:ok, content} ->
+        ProposalMarkdown.from_markdown(content)
 
-    if is_nil(file_path) do
-      {:error, "Must provide app_name"}
-    else
-      case Environments.read_file(env, file_path) do
-        {:ok, content} ->
-          ProposalMarkdown.from_markdown(content)
+      {:error, :enoent} ->
+        {:error, "Proposal file not found: #{params.path}"}
 
-        {:error, :enoent} ->
-          {:error, "Proposal file not found: #{file_path}. Run propose_architecture first."}
-
-        {:error, reason} ->
-          {:error, "Failed to read proposal: #{inspect(reason)}"}
-      end
+      {:error, reason} ->
+        {:error, "Failed to read proposal: #{inspect(reason)}"}
     end
   end
 end

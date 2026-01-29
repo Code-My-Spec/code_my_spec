@@ -73,7 +73,6 @@ defmodule CodeMySpecWeb.AccountLive.Picker do
   @impl true
   def handle_event("account-selected", %{"account-id" => account_id}, socket) do
     current_scope = socket.assigns.current_scope
-    account_id = String.to_integer(account_id)
 
     # Validate that the user has access to this account
     if Enum.any?(socket.assigns.accounts, &(&1.id == account_id)) do

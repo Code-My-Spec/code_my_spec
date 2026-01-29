@@ -79,7 +79,7 @@ defmodule CodeMySpec.BddSpecs do
   @spec get_coverage_report(Scope.t()) :: String.t()
   def get_coverage_report(%Scope{} = scope) do
     specs = list_specs(scope)
-    stories = Stories.list_project_stories(scope)
+    {:ok, stories} = Stories.list_project_stories(scope)
 
     SpecProjector.format_coverage(stories, specs)
   end

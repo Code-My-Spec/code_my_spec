@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateProposal do
   alias Hermes.Server.Response
 
   schema do
-    field :app_name, :string
+    field :path, :string, required: true
     field :check_story_coverage, :boolean, default: true
   end
 
@@ -29,20 +29,9 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateProposal do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_project_scope(frame),
          {:ok, env} <- Environments.create(:cli, working_dir: Validators.mcp_working_dir()),
-         {:ok, proposal} <- load_proposal(env, params) do
+         {:ok, proposal} <- load_proposal(env, params),
+         {:ok, validation_opts} <- build_validation_opts(scope, params) do
       Environments.destroy(env)
-
-      validation_opts =
-        if params[:check_story_coverage] do
-          story_ids =
-            scope
-            |> Stories.list_project_stories()
-            |> Enum.map(& &1.id)
-
-          [story_ids: story_ids]
-        else
-          []
-        end
 
       case Proposal.validate(proposal, validation_opts) do
         {:ok, _proposal} ->
@@ -70,22 +59,27 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateProposal do
     end
   end
 
-  defp load_proposal(env, params) do
-    file_path = params[:app_name] && ProposalMarkdown.proposal_path(params.app_name)
-
-    if is_nil(file_path) do
-      {:error, "Must provide app_name"}
-    else
-      case Environments.read_file(env, file_path) do
-        {:ok, content} ->
-          ProposalMarkdown.from_markdown(content)
-
-        {:error, :enoent} ->
-          {:error, "Proposal file not found: #{file_path}. Run propose_architecture first."}
-
-        {:error, reason} ->
-          {:error, "Failed to read proposal: #{inspect(reason)}"}
+  defp build_validation_opts(scope, params) do
+    if params[:check_story_coverage] do
+      case Stories.list_project_stories(scope) do
+        {:ok, stories} -> {:ok, [story_ids: Enum.map(stories, & &1.id)]}
+        {:error, reason} -> {:error, reason}
       end
+    else
+      {:ok, []}
+    end
+  end
+
+  defp load_proposal(env, params) do
+    case Environments.read_file(env, params.path) do
+      {:ok, content} ->
+        ProposalMarkdown.from_markdown(content)
+
+      {:error, :enoent} ->
+        {:error, "Proposal file not found: #{params.path}"}
+
+      {:error, reason} ->
+        {:error, "Failed to read proposal: #{inspect(reason)}"}
     end
   end
 end

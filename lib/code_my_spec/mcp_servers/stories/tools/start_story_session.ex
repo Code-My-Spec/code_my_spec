@@ -22,16 +22,16 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
-         {:ok, mode} <- validate_mode(params.mode) do
-      stories = Stories.list_project_stories(scope)
+         {:ok, mode} <- validate_mode(params.mode),
+         {:ok, stories} <- Stories.list_project_stories(scope) do
       prompt = build_prompt(mode, stories)
       {:reply, StoriesMapper.prompt_response(prompt), frame}
     else
       {:error, :invalid_mode} ->
         {:reply, StoriesMapper.error("Invalid mode. Use 'interview' or 'review'."), frame}
 
-      {:error, atom} ->
-        {:reply, StoriesMapper.error(atom), frame}
+      {:error, reason} ->
+        {:reply, StoriesMapper.error(reason), frame}
     end
   end
 

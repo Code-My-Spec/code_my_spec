@@ -193,7 +193,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.GetComponentView do
 
         ```
         #{component.name} (#{component.type})
-        #{format_tree_dependencies(deps, "├─")}
+        #{format_tree_dependencies(deps)}
         ```
 
         Use this tree to understand the component's position in the architecture.
@@ -202,9 +202,9 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.GetComponentView do
     end
   end
 
-  defp format_tree_dependencies([], _prefix), do: ""
+  defp format_tree_dependencies([]), do: ""
 
-  defp format_tree_dependencies(deps, prefix) do
+  defp format_tree_dependencies(deps) do
     deps
     |> Enum.with_index()
     |> Enum.map(fn {dep, index} ->
@@ -212,7 +212,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.GetComponentView do
       is_last = index == length(deps) - 1
       branch = if is_last, do: "└─", else: "├─"
 
-      "#{prefix}#{branch} #{target.name} (#{target.type})"
+      "#{branch} #{target.name} (#{target.type})"
     end)
     |> Enum.join("\n")
   end

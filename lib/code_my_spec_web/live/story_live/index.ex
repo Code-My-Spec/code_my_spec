@@ -155,7 +155,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
 
   @impl true
   def handle_event("export_markdown", _params, socket) do
-    stories = Stories.list_project_stories(socket.assigns.current_scope)
+    {:ok, stories} = Stories.list_project_stories(socket.assigns.current_scope)
     project_name = socket.assigns.current_scope.active_project.name
 
     story_attrs =

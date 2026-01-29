@@ -28,6 +28,7 @@ defmodule CodeMySpecWeb.StoriesJSON do
       project_id: story.project_id,
       component_id: story.component_id,
       component: render_component(story.component),
+      tags: render_tags(story.tags),
       account_id: story.account_id,
       inserted_at: story.inserted_at,
       updated_at: story.updated_at
@@ -44,5 +45,14 @@ defmodule CodeMySpecWeb.StoriesJSON do
       type: component.type,
       module_name: component.module_name
     }
+  end
+
+  defp render_tags(%Ecto.Association.NotLoaded{}), do: []
+  defp render_tags(nil), do: []
+
+  defp render_tags(tags) when is_list(tags) do
+    Enum.map(tags, fn tag ->
+      %{id: tag.id, name: tag.name}
+    end)
   end
 end

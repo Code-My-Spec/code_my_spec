@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.StoriesController do
 
   def list_project_stories(conn, _params) do
     scope = conn.assigns.current_scope
-    stories = Stories.list_project_stories(scope)
+    {:ok, stories} = Stories.list_project_stories(scope)
     render(conn, :index, stories: stories)
   end
 

@@ -16,9 +16,12 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   def list_project_stories(%Scope{} = scope) do
-    Story
-    |> Repo.all_by(project_id: scope.active_project.id)
-    |> Repo.preload([:criteria, :tags])
+    stories =
+      Story
+      |> Repo.all_by(project_id: scope.active_project.id)
+      |> Repo.preload([:criteria, :tags])
+
+    {:ok, stories}
   end
 
   @doc """
