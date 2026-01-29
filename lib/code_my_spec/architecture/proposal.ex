@@ -63,7 +63,8 @@ defmodule CodeMySpec.Architecture.Proposal do
     %__MODULE__{
       app_name: attrs[:app_name] || attrs["app_name"] || "App",
       contexts: normalize_contexts(attrs[:contexts] || attrs["contexts"] || []),
-      surface_components: normalize_components(attrs[:surface_components] || attrs["surface_components"] || []),
+      surface_components:
+        normalize_components(attrs[:surface_components] || attrs["surface_components"] || []),
       dependencies: normalize_dependencies(attrs[:dependencies] || attrs["dependencies"] || []),
       unmapped_story_ids: attrs[:unmapped_story_ids] || attrs["unmapped_story_ids"] || []
     }
@@ -396,7 +397,13 @@ defmodule CodeMySpec.Architecture.Proposal do
           nil
 
         true ->
-          dfs_find_cycle(graph, start, neighbor, path ++ [neighbor], MapSet.put(visited, neighbor))
+          dfs_find_cycle(
+            graph,
+            start,
+            neighbor,
+            path ++ [neighbor],
+            MapSet.put(visited, neighbor)
+          )
       end
     end)
   end
@@ -412,7 +419,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     }
   end
 
-  defp do_execute(proposal, scope, opts \\ []) do
+  defp do_execute(proposal, scope, opts) do
     components = to_components(proposal)
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
 
@@ -531,9 +538,6 @@ defmodule CodeMySpec.Architecture.Proposal do
     |> String.replace(".", "_")
     |> String.replace(~r/[^a-zA-Z0-9_]/, "")
   end
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp maybe_put_parent_id(map, _scope, nil), do: map
 
