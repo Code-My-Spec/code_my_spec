@@ -465,7 +465,7 @@ defmodule CodeMySpec.BddSpecsTest do
       story = story_fixture(scope)
 
       criterion1 = criterion_fixture(scope, story, %{description: "Criterion with spec"})
-      criterion2 = criterion_fixture(scope, story, %{description: "Criterion without spec"})
+      criterion_fixture(scope, story, %{description: "Criterion without spec"})
 
       specs = [{story.id, criterion1.id, valid_spex_content("covered criterion")}]
       scope = create_test_project_with_specs(scope, specs)
@@ -506,7 +506,7 @@ defmodule CodeMySpec.BddSpecsTest do
       scope = full_scope_fixture()
       story = story_fixture(scope)
       criterion1 = criterion_fixture(scope, story)
-      criterion2 = criterion_fixture(scope, story)
+      criterion_fixture(scope, story)
 
       specs = [{story.id, criterion1.id, valid_spex_content("spec")}]
       scope = create_test_project_with_specs(scope, specs)

@@ -32,7 +32,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
     Spec.new(attrs)
   end
 
-  defp scenario_attrs(overrides \\ %{}) do
+  defp scenario_attrs(overrides) do
     defaults = %{
       name: "Test scenario",
       given_steps: ["setup step"],
@@ -49,7 +49,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
     Step.new(type, description, opts)
   end
 
-  defp story_fixture(attrs \\ %{}) do
+  defp story_fixture(attrs) do
     defaults = %{
       id: 1,
       title: "User authentication feature",
@@ -64,7 +64,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
     struct(Story, Map.merge(defaults, attrs))
   end
 
-  defp criterion_fixture(attrs \\ %{}) do
+  defp criterion_fixture(attrs) do
     defaults = %{
       id: 10,
       description: "User can log in with valid credentials",
@@ -320,6 +320,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
 
     test "highlights stories with partial coverage" do
       spec = spec_fixture(%{story_id: 1})
+
       story =
         story_fixture(%{
           id: 1,
