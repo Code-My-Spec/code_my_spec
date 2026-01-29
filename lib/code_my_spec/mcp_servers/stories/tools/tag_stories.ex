@@ -3,6 +3,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
   Adds a tag to multiple stories at once.
 
   Useful for bulk categorization when organizing stories by domain.
+
+  ## Tag naming
+
+  Tags can be simple (`notifications`, `urgent`) or use colon syntax for
+  typed/namespaced tags (`epic:verification-flow`, `persona:driver`).
+
+  The colon syntax is useful for organizing stories into categories that
+  can be filtered, e.g., `list_stories(tag: "persona:driver")`.
   """
 
   use Hermes.Server.Component, type: :tool
@@ -13,7 +21,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :story_ids, {:array, :string}, required: true, doc: "List of story IDs to tag"
+    field :story_ids, {:list, :string}, required: true, doc: "List of story IDs to tag"
     field :tag, :string, required: true, doc: "Tag name to apply to all stories"
   end
 

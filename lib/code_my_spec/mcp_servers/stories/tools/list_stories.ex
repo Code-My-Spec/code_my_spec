@@ -19,6 +19,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
     field :limit, :integer, doc: "Max stories to return (default: 20, max: 100)"
     field :offset, :integer, doc: "Stories to skip for pagination (default: 0)"
     field :search, :string, doc: "Filter by title or description (case-insensitive)"
+    field :tag, :string, doc: "Filter by tag name"
   end
 
   @impl true
@@ -29,6 +30,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
 
       opts = [limit: limit, offset: offset]
       opts = if params[:search], do: Keyword.put(opts, :search, params[:search]), else: opts
+      opts = if params[:tag], do: Keyword.put(opts, :tag, params[:tag]), else: opts
 
       {stories, total} = Stories.list_project_stories_paginated(scope, opts)
       {:reply, StoriesMapper.stories_list_response(stories, total, limit, offset), frame}

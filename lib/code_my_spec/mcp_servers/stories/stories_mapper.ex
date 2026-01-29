@@ -29,13 +29,22 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     data = story_data(story)
     criteria_count = length(story.criteria || [])
     verified_count = Enum.count(story.criteria || [], & &1.verified)
+    tags = if Ecto.assoc_loaded?(story.tags), do: story.tags, else: []
+    tag_names = Enum.map(tags, & &1.name)
+
+    tags_line =
+      if length(tag_names) > 0 do
+        "\n**Tags:** #{Enum.join(tag_names, ", ")}"
+      else
+        ""
+      end
 
     summary = """
     ## #{story.title} (ID: #{story.id})
 
     #{story.description || "No description"}
 
-    **Acceptance Criteria:** #{criteria_count} total, #{verified_count} verified
+    **Acceptance Criteria:** #{criteria_count} total, #{verified_count} verified#{tags_line}
     """
 
     hybrid_response(String.trim(summary), data)
@@ -267,7 +276,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
     summary =
       if count == 0 do
-        "No tags found in this project. Use add_story_tag to create tags."
+        "No tags found in this project. Use update_story with tags field to add tags."
       else
         tag_list = Enum.map(tags, fn t -> "- #{t.name}" end) |> Enum.join("\n")
         "#{count} tags in project:\n#{tag_list}"
@@ -380,7 +389,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   end
 
   defp story_data(story) do
-    %{
+    base = %{
       id: story.id,
       title: story.title,
       description: story.description,
@@ -388,6 +397,12 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       criteria: format_criteria(story.criteria),
       component_id: story.component_id
     }
+
+    if Ecto.assoc_loaded?(story.tags) do
+      Map.put(base, :tags, Enum.map(story.tags, & &1.name))
+    else
+      base
+    end
   end
 
   defp story_summary(story) do
@@ -398,8 +413,15 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       component_id: story.component_id
     }
 
-    if Ecto.assoc_loaded?(story.criteria) do
-      Map.put(base, :criteria, format_criteria(story.criteria))
+    base =
+      if Ecto.assoc_loaded?(story.criteria) do
+        Map.put(base, :criteria, format_criteria(story.criteria))
+      else
+        base
+      end
+
+    if Ecto.assoc_loaded?(story.tags) do
+      Map.put(base, :tags, Enum.map(story.tags, & &1.name))
     else
       base
     end

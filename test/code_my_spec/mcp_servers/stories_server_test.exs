@@ -31,13 +31,12 @@ defmodule CodeMySpec.McpServers.StoriesServerTest do
       tool_names = Enum.map(tools, & &1.name)
 
       assert "create_story" in tool_names
-      # assert "create_stories" in tool_names add back after we fix.
       assert "update_story" in tool_names
       assert "delete_story" in tool_names
       assert "get_story" in tool_names
       assert "list_stories" in tool_names
-      assert "start_story_interview" in tool_names
-      assert "start_story_review" in tool_names
+      assert "start_story_session" in tool_names
+      assert "tag_stories" in tool_names
     end
 
     test "tools have proper input schemas" do

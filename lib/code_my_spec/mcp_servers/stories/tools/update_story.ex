@@ -5,6 +5,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   Include all acceptance criteria in the input. Non-verified criteria will be
   replaced with your input. Verified (locked) criteria are preserved and cannot
   be modified or deleted via this tool - they are protected from LLM changes.
+
+  ## Tags
+
+  Tags can be simple (`urgent`) or namespaced (`epic:auth`, `persona:admin`).
+  Use `list_stories(tag: "...")` to filter by tag.
   """
 
   use Hermes.Server.Component, type: :tool
@@ -12,6 +17,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Stories
+  alias CodeMySpec.Tags
 
   schema do
     field :id, :string,
@@ -23,6 +29,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
 
     field :acceptance_criteria, {:list, :string},
       doc: "Replace unverified criteria with these (optional)"
+
+    field :tags, {:list, :string},
+      doc: "Replace all tags with these (optional)"
   end
 
   @impl true
@@ -30,7 +39,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
     with {:ok, scope} <- Validators.validate_scope(frame),
          story when not is_nil(story) <- Stories.get_story(scope, params.id),
          update_params <- transform_params(params, story),
-         {:ok, story} <- Stories.update_story(scope, story, update_params) do
+         {:ok, story} <- Stories.update_story(scope, story, update_params),
+         {:ok, story} <- sync_tags_if_provided(scope, story, params) do
       {:reply, StoriesMapper.story_updated_response(story), frame}
     else
       nil ->
@@ -41,6 +51,16 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
 
       {:error, atom} ->
         {:reply, StoriesMapper.error(atom), frame}
+    end
+  end
+
+  defp sync_tags_if_provided(scope, story, params) do
+    if Map.has_key?(params, :tags) do
+      Tags.sync_tags(scope, story, params.tags)
+      # Reload to get updated tags
+      {:ok, Stories.get_story!(scope, story.id)}
+    else
+      {:ok, story}
     end
   end
 
