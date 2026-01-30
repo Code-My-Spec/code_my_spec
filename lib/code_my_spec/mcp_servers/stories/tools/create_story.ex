@@ -19,7 +19,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
 
     field :description, :string,
       required: true,
-      doc: "User story description (e.g., 'As a user, I want to...')"
+      doc:
+        "User story in 'As a [role], I want [goal] so that [value]' format. " <>
+          "The role MUST be a real human (user, admin, manager) - never a system, API, or service. " <>
+          "Focus on business value, not technical implementation."
 
     field :acceptance_criteria, {:list, :string},
       required: true,

@@ -25,7 +25,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
       doc: "Story ID to update (use list_story_titles to find IDs)"
 
     field :title, :string, doc: "New title (optional)"
-    field :description, :string, doc: "New description (optional)"
+    field :description, :string,
+      doc:
+        "New description in 'As a [role], I want [goal] so that [value]' format. " <>
+          "Role must be a real human, not a system or technical component (optional)"
 
     field :acceptance_criteria, {:list, :string},
       doc: "Replace unverified criteria with these (optional)"

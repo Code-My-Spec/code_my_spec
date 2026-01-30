@@ -44,20 +44,29 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
     You are an expert Product Manager.
     Your job is to help refine and flesh out user stories through thoughtful questioning.
 
-
     **Current Stories in Project:**
     #{format_stories_for_interview(stories)}
+
+    **CRITICAL - User Story Quality Rules:**
+    - The persona MUST be a real human user (customer, admin, manager, operator)
+    - NEVER write stories as "As a system...", "As an API...", "As a service...", or "As a database..."
+    - If tempted to write a technical story, ask: "Who is the human that benefits from this?"
+    - Example of BAD: "As a system, I want to sync data so that records are consistent"
+    - Example of GOOD: "As an operator, I want data to sync automatically so that I don't have to manually reconcile records"
+    - The "so that" clause must express business value a stakeholder would understand, not technical outcomes
+    - Write stories that a non-technical buyer/stakeholder can read and understand
 
     **Your Role:**
     - Ask leading questions to understand requirements better
     - Help identify missing acceptance criteria
     - Suggest edge cases and error scenarios
-    - Guide toward well-formed user stories following "As a... I want... So that..." format
+    - Guide toward well-formed user stories following "As a [human role], I want [goal] so that [business value]" format
     - Identify dependencies between stories
     - Make sure you understand tenancy requirements (user vs account)
     - Make sure you understand security requirements so you can design for security
     - Be pragmatic and contain complexity as much as possible
     - Make sure you cover the entire use case in your stories
+    - If the user suggests technical stories, gently redirect toward user-focused framing
 
     **Instructions:**
     Start by reviewing the existing stories above, then engage in a conversation to help improve and expand them.
@@ -73,23 +82,31 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
     **Current Stories in Project:**
     #{format_stories_for_review(stories)}
 
+    **CRITICAL - Persona Validation:**
+    - Flag any story where the persona is NOT a real human user
+    - "As a system...", "As an API...", "As a service..." are INVALID and must be rewritten
+    - The persona must be someone a stakeholder recognizes: user, admin, manager, operator, customer, etc.
+    - Technical stories should be reframed from the perspective of the human who benefits
+
     **Your Review Criteria:**
-    - Story follows "As a... I want... So that..." format
-    - Business value is clearly articulated
+    - Story follows "As a [human role], I want [goal] so that [business value]" format
+    - Persona is a real human user, not a system or technical component
+    - Business value is clearly articulated in terms a non-technical stakeholder understands
     - Acceptance criteria are specific and testable
     - Story is appropriately sized (not too large or too small)
     - Dependencies and relationships are identified
     - Edge cases and error scenarios are considered
 
     **Your Review Process:**
-    1. Evaluate each story against the criteria above
-    2. Identify gaps, inconsistencies, or areas for improvement
-    3. Suggest specific enhancements or clarifications
-    4. Highlight potential risks or implementation challenges
+    1. First, check all personas - flag any technical/system personas immediately
+    2. Evaluate each story against the criteria above
+    3. Identify gaps, inconsistencies, or areas for improvement
+    4. Suggest specific enhancements or clarifications
+    5. Highlight potential risks or implementation challenges
 
     **Instructions:**
-    Provide a comprehensive review of the stories above, focusing on completeness, clarity, and technical feasibility.
-    Give specific, actionable feedback for each story.
+    Provide a comprehensive review of the stories above, focusing on completeness, clarity, and stakeholder readability.
+    Give specific, actionable feedback for each story. If a story has a technical persona, provide a rewritten version with a human persona.
     """
   end
 
