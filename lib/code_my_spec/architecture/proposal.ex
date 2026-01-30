@@ -82,6 +82,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     errors =
       []
       |> check_naming_conventions(proposal)
+      |> check_no_stories_on_contexts(proposal)
       |> check_story_coverage(proposal, all_story_ids)
       |> check_dependency_cycles(proposal)
       |> check_duplicate_names(proposal)
@@ -282,18 +283,36 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
+  defp check_no_stories_on_contexts(errors, proposal) do
+    contexts_with_stories =
+      proposal.contexts
+      |> Enum.filter(fn ctx -> ctx.story_ids != [] end)
+      |> Enum.map(& &1.name)
+
+    if contexts_with_stories == [] do
+      errors
+    else
+      [
+        %{
+          type: :stories_on_contexts,
+          message: "Stories must be mapped to surface components, not contexts. Move story_ids to LiveViews/Controllers.",
+          details: %{contexts: contexts_with_stories}
+        }
+        | errors
+      ]
+    end
+  end
+
   defp check_story_coverage(errors, _proposal, all_story_ids) when all_story_ids == [] do
     errors
   end
 
   defp check_story_coverage(errors, proposal, all_story_ids) do
+    # Only count stories mapped to surface components (LiveViews, Controllers)
+    # Stories on contexts are ignored - they should be on the surface layer
     mapped_ids =
-      (proposal.contexts ++ proposal.surface_components)
-      |> Enum.flat_map(fn item ->
-        own_ids = Map.get(item, :story_ids, [])
-        child_ids = item |> Map.get(:children, []) |> Enum.flat_map(&Map.get(&1, :story_ids, []))
-        own_ids ++ child_ids
-      end)
+      proposal.surface_components
+      |> Enum.flat_map(fn comp -> Map.get(comp, :story_ids, []) end)
       |> MapSet.new()
 
     all_ids = MapSet.new(all_story_ids)
@@ -305,7 +324,7 @@ defmodule CodeMySpec.Architecture.Proposal do
       [
         %{
           type: :unmapped_stories,
-          message: "Some stories are not mapped to any component",
+          message: "Stories must be mapped to surface components (LiveViews, Controllers), not contexts",
           details: %{story_ids: unmapped}
         }
         | errors
@@ -362,7 +381,7 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp check_empty_contexts(errors, proposal) do
     empty =
       proposal.contexts
-      |> Enum.filter(fn ctx -> ctx.children == [] and ctx.story_ids == [] end)
+      |> Enum.filter(fn ctx -> ctx.children == [] end)
       |> Enum.map(& &1.name)
 
     if empty == [] do
@@ -371,7 +390,7 @@ defmodule CodeMySpec.Architecture.Proposal do
       [
         %{
           type: :empty_contexts,
-          message: "Contexts without children or stories found",
+          message: "Contexts must have child components (schemas, modules)",
           details: %{names: empty}
         }
         | errors

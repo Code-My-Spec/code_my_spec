@@ -67,6 +67,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
 
   defp build_greenfield_prompt(project, stories, _output_dir) do
     stories_section = format_stories(stories)
+    app_name = derive_app_name(project.name)
 
     """
     # Greenfield Architecture Design Session
@@ -83,109 +84,115 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
 
     #{stories_section}
 
-    ## Your Task: Design the Architecture from Scratch
+    ## CRITICAL RULE: Where Stories Go
 
-    Follow this workflow to design and create the architecture:
+    **Stories map to SURFACE COMPONENTS only. Never to contexts.**
 
-    ### Step 1: Analyze the Stories
+    - CORRECT: `surface_components: [{name: "AppWeb.DashboardLive", story_ids: [1,2,3]}]`
+    - WRONG: `contexts: [{name: "App.Verification", story_ids: [1,2,3]}]` ← VALIDATION WILL REJECT THIS
 
-    Run `analyze_stories` to understand the domain:
-    - This will group stories by theme/domain
-    - Extract potential entities from story text
-    - Detect surface component patterns (real-time, API, file upload, etc.)
-    - Suggest bounded contexts
+    Why? Stories describe user interactions. Users interact through LiveViews and Controllers
+    (the surface layer), not through contexts. Contexts provide domain logic that surfaces call.
+
+    ## Architecture Pattern
 
     ```
-    analyze_stories(app_name: "#{derive_app_name(project.name)}")
+    User Story → Surface Component → Context → Schema
+                 (where story_ids go)  (NO story_ids)
     ```
 
-    ### Step 2: Design the Architecture Proposal
+    ## Your Task
 
-    Based on the analysis, use `propose_architecture` to sketch your design:
-    - Define bounded contexts with their child components
-    - Define surface components (LiveViews, Controllers)
-    - Map stories to the components that satisfy them
-    - Define dependencies between contexts
+    ### Step 1: Analyze Stories
 
-    Example structure:
+    ```
+    analyze_stories(app_name: "#{app_name}")
+    ```
+
+    ### Step 2: Design Surface Components (WITH story_ids)
+
+    For each story, ask: "What screen/endpoint handles this user interaction?"
+
+    Create surface components and map stories to them:
+    - `liveview` - Real-time UI, dashboards, forms
+    - `controller` - REST APIs, webhooks
+
+    Naming: `#{app_name}Web.{Feature}Live` or `#{app_name}Web.{Feature}Controller`
+
+    ### Step 3: Design Contexts (NO story_ids)
+
+    For each surface component, ask: "What domain logic does this UI need?"
+
+    Create contexts with child schemas/modules. **Do not add story_ids to contexts.**
+
+    Naming: `#{app_name}.{Domain}` with children like `#{app_name}.{Domain}.{Entity}`
+
+    ### Step 4: Define Dependencies
+
+    Surface → Context (required):
+    - `#{app_name}Web.DashboardLive` → `#{app_name}.Verification`
+
+    Context → Context (optional):
+    - `#{app_name}.Orders` → `#{app_name}.Catalog`
+
+    ### Step 5: Create Proposal
+
     ```json
     {
-      "app_name": "#{derive_app_name(project.name)}",
-      "contexts": [
-        {
-          "name": "#{derive_app_name(project.name)}.Verification",
-          "description": "Handles verification workflows",
-          "children": [
-            {"name": "Transaction", "type": "schema", "story_ids": [1, 2]},
-            {"name": "Photo", "type": "schema", "story_ids": [4, 5]}
-          ],
-          "story_ids": [1, 2, 3, 4, 5]
-        }
-      ],
+      "app_name": "#{app_name}",
       "surface_components": [
         {
-          "name": "#{derive_app_name(project.name)}Web.VerificationLive",
+          "name": "#{app_name}Web.DashboardLive",
           "type": "liveview",
-          "description": "Real-time verification dashboard",
-          "story_ids": [13, 14]
+          "description": "Real-time dashboard for monitoring verifications",
+          "story_ids": [1, 2, 3]
+        },
+        {
+          "name": "#{app_name}Web.WebhookController",
+          "type": "controller",
+          "description": "API endpoint for external transaction submissions",
+          "story_ids": [4, 5]
+        }
+      ],
+      "contexts": [
+        {
+          "name": "#{app_name}.Verification",
+          "description": "Verification workflow logic and data access",
+          "children": [
+            {"name": "Transaction", "type": "schema", "description": "A transaction record"},
+            {"name": "Photo", "type": "schema", "description": "Verification photo"},
+            {"name": "Workflow", "type": "module", "description": "State machine logic"}
+          ]
         }
       ],
       "dependencies": [
-        {"from": "#{derive_app_name(project.name)}Web.VerificationLive", "to": "#{derive_app_name(project.name)}.Verification"}
+        {"from": "#{app_name}Web.DashboardLive", "to": "#{app_name}.Verification"},
+        {"from": "#{app_name}Web.WebhookController", "to": "#{app_name}.Verification"}
       ]
     }
     ```
 
-    ### Step 3: Validate the Proposal
+    Notice: `story_ids` appear ONLY on surface_components. Contexts have no story_ids.
 
-    Use `validate_proposal` to check for issues:
-    - All stories should be mapped to components
-    - No circular dependencies
-    - Valid module naming conventions
-    - No empty contexts
+    ### Step 6: Validate and Execute
 
-    Fix any validation errors before proceeding.
-
-    ### Step 4: Execute the Proposal
-
-    Once validated, use `execute_proposal` to create all specs:
-    - Use `dry_run: true` first to preview what will be created
-    - Then run without dry_run to create the specs
-
-    ### Alternative: Batch Context Creation
-
-    For creating contexts one at a time with more control, use `create_context_with_children`:
-    ```json
-    {
-      "module_name": "#{derive_app_name(project.name)}.Verification",
-      "description": "Handles verification workflows",
-      "story_ids": [1, 2, 3],
-      "children": [
-        {"name": "Transaction", "type": "schema", "description": "A fuel transaction", "story_ids": [1, 2]},
-        {"name": "Photo", "type": "schema", "description": "Verification photo", "story_ids": [4, 5]}
-      ]
-    }
-    ```
+    1. `validate_proposal` - Rejects story_ids on contexts
+    2. `execute_proposal` with `dry_run: true` - Preview
+    3. `execute_proposal` - Create specs
 
     ## Available Tools
 
-    ### Story Analysis
-    - `analyze_stories` - Analyze stories to understand domain and suggest contexts
-
-    ### Proposal Workflow
+    - `analyze_stories` - Analyze stories to identify patterns and groupings
     - `propose_architecture` - Create an architecture proposal
     - `validate_proposal` - Validate proposal for issues
-    - `execute_proposal` - Create all specs from proposal (supports dry_run)
-
-    ### Batch Creation
-    - `create_context_with_children` - Create a context with all child components
-
-    ### Individual Creation
-    - `create_spec` - Create a single component spec (now supports story_ids)
+    - `execute_proposal` - Create specs from proposal (supports dry_run)
+    - `create_context_with_children` - Create a single context with children
+    - `create_spec` - Create a single component spec
 
     ## Begin
 
-    Start by running `analyze_stories` to understand the domain, then design your architecture proposal.
+    Start with `analyze_stories`, then design surface components (with story_ids),
+    then contexts (without story_ids), then dependencies.
     """
   end
 
