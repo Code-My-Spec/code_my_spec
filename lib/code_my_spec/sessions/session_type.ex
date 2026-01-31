@@ -24,7 +24,11 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ContextSpec,
     AgentTasks.ContextComponentSpecs,
     AgentTasks.ContextImplementation,
-    AgentTasks.ContextDesignReview
+    AgentTasks.ContextDesignReview,
+    AgentTasks.ArchitectureDesign,
+    AgentTasks.ArchitectureReview,
+    AgentTasks.ProjectSetup,
+    AgentTasks.WriteBddSpecs
   ]
 
   @valid_types @legacy_types ++ @agent_task_types

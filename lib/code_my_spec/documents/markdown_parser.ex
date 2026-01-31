@@ -83,13 +83,18 @@ defmodule CodeMySpec.Documents.MarkdownParser do
   end
 
   defp lookup_parser(section_key) do
-    # Convention: "functions" → FunctionParser, "fields" → FieldParser
-    # Singularize and capitalize section name to get parser module name
+    # Convention: "functions" → FunctionParser, "surface components" → SurfaceComponentParser
+    # Split on spaces, singularize last word, camelize each part
     parser_name =
       section_key
-      |> String.replace(" ", "")
-      |> Inflex.singularize()
-      |> String.capitalize()
+      |> String.split(" ")
+      |> Enum.map(&String.capitalize/1)
+      |> then(fn parts ->
+        # Singularize the last part
+        {head, [last]} = Enum.split(parts, -1)
+        head ++ [Inflex.singularize(last) |> String.capitalize()]
+      end)
+      |> Enum.join("")
 
     module_name = Module.concat([CodeMySpec.Documents.Parsers, "#{parser_name}Parser"])
 

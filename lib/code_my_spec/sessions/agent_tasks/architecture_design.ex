@@ -11,6 +11,11 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
   """
 
   alias CodeMySpec.{Components, Stories, Architecture}
+  alias CodeMySpec.Architecture.Proposal
+  alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Environments
+
+  @proposal_path "docs/architecture/proposal.md"
 
   @doc """
   Generate the command/prompt for Claude to start architecture design.
@@ -56,11 +61,86 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
   @doc """
   Evaluate the architecture design session output.
 
-  Architecture design is a conversational session - no strict validation.
-  Returns {:ok, :valid} to allow the session to complete.
+  Reads the proposal file and validates it (does NOT execute).
+  Returns:
+  - {:ok, :valid} if proposal is valid (model should then call execute_proposal)
+  - {:ok, :invalid, feedback} if proposal has errors (blocks Claude from stopping)
   """
-  def evaluate(_scope, _session, _opts \\ []) do
-    {:ok, :valid}
+  def evaluate(scope, session, _opts \\ []) do
+    working_dir = Map.get(session, :working_dir, File.cwd!())
+    project = Map.get(session, :project)
+    app_name = get_app_name(project)
+
+    with {:ok, env} <- Environments.create(:cli, working_dir: working_dir),
+         {:ok, content} <- read_proposal(env),
+         {:ok, proposal} <- Proposal.from_markdown(content, app_name: app_name),
+         {:ok, story_ids} <- get_story_ids(scope),
+         {:ok, _validated} <- Proposal.validate(proposal, story_ids: story_ids) do
+      Environments.destroy(env)
+
+      # Proposal is valid - tell model to execute explicitly
+      IO.puts("\n✓ Proposal validated successfully!")
+      IO.puts("  Call `execute_proposal` to create spec files.")
+      {:ok, :valid}
+    else
+      {:error, :proposal_not_found} ->
+        {:ok, :invalid, proposal_not_found_feedback()}
+
+      {:error, parse_error} when is_binary(parse_error) ->
+        {:ok, :invalid, "Proposal parse error:\n\n#{parse_error}"}
+
+      {:error, validation_errors} when is_list(validation_errors) ->
+        {:ok, :invalid, format_validation_errors(validation_errors)}
+
+      {:error, reason} ->
+        {:ok, :invalid, "Error: #{inspect(reason)}"}
+    end
+  end
+
+  defp read_proposal(env) do
+    case Environments.read_file(env, @proposal_path) do
+      {:ok, content} -> {:ok, content}
+      {:error, :enoent} -> {:error, :proposal_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp get_story_ids(scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} -> {:ok, Enum.map(stories, & &1.id)}
+      {:error, _} -> {:ok, []}
+    end
+  end
+
+  defp get_app_name(%{module_name: module_name}) when is_binary(module_name), do: module_name
+  defp get_app_name(%{name: name}) when is_binary(name), do: Macro.camelize(name)
+  defp get_app_name(_), do: raise("Project must have module_name or name for architecture design")
+
+  defp proposal_not_found_feedback do
+    """
+    Proposal file not found at: #{@proposal_path}
+
+    Please write your architecture proposal to this file before finishing.
+    The proposal must follow the architecture_proposal document format.
+    """
+  end
+
+  defp format_validation_errors(errors) do
+    error_list =
+      errors
+      |> Enum.map(fn err ->
+        details = if err.details, do: "\n  Details: #{inspect(err.details)}", else: ""
+        "- #{err.message}#{details}"
+      end)
+      |> Enum.join("\n")
+
+    """
+    Proposal validation failed:
+
+    #{error_list}
+
+    Please fix these issues in #{@proposal_path} and try again.
+    """
   end
 
   # Private functions
@@ -68,6 +148,8 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
   defp build_greenfield_prompt(project, stories, _output_dir) do
     stories_section = format_stories(stories)
     app_name = derive_app_name(project.name)
+    document_spec = DocumentSpecProjector.project_spec("architecture_proposal")
+    proposal_path = "docs/architecture/proposal.md"
 
     """
     # Greenfield Architecture Design Session
@@ -78,129 +160,57 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
     ## Project Overview
 
     **Name:** #{project.name}
+    **App Module:** #{app_name}
     **Description:** #{project.description || "No description provided"}
 
     ## User Stories
 
     #{stories_section}
 
-    ## CRITICAL RULE: Where Stories Go
+    ## CRITICAL RULE: Dual Story Mapping
 
-    **Stories map to SURFACE COMPONENTS only. Never to contexts.**
+    **Each story MUST be mapped to BOTH a surface component AND a context/child.**
 
-    - CORRECT: `surface_components: [{name: "AppWeb.DashboardLive", story_ids: [1,2,3]}]`
-    - WRONG: `contexts: [{name: "App.Verification", story_ids: [1,2,3]}]` ← VALIDATION WILL REJECT THIS
-
-    Why? Stories describe user interactions. Users interact through LiveViews and Controllers
-    (the surface layer), not through contexts. Contexts provide domain logic that surfaces call.
-
-    ## Architecture Pattern
-
-    ```
-    User Story → Surface Component → Context → Schema
-                 (where story_ids go)  (NO story_ids)
-    ```
+    - CORRECT: Story 1 appears on BOTH `#{app_name}Web.DashboardLive` AND `#{app_name}.Verification.Transaction`
+    - WRONG: Story 1 only on surface OR only on context ← VALIDATION WILL REJECT THIS
 
     ## Your Task
 
     ### Step 1: Analyze Stories
 
-    ```
-    analyze_stories(app_name: "#{app_name}")
-    ```
+    Use `analyze_stories` to identify patterns and groupings.
 
-    ### Step 2: Design Surface Components (WITH story_ids)
+    ### Step 2: Design the Architecture
 
-    For each story, ask: "What screen/endpoint handles this user interaction?"
+    For each story, determine:
+    - **Surface Component**: What screen/endpoint handles the user interaction? (LiveView, Controller)
+    - **Context/Child**: What domain logic implements this? (Schema, Module)
 
-    Create surface components and map stories to them:
-    - `liveview` - Real-time UI, dashboards, forms
-    - `controller` - REST APIs, webhooks
+    ### Step 3: Write the Proposal
 
-    Naming: `#{app_name}Web.{Feature}Live` or `#{app_name}Web.{Feature}Controller`
+    Write your proposal directly to: `#{proposal_path}`
 
-    ### Step 3: Design Contexts (NO story_ids)
+    The proposal must follow this exact format:
 
-    For each surface component, ask: "What domain logic does this UI need?"
+    #{document_spec}
 
-    Create contexts with child schemas/modules. **Do not add story_ids to contexts.**
+    **Naming Rules:**
+    - Contexts: `#{app_name}.{ContextName}` (e.g., `#{app_name}.Accounts`)
+    - Children: `#{app_name}.{Context}.{Child}` (e.g., `#{app_name}.Accounts.User`)
+    - Surface: `#{app_name}Web.{Name}Live` or `#{app_name}Web.{Name}Controller`
 
-    **ALL names must be fully qualified module names:**
-    - Context: `#{app_name}.Verification`
-    - Child: `#{app_name}.Verification.Transaction` (starts with parent context name)
-    - Nested: `#{app_name}.Verification.Photos.Metadata` (for deeper hierarchies)
+    ### Step 4: Validate and Execute
 
-    ### Step 4: Define Dependencies
-
-    Surface → Context (required):
-    - `#{app_name}Web.DashboardLive` → `#{app_name}.Verification`
-
-    Context → Context (optional):
-    - `#{app_name}.Orders` → `#{app_name}.Catalog`
-
-    ### Step 5: Create Proposal
-
-    ```json
-    {
-      "app_name": "#{app_name}",
-      "surface_components": [
-        {
-          "name": "#{app_name}Web.DashboardLive",
-          "type": "liveview",
-          "description": "Real-time dashboard for monitoring verifications",
-          "story_ids": [1, 2, 3]
-        },
-        {
-          "name": "#{app_name}Web.WebhookController",
-          "type": "controller",
-          "description": "API endpoint for external transaction submissions",
-          "story_ids": [4, 5]
-        }
-      ],
-      "contexts": [
-        {
-          "name": "#{app_name}.Verification",
-          "description": "Verification workflow logic and data access",
-          "children": [
-            {"name": "#{app_name}.Verification.Transaction", "type": "schema", "description": "A transaction record"},
-            {"name": "#{app_name}.Verification.Photo", "type": "schema", "description": "Verification photo"},
-            {"name": "#{app_name}.Verification.Workflow", "type": "module", "description": "State machine logic"}
-          ]
-        }
-      ],
-      "dependencies": [
-        {"from": "#{app_name}Web.DashboardLive", "to": "#{app_name}.Verification"},
-        {"from": "#{app_name}Web.WebhookController", "to": "#{app_name}.Verification"}
-      ]
-    }
-    ```
-
-    **Notice:**
-    - `story_ids` appear ONLY on surface_components
-    - ALL names are fully qualified module names
-    - Contexts start with `#{app_name}.`
-    - Surface components start with `#{app_name}Web.`
-    - Children start with their parent context name (e.g., `#{app_name}.Verification.Transaction`)
-
-    ### Step 6: Validate and Execute
-
-    1. `validate_proposal` - Rejects story_ids on contexts
-    2. `execute_proposal` with `dry_run: true` - Preview
-    3. `execute_proposal` - Create specs
-
-    ## Available Tools
-
-    - `analyze_stories` - Analyze stories to identify patterns and groupings
-    - `propose_architecture` - Create an architecture proposal
-    - `validate_proposal` - Validate proposal for issues
-    - `execute_proposal` - Create specs from proposal (supports dry_run)
-    - `create_context_with_children` - Create a single context with children
-    - `create_spec` - Create a single component spec
+    1. Stop when your proposal is complete - the system will validate it
+    2. If validation passes, call `execute_proposal` to create the spec files
+    3. Use `execute_proposal` with `dry_run: true` first to preview what will be created
 
     ## Begin
 
-    Start with `analyze_stories`, then design surface components (with story_ids),
-    then contexts (without story_ids), then dependencies.
+    1. Optionally use `analyze_stories` to identify patterns
+    2. Write your proposal to `#{proposal_path}`
+    3. Stop - the system will validate your proposal
+    4. If valid, call `execute_proposal` to create spec files
     """
   end
 
@@ -248,10 +258,9 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
     - `list_specs` or `list_spec_names` - Browse existing components
     - `get_spec` - Read component specifications
     - `get_component_view` - See a component's dependency tree
-    - `create_spec` - Create new component specifications
     - `validate_dependency_graph` - Check for circular dependencies
 
-    Begin by reading the architecture overview, then propose how to satisfy the unsatisfied stories.
+    Begin by reading the architecture overview, then write a proposal to `docs/architecture/proposal.md`.
     """
   end
 
@@ -261,8 +270,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
 
   defp format_stories(stories) do
     stories
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {story, index} ->
+    |> Enum.map_join("\n\n", fn story ->
       acceptance_criteria =
         case story.acceptance_criteria do
           [] -> "  None specified"
@@ -271,12 +279,14 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
         end
 
       """
-      ### #{index}. #{story.title}
+      ### Story #{story.id}: #{story.title}
 
       #{story.description || "No description"}
 
       **Acceptance Criteria:**
       #{acceptance_criteria}
+
+      **Use story_id: #{story.id}** when mapping this story to components.
       """
       |> String.trim()
     end)

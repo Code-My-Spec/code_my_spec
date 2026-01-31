@@ -176,6 +176,74 @@ defmodule CodeMySpec.Documents.Registry do
   - List any remaining action items if blocked
   """
 
+  @proposal_contexts """
+  Format:
+  - Use H2 heading: ## Contexts
+  - Use H3 for each context module name (fully qualified, e.g., ### AppName.ContextName)
+  - Include bullet list with **Type:**, **Description:**, **Stories:**
+  - Use H4 "#### Children" subsection with bullet list of child components
+
+  Content:
+  - Each context represents a bounded domain (e.g., Accounts, Orders, Billing)
+  - Module names must be fully qualified (e.g., MyApp.Accounts, not just Accounts)
+  - Stories field lists story IDs that this context satisfies (for dual mapping)
+  - Children are schemas/modules within the context
+
+  Example:
+  ## Contexts
+
+  ### MyApp.Accounts
+
+  - **Type:** context
+  - **Description:** User account management and authentication
+  - **Stories:** 1, 2, 5
+
+  #### Children
+
+  - MyApp.Accounts.User (schema) [Stories: 1, 2]: User account record
+  - MyApp.Accounts.Session (schema) [Stories: 5]: Login session tracking
+  """
+
+  @proposal_surface_components """
+  Format:
+  - Use H2 heading: ## Surface Components
+  - Use H3 for each component module name (fully qualified, e.g., ### AppNameWeb.PageLive)
+  - Include bullet list with **Type:**, **Description:**, **Stories:**
+
+  Content:
+  - Surface components are LiveViews, Controllers, or Plugs (the UI layer)
+  - Module names must start with AppNameWeb (e.g., MyAppWeb.DashboardLive)
+  - Stories field lists story IDs that this surface handles (for dual mapping)
+  - Type should be: live, controller, or module
+
+  Example:
+  ## Surface Components
+
+  ### MyAppWeb.DashboardLive
+
+  - **Type:** live
+  - **Description:** Main dashboard showing account overview
+  - **Stories:** 1, 2
+  """
+
+  @proposal_dependencies """
+  Format:
+  - Use H2 heading: ## Dependencies
+  - Simple bullet list with arrow notation: From -> To
+
+  Content:
+  - Surface components depend on contexts (required)
+  - Contexts may depend on other contexts (optional)
+  - No circular dependencies allowed
+
+  Example:
+  ## Dependencies
+
+  - MyAppWeb.DashboardLive -> MyApp.Accounts
+  - MyAppWeb.DashboardLive -> MyApp.Reports
+  - MyApp.Reports -> MyApp.Accounts
+  """
+
   @default_spec_definition %{
     overview: """
     Spec documents provide comprehensive documentation for Elixir modules following a
@@ -261,6 +329,21 @@ defmodule CodeMySpec.Documents.Registry do
         "stories" => @review_stories,
         "issues" => @review_issues,
         "conclusion" => @review_conclusion
+      }
+    },
+    "architecture_proposal" => %{
+      overview: """
+      Architecture proposal documents define the component structure for a Phoenix application.
+      They map user stories to both surface components (UI layer) and bounded contexts (domain layer).
+      Each story must be mapped to BOTH a surface component AND a context/child (dual mapping).
+      """,
+      required_sections: ["contexts", "surface components", "dependencies"],
+      optional_sections: [],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "contexts" => @proposal_contexts,
+        "surface components" => @proposal_surface_components,
+        "dependencies" => @proposal_dependencies
       }
     }
   }

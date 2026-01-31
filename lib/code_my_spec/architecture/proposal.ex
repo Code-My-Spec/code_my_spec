@@ -71,6 +71,51 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   @doc """
+  Creates a proposal from a parsed document.
+
+  Uses the Documents system to parse markdown and returns a Proposal struct.
+
+  Options:
+  - `:app_name` - The application module name (e.g., "MetricFlow"). Required.
+  """
+  @spec from_markdown(String.t(), keyword()) :: {:ok, t()} | {:error, String.t()}
+  def from_markdown(content, opts \\ []) do
+    alias CodeMySpec.Documents
+
+    app_name = Keyword.get(opts, :app_name) || raise "app_name is required for from_markdown/2"
+
+    case Documents.create_dynamic_document(content, "architecture_proposal") do
+      {:ok, %{sections: sections}} ->
+        # Transform dependencies from strings to maps
+        deps =
+          (sections["dependencies"] || [])
+          |> Enum.map(&parse_dependency_string/1)
+          |> Enum.reject(&is_nil/1)
+
+        {:ok,
+         new(%{
+           app_name: app_name,
+           contexts: sections["contexts"] || [],
+           surface_components: sections["surface components"] || [],
+           dependencies: deps
+         })}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp parse_dependency_string(text) when is_binary(text) do
+    case Regex.run(~r/(.+?)\s*->\s*(.+)/, text) do
+      [_, from, to] -> %{from: String.trim(from), to: String.trim(to)}
+      _ -> nil
+    end
+  end
+
+  defp parse_dependency_string(%{from: _, to: _} = dep), do: dep
+  defp parse_dependency_string(_), do: nil
+
+  @doc """
   Validates a proposal for issues.
 
   Returns `{:ok, proposal}` if valid, or `{:error, errors}` with a list of issues.
@@ -82,11 +127,10 @@ defmodule CodeMySpec.Architecture.Proposal do
     errors =
       []
       |> check_naming_conventions(proposal)
-      |> check_no_stories_on_contexts(proposal)
-      |> check_story_coverage(proposal, all_story_ids)
+      |> check_naming_hierarchy(proposal)
+      |> check_dual_story_mapping(proposal, all_story_ids)
       |> check_dependency_cycles(proposal)
       |> check_duplicate_names(proposal)
-      |> check_empty_contexts(proposal)
 
     if errors == [] do
       {:ok, proposal}
@@ -113,86 +157,35 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   @doc """
-  Converts the proposal to a Mermaid diagram string.
-  """
-  @spec to_mermaid(t()) :: String.t()
-  def to_mermaid(%__MODULE__{} = proposal) do
-    context_nodes =
-      proposal.contexts
-      |> Enum.map(fn ctx ->
-        id = sanitize_mermaid_id(ctx.name)
-        label = ctx.name
-        "    #{id}[#{label}]"
-      end)
-      |> Enum.join("\n")
-
-    surface_nodes =
-      proposal.surface_components
-      |> Enum.map(fn comp ->
-        id = sanitize_mermaid_id(comp.name)
-        label = "#{comp.name}<br/>#{comp.type}"
-        "    #{id}([#{label}])"
-      end)
-      |> Enum.join("\n")
-
-    dependency_edges =
-      proposal.dependencies
-      |> Enum.map(fn dep ->
-        from_id = sanitize_mermaid_id(dep.from)
-        to_id = sanitize_mermaid_id(dep.to)
-        "    #{from_id} --> #{to_id}"
-      end)
-      |> Enum.join("\n")
-
-    """
-    flowchart TD
-        subgraph Contexts
-    #{context_nodes}
-        end
-
-        subgraph Surface
-    #{surface_nodes}
-        end
-
-    #{dependency_edges}
-    """
-  end
-
-  @doc """
   Returns all component definitions from the proposal for creation.
   """
   @spec to_components(t()) :: [map()]
   def to_components(%__MODULE__{} = proposal) do
-    app_prefix = if proposal.app_name, do: "#{proposal.app_name}.", else: ""
-
-    # Build a map of module_name -> [dependency_module_names]
+    # All names are fully-qualified (e.g., "Fuellytics.Verification.Transaction")
     deps_map = build_dependencies_map(proposal.dependencies)
 
     context_components =
       proposal.contexts
       |> Enum.flat_map(fn ctx ->
-        context_module = "#{app_prefix}#{ctx.name}"
-
         parent = %{
-          module_name: context_module,
+          module_name: ctx.name,
           type: "context",
           description: ctx.description,
           story_ids: ctx.story_ids,
-          dependencies: Map.get(deps_map, context_module, [])
+          dependencies: Map.get(deps_map, ctx.name, [])
         }
 
         children =
           ctx.children
           |> Enum.map(fn child ->
-            child_module = "#{context_module}.#{child.name}"
-
+            # Child names are already fully qualified (e.g., "Fuellytics.Verification.Transaction")
             %{
-              module_name: child_module,
+              module_name: child.name,
               type: child.type,
               description: child.description,
-              parent_module: context_module,
+              parent_module: ctx.name,
               story_ids: child.story_ids,
-              dependencies: Map.get(deps_map, child_module, [])
+              dependencies: Map.get(deps_map, child.name, [])
             }
           end)
 
@@ -202,14 +195,12 @@ defmodule CodeMySpec.Architecture.Proposal do
     surface =
       proposal.surface_components
       |> Enum.map(fn comp ->
-        comp_module = "#{app_prefix}#{comp.name}"
-
         %{
-          module_name: comp_module,
+          module_name: comp.name,
           type: comp.type,
           description: comp.description,
           story_ids: comp.story_ids,
-          dependencies: Map.get(deps_map, comp_module, [])
+          dependencies: Map.get(deps_map, comp.name, [])
         }
       end)
 
@@ -227,8 +218,10 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   defp normalize_contexts(contexts) do
     Enum.map(contexts, fn ctx ->
+      name = ctx[:name] || ctx["name"] || ctx[:module_name] || ctx["module_name"]
+
       %{
-        name: ctx[:name] || ctx["name"] || ctx[:module_name] || ctx["module_name"],
+        name: if(is_binary(name), do: String.trim(name), else: name),
         description: ctx[:description] || ctx["description"] || "",
         children: normalize_components(ctx[:children] || ctx["children"] || []),
         story_ids: ctx[:story_ids] || ctx["story_ids"] || []
@@ -238,8 +231,10 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   defp normalize_components(components) do
     Enum.map(components, fn comp ->
+      name = comp[:name] || comp["name"] || comp[:module_name] || comp["module_name"]
+
       %{
-        name: comp[:name] || comp["name"] || comp[:module_name] || comp["module_name"],
+        name: if(is_binary(name), do: String.trim(name), else: name),
         type: comp[:type] || comp["type"],
         description: comp[:description] || comp["description"] || "",
         story_ids: comp[:story_ids] || comp["story_ids"] || []
@@ -283,53 +278,116 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
-  defp check_no_stories_on_contexts(errors, proposal) do
-    contexts_with_stories =
+  defp check_naming_hierarchy(errors, proposal) do
+    # Camelize app_name since it may be snake_case from project config
+    # but module names use PascalCase (e.g., "metric_flow" -> "MetricFlow")
+    app_name = Macro.camelize(proposal.app_name)
+    app_web = "#{app_name}Web"
+
+    # Contexts must start with app_name
+    invalid_contexts =
       proposal.contexts
-      |> Enum.filter(fn ctx -> ctx.story_ids != [] end)
+      |> Enum.reject(fn ctx -> String.starts_with?(ctx.name, "#{app_name}.") end)
       |> Enum.map(& &1.name)
 
-    if contexts_with_stories == [] do
+    # Surface components must start with app_name + "Web"
+    invalid_surfaces =
+      proposal.surface_components
+      |> Enum.reject(fn comp -> String.starts_with?(comp.name, "#{app_web}.") end)
+      |> Enum.map(& &1.name)
+
+    # Children must start with their parent context name
+    invalid_children =
+      proposal.contexts
+      |> Enum.flat_map(fn ctx ->
+        ctx.children
+        |> Enum.reject(fn child -> String.starts_with?(child.name, "#{ctx.name}.") end)
+        |> Enum.map(fn child ->
+          "#{child.name} (should start with #{ctx.name}.)"
+        end)
+      end)
+
+    all_invalid = invalid_contexts ++ invalid_surfaces ++ invalid_children
+
+    if all_invalid == [] do
       errors
     else
+      messages = []
+      messages = if invalid_contexts != [], do: ["Contexts must start with '#{app_name}.'" | messages], else: messages
+      messages = if invalid_surfaces != [], do: ["Surface components must start with '#{app_web}.'" | messages], else: messages
+      messages = if invalid_children != [], do: ["Children must start with their parent context name" | messages], else: messages
+
       [
         %{
-          type: :stories_on_contexts,
-          message: "Stories must be mapped to surface components, not contexts. Move story_ids to LiveViews/Controllers.",
-          details: %{contexts: contexts_with_stories}
+          type: :invalid_naming_hierarchy,
+          message: Enum.join(messages, ". "),
+          details: %{
+            invalid_contexts: invalid_contexts,
+            invalid_surfaces: invalid_surfaces,
+            invalid_children: invalid_children
+          }
         }
         | errors
       ]
     end
   end
 
-  defp check_story_coverage(errors, _proposal, all_story_ids) when all_story_ids == [] do
+  defp check_dual_story_mapping(errors, _proposal, all_story_ids) when all_story_ids == [] do
     errors
   end
 
-  defp check_story_coverage(errors, proposal, all_story_ids) do
-    # Only count stories mapped to surface components (LiveViews, Controllers)
-    # Stories on contexts are ignored - they should be on the surface layer
-    mapped_ids =
+  defp check_dual_story_mapping(errors, proposal, all_story_ids) do
+    # Stories mapped to surface components (LiveViews, Controllers)
+    surface_mapped =
       proposal.surface_components
       |> Enum.flat_map(fn comp -> Map.get(comp, :story_ids, []) end)
       |> MapSet.new()
 
-    all_ids = MapSet.new(all_story_ids)
-    unmapped = MapSet.difference(all_ids, mapped_ids) |> MapSet.to_list()
+    # Stories mapped to contexts or their children
+    context_mapped =
+      proposal.contexts
+      |> Enum.flat_map(fn ctx ->
+        own_ids = Map.get(ctx, :story_ids, [])
+        child_ids = ctx.children |> Enum.flat_map(&Map.get(&1, :story_ids, []))
+        own_ids ++ child_ids
+      end)
+      |> MapSet.new()
 
-    if unmapped == [] do
-      errors
-    else
-      [
-        %{
-          type: :unmapped_stories,
-          message: "Stories must be mapped to surface components (LiveViews, Controllers), not contexts",
-          details: %{story_ids: unmapped}
-        }
-        | errors
-      ]
-    end
+    all_ids = MapSet.new(all_story_ids)
+
+    # Each story must be mapped to BOTH surface AND context
+    missing_surface = MapSet.difference(all_ids, surface_mapped) |> MapSet.to_list()
+    missing_context = MapSet.difference(all_ids, context_mapped) |> MapSet.to_list()
+
+    errors
+    |> add_missing_surface_error(missing_surface)
+    |> add_missing_context_error(missing_context)
+  end
+
+  defp add_missing_surface_error(errors, []), do: errors
+
+  defp add_missing_surface_error(errors, missing) do
+    [
+      %{
+        type: :stories_missing_surface,
+        message: "Each story must be mapped to a surface component (LiveView/Controller)",
+        details: %{story_ids: missing}
+      }
+      | errors
+    ]
+  end
+
+  defp add_missing_context_error(errors, []), do: errors
+
+  defp add_missing_context_error(errors, missing) do
+    [
+      %{
+        type: :stories_missing_context,
+        message: "Each story must be mapped to a context or context child",
+        details: %{story_ids: missing}
+      }
+      | errors
+    ]
   end
 
   defp check_dependency_cycles(errors, proposal) do
@@ -372,26 +430,6 @@ defmodule CodeMySpec.Architecture.Proposal do
           type: :duplicate_names,
           message: "Duplicate component names found",
           details: %{names: duplicates}
-        }
-        | errors
-      ]
-    end
-  end
-
-  defp check_empty_contexts(errors, proposal) do
-    empty =
-      proposal.contexts
-      |> Enum.filter(fn ctx -> ctx.children == [] end)
-      |> Enum.map(& &1.name)
-
-    if empty == [] do
-      errors
-    else
-      [
-        %{
-          type: :empty_contexts,
-          message: "Contexts must have child components (schemas, modules)",
-          details: %{names: empty}
         }
         | errors
       ]
@@ -524,7 +562,9 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp build_spec_path(module_name) do
     path_parts =
       module_name
+      |> String.trim()
       |> String.split(".")
+      |> Enum.map(&String.trim/1)
       |> Enum.map(&Macro.underscore/1)
 
     Path.join(["docs/spec" | path_parts]) <> ".spec.md"
@@ -542,24 +582,18 @@ defmodule CodeMySpec.Architecture.Proposal do
 
     ## Dependencies
 
-    #{format_dependencies(attrs[:dependencies] || [])}
+    #{format_spec_dependencies(attrs[:dependencies] || [])}
 
     ## Functions
 
     """
   end
 
-  defp format_dependencies([]), do: "- None"
+  defp format_spec_dependencies([]), do: "- None"
 
-  defp format_dependencies(deps) do
+  defp format_spec_dependencies(deps) do
     deps
     |> Enum.map(&"- #{&1}")
     |> Enum.join("\n")
-  end
-
-  defp sanitize_mermaid_id(name) do
-    name
-    |> String.replace(".", "_")
-    |> String.replace(~r/[^a-zA-Z0-9_]/, "")
   end
 end

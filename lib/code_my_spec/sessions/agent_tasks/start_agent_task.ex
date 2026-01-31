@@ -85,6 +85,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
          {:ok, sync_result} <- sync_project(scope, working_dir),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, environment} <- build_environment(working_dir),
+         {:ok, _db_session} <- create_componentless_session(scope, external_id, agent_task_module, environment),
          {:ok, task_session} <- build_componentless_task_session(external_id, project, environment),
          {:ok, prompt} <- agent_task_module.command(scope, task_session) do
       {:ok, prompt, sync_result}
@@ -207,6 +208,18 @@ defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
       agent: :claude_code,
       execution_mode: :manual,
       component_id: component.id,
+      external_conversation_id: external_id,
+      environment: environment_to_map(environment)
+    })
+  end
+
+  defp create_componentless_session(scope, external_id, session_module, environment) do
+    Sessions.create_session(scope, %{
+      type: session_module,
+      environment_type: :cli,
+      agent: :claude_code,
+      execution_mode: :manual,
+      component_id: nil,
       external_conversation_id: external_id,
       environment: environment_to_map(environment)
     })
