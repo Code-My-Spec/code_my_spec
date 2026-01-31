@@ -36,11 +36,12 @@ defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
     "component_test" => AgentTasks.ComponentTest,
     "project_setup" => AgentTasks.ProjectSetup,
     "architecture_design" => AgentTasks.ArchitectureDesign,
-    "architecture_review" => AgentTasks.ArchitectureReview
+    "architecture_review" => AgentTasks.ArchitectureReview,
+    "write_bdd_specs" => AgentTasks.WriteBddSpecs
   }
 
   # Tasks that don't require a component/module_name
-  @componentless_tasks ["project_setup", "architecture_design", "architecture_review"]
+  @componentless_tasks ["project_setup", "architecture_design", "architecture_review", "write_bdd_specs"]
 
   @valid_types ["spec" | Map.keys(@session_type_map)]
 
@@ -197,7 +198,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
     {:error, "Cannot build environment without working directory"}
   end
 
-  # Session creation - stores environment in state
+  # Session creation - stores environment as embedded schema
 
   defp create_session(scope, external_id, session_module, component, environment) do
     Sessions.create_session(scope, %{
@@ -207,19 +208,16 @@ defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
       execution_mode: :manual,
       component_id: component.id,
       external_conversation_id: external_id,
-      state: %{
-        "working_dir" => environment.cwd,
-        "environment" => serialize_environment(environment)
-      }
+      environment: environment_to_map(environment)
     })
   end
 
-  defp serialize_environment(%Environment{} = env) do
+  defp environment_to_map(%Environment{} = env) do
     %{
-      "type" => to_string(env.type),
-      "cwd" => env.cwd,
-      "ref" => env.ref,
-      "metadata" => env.metadata || %{}
+      type: env.type,
+      cwd: env.cwd,
+      ref: env.ref || %{},
+      metadata: env.metadata || %{}
     }
   end
 

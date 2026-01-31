@@ -1,5 +1,6 @@
 defmodule CodeMySpec.Sessions.Session do
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Users.User
@@ -23,6 +24,7 @@ defmodule CodeMySpec.Sessions.Session do
             | nil,
           agent: :claude_code | nil,
           environment_type: :local | :vscode | :cli | nil,
+          environment: Environment.t() | nil,
           execution_mode: :manual | :auto | :agentic | nil,
           status: :active | :complete | :failed | :cancelled | nil,
           state: map() | nil,
@@ -56,6 +58,8 @@ defmodule CodeMySpec.Sessions.Session do
 
     field :state, :map
 
+    embeds_one :environment, Environment, on_replace: :update
+
     belongs_to :project, Project, type: :binary_id
     belongs_to :account, Account, type: :binary_id
     belongs_to :user, User
@@ -83,6 +87,7 @@ defmodule CodeMySpec.Sessions.Session do
       :session_id,
       :external_conversation_id
     ])
+    |> cast_embed(:environment, with: &Environment.changeset/2)
     |> validate_required([:type])
     |> put_change(:account_id, user_scope.active_account_id)
     |> put_change(:project_id, user_scope.active_project_id)

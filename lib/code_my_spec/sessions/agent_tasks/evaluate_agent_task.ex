@@ -79,7 +79,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.EvaluateAgentTask do
 
   defp build_task_session(session, working_dir_override) do
     # Session should have component and project preloaded
-    # Prefer environment from session state (set by StartAgentTask), fall back to working_dir arg
+    # Prefer environment from session (set by StartAgentTask), fall back to working_dir arg
     environment = get_environment_from_session(session, working_dir_override)
 
     {:ok,
@@ -95,42 +95,18 @@ defmodule CodeMySpec.Sessions.AgentTasks.EvaluateAgentTask do
 
   defp get_environment_from_session(session, working_dir_override) do
     cond do
-      # First: try to deserialize environment from session state
-      env_data = get_in(session.state || %{}, ["environment"]) ->
-        deserialize_environment(env_data)
+      # First: use embedded environment from session
+      session.environment && session.environment.cwd ->
+        session.environment
 
-      # Second: use working_dir from session state
-      working_dir = get_in(session.state || %{}, ["working_dir"]) ->
-        build_environment(working_dir)
-
-      # Third: use override passed in (backwards compatibility)
+      # Second: use override passed in (backwards compatibility for old sessions)
       working_dir_override ->
-        build_environment(working_dir_override)
+        Environment.new(:cli, working_dir_override)
 
       # Last resort
       true ->
-        build_environment(File.cwd!())
+        Environment.new(:cli, File.cwd!())
     end
-  end
-
-  defp deserialize_environment(%{"type" => type, "cwd" => cwd} = data) do
-    %Environment{
-      type: String.to_existing_atom(type),
-      cwd: cwd,
-      ref: data["ref"] || %{},
-      metadata: data["metadata"] || %{}
-    }
-  end
-
-  defp deserialize_environment(_), do: nil
-
-  defp build_environment(working_dir) do
-    %Environment{
-      type: :cli,
-      cwd: working_dir,
-      ref: %{working_dir: working_dir},
-      metadata: %{}
-    }
   end
 
   defp format_result({:ok, nil}), do: %{}
