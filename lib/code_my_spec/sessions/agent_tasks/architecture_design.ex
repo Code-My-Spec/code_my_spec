@@ -125,7 +125,10 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
 
     Create contexts with child schemas/modules. **Do not add story_ids to contexts.**
 
-    Naming: `#{app_name}.{Domain}` with children like `#{app_name}.{Domain}.{Entity}`
+    **ALL names must be fully qualified module names:**
+    - Context: `#{app_name}.Verification`
+    - Child: `#{app_name}.Verification.Transaction` (starts with parent context name)
+    - Nested: `#{app_name}.Verification.Photos.Metadata` (for deeper hierarchies)
 
     ### Step 4: Define Dependencies
 
@@ -159,9 +162,9 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
           "name": "#{app_name}.Verification",
           "description": "Verification workflow logic and data access",
           "children": [
-            {"name": "Transaction", "type": "schema", "description": "A transaction record"},
-            {"name": "Photo", "type": "schema", "description": "Verification photo"},
-            {"name": "Workflow", "type": "module", "description": "State machine logic"}
+            {"name": "#{app_name}.Verification.Transaction", "type": "schema", "description": "A transaction record"},
+            {"name": "#{app_name}.Verification.Photo", "type": "schema", "description": "Verification photo"},
+            {"name": "#{app_name}.Verification.Workflow", "type": "module", "description": "State machine logic"}
           ]
         }
       ],
@@ -172,7 +175,12 @@ defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
     }
     ```
 
-    Notice: `story_ids` appear ONLY on surface_components. Contexts have no story_ids.
+    **Notice:**
+    - `story_ids` appear ONLY on surface_components
+    - ALL names are fully qualified module names
+    - Contexts start with `#{app_name}.`
+    - Surface components start with `#{app_name}Web.`
+    - Children start with their parent context name (e.g., `#{app_name}.Verification.Transaction`)
 
     ### Step 6: Validate and Execute
 
