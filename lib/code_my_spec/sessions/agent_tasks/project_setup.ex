@@ -12,7 +12,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ProjectSetup do
 
   alias CodeMySpec.Environments.Environment
 
-  @required_deps [:credo, :client_utils, :mix_machine, :sobelow]
+  @required_deps [:credo, :client_utils, :mix_machine, :sobelow, :sexy_spex]
   @min_elixir_version {1, 18, 0}
 
   @doc """
@@ -471,6 +471,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ProjectSetup do
     - `:client_utils` - CodeMySpec client utilities
     - `:mix_machine` - mix task utilities (use git: "https://github.com/johns10/mix_machine")
     - `:sobelow` - security-focused static analysis
+    - `:sexy_spex` - BDD specification testing
 
     Then fetch dependencies:
     ```bash
