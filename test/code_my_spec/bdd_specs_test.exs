@@ -2,6 +2,7 @@ defmodule CodeMySpec.BddSpecsTest do
   use CodeMySpec.DataCase, async: true
 
   alias CodeMySpec.BddSpecs
+  alias CodeMySpec.Environments.Environment
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -29,6 +30,11 @@ defmodule CodeMySpec.BddSpecsTest do
     # In a real scenario, active_project.code_repo would contain the path
     project = Map.put(scope.active_project, :code_repo, dir)
     %{scope | active_project: project}
+  end
+
+  # Create an Environment struct for BddSpecs functions
+  defp create_environment(scope) do
+    %Environment{type: :local, cwd: scope.active_project.code_repo, ref: %{working_dir: scope.active_project.code_repo}}
   end
 
   defp cleanup_test_directory(scope) do
@@ -144,14 +150,13 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs(scope)
-        assert length(result) == 3
-        assert Enum.all?(result, &match?(%BddSpecs.Spec{}, &1))
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.list_specs(env)
+      assert length(result) == 3
+      assert Enum.all?(result, &match?(%BddSpecs.Spec{}, &1))
     end
 
     test "returns empty list when no specs exist" do
@@ -163,35 +168,33 @@ defmodule CodeMySpec.BddSpecsTest do
 
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs(scope)
-        assert result == []
-      after
-        File.rm_rf!(dir)
-      end
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      result = BddSpecs.list_specs(env)
+      assert result == []
     end
 
     test "returns Spec structs with scenarios and step descriptions" do
       scope = full_scope_fixture()
       specs = [{1, 1, complete_spex_content()}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        [spec] = BddSpecs.list_specs(scope)
-        assert spec.name == "complete specification"
-        assert spec.description == "A complete spec with metadata"
-        assert length(spec.scenarios) == 2
-        assert is_list(spec.tags)
+      on_exit(fn -> cleanup_test_directory(scope) end)
 
-        [scenario1, _scenario2] = spec.scenarios
-        assert scenario1.name == "first scenario"
-        assert is_list(scenario1.given_steps)
-        assert is_list(scenario1.when_steps)
-        assert is_list(scenario1.then_steps)
-      after
-        cleanup_test_directory(scope)
-      end
+      [spec] = BddSpecs.list_specs(env)
+      assert spec.name == "complete specification"
+      assert spec.description == "A complete spec with metadata"
+      assert length(spec.scenarios) == 2
+      assert is_list(spec.tags)
+
+      [scenario1, _scenario2] = spec.scenarios
+      assert scenario1.name == "first scenario"
+      assert is_list(scenario1.given_steps)
+      assert is_list(scenario1.when_steps)
+      assert is_list(scenario1.then_steps)
     end
 
     test "handles nested directory structures" do
@@ -204,18 +207,17 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs(scope)
-        assert length(result) == 3
+      on_exit(fn -> cleanup_test_directory(scope) end)
 
-        spec_names = Enum.map(result, & &1.name)
-        assert "nested spec 1" in spec_names
-        assert "nested spec 2" in spec_names
-        assert "nested spec 3" in spec_names
-      after
-        cleanup_test_directory(scope)
-      end
+      result = BddSpecs.list_specs(env)
+      assert length(result) == 3
+
+      spec_names = Enum.map(result, & &1.name)
+      assert "nested spec 1" in spec_names
+      assert "nested spec 2" in spec_names
+      assert "nested spec 3" in spec_names
     end
 
     test "respects project scope" do
@@ -223,22 +225,25 @@ defmodule CodeMySpec.BddSpecsTest do
       scope2 = full_scope_fixture()
 
       scope1 = create_test_project_with_specs(scope1, [{1, 1, valid_spex_content("scope1 spec")}])
+      env1 = create_environment(scope1)
 
       scope2 =
         create_test_project_with_specs(scope2, [{2, 2, valid_spex_content("scope2 spec")}])
 
-      try do
-        result1 = BddSpecs.list_specs(scope1)
-        result2 = BddSpecs.list_specs(scope2)
+      env2 = create_environment(scope2)
 
-        assert length(result1) == 1
-        assert length(result2) == 1
-        assert hd(result1).name == "scope1 spec"
-        assert hd(result2).name == "scope2 spec"
-      after
+      on_exit(fn ->
         cleanup_test_directory(scope1)
         cleanup_test_directory(scope2)
-      end
+      end)
+
+      result1 = BddSpecs.list_specs(env1)
+      result2 = BddSpecs.list_specs(env2)
+
+      assert length(result1) == 1
+      assert length(result2) == 1
+      assert hd(result1).name == "scope1 spec"
+      assert hd(result2).name == "scope2 spec"
     end
   end
 
@@ -258,18 +263,17 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs_for_story(scope, story.id)
-        assert length(result) == 2
+      on_exit(fn -> cleanup_test_directory(scope) end)
 
-        spec_names = Enum.map(result, & &1.name)
-        assert "story criterion 1" in spec_names
-        assert "story criterion 2" in spec_names
-        refute "other story spec" in spec_names
-      after
-        cleanup_test_directory(scope)
-      end
+      result = BddSpecs.list_specs_for_story(env, story.id)
+      assert length(result) == 2
+
+      spec_names = Enum.map(result, & &1.name)
+      assert "story criterion 1" in spec_names
+      assert "story criterion 2" in spec_names
+      refute "other story spec" in spec_names
     end
 
     test "returns empty list when story has no specs" do
@@ -279,13 +283,12 @@ defmodule CodeMySpec.BddSpecsTest do
       # Create project with specs for different story
       specs = [{999, 1, valid_spex_content("other story spec")}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs_for_story(scope, story.id)
-        assert result == []
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.list_specs_for_story(env, story.id)
+      assert result == []
     end
 
     test "extracts story_id from directory naming convention" do
@@ -297,14 +300,13 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs_for_story(scope, 42)
-        assert length(result) == 2
-        assert Enum.all?(result, &(&1.story_id == 42))
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.list_specs_for_story(env, 42)
+      assert length(result) == 2
+      assert Enum.all?(result, &(&1.story_id == 42))
     end
 
     test "handles multiple specs for same story" do
@@ -318,20 +320,19 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs_for_story(scope, 100)
-        assert length(result) == 4
-        assert Enum.all?(result, &(&1.story_id == 100))
+      on_exit(fn -> cleanup_test_directory(scope) end)
 
-        criterion_ids = Enum.map(result, & &1.criterion_id)
-        assert 1 in criterion_ids
-        assert 2 in criterion_ids
-        assert 3 in criterion_ids
-        assert 4 in criterion_ids
-      after
-        cleanup_test_directory(scope)
-      end
+      result = BddSpecs.list_specs_for_story(env, 100)
+      assert length(result) == 4
+      assert Enum.all?(result, &(&1.story_id == 100))
+
+      criterion_ids = Enum.map(result, & &1.criterion_id)
+      assert 1 in criterion_ids
+      assert 2 in criterion_ids
+      assert 3 in criterion_ids
+      assert 4 in criterion_ids
     end
   end
 
@@ -350,18 +351,17 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs_for_criterion(scope, 42)
-        assert length(result) == 2
+      on_exit(fn -> cleanup_test_directory(scope) end)
 
-        spec_names = Enum.map(result, & &1.name)
-        assert "criterion 42 spec" in spec_names
-        assert "another criterion 42" in spec_names
-        refute "criterion 99 spec" in spec_names
-      after
-        cleanup_test_directory(scope)
-      end
+      result = BddSpecs.list_specs_for_criterion(env, 42)
+      assert length(result) == 2
+
+      spec_names = Enum.map(result, & &1.name)
+      assert "criterion 42 spec" in spec_names
+      assert "another criterion 42" in spec_names
+      refute "criterion 99 spec" in spec_names
     end
 
     test "returns empty list when criterion has no specs" do
@@ -373,13 +373,12 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs_for_criterion(scope, 999)
-        assert result == []
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.list_specs_for_criterion(env, 999)
+      assert result == []
     end
 
     test "extracts criterion_id from filename convention" do
@@ -387,14 +386,13 @@ defmodule CodeMySpec.BddSpecsTest do
 
       specs = [{1, 456, valid_spex_content("test spec")}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.list_specs_for_criterion(scope, 456)
-        assert length(result) == 1
-        assert hd(result).criterion_id == 456
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.list_specs_for_criterion(env, 456)
+      assert length(result) == 1
+      assert hd(result).criterion_id == 456
     end
 
     test "handles criterion spec with multiple scenarios" do
@@ -402,15 +400,14 @@ defmodule CodeMySpec.BddSpecsTest do
 
       specs = [{1, 10, complete_spex_content()}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        [spec] = BddSpecs.list_specs_for_criterion(scope, 10)
-        assert spec.criterion_id == 10
-        assert length(spec.scenarios) == 2
-        assert spec.name == "complete specification"
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      [spec] = BddSpecs.list_specs_for_criterion(env, 10)
+      assert spec.criterion_id == 10
+      assert length(spec.scenarios) == 2
+      assert spec.name == "complete specification"
     end
   end
 
@@ -418,22 +415,23 @@ defmodule CodeMySpec.BddSpecsTest do
   # get_coverage_report/1
   # ============================================================================
 
-  describe "get_coverage_report/1" do
+  describe "get_coverage_report/2" do
     test "returns markdown formatted report" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
-      criterion_fixture(scope, story)
+      criterion = criterion_fixture(scope, story)
+      # Embed criteria in story for coverage check
+      story = %{story | criteria: [criterion]}
 
-      specs = [{story.id, 1, valid_spex_content("coverage spec")}]
+      specs = [{story.id, criterion.id, valid_spex_content("coverage spec")}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.get_coverage_report(scope)
-        assert is_binary(result)
-        assert String.contains?(result, "#")
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.get_coverage_report(env, [story])
+      assert is_binary(result)
+      assert String.contains?(result, "#")
     end
 
     test "groups specs by story" do
@@ -444,20 +442,23 @@ defmodule CodeMySpec.BddSpecsTest do
       criterion1 = criterion_fixture(scope, story1)
       criterion2 = criterion_fixture(scope, story2)
 
+      # Embed criteria in stories
+      story1 = %{story1 | criteria: [criterion1]}
+      story2 = %{story2 | criteria: [criterion2]}
+
       specs = [
         {story1.id, criterion1.id, valid_spex_content("story1 spec")},
         {story2.id, criterion2.id, valid_spex_content("story2 spec")}
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.get_coverage_report(scope)
-        assert String.contains?(result, "Story One")
-        assert String.contains?(result, "Story Two")
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.get_coverage_report(env, [story1, story2])
+      assert String.contains?(result, "Story One")
+      assert String.contains?(result, "Story Two")
     end
 
     test "shows criteria coverage within each story" do
@@ -465,59 +466,61 @@ defmodule CodeMySpec.BddSpecsTest do
       story = story_fixture(scope)
 
       criterion1 = criterion_fixture(scope, story, %{description: "Criterion with spec"})
-      criterion_fixture(scope, story, %{description: "Criterion without spec"})
+      criterion2 = criterion_fixture(scope, story, %{description: "Criterion without spec"})
+
+      # Embed criteria in story
+      story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [{story.id, criterion1.id, valid_spex_content("covered criterion")}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.get_coverage_report(scope)
-        assert String.contains?(result, "Criterion with spec")
-        assert String.contains?(result, "Criterion without spec")
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.get_coverage_report(env, [story])
+      assert String.contains?(result, "Criterion with spec")
+      assert String.contains?(result, "Criterion without spec")
     end
 
     test "indicates missing coverage with clear markers" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
-      criterion_fixture(scope, story)
+      criterion = criterion_fixture(scope, story)
+      story = %{story | criteria: [criterion]}
 
       # Create project but no specs
       dir = Path.join(System.tmp_dir!(), "no_coverage_#{System.unique_integer([:positive])}")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.get_coverage_report(scope)
-        assert is_binary(result)
-        # Should contain some marker for missing coverage
-        assert String.contains?(result, "❌") or
-                 String.contains?(result, "missing") or
-                 String.contains?(result, "0")
-      after
-        File.rm_rf!(dir)
-      end
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      result = BddSpecs.get_coverage_report(env, [story])
+      assert is_binary(result)
+      # Should contain some marker for missing coverage
+      assert String.contains?(result, "❌") or
+               String.contains?(result, "missing") or
+               String.contains?(result, "0")
     end
 
     test "includes summary statistics" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
       criterion1 = criterion_fixture(scope, story)
-      criterion_fixture(scope, story)
+      criterion2 = criterion_fixture(scope, story)
+      story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [{story.id, criterion1.id, valid_spex_content("spec")}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.get_coverage_report(scope)
-        # Should contain some form of statistics
-        assert String.contains?(result, "1") or String.contains?(result, "50")
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.get_coverage_report(env, [story])
+      # Should contain some form of statistics
+      assert String.contains?(result, "1") or String.contains?(result, "50")
     end
   end
 
@@ -532,6 +535,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
       criterion1 = criterion_fixture(scope, story)
       criterion2 = criterion_fixture(scope, story)
+      story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [
         {story.id, criterion1.id, valid_spex_content("covered 1")},
@@ -539,18 +543,17 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.check_story_coverage(scope, story)
-        assert is_map(result)
-        assert Map.has_key?(result, :covered)
-        assert Map.has_key?(result, :missing)
+      on_exit(fn -> cleanup_test_directory(scope) end)
 
-        assert criterion1.id in result.covered
-        assert criterion2.id in result.covered
-      after
-        cleanup_test_directory(scope)
-      end
+      result = BddSpecs.check_story_coverage(env, story)
+      assert is_map(result)
+      assert Map.has_key?(result, :covered)
+      assert Map.has_key?(result, :missing)
+
+      assert criterion1.id in result.covered
+      assert criterion2.id in result.covered
     end
 
     test "returns missing criteria IDs without specs" do
@@ -559,18 +562,18 @@ defmodule CodeMySpec.BddSpecsTest do
 
       criterion1 = criterion_fixture(scope, story)
       criterion2 = criterion_fixture(scope, story)
+      story = %{story | criteria: [criterion1, criterion2]}
 
       # Only create spec for criterion1
       specs = [{story.id, criterion1.id, valid_spex_content("only one")}]
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.check_story_coverage(scope, story)
-        assert criterion1.id in result.covered
-        assert criterion2.id in result.missing
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.check_story_coverage(env, story)
+      assert criterion1.id in result.covered
+      assert criterion2.id in result.missing
     end
 
     test "handles story with full coverage (empty missing list)" do
@@ -579,6 +582,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
       criterion1 = criterion_fixture(scope, story)
       criterion2 = criterion_fixture(scope, story)
+      story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [
         {story.id, criterion1.id, valid_spex_content("spec 1")},
@@ -586,14 +590,13 @@ defmodule CodeMySpec.BddSpecsTest do
       ]
 
       scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.check_story_coverage(scope, story)
-        assert result.missing == []
-        assert length(result.covered) == 2
-      after
-        cleanup_test_directory(scope)
-      end
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.check_story_coverage(env, story)
+      assert result.missing == []
+      assert length(result.covered) == 2
     end
 
     test "handles story with no specs (empty covered list)" do
@@ -602,40 +605,40 @@ defmodule CodeMySpec.BddSpecsTest do
 
       criterion1 = criterion_fixture(scope, story)
       criterion2 = criterion_fixture(scope, story)
+      story = %{story | criteria: [criterion1, criterion2]}
 
       # Create project but no specs
       dir = Path.join(System.tmp_dir!(), "no_specs_#{System.unique_integer([:positive])}")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.check_story_coverage(scope, story)
-        assert result.covered == []
-        assert criterion1.id in result.missing
-        assert criterion2.id in result.missing
-      after
-        File.rm_rf!(dir)
-      end
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      result = BddSpecs.check_story_coverage(env, story)
+      assert result.covered == []
+      assert criterion1.id in result.missing
+      assert criterion2.id in result.missing
     end
 
     test "handles story with no criteria" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
+      story = %{story | criteria: []}
 
       # Create project but no specs
       dir = Path.join(System.tmp_dir!(), "no_criteria_#{System.unique_integer([:positive])}")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
+      env = create_environment(scope)
 
-      try do
-        result = BddSpecs.check_story_coverage(scope, story)
-        assert result.covered == []
-        assert result.missing == []
-      after
-        File.rm_rf!(dir)
-      end
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      result = BddSpecs.check_story_coverage(env, story)
+      assert result.covered == []
+      assert result.missing == []
     end
   end
 
@@ -643,62 +646,45 @@ defmodule CodeMySpec.BddSpecsTest do
   # validate_spec_syntax/2
   # ============================================================================
 
-  describe "validate_spec_syntax/2" do
+  describe "validate_spec_syntax/1" do
     test "returns :ok for valid Spex syntax" do
-      scope = full_scope_fixture()
-
       dir = Path.join(System.tmp_dir!(), "valid_syntax_#{System.unique_integer([:positive])}")
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "valid_spex.exs")
       File.write!(file_path, valid_spex_content())
+      on_exit(fn -> File.rm_rf!(dir) end)
 
-      try do
-        result = BddSpecs.validate_spec_syntax(scope, file_path)
-        assert result == :ok
-      after
-        File.rm_rf!(dir)
-      end
+      result = BddSpecs.validate_spec_syntax(file_path)
+      assert result == :ok
     end
 
     test "returns {:error, reasons} for missing spex macro" do
-      scope = full_scope_fixture()
-
       dir = Path.join(System.tmp_dir!(), "no_spex_#{System.unique_integer([:positive])}")
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "no_spex.exs")
       File.write!(file_path, invalid_spex_content_no_spex_macro())
+      on_exit(fn -> File.rm_rf!(dir) end)
 
-      try do
-        result = BddSpecs.validate_spec_syntax(scope, file_path)
-        assert {:error, reasons} = result
-        assert is_list(reasons)
-        assert Enum.any?(reasons, &String.contains?(&1, "spex"))
-      after
-        File.rm_rf!(dir)
-      end
+      result = BddSpecs.validate_spec_syntax(file_path)
+      assert {:error, reasons} = result
+      assert is_list(reasons)
+      assert Enum.any?(reasons, &String.contains?(&1, "spex"))
     end
 
     test "returns {:error, reasons} for malformed scenarios" do
-      scope = full_scope_fixture()
-
       dir = Path.join(System.tmp_dir!(), "malformed_#{System.unique_integer([:positive])}")
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "malformed.exs")
       File.write!(file_path, invalid_spex_content_malformed_scenario())
+      on_exit(fn -> File.rm_rf!(dir) end)
 
-      try do
-        result = BddSpecs.validate_spec_syntax(scope, file_path)
-        # Malformed scenarios might pass or fail depending on validation strictness
-        # At minimum, it should not crash
-        assert result == :ok or match?({:error, _}, result)
-      after
-        File.rm_rf!(dir)
-      end
+      result = BddSpecs.validate_spec_syntax(file_path)
+      # Malformed scenarios might pass or fail depending on validation strictness
+      # At minimum, it should not crash
+      assert result == :ok or match?({:error, _}, result)
     end
 
     test "validates given_/when_/then_ step structure" do
-      scope = full_scope_fixture()
-
       valid_content = """
       defmodule ValidStepsSpex do
         use SexySpex
@@ -725,25 +711,112 @@ defmodule CodeMySpec.BddSpecsTest do
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "valid_steps.exs")
       File.write!(file_path, valid_content)
+      on_exit(fn -> File.rm_rf!(dir) end)
 
-      try do
-        result = BddSpecs.validate_spec_syntax(scope, file_path)
-        assert result == :ok
-      after
-        File.rm_rf!(dir)
-      end
+      result = BddSpecs.validate_spec_syntax(file_path)
+      assert result == :ok
     end
 
     test "handles file not found errors" do
-      scope = full_scope_fixture()
-
       nonexistent_path =
         "/tmp/nonexistent_spec_#{System.unique_integer([:positive])}/not_here.exs"
 
-      result = BddSpecs.validate_spec_syntax(scope, nonexistent_path)
+      result = BddSpecs.validate_spec_syntax(nonexistent_path)
       assert {:error, reasons} = result
       assert is_list(reasons)
       assert Enum.any?(reasons, &String.contains?(&1, "not found"))
+    end
+  end
+
+  # ============================================================================
+  # get_next_incomplete_story/2
+  # ============================================================================
+
+  describe "get_next_incomplete_story/2" do
+    test "returns highest priority story with missing specs" do
+      scope = full_scope_fixture()
+
+      # Create stories with different priorities
+      story1 = story_fixture(scope, %{title: "Low Priority Story", priority: 3})
+      story2 = story_fixture(scope, %{title: "High Priority Story", priority: 1})
+      story3 = story_fixture(scope, %{title: "Medium Priority Story", priority: 2})
+
+      # Add criteria to each story (stored in database)
+      _criterion1 = criterion_fixture(scope, story1)
+      _criterion2 = criterion_fixture(scope, story2)
+      _criterion3 = criterion_fixture(scope, story3)
+
+      # Create project with NO specs (all stories incomplete)
+      dir = Path.join(System.tmp_dir!(), "priority_test_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(dir, "test/spex"))
+      project = Map.put(scope.active_project, :code_repo, dir)
+      scope = %{scope | active_project: project}
+      env = create_environment(scope)
+
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      # Should return highest priority story (priority 1)
+      result = BddSpecs.get_next_incomplete_story(env, scope)
+      assert result.id == story2.id
+      assert result.title == "High Priority Story"
+    end
+
+    test "returns nil when all stories have complete coverage" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+      criterion = criterion_fixture(scope, story)
+
+      # Create project WITH spec for the criterion
+      specs = [{story.id, criterion.id, valid_spex_content("complete spec")}]
+      scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
+
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.get_next_incomplete_story(env, scope)
+      assert result == nil
+    end
+
+    test "skips stories with full coverage and returns first incomplete" do
+      scope = full_scope_fixture()
+
+      # Story with complete coverage
+      story1 = story_fixture(scope, %{title: "Complete Story", priority: 1})
+      criterion1 = criterion_fixture(scope, story1)
+
+      # Story with incomplete coverage
+      story2 = story_fixture(scope, %{title: "Incomplete Story", priority: 2})
+      _criterion2 = criterion_fixture(scope, story2)
+
+      # Create spec only for story1
+      specs = [{story1.id, criterion1.id, valid_spex_content("story1 spec")}]
+      scope = create_test_project_with_specs(scope, specs)
+      env = create_environment(scope)
+
+      on_exit(fn -> cleanup_test_directory(scope) end)
+
+      result = BddSpecs.get_next_incomplete_story(env, scope)
+      assert result.id == story2.id
+      assert result.title == "Incomplete Story"
+    end
+
+    test "handles story with no criteria" do
+      scope = full_scope_fixture()
+      # Story created without any criteria (don't call criterion_fixture)
+      _story = story_fixture(scope, %{title: "No Criteria Story"})
+
+      # Create project
+      dir = Path.join(System.tmp_dir!(), "no_criteria_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(dir, "test/spex"))
+      project = Map.put(scope.active_project, :code_repo, dir)
+      scope = %{scope | active_project: project}
+      env = create_environment(scope)
+
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      # Story with no criteria is considered complete (no missing specs)
+      result = BddSpecs.get_next_incomplete_story(env, scope)
+      assert result == nil
     end
   end
 
@@ -762,7 +835,9 @@ defmodule CodeMySpec.BddSpecsTest do
       assert is_binary(result)
       assert String.contains?(result, "test/spex")
       assert String.contains?(result, "#{story.id}_")
-      assert String.contains?(result, "criterion_#{criterion.id}_spex.exs")
+      # Filename includes criterion ID and slugified description
+      assert String.contains?(result, "criterion_#{criterion.id}_")
+      assert String.ends_with?(result, "_spex.exs")
     end
 
     test "slugifies story title for directory name" do
@@ -793,7 +868,9 @@ defmodule CodeMySpec.BddSpecsTest do
 
       result = BddSpecs.spec_file_path(story, criterion)
 
-      assert String.ends_with?(result, "criterion_#{criterion.id}_spex.exs")
+      # Filename is criterion_<id>_<slug>_spex.exs
+      assert String.contains?(result, "criterion_#{criterion.id}_")
+      assert String.ends_with?(result, "_spex.exs")
     end
 
     test "produces valid filesystem path" do

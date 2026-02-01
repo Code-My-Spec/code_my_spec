@@ -7,6 +7,8 @@ defmodule CodeMySpec.BddSpecs.Parser do
   and steps populated. Does not execute specs - only extracts structure for analysis and rendering.
   """
 
+  require Logger
+
   alias CodeMySpec.BddSpecs.Spec
   alias CodeMySpec.BddSpecs.Scenario
 
@@ -173,19 +175,28 @@ defmodule CodeMySpec.BddSpecs.Parser do
   @spec derive_story_id(String.t()) :: integer() | nil
   def derive_story_id(file_path) do
     dirname = file_path |> Path.dirname() |> Path.basename()
+    Logger.debug("[Parser] derive_story_id: file_path=#{file_path}, dirname=#{dirname}")
 
     # Try to match pattern like "test_<unique>_<story_id>_<description>"
     # or "<story_id>_<description>" by finding the last number before underscore+text
-    case Regex.scan(~r/(\d+)_(?:[a-z]|$)/, dirname) do
+    matches = Regex.scan(~r/(\d+)_(?:[a-z]|$)/, dirname)
+    Logger.debug("[Parser] derive_story_id: regex matches=#{inspect(matches)}")
+
+    case matches do
       [] ->
+        Logger.debug("[Parser] derive_story_id: no matches, returning nil")
         nil
 
       matches ->
         # Get the last match (which would be the story_id in test_<unique>_<story_id>_ pattern)
-        matches
-        |> List.last()
-        |> Enum.at(1)
-        |> String.to_integer()
+        result =
+          matches
+          |> List.last()
+          |> Enum.at(1)
+          |> String.to_integer()
+
+        Logger.debug("[Parser] derive_story_id: extracted story_id=#{result}")
+        result
     end
   end
 
@@ -193,6 +204,9 @@ defmodule CodeMySpec.BddSpecs.Parser do
   Extract criterion ID from file name using naming convention.
 
   ## Examples
+
+      iex> derive_criterion_id("/path/to/criterion_123_valid_credentials_spex.exs")
+      123
 
       iex> derive_criterion_id("/path/to/criterion_123_spex.exs")
       123
@@ -204,7 +218,7 @@ defmodule CodeMySpec.BddSpecs.Parser do
   def derive_criterion_id(file_path) do
     file_path
     |> Path.basename()
-    |> extract_id_from_pattern(~r/^criterion_(\d+)_spex\.exs$/)
+    |> extract_id_from_pattern(~r/^criterion_(\d+)_.*spex\.exs$/)
   end
 
   # ============================================================================

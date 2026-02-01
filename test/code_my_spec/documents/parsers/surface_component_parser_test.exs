@@ -66,7 +66,7 @@ defmodule CodeMySpec.Documents.Parsers.SurfaceComponentParserTest do
 
       [component] = parse_markdown(markdown)
 
-      assert component.type == "live"
+      assert component.type == "liveview"
     end
 
     test "parses multiple surface components" do
