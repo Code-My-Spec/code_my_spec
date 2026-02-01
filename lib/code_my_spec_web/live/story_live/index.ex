@@ -46,7 +46,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
                 {story.title}
               </h2>
               <div
-                :if={is_nil(story.component)}
+                :if={is_nil(story.component_id)}
                 class="alert alert-warning py-1 px-3 flex items-center gap-2"
               >
                 <.icon name="hero-exclamation-triangle" class="h-4 w-4" />
@@ -81,10 +81,10 @@ defmodule CodeMySpecWeb.StoryLive.Index do
               </div>
             </div>
 
-            <div :if={!is_nil(story.component)} class="mb-4">
+            <div :if={story.component_id} class="mb-4">
               <div class="text-sm text-base-content/60">
                 <span class="font-semibold">Component:</span>
-                {story.component.name}
+                <span class="font-mono text-xs">{String.slice(story.component_id, 0, 8)}...</span>
               </div>
             </div>
 

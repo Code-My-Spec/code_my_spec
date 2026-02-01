@@ -108,7 +108,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
         asc_nulls_last: s.priority,
         asc: s.title
       ],
-      preload: [:component, :criteria, :tags]
+      preload: [:criteria, :tags]
     )
     |> Repo.all()
   end

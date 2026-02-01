@@ -46,16 +46,16 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
 
                 <div class="flex items-center gap-4">
                   <div
-                    :if={is_nil(story.component)}
+                    :if={is_nil(story.component_id)}
                     class="badge badge-warning badge-sm"
                   >
                     No Component
                   </div>
                   <div
-                    :if={story.component}
-                    class="badge badge-outline badge-sm"
+                    :if={story.component_id}
+                    class="badge badge-outline badge-sm font-mono text-xs"
                   >
-                    {story.component.name}
+                    {String.slice(story.component_id, 0, 8)}...
                   </div>
                   <div class="text-right text-sm text-base-content/60">
                     <div>Criteria: {length(story.criteria)}</div>
