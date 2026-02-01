@@ -268,6 +268,33 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
         assert is_list(errors)
       end)
     end
+
+    test "returns {:ok, :valid} when only spex files were edited (not validated yet)", %{
+      tmp_dir: tmp_dir
+    } do
+      session_id = generate_session_id()
+      spex_file = Path.join(tmp_dir, "test/spex/user_login_spex.exs")
+      File.mkdir_p!(Path.dirname(spex_file))
+
+      # Write a spex file - content doesn't matter since we skip validation
+      File.write!(spex_file, """
+      defmodule UserLoginSpex do
+        use Spex
+
+        spex "User can log in" do
+          scenario "valid credentials" do
+            given "a registered user"
+            when_ "user enters valid credentials"
+            then_ "user is logged in"
+          end
+        end
+      end
+      """)
+
+      track_edit(session_id, spex_file)
+
+      assert {:ok, :valid} = ValidateEdits.run(session_id)
+    end
   end
 
   # ============================================================================
@@ -460,6 +487,38 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
     test "returns false for files without extension" do
       refute ValidateEdits.elixir_file?("/path/to/Makefile")
       refute ValidateEdits.elixir_file?("Dockerfile")
+    end
+
+    test "returns false for spex files (BDD specs)" do
+      refute ValidateEdits.elixir_file?("/test/spex/user_login_spex.exs")
+      refute ValidateEdits.elixir_file?("/test/spex/42_story/criterion_1_spex.exs")
+      refute ValidateEdits.elixir_file?("my_feature_spex.exs")
+    end
+  end
+
+  # ============================================================================
+  # spex_file?/1 Tests
+  # ============================================================================
+
+  describe "spex_file?/1" do
+    test "returns true for paths ending in _spex.exs" do
+      assert ValidateEdits.spex_file?("/test/spex/user_login_spex.exs")
+      assert ValidateEdits.spex_file?("/test/spex/42_story/criterion_1_spex.exs")
+      assert ValidateEdits.spex_file?("my_feature_spex.exs")
+    end
+
+    test "returns false for regular test files" do
+      refute ValidateEdits.spex_file?("/test/my_module_test.exs")
+      refute ValidateEdits.spex_file?("/test/support/helpers.exs")
+    end
+
+    test "returns false for lib files" do
+      refute ValidateEdits.spex_file?("/lib/my_module.ex")
+      refute ValidateEdits.spex_file?("/lib/spex/runner.ex")
+    end
+
+    test "returns false for spec.md files" do
+      refute ValidateEdits.spex_file?("/docs/spec/my_module.spec.md")
     end
   end
 

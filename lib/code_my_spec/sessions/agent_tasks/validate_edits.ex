@@ -141,7 +141,13 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEdits do
 
   @spec elixir_file?(Path.t()) :: boolean()
   def elixir_file?(file_path) do
-    String.ends_with?(file_path, ".ex") or String.ends_with?(file_path, ".exs")
+    (String.ends_with?(file_path, ".ex") or String.ends_with?(file_path, ".exs")) and
+      not spex_file?(file_path)
+  end
+
+  @spec spex_file?(Path.t()) :: boolean()
+  def spex_file?(file_path) do
+    String.ends_with?(file_path, "_spex.exs")
   end
 
   # Extract spec validation errors as a list of strings
