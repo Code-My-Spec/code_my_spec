@@ -49,26 +49,23 @@ defmodule CodeMySpec.StoriesTest do
       assert is_nil(updated_story.component_id)
     end
 
-    test "set_story_component/3 with invalid scope raises" do
+    test "set_story_component/3 with invalid scope returns unauthorized error" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
       story = story_fixture(scope)
       component = component_fixture(scope)
 
-      assert_raise MatchError, fn ->
-        Stories.set_story_component(other_scope, story, component.id)
-      end
+      assert {:error, :unauthorized} =
+               Stories.set_story_component(other_scope, story, component.id)
     end
 
-    test "clear_story_component/2 with invalid scope raises" do
+    test "clear_story_component/2 with invalid scope returns unauthorized error" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
       component = component_fixture(scope)
       story = story_fixture(scope, %{component_id: component.id})
 
-      assert_raise MatchError, fn ->
-        Stories.clear_story_component(other_scope, story)
-      end
+      assert {:error, :unauthorized} = Stories.clear_story_component(other_scope, story)
     end
 
     test "list_unsatisfied_stories/1 returns stories without components" do

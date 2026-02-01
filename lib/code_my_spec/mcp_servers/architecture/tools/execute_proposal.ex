@@ -38,12 +38,16 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
          {:ok, _validated} <- Proposal.validate(proposal, story_ids: story_ids) do
       Environments.destroy(env)
 
+      Logger.debug("[ExecuteProposal] Calling Proposal.execute")
       case Proposal.execute(proposal, scope, dry_run: dry_run, working_dir: working_dir) do
         {:ok, result} ->
+          Logger.info("[ExecuteProposal] Execution succeeded: #{inspect(result)}")
           response = format_success(result, dry_run)
+          Logger.debug("[ExecuteProposal] Returning response")
           {:reply, response, frame}
 
         {:error, reason} ->
+          Logger.error("[ExecuteProposal] Execution failed: #{inspect(reason)}")
           {:reply, ArchitectureMapper.error("Execution failed: #{inspect(reason)}"), frame}
       end
     else

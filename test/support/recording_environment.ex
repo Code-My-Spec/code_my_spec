@@ -84,9 +84,11 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   end
 
   @impl true
-  def write_file(_env, path, content) do
-    with :ok <- ensure_parent_directory(path) do
-      File.write(path, content)
+  def write_file(env, path, content) do
+    resolved_path = resolve_path(path, env.cwd)
+
+    with :ok <- ensure_parent_directory(resolved_path) do
+      File.write(resolved_path, content)
     end
   end
 

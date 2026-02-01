@@ -214,14 +214,14 @@ defmodule CodeMySpec.Documents.Registry do
   - Surface components are LiveViews, Controllers, or Plugs (the UI layer)
   - Module names must start with AppNameWeb (e.g., MyAppWeb.DashboardLive)
   - Stories field lists story IDs that this surface handles (for dual mapping)
-  - Type should be: live, controller, or module
+  - Type should be: liveview, controller, or module
 
   Example:
   ## Surface Components
 
   ### MyAppWeb.DashboardLive
 
-  - **Type:** live
+  - **Type:** liveview
   - **Description:** Main dashboard showing account overview
   - **Stories:** 1, 2
   """

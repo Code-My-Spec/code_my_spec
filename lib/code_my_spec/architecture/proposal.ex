@@ -11,8 +11,11 @@ defmodule CodeMySpec.Architecture.Proposal do
   Use `validate/1` to check for issues before `execute/2`.
   """
 
+  require Logger
+
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
+  alias CodeMySpec.Stories
 
   defstruct [
     :app_name,
@@ -128,7 +131,9 @@ defmodule CodeMySpec.Architecture.Proposal do
       []
       |> check_naming_conventions(proposal)
       |> check_naming_hierarchy(proposal)
-      |> check_dual_story_mapping(proposal, all_story_ids)
+      |> check_consecutive_capitals(proposal)
+      |> check_invalid_types(proposal)
+      |> check_story_surface_mapping(proposal, all_story_ids)
       |> check_dependency_cycles(proposal)
       |> check_duplicate_names(proposal)
 
@@ -332,62 +337,33 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
-  defp check_dual_story_mapping(errors, _proposal, all_story_ids) when all_story_ids == [] do
+  defp check_story_surface_mapping(errors, _proposal, all_story_ids) when all_story_ids == [] do
     errors
   end
 
-  defp check_dual_story_mapping(errors, proposal, all_story_ids) do
-    # Stories mapped to surface components (LiveViews, Controllers)
+  defp check_story_surface_mapping(errors, proposal, all_story_ids) do
+    # Stories must be mapped to surface components (LiveViews, Controllers)
+    # This is required for BDD spec generation - we test user behavior at the surface level
     surface_mapped =
       proposal.surface_components
       |> Enum.flat_map(fn comp -> Map.get(comp, :story_ids, []) end)
       |> MapSet.new()
 
-    # Stories mapped to contexts or their children
-    context_mapped =
-      proposal.contexts
-      |> Enum.flat_map(fn ctx ->
-        own_ids = Map.get(ctx, :story_ids, [])
-        child_ids = ctx.children |> Enum.flat_map(&Map.get(&1, :story_ids, []))
-        own_ids ++ child_ids
-      end)
-      |> MapSet.new()
-
     all_ids = MapSet.new(all_story_ids)
-
-    # Each story must be mapped to BOTH surface AND context
     missing_surface = MapSet.difference(all_ids, surface_mapped) |> MapSet.to_list()
-    missing_context = MapSet.difference(all_ids, context_mapped) |> MapSet.to_list()
 
-    errors
-    |> add_missing_surface_error(missing_surface)
-    |> add_missing_context_error(missing_context)
-  end
-
-  defp add_missing_surface_error(errors, []), do: errors
-
-  defp add_missing_surface_error(errors, missing) do
-    [
-      %{
-        type: :stories_missing_surface,
-        message: "Each story must be mapped to a surface component (LiveView/Controller)",
-        details: %{story_ids: missing}
-      }
-      | errors
-    ]
-  end
-
-  defp add_missing_context_error(errors, []), do: errors
-
-  defp add_missing_context_error(errors, missing) do
-    [
-      %{
-        type: :stories_missing_context,
-        message: "Each story must be mapped to a context or context child",
-        details: %{story_ids: missing}
-      }
-      | errors
-    ]
+    if missing_surface == [] do
+      errors
+    else
+      [
+        %{
+          type: :stories_missing_surface,
+          message: "Each story must be mapped to a surface component (LiveView/Controller)",
+          details: %{story_ids: missing_surface}
+        }
+        | errors
+      ]
+    end
   end
 
   defp check_dependency_cycles(errors, proposal) do
@@ -430,6 +406,86 @@ defmodule CodeMySpec.Architecture.Proposal do
           type: :duplicate_names,
           message: "Duplicate component names found",
           details: %{names: duplicates}
+        }
+        | errors
+      ]
+    end
+  end
+
+  defp check_consecutive_capitals(errors, proposal) do
+    # Consecutive capitals like "LLM" become "l_l_m" via Macro.underscore/1
+    # If you want "llm", name it "Llm" instead
+    all_names = collect_all_component_names(proposal)
+
+    with_consecutive =
+      all_names
+      |> Enum.filter(&has_consecutive_capitals?/1)
+
+    if with_consecutive == [] do
+      errors
+    else
+      [
+        %{
+          type: :consecutive_capitals,
+          message:
+            "Module names with consecutive capitals will underscore each letter (e.g., LLM -> l_l_m.ex). Use Llm for llm.ex",
+          details: %{names: with_consecutive}
+        }
+        | errors
+      ]
+    end
+  end
+
+  defp collect_all_component_names(proposal) do
+    context_names = Enum.map(proposal.contexts, & &1.name)
+
+    child_names =
+      proposal.contexts
+      |> Enum.flat_map(fn ctx -> Enum.map(ctx.children, & &1.name) end)
+
+    surface_names = Enum.map(proposal.surface_components, & &1.name)
+
+    context_names ++ child_names ++ surface_names
+  end
+
+  defp has_consecutive_capitals?(name) do
+    # Check each segment of the module name for consecutive capitals
+    name
+    |> String.split(".")
+    |> Enum.any?(fn segment ->
+      # Match 2+ consecutive uppercase letters
+      Regex.match?(~r/[A-Z]{2,}/, segment)
+    end)
+  end
+
+  @valid_types ~w(context schema module liveview controller component channel plug)
+
+  defp check_invalid_types(errors, proposal) do
+    # Collect all types from children and surface components
+    child_types =
+      proposal.contexts
+      |> Enum.flat_map(fn ctx ->
+        Enum.map(ctx.children, fn child -> {child.name, child.type} end)
+      end)
+
+    surface_types =
+      Enum.map(proposal.surface_components, fn comp -> {comp.name, comp.type} end)
+
+    all_typed = child_types ++ surface_types
+
+    invalid =
+      all_typed
+      |> Enum.reject(fn {_name, type} -> type in @valid_types end)
+      |> Enum.map(fn {name, type} -> "#{name} has invalid type '#{type}'" end)
+
+    if invalid == [] do
+      errors
+    else
+      [
+        %{
+          type: :invalid_type,
+          message: "Component types must be one of: #{Enum.join(@valid_types, ", ")}",
+          details: %{invalid: invalid}
         }
         | errors
       ]
@@ -515,20 +571,77 @@ defmodule CodeMySpec.Architecture.Proposal do
 
       case file_results do
         {:ok, created_components} ->
-          # Sync to database
-          Enum.each(created_components, &sync_component_to_db(scope, &1))
+          # Sync to database and link stories to surface components
+          Logger.debug("[Proposal] Starting sync_and_link_components with #{length(created_components)} components")
+          linked_count = sync_and_link_components(scope, created_components)
+          Logger.debug("[Proposal] sync_and_link_components complete, linked_count: #{linked_count}")
 
-          {:ok,
+          result = {:ok,
            %{
              created_contexts: Enum.count(proposal.contexts),
              created_components: length(created_components),
-             linked_stories: count_linked_stories(proposal)
+             linked_stories: linked_count
            }}
+          Logger.info("[Proposal] Execution complete: #{inspect(result)}")
+          result
 
         {:error, reason} ->
           {:error, reason}
       end
     end
+  end
+
+  defp sync_and_link_components(scope, components) do
+    # Sync all components to database and collect surface components with their story mappings
+    Logger.debug("[Proposal] sync_and_link_components: #{length(components)} components")
+
+    components
+    |> Enum.reduce(0, fn comp_attrs, linked_count ->
+      Logger.debug("[Proposal] Processing component: #{comp_attrs.module_name}, type: #{comp_attrs.type}")
+
+      case sync_component_to_db(scope, comp_attrs) do
+        %{id: component_id} = component ->
+          Logger.debug("[Proposal] Component synced: #{component.module_name} -> id=#{component_id}")
+
+          # Link stories to surface components (liveview, controller)
+          # Handle "(existing)" suffix in type (e.g., "liveview (existing)")
+          base_type = comp_attrs.type |> String.split(" ") |> hd()
+          if base_type in ["liveview", "controller"] do
+            story_ids = Map.get(comp_attrs, :story_ids, [])
+            Logger.info("[Proposal] Linking #{length(story_ids)} stories to #{comp_attrs.module_name}: #{inspect(story_ids)}")
+            link_stories_to_component(scope, story_ids, component_id)
+            linked_count + length(story_ids)
+          else
+            linked_count
+          end
+
+        {:error, reason} ->
+          Logger.error("[Proposal] Failed to sync component #{comp_attrs.module_name}: #{inspect(reason)}")
+          linked_count
+
+        other ->
+          Logger.error("[Proposal] Unexpected return from sync_component_to_db: #{inspect(other)}")
+          linked_count
+      end
+    end)
+  end
+
+  defp link_stories_to_component(scope, story_ids, component_id) do
+    Enum.each(story_ids, fn story_id ->
+      case Stories.get_story(scope, story_id) do
+        nil ->
+          Logger.warning("[Proposal] Story #{story_id} not found for scope project #{inspect(scope.active_project_id)}")
+
+        story ->
+          case Stories.set_story_component(scope, story, component_id) do
+            {:ok, _updated} ->
+              Logger.debug("[Proposal] Linked story #{story_id} to component #{component_id}")
+
+            {:error, reason} ->
+              Logger.error("[Proposal] Failed to link story #{story_id}: #{inspect(reason)}")
+          end
+      end
+    end)
   end
 
   defp sync_component_to_db(scope, attrs) do

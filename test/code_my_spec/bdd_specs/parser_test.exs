@@ -191,81 +191,60 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
   describe "parse_file/1" do
     test "returns {:ok, spec} for valid Spex DSL file" do
       path = temp_spex_file(valid_minimal_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, %Spec{}} = Parser.parse_file(path)
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, %Spec{}} = Parser.parse_file(path)
     end
 
     test "extracts spec name from spex macro first argument" do
       path = temp_spex_file(valid_minimal_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert spec.name == "minimal spec"
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert spec.name == "minimal spec"
     end
 
     test "extracts description from spex options keyword list" do
       path = temp_spex_file(valid_complete_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert spec.description == "A complete spec with all metadata fields"
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert spec.description == "A complete spec with all metadata fields"
     end
 
     test "extracts tags from spex options keyword list" do
       path = temp_spex_file(valid_complete_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert :integration in spec.tags
-        assert :authentication in spec.tags
-        assert length(spec.tags) == 2
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert :integration in spec.tags
+      assert :authentication in spec.tags
+      assert length(spec.tags) == 2
     end
 
     test "finds all scenario blocks within spex" do
       path = temp_spex_file(valid_complete_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert length(spec.scenarios) == 2
-        scenario_names = Enum.map(spec.scenarios, & &1.name)
-        assert "user authentication flow" in scenario_names
-        assert "logout functionality" in scenario_names
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert length(spec.scenarios) == 2
+      scenario_names = Enum.map(spec.scenarios, & &1.name)
+      assert "user authentication flow" in scenario_names
+      assert "logout functionality" in scenario_names
     end
 
     test "returns error for file with no spex macro" do
       path = temp_spex_file(file_without_spex_macro())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, _reason} = Parser.parse_file(path)
-      after
-        cleanup_file(path)
-      end
+      assert {:error, _reason} = Parser.parse_file(path)
     end
 
     test "returns error for invalid Elixir syntax" do
       path = temp_spex_file(file_with_syntax_error())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, _reason} = Parser.parse_file(path)
-      after
-        cleanup_file(path)
-      end
+      assert {:error, _reason} = Parser.parse_file(path)
     end
 
     test "returns error for non-existent file" do
@@ -275,47 +254,35 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
 
     test "extracts story_id from directory pattern {story_id}_*" do
       path = temp_story_criterion_file(valid_minimal_spex(), 123, 1)
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert spec.story_id == 123
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert spec.story_id == 123
     end
 
     test "extracts criterion_id from filename pattern criterion_{id}_spex.exs" do
       path = temp_story_criterion_file(valid_minimal_spex(), 123, 456)
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert spec.criterion_id == 456
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert spec.criterion_id == 456
     end
 
     test "handles spex files without story/criterion linking" do
       path = temp_spex_file(valid_minimal_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert is_nil(spec.story_id)
-        assert is_nil(spec.criterion_id)
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert is_nil(spec.story_id)
+      assert is_nil(spec.criterion_id)
     end
 
     test "preserves file path in returned Spec struct" do
       path = temp_spex_file(valid_minimal_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert spec.file_path == path
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert spec.file_path == path
     end
   end
 
@@ -599,72 +566,54 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
   describe "validate_syntax/1" do
     test "returns :ok for valid Spex DSL file" do
       path = temp_spex_file(valid_complete_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert :ok = Parser.validate_syntax(path)
-      after
-        cleanup_file(path)
-      end
+      assert :ok = Parser.validate_syntax(path)
     end
 
     test "returns {:error, reasons} when no defmodule found" do
       path = temp_spex_file(file_without_defmodule())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, reasons} = Parser.validate_syntax(path)
-        assert is_list(reasons)
-        assert Enum.any?(reasons, &String.contains?(&1, "defmodule"))
-      after
-        cleanup_file(path)
-      end
+      assert {:error, reasons} = Parser.validate_syntax(path)
+      assert is_list(reasons)
+      assert Enum.any?(reasons, &String.contains?(&1, "defmodule"))
     end
 
     test "returns {:error, reasons} when no spex macro found" do
       path = temp_spex_file(file_without_spex_macro())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, reasons} = Parser.validate_syntax(path)
-        assert is_list(reasons)
-        assert Enum.any?(reasons, &String.contains?(&1, "spex"))
-      after
-        cleanup_file(path)
-      end
+      assert {:error, reasons} = Parser.validate_syntax(path)
+      assert is_list(reasons)
+      assert Enum.any?(reasons, &String.contains?(&1, "spex"))
     end
 
     test "returns {:error, reasons} when no scenarios found" do
       path = temp_spex_file(spex_without_scenarios())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, reasons} = Parser.validate_syntax(path)
-        assert is_list(reasons)
-        assert Enum.any?(reasons, &String.contains?(&1, "scenario"))
-      after
-        cleanup_file(path)
-      end
+      assert {:error, reasons} = Parser.validate_syntax(path)
+      assert is_list(reasons)
+      assert Enum.any?(reasons, &String.contains?(&1, "scenario"))
     end
 
     test "returns {:error, reasons} for scenarios without steps" do
       path = temp_spex_file(spex_with_empty_scenario())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        result = Parser.validate_syntax(path)
-        # This may return error or ok depending on requirements
-        # Empty scenarios might be allowed during development
-        assert result == :ok or match?({:error, _}, result)
-      after
-        cleanup_file(path)
-      end
+      result = Parser.validate_syntax(path)
+      # This may return error or ok depending on requirements
+      # Empty scenarios might be allowed during development
+      assert result == :ok or match?({:error, _}, result)
     end
 
     test "returns {:error, reasons} for invalid syntax" do
       path = temp_spex_file(file_with_syntax_error())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, reasons} = Parser.validate_syntax(path)
-        assert is_list(reasons)
-      after
-        cleanup_file(path)
-      end
+      assert {:error, reasons} = Parser.validate_syntax(path)
+      assert is_list(reasons)
     end
 
     test "returns {:error, reasons} for non-existent file" do
@@ -687,28 +636,22 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       """
 
       path = temp_spex_file(invalid_content)
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, reasons} = Parser.validate_syntax(path)
-        assert is_list(reasons)
-        assert length(reasons) > 0
-      after
-        cleanup_file(path)
-      end
+      assert {:error, reasons} = Parser.validate_syntax(path)
+      assert is_list(reasons)
+      assert length(reasons) > 0
     end
 
     test "provides descriptive error messages" do
       path = temp_spex_file(file_without_spex_macro())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:error, reasons} = Parser.validate_syntax(path)
-        assert is_list(reasons)
-        assert Enum.all?(reasons, &is_binary(&1))
-        # Error messages should be descriptive, not just codes
-        assert Enum.all?(reasons, &(String.length(&1) > 10))
-      after
-        cleanup_file(path)
-      end
+      assert {:error, reasons} = Parser.validate_syntax(path)
+      assert is_list(reasons)
+      assert Enum.all?(reasons, &is_binary(&1))
+      # Error messages should be descriptive, not just codes
+      assert Enum.all?(reasons, &(String.length(&1) > 10))
     end
   end
 
@@ -785,69 +728,60 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
   describe "parse_file/1 - integration scenarios" do
     test "parses complete spec file with all features" do
       path = temp_story_criterion_file(valid_complete_spex(), 100, 200)
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
+      assert {:ok, spec} = Parser.parse_file(path)
 
-        # Verify all metadata
-        assert spec.name == "complete specification"
-        assert spec.description == "A complete spec with all metadata fields"
-        assert :integration in spec.tags
-        assert :authentication in spec.tags
-        assert spec.story_id == 100
-        assert spec.criterion_id == 200
-        assert spec.file_path == path
+      # Verify all metadata
+      assert spec.name == "complete specification"
+      assert spec.description == "A complete spec with all metadata fields"
+      assert :integration in spec.tags
+      assert :authentication in spec.tags
+      assert spec.story_id == 100
+      assert spec.criterion_id == 200
+      assert spec.file_path == path
 
-        # Verify scenarios
-        assert length(spec.scenarios) == 2
+      # Verify scenarios
+      assert length(spec.scenarios) == 2
 
-        # Verify first scenario
-        [scenario1, scenario2] = spec.scenarios
-        assert scenario1.name == "user authentication flow"
-        assert length(scenario1.given_steps) == 2
-        assert length(scenario1.when_steps) == 1
-        assert length(scenario1.then_steps) == 2
+      # Verify first scenario
+      [scenario1, scenario2] = spec.scenarios
+      assert scenario1.name == "user authentication flow"
+      assert length(scenario1.given_steps) == 2
+      assert length(scenario1.when_steps) == 1
+      assert length(scenario1.then_steps) == 2
 
-        # Verify second scenario
-        assert scenario2.name == "logout functionality"
-        assert length(scenario2.given_steps) == 1
-        assert length(scenario2.when_steps) == 1
-        assert length(scenario2.then_steps) == 1
-      after
-        cleanup_file(path)
-      end
+      # Verify second scenario
+      assert scenario2.name == "logout functionality"
+      assert length(scenario2.given_steps) == 1
+      assert length(scenario2.when_steps) == 1
+      assert length(scenario2.then_steps) == 1
     end
 
     test "handles files with minimal metadata gracefully" do
       path = temp_spex_file(valid_minimal_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        assert {:ok, spec} = Parser.parse_file(path)
-        assert spec.name == "minimal spec"
-        assert is_nil(spec.description) or spec.description == ""
-        assert spec.tags == [] or is_list(spec.tags)
-        assert is_nil(spec.story_id)
-        assert is_nil(spec.criterion_id)
-      after
-        cleanup_file(path)
-      end
+      assert {:ok, spec} = Parser.parse_file(path)
+      assert spec.name == "minimal spec"
+      assert is_nil(spec.description) or spec.description == ""
+      assert spec.tags == [] or is_list(spec.tags)
+      assert is_nil(spec.story_id)
+      assert is_nil(spec.criterion_id)
     end
 
     test "parsing the same file multiple times returns consistent results" do
       path = temp_spex_file(valid_complete_spex())
+      on_exit(fn -> cleanup_file(path) end)
 
-      try do
-        {:ok, result1} = Parser.parse_file(path)
-        {:ok, result2} = Parser.parse_file(path)
-        {:ok, result3} = Parser.parse_file(path)
+      {:ok, result1} = Parser.parse_file(path)
+      {:ok, result2} = Parser.parse_file(path)
+      {:ok, result3} = Parser.parse_file(path)
 
-        assert result1.name == result2.name
-        assert result2.name == result3.name
-        assert length(result1.scenarios) == length(result2.scenarios)
-        assert length(result2.scenarios) == length(result3.scenarios)
-      after
-        cleanup_file(path)
-      end
+      assert result1.name == result2.name
+      assert result2.name == result3.name
+      assert length(result1.scenarios) == length(result2.scenarios)
+      assert length(result2.scenarios) == length(result3.scenarios)
     end
   end
 end

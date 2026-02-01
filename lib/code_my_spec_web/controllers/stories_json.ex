@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.StoriesJSON do
       title: story.title,
       description: story.description,
       acceptance_criteria: story.acceptance_criteria,
+      criteria: render_criteria(story.criteria),
       status: story.status,
       locked_at: story.locked_at,
       lock_expires_at: story.lock_expires_at,
@@ -53,6 +54,25 @@ defmodule CodeMySpecWeb.StoriesJSON do
   defp render_tags(tags) when is_list(tags) do
     Enum.map(tags, fn tag ->
       %{id: tag.id, name: tag.name}
+    end)
+  end
+
+  defp render_criteria(%Ecto.Association.NotLoaded{}), do: []
+  defp render_criteria(nil), do: []
+
+  defp render_criteria(criteria) when is_list(criteria) do
+    Enum.map(criteria, fn criterion ->
+      %{
+        id: criterion.id,
+        description: criterion.description,
+        verified: criterion.verified,
+        verified_at: criterion.verified_at,
+        story_id: criterion.story_id,
+        project_id: criterion.project_id,
+        account_id: criterion.account_id,
+        inserted_at: criterion.inserted_at,
+        updated_at: criterion.updated_at
+      }
     end)
   end
 end

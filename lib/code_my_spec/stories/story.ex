@@ -73,10 +73,6 @@ defmodule CodeMySpec.Stories.Story do
       sort_param: :criteria_sort,
       drop_param: :criteria_drop
     )
-    |> foreign_key_constraint(:component_id,
-      name: :stories_component_id_fkey,
-      message: "Component not found"
-    )
     |> unique_constraint([:title, :project_id])
   end
 

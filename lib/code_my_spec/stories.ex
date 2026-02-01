@@ -29,10 +29,10 @@ defmodule CodeMySpec.Stories do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{key}:stories")
   end
 
-  defp broadcast(%Scope{} = scope, message) do
-    key = scope.active_account.id
+  defp broadcast(%Scope{active_account: nil} = _scope, _message), do: :ok
 
-    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:stories", message)
+  defp broadcast(%Scope{} = scope, message) do
+    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{scope.active_account_id}:stories", message)
   end
 
   # Private helper to get the implementation module
@@ -189,13 +189,17 @@ defmodule CodeMySpec.Stories do
   """
   def set_story_component(%Scope{} = scope, %Story{} = story, component_id) do
     # Support both full account struct and account_id only (CLI context)
+    # Skip authorization check if no account context (MCP/CLI mode with project-only scope)
     account_id = if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
-    true = story.account_id == account_id
 
-    with {:ok, story = %Story{}} <-
-           impl().set_story_component(scope, story, component_id) do
-      broadcast(scope, {:updated, story})
-      {:ok, story}
+    if account_id && story.account_id != account_id do
+      {:error, :unauthorized}
+    else
+      with {:ok, story = %Story{}} <-
+             impl().set_story_component(scope, story, component_id) do
+        broadcast(scope, {:updated, story})
+        {:ok, story}
+      end
     end
   end
 
@@ -209,11 +213,15 @@ defmodule CodeMySpec.Stories do
 
   """
   def clear_story_component(%Scope{} = scope, %Story{} = story) do
-    true = story.account_id == scope.active_account.id
+    account_id = if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
 
-    with {:ok, story = %Story{}} <- impl().clear_story_component(scope, story) do
-      broadcast(scope, {:updated, story})
-      {:ok, story}
+    if account_id && story.account_id != account_id do
+      {:error, :unauthorized}
+    else
+      with {:ok, story = %Story{}} <- impl().clear_story_component(scope, story) do
+        broadcast(scope, {:updated, story})
+        {:ok, story}
+      end
     end
   end
 end

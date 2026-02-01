@@ -146,6 +146,14 @@ defmodule CodeMySpec.Environments do
     impl(type).file_exists?(env, path)
   end
 
+  @doc """
+  Find files matching a glob pattern relative to the environment's working directory.
+  """
+  @spec glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]
+  def glob(%Environment{type: type} = env, pattern) do
+    impl(type).glob(env, pattern)
+  end
+
   def cmd(environment, command, args, opts \\ []),
     do: impl(environment).cmd(command, args, opts)
 end

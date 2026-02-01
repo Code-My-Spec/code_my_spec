@@ -34,13 +34,33 @@ defmodule CodeMySpec.Documents.Parsers.SurfaceComponentParser do
 
   defp parse_component({module_name, content}) do
     fields = extract_fields(content)
+    # Try explicit **Description:** field first, then fall back to first paragraph
+    description = fields["description"] || extract_leading_description(content)
 
     %{
       name: module_name,
-      type: fields["type"] || "live",
-      description: fields["description"],
+      type: fields["type"] || "liveview",
+      description: description,
       story_ids: parse_story_ids(fields["stories"])
     }
+  end
+
+  # Extract description from first plain paragraph (not a field line)
+  defp extract_leading_description(ast) do
+    ast
+    |> Enum.find_value(fn
+      {"p", _, content, _} ->
+        text = extract_text(content)
+        # Skip if it's a field line like **Type:** or **Stories:**
+        if Regex.match?(~r/^\*\*\w+:\*\*/, text) do
+          nil
+        else
+          text
+        end
+
+      _ ->
+        nil
+    end)
   end
 
   defp extract_fields(ast) do

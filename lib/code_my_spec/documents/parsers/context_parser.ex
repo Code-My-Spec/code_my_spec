@@ -34,14 +34,34 @@ defmodule CodeMySpec.Documents.Parsers.ContextParser do
 
   defp parse_context({module_name, content}) do
     fields = extract_fields(content)
-    children = extract_children(content)
+    # Try explicit **Description:** field first, then fall back to first paragraph
+    description = fields["description"] || extract_leading_description(content)
+    children = extract_children(content, module_name)
 
     %{
       name: module_name,
-      description: fields["description"],
+      description: description,
       story_ids: parse_story_ids(fields["stories"]),
       children: children
     }
+  end
+
+  # Extract description from first plain paragraph (not a field line)
+  defp extract_leading_description(ast) do
+    ast
+    |> Enum.find_value(fn
+      {"p", _, content, _} ->
+        text = extract_text(content)
+        # Skip if it's a field line like **Type:** or **Stories:**
+        if Regex.match?(~r/^\*\*\w+:\*\*/, text) do
+          nil
+        else
+          text
+        end
+
+      _ ->
+        nil
+    end)
   end
 
   defp extract_fields(ast) do
@@ -81,12 +101,21 @@ defmodule CodeMySpec.Documents.Parsers.ContextParser do
     end
   end
 
-  defp extract_children(ast) do
-    # Find content after H4 "Children"
-    {_, after_h4} =
+  defp extract_children(ast, parent_module) do
+    # Find content after H4 "Children" or **Children:** paragraph
+    {_, after_children} =
       Enum.reduce(ast, {:before, []}, fn
         {"h4", _, content, _}, {:before, _} ->
           if extract_text(content) =~ ~r/children/i do
+            {:after, []}
+          else
+            {:before, []}
+          end
+
+        {"p", _, content, _}, {:before, _} ->
+          text = extract_text(content)
+
+          if text =~ ~r/^\*\*Children:?\*\*/ do
             {:after, []}
           else
             {:before, []}
@@ -99,14 +128,14 @@ defmodule CodeMySpec.Documents.Parsers.ContextParser do
           acc
       end)
 
-    after_h4
+    after_children
     |> Enum.reverse()
     |> Enum.flat_map(&extract_list_items/1)
-    |> Enum.map(&parse_child_line/1)
+    |> Enum.map(&parse_child_line(&1, parent_module))
     |> Enum.reject(&is_nil/1)
   end
 
-  defp parse_child_line(text) do
+  defp parse_child_line(text, _parent_module) do
     trimmed = String.trim(text)
 
     # Format with stories: Name (type) [Stories: X, Y]: Description
@@ -131,10 +160,20 @@ defmodule CodeMySpec.Documents.Parsers.ContextParser do
         # Fallback: Name (type) - Description or Name (type): Description
         case Regex.run(~r/^`?([^`\(]+)`?\s*\(([^\)]+)\)(?:[\s:-]+(.+))?$/, trimmed) do
           [_, name, type, description] ->
-            %{name: clean_name(name), type: type, description: String.trim(description || ""), story_ids: []}
+            %{
+              name: clean_name(name),
+              type: type,
+              description: String.trim(description || ""),
+              story_ids: []
+            }
 
           [_, name, type] ->
-            %{name: clean_name(name), type: type, description: nil, story_ids: []}
+            %{
+              name: clean_name(name),
+              type: type,
+              description: nil,
+              story_ids: []
+            }
 
           _ ->
             nil
