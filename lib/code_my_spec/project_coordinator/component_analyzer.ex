@@ -37,7 +37,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzer do
     |> DependencyTree.build()
     |> HierarchicalTree.build()
     |> Enum.map(&check_dependency_requirements(&1, scope, opts))
-    |> Enum.sort(&(&1.priority <= &2.priority))
+    |> Enum.sort_by(& &1.name)
   end
 
   defp analyze_local_component_status(component, file_list, failing_tests, scope, opts) do

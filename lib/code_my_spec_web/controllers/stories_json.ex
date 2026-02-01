@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb.StoriesJSON do
       acceptance_criteria: story.acceptance_criteria,
       criteria: render_criteria(story.criteria),
       status: story.status,
+      priority: story.priority,
       locked_at: story.locked_at,
       lock_expires_at: story.lock_expires_at,
       locked_by: story.locked_by,

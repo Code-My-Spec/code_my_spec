@@ -122,7 +122,7 @@ defmodule CodeMySpec.Requirements.Sync do
     |> DependencyTree.build()
     |> HierarchicalTree.build()
     |> Enum.map(&check_dependency_requirements(&1, scope, opts))
-    |> Enum.sort(&(&1.priority <= &2.priority))
+    |> Enum.sort_by(& &1.name)
   end
 
   # --- Private: Incremental sync ---
@@ -192,7 +192,7 @@ defmodule CodeMySpec.Requirements.Sync do
 
     components_with_hierarchy
     |> Enum.map(&check_dependency_requirements(&1, scope, opts))
-    |> Enum.sort(&(&1.priority <= &2.priority))
+    |> Enum.sort_by(& &1.name)
   end
 
   defp identify_affected_components(components, changed_component_ids) do
