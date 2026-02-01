@@ -72,6 +72,13 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   """
   @callback file_exists?(env :: Environment.t(), path :: String.t()) :: boolean()
 
+  @doc """
+  Find files matching a glob pattern relative to the environment's working directory.
+
+  Returns a list of matching file paths.
+  """
+  @callback glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]
+
   # Remove later, or reconsider:
 
   @callback environment_setup_command(env :: Environment.t(), attrs :: map()) :: String.t()

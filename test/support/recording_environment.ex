@@ -111,6 +111,12 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   end
 
   @impl true
+  def glob(env, pattern) do
+    resolved_pattern = resolve_path(pattern, env.cwd)
+    Path.wildcard(resolved_pattern)
+  end
+
+  @impl true
   def environment_setup_command(_env, %{branch_name: branch_name, working_dir: working_dir}) do
     "git -C #{working_dir} switch -C #{branch_name}"
   end

@@ -218,6 +218,15 @@ defmodule CodeMySpec.Environments.Cli do
     File.exists?(resolved_path)
   end
 
+  @doc """
+  Find files matching a glob pattern relative to the environment's working directory.
+  """
+  @spec glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]
+  def glob(env, pattern) do
+    resolved_pattern = resolve_path(pattern, env.cwd)
+    Path.wildcard(resolved_pattern)
+  end
+
   def environment_setup_command(_, _) do
     "pass"
   end
