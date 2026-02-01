@@ -19,6 +19,8 @@ defmodule CodeMySpec.Support.TestAdapter do
   @compiler_ok_cache "../code_my_spec_test_repos/compiler_ok_cache.json"
   @compiler_warnings_cache "../code_my_spec_test_repos/compiler_warnings_cache.json"
   @compiler_errors_cache "../code_my_spec_test_repos/compiler_errors_cache.json"
+  @spex_results_passing_cache "../code_my_spec_test_repos/spex_results_passing_cache.jsonl"
+  @spex_results_failing_cache "../code_my_spec_test_repos/spex_results_failing_cache.jsonl"
 
   @doc """
   Ensures the fixture repositories exist and are up to date.
@@ -34,7 +36,9 @@ defmodule CodeMySpec.Support.TestAdapter do
     if !File.exists?(@compiler_ok_cache) or !File.exists?(@compiler_warnings_cache) or
          !File.exists?(@compiler_errors_cache) or !File.exists?(@test_results_cache) or
          !File.exists?(@test_results_failing_cache) or
-         !File.exists?(@test_results_post_cache_failing_cache) do
+         !File.exists?(@test_results_post_cache_failing_cache) or
+         !File.exists?(@spex_results_passing_cache) or
+         !File.exists?(@spex_results_failing_cache) do
       IO.puts("[TestAdapter] Installing dependencies...")
       System.cmd("mix", ["deps.get"], cd: @code_repo_fixture_path, stderr_to_stdout: true)
     end
@@ -42,6 +46,7 @@ defmodule CodeMySpec.Support.TestAdapter do
     generate_compiler_caches()
     generate_test_results_caches()
     generate_post_cache_failing_tests()
+    generate_spex_results_caches()
     generate_dev_build()
   end
 
@@ -74,6 +79,16 @@ defmodule CodeMySpec.Support.TestAdapter do
   Returns the path to the cached compilation errors results JSON file.
   """
   def compiler_errors_cache_path, do: @compiler_errors_cache
+
+  @doc """
+  Returns the path to the cached passing spex results JSONL file.
+  """
+  def spex_results_passing_cache_path, do: @spex_results_passing_cache
+
+  @doc """
+  Returns the path to the cached failing spex results JSONL file.
+  """
+  def spex_results_failing_cache_path, do: @spex_results_failing_cache
 
   @doc """
   Checkout a directory from the pool for fast test setup.
@@ -415,6 +430,101 @@ defmodule CodeMySpec.Support.TestAdapter do
       )
 
       IO.puts("[TestAdapter] Dev build complete!")
+    end
+  end
+
+  defp generate_spex_results_caches do
+    # Only generate if caches don't exist
+    if not File.exists?(@spex_results_passing_cache) do
+      IO.puts("[TestAdapter] Running passing spex tests...")
+
+      # Run mix spex with passing tests
+      {_output, _exit_code} =
+        System.cmd(
+          "mix",
+          ["spex", "test/spex/sample_spex.exs", "--jsonl=spex_passing.jsonl"],
+          cd: @code_repo_fixture_path,
+          stderr_to_stdout: true,
+          env: [{"MIX_ENV", "test"}]
+        )
+
+      # Copy JSONL to cache location
+      IO.puts("[TestAdapter] Caching passing spex results...")
+      File.mkdir_p!(Path.dirname(@spex_results_passing_cache))
+
+      spex_output = Path.join(@code_repo_fixture_path, "spex_passing.jsonl")
+
+      if File.exists?(spex_output) do
+        File.cp!(spex_output, @spex_results_passing_cache)
+        File.rm!(spex_output)
+      else
+        # Create empty file if no failures (all passed)
+        File.write!(@spex_results_passing_cache, "")
+      end
+    end
+
+    if not File.exists?(@spex_results_failing_cache) do
+      IO.puts("[TestAdapter] Setting up failing spex test...")
+
+      # Create a failing spex test
+      failing_spex_content = """
+      defmodule TestPhoenixProject.FailingSpex do
+        use SexySpex
+
+        spex "Failing example" do
+          scenario "intentional failure" do
+            given_ "a precondition" do
+              :ok
+            end
+
+            when_ "an action occurs" do
+              :ok
+            end
+
+            then_ "it should fail" do
+              assert 1 == 2, "Intentional test failure"
+            end
+          end
+        end
+      end
+      """
+
+      failing_spex_path =
+        Path.join([@code_repo_fixture_path, "test", "spex", "failing_spex.exs"])
+
+      File.mkdir_p!(Path.dirname(failing_spex_path))
+      File.write!(failing_spex_path, failing_spex_content)
+
+      # Run mix spex with failing test
+      IO.puts("[TestAdapter] Running failing spex tests...")
+
+      {_output, _exit_code} =
+        System.cmd(
+          "mix",
+          ["spex", "test/spex/failing_spex.exs", "--jsonl=spex_failing.jsonl"],
+          cd: @code_repo_fixture_path,
+          stderr_to_stdout: true,
+          env: [{"MIX_ENV", "test"}]
+        )
+
+      # Copy JSONL to cache location
+      IO.puts("[TestAdapter] Caching failing spex results...")
+      File.mkdir_p!(Path.dirname(@spex_results_failing_cache))
+
+      spex_output = Path.join(@code_repo_fixture_path, "spex_failing.jsonl")
+
+      if File.exists?(spex_output) do
+        File.cp!(spex_output, @spex_results_failing_cache)
+        File.rm!(spex_output)
+      else
+        # Shouldn't happen, but create empty file as fallback
+        File.write!(@spex_results_failing_cache, "")
+      end
+
+      # Clean up failing test file
+      File.rm!(failing_spex_path)
+
+      IO.puts("[TestAdapter] Spex cache generation complete!")
     end
   end
 end
