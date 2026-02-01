@@ -93,6 +93,7 @@ defmodule CodeMySpecWeb.Layouts do
             <li><a href={~p"/app"}>Overview</a></li>
             <li><a href={~p"/app/projects"}>Projects</a></li>
             <li><a href={~p"/app/stories"}>Stories</a></li>
+            <li><a href={~p"/app/stories/scheduler"}>Scheduler</a></li>
             <li><a href={~p"/app/components"}>Components</a></li>
             <li><a href={~p"/app/architecture"}>Architecture</a></li>
             <li><a href={~p"/app/content_admin"}>Content</a></li>

@@ -8,22 +8,19 @@ defmodule CodeMySpecWeb.ComponentLive.FormTest do
     name: "UserService",
     type: "genserver",
     module_name: "CodeMySpec.Services.UserService",
-    description: "Handles user operations",
-    priority: 1
+    description: "Handles user operations"
   }
   @update_attrs %{
     name: "UpdatedUserService",
     type: "context",
     module_name: "CodeMySpec.Contexts.UpdatedUserService",
-    description: "Updated user operations",
-    priority: 2
+    description: "Updated user operations"
   }
   @invalid_attrs %{
     name: nil,
     type: nil,
     module_name: nil,
-    description: nil,
-    priority: nil
+    description: nil
   }
 
   setup [:register_log_in_setup_account, :setup_active_account, :setup_active_project]

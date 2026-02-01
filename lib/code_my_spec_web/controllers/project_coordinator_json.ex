@@ -19,7 +19,6 @@ defmodule CodeMySpecWeb.ProjectCoordinatorJSON do
       type: component.type,
       module_name: component.module_name,
       description: component.description,
-      priority: component.priority,
       component_status: render_component_status(component.component_status),
       requirements: render_requirements(component.requirements),
       dependencies: render_dependencies(component.dependencies),

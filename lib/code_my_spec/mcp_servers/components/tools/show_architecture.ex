@@ -96,7 +96,6 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
       type: component.type,
       module_name: component.module_name,
       description: component.description,
-      priority: component.priority,
       stories: format_stories(component.stories || []),
       dependencies: format_dependencies(component.outgoing_dependencies || []),
       metrics: %{

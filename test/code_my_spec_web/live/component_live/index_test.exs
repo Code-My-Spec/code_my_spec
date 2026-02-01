@@ -29,14 +29,6 @@ defmodule CodeMySpecWeb.ComponentLive.IndexTest do
       assert html =~ to_string(component.type)
     end
 
-    test "displays component priority", %{conn: conn, scope: scope} do
-      _priority_component = component_fixture(scope, %{priority: 5})
-
-      {:ok, _index_live, html} = live(conn, ~p"/app/components")
-
-      assert html =~ "Priority: 5"
-    end
-
     test "saves new component via new button", %{conn: conn} do
       {:ok, index_live, _html} = live(conn, ~p"/app/components")
 
@@ -103,10 +95,9 @@ defmodule CodeMySpecWeb.ComponentLive.IndexTest do
       assert html =~ "User Login"
     end
 
-    test "sorts components by priority then name", %{conn: conn, scope: scope} do
-      component_fixture(scope, %{name: "ZComponent", priority: 1})
-      component_fixture(scope, %{name: "AComponent", priority: 2})
-      # no priority
+    test "sorts components by name", %{conn: conn, scope: scope} do
+      component_fixture(scope, %{name: "ZComponent"})
+      component_fixture(scope, %{name: "AComponent"})
       component_fixture(scope, %{name: "BComponent"})
 
       {:ok, index_live, _html} = live(conn, ~p"/app/components")
@@ -114,8 +105,8 @@ defmodule CodeMySpecWeb.ComponentLive.IndexTest do
       # Get all component names in order they appear
       component_elements = index_live |> element("div[class*='space-y-8']") |> render()
 
-      # Should be ordered: priority 1, priority 2, then no priority (alphabetically)
-      assert component_elements =~ ~r/ZComponent.*AComponent.*BComponent/s
+      # Should be ordered alphabetically by name
+      assert component_elements =~ ~r/AComponent.*BComponent.*ZComponent/s
     end
 
     test "navigates to story when story badge is clicked", %{conn: conn, scope: scope} do

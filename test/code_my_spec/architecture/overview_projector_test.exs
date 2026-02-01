@@ -13,7 +13,6 @@ defmodule CodeMySpec.Architecture.OverviewProjectorTest do
       type: "context",
       module_name: "CodeMySpec.Stories",
       description: "Manages user stories and requirements",
-      priority: 1,
       parent_component_id: nil,
       dependencies: [],
       child_components: []
@@ -29,7 +28,6 @@ defmodule CodeMySpec.Architecture.OverviewProjectorTest do
       type: "schema",
       module_name: "CodeMySpec.Stories.Story",
       description: "Story schema representing user stories",
-      priority: 2,
       parent_component_id: nil,
       dependencies: []
     }
@@ -44,7 +42,6 @@ defmodule CodeMySpec.Architecture.OverviewProjectorTest do
       type: "repository",
       module_name: "CodeMySpec.Stories.StoryRepository",
       description: "Repository for story data access",
-      priority: 3,
       parent_component_id: nil,
       dependencies: []
     }
@@ -240,31 +237,28 @@ defmodule CodeMySpec.Architecture.OverviewProjectorTest do
       assert middle_pos < zebra_pos
     end
 
-    test "sorts components within contexts by priority then name" do
+    test "sorts components within contexts alphabetically by name" do
       context = context_component()
 
       child1 =
         module_component(%{
           name: "Zebra",
           module_name: "CodeMySpec.Stories.Zebra",
-          parent_component_id: context.id,
-          priority: 2
+          parent_component_id: context.id
         })
 
       child2 =
         module_component(%{
           name: "Alpha",
           module_name: "CodeMySpec.Stories.Alpha",
-          parent_component_id: context.id,
-          priority: 1
+          parent_component_id: context.id
         })
 
       child3 =
         module_component(%{
           name: "Beta",
           module_name: "CodeMySpec.Stories.Beta",
-          parent_component_id: context.id,
-          priority: 1
+          parent_component_id: context.id
         })
 
       components = [context, child1, child2, child3]
@@ -298,8 +292,7 @@ defmodule CodeMySpec.Architecture.OverviewProjectorTest do
           name: "TestModule",
           type: "service",
           module_name: "CodeMySpec.TestModule",
-          description: "Test module description",
-          priority: 5
+          description: "Test module description"
         })
 
       components = [component]

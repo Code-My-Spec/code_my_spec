@@ -34,7 +34,6 @@ defmodule CodeMySpecWeb.ComponentLive.Index do
               </div>
 
               <div class="flex items-center gap-6 text-sm text-base-content/60">
-                <span :if={component.priority}>Priority: {component.priority}</span>
                 <span>Dependencies: {safe_length(component.dependencies)}</span>
                 <span>Stories: {safe_length(component.stories)}</span>
               </div>
@@ -70,13 +69,7 @@ defmodule CodeMySpecWeb.ComponentLive.Index do
               </div>
             </div>
 
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-4">
-                <.badge :if={component.priority} color="neutral">
-                  Priority: {component.priority}
-                </.badge>
-              </div>
-
+            <div class="flex items-center justify-end">
               <div class="card-actions">
                 <.link navigate={~p"/app/components/#{component}/edit"} class="btn btn-sm btn-outline">
                   Edit
@@ -134,10 +127,7 @@ defmodule CodeMySpecWeb.ComponentLive.Index do
      )}
   end
 
-  defp component_sort_key(%{priority: priority, name: name}) when is_integer(priority),
-    do: {priority, name}
-
-  defp component_sort_key(%{name: name}), do: {999, name}
+  defp component_sort_key(%{name: name}), do: name
 
   defp safe_length(%Ecto.Association.NotLoaded{}), do: 0
   defp safe_length(nil), do: 0

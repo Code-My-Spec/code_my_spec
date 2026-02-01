@@ -127,7 +127,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
      |> assign(:show_criteria, true)
      |> stream(
        :stories,
-       Stories.list_project_stories_by_component_priority(socket.assigns.current_scope)
+       Stories.list_project_stories_by_priority(socket.assigns.current_scope)
      )}
   end
 
@@ -140,7 +140,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
      |> assign(:show_criteria, new_show)
      |> stream(
        :stories,
-       Stories.list_project_stories_by_component_priority(socket.assigns.current_scope),
+       Stories.list_project_stories_by_priority(socket.assigns.current_scope),
        reset: true
      )}
   end
@@ -182,7 +182,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
      stream(
        socket,
        :stories,
-       Stories.list_project_stories_by_component_priority(socket.assigns.current_scope),
+       Stories.list_project_stories_by_priority(socket.assigns.current_scope),
        reset: true
      )}
   end

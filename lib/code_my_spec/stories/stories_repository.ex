@@ -101,13 +101,11 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     Repo.all(query)
   end
 
-  def list_project_stories_by_component_priority(%Scope{} = scope) do
+  def list_project_stories_by_priority(%Scope{} = scope) do
     from(s in Story,
-      left_join: c in assoc(s, :component),
       where: s.project_id == ^scope.active_project.id,
       order_by: [
-        asc: fragment("CASE WHEN ? IS NULL THEN 1 ELSE 0 END", c.id),
-        asc_nulls_last: c.priority,
+        asc_nulls_last: s.priority,
         asc: s.title
       ],
       preload: [:component, :criteria, :tags]
@@ -196,10 +194,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     from(s in query, where: s.status == ^status)
   end
 
-  def by_component_priority(query \\ Story, min_priority) do
+  def by_priority(query \\ Story, min_priority) do
     from(s in query,
-      join: c in assoc(s, :component),
-      where: c.priority >= ^min_priority
+      where: s.priority >= ^min_priority
     )
   end
 
@@ -219,6 +216,10 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     from(s in query,
       where: not is_nil(s.lock_expires_at) and s.lock_expires_at < ^DateTime.utc_now()
     )
+  end
+
+  def ordered_by_priority(query \\ Story) do
+    from(s in query, order_by: [asc_nulls_last: s.priority, asc: s.title])
   end
 
   def ordered_by_name(query \\ Story) do

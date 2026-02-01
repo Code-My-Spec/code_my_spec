@@ -74,8 +74,8 @@ defmodule CodeMySpec.Stories do
   def list_story_titles(scope, opts \\ []),
     do: impl().list_story_titles(scope, opts)
 
-  def list_project_stories_by_component_priority(scope),
-    do: impl().list_project_stories_by_component_priority(scope)
+  def list_project_stories_by_priority(scope),
+    do: impl().list_project_stories_by_priority(scope)
 
   def list_unsatisfied_stories(scope), do: impl().list_unsatisfied_stories(scope)
 

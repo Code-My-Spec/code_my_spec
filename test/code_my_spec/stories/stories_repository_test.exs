@@ -185,20 +185,15 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert hd(results).id == story1.id
     end
 
-    test "by_component_priority/2 filters stories by component priority" do
+    test "by_priority/2 filters stories by priority" do
       scope = full_scope_fixture()
-      import CodeMySpec.ComponentsFixtures
 
-      component1 = component_fixture(scope, %{priority: 10})
-      component2 = component_fixture(scope, %{priority: 50})
-      component3 = component_fixture(scope, %{priority: 100})
-
-      _story1 = story_fixture(scope, %{component_id: component1.id})
-      _story2 = story_fixture(scope, %{component_id: component2.id})
-      _story3 = story_fixture(scope, %{component_id: component3.id})
+      _story1 = story_fixture(scope, %{priority: 10})
+      _story2 = story_fixture(scope, %{priority: 50})
+      _story3 = story_fixture(scope, %{priority: 100})
 
       results =
-        StoriesRepository.by_component_priority(50)
+        StoriesRepository.by_priority(50)
         |> where([s], s.account_id == ^scope.active_account.id)
         |> Repo.all()
 

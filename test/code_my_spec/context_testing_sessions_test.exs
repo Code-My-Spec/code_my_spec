@@ -38,8 +38,7 @@ defmodule CodeMySpec.ContextTestingSessionsTest do
           type: "schema",
           module_name: "MyApp.Accounts.User",
           description: "User schema",
-          parent_component_id: accounts_context.id,
-          priority: 10
+          parent_component_id: accounts_context.id
         })
 
       {:ok, user_repository} =
@@ -48,8 +47,7 @@ defmodule CodeMySpec.ContextTestingSessionsTest do
           type: "repository",
           module_name: "MyApp.Accounts.UserRepository",
           description: "Repository for user persistence",
-          parent_component_id: accounts_context.id,
-          priority: 5
+          parent_component_id: accounts_context.id
         })
 
       {:ok, accounts_live} =
@@ -58,8 +56,7 @@ defmodule CodeMySpec.ContextTestingSessionsTest do
           type: "other",
           module_name: "MyApp.AccountsLive",
           description: "LiveView for accounts management",
-          parent_component_id: accounts_context.id,
-          priority: 1
+          parent_component_id: accounts_context.id
         })
 
       %{

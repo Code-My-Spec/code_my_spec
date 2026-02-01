@@ -115,9 +115,9 @@ defmodule CodeMySpecWeb.Router do
 
     get "/stories-list/project", StoriesController, :list_project_stories
 
-    get "/stories-list/by-component-priority",
+    get "/stories-list/by-priority",
         StoriesController,
-        :list_project_stories_by_component_priority
+        :list_project_stories_by_priority
 
     get "/stories-list/unsatisfied", StoriesController, :list_unsatisfied_stories
     get "/stories-list/component/:component_id", StoriesController, :list_component_stories
@@ -191,13 +191,13 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :require_active_project}
       ] do
       live "/stories", StoryLive.Index, :index
+      live "/stories/scheduler", StoryLive.Scheduler, :index
       live "/stories/new", StoryLive.Form, :new
       live "/stories/import", StoryLive.Import, :import
       live "/stories/:id", StoryLive.Show, :show
       live "/stories/:id/edit", StoryLive.Form, :edit
 
       live "/components", ComponentLive.Index, :index
-      live "/components/scheduler", ComponentLive.Scheduler, :index
       live "/components/new", ComponentLive.Form, :new
       live "/components/:id/edit", ComponentLive.Form, :edit
 

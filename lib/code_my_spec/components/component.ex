@@ -26,7 +26,6 @@ defmodule CodeMySpec.Components.Component do
           type: String.t(),
           module_name: String.t(),
           description: String.t() | nil,
-          priority: integer() | nil,
           synced_at: DateTime.t() | nil,
           account_id: Ecto.UUID.t(),
           project_id: Ecto.UUID.t(),
@@ -56,7 +55,6 @@ defmodule CodeMySpec.Components.Component do
     field :type, :string
     field :module_name, :string
     field :description, :string
-    field :priority, :integer
     field :synced_at, :utc_datetime
 
     belongs_to :account, Account, type: :binary_id
@@ -90,7 +88,6 @@ defmodule CodeMySpec.Components.Component do
       :type,
       :module_name,
       :description,
-      :priority,
       :parent_component_id,
       :synced_at
     ])

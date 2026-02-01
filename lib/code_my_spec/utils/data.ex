@@ -158,7 +158,6 @@ defmodule CodeMySpec.Utils.Data do
         :description,
         :account_id,
         :project_id,
-        :priority,
         :component_status,
         :parent_component_id,
         :inserted_at,

@@ -18,7 +18,6 @@ defmodule CodeMySpec.Architecture.NamespaceProjectorTest do
       account_id: 1,
       project_id: Ecto.UUID.generate(),
       parent_component_id: nil,
-      priority: nil,
       synced_at: nil,
       inserted_at: DateTime.utc_now(),
       updated_at: DateTime.utc_now()

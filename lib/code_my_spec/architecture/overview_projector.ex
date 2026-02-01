@@ -213,9 +213,7 @@ defmodule CodeMySpec.Architecture.OverviewProjector do
   end
 
   defp sort_components(components) do
-    Enum.sort_by(components, fn component ->
-      {component.priority || 999, component.name}
-    end)
+    Enum.sort_by(components, & &1.name)
   end
 
   # Extract first paragraph from description, removing markdown noise

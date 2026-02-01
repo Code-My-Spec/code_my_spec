@@ -19,7 +19,6 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
         <.input field={@form[:type]} type="text" label="Type" />
         <.input field={@form[:module_name]} type="text" label="Module Name" />
         <.input field={@form[:description]} type="textarea" label="Description" />
-        <.input field={@form[:priority]} type="number" label="Priority" />
         <.input
           field={@form[:parent_component_id]}
           type="select"

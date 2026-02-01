@@ -17,9 +17,9 @@ defmodule CodeMySpecWeb.StoriesController do
     render(conn, :index, stories: stories)
   end
 
-  def list_project_stories_by_component_priority(conn, _params) do
+  def list_project_stories_by_priority(conn, _params) do
     scope = conn.assigns.current_scope
-    stories = Stories.list_project_stories_by_component_priority(scope)
+    stories = Stories.list_project_stories_by_priority(scope)
     render(conn, :index, stories: stories)
   end
 
