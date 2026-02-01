@@ -454,6 +454,38 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert length(result.components) == 3
     end
 
+    test "skips writing spec file if it already exists", %{tmp_dir: tmp_dir, scope: scope} do
+      # Create a pre-existing spec file with custom content
+      existing_spec_path = Path.join(tmp_dir, "docs/spec/test_app/dashboards.spec.md")
+      File.mkdir_p!(Path.dirname(existing_spec_path))
+      existing_content = "# Existing Spec\n\nThis content should be preserved."
+      File.write!(existing_spec_path, existing_content)
+
+      proposal =
+        Proposal.new(%{
+          app_name: "TestApp",
+          contexts: [
+            %{
+              name: "TestApp.Dashboards",
+              description: "Dashboard management",
+              children: []
+            }
+          ],
+          surface_components: [
+            %{name: "TestAppWeb.DashboardLive", type: "liveview", description: "Dashboard view"}
+          ]
+        })
+
+      assert {:ok, _result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
+
+      # Pre-existing spec should NOT be overwritten
+      assert File.read!(existing_spec_path) == existing_content
+
+      # New spec files should still be created
+      surface_spec = Path.join(tmp_dir, "docs/spec/test_app_web/dashboard_live.spec.md")
+      assert File.exists?(surface_spec)
+    end
+
     test "creates spec files at correct paths", %{tmp_dir: tmp_dir, scope: scope} do
       proposal =
         Proposal.new(%{

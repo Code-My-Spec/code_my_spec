@@ -657,8 +657,15 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   defp write_spec_file(env, attrs) do
     spec_path = build_spec_path(attrs.module_name)
-    spec_content = generate_spec_template(attrs)
-    Environments.write_file(env, spec_path, spec_content)
+
+    # Only write if file doesn't exist - preserve existing specs
+    if Environments.file_exists?(env, spec_path) do
+      Logger.debug("[Proposal] Spec file already exists, skipping: #{spec_path}")
+      :ok
+    else
+      spec_content = generate_spec_template(attrs)
+      Environments.write_file(env, spec_path, spec_content)
+    end
   end
 
   defp count_linked_stories(proposal) do
