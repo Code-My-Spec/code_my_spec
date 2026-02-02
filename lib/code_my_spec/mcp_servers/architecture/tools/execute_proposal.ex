@@ -27,7 +27,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
   @impl true
   def execute(params, frame) do
     dry_run = Map.get(params, "dry_run", false)
-    working_dir = Validators.mcp_working_dir()
+    working_dir = Validators.mcp_working_dir(frame)
 
     with {:ok, scope} <- Validators.validate_project_scope(frame),
          {:ok, app_name} <- get_app_name(scope),

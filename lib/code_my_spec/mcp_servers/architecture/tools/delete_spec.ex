@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.DeleteSpec do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_project_scope(frame),
-         {:ok, env} <- Environments.create(:cli, working_dir: Validators.mcp_working_dir()),
+         {:ok, env} <- Environments.create(:cli, working_dir: Validators.mcp_working_dir(frame)),
          {:ok, component} <- find_component(scope, params.module_name),
          {:ok, spec_path} <- build_spec_path(params.module_name),
          :ok <- delete_spec_file(env, spec_path),

@@ -59,4 +59,82 @@ defmodule CodeMySpec.Users.Scope do
   end
 
   def for_user(nil), do: nil
+
+  @config_dir ".code_my_spec"
+  @config_file "config.yml"
+
+  @doc """
+  Creates a scope from a local project config file.
+
+  Reads `.code_my_spec/config.yml` from the given working directory,
+  loads or creates the project, and returns a scope.
+
+  Used by CLI and local MCP server for non-OAuth authenticated access.
+
+  Returns `{:ok, scope}` or `{:error, reason}`.
+  """
+  @spec from_local_config(String.t()) :: {:ok, t()} | {:error, atom() | String.t()}
+  def from_local_config(working_dir) when is_binary(working_dir) do
+    with {:ok, config} <- read_local_config(working_dir),
+         {:ok, project} <- get_or_create_project(config, working_dir) do
+      {:ok,
+       %__MODULE__{
+         user: nil,
+         active_account: nil,
+         active_account_id: config["account_id"],
+         active_project: project,
+         active_project_id: project.id
+       }}
+    end
+  end
+
+  def from_local_config(nil), do: {:error, :no_working_dir}
+
+  @doc """
+  Reads the local config file from the working directory.
+
+  Returns `{:ok, config_map}` or `{:error, reason}`.
+  """
+  @spec read_local_config(String.t()) :: {:ok, map()} | {:error, atom()}
+  def read_local_config(working_dir) do
+    config_path = Path.join([working_dir, @config_dir, @config_file])
+
+    if File.exists?(config_path) do
+      case YamlElixir.read_from_file(config_path) do
+        {:ok, config} when is_map(config) -> {:ok, config}
+        {:ok, nil} -> {:ok, %{}}
+        {:error, _reason} -> {:error, :config_parse_error}
+      end
+    else
+      {:error, :config_not_found}
+    end
+  end
+
+  defp get_or_create_project(config, working_dir) do
+    case config["project_id"] do
+      nil ->
+        {:error, :no_project_id}
+
+      project_id ->
+        case CodeMySpec.Repo.get(Project, project_id) do
+          %Project{} = project ->
+            {:ok, project}
+
+          nil ->
+            create_project_from_config(config, working_dir)
+        end
+    end
+  end
+
+  defp create_project_from_config(config, _working_dir) do
+    attrs = %{
+      id: config["project_id"],
+      name: config["name"] || "Unnamed Project",
+      module_name: config["module_name"] || "App",
+      description: config["description"],
+      account_id: config["account_id"]
+    }
+
+    CodeMySpec.Repo.insert(struct(Project, attrs))
+  end
 end

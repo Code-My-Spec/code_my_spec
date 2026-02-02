@@ -56,8 +56,24 @@ defmodule CodeMySpec.McpServers.Validators do
   end
 
   @doc """
-  Returns the MCP working directory (the project directory where Claude Code is running).
+  Returns the MCP working directory from the frame context.
+
+  For HTTP transport, this comes from the X-Working-Dir header.
+  For stdio transport, this comes from Application.get_env (set by CLI).
   Falls back to File.cwd!() if not set.
+  """
+  def mcp_working_dir(frame) do
+    # Try frame.assigns first (HTTP transport sets working_dir from header)
+    # Fall back to Application.get_env (stdio transport sets it at startup)
+    case frame.assigns do
+      %{working_dir: dir} when is_binary(dir) -> dir
+      _ -> Application.get_env(:code_my_spec, :mcp_working_dir, File.cwd!())
+    end
+  end
+
+  @doc """
+  Legacy function for backward compatibility.
+  Prefer mcp_working_dir/1 with frame when available.
   """
   def mcp_working_dir do
     Application.get_env(:code_my_spec, :mcp_working_dir, File.cwd!())

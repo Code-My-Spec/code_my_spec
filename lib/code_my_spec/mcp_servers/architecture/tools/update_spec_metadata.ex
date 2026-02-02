@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_project_scope(frame),
-         {:ok, env} <- Environments.create(:cli, working_dir: Validators.mcp_working_dir()),
+         {:ok, env} <- Environments.create(:cli, working_dir: Validators.mcp_working_dir(frame)),
          {:ok, spec_path} <- find_spec_path(env, params.module_name),
          {:ok, _} <- update_spec_file(env, spec_path, params),
          {:ok, component} <- sync_to_database(scope, params) do
