@@ -8,7 +8,7 @@ defmodule CodeMySpec.LocalServer.Router do
   use Plug.Router
   require Logger
 
-  alias CodeMySpec.LocalServer.Controllers.AgentTaskController
+  alias CodeMySpec.LocalServer.Controllers.{AgentTaskController, HookController}
   alias CodeMySpec.LocalServer.Plugs
 
   plug :match
@@ -29,6 +29,15 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
     |> maybe_continue(&Plugs.LocalScope.call(&1, []))
     |> maybe_continue(&AgentTaskController.start/1)
+  end
+
+  # Hook API - require localhost, working dir, and scope
+  post "/api/hooks" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&HookController.handle/1)
   end
 
   # MCP routes - require localhost, working dir, and scope
