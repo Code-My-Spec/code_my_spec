@@ -15,6 +15,7 @@ defmodule CodeMySpec.Projects.Project do
           deploy_key: String.t() | nil,
           google_analytics_property_id: String.t() | nil,
           setup_error: String.t() | nil,
+          agentic_mode: boolean(),
           account_id: Ecto.UUID.t() | nil,
           status:
             :created
@@ -41,6 +42,7 @@ defmodule CodeMySpec.Projects.Project do
     field :deploy_key, :string
     field :google_analytics_property_id, :string
     field :setup_error, :string
+    field :agentic_mode, :boolean, default: false
     field :account_id, :binary_id
 
     field :status, Ecto.Enum,
@@ -74,7 +76,8 @@ defmodule CodeMySpec.Projects.Project do
       :deploy_key,
       :google_analytics_property_id,
       :status,
-      :setup_error
+      :setup_error,
+      :agentic_mode
     ])
     |> validate_required([:name])
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,
