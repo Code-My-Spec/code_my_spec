@@ -19,16 +19,19 @@ defmodule CodeMySpec.Users.Scope do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Users.User
+  alias CodeMySpec.ClientUsers.ClientUser
   alias CodeMySpec.UserPreferences
 
   defstruct user: nil,
+            user_id: nil,
             active_account: nil,
             active_account_id: nil,
             active_project: nil,
             active_project_id: nil
 
   @type t :: %__MODULE__{
-          user: User.t() | nil,
+          user: User.t() | ClientUser.t() | nil,
+          user_id: Ecto.UUID.t() | integer() | nil,
           active_account: Account.t() | nil,
           active_account_id: Ecto.UUID.t() | nil,
           active_project: Project.t() | nil,
@@ -41,12 +44,13 @@ defmodule CodeMySpec.Users.Scope do
   Returns nil if no user is given.
   """
   def for_user(%User{} = user) do
-    scope = %__MODULE__{user: user}
+    scope = %__MODULE__{user: user, user_id: user.id}
 
     case UserPreferences.get_user_preference(scope) do
       {:ok, preferences} ->
         %__MODULE__{
           user: user,
+          user_id: user.id,
           active_account: preferences.active_account,
           active_account_id: preferences.active_account_id,
           active_project: preferences.active_project,
@@ -77,9 +81,12 @@ defmodule CodeMySpec.Users.Scope do
   def from_local_config(working_dir) when is_binary(working_dir) do
     with {:ok, config} <- read_local_config(working_dir),
          {:ok, project} <- get_or_create_project(config, working_dir) do
+      user = default_local_user()
+
       {:ok,
        %__MODULE__{
-         user: nil,
+         user: user,
+         user_id: user.id,
          active_account: nil,
          active_account_id: config["account_id"],
          active_project: project,
@@ -89,6 +96,17 @@ defmodule CodeMySpec.Users.Scope do
   end
 
   def from_local_config(nil), do: {:error, :no_working_dir}
+
+  # Default user for local/CLI contexts where no OAuth user is available
+  defp default_local_user do
+    %ClientUser{
+      id: 0,
+      email: "cli@localhost",
+      oauth_token: nil,
+      oauth_refresh_token: nil,
+      oauth_expires_at: nil
+    }
+  end
 
   @doc """
   Reads the local config file from the working directory.

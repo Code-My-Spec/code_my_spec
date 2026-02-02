@@ -153,17 +153,7 @@ defmodule CodeMySpec.Components.Component do
     end
   end
 
-  @spec put_scope_associations(Ecto.Changeset.t(), CodeMySpec.Users.Scope.t()) ::
-          Ecto.Changeset.t()
-  defp put_scope_associations(changeset, %{
-         active_account: %{id: account_id},
-         active_project: %{id: project_id}
-       }) do
-    changeset
-    |> put_change(:account_id, account_id)
-    |> put_change(:project_id, project_id)
-  end
-
+  # Use _id fields - always set in both web and local contexts
   @spec put_scope_associations(Ecto.Changeset.t(), CodeMySpec.Users.Scope.t()) ::
           Ecto.Changeset.t()
   defp put_scope_associations(changeset, %{

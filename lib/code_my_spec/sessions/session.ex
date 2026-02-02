@@ -91,7 +91,7 @@ defmodule CodeMySpec.Sessions.Session do
     |> validate_required([:type])
     |> put_change(:account_id, user_scope.active_account_id)
     |> put_change(:project_id, user_scope.active_project_id)
-    |> put_change(:user_id, user_scope.user.id)
+    |> put_change(:user_id, user_scope.user_id)
     |> put_display_name()
   end
 
