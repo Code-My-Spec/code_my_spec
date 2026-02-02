@@ -9,7 +9,6 @@ defmodule CodeMySpec.Sessions.SessionType do
   @legacy_types [
     CodeMySpec.ContextSpecSessions,
     CodeMySpec.ContextComponentsDesignSessions,
-    CodeMySpec.ContextTestingSessions,
     CodeMySpec.ComponentSpecSessions,
     CodeMySpec.ComponentDesignReviewSessions,
     CodeMySpec.ComponentTestSessions,
