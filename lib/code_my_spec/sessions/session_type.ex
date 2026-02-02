@@ -1,4 +1,6 @@
 defmodule CodeMySpec.Sessions.SessionType do
+  @moduledoc false
+
   use Ecto.Type
 
   alias CodeMySpec.Sessions.AgentTasks
@@ -7,7 +9,6 @@ defmodule CodeMySpec.Sessions.SessionType do
   @legacy_types [
     CodeMySpec.ContextSpecSessions,
     CodeMySpec.ContextComponentsDesignSessions,
-    CodeMySpec.ContextCodingSessions,
     CodeMySpec.ContextTestingSessions,
     CodeMySpec.ComponentSpecSessions,
     CodeMySpec.ComponentDesignReviewSessions,
@@ -58,7 +59,7 @@ defmodule CodeMySpec.Sessions.SessionType do
   def dump(module) when is_atom(module), do: {:ok, Atom.to_string(module)}
   def dump(_), do: :error
 
-  def mapper() do
+  def mapper do
     Enum.map(@valid_types, fn type ->
       {type |> Atom.to_string() |> String.split(".") |> List.last(), type}
     end)

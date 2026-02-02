@@ -117,7 +117,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "children_implementations",
         checker: HierarchicalChecker,
-        satisfied_by: CodeMySpec.ContextCodingSessions,
+        satisfied_by: nil,
         artifact_type: :hierarchy,
         description: "Child component implementations are complete"
       })

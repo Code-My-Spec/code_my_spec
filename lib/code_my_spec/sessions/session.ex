@@ -1,10 +1,12 @@
 defmodule CodeMySpec.Sessions.Session do
+  @moduledoc false
+
+  alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Users.User
   alias CodeMySpec.Sessions.Interaction
+  alias CodeMySpec.Users.User
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -13,7 +15,6 @@ defmodule CodeMySpec.Sessions.Session do
           type:
             CodeMySpec.ContextSpecSessions
             | CodeMySpec.ContextComponentsDesignSessions
-            | CodeMySpec.ContextCodingSessions
             | CodeMySpec.ContextTestingSessions
             | CodeMySpec.ComponentSpecSessions
             | CodeMySpec.ComponentDesignReviewSessions

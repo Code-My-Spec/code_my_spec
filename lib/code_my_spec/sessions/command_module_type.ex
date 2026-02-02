@@ -1,4 +1,6 @@
 defmodule CodeMySpec.Sessions.CommandModuleType do
+  @moduledoc false
+
   use Ecto.Type
   require Logger
 
@@ -12,9 +14,6 @@ defmodule CodeMySpec.Sessions.CommandModuleType do
     CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnComponentSpecSessions,
     CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnReviewSession,
     CodeMySpec.ContextComponentsDesignSessions.Steps.Finalize,
-    CodeMySpec.ContextCodingSessions.Steps.Initialize,
-    CodeMySpec.ContextCodingSessions.Steps.SpawnComponentCodingSessions,
-    CodeMySpec.ContextCodingSessions.Steps.Finalize,
     CodeMySpec.ContextTestingSessions.Steps.Initialize,
     CodeMySpec.ContextTestingSessions.Steps.SpawnComponentTestingSessions,
     CodeMySpec.ContextTestingSessions.Steps.Finalize,
@@ -58,7 +57,7 @@ defmodule CodeMySpec.Sessions.CommandModuleType do
 
   def dump(_), do: :error
 
-  def string_mapper() do
+  def string_mapper do
     Enum.reduce(@valid_modules, %{}, fn type, acc ->
       Map.put(acc, type |> Atom.to_string(), type)
     end)
