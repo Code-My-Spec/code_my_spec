@@ -61,7 +61,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "test_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.ComponentTestSessions,
+        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Component test file exists"
       })

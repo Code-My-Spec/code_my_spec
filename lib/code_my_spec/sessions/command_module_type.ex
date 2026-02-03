@@ -18,12 +18,7 @@ defmodule CodeMySpec.Sessions.CommandModuleType do
     CodeMySpec.ComponentCodingSessions.Steps.GenerateImplementation,
     CodeMySpec.ComponentCodingSessions.Steps.RunTests,
     CodeMySpec.ComponentCodingSessions.Steps.FixTestFailures,
-    CodeMySpec.ComponentCodingSessions.Steps.Finalize,
-    CodeMySpec.ComponentTestSessions.Steps.Initialize,
-    CodeMySpec.ComponentTestSessions.Steps.GenerateTestsAndFixtures,
-    CodeMySpec.ComponentTestSessions.Steps.RunTests,
-    CodeMySpec.ComponentTestSessions.Steps.FixCompilationErrors,
-    CodeMySpec.ComponentTestSessions.Steps.Finalize
+    CodeMySpec.ComponentCodingSessions.Steps.Finalize
   ]
 
   def type, do: :string

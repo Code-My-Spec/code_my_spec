@@ -16,7 +16,6 @@ defmodule CodeMySpec.Sessions.Session do
             CodeMySpec.ContextComponentsDesignSessions
             | CodeMySpec.ComponentSpecSessions
             | CodeMySpec.ComponentDesignReviewSessions
-            | CodeMySpec.ComponentTestSessions
             | CodeMySpec.ComponentCodingSessions
             | CodeMySpec.IntegrationSessions
             | CodeMySpec.Sessions.AgentTasks.ContextDesignReview

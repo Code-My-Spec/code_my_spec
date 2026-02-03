@@ -50,9 +50,6 @@ defmodule CodeMySpec.SessionsFixtures do
     created_interaction
   end
 
-  defp get_default_step_module(CodeMySpec.ComponentTestSessions),
-    do: CodeMySpec.ComponentTestSessions.Steps.Initialize
-
   defp get_default_step_module(CodeMySpec.ComponentSpecSessions),
     do: CodeMySpec.ComponentSpecSessions.Steps.Initialize
 
