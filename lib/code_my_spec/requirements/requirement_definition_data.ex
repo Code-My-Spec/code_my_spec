@@ -47,7 +47,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "implementation_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.ComponentCodingSessions,
+        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component implementation file exists"
       })

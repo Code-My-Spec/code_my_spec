@@ -30,7 +30,7 @@ defmodule CodeMySpec.Sessions.SessionServerTest do
 
       session =
         SessionsFixtures.session_fixture(scope, %{
-          type: CodeMySpec.ComponentCodingSessions,
+          type: CodeMySpec.ContextComponentsDesignSessions,
           component_id: component.id
         })
 
@@ -120,7 +120,7 @@ defmodule CodeMySpec.Sessions.SessionServerTest do
 
       session =
         SessionsFixtures.session_fixture(scope, %{
-          type: CodeMySpec.ComponentCodingSessions,
+          type: CodeMySpec.ContextComponentsDesignSessions,
           component_id: component.id
         })
 

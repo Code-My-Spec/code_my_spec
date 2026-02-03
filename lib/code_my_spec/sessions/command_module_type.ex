@@ -8,12 +8,7 @@ defmodule CodeMySpec.Sessions.CommandModuleType do
     CodeMySpec.ContextComponentsDesignSessions.Steps.Initialize,
     CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnComponentSpecSessions,
     CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnReviewSession,
-    CodeMySpec.ContextComponentsDesignSessions.Steps.Finalize,
-    CodeMySpec.ComponentCodingSessions.Steps.Initialize,
-    CodeMySpec.ComponentCodingSessions.Steps.GenerateImplementation,
-    CodeMySpec.ComponentCodingSessions.Steps.RunTests,
-    CodeMySpec.ComponentCodingSessions.Steps.FixTestFailures,
-    CodeMySpec.ComponentCodingSessions.Steps.Finalize
+    CodeMySpec.ContextComponentsDesignSessions.Steps.Finalize
   ]
 
   def type, do: :string

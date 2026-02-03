@@ -50,9 +50,6 @@ defmodule CodeMySpec.SessionsFixtures do
     created_interaction
   end
 
-  defp get_default_step_module(CodeMySpec.ComponentCodingSessions),
-    do: CodeMySpec.ComponentCodingSessions.Steps.Initialize
-
   defp get_default_step_module(_), do: nil
 
   @doc """
