@@ -19,7 +19,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.ComponentSpecSessions,
+        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Component specification file exists"
       })
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_valid",
         checker: DocumentValidityChecker,
-        satisfied_by: CodeMySpec.ComponentSpecSessions,
+        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Component specification is valid"
       })
@@ -173,7 +173,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_valid",
         checker: DocumentValidityChecker,
-        satisfied_by: CodeMySpec.ComponentSpecSessions,
+        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Schema specification is valid"
       })

@@ -3,8 +3,10 @@ defmodule CodeMySpec.Sessions.SessionServerTest do
 
   import ExUnit.CaptureLog
 
+  alias CodeMySpec.ComponentsFixtures
   alias CodeMySpec.Sessions.SessionServer
-  alias CodeMySpec.{UsersFixtures, ComponentsFixtures, SessionsFixtures}
+  alias CodeMySpec.SessionsFixtures
+  alias CodeMySpec.UsersFixtures
 
   describe "init/1" do
     test "initializes minimal state with session_id" do
@@ -28,7 +30,7 @@ defmodule CodeMySpec.Sessions.SessionServerTest do
 
       session =
         SessionsFixtures.session_fixture(scope, %{
-          type: CodeMySpec.ComponentSpecSessions,
+          type: CodeMySpec.ComponentCodingSessions,
           component_id: component.id
         })
 
@@ -118,7 +120,7 @@ defmodule CodeMySpec.Sessions.SessionServerTest do
 
       session =
         SessionsFixtures.session_fixture(scope, %{
-          type: CodeMySpec.ComponentSpecSessions,
+          type: CodeMySpec.ComponentCodingSessions,
           component_id: component.id
         })
 

@@ -14,7 +14,6 @@ defmodule CodeMySpec.Sessions.Session do
           id: Ecto.UUID.t() | nil,
           type:
             CodeMySpec.ContextComponentsDesignSessions
-            | CodeMySpec.ComponentSpecSessions
             | CodeMySpec.ComponentDesignReviewSessions
             | CodeMySpec.ComponentCodingSessions
             | CodeMySpec.IntegrationSessions

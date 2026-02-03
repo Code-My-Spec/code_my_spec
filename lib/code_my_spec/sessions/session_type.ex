@@ -8,7 +8,6 @@ defmodule CodeMySpec.Sessions.SessionType do
   # Legacy orchestrator-based session types (deprecated)
   @legacy_types [
     CodeMySpec.ContextComponentsDesignSessions,
-    CodeMySpec.ComponentSpecSessions,
     CodeMySpec.ComponentDesignReviewSessions,
     CodeMySpec.ComponentCodingSessions,
     CodeMySpec.IntegrationSessions

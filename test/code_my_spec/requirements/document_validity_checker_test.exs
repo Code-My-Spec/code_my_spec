@@ -88,7 +88,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ComponentSpecSessions"
+        satisfied_by: "ComponentSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)
@@ -111,7 +111,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ComponentSpecSessions"
+        satisfied_by: "ComponentSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)
@@ -135,7 +135,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ComponentSpecSessions"
+        satisfied_by: "ComponentSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)
@@ -174,7 +174,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ComponentSpecSessions"
+        satisfied_by: "ComponentSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)
@@ -197,7 +197,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ComponentSpecSessions"
+        satisfied_by: "ComponentSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)
@@ -217,7 +217,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ComponentSpecSessions"
+        satisfied_by: "ComponentSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)
@@ -240,7 +240,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ComponentSpecSessions"
+        satisfied_by: "ComponentSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)
