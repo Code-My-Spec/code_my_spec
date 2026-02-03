@@ -5,11 +5,6 @@ defmodule CodeMySpec.Sessions.CommandModuleType do
   require Logger
 
   @valid_modules [
-    CodeMySpec.ContextSpecSessions.Steps.Initialize,
-    CodeMySpec.ContextSpecSessions.Steps.GenerateContextSpec,
-    CodeMySpec.ContextSpecSessions.Steps.ValidateSpec,
-    CodeMySpec.ContextSpecSessions.Steps.ReviseSpec,
-    CodeMySpec.ContextSpecSessions.Steps.Finalize,
     CodeMySpec.ContextComponentsDesignSessions.Steps.Initialize,
     CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnComponentSpecSessions,
     CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnReviewSession,

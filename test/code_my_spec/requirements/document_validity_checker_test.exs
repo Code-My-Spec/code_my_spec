@@ -4,9 +4,9 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Components.Component
   alias CodeMySpec.Requirements.DocumentValidityChecker
   alias CodeMySpec.Requirements.RequirementDefinition
-  alias CodeMySpec.Components.Component
 
   @valid_context_spec_content """
   # TestContext
@@ -62,7 +62,7 @@ defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
         artifact_type: :document_validity,
         description: "Document is valid",
         checker: DocumentValidityChecker,
-        satisfied_by: "ContextSpecSessions"
+        satisfied_by: "ContextSpec"
       }
 
       result = DocumentValidityChecker.check(scope, requirement_definition, component)

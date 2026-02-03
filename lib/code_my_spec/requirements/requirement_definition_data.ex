@@ -145,7 +145,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.ContextSpecSessions,
+        satisfied_by: CodeMySpec.Sessions.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification file exists"
       })
@@ -159,7 +159,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_valid",
         checker: DocumentValidityChecker,
-        satisfied_by: CodeMySpec.ContextSpecSessions,
+        satisfied_by: CodeMySpec.Sessions.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification is valid"
       })

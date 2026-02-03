@@ -1,8 +1,8 @@
 defmodule CodeMySpec.SessionsTest do
-  alias CodeMySpec.ContextSpecSessions
   use CodeMySpec.DataCase
 
   alias CodeMySpec.Sessions
+  alias CodeMySpec.Sessions.AgentTasks
 
   describe "sessions" do
     alias CodeMySpec.Sessions.Session
@@ -36,7 +36,7 @@ defmodule CodeMySpec.SessionsTest do
     test "create_session/2 with valid data creates a session" do
       valid_attrs = %{
         status: :active,
-        type: ContextSpecSessions,
+        type: AgentTasks.ContextSpec,
         state: %{},
         agent: :claude_code,
         environment_type: :local
@@ -46,7 +46,7 @@ defmodule CodeMySpec.SessionsTest do
 
       assert {:ok, %Session{} = session} = Sessions.create_session(scope, valid_attrs)
       assert session.status == :active
-      assert session.type == ContextSpecSessions
+      assert session.type == AgentTasks.ContextSpec
       assert session.state == %{}
       assert session.agent == :claude_code
       assert session.environment_type == :local
@@ -64,7 +64,7 @@ defmodule CodeMySpec.SessionsTest do
 
       update_attrs = %{
         status: :complete,
-        type: ContextSpecSessions,
+        type: AgentTasks.ContextSpec,
         state: %{},
         agent: :claude_code,
         environment_type: :vscode
@@ -72,7 +72,7 @@ defmodule CodeMySpec.SessionsTest do
 
       assert {:ok, %Session{} = session} = Sessions.update_session(scope, session, update_attrs)
       assert session.status == :complete
-      assert session.type == ContextSpecSessions
+      assert session.type == AgentTasks.ContextSpec
       assert session.state == %{}
       assert session.agent == :claude_code
       assert session.environment_type == :vscode
@@ -144,62 +144,6 @@ defmodule CodeMySpec.SessionsTest do
 
       assert {:error, :session_not_found} =
                Sessions.update_execution_mode(scope, fake_uuid, "auto")
-    end
-
-    test "update_execution_mode/3 regenerates pending command with new mode" do
-      scope = full_scope_fixture()
-
-      # Create a component for ContextSpecSessions
-      {:ok, component} =
-        CodeMySpec.Components.create_component(scope, %{
-          name: "TestContext",
-          type: "context",
-          module_name: "TestContext",
-          description: "Test context"
-        })
-
-      # Create session
-      session =
-        session_fixture(scope, %{
-          type: ContextSpecSessions,
-          execution_mode: :manual,
-          component_id: component.id
-        })
-
-      # Complete the Initialize step first
-      {:ok, session_after_init} = Sessions.next_command(scope, session.id)
-      [init_interaction] = session_after_init.interactions
-
-      {:ok, session_init_complete} =
-        Sessions.handle_result(scope, session.id, init_interaction.id, %{
-          status: :ok,
-          code: 0
-        })
-
-      # Now get the GenerateContextSpec command
-      {:ok, session_with_command} = Sessions.next_command(scope, session_init_complete.id)
-      [pending_interaction, _init] = session_with_command.interactions
-
-      assert pending_interaction.result == nil
-      assert pending_interaction.command.command == "claude"
-
-      # Change execution mode to auto
-      assert {:ok, updated_session} =
-               Sessions.update_execution_mode(scope, session_with_command.id, "auto")
-
-      assert updated_session.execution_mode == :auto
-
-      # Refetch from database to get properly serialized metadata
-      refetched_session = Sessions.get_session!(scope, updated_session.id)
-      [updated_interaction, _init] = refetched_session.interactions
-
-      # Command should be regenerated with auto mode
-      assert updated_interaction.id != pending_interaction.id
-      updated_command_metadata = updated_interaction.command.metadata
-
-      # The auto flag should be in the options (after DB round-trip, keys are strings)
-      options = Map.get(updated_command_metadata, "options", %{})
-      assert options["auto"] == true
     end
 
     test "update_execution_mode/3 does not regenerate if no pending interaction" do

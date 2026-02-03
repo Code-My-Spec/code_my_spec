@@ -16,8 +16,8 @@ defmodule CodeMySpec.SessionsFixtures do
         environment_type: :local,
         state: %{},
         status: :active,
-        type: CodeMySpec.ContextSpecSessions,
-        display_name: "Context Design",
+        type: CodeMySpec.Sessions.AgentTasks.ContextSpec,
+        display_name: "Context Spec",
         interactions: []
       })
 
@@ -53,16 +53,13 @@ defmodule CodeMySpec.SessionsFixtures do
   defp get_default_step_module(CodeMySpec.ComponentTestSessions),
     do: CodeMySpec.ComponentTestSessions.Steps.Initialize
 
-  defp get_default_step_module(CodeMySpec.ContextSpecSessions),
-    do: CodeMySpec.ContextSpecSessions.Steps.Initialize
-
   defp get_default_step_module(CodeMySpec.ComponentSpecSessions),
     do: CodeMySpec.ComponentSpecSessions.Steps.Initialize
 
   defp get_default_step_module(CodeMySpec.ComponentCodingSessions),
     do: CodeMySpec.ComponentCodingSessions.Steps.Initialize
 
-  defp get_default_step_module(_), do: CodeMySpec.ComponentTestSessions.Steps.Initialize
+  defp get_default_step_module(_), do: nil
 
   @doc """
   Generate valid event attributes for testing.

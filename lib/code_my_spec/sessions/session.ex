@@ -13,8 +13,7 @@ defmodule CodeMySpec.Sessions.Session do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           type:
-            CodeMySpec.ContextSpecSessions
-            | CodeMySpec.ContextComponentsDesignSessions
+            CodeMySpec.ContextComponentsDesignSessions
             | CodeMySpec.ComponentSpecSessions
             | CodeMySpec.ComponentDesignReviewSessions
             | CodeMySpec.ComponentTestSessions
