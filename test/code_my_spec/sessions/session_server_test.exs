@@ -23,66 +23,6 @@ defmodule CodeMySpec.Sessions.SessionServerTest do
     end
   end
 
-  describe "handle_call({:run, scope, opts}, from, state)" do
-    setup do
-      scope = UsersFixtures.full_scope_fixture()
-      component = ComponentsFixtures.component_fixture(scope)
-
-      session =
-        SessionsFixtures.session_fixture(scope, %{
-          type: CodeMySpec.ContextComponentsDesignSessions,
-          component_id: component.id
-        })
-
-      %{scope: scope, session: session, component: component}
-    end
-
-    test "spawns task and returns synchronously", %{scope: scope, session: session} do
-      state = %{session_id: session.id, task: nil, scope: nil}
-      from = {self(), make_ref()}
-
-      {:reply, {:ok, reply}, new_state} =
-        SessionServer.handle_call({:run, scope, []}, from, state)
-
-      assert %Task{} = new_state.task
-      assert is_binary(reply.interaction_id)
-      assert is_pid(reply.task_pid)
-    end
-
-    test "returns reply with interaction info", %{scope: scope, session: session} do
-      state = %{session_id: session.id, task: nil, scope: nil}
-      from = {self(), make_ref()}
-
-      {:reply, {:ok, reply}, _new_state} =
-        SessionServer.handle_call({:run, scope, []}, from, state)
-
-      assert Map.has_key?(reply, :interaction_id)
-      assert Map.has_key?(reply, :command_module)
-      assert Map.has_key?(reply, :task_pid)
-    end
-
-    test "stores task and scope in state", %{scope: scope, session: session} do
-      state = %{session_id: session.id, task: nil, scope: nil}
-      from = {self(), make_ref()}
-
-      {:reply, {:ok, _reply}, new_state} =
-        SessionServer.handle_call({:run, scope, []}, from, state)
-
-      assert new_state.scope == scope
-      assert %Task{} = new_state.task
-    end
-
-    test "prevents concurrent execution", %{scope: scope, session: session} do
-      existing_task = Task.async(fn -> :timer.sleep(100) end)
-      state = %{session_id: session.id, task: existing_task, scope: nil}
-      from = {self(), make_ref()}
-
-      result = SessionServer.handle_call({:run, scope, []}, from, state)
-
-      assert {:reply, {:error, :execution_in_progress}, ^state} = result
-    end
-  end
-
   describe "handle_cast({:deliver_result, interaction_id, result, opts}, state)" do
     test "forwards message to waiting task" do
       parent = self()
@@ -120,7 +60,7 @@ defmodule CodeMySpec.Sessions.SessionServerTest do
 
       session =
         SessionsFixtures.session_fixture(scope, %{
-          type: CodeMySpec.ContextComponentsDesignSessions,
+          type: CodeMySpec.Sessions.AgentTasks.ContextSpec,
           component_id: component.id
         })
 

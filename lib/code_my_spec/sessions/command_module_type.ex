@@ -4,12 +4,7 @@ defmodule CodeMySpec.Sessions.CommandModuleType do
   use Ecto.Type
   require Logger
 
-  @valid_modules [
-    CodeMySpec.ContextComponentsDesignSessions.Steps.Initialize,
-    CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnComponentSpecSessions,
-    CodeMySpec.ContextComponentsDesignSessions.Steps.SpawnReviewSession,
-    CodeMySpec.ContextComponentsDesignSessions.Steps.Finalize
-  ]
+  @valid_modules []
 
   def type, do: :string
 
