@@ -8,14 +8,14 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
   """
 
   alias CodeMySpec.{
-    Rules,
-    Utils,
+    Compile,
     Components,
     Components.Component,
     Environments,
-    Quality,
+    Rules,
+    StaticAnalysis,
     Tests,
-    Compile
+    Utils
   }
 
   @required_alignment_score 0.9
@@ -55,7 +55,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
   - {:ok, :invalid, errors} if quality checks fail (for Claude to fix)
   - {:error, reason} if something went wrong
   """
-  def evaluate(_scope, session, opts \\ []) do
+  def evaluate(scope, session, opts \\ []) do
     %{component: component, project: project} = session
 
     %{test_file: test_file_path, code_file: code_file_path} =
@@ -78,6 +78,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
           {:ok, compile_result} ->
             # Compilation passed, run quality checks
             run_quality_checks(
+              scope,
               session,
               component,
               project,
@@ -248,6 +249,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
   defp format_diagnostics(other), do: [inspect(other)]
 
   defp run_quality_checks(
+         scope,
          _session,
          component,
          project,
@@ -259,8 +261,8 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
     # Run tests to get test results
     case run_tests(test_file_path) do
       {:ok, test_run} ->
-        tdd_state_result = Quality.check_tdd_state(test_run, tdd_mode: tdd_mode)
-        alignment_result = Quality.spec_test_alignment(component, project, tdd_mode: tdd_mode)
+        tdd_state_result = check_tdd_state(test_run, tdd_mode: tdd_mode)
+        alignment_result = run_spec_alignment(scope, component, project, tdd_mode: tdd_mode)
 
         overall_score =
           (compile_result.score + tdd_state_result.score + alignment_result.score) / 3
@@ -368,5 +370,57 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
 
     Please fix the test file to address these quality issues.
     """
+  end
+
+  # TDD state checking - validates all tests are failing when no implementation exists
+
+  defp check_tdd_state(_test_run, tdd_mode: false), do: %{score: 1.0, errors: []}
+
+  defp check_tdd_state(%{stats: %{failures: failures, passes: 0}}, tdd_mode: true)
+       when failures > 0 do
+    %{score: 1.0, errors: []}
+  end
+
+  defp check_tdd_state(%{stats: %{passes: passes}}, tdd_mode: true) when passes > 0 do
+    %{
+      score: 0.0,
+      errors: [
+        """
+        #{passes} test(s) are passing, but these tests are written against a non-existent module.
+        Ensure you are not calling components of the module, or non-applicable functions.
+        All tests should be failing in TDD mode before implementation exists.
+        """
+      ]
+    }
+  end
+
+  defp check_tdd_state(%{stats: %{failures: 0, passes: 0}}, tdd_mode: true) do
+    %{score: 0.0, errors: ["No tests were executed"]}
+  end
+
+  # Spec alignment checking using StaticAnalysis.Analyzers.SpecAlignment
+
+  defp run_spec_alignment(scope, component, project, tdd_mode: tdd_mode) do
+    %{spec_file: spec_file_path} = Utils.component_files(component, project)
+
+    case StaticAnalysis.run(scope, :spec_alignment, spec_file: spec_file_path) do
+      {:ok, problems} ->
+        test_problems = Enum.filter(problems, &(&1.category in ["missing_test", "extra_test"]))
+        errors = Enum.map(test_problems, & &1.message)
+
+        # In TDD mode, missing tests are expected (no implementation yet)
+        errors =
+          if tdd_mode,
+            do: Enum.reject(errors, &String.contains?(&1, "Missing test")),
+            else: errors
+
+        # Score: 1.0 if no problems, decrease by 0.1 per problem (min 0.0)
+        score = if Enum.empty?(errors), do: 1.0, else: max(0.0, 1.0 - length(errors) * 0.1)
+
+        %{score: score, errors: errors}
+
+      {:error, reason} ->
+        %{score: 0.0, errors: [reason]}
+    end
   end
 end

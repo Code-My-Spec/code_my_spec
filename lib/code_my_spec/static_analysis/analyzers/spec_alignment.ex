@@ -17,6 +17,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   require Logger
 
+  # Callbacks
+
   @impl true
   @spec name() :: String.t()
   def name, do: "spec_alignment"
@@ -68,6 +70,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     else
       {:error, "Spec directory does not exist: #{spec_dir}"}
     end
+  end
+
+  defp find_spec_files(_spec_dir, spec_file: spec_file) when is_binary(spec_file) do
+    if File.exists?(spec_file), do: {:ok, [spec_file]}, else: {:ok, []}
   end
 
   defp find_spec_files(spec_dir, nil) do
@@ -389,12 +395,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       actual_tests = Map.get(test_names_map, {name, arity}, [])
 
       spec_assertions
-      |> Enum.reject(fn assertion ->
-        # Check if any test name matches this assertion (fuzzy match)
-        Enum.any?(actual_tests, fn test_name ->
-          strings_similar?(assertion, test_name)
-        end)
-      end)
+      |> Enum.reject(&assertion_has_matching_test?(&1, actual_tests))
       |> Enum.map(fn missing_assertion ->
         %Problem{
           severity: :warning,
@@ -411,42 +412,44 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     end)
   end
 
+  defp assertion_has_matching_test?(assertion, actual_tests) do
+    Enum.any?(actual_tests, &strings_similar?(assertion, &1))
+  end
+
   defp find_extra_test_assertions(test_names_map, spec_assertions_map, test_path, project_id) do
     test_names_map
     |> Enum.flat_map(fn
       {{name, arity}, actual_tests} when is_atom(name) and is_integer(arity) ->
         spec_assertions = Map.get(spec_assertions_map, {name, arity}, [])
-
-        # Only report extra tests if there ARE spec assertions defined
-        if length(spec_assertions) > 0 do
-          actual_tests
-          |> Enum.reject(fn test_name ->
-            # Check if this test matches any spec assertion (fuzzy match)
-            Enum.any?(spec_assertions, fn assertion ->
-              strings_similar?(assertion, test_name)
-            end)
-          end)
-          |> Enum.map(fn extra_test ->
-            %Problem{
-              severity: :warning,
-              source_type: :static_analysis,
-              source: "spec_alignment",
-              file_path: test_path,
-              line: 1,
-              message:
-                "Extra test found for #{name}/#{arity}: '#{extra_test}' is not documented in spec",
-              category: "extra_test",
-              project_id: project_id
-            }
-          end)
-        else
-          []
-        end
+        find_extra_tests_for_function(name, arity, actual_tests, spec_assertions, test_path, project_id)
 
       {_other_key, _tests} ->
-        # Skip non-function keys
         []
     end)
+  end
+
+  defp find_extra_tests_for_function(_name, _arity, _actual_tests, [], _test_path, _project_id), do: []
+
+  defp find_extra_tests_for_function(name, arity, actual_tests, spec_assertions, test_path, project_id) do
+    actual_tests
+    |> Enum.reject(&test_has_matching_assertion?(&1, spec_assertions))
+    |> Enum.map(fn extra_test ->
+      %Problem{
+        severity: :warning,
+        source_type: :static_analysis,
+        source: "spec_alignment",
+        file_path: test_path,
+        line: 1,
+        message:
+          "Extra test found for #{name}/#{arity}: '#{extra_test}' is not documented in spec",
+        category: "extra_test",
+        project_id: project_id
+      }
+    end)
+  end
+
+  defp test_has_matching_assertion?(test_name, spec_assertions) do
+    Enum.any?(spec_assertions, &strings_similar?(&1, test_name))
   end
 
   defp strings_similar?(str1, str2) do
