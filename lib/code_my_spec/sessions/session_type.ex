@@ -5,14 +5,7 @@ defmodule CodeMySpec.Sessions.SessionType do
 
   alias CodeMySpec.Sessions.AgentTasks
 
-  # Legacy orchestrator-based session types (deprecated)
-  @legacy_types [
-    CodeMySpec.ComponentDesignReviewSessions,
-    CodeMySpec.IntegrationSessions
-  ]
-
-  # New agent task types
-  @agent_task_types [
+  @valid_types [
     AgentTasks.ComponentSpec,
     AgentTasks.ComponentCode,
     AgentTasks.ComponentTest,
@@ -25,8 +18,6 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ProjectSetup,
     AgentTasks.WriteBddSpecs
   ]
-
-  @valid_types @legacy_types ++ @agent_task_types
 
   @type t :: atom()
 

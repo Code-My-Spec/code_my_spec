@@ -12,11 +12,7 @@ defmodule CodeMySpec.Sessions.Session do
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
-          type:
-            CodeMySpec.ComponentDesignReviewSessions
-            | CodeMySpec.IntegrationSessions
-            | CodeMySpec.Sessions.AgentTasks.ContextDesignReview
-            | nil,
+          type: CodeMySpec.Sessions.SessionType.t() | nil,
           agent: :claude_code | nil,
           environment_type: :local | :vscode | :cli | nil,
           environment: Environment.t() | nil,
