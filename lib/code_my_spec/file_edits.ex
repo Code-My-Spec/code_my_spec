@@ -4,8 +4,8 @@ defmodule CodeMySpec.FileEdits do
   """
 
   import Ecto.Query
-  alias CodeMySpec.Repo
   alias CodeMySpec.FileEdits.FileEdit
+  alias CodeMySpec.Repo
 
   @doc """
   Record a file edit for an external session.
@@ -38,6 +38,22 @@ defmodule CodeMySpec.FileEdits do
   def clear_edits(external_session_id) do
     FileEdit
     |> where([e], e.external_session_id == ^external_session_id)
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  @doc """
+  Remove specific file paths from tracking for an external session.
+  Used to clean up validated files that passed all checks.
+  """
+  @spec remove_edited_files(String.t(), [String.t()]) :: :ok
+  def remove_edited_files(_external_session_id, []), do: :ok
+
+  def remove_edited_files(external_session_id, file_paths) when is_list(file_paths) do
+    FileEdit
+    |> where([e], e.external_session_id == ^external_session_id)
+    |> where([e], e.file_path in ^file_paths)
     |> Repo.delete_all()
 
     :ok

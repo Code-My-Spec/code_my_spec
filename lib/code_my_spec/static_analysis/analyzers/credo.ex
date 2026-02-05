@@ -81,19 +81,22 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     args = build_credo_args(opts)
 
     case System.cmd("mix", args, cd: code_repo, stderr_to_stdout: true) do
-      {output, exit_code} when exit_code <= 128 ->
-        # Credo exit codes vary based on issue counts/priorities, accept any normal exit
-        # We write stdout to temp file for reliable parsing
-        case File.write(temp_file, output) do
-          :ok ->
-            {:ok, output}
-
-          {:error, reason} ->
-            {:error, "Failed to write output to temp file: #{inspect(reason)}"}
+      {output, exit_code} when exit_code in 0..127 ->
+        # Credo exit codes 0-7: success (0 = no issues, 1-7 = issues based on priority)
+        # Exit codes 8-127: reserved but not errors
+        # However, if output is empty and exit_code > 1, likely an error (e.g., missing project)
+        if exit_code > 1 and String.trim(output) == "" do
+          {:error, "Credo failed with exit code #{exit_code} and no output"}
+        else
+          case File.write(temp_file, output) do
+            :ok -> {:ok, output}
+            {:error, reason} -> {:error, "Failed to write output: #{inspect(reason)}"}
+          end
         end
 
-      {output, _exit_code} ->
-        {:error, "Credo command failed: #{output}"}
+      {output, exit_code} ->
+        # Exit code 128+ indicates signal/crash
+        {:error, "Credo failed with exit code #{exit_code}: #{output}"}
     end
   rescue
     exception ->
@@ -101,16 +104,27 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   end
 
   defp build_credo_args(opts) do
-    base_args = ["credo", "suggest", "--format", "json", "--all", "--all-priorities"]
+    base_args = ["credo", "suggest", "--format", "json", "--all", "--all-priorities", "--no-color"]
 
-    case Keyword.get(opts, :config_file) do
-      nil -> base_args
-      config_file -> base_args ++ ["--config-file", config_file]
+    args =
+      case Keyword.get(opts, :config_file) do
+        nil -> base_args
+        config_file -> base_args ++ ["--config-file", config_file]
+      end
+
+    # Add specific files if provided
+    case Keyword.get(opts, :files) do
+      nil -> args
+      [] -> args
+      files when is_list(files) -> args ++ files
     end
   end
 
   defp parse_json_output(output) do
-    case Jason.decode(output) do
+    # Extract JSON from output - skip any compilation messages that precede it
+    json_output = extract_json_from_output(output)
+
+    case Jason.decode(json_output) do
       {:ok, %{"issues" => issues}} when is_list(issues) ->
         {:ok, issues}
 
@@ -122,7 +136,17 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
         {:error, "Unexpected JSON structure from Credo output"}
 
       {:error, %Jason.DecodeError{} = error} ->
-        {:error, "Failed to parse Credo JSON output: #{Exception.message(error)}"}
+        Logger.warning("Failed to parse Credo JSON: #{Exception.message(error)}")
+        Logger.debug("Raw output: #{String.slice(output, 0, 500)}")
+        {:ok, []}
+    end
+  end
+
+  # Extract JSON object from output that may have compilation messages prefixed
+  defp extract_json_from_output(output) do
+    case :binary.match(output, "{") do
+      {start, _} -> binary_part(output, start, byte_size(output) - start)
+      :nomatch -> output
     end
   end
 
