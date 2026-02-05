@@ -24,7 +24,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     {:ok, updated_project} =
       CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
 
-    scope = user_scope_fixture(user, account, updated_project)
+    scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
       # Clean up docs/spec files we created (it's a submodule, pool reset won't clean it)
@@ -745,7 +745,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     end
 
     test "returns error when spec directory doesn't exist", %{project_dir: project_dir} do
-      # Create a scope with a project pointing to a directory without docs/spec
+      # Create a scope with cwd pointing to a directory without docs/spec
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
@@ -754,8 +754,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       temp_dir = Path.join(project_dir, "_temp_no_spec")
       File.mkdir_p!(temp_dir)
 
-      project = project_fixture(scope, %{code_repo: temp_dir})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, temp_dir)
 
       assert {:error, message} = SpecAlignment.run(scope, [])
 
@@ -776,7 +776,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     end
 
     test "returns false when spec directory doesn't exist", %{project_dir: project_dir} do
-      # Create a scope with a project pointing to a directory without docs/spec
+      # Create a scope with cwd pointing to a directory without docs/spec
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
@@ -785,8 +785,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       temp_dir = Path.join(project_dir, "_temp_no_spec_avail")
       File.mkdir_p!(temp_dir)
 
-      project = project_fixture(scope, %{code_repo: temp_dir})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, temp_dir)
 
       assert SpecAlignment.available?(scope) == false
     end

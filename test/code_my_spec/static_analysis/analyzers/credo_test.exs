@@ -24,7 +24,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
     {:ok, updated_project} =
       CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
 
-    scope = user_scope_fixture(user, account, updated_project)
+    scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
       CodeMySpec.Support.TestAdapter.checkin(project_dir)
@@ -74,22 +74,22 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       assert Credo.available?(scope) == true
     end
 
-    test "returns false when project has no code_repo" do
+    test "returns false when scope has no cwd" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: nil})
+      project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project)
 
       assert Credo.available?(scope) == false
     end
 
-    test "returns false when project directory doesn't exist" do
+    test "returns false when cwd directory doesn't exist" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: "/nonexistent/directory"})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
 
       assert Credo.available?(scope) == false
     end
@@ -104,8 +104,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
 
       File.mkdir_p!(project_dir)
 
-      project = project_fixture(scope, %{code_repo: project_dir})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, project_dir)
 
       result = Credo.available?(scope)
       File.rm_rf!(project_dir)
@@ -117,8 +117,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: "/nonexistent"})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent")
 
       assert Credo.available?(scope) == false
     end
@@ -127,8 +127,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: "/nonexistent"})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent")
 
       {time_microseconds, _result} = :timer.tc(fn -> Credo.available?(scope) end)
       time_seconds = time_microseconds / 1_000_000
@@ -136,12 +136,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       assert time_seconds < 1.0
     end
 
-    test "handles File.exists? errors gracefully" do
+    test "handles empty cwd gracefully" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: ""})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "")
 
       capture_log(fn ->
         assert Credo.available?(scope) == false
@@ -248,11 +248,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
   # ============================================================================
 
   describe "run/2 - error handling" do
-    test "returns {:error, String.t()} when project has no code_repo" do
+    test "returns {:error, String.t()} when scope has no cwd" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: nil})
+      project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project)
 
       assert {:error, error_message} = Credo.run(scope)
@@ -263,8 +263,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: "/nonexistent/directory"})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
 
       use_cmd_cassette "static_analysis_credo_run_nonexistent" do
         capture_log(fn ->
@@ -298,8 +298,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: "/nonexistent"})
-      scope = user_scope_fixture(user, account, project)
+      project = project_fixture(scope)
+      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent")
 
       temp_dir = System.tmp_dir!()
       before_files = list_temp_files(temp_dir, "credo_output")

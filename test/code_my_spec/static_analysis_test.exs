@@ -57,7 +57,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
     {:ok, updated_project} =
       CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
 
-    scope = user_scope_fixture(user, account, updated_project)
+    scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
       CodeMySpec.Support.TestAdapter.checkin(project_dir)
@@ -110,7 +110,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "executes specified analyzer and returns Problems", %{scope: scope} do
       # Create spec directory for SpecAlignment analyzer
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, problems} = StaticAnalysis.run(scope, :spec_alignment)
@@ -123,7 +123,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "delegates to Runner.run/3 with options", %{scope: scope} do
       # SpecAlignment can take paths option
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, _problems} = StaticAnalysis.run(scope, :spec_alignment, paths: ["lib"])
@@ -153,7 +153,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "executes all available analyzers and returns aggregated Problems", %{scope: scope} do
       # Create spec directory to make SpecAlignment available
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       use_cmd_cassette "static_analysis_run_all" do
@@ -164,7 +164,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "delegates to Runner.run_all/2 with options", %{scope: scope} do
       # Create spec directory
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       use_cmd_cassette "static_analysis_run_all" do
@@ -175,11 +175,11 @@ defmodule CodeMySpec.StaticAnalysisTest do
     end
 
     test "returns empty list when no analyzers are available" do
-      # Create scope with no code_repo
+      # Create scope with no cwd - no analyzers will be available
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: nil})
+      project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project)
 
       assert {:ok, []} = StaticAnalysis.run_all(scope)
@@ -187,7 +187,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "logs warnings for failed analyzers", %{scope: scope} do
       # Create spec directory
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       use_cmd_cassette "static_analysis_run_all" do

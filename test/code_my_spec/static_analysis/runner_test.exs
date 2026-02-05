@@ -27,7 +27,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     {:ok, updated_project} =
       CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
 
-    scope = user_scope_fixture(user, account, updated_project)
+    scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     %{scope: scope, project: updated_project, project_dir: project_dir}
   end
@@ -81,7 +81,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   describe "run/3" do
     test "executes specified analyzer and returns Problems", %{scope: scope} do
       # Create spec directory for SpecAlignment analyzer
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, problems} = Runner.run(scope, :spec_alignment)
@@ -94,14 +94,14 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
     test "passes options through to analyzer", %{scope: scope} do
       # SpecAlignment can take paths option
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, _problems} = Runner.run(scope, :spec_alignment, paths: ["lib"])
     end
 
     test "validates Problems have project_id set", %{scope: scope} do
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.mkdir_p!(spec_dir)
 
       # Create a spec file that will generate a problem
@@ -124,7 +124,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       spec_file = Path.join(spec_dir, "my_module.spec.md")
       File.write!(spec_file, spec_content)
 
-      impl_file = Path.join(scope.active_project.code_repo, "lib/my_module.ex")
+      impl_file = Path.join(scope.cwd, "lib/my_module.ex")
       File.mkdir_p!(Path.dirname(impl_file))
       File.write!(impl_file, "defmodule MyModule do\nend")
 
@@ -141,7 +141,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "supports all registered analyzer types", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_all_types" do
         # Create spec directory for SpecAlignment
-        spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+        spec_dir = Path.join(scope.cwd, "docs/spec")
         File.mkdir_p!(spec_dir)
 
         # Test each analyzer that's available
@@ -180,7 +180,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "returns error when analyzer is not available", %{scope: scope} do
       # SpecAlignment requires a spec directory - if it doesn't exist, it's not available
       # Make sure spec directory doesn't exist
-      spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+      spec_dir = Path.join(scope.cwd, "docs/spec")
       File.rm_rf!(spec_dir)
 
       assert {:error, message} = Runner.run(scope, :spec_alignment)
@@ -199,12 +199,12 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     end
 
     test "handles analyzer execution failures gracefully", %{scope: _scope} do
-      # Try to run an analyzer on a project with no code_repo
+      # Try to run an analyzer with a nonexistent cwd
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope_no_repo = user_scope_fixture(user, account)
-      project = project_fixture(scope_no_repo, %{code_repo: "/nonexistent/directory"})
-      scope_no_repo = user_scope_fixture(user, account, project)
+      project = project_fixture(scope_no_repo)
+      scope_no_repo = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
 
       capture_log(fn ->
         assert {:error, message} = Runner.run(scope_no_repo, :credo)
@@ -222,7 +222,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "executes all available analyzers in parallel", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_run_all" do
         # Create spec directory to make SpecAlignment available
-        spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+        spec_dir = Path.join(scope.cwd, "docs/spec")
         File.mkdir_p!(spec_dir)
 
         assert {:ok, problems} = Runner.run_all(scope)
@@ -234,7 +234,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "aggregates Problems from available analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_aggregate" do
         # Create spec directory and a spec with missing implementation
-        spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+        spec_dir = Path.join(scope.cwd, "docs/spec")
         File.mkdir_p!(spec_dir)
 
         spec_content = """
@@ -256,7 +256,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         spec_file = Path.join(spec_dir, "test_module.spec.md")
         File.write!(spec_file, spec_content)
 
-        impl_file = Path.join(scope.active_project.code_repo, "lib/test_module.ex")
+        impl_file = Path.join(scope.cwd, "lib/test_module.ex")
         File.mkdir_p!(Path.dirname(impl_file))
         File.write!(impl_file, "defmodule TestModule do\nend")
 
@@ -272,7 +272,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "filters out analyzers that aren't available", %{project_dir: project_dir} do
       use_cmd_cassette "static_analysis_runner_filter" do
-        # Create a scope with a project pointing to a directory without docs/spec
+        # Create a scope with cwd pointing to a directory without docs/spec
         # so SpecAlignment won't be available, but Credo should still run
         user = user_fixture()
         account = account_with_owner_fixture(user)
@@ -281,8 +281,8 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         temp_dir = Path.join(project_dir, "_temp_no_spec_filter")
         File.mkdir_p!(temp_dir)
 
-        project = project_fixture(scope, %{code_repo: temp_dir})
-        scope = user_scope_fixture(user, account, project)
+        project = project_fixture(scope)
+        scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, temp_dir)
 
         assert {:ok, problems} = Runner.run_all(scope)
         assert is_list(problems)
@@ -295,11 +295,11 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     end
 
     test "returns empty list when no analyzers are available" do
-      # Create scope with no code_repo
+      # Create scope with no cwd - no analyzers will be available
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: nil})
+      project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project)
 
       assert {:ok, []} = Runner.run_all(scope)
@@ -323,7 +323,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "handles concurrent execution without race conditions", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_concurrent" do
         # Create spec directory
-        spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+        spec_dir = Path.join(scope.cwd, "docs/spec")
         File.mkdir_p!(spec_dir)
 
         # Run multiple times concurrently
@@ -352,7 +352,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "continues execution when one analyzer fails (error isolation)", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_error_isolation" do
         # Create spec directory to enable SpecAlignment
-        spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+        spec_dir = Path.join(scope.cwd, "docs/spec")
         File.mkdir_p!(spec_dir)
 
         # Even if one analyzer might have issues, run_all should continue
@@ -363,14 +363,14 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       end
     end
 
-    test "returns error when project has no code_repo" do
+    test "returns empty list when no cwd is set" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
-      project = project_fixture(scope, %{code_repo: nil})
+      project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project)
 
-      # When no code_repo is set, run_all should return empty list
+      # When no cwd is set, run_all should return empty list
       # since no analyzers will be available
       assert {:ok, []} = Runner.run_all(scope)
     end
@@ -379,7 +379,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "respects timeout option for slow analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_timeout" do
         # Create spec directory
-        spec_dir = Path.join(scope.active_project.code_repo, "docs/spec")
+        spec_dir = Path.join(scope.cwd, "docs/spec")
         File.mkdir_p!(spec_dir)
 
         # Run with a very short timeout - some analyzers may timeout

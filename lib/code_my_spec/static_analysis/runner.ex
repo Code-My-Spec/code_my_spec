@@ -68,10 +68,11 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   """
   @spec run(Scope.t(), atom(), keyword()) :: {:ok, [Problem.t()]} | {:error, String.t()}
   def run(%Scope{} = scope, analyzer_name, opts \\ []) do
-    with {:ok, project} <- validate_project(scope),
+    with {:ok, _project} <- validate_project(scope),
+         :ok <- validate_cwd(scope),
          {:ok, analyzer_module} <- resolve_analyzer(analyzer_name),
          {:ok, :available} <- check_availability(analyzer_module, scope),
-         opts_with_cwd = ensure_cwd_option(opts, project),
+         opts_with_cwd = ensure_cwd_option(opts, scope),
          {:ok, problems} <- execute_analyzer(analyzer_module, scope, opts_with_cwd),
          {:ok, validated_problems} <- validate_problems(problems, scope) do
       {:ok, validated_problems}
@@ -107,14 +108,13 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   @spec run_all(Scope.t(), keyword()) :: {:ok, [Problem.t()]} | {:error, String.t()}
   def run_all(%Scope{} = scope, opts \\ []) do
     # Don't validate project early - let filter_available_analyzers handle it
-    # If no code_repo is set, no analyzers will be available and we'll return empty list
+    # If no cwd is set, no analyzers will be available and we'll return empty list
     timeout = Keyword.get(opts, :timeout, 120_000)
 
-    # Only add cwd option if project has code_repo
     opts_with_cwd =
-      case scope.active_project do
-        %{code_repo: code_repo} when not is_nil(code_repo) ->
-          Keyword.put_new(opts, :cwd, code_repo)
+      case scope.cwd do
+        cwd when is_binary(cwd) and cwd != "" ->
+          Keyword.put_new(opts, :cwd, cwd)
 
         _ ->
           opts
@@ -134,15 +134,17 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   defp validate_project(%Scope{active_project: nil}),
     do: {:error, "No project in scope"}
 
-  defp validate_project(%Scope{active_project: %{code_repo: nil}}),
-    do: {:error, "Project has no code_repo configured"}
-
   defp validate_project(%Scope{active_project: project}),
     do: {:ok, project}
 
-  defp ensure_cwd_option(opts, %{code_repo: code_repo}) do
-    Keyword.put_new(opts, :cwd, code_repo)
+  defp validate_cwd(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "", do: :ok
+  defp validate_cwd(_scope), do: {:error, "No working directory (cwd) in scope"}
+
+  defp ensure_cwd_option(opts, %Scope{cwd: cwd}) when is_binary(cwd) do
+    Keyword.put_new(opts, :cwd, cwd)
   end
+
+  defp ensure_cwd_option(opts, _scope), do: opts
 
   defp resolve_analyzer(analyzer_name) when is_atom(analyzer_name) do
     analyzer_map = %{

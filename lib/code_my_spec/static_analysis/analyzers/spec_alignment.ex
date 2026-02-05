@@ -25,30 +25,31 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   @impl true
   @spec available?(Scope.t()) :: boolean()
-  def available?(%Scope{active_project: project}) do
-    with false <- is_nil(project),
-         false <- is_nil(project.code_repo),
-         spec_dir <- Path.join(project.code_repo, "docs/spec"),
-         true <- File.dir?(spec_dir) do
-      true
-    else
-      _ -> false
-    end
+  def available?(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "" do
+    spec_dir = Path.join(cwd, "docs/spec")
+    File.dir?(spec_dir)
   rescue
     _ -> false
   end
 
+  def available?(_scope), do: false
+
   @impl true
   @spec run(Scope.t(), keyword()) :: {:ok, [Problem.t()]} | {:error, String.t()}
-  def run(%Scope{active_project: project, active_project_id: project_id} = _scope, opts \\ []) do
-    with {:ok, code_repo} <- validate_project(project),
-         {:ok, spec_dir} <- get_spec_directory(code_repo),
-         {:ok, spec_files} <- find_spec_files(spec_dir, opts[:paths]) do
-      problems =
-        spec_files
-        |> Enum.flat_map(&analyze_spec_file(&1, code_repo, project_id))
+  def run(%Scope{active_project_id: project_id} = scope, opts \\ []) do
+    cwd = opts[:cwd] || scope.cwd
 
-      {:ok, problems}
+    if is_nil(cwd) or cwd == "" do
+      {:error, "No working directory available"}
+    else
+      with {:ok, spec_dir} <- get_spec_directory(cwd),
+           {:ok, spec_files} <- find_spec_files(spec_dir, opts[:paths]) do
+        problems =
+          spec_files
+          |> Enum.flat_map(&analyze_spec_file(&1, cwd, project_id))
+
+        {:ok, problems}
+      end
     end
   rescue
     exception ->
@@ -58,12 +59,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   # Private functions
 
-  defp validate_project(%{code_repo: nil}), do: {:error, "Project has no code_repo configured"}
-  defp validate_project(%{code_repo: code_repo}), do: {:ok, code_repo}
-  defp validate_project(nil), do: {:error, "No project in scope"}
-
-  defp get_spec_directory(code_repo) do
-    spec_dir = Path.join(code_repo, "docs/spec")
+  defp get_spec_directory(cwd) do
+    spec_dir = Path.join(cwd, "docs/spec")
 
     if File.dir?(spec_dir) do
       {:ok, spec_dir}
@@ -96,12 +93,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     {:ok, spec_files}
   end
 
-  defp analyze_spec_file(spec_file_path, code_repo, project_id) do
+  defp analyze_spec_file(spec_file_path, cwd, project_id) do
     with {:ok, content} <- File.read(spec_file_path),
          {:ok, module_name} <- extract_module_name_from_content(content),
          {:ok, sections} <- MarkdownParser.parse(content),
-         impl_path <- determine_impl_path(module_name, code_repo),
-         test_path <- determine_test_path(module_name, code_repo) do
+         impl_path <- determine_impl_path(module_name, cwd),
+         test_path <- determine_test_path(module_name, cwd) do
       # Only analyze if implementation exists
       if File.exists?(impl_path) do
         functions = Map.get(sections, "functions", [])
@@ -139,7 +136,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     end
   end
 
-  defp determine_impl_path(module_name, code_repo) do
+  defp determine_impl_path(module_name, cwd) do
     # Convert module name to file path
     # e.g., "MyApp.User.Schema" -> "lib/my_app/user/schema.ex"
     relative_path =
@@ -148,10 +145,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       |> Enum.map(&Macro.underscore/1)
       |> Path.join()
 
-    Path.join([code_repo, "lib", "#{relative_path}.ex"])
+    Path.join([cwd, "lib", "#{relative_path}.ex"])
   end
 
-  defp determine_test_path(module_name, code_repo) do
+  defp determine_test_path(module_name, cwd) do
     # Convert module name to test file path
     # e.g., "MyApp.User.Schema" -> "test/my_app/user/schema_test.exs"
     relative_path =
@@ -160,7 +157,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       |> Enum.map(&Macro.underscore/1)
       |> Path.join()
 
-    Path.join([code_repo, "test", "#{relative_path}_test.exs"])
+    Path.join([cwd, "test", "#{relative_path}_test.exs"])
   end
 
   defp analyze_module_alignment(spec_functions, impl_path, test_path, _spec_file_path, project_id)

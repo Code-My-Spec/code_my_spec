@@ -16,18 +16,19 @@ defmodule CodeMySpec.Users.Scope do
   growing application requirements.
   """
 
-  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Users.User
   alias CodeMySpec.ClientUsers.ClientUser
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
+  alias CodeMySpec.Users.User
 
   defstruct user: nil,
             user_id: nil,
             active_account: nil,
             active_account_id: nil,
             active_project: nil,
-            active_project_id: nil
+            active_project_id: nil,
+            cwd: nil
 
   @type t :: %__MODULE__{
           user: User.t() | ClientUser.t() | nil,
@@ -35,7 +36,8 @@ defmodule CodeMySpec.Users.Scope do
           active_account: Account.t() | nil,
           active_account_id: Ecto.UUID.t() | nil,
           active_project: Project.t() | nil,
-          active_project_id: Ecto.UUID.t() | nil
+          active_project_id: Ecto.UUID.t() | nil,
+          cwd: String.t() | nil
         }
 
   @doc """
@@ -70,17 +72,19 @@ defmodule CodeMySpec.Users.Scope do
   @doc """
   Creates a scope from a local project config file.
 
-  Reads `.code_my_spec/config.yml` from the given working directory,
+  Reads `.code_my_spec/config.yml` from the given project root directory,
   loads or creates the project, and returns a scope.
 
   Used by CLI and local MCP server for non-OAuth authenticated access.
+  Expects the project root (containing `.code_my_spec/config.yml`) - callers
+  should resolve subdirectories to the project root before calling this.
 
   Returns `{:ok, scope}` or `{:error, reason}`.
   """
   @spec from_local_config(String.t()) :: {:ok, t()} | {:error, atom() | String.t()}
-  def from_local_config(working_dir) when is_binary(working_dir) do
-    with {:ok, config} <- read_local_config(working_dir),
-         {:ok, project} <- get_or_create_project(config, working_dir) do
+  def from_local_config(project_root) when is_binary(project_root) do
+    with {:ok, config} <- read_local_config(project_root),
+         {:ok, project} <- get_or_create_project(config, project_root) do
       user = default_local_user()
 
       {:ok,
@@ -90,7 +94,8 @@ defmodule CodeMySpec.Users.Scope do
          active_account: nil,
          active_account_id: config["account_id"],
          active_project: project,
-         active_project_id: project.id
+         active_project_id: project.id,
+         cwd: project_root
        }}
     end
   end
@@ -109,22 +114,20 @@ defmodule CodeMySpec.Users.Scope do
   end
 
   @doc """
-  Reads the local config file from the working directory.
+  Reads the local config file from the project root directory.
+
+  Expects a directory containing `.code_my_spec/config.yml`.
 
   Returns `{:ok, config_map}` or `{:error, reason}`.
   """
   @spec read_local_config(String.t()) :: {:ok, map()} | {:error, atom()}
-  def read_local_config(working_dir) do
-    config_path = Path.join([working_dir, @config_dir, @config_file])
+  def read_local_config(project_root) do
+    config_path = Path.join([project_root, @config_dir, @config_file])
 
-    if File.exists?(config_path) do
-      case YamlElixir.read_from_file(config_path) do
-        {:ok, config} when is_map(config) -> {:ok, config}
-        {:ok, nil} -> {:ok, %{}}
-        {:error, _reason} -> {:error, :config_parse_error}
-      end
-    else
-      {:error, :config_not_found}
+    case YamlElixir.read_from_file(config_path) do
+      {:ok, config} when is_map(config) -> {:ok, config}
+      {:ok, nil} -> {:ok, %{}}
+      {:error, _reason} -> {:error, :config_parse_error}
     end
   end
 

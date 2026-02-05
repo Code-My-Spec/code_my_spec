@@ -21,12 +21,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   @impl true
   @spec available?(Scope.t()) :: boolean()
-  def available?(%Scope{active_project: project}) do
-    with false <- is_nil(project),
-         false <- is_nil(project.code_repo),
-         true <- File.dir?(project.code_repo),
-         true <- File.exists?(Path.join(project.code_repo, "mix.exs")),
-         true <- File.dir?(Path.join(project.code_repo, "deps/credo")) do
+  def available?(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "" do
+    with true <- File.dir?(cwd),
+         true <- File.exists?(Path.join(cwd, "mix.exs")),
+         true <- File.dir?(Path.join(cwd, "deps/credo")) do
       true
     else
       _ -> false
@@ -35,14 +33,21 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     _ -> false
   end
 
+  def available?(_scope), do: false
+
   @impl true
   @spec run(Scope.t(), keyword()) :: {:ok, [Problems.Problem.t()]} | {:error, String.t()}
-  def run(%Scope{active_project: project} = scope, opts \\ []) do
-    with {:ok, code_repo} <- validate_project(project),
-         {:ok, temp_file} <- create_temp_file() do
-      result = execute_and_parse(code_repo, temp_file, scope, opts)
-      cleanup_temp_file(temp_file)
-      result
+  def run(%Scope{} = scope, opts \\ []) do
+    cwd = opts[:cwd] || scope.cwd
+
+    if is_nil(cwd) or cwd == "" do
+      {:error, "No working directory available"}
+    else
+      with {:ok, temp_file} <- create_temp_file() do
+        result = execute_and_parse(cwd, temp_file, scope, opts)
+        cleanup_temp_file(temp_file)
+        result
+      end
     end
   rescue
     exception ->
@@ -51,10 +56,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   end
 
   # Private functions
-
-  defp validate_project(%{code_repo: nil}), do: {:error, "Project has no code_repo configured"}
-  defp validate_project(%{code_repo: code_repo}), do: {:ok, code_repo}
-  defp validate_project(nil), do: {:error, "No project in scope"}
 
   defp create_temp_file do
     temp_dir = System.tmp_dir!()

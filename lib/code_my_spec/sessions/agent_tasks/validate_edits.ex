@@ -192,8 +192,8 @@ defmodule CodeMySpec.Sessions.AgentTasks.ValidateEdits do
   end
 
   defp get_project_root(nil), do: nil
-  defp get_project_root(%Scope{active_project: nil}), do: nil
-  defp get_project_root(%Scope{active_project: %{code_repo: code_repo}}), do: code_repo
+  defp get_project_root(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "", do: cwd
+  defp get_project_root(_scope), do: nil
 
   # ============================================================================
   # Validators
