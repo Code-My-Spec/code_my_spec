@@ -40,19 +40,16 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
 
         # Generate coverage report for each story
         story_sections =
-          stories
-          |> Enum.map(fn story ->
+          Enum.map_join(stories, "\n\n", fn story ->
             story_specs = Map.get(specs_by_story, story.id, [])
             format_story_with_criteria(story, story_specs)
           end)
-          |> Enum.join("\n\n")
 
         # Add summary statistics
         total_stories = length(stories)
         stories_with_specs =
-          stories
-          |> Enum.count(fn story ->
-            length(Map.get(specs_by_story, story.id, [])) > 0
+          Enum.count(stories, fn story ->
+            Map.get(specs_by_story, story.id, []) != []
           end)
 
         summary = """
@@ -77,7 +74,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
 
   ## Examples
 
-      iex> spec = %Spec{name: "User auth", file_path: "/path/spec.exs", scenarios: []}
+      iex> spec = %Spec{name: "User auth", file_path: "/path/spec.ex", scenarios: []}
       iex> project_summary(spec)
       "# User auth\\n\\n..."
 
@@ -117,9 +114,9 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
 
   ## Examples
 
-      iex> spec = %Spec{name: "Auth", file_path: "/path/spec.exs", story_id: 1}
+      iex> spec = %Spec{name: "Auth", file_path: "/path/spec.ex", story_id: 1}
       iex> project_full(spec)
-      "# Auth\\n\\n**File**: /path/spec.exs\\n..."
+      "# Auth\\n\\n**File**: /path/spec.ex\\n..."
 
   """
   @spec project_full(Spec.t()) :: String.t()
@@ -249,17 +246,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
 
     if Enum.empty?(specs) do
       status = "❌ **No specs found**\n\n"
-
-      criteria_section =
-        if Enum.empty?(criteria) do
-          ""
-        else
-          "**Criteria:**\n" <>
-            Enum.map_join(criteria, "\n", fn criterion ->
-              "- ❌ #{criterion.description}"
-            end) <> "\n"
-        end
-
+      criteria_section = format_uncovered_criteria_section(criteria)
       header <> status <> criteria_section
     else
       # Get covered criterion IDs from specs
@@ -270,31 +257,10 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
         |> Enum.uniq()
 
       # Build coverage status
-      status =
-        if Enum.empty?(criteria) do
-          "✓ **#{length(specs)} spec(s)**\n\n"
-        else
-          covered_count = length(covered_criterion_ids)
-          total_count = length(criteria)
-
-          if covered_count == total_count do
-            "✓ **Full coverage** (#{covered_count}/#{total_count} criteria)\n\n"
-          else
-            "⚠ **Partial coverage** (#{covered_count}/#{total_count} criteria)\n\n"
-          end
-        end
+      status = format_coverage_status(criteria, covered_criterion_ids, specs)
 
       # Build criteria section if criteria exist
-      criteria_section =
-        if Enum.empty?(criteria) do
-          ""
-        else
-          "**Criteria:**\n" <>
-            Enum.map_join(criteria, "\n", fn criterion ->
-              marker = if criterion.id in covered_criterion_ids, do: "✓", else: "❌"
-              "- #{marker} #{criterion.description}"
-            end) <> "\n\n"
-        end
+      criteria_section = format_criteria_section(criteria, covered_criterion_ids)
 
       # Build specs section
       specs_section =
@@ -304,6 +270,40 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
           end) <> "\n"
 
       header <> status <> criteria_section <> specs_section
+    end
+  end
+
+  defp format_criteria_section([], _covered_criterion_ids), do: ""
+
+  defp format_criteria_section(criteria, covered_criterion_ids) do
+    lines = Enum.map_join(criteria, "\n", &format_criterion_line(&1, covered_criterion_ids))
+    "**Criteria:**\n" <> lines <> "\n\n"
+  end
+
+  defp format_uncovered_criteria_section([]), do: ""
+
+  defp format_uncovered_criteria_section(criteria) do
+    lines = Enum.map_join(criteria, "\n", fn criterion -> "- ❌ #{criterion.description}" end)
+    "**Criteria:**\n" <> lines <> "\n"
+  end
+
+  defp format_criterion_line(criterion, covered_criterion_ids) do
+    marker = if criterion.id in covered_criterion_ids, do: "✓", else: "❌"
+    "- #{marker} #{criterion.description}"
+  end
+
+  defp format_coverage_status([], _covered_criterion_ids, specs) do
+    "✓ **#{length(specs)} spec(s)**\n\n"
+  end
+
+  defp format_coverage_status(criteria, covered_criterion_ids, _specs) do
+    covered_count = length(covered_criterion_ids)
+    total_count = length(criteria)
+
+    if covered_count == total_count do
+      "✓ **Full coverage** (#{covered_count}/#{total_count} criteria)\n\n"
+    else
+      "⚠ **Partial coverage** (#{covered_count}/#{total_count} criteria)\n\n"
     end
   end
 

@@ -150,7 +150,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
   # ============================================================================
 
   defp temp_spex_file(content, filename \\ nil) do
-    unique_filename = filename || "test_spex_#{System.unique_integer([:positive])}.exs"
+    unique_filename = filename || "test_spex_#{System.unique_integer([:positive])}.ex"
     path = Path.join(System.tmp_dir!(), unique_filename)
     File.write!(path, content)
     path
@@ -181,7 +181,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
   end
 
   defp nonexistent_file_path do
-    Path.join(System.tmp_dir!(), "nonexistent_#{System.unique_integer([:positive])}.exs")
+    Path.join(System.tmp_dir!(), "nonexistent_#{System.unique_integer([:positive])}.ex")
   end
 
   # ============================================================================
@@ -640,7 +640,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
 
       assert {:error, reasons} = Parser.validate_syntax(path)
       assert is_list(reasons)
-      assert length(reasons) > 0
+      assert reasons != []
     end
 
     test "provides descriptive error messages" do
@@ -666,22 +666,22 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
     end
 
     test "extracts story_id from directory name like '456_dashboard'" do
-      path = "/projects/456_dashboard/spec.exs"
+      path = "/projects/456_dashboard/spec.ex"
       assert Parser.derive_story_id(path) == 456
     end
 
     test "returns nil for files not in story directory pattern" do
-      path = "/path/to/specs/regular_directory/spec.exs"
+      path = "/path/to/specs/regular_directory/spec.ex"
       assert is_nil(Parser.derive_story_id(path))
     end
 
     test "returns nil for malformed directory names" do
-      path = "/path/to/specs/abc_invalid/spec.exs"
+      path = "/path/to/specs/abc_invalid/spec.ex"
       assert is_nil(Parser.derive_story_id(path))
     end
 
     test "handles numeric IDs correctly as integers" do
-      path = "/specs/999_feature/test.exs"
+      path = "/specs/999_feature/test.ex"
       result = Parser.derive_story_id(path)
       assert is_integer(result)
       assert result == 999
@@ -704,12 +704,12 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
     end
 
     test "returns nil for files not following criterion pattern" do
-      path = "/path/to/regular_spec.exs"
+      path = "/path/to/regular_spec.ex"
       assert is_nil(Parser.derive_criterion_id(path))
     end
 
     test "returns nil for generic spec files" do
-      path = "/path/to/user_authentication_spec.exs"
+      path = "/path/to/user_authentication_spec.ex"
       assert is_nil(Parser.derive_criterion_id(path))
     end
 

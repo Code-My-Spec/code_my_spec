@@ -37,7 +37,7 @@ defmodule CodeMySpec.BddSpecs.Spec do
 
   ## Examples
 
-      iex> changeset(%Spec{}, %{name: "User auth", file_path: "/path/to/spec.exs"})
+      iex> changeset(%Spec{}, %{name: "User auth", file_path: "/path/to/spec.ex"})
       #Ecto.Changeset<valid?: true, ...>
 
       iex> changeset(%Spec{}, %{name: "User auth"})
@@ -68,8 +68,8 @@ defmodule CodeMySpec.BddSpecs.Spec do
 
   ## Examples
 
-      iex> new(%{name: "User auth", file_path: "/path/to/spec.exs"})
-      %Spec{name: "User auth", file_path: "/path/to/spec.exs", tags: [], scenarios: []}
+      iex> new(%{name: "User auth", file_path: "/path/to/spec.ex"})
+      %Spec{name: "User auth", file_path: "/path/to/spec.ex", tags: [], scenarios: []}
 
       iex> new(%{name: "User auth"})
       ** (Ecto.InvalidChangesetError) ...

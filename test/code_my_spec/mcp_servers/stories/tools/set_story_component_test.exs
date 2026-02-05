@@ -45,7 +45,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       assert response.isError == true
     end
 
-    test "returns error when component not found" do
+    test "allows setting component_id that doesn't exist in database" do
+      # Component IDs can reference components that only exist in CLI environments
+      # (local spec files), not necessarily in the server database
       scope = full_scope_fixture()
       story = story_fixture(scope)
 
@@ -58,7 +60,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
 
       assert {:reply, response, ^frame} = SetStoryComponent.execute(params, frame)
       assert response.type == :tool
-      assert response.isError == true
+      assert response.isError == false
     end
   end
 end

@@ -7,14 +7,14 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   require Logger
 
-  alias CodeMySpec.BddSpecs.Spex.{Failure, Step, Error}
+  alias CodeMySpec.BddSpecs.Spex.{Error, Failure, Step}
 
   @doc """
   Execute mix spex synchronously and parse results.
 
   ## Parameters
 
-  - `args` - List of arguments to pass to mix spex (e.g., ["test/spex/login_spex.exs"])
+  - `args` - List of arguments to pass to mix spex (e.g., ["test/spex/login_spex.ex"])
   - `opts` - Keyword list of options:
     - `:project_root` - Project root directory to run tests from (defaults to cwd)
     - `:quiet` - Suppress console output (default: false)
@@ -27,7 +27,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   ## Example
 
-      {:ok, failures, exit_code} = Spex.execute(["test/spex/login_spex.exs"])
+      {:ok, failures, exit_code} = Spex.execute(["test/spex/login_spex.ex"])
       exit_code  # => 0 for success, non-zero for failure
   """
   @spec execute(args :: [String.t()], opts :: keyword()) ::

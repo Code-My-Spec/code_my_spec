@@ -3,14 +3,18 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
   Extracts and validates the X-Working-Dir header for local MCP connections.
 
   The working directory tells the MCP server which project Claude Code is
-  connected from. This enables session isolation when multiple Claude Code
-  instances connect to the same server.
+  connected from. This plug traverses up from the given directory to find
+  the project root (containing `.code_my_spec/config.yml`), enabling
+  commands to work from any subdirectory within a project.
   """
 
   import Plug.Conn
   require Logger
 
   @behaviour Plug
+
+  @config_dir ".code_my_spec"
+  @config_file "config.yml"
 
   @impl true
   def init(opts), do: opts
@@ -19,10 +23,10 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
   def call(conn, _opts) do
     case get_req_header(conn, "x-working-dir") do
       [working_dir | _] ->
-        case validate_working_dir(working_dir) do
-          {:ok, validated_dir} ->
-            Logger.debug("[LocalServer] Working directory: #{validated_dir}")
-            assign(conn, :working_dir, validated_dir)
+        case resolve_project_root(working_dir) do
+          {:ok, project_root} ->
+            Logger.debug("[LocalServer] Working directory: #{working_dir} -> project root: #{project_root}")
+            assign(conn, :working_dir, project_root)
 
           {:error, reason} ->
             Logger.warning("[LocalServer] Invalid working directory: #{reason}")
@@ -43,7 +47,8 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
     end
   end
 
-  defp validate_working_dir(path) do
+  # Validates the path exists, then traverses up to find the project root
+  defp resolve_project_root(path) do
     expanded = Path.expand(path)
 
     cond do
@@ -54,7 +59,23 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
         {:error, "Path is not a directory"}
 
       true ->
-        {:ok, expanded}
+        find_project_root(expanded)
+    end
+  end
+
+  # Traverses up the directory tree to find the project root
+  defp find_project_root(dir) do
+    config_path = Path.join([dir, @config_dir, @config_file])
+
+    cond do
+      File.exists?(config_path) ->
+        {:ok, dir}
+
+      dir == "/" or dir == Path.dirname(dir) ->
+        {:error, "No .code_my_spec/config.yml found in directory tree"}
+
+      true ->
+        find_project_root(Path.dirname(dir))
     end
   end
 end

@@ -10,12 +10,12 @@ defmodule CodeMySpec.BddSpecs do
 
   require Logger
 
-  alias CodeMySpec.BddSpecs.{Parser, Spec, SpecProjector}
+  alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.BddSpecs.{Parser, Spec, SpecProjector, Spex}
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -201,6 +201,36 @@ defmodule CodeMySpec.BddSpecs do
     filename = "criterion_#{criterion.id}_#{criterion_slug}_spex.exs"
 
     Path.join(["test/spex", story_dir, filename])
+  end
+
+  @doc """
+  Execute BDD specs for the given file paths.
+
+  Runs the specs via `mix spex` and returns structured failure information.
+
+  ## Options
+
+  - `:project_root` - Project root directory (required)
+  - `:quiet` - Suppress console output (default: false)
+
+  ## Returns
+
+  - `{:ok, failures, exit_code}` - List of failures (empty if all pass) and exit code
+  - `{:error, reason}` - If execution fails
+
+  ## Examples
+
+      iex> run_specs(["test/spex/login_spex.exs"], project_root: "/path/to/project")
+      {:ok, [], 0}
+
+      iex> run_specs(["test/spex/failing_spex.exs"], project_root: "/path/to/project")
+      {:ok, [%Spex.Failure{...}], 1}
+
+  """
+  @spec run_specs([String.t()], keyword()) ::
+          {:ok, [Spex.Failure.t()], integer()} | {:error, term()}
+  def run_specs(file_paths, opts \\ []) do
+    Spex.execute(file_paths, opts)
   end
 
   # Private helper to parse a spec file, returning nil on error

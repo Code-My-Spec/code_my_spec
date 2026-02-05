@@ -674,7 +674,7 @@ defmodule CodeMySpec.BddSpecsTest do
     test "returns {:error, reasons} for malformed scenarios" do
       dir = Path.join(System.tmp_dir!(), "malformed_#{System.unique_integer([:positive])}")
       File.mkdir_p!(dir)
-      file_path = Path.join(dir, "malformed.exs")
+      file_path = Path.join(dir, "malformed.ex")
       File.write!(file_path, invalid_spex_content_malformed_scenario())
       on_exit(fn -> File.rm_rf!(dir) end)
 
@@ -709,7 +709,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
       dir = Path.join(System.tmp_dir!(), "valid_steps_#{System.unique_integer([:positive])}")
       File.mkdir_p!(dir)
-      file_path = Path.join(dir, "valid_steps.exs")
+      file_path = Path.join(dir, "valid_steps.ex")
       File.write!(file_path, valid_content)
       on_exit(fn -> File.rm_rf!(dir) end)
 
@@ -719,7 +719,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
     test "handles file not found errors" do
       nonexistent_path =
-        "/tmp/nonexistent_spec_#{System.unique_integer([:positive])}/not_here.exs"
+        "/tmp/nonexistent_spec_#{System.unique_integer([:positive])}/not_here.ex"
 
       result = BddSpecs.validate_spec_syntax(nonexistent_path)
       assert {:error, reasons} = result

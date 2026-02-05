@@ -160,7 +160,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
         {:ok, problems} = Credo.run(scope)
 
         assert is_list(problems)
-        assert Enum.count(problems) > 0
+        assert problems != []
 
         Enum.each(problems, fn problem ->
           assert %Problem{} = problem

@@ -1,9 +1,9 @@
 defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
   use CodeMySpec.DataCase, async: true
 
-  alias CodeMySpec.Sessions.AgentTasks.WriteBddSpecs
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Sessions.AgentTasks.WriteBddSpecs
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -170,7 +170,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       scope = full_scope_fixture()
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
@@ -179,7 +179,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       scope = full_scope_fixture()
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ session.story.title
     end
 
@@ -187,7 +187,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       scope = full_scope_fixture()
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ "User can log in with valid credentials"
       assert prompt =~ "User sees error with invalid credentials"
     end
@@ -200,7 +200,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       expected_path1 = BddSpecs.spec_file_path(session.story, criterion1)
       expected_path2 = BddSpecs.spec_file_path(session.story, criterion2)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ expected_path1
       assert prompt =~ expected_path2
     end
@@ -209,7 +209,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       scope = full_scope_fixture()
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ "spex" or prompt =~ "Spex"
       assert prompt =~ "scenario"
       assert prompt =~ "given_"
@@ -221,7 +221,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       scope = full_scope_fixture()
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ "LiveView Testing Guide"
       assert prompt =~ "Phoenix.LiveViewTest"
     end
@@ -242,19 +242,23 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
         environment: create_environment(tmp_dir)
       }
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ "Controller Testing Guide"
       assert prompt =~ "Phoenix.ConnTest"
     end
 
-    test "scaffolds shared_givens.ex if it does not exist", %{tmp_dir: tmp_dir} do
+    test "scaffolds app_spex.ex and shared_givens.ex if they do not exist", %{tmp_dir: tmp_dir} do
       scope = full_scope_fixture()
       session = session_with_story(scope, tmp_dir)
 
-      shared_givens_path = Path.join(tmp_dir, "test/spex/support/shared_givens.ex")
+      # Without mix.exs, defaults to my_app
+      app_spex_path = Path.join(tmp_dir, "test/spex/my_app_spex.ex")
+      shared_givens_path = Path.join(tmp_dir, "test/spex/shared_givens.ex")
+      refute File.exists?(app_spex_path)
       refute File.exists?(shared_givens_path)
 
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+      assert File.exists?(app_spex_path)
       assert File.exists?(shared_givens_path)
     end
 
@@ -263,11 +267,11 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       session = session_with_story(scope, tmp_dir)
 
       # Pre-create shared givens with custom content
-      shared_givens_path = Path.join(tmp_dir, "test/spex/support/shared_givens.ex")
+      shared_givens_path = Path.join(tmp_dir, "test/spex/shared_givens.ex")
       File.mkdir_p!(Path.dirname(shared_givens_path))
 
       File.write!(shared_givens_path, """
-      defmodule MyApp.SharedGivens do
+      defmodule MyAppSpex.SharedGivens do
         use SexySpex.Givens
 
         given_ :user_exists do
@@ -276,7 +280,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       end
       """)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ "user_exists"
     end
 
@@ -284,7 +288,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       scope = full_scope_fixture()
       session = session_with_unlinked_story(scope, tmp_dir)
 
-      assert {:error, :component_not_linked} = WriteBddSpecs.command(scope, session, [])
+      assert {:error, :component_not_linked} = WriteBddSpecs.command(scope, session, skip_sync: true)
     end
 
     test "auto-selects top-priority incomplete story when no story_id", %{tmp_dir: tmp_dir} do
@@ -305,7 +309,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
 
       session = session_without_story(tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ "High Priority"
     end
 
@@ -321,7 +325,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
 
       session = session_without_story(tmp_dir)
 
-      assert {:error, :all_stories_complete} = WriteBddSpecs.command(scope, session, [])
+      assert {:error, :all_stories_complete} = WriteBddSpecs.command(scope, session, skip_sync: true)
     end
 
     test "skips fully covered story and selects next incomplete story", %{tmp_dir: tmp_dir} do
@@ -345,7 +349,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
 
       session = session_without_story(tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       # Should select story2, not story1
       assert prompt =~ "Second Story Incomplete"
       refute prompt =~ "First Story Complete"
@@ -359,7 +363,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
       [criterion1, _criterion2] = session.story.criteria
       write_valid_spec_file!(tmp_dir, session.story, criterion1)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, [])
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
       assert prompt =~ "✅ COVERED"
       assert prompt =~ "❌ MISSING"
     end

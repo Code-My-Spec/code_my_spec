@@ -9,8 +9,8 @@ defmodule CodeMySpec.BddSpecs.Parser do
 
   require Logger
 
-  alias CodeMySpec.BddSpecs.Spec
   alias CodeMySpec.BddSpecs.Scenario
+  alias CodeMySpec.BddSpecs.Spec
 
   @doc """
   Parse a Spex DSL file into a Spec struct with all scenarios and steps extracted.
@@ -395,24 +395,13 @@ defmodule CodeMySpec.BddSpecs.Parser do
   end
 
   defp validate_has_scenarios(errors, ast) do
-    case find_defmodule(ast) do
-      nil ->
-        errors
-
-      module_body ->
-        case find_spex_macro(module_body) do
-          nil ->
-            errors
-
-          spex_ast ->
-            scenarios = extract_scenarios(spex_ast)
-
-            if Enum.empty?(scenarios) do
-              errors ++ ["No scenarios found in spex"]
-            else
-              errors
-            end
-        end
+    with module_body when not is_nil(module_body) <- find_defmodule(ast),
+         spex_ast when not is_nil(spex_ast) <- find_spex_macro(module_body),
+         scenarios <- extract_scenarios(spex_ast),
+         true <- Enum.empty?(scenarios) do
+      errors ++ ["No scenarios found in spex"]
+    else
+      _ -> errors
     end
   end
 

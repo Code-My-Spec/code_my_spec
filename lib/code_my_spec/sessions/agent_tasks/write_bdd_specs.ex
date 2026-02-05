@@ -10,10 +10,14 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.BddSpecs.Parser
+  alias CodeMySpec.Compile
   alias CodeMySpec.Components
+  alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Stories
 
-  @shared_givens_path "test/spex/support/shared_givens.ex"
+  require Logger
+
+  @spex_dir "test/spex"
 
   @doc """
   Generate the prompt for Claude to create BDD specification files for a story.
@@ -24,11 +28,14 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
   Returns "all complete" message if no stories need specs.
   """
   @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def command(scope, session, _opts \\ []) do
+  def command(scope, session, opts \\ []) do
     env = get_environment(session)
+    working_dir = get_working_dir(env)
 
-    with {:ok, story} <- resolve_story(scope, session, env),
+    with {:ok, _sync_result} <- maybe_sync_project(scope, working_dir, opts),
+         {:ok, story} <- resolve_story(scope, session, env),
          {:ok, component} <- get_story_component(scope, story) do
+      ensure_app_spex_exists(env)
       ensure_shared_givens_exists(env)
       coverage = BddSpecs.check_story_coverage(env, story)
 
@@ -81,19 +88,52 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
   # Component Resolution
   # ============================================================================
 
-  defp get_story_component(_scope, %{component_id: nil}) do
+  defp get_story_component(_scope, %{component_id: nil} = story) do
+    Logger.warning("[WriteBddSpecs] Story #{story.id} (#{story.title}) has no component_id linked")
     {:error, :component_not_linked}
   end
 
-  defp get_story_component(scope, %{component_id: component_id}) do
+  defp get_story_component(scope, %{component_id: component_id} = story) do
     case Components.get_component(scope, component_id) do
-      nil -> {:error, :component_not_found}
-      component -> {:ok, component}
+      nil ->
+        Logger.warning("[WriteBddSpecs] Story #{story.id} (#{story.title}) references component_id=#{component_id} but component not found")
+        {:error, :component_not_found}
+
+      component ->
+        {:ok, component}
     end
   end
 
-  defp get_story_component(_scope, _story) do
+  defp get_story_component(_scope, story) do
+    Logger.warning("[WriteBddSpecs] Story #{inspect(story.id)} has no component_id field")
     {:error, :component_not_linked}
+  end
+
+  # ============================================================================
+  # Project Sync
+  # ============================================================================
+
+  defp maybe_sync_project(scope, working_dir, opts) do
+    if Keyword.get(opts, :skip_sync, false) do
+      {:ok, :skipped}
+    else
+      do_sync_project(scope, working_dir)
+    end
+  end
+
+  defp do_sync_project(scope, working_dir) do
+    Logger.debug("[WriteBddSpecs] Syncing project from #{working_dir}")
+    sync_opts = [base_dir: working_dir]
+
+    case Sync.sync_all(scope, sync_opts) do
+      {:ok, result} ->
+        Logger.debug("[WriteBddSpecs] Sync completed successfully")
+        {:ok, result}
+
+      {:error, reason} ->
+        Logger.error("[WriteBddSpecs] Sync failed: #{inspect(reason)}")
+        {:error, {:sync_failed, reason}}
+    end
   end
 
   # ============================================================================
@@ -116,43 +156,82 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
   defp get_working_dir(_), do: File.cwd!()
 
   # ============================================================================
-  # Shared Givens
+  # App Spex Setup
   # ============================================================================
 
-  defp ensure_shared_givens_exists(env) do
+  defp ensure_app_spex_exists(env) do
     working_dir = get_working_dir(env)
-    full_path = Path.join(working_dir, @shared_givens_path)
+    app_name = derive_app_name(working_dir)
+    full_path = Path.join([working_dir, @spex_dir, "#{app_name}_spex.ex"])
 
     unless File.exists?(full_path) do
       full_path |> Path.dirname() |> File.mkdir_p!()
       app_module = derive_app_module(working_dir)
+      spex_module = "#{app_module}Spex"
+      web_module = "#{app_module}Web"
+      test_module = "#{app_module}Test"
 
       content = """
-      defmodule #{app_module}.SharedGivens do
+      defmodule #{spex_module} do
+        @moduledoc \"\"\"
+        Boundary definition for BDD specifications.
+
+        This boundary enforces surface-layer testing by only allowing dependencies
+        on the Web layer and test support. Spex files cannot access context modules
+        directly - all testing must go through the UI.
+        \"\"\"
+
+        use Boundary, deps: [#{web_module}, #{test_module}], exports: []
+      end
+      """
+
+      File.write!(full_path, content)
+    end
+  end
+
+  defp ensure_shared_givens_exists(env) do
+    working_dir = get_working_dir(env)
+    full_path = Path.join([working_dir, @spex_dir, "shared_givens.ex"])
+
+    unless File.exists?(full_path) do
+      full_path |> Path.dirname() |> File.mkdir_p!()
+      app_module = derive_app_module(working_dir)
+      spex_module = "#{app_module}Spex"
+
+      content = """
+      defmodule #{spex_module}.SharedGivens do
         @moduledoc \"\"\"
         Shared given steps for BDD specifications.
 
         Import these givens in your spec files:
 
-            Code.require_file("support/shared_givens.ex", __DIR__)
-
-            defmodule MyApp.FeatureSpex do
-              use Spex
-              import_givens #{app_module}.SharedGivens
+            defmodule #{spex_module}.FeatureNameSpex do
+              use SexySpex
+              import_givens #{spex_module}.SharedGivens.SharedGivens
               # ...
             end
 
         Add new shared givens here when you find yourself duplicating setup code
-        across multiple specs.
+        across multiple specs. Remember: spex files can only access the Web layer,
+        so shared givens should set up state through UI interactions, not fixtures.
         \"\"\"
 
         use SexySpex.Givens
 
-        # Example shared given:
+        # Example shared given that sets up state through UI:
         #
-        # given_ :user_exists do
-        #   user = MyApp.Fixtures.user_fixture()
-        #   {:ok, %{user: user}}
+        # given_ :user_registered do
+        #   conn = Phoenix.ConnTest.build_conn()
+        #   {:ok, view, _html} = Phoenix.LiveViewTest.live(conn, "/users/register")
+        #
+        #   view
+        #   |> Phoenix.LiveViewTest.form("#registration-form", user: %{
+        #     email: "test\#{System.unique_integer()}@example.com",
+        #     password: "ValidPassword123!"
+        #   })
+        #   |> Phoenix.LiveViewTest.render_submit()
+        #
+        #   {:ok, %{}}
         # end
       end
       """
@@ -161,30 +240,35 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     end
   end
 
-  defp derive_app_module(working_dir) do
+  defp derive_app_name(working_dir) do
     mix_file = Path.join(working_dir, "mix.exs")
 
     if File.exists?(mix_file) do
       content = File.read!(mix_file)
 
       case Regex.run(~r/app:\s*:(\w+)/, content) do
-        [_, app_name] ->
-          app_name
-          |> String.split("_")
-          |> Enum.map(&String.capitalize/1)
-          |> Enum.join("")
-
-        _ ->
-          "MyApp"
+        [_, app_name] -> app_name
+        _ -> "my_app"
       end
     else
-      "MyApp"
+      "my_app"
     end
   end
 
-  defp read_shared_givens(env) do
+  defp derive_app_module(working_dir) do
+    working_dir
+    |> derive_app_name()
+    |> String.split("_")
+    |> Enum.map_join("", &String.capitalize/1)
+  end
+
+  defp shared_givens_path(env) do
     working_dir = get_working_dir(env)
-    full_path = Path.join(working_dir, @shared_givens_path)
+    Path.join([working_dir, @spex_dir, "shared_givens.ex"])
+  end
+
+  defp read_shared_givens(env) do
+    full_path = shared_givens_path(env)
 
     if File.exists?(full_path) do
       File.read!(full_path)
@@ -198,17 +282,22 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
   # ============================================================================
 
   defp build_story_prompt(env, story, component, coverage) do
+    working_dir = get_working_dir(env)
+    app_name = derive_app_name(working_dir)
+    app_module = derive_app_module(working_dir)
+    spex_module = "#{app_module}Spex"
+    app_spex_file = "#{@spex_dir}/#{app_name}_spex.ex"
+    shared_givens_file = "#{@spex_dir}/shared_givens.ex"
+
     criteria = story.criteria || []
     shared_givens_content = read_shared_givens(env)
     component_type = component.type
     component_module = component.module_name
 
     criteria_sections =
-      criteria
-      |> Enum.map(fn criterion ->
-        build_criterion_section(story, criterion, coverage, component_type, component_module)
+      Enum.map_join(criteria, "\n\n", fn criterion ->
+        build_criterion_section(story, criterion, coverage, component_type, spex_module)
       end)
-      |> Enum.join("\n\n")
 
     """
     # Write BDD Specifications for Story
@@ -231,12 +320,12 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
 
     #{criteria_sections}
 
-    #{build_testing_guide(component_type, component_module)}
+    #{build_testing_guide(component_type, spex_module)}
 
     ## Shared Givens
 
     Shared givens allow reusable setup steps across specs. The shared givens file is at:
-    `#{@shared_givens_path}`
+    `#{shared_givens_file}`
 
     ### Current Shared Givens Content
 
@@ -249,16 +338,14 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     To use shared givens in your spec file:
 
     ```elixir
-    Code.require_file("support/shared_givens.ex", __DIR__)
-
-    defmodule MyApp.FeatureNameSpex do
-      use Spex
-      import_givens MyApp.SharedGivens
+    defmodule #{spex_module}.FeatureNameSpex do
+      use SexySpex
+      import_givens #{spex_module}.SharedGivens.SharedGivens
 
       spex "feature" do
-        scenario "test case", context do
-          given_ :user_exists           # Shared given - context passed automatically
-          given_ "specific setup", context do  # Inline given for unique cases
+        scenario "test case" do          # No context parameter on scenario
+          given_ :user_registered        # Shared given - sets up state through UI
+          given_ "specific setup", context do  # Inline given takes context when needed
             {:ok, Map.put(context, :extra, true)}
           end
           # ...
@@ -270,14 +357,40 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     ### When to Add Shared Givens
 
     **Only add new shared givens if**:
-    - You find yourself duplicating the same setup code across multiple specs
-    - The setup is generic enough to be reused (e.g., "user exists", "database is seeded")
+    - You find yourself duplicating the same UI setup code across multiple specs
+    - The setup is generic enough to be reused (e.g., "user is registered", "user is on dashboard")
 
     **Do NOT add shared givens for**:
     - One-off, scenario-specific setup
     - Setup that includes criterion-specific data
 
-    If you add a new shared given, update the `#{@shared_givens_path}` file with the new definition.
+    **Remember**: Shared givens must set up state through the UI (LiveViewTest/ConnTest),
+    not by calling context functions or fixtures directly.
+
+    If you add a new shared given, update the `#{shared_givens_file}` file with the new definition.
+
+    ## Testing Layer Guidelines
+
+    **IMPORTANT**: Write specs at the SURFACE layer, not the domain layer.
+
+    BDD specs should test user-facing behavior through the UI, not internal function calls.
+
+    | Component Type | Testing Approach |
+    |----------------|------------------|
+    | LiveView (`*Web.*Live.*`) | `Phoenix.LiveViewTest` - mount, render, interact, assert HTML |
+    | Controller (`*Web.*Controller`) | `Phoenix.ConnTest` - HTTP requests and responses |
+    | Context (domain modules) | Only if explicitly testing pure business logic without UI |
+    | Schema | Changeset validation tests |
+
+    ### Surface Testing Principles
+
+    - **Test what users SEE and DO** - not internal function calls
+    - **Assert on HTML content** - text, elements, attributes users interact with
+    - **Test user interactions** - form submissions, button clicks, navigation
+    - **Assert on flash messages and redirects** - the feedback users receive
+    - **Avoid calling context functions directly** - go through the UI layer
+
+    For `*Web.*` modules, ALWAYS use LiveViewTest or ConnTest to simulate real user interactions.
 
     ## Spex DSL Syntax Guide
 
@@ -285,35 +398,62 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
 
     ### Key Points
 
-    1. **Module naming**: Use `MyApp.FeatureNameSpex` convention
-    2. **Code.require_file**: Include at top to load shared givens
-    3. **import_givens**: Import shared given definitions
-    4. **spex macro**: Wraps all scenarios for a feature
-    5. **scenario macro**: Defines a specific test case (takes context as second arg)
-    6. **given_ macro**: Sets up preconditions (note the underscore suffix)
-    7. **when_ macro**: Performs the action being tested
-    8. **then_ macro**: Asserts expected outcomes
+    1. **Module naming**: Use `#{spex_module}.FeatureNameSpex` convention (all specs under `#{spex_module}` boundary)
+    2. **import_givens**: Import shared given definitions from `#{spex_module}.SharedGivens`
+    3. **spex macro**: Wraps all scenarios for a feature
+    4. **scenario macro**: Defines a specific test case. Context is implicitly available inside - do NOT pass it as a parameter.
+    5. **given_/when_/then_ macros**: Define steps. Pass `context` when you need to read or update it.
+
+    ### Context Availability
+
+    - `context` is automatically available inside every scenario (from ExUnit setup)
+    - Steps that need context take it as a parameter: `given_ "desc", context do`
+    - Steps that don't need context omit it: `then_ "desc" do`
+    - If a step takes context but doesn't use it, prefix with underscore: `given_ "desc", _context do`
 
     ### Step Return Values
 
-    - `given_` and `when_` steps should return `{:ok, context}` with any updates
-    - `then_` steps should use assertions and return `:ok`
-    - Context is passed through each step in order
+    **IMPORTANT**: Steps must return specific values:
+
+    - `given_` and `when_` steps: Return `{:ok, updated_context}` to pass data forward
+    - `then_` steps: Return `:ok` after assertions (not `context`)
+
+    ```elixir
+    given_ "user navigates to registration", context do
+      {:ok, view, _html} = live(context.conn, "/users/register")
+      {:ok, Map.put(context, :view, view)}
+    end
+
+    then_ "user sees welcome message", context do
+      assert render(context.view) =~ "Welcome"
+      :ok
+    end
+    ```
 
     ## Instructions
 
-    1. Read the shared givens file at `#{@shared_givens_path}` to see available shared steps
-    2. Read the component spec file if it exists to understand the interface
-    3. Create spec files at the paths specified for each missing criterion
-    4. **Write actual test implementations** - NO TODOs or placeholder comments
+    **IMPORTANT: Write ONE spec file at a time, then STOP and wait for validation feedback.**
+
+    Do not write multiple spec files in a single pass. Write one, let it be validated, fix any
+    issues, then proceed to the next. This prevents cascading errors across multiple files.
+
+    For each criterion:
+    1. Create the spec file at the path specified
+    2. **All spec modules must be under the `#{spex_module}` namespace** (e.g., `#{spex_module}.UserRegistrationSpex`)
+    3. **Write actual test implementations** - NO TODOs or placeholder comments
+    4. **Surface layer ONLY** - Do NOT call context functions, fixtures, or factories. All state setup must go through the UI.
     5. Use the testing patterns shown above for #{component_type} components
-    6. Use shared givens where applicable; add new ones only if duplicating setup
-    7. Run `mix compile` to verify the specs compile correctly
-    8. If compilation fails, fix the errors before completing
+    6. Run `mix compile` to verify the spec compiles correctly
+    7. **STOP and wait for validation** before writing the next spec
+    8. Fix any validation errors before proceeding
+
+    Reference files:
+    - Boundary definition: `#{app_spex_file}`
+    - Shared givens: `#{shared_givens_file}`
     """
   end
 
-  defp build_criterion_section(story, criterion, coverage, component_type, component_module) do
+  defp build_criterion_section(story, criterion, coverage, component_type, spex_module) do
     spec_path = BddSpecs.spec_file_path(story, criterion)
     status = if criterion.id in coverage.covered, do: "✅ COVERED", else: "❌ MISSING"
 
@@ -325,58 +465,67 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     """
 
     if criterion.id in coverage.missing do
-      section <> "\n" <> build_criterion_guidance(component_type, component_module)
+      section <> "\n" <> build_criterion_guidance(component_type, spex_module)
     else
       section <> "\n_Spec already exists - skip unless revision needed._"
     end
   end
 
-  defp build_criterion_guidance("liveview", module_name) do
+  defp build_criterion_guidance("liveview", spex_module) do
     """
-    **Testing Approach for LiveView:**
+    **Testing Approach for LiveView (SURFACE LAYER):**
+    - **Test what users SEE and DO** - not internal function calls
     - Use `Phoenix.LiveViewTest` for user interaction testing
-    - Mount the LiveView with `live/2` or `live/3`
-    - Use `element/3` + `render_click/1` for button clicks
+    - Mount the LiveView with `live/2` - use plain string paths, not `~p` sigils
     - Use `form/3` + `render_submit/1` for form submissions
-    - Assert with `has_element?/2` and `render/1 =~ "text"`
+    - Use `element/3` + `render_click/1` for button clicks
+    - Assert on HTML: `render/1 =~ "text"`, `has_element?/2`
 
     ```elixir
-    # Example structure for #{module_name}
-    defmodule #{module_name}Spex do
-      use Spex
+    defmodule #{spex_module}.FeatureNameSpex do
+      use SexySpex
       import Phoenix.LiveViewTest
-      import Phoenix.ConnTest, only: [build_conn: 0]
+      import Phoenix.ConnTest
 
-      @endpoint MyAppWeb.Endpoint
+      @endpoint #{String.replace(spex_module, "Spex", "")}Web.Endpoint
 
-      # ... scenarios ...
+      setup do
+        {:ok, conn: build_conn()}
+      end
+
+      import_givens #{spex_module}.SharedGivens
     end
     ```
     """
   end
 
-  defp build_criterion_guidance("controller", module_name) do
+  defp build_criterion_guidance("controller", spex_module) do
     """
-    **Testing Approach for Controller:**
-    - Use `Phoenix.ConnTest` for HTTP request/response testing
+    **Testing Approach for Controller (SURFACE LAYER):**
+    - **Test HTTP requests and responses** - not internal function calls
+    - Use `Phoenix.ConnTest` for HTTP testing
     - Use `get/3`, `post/3`, `put/3`, `delete/3` for requests
+    - Use plain string paths, not `~p` sigils
     - Assert with `html_response/2`, `json_response/2`, `redirected_to/1`
 
     ```elixir
-    # Example structure for #{module_name}
-    defmodule #{module_name}Spex do
-      use Spex
+    defmodule #{spex_module}.FeatureNameSpex do
+      use SexySpex
       import Phoenix.ConnTest
 
-      @endpoint MyAppWeb.Endpoint
+      @endpoint #{String.replace(spex_module, "Spex", "")}Web.Endpoint
 
-      # ... scenarios ...
+      setup do
+        {:ok, conn: build_conn()}
+      end
+
+      import_givens #{spex_module}.SharedGivens
     end
     ```
     """
   end
 
-  defp build_criterion_guidance(_type, module_name) do
+  defp build_criterion_guidance(_type, spex_module) do
     """
     **Testing Approach:**
     - Use standard ExUnit assertions
@@ -385,45 +534,69 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     - Assert outcomes in `then_` steps
 
     ```elixir
-    # Example structure for #{module_name}
-    defmodule #{module_name}Spex do
-      use Spex
+    defmodule #{spex_module}.FeatureNameSpex do
+      use SexySpex
 
-      # ... scenarios ...
+      import_givens #{spex_module}.SharedGivens
     end
     ```
     """
   end
 
-  defp build_testing_guide("liveview", module_name) do
+  defp build_testing_guide("liveview", spex_module) do
+    app_module = String.replace(spex_module, "Spex", "")
+    web_endpoint = "#{app_module}Web.Endpoint"
+
     """
     ## LiveView Testing Guide
 
-    This is a LiveView component. Use `Phoenix.LiveViewTest` to test user interactions.
+    This is a LiveView component. **Test at the SURFACE layer** using `Phoenix.LiveViewTest`.
+
+    ### Key Principles
+
+    - **Test what users SEE** - assert on rendered HTML, text content, element presence
+    - **Test what users DO** - form submissions, button clicks, link navigation
+    - **DON'T call context functions or fixtures** - all state setup through UI
+    - **Assert on user feedback** - flash messages, error text, success confirmations
 
     ### Required Setup
 
     ```elixir
-    Code.require_file("support/shared_givens.ex", __DIR__)
-
-    defmodule #{module_name}Spex do
-      use Spex
+    defmodule #{spex_module}.FeatureNameSpex do
+      use SexySpex
       import Phoenix.LiveViewTest
-      import Phoenix.ConnTest, only: [build_conn: 0]
+      import Phoenix.ConnTest
 
-      @endpoint MyAppWeb.Endpoint
+      @endpoint #{web_endpoint}
 
-      import_givens MyApp.SharedGivens
+      # Setup provides conn for each test
+      setup do
+        {:ok, conn: build_conn()}
+      end
+
+      import_givens #{spex_module}.SharedGivens
     ```
+
+    **Note:** Use plain strings for paths (e.g., `"/users/register"`) instead of the `~p` sigil.
+    The `~p` sigil requires importing `Phoenix.VerifiedRoutes` and adds unnecessary dependencies.
 
     ### LiveView Testing Patterns
 
     **Mounting the LiveView:**
     ```elixir
-    given_ "user is on the page", context do
-      conn = build_conn() |> log_in_user(context.user)
-      {:ok, view, _html} = live(conn, ~p"/path/to/page")
+    given_ "the registration page is loaded", context do
+      {:ok, view, _html} = live(context.conn, "/users/register")
       {:ok, Map.put(context, :view, view)}
+    end
+    ```
+
+    **Submitting forms (most common user action):**
+    ```elixir
+    when_ "user submits valid credentials", context do
+      html = context.view
+        |> form("#registration-form", user: %{email: "test@example.com", password: "SecurePass123!"})
+        |> render_submit()
+      {:ok, Map.put(context, :result_html, html)}
     end
     ```
 
@@ -435,28 +608,31 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     end
     ```
 
-    **Filling forms:**
-    ```elixir
-    when_ "user fills in the form", context do
-      html = context.view
-        |> form("#my-form", %{field: "value"})
-        |> render_submit()
-      {:ok, Map.put(context, :html, html)}
-    end
-    ```
-
-    **Asserting content:**
+    **Asserting on visible content (what user sees):**
     ```elixir
     then_ "user sees success message", context do
-      assert render(context.view) =~ "Success!"
+      assert render(context.view) =~ "Welcome"
+      :ok
+    end
+
+    then_ "user sees validation error", context do
+      assert render(context.view) =~ "is invalid"
       :ok
     end
     ```
 
     **Asserting element presence:**
     ```elixir
-    then_ "the item appears in the list", context do
-      assert has_element?(context.view, "#item-123")
+    then_ "the form is displayed", context do
+      assert has_element?(context.view, "#registration-form")
+      :ok
+    end
+    ```
+
+    **Asserting redirects (after successful actions):**
+    ```elixir
+    then_ "user is redirected to dashboard", context do
+      assert_redirect(context.view, "/dashboard")
       :ok
     end
     ```
@@ -464,36 +640,57 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     ### Complete Example
 
     ```elixir
-    Code.require_file("support/shared_givens.ex", __DIR__)
-
-    defmodule #{module_name}Spex do
-      use Spex
+    defmodule #{spex_module}.UserRegistrationSpex do
+      use SexySpex
       import Phoenix.LiveViewTest
-      import Phoenix.ConnTest, only: [build_conn: 0]
+      import Phoenix.ConnTest
 
-      @endpoint MyAppWeb.Endpoint
+      @endpoint #{web_endpoint}
 
-      import_givens MyApp.SharedGivens
+      setup do
+        {:ok, conn: build_conn()}
+      end
 
-      spex "feature name" do
-        scenario "user completes action successfully", context do
-          given_ :user_exists
+      import_givens #{spex_module}.SharedGivens
 
-          given_ "user is on the page", context do
-            conn = build_conn() |> log_in_user(context.user)
-            {:ok, view, _html} = live(conn, ~p"/the/path")
+      spex "User registration" do
+        scenario "user registers with valid credentials" do
+          given_ "the registration page is loaded", context do
+            {:ok, view, _html} = live(context.conn, "/users/register")
             {:ok, Map.put(context, :view, view)}
           end
 
-          when_ "user submits the form", context do
+          when_ "user submits valid credentials", context do
             html = context.view
-              |> form("#the-form", %{name: "Test"})
+              |> form("#registration-form", user: %{email: "test@example.com", password: "SecurePass123!"})
               |> render_submit()
-            {:ok, Map.put(context, :html, html)}
+            {:ok, Map.put(context, :result_html, html)}
           end
 
-          then_ "user sees confirmation", context do
-            assert render(context.view) =~ "Created successfully"
+          then_ "user sees welcome message", context do
+            # Assert on what the USER SEES - the rendered HTML
+            assert render(context.view) =~ "Welcome"
+            :ok
+          end
+        end
+
+        scenario "user sees validation errors for invalid input" do
+          given_ "the registration page is loaded", context do
+            {:ok, view, _html} = live(context.conn, "/users/register")
+            {:ok, Map.put(context, :view, view)}
+          end
+
+          when_ "user submits invalid email", context do
+            html = context.view
+              |> form("#registration-form", user: %{email: "invalid", password: "short"})
+              |> render_submit()
+            {:ok, Map.put(context, :result_html, html)}
+          end
+
+          then_ "user sees error messages", context do
+            html = render(context.view)
+            assert html =~ "must have the @ sign"
+            assert html =~ "should be at least"
             :ok
           end
         end
@@ -503,40 +700,47 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     """
   end
 
-  defp build_testing_guide("controller", module_name) do
+  defp build_testing_guide("controller", spex_module) do
+    app_module = String.replace(spex_module, "Spex", "")
+    web_endpoint = "#{app_module}Web.Endpoint"
+
     """
     ## Controller Testing Guide
 
-    This is a Controller. Use `Phoenix.ConnTest` to test HTTP requests and responses.
+    This is a Controller. **Test at the SURFACE layer** using `Phoenix.ConnTest`.
+
+    ### Key Principles
+
+    - **Test HTTP requests and responses** - what users/clients send and receive
+    - **Assert on response bodies** - HTML content, JSON payloads
+    - **Assert on status codes** - 200, 201, 302, 404, etc.
+    - **DON'T call context functions or fixtures** - all state setup through HTTP
 
     ### Required Setup
 
     ```elixir
-    Code.require_file("support/shared_givens.ex", __DIR__)
-
-    defmodule #{module_name}Spex do
-      use Spex
+    defmodule #{spex_module}.FeatureNameSpex do
+      use SexySpex
       import Phoenix.ConnTest
 
-      @endpoint MyAppWeb.Endpoint
+      @endpoint #{web_endpoint}
 
-      import_givens MyApp.SharedGivens
+      setup do
+        {:ok, conn: build_conn()}
+      end
+
+      import_givens #{spex_module}.SharedGivens
     ```
+
+    **Note:** Use plain strings for paths (e.g., `"/api/resource"`) instead of the `~p` sigil
+    to avoid dependencies on `Phoenix.VerifiedRoutes`.
 
     ### Controller Testing Patterns
-
-    **Setting up authenticated conn:**
-    ```elixir
-    given_ "user is authenticated", context do
-      conn = build_conn() |> log_in_user(context.user)
-      {:ok, Map.put(context, :conn, conn)}
-    end
-    ```
 
     **Making GET requests:**
     ```elixir
     when_ "user visits the page", context do
-      conn = get(context.conn, ~p"/api/resource")
+      conn = get(context.conn, "/api/resource")
       {:ok, Map.put(context, :conn, conn)}
     end
     ```
@@ -544,7 +748,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     **Making POST requests:**
     ```elixir
     when_ "user submits data", context do
-      conn = post(context.conn, ~p"/api/resource", %{name: "Test"})
+      conn = post(context.conn, "/api/resource", %{name: "Test"})
       {:ok, Map.put(context, :conn, conn)}
     end
     ```
@@ -568,7 +772,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     **Asserting redirects:**
     ```elixir
     then_ "user is redirected to dashboard", context do
-      assert redirected_to(context.conn) == ~p"/dashboard"
+      assert redirected_to(context.conn) == "/dashboard"
       :ok
     end
     ```
@@ -576,33 +780,29 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     ### Complete Example
 
     ```elixir
-    Code.require_file("support/shared_givens.ex", __DIR__)
-
-    defmodule #{module_name}Spex do
-      use Spex
+    defmodule #{spex_module}.ResourceManagementSpex do
+      use SexySpex
       import Phoenix.ConnTest
 
-      @endpoint MyAppWeb.Endpoint
+      @endpoint #{web_endpoint}
 
-      import_givens MyApp.SharedGivens
+      setup do
+        {:ok, conn: build_conn()}
+      end
 
-      spex "feature name" do
-        scenario "user creates resource successfully", context do
-          given_ :user_exists
+      import_givens #{spex_module}.SharedGivens
 
-          given_ "user is authenticated", context do
-            conn = build_conn() |> log_in_user(context.user)
-            {:ok, Map.put(context, :conn, conn)}
-          end
-
+      spex "Resource management" do
+        scenario "user creates resource successfully" do
           when_ "user submits valid data", context do
-            conn = post(context.conn, ~p"/api/resources", %{
+            conn = post(context.conn, "/api/resources", %{
               resource: %{name: "Test Resource"}
             })
             {:ok, Map.put(context, :conn, conn)}
           end
 
-          then_ "resource is created", context do
+          then_ "API returns created resource", context do
+            # Assert on what the CLIENT RECEIVES - the JSON response
             assert %{"id" => id, "name" => "Test Resource"} = json_response(context.conn, 201)
             assert is_binary(id)
             :ok
@@ -614,7 +814,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     """
   end
 
-  defp build_testing_guide(_type, module_name) do
+  defp build_testing_guide(_type, spex_module) do
     """
     ## Testing Guide
 
@@ -623,36 +823,34 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
     ### Required Setup
 
     ```elixir
-    Code.require_file("support/shared_givens.ex", __DIR__)
+    defmodule #{spex_module}.FeatureNameSpex do
+      use SexySpex
 
-    defmodule #{module_name}Spex do
-      use Spex
-
-      import_givens MyApp.SharedGivens
+      import_givens #{spex_module}.SharedGivens
     ```
 
     ### Testing Patterns
 
-    **Setting up context:**
+    **Setting up context through UI:**
     ```elixir
-    given_ "precondition exists", context do
-      data = create_test_data()
-      {:ok, Map.put(context, :data, data)}
+    given_ "user navigates to page", context do
+      {:ok, view, _html} = live(context.conn, "/some/page")
+      {:ok, Map.put(context, :view, view)}
     end
     ```
 
     **Performing actions:**
     ```elixir
-    when_ "action is performed", context do
-      result = perform_action(context.data)
-      {:ok, Map.put(context, :result, result)}
+    when_ "user submits form", context do
+      html = context.view |> form("#form", data: %{field: "value"}) |> render_submit()
+      {:ok, Map.put(context, :html, html)}
     end
     ```
 
     **Asserting outcomes:**
     ```elixir
-    then_ "expected outcome occurs", context do
-      assert context.result == expected_value()
+    then_ "user sees result", context do
+      assert render(context.view) =~ "Success"
       :ok
     end
     ```
@@ -671,14 +869,14 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
       |> Enum.map(fn criterion ->
         spec_path = BddSpecs.spec_file_path(story, criterion)
         full_path = Path.join(get_working_dir(env), spec_path)
-        {criterion, validate_single_spec(full_path)}
+        {criterion, spec_path, validate_single_spec(full_path)}
       end)
 
     errors =
       validation_results
-      |> Enum.filter(fn {_criterion, result} -> result != :ok end)
-      |> Enum.map(fn {criterion, {:error, reason}} ->
-        "Criterion #{criterion.id} (#{criterion.description}): #{format_error(reason)}"
+      |> Enum.filter(fn {_criterion, _spec_path, result} -> result != :ok end)
+      |> Enum.map(fn {criterion, spec_path, {:error, reason}} ->
+        "Criterion #{criterion.id} (#{criterion.description}): #{format_error(reason)}\n  Expected file: `#{spec_path}`"
       end)
 
     if Enum.empty?(errors) do
@@ -698,18 +896,16 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
   end
 
   defp validate_single_spec(spec_path) do
-    cond do
-      not File.exists?(spec_path) ->
-        {:error, :file_not_found}
+    if File.exists?(spec_path) do
+      case Parser.parse_file(spec_path) do
+        {:ok, spec} ->
+          validate_spec_content(spec)
 
-      true ->
-        case Parser.parse_file(spec_path) do
-          {:ok, spec} ->
-            validate_spec_content(spec)
-
-          {:error, reason} ->
-            {:error, {:parse_error, reason}}
-        end
+        {:error, reason} ->
+          {:error, {:parse_error, reason}}
+      end
+    else
+      {:error, :file_not_found}
     end
   end
 
@@ -736,27 +932,60 @@ defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
 
   defp validate_compilation(env) do
     working_dir = get_working_dir(env)
+    result = Compile.execute(cwd: working_dir)
 
-    case System.cmd("mix", ["compile", "--warnings-as-errors"],
-           cd: working_dir,
-           stderr_to_stdout: true
-         ) do
-      {_output, 0} ->
+    case result do
+      %{status: :ok} ->
         {:ok, :valid}
 
-      {output, _exit_code} ->
-        feedback = """
-        Compilation failed with warnings or errors:
-
-        ```
-        #{output}
-        ```
-
-        Please fix the compilation issues and try again.
-        """
-
+      %{status: :error, data: %{compiler_results: diagnostics}} ->
+        feedback = format_compilation_feedback(diagnostics)
         {:ok, :invalid, feedback}
     end
+  end
+
+  defp format_compilation_feedback(diagnostics) when is_list(diagnostics) do
+    errors =
+      Enum.map_join(diagnostics, "\n", fn diagnostic ->
+        file = Map.get(diagnostic, :file) || Map.get(diagnostic, "file") || "unknown"
+        message = Map.get(diagnostic, :message) || Map.get(diagnostic, "message") || "unknown error"
+        position = Map.get(diagnostic, :position) || Map.get(diagnostic, "position")
+        line = if position, do: Map.get(position, :line) || Map.get(position, "line"), else: nil
+
+        if line do
+          "  #{file}:#{line}: #{message}"
+        else
+          "  #{file}: #{message}"
+        end
+      end)
+
+    """
+    Compilation failed with errors:
+
+    ```
+    #{errors}
+    ```
+
+    Please fix the compilation issues and try again.
+    """
+  end
+
+  defp format_compilation_feedback(output) when is_binary(output) do
+    """
+    Compilation failed with errors:
+
+    ```
+    #{output}
+    ```
+
+    Please fix the compilation issues and try again.
+    """
+  end
+
+  defp format_compilation_feedback(_other) do
+    """
+    Compilation failed. Please check for syntax errors and try again.
+    """
   end
 
   defp format_error(:file_not_found), do: "Spec file not found"
