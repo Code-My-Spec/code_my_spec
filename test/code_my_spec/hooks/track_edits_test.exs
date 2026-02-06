@@ -1,7 +1,7 @@
-defmodule CodeMySpec.Sessions.AgentTasks.TrackEditsTest do
+defmodule CodeMySpec.AgentTasks.TrackEditsTest do
   use CodeMySpec.DataCase, async: true
 
-  alias CodeMySpec.Sessions.AgentTasks.TrackEdits
+  alias CodeMySpec.AgentTasks.TrackEdits
   alias CodeMySpec.FileEdits
 
   # ============================================================================

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureReview do
+defmodule CodeMySpec.AgentTasks.ArchitectureReview do
   @moduledoc """
   Architecture review session for Claude Code slash commands.
 

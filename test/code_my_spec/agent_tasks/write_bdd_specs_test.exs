@@ -1,9 +1,9 @@
-defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecsTest do
+defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   use CodeMySpec.DataCase, async: true
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Sessions.AgentTasks.WriteBddSpecs
+  alias CodeMySpec.AgentTasks.WriteBddSpecs
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures

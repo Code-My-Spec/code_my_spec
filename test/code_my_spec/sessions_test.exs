@@ -1,8 +1,8 @@
 defmodule CodeMySpec.SessionsTest do
   use CodeMySpec.DataCase
 
+  alias CodeMySpec.AgentTasks
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.AgentTasks
 
   describe "sessions" do
     alias CodeMySpec.Sessions.Session

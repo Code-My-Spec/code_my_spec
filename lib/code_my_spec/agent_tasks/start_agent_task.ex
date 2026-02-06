@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
+defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @moduledoc """
   Start an agent task session and generate the initial prompt.
 
@@ -22,7 +22,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.AgentTasks
+  alias CodeMySpec.AgentTasks
 
   # Maps session type names to AgentTask modules
   # Note: "spec" is handled specially in resolve_session_type/2 to auto-detect context vs component

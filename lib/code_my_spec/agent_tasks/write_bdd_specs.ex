@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.WriteBddSpecs do
+defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   @moduledoc """
   Agent task for generating BDD specification files for a single story.
 

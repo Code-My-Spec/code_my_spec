@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ContextDesignReview do
+defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   @moduledoc """
   Context design review agent task for Claude Code slash commands.
 

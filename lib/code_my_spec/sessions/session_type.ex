@@ -3,7 +3,7 @@ defmodule CodeMySpec.Sessions.SessionType do
 
   use Ecto.Type
 
-  alias CodeMySpec.Sessions.AgentTasks
+  alias CodeMySpec.AgentTasks
 
   @valid_types [
     AgentTasks.ComponentSpec,

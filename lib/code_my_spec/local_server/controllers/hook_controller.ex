@@ -5,8 +5,8 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.{TrackEdits, ValidateEdits}
   alias CodeMySpec.Projects.Lifecycle
-  alias CodeMySpec.Sessions.AgentTasks.{TrackEdits, ValidateEdits}
   alias CodeMySpec.Sessions
 
   @doc """
@@ -86,7 +86,7 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
   end
 
   defp evaluate_agent_task(scope, session, cwd) do
-    alias CodeMySpec.Sessions.AgentTasks.EvaluateAgentTask
+    alias CodeMySpec.AgentTasks.EvaluateAgentTask
 
     args = %{session_id: session.id}
     args = if cwd, do: Map.put(args, :working_dir, cwd), else: args

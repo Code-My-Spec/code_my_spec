@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ContextComponentSpecs do
+defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
   @moduledoc """
   Agent task for designing a context and all its child components.
 
@@ -9,7 +9,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ContextComponentSpecs do
 
   alias CodeMySpec.{Requirements, Environments}
   alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.Sessions.AgentTasks.{ComponentSpec, ContextSpec}
+  alias CodeMySpec.AgentTasks.{ComponentSpec, ContextSpec}
 
   defp prompt_dir(external_id),
     do: ".code_my_spec/internal/sessions/#{external_id}/subagent_prompts"

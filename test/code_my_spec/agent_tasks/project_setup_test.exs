@@ -1,7 +1,7 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ProjectSetupTest do
+defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Sessions.AgentTasks.ProjectSetup
+  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Users.Scope
 

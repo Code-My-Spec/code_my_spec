@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ContextSpec do
+defmodule CodeMySpec.AgentTasks.ContextSpec do
   @moduledoc """
   Consolidated context spec session for Claude Code slash commands.
 

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ComponentCode do
+defmodule CodeMySpec.AgentTasks.ComponentCode do
   @moduledoc """
   Consolidated component coding session for Claude Code slash commands.
 

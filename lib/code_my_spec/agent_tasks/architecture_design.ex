@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ArchitectureDesign do
+defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @moduledoc """
   Architecture design session for Claude Code slash commands.
 

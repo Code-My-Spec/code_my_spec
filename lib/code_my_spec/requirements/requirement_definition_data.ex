@@ -19,7 +19,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentSpec,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Component specification file exists"
       })
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_valid",
         checker: DocumentValidityChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentSpec,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Component specification is valid"
       })
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "implementation_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentCode,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component implementation file exists"
       })
@@ -61,7 +61,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "test_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentTest,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Component test file exists"
       })
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "children_designs",
         checker: HierarchicalChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ContextComponentSpecs,
+        satisfied_by: CodeMySpec.AgentTasks.ContextComponentSpecs,
         artifact_type: :hierarchy,
         description: "Child component designs are complete"
       })
@@ -131,7 +131,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "review_file",
         checker: ContextReviewFileChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ContextDesignReview,
+        satisfied_by: CodeMySpec.AgentTasks.ContextDesignReview,
         artifact_type: :review,
         description: "Context design review file exists"
       })
@@ -145,7 +145,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_file",
         checker: FileExistenceChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ContextSpec,
+        satisfied_by: CodeMySpec.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification file exists"
       })
@@ -159,7 +159,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_valid",
         checker: DocumentValidityChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ContextSpec,
+        satisfied_by: CodeMySpec.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification is valid"
       })
@@ -173,7 +173,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "spec_valid",
         checker: DocumentValidityChecker,
-        satisfied_by: CodeMySpec.Sessions.AgentTasks.ComponentSpec,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Schema specification is valid"
       })

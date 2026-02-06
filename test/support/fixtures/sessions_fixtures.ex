@@ -14,7 +14,7 @@ defmodule CodeMySpec.SessionsFixtures do
         environment_type: :local,
         state: %{},
         status: :active,
-        type: CodeMySpec.Sessions.AgentTasks.ContextSpec,
+        type: CodeMySpec.AgentTasks.ContextSpec,
         display_name: "Context Spec"
       })
 

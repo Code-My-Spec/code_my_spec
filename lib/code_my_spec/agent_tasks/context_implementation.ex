@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ContextImplementation do
+defmodule CodeMySpec.AgentTasks.ContextImplementation do
   @moduledoc """
   Orchestrates implementing an entire context (tests + code for the context and all child components) via subagents.
 
@@ -9,7 +9,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ContextImplementation do
 
   alias CodeMySpec.{Requirements, Environments}
   alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.Sessions.AgentTasks.{ComponentTest, ComponentCode}
+  alias CodeMySpec.AgentTasks.{ComponentTest, ComponentCode}
 
   defp prompt_dir(external_id),
     do: ".code_my_spec/internal/sessions/#{external_id}/subagent_prompts"

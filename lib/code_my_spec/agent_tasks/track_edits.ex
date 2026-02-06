@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.TrackEdits do
+defmodule CodeMySpec.AgentTasks.TrackEdits do
   @moduledoc """
   A Claude Code post-tool-use hook that tracks files edited during an agent session.
 

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.RefactorModule do
+defmodule CodeMySpec.AgentTasks.RefactorModule do
   @moduledoc """
   Agent task for guiding interactive refactoring sessions with Claude Code.
 

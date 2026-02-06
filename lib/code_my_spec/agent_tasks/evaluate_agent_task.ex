@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.EvaluateAgentTask do
+defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
   @moduledoc """
   Evaluate/validate an agent task session's output.
 

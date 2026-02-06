@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ProjectSetup do
+defmodule CodeMySpec.AgentTasks.ProjectSetup do
   @moduledoc """
   Agent task that guides developers through complete Phoenix project setup for CodeMySpec integration.
 

@@ -1,9 +1,9 @@
-defmodule CodeMySpec.Sessions.AgentTasks.RefactorModuleTest do
+defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
   use CodeMySpec.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Sessions.AgentTasks.RefactorModule
+  alias CodeMySpec.AgentTasks.RefactorModule
   alias CodeMySpec.Components
 
   @moduletag :tmp_dir

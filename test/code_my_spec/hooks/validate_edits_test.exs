@@ -1,9 +1,9 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ValidateEditsTest do
+defmodule CodeMySpec.AgentTasks.ValidateEditsTest do
   use CodeMySpec.DataCase, async: true
 
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Problems.Problem
-  alias CodeMySpec.Sessions.AgentTasks.ValidateEdits
+  alias CodeMySpec.AgentTasks.ValidateEdits
 
   import ExUnit.CaptureLog
 

@@ -8,7 +8,7 @@ defmodule CodeMySpec.LocalServer.Controllers.AgentTaskController do
 
   import Plug.Conn
 
-  alias CodeMySpec.Sessions.AgentTasks.StartAgentTask
+  alias CodeMySpec.AgentTasks.StartAgentTask
 
   @doc """
   Start an agent task session and return the prompt.

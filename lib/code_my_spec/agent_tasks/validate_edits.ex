@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Sessions.AgentTasks.ValidateEdits do
+defmodule CodeMySpec.AgentTasks.ValidateEdits do
   @moduledoc """
   Claude Code stop hook handler that validates files written or edited during an agent session.
 
