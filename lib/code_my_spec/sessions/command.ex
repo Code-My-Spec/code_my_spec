@@ -5,7 +5,6 @@ defmodule CodeMySpec.Sessions.Command do
 
   use Ecto.Schema
   import Ecto.Changeset
-  alias CodeMySpec.Sessions.CommandModuleType
 
   @derive Jason.Encoder
 
@@ -21,7 +20,7 @@ defmodule CodeMySpec.Sessions.Command do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   embedded_schema do
-    field :module, CommandModuleType
+    field :module, :string
     field :execution_strategy, Ecto.Enum, values: [:task, :async, :sync], default: :sync
     field :command, :string
     field :pipe, :string

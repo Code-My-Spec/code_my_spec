@@ -17,8 +17,6 @@ defmodule CodeMySpec.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         CodeMySpecWeb.Presence,
-        CodeMySpec.Sessions.InteractionRegistry,
-        {Registry, keys: :unique, name: CodeMySpec.Sessions.SessionRegistry},
         Hermes.Server.Registry,
         {CodeMySpec.McpServers.StoriesServer, transport: :streamable_http},
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},

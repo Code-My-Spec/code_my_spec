@@ -5,7 +5,6 @@ defmodule CodeMySpec.Sessions.Session do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Sessions.Interaction
   alias CodeMySpec.Users.User
   use Ecto.Schema
   import Ecto.Changeset
@@ -32,7 +31,6 @@ defmodule CodeMySpec.Sessions.Session do
           parent_session: t() | Ecto.Association.NotLoaded.t() | nil,
           child_sessions: [t()] | Ecto.Association.NotLoaded.t(),
           external_conversation_id: String.t() | nil,
-          interactions: [Interaction.t()],
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -58,7 +56,6 @@ defmodule CodeMySpec.Sessions.Session do
     belongs_to :parent_session, __MODULE__, foreign_key: :session_id, type: :binary_id
 
     has_many :child_sessions, __MODULE__, foreign_key: :session_id, references: :id
-    has_many :interactions, Interaction, preload_order: [desc: :inserted_at]
 
     timestamps(type: :utc_datetime)
   end
@@ -84,14 +81,6 @@ defmodule CodeMySpec.Sessions.Session do
     |> put_change(:project_id, user_scope.active_project_id)
     |> put_change(:user_id, user_scope.user_id)
     |> put_display_name()
-  end
-
-  def get_pending_interactions(session) do
-    Enum.filter(session.interactions, &Interaction.pending?/1)
-  end
-
-  def get_completed_interactions(session) do
-    Enum.filter(session.interactions, &Interaction.completed?/1)
   end
 
   defp put_display_name(%{changes: %{type: type}} = changeset) when not is_nil(type) do
