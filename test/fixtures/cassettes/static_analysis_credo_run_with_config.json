@@ -8,17 +8,18 @@
         "json",
         "--all",
         "--all-priorities",
+        "--no-color",
         "--config-file",
         ".nonexistent.exs"
       ],
       "command": "mix",
       "exit_code": 129,
       "opts": {
-        "cd": "../code_my_spec_test_repos/credo_test_8578",
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "stderr_to_stdout": true
       },
-      "output": "** (config) Given config file does not exist: /Users/johndavenport/Documents/github/code_my_spec_test_repos/credo_test_8578/.nonexistent.exs\n\n",
-      "recorded_at": "2026-01-17T04:20:34.231672Z"
+      "output": "** (config) Given config file does not exist: /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/.nonexistent.exs\n\n",
+      "recorded_at": "2026-02-06T14:37:16.244514Z"
     }
   ],
   "ports": []

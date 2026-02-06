@@ -132,7 +132,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
   describe "run/2" do
     @tag timeout: 120_000
     test "returns {:ok, list(Problem.t())} when sobelow runs", %{scope: scope} do
-      use_cmd_cassette "static_analysis_sobelow_run" do
+      use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
         assert Enum.count(problems) > 0
 
@@ -147,7 +147,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
 
     @tag timeout: 120_000
     test "sets source to \"sobelow\" for all problems", %{scope: scope} do
-      use_cmd_cassette "static_analysis_sobelow_run" do
+      use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
         assert Enum.count(problems) > 0
 
@@ -159,7 +159,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
 
     @tag timeout: 120_000
     test "sets source_type to :static_analysis for all problems", %{scope: scope} do
-      use_cmd_cassette "static_analysis_sobelow_run" do
+      use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
         assert Enum.count(problems) > 0
 
@@ -171,7 +171,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
 
     @tag timeout: 120_000
     test "sets category to \"security\" for all problems", %{scope: scope} do
-      use_cmd_cassette "static_analysis_sobelow_run" do
+      use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
         assert Enum.count(problems) > 0
 
@@ -209,7 +209,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/invalid/path")
 
-      use_cmd_cassette "static_analysis_sobelow_run_nonexistent" do
+      use_cmd_cassette "static_analysis_sobelow_run_nonexistent", ignore: [[:opts, :cd]] do
         capture_log(fn ->
           result = Sobelow.run(scope, [])
           assert match?({:error, _}, result)
@@ -226,7 +226,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
 
       temp_files_before = count_temp_files()
 
-      use_cmd_cassette "static_analysis_sobelow_run_nonexistent" do
+      use_cmd_cassette "static_analysis_sobelow_run_nonexistent", ignore: [[:opts, :cd]] do
         capture_log(fn ->
           Sobelow.run(scope, [])
         end)

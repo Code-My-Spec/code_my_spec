@@ -7,16 +7,17 @@
         "--format",
         "json",
         "--all",
-        "--all-priorities"
+        "--all-priorities",
+        "--no-color"
       ],
       "command": "mix",
       "exit_code": 2,
       "opts": {
-        "cd": "/nonexistent",
+        "cd": "/nonexistent/directory",
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-01-17T04:18:52.514539Z"
+      "recorded_at": "2026-02-06T14:37:13.859703Z"
     }
   ],
   "ports": []

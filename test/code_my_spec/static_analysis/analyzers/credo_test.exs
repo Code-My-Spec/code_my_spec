@@ -5,8 +5,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
   import ExUnit.CaptureLog
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
 
-  alias CodeMySpec.StaticAnalysis.Analyzers.Credo
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.StaticAnalysis.Analyzers.Credo
+  alias CodeMySpec.Support.TestAdapter
 
   @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
 
@@ -18,7 +19,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
     scope = user_scope_fixture(user, account, project)
 
     # Clone from pool (fast reuse instead of rsync each time)
-    {:ok, project_dir} = CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
+    {:ok, project_dir} = TestAdapter.clone(scope, @test_repo_url)
 
     # Update project with cloned repo path
     {:ok, updated_project} =
@@ -27,7 +28,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
     scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
-      CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      TestAdapter.checkin(project_dir)
     end)
 
     %{scope: scope, project: updated_project, project_dir: project_dir}
@@ -156,7 +157,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
   describe "run/2" do
     @tag timeout: 120_000
     test "returns {:ok, list(Problem.t())} when Credo runs", %{scope: scope} do
-      use_cmd_cassette "static_analysis_credo_run" do
+      use_cmd_cassette "static_analysis_credo_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Credo.run(scope)
 
         assert is_list(problems)
@@ -170,7 +171,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
 
     @tag timeout: 120_000
     test "each Problem has source set to \"credo\"", %{scope: scope} do
-      use_cmd_cassette "static_analysis_credo_run" do
+      use_cmd_cassette "static_analysis_credo_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Credo.run(scope)
 
         Enum.each(problems, fn problem ->
@@ -181,7 +182,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
 
     @tag timeout: 120_000
     test "each Problem has source_type set to :static_analysis", %{scope: scope} do
-      use_cmd_cassette "static_analysis_credo_run" do
+      use_cmd_cassette "static_analysis_credo_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Credo.run(scope)
 
         Enum.each(problems, fn problem ->
@@ -192,7 +193,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
 
     @tag timeout: 120_000
     test "each Problem has valid file_path relative to project root", %{scope: scope} do
-      use_cmd_cassette "static_analysis_credo_run" do
+      use_cmd_cassette "static_analysis_credo_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Credo.run(scope)
 
         Enum.each(problems, fn problem ->
@@ -203,7 +204,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
 
     @tag timeout: 120_000
     test "each Problem has project_id matching scope project", %{scope: scope} do
-      use_cmd_cassette "static_analysis_credo_run" do
+      use_cmd_cassette "static_analysis_credo_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Credo.run(scope)
 
         Enum.each(problems, fn problem ->
@@ -266,7 +267,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
 
-      use_cmd_cassette "static_analysis_credo_run_nonexistent" do
+      use_cmd_cassette "static_analysis_credo_run_nonexistent", ignore: [[:opts, :cd]] do
         capture_log(fn ->
           assert {:error, error_message} = Credo.run(scope)
           assert is_binary(error_message)
@@ -282,7 +283,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
   describe "run/2 - options" do
     @tag timeout: 120_000
     test "returns error when config_file doesn't exist", %{scope: scope} do
-      use_cmd_cassette "static_analysis_credo_run_with_config" do
+      use_cmd_cassette "static_analysis_credo_run_with_config", ignore: [[:opts, :cd]] do
         {:error, message} = Credo.run(scope, config_file: ".nonexistent.exs")
         assert message =~ "does not exist"
       end
@@ -304,7 +305,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       temp_dir = System.tmp_dir!()
       before_files = list_temp_files(temp_dir, "credo_output")
 
-      use_cmd_cassette "static_analysis_credo_run_nonexistent" do
+      use_cmd_cassette "static_analysis_credo_run_nonexistent", ignore: [[:opts, :cd]] do
         capture_log(fn ->
           Credo.run(scope)
         end)

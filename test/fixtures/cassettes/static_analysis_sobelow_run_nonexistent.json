@@ -10,11 +10,11 @@
       "command": "mix",
       "exit_code": 2,
       "opts": {
-        "cd": "/nonexistent/invalid/path",
+        "cd": "/nonexistent",
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-01-17T04:21:28.800155Z"
+      "recorded_at": "2026-02-06T14:46:35.306119Z"
     }
   ],
   "ports": []
