@@ -5,10 +5,8 @@ defmodule CodeMySpec.Environments.CliTest do
   alias CodeMySpec.Environments.Cli
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Environments.MockTmuxAdapter
-  alias CodeMySpec.Sessions.Command
 
   setup do
-    # Configure mock adapter for tests
     MockTmuxAdapter.reset!()
 
     :ok
@@ -60,222 +58,8 @@ defmodule CodeMySpec.Environments.CliTest do
     end
   end
 
-  describe "run_command/3" do
-    test "sends command to tmux window and creates window lazily" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      command = %Command{command: "claude", metadata: %{"prompt" => "test", "args" => []}}
-
-      # Window should not exist yet
-      refute MockTmuxAdapter.window_exists?("session-#{session_id}")
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      # Window should now exist (lazy creation)
-      assert MockTmuxAdapter.window_exists?("session-#{session_id}")
-
-      # Verify command was sent with read @ syntax
-      commands = MockTmuxAdapter.get_sent_commands()
-      assert length(commands) == 1
-      {_window_name, cmd_str} = hd(commands)
-      assert cmd_str =~ ~r/claude\s+"read @.+"/
-    end
-
-    test "returns immediately without blocking" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      command = %Command{command: "claude", metadata: %{"prompt" => "", "args" => []}}
-
-      # Mock adapter returns immediately, simulating the async nature
-      start_time = System.monotonic_time(:millisecond)
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      end_time = System.monotonic_time(:millisecond)
-
-      # Should be very fast (< 100ms)
-      assert end_time - start_time < 100
-    end
-
-    test "handles legacy format where command field has shell command" do
-      {:ok, env} = Cli.create(session_id: :rand.uniform(10000))
-      command = %Command{command: "echo 'legacy'", metadata: %{}}
-
-      assert :ok = Cli.run_command(env, command)
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      assert length(commands) == 1
-      assert {_window_ref, "echo 'legacy'"} = hd(commands)
-    end
-  end
-
-  describe "run_command/3 - claude command with prompt and piping" do
-    test "creates temp file and pipes prompt into claude command" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      prompt = "Write a hello world function"
-      command = %Command{command: "claude", metadata: %{"prompt" => prompt, "args" => []}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      assert length(commands) == 1
-      {_window_name, cmd_str} = hd(commands)
-
-      # Should contain read @ syntax
-      assert cmd_str =~ ~r/claude\s+"read @.+"/
-    end
-
-    test "escapes args containing special characters" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      prompt = "Test prompt"
-      args = ["--prompt", "Hello 'world'"]
-      command = %Command{command: "claude", metadata: %{"prompt" => prompt, "args" => args}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      [{_window_name, cmd_str}] = commands
-
-      # Should include args before read @ syntax
-      assert cmd_str =~ ~r/claude\s+.+"read @.+"/
-    end
-
-    test "works with empty args list" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      prompt = "Simple prompt"
-      command = %Command{command: "claude", metadata: %{"prompt" => prompt, "args" => []}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      [{_window_name, cmd_str}] = commands
-
-      # Should just have claude with read @ syntax without extra args
-      assert cmd_str =~ ~r/claude\s+"read @.+"/
-    end
-
-    test "works with empty prompt" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      command = %Command{command: "claude", metadata: %{"prompt" => "", "args" => []}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      assert length(commands) == 1
-    end
-
-    test "handles missing prompt in metadata" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      command = %Command{command: "claude", metadata: %{"args" => []}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      [{_window_name, cmd_str}] = commands
-
-      # Should still generate command with empty prompt
-      assert cmd_str =~ ~r/claude\s+"read @.+"/
-    end
-
-    test "handles missing args in metadata" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      prompt = "Test prompt"
-      command = %Command{command: "claude", metadata: %{"prompt" => prompt}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      [{_window_name, cmd_str}] = commands
-
-      # Should default to empty args
-      assert cmd_str =~ ~r/claude\s+"read @.+"/
-    end
-
-    test "handles multiline prompts" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-
-      prompt = """
-      Write a function that:
-      1. Takes a list
-      2. Returns the sum
-      """
-
-      command = %Command{command: "claude", metadata: %{"prompt" => prompt, "args" => []}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      assert length(commands) == 1
-      {_window_name, cmd_str} = hd(commands)
-
-      # Should use read @ syntax correctly
-      assert cmd_str =~ ~r/claude\s+"read @.+"/
-    end
-
-    test "handles long prompts" do
-      session_id = :rand.uniform(10000)
-      {:ok, env} = Cli.create(session_id: session_id)
-      # Create a long prompt (10KB)
-      prompt = String.duplicate("This is a test prompt. ", 500)
-      command = %Command{command: "claude", metadata: %{"prompt" => prompt, "args" => []}}
-
-      assert :ok =
-               Cli.run_command(env, command,
-                 session_id: session_id,
-                 interaction_id: Ecto.UUID.generate()
-               )
-
-      commands = MockTmuxAdapter.get_sent_commands()
-      assert length(commands) == 1
-    end
-  end
-
   describe "read_file/2" do
     test "reads file content from server file system" do
-      # Create a temp file
       temp_file = Path.join(System.tmp_dir!(), "test-#{:rand.uniform(10000)}.txt")
       File.write!(temp_file, "test content")
 
@@ -283,7 +67,6 @@ defmodule CodeMySpec.Environments.CliTest do
 
       assert {:ok, "test content"} = Cli.read_file(env, temp_file)
 
-      # Cleanup
       File.rm!(temp_file)
     end
 

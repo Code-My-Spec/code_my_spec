@@ -70,13 +70,18 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
         implementation_exists = check_implementation_exists(session, code_file_path)
         tdd_mode = not implementation_exists
 
+        working_dir = session[:working_dir]
+
         # Check compilation
-        case check_compilation(test_file_path) do
+        case check_compilation(working_dir) do
           {:ok, compile_result} when compile_result.score == 0.0 ->
             {:ok, :invalid, format_compilation_errors(compile_result)}
 
           {:ok, compile_result} ->
             # Compilation passed, run quality checks
+            # Ensure scope has cwd set for static analysis
+            scope = ensure_scope_cwd(scope, working_dir)
+
             run_quality_checks(
               scope,
               session,
@@ -219,8 +224,10 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
     """
   end
 
-  defp check_compilation(_test_file_path) do
-    case Compile.execute() do
+  defp check_compilation(working_dir) do
+    opts = if working_dir, do: [cwd: working_dir], else: []
+
+    case Compile.execute(opts) do
       %{status: :ok} ->
         {:ok, %{score: 1.0, errors: []}}
 
@@ -229,6 +236,9 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
         {:ok, %{score: 0.0, errors: errors}}
     end
   end
+
+  defp ensure_scope_cwd(scope, nil), do: scope
+  defp ensure_scope_cwd(scope, working_dir), do: Map.put(scope, :cwd, working_dir)
 
   defp format_diagnostics(diagnostics) when is_list(diagnostics) do
     Enum.map(diagnostics, fn
@@ -250,7 +260,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
 
   defp run_quality_checks(
          scope,
-         _session,
+         session,
          component,
          project,
          compile_result,
@@ -258,8 +268,10 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
          tdd_mode,
          _opts
        ) do
+    working_dir = session[:working_dir]
+
     # Run tests to get test results
-    case run_tests(test_file_path) do
+    case run_tests(test_file_path, working_dir) do
       {:ok, test_run} ->
         tdd_state_result = check_tdd_state(test_run, tdd_mode: tdd_mode)
         alignment_result = run_spec_alignment(scope, component, project, tdd_mode: tdd_mode)
@@ -289,8 +301,9 @@ defmodule CodeMySpec.Sessions.AgentTasks.ComponentTest do
     end
   end
 
-  defp run_tests(test_file_path) do
-    Tests.execute([test_file_path])
+  defp run_tests(test_file_path, working_dir) do
+    opts = if working_dir, do: [project_root: working_dir], else: []
+    Tests.execute([test_file_path], opts)
   end
 
   defp validate_quality(compile_result, tdd_state_result, alignment_result, overall_score) do

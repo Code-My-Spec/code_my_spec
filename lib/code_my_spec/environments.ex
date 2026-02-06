@@ -8,7 +8,6 @@ defmodule CodeMySpec.Environments do
   """
 
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Sessions.Command
   require Logger
 
   @doc """
@@ -47,26 +46,6 @@ defmodule CodeMySpec.Environments do
   @spec destroy(env :: Environment.t()) :: :ok | {:error, term()}
   def destroy(%Environment{type: type} = env) do
     impl(type).destroy(env)
-  end
-
-  @doc """
-  Execute a command in the environment context.
-
-  ## Options
-
-  - `:async` - Run command asynchronously (default: false)
-  - `:env` - Map of environment variables to set
-
-  ## Returns
-
-  The return value depends on the environment implementation:
-  - CLI: `:ok | {:error, term()}` (no output capture)
-  - Server: `{:ok, result :: map()} | {:error, term()}` (with output)
-  """
-  @spec run_command(env :: Environment.t(), command :: Command.t(), opts :: keyword()) ::
-          :ok | {:ok, map()} | {:error, term()}
-  def run_command(%Environment{type: type} = env, command, opts \\ []) do
-    impl(type).run_command(env, command, opts)
   end
 
   @doc """

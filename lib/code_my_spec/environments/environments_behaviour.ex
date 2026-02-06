@@ -6,7 +6,6 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   Each implementation handles execution in its specific context (CLI with tmux, Server, VSCode).
   """
 
-  alias CodeMySpec.Sessions.Command
   alias CodeMySpec.Environments.Environment
 
   @doc """
@@ -22,14 +21,6 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   Should be idempotent - returns :ok even if environment doesn't exist.
   """
   @callback destroy(env :: Environment.t()) :: :ok | {:error, term()}
-
-  @doc """
-  Execute a command in the environment.
-
-  Returns :ok for async execution (CLI) or {:ok, output} for sync execution (Server).
-  """
-  @callback run_command(env :: Environment.t(), command :: Command.t(), opts :: keyword()) ::
-              :ok | {:ok, map()} | {:error, term()}
 
   @doc """
   Read a file from the file system.

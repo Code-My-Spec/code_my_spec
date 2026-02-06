@@ -27,51 +27,6 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   def destroy(_env), do: :ok
 
   @impl true
-  def run_command(_env, command, opts \\ [])
-
-  def run_command(
-        env,
-        %CodeMySpec.Sessions.Command{command: "read_file", metadata: %{"path" => path}},
-        _opts
-      ) do
-    case read_file(env, path) do
-      {:ok, content} -> {:ok, %{content: content}}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  def run_command(
-        _env,
-        %CodeMySpec.Sessions.Command{command: "list_directory", metadata: %{path: path}},
-        _opts
-      ) do
-    case File.ls(path) do
-      {:ok, files} -> {:ok, %{output: Enum.join(files, "\n"), exit_code: 0}}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  # Handle Claude commands - return :ok for async (CLI) execution
-  # Tests will manually create any files that would have been generated
-  def run_command(_env, %CodeMySpec.Sessions.Command{command: "claude"}, _opts), do: :ok
-  def run_command(_env, %CodeMySpec.Sessions.Command{command: "mix_test"}, _opts), do: :ok
-  def run_command(_env, %CodeMySpec.Sessions.Command{command: "run_checks"}, _opts), do: :ok
-
-  # Fallback for legacy format where command field contains the actual shell command
-  def run_command(_env, %CodeMySpec.Sessions.Command{command: cmd}, _opts) when is_binary(cmd) do
-    case System.cmd("sh", ["-c", cmd], stderr_to_stdout: true) do
-      {output, 0} ->
-        {:ok, %{output: clean_terminal_output(output), exit_code: 0}}
-
-      {output, exit_code} ->
-        {:ok, %{output: clean_terminal_output(output), exit_code: exit_code}}
-    end
-  rescue
-    e ->
-      {:error, Exception.message(e)}
-  end
-
-  @impl true
   def read_file(env, path) do
     resolved_path = resolve_path(path, env.cwd)
 

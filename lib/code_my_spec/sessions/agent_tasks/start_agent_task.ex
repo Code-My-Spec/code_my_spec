@@ -31,7 +31,7 @@ defmodule CodeMySpec.Sessions.AgentTasks.StartAgentTask do
     "context_spec" => AgentTasks.ContextSpec,
     "context_component_specs" => AgentTasks.ContextComponentSpecs,
     "context_design_review" => AgentTasks.ContextDesignReview,
-    "context_lifecycle" => AgentTasks.ContextLifecycle,
+    "develop_context" => AgentTasks.DevelopContext,
     "implement_context" => AgentTasks.ContextImplementation,
     "component_code" => AgentTasks.ComponentCode,
     "component_test" => AgentTasks.ComponentTest,

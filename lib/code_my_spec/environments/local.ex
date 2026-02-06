@@ -1,7 +1,6 @@
 defmodule CodeMySpec.Environments.Local do
   @behaviour CodeMySpec.Environments.EnvironmentsBehaviour
 
-  alias CodeMySpec.Sessions.Command
   alias CodeMySpec.Environments.Environment
 
   @impl true
@@ -12,12 +11,6 @@ defmodule CodeMySpec.Environments.Local do
 
   @impl true
   def destroy(_env), do: :ok
-
-  @impl true
-  def run_command(_env, %Command{} = command, _opts) do
-    {output, exit_code} = cmd("sh", ["-c", command.command], stderr_to_stdout: true)
-    {:ok, %{output: output, exit_code: exit_code}}
-  end
 
   @impl true
   def read_file(env, path) do
