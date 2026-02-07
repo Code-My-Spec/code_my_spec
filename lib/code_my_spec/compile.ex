@@ -16,6 +16,7 @@ defmodule CodeMySpec.Compile do
   ## Options
 
   - `cwd` - Working directory to run the command in (optional)
+  - `output_file` - Path for compilation output JSON (optional, defaults to temp file)
 
   ## Returns
 
@@ -39,25 +40,20 @@ defmodule CodeMySpec.Compile do
   """
   @spec execute(keyword()) :: map()
   def execute(opts \\ []) do
-    output_file = create_temp_file_path()
+    output_file = Keyword.get_lazy(opts, :output_file, &create_temp_file_path/0)
     cwd = Keyword.get(opts, :cwd)
 
-    # Run compilation
-    port_opts = [
-      :binary,
-      :exit_status,
-      :stderr_to_stdout,
-      :use_stdio,
-      {:line, 2048},
-      {:args, ["compile.machine", "--output", output_file, "--format", "raw"]},
-      {:env, [{~c"MIX_ENV", ~c"test"}]}
+    # Build System.cmd options
+    cmd_opts = [
+      stderr_to_stdout: true,
+      env: [{"MIX_ENV", "test"}]
     ]
 
-    port_opts = if cwd, do: [{:cd, cwd} | port_opts], else: port_opts
+    cmd_opts = if cwd, do: Keyword.put(cmd_opts, :cd, cwd), else: cmd_opts
 
-    port = Port.open({:spawn_executable, System.find_executable("mix")}, port_opts)
-
-    {output, exit_code} = collect_output(port)
+    # Run compilation using System.cmd
+    {output, exit_code} =
+      System.cmd("mix", ["compile.machine", "--output", output_file, "--format", "raw"], cmd_opts)
 
     # Handle result based on exit code
     result_data =
@@ -124,20 +120,10 @@ defmodule CodeMySpec.Compile do
       )
   """
   @spec execute_async(keyword(), String.t(), (map() -> any())) :: :ok
-  def execute_async(opts, interaction_id, on_complete) do
+  def execute_async(opts, _interaction_id, on_complete) do
     Task.start(fn ->
-      # Set initial state
-      CodeMySpec.Sessions.InteractionRegistry.update_status(interaction_id, %{
-        agent_state: "compiling"
-      })
-
       # Execute compilation
       result = execute(opts)
-
-      # Mark as complete
-      CodeMySpec.Sessions.InteractionRegistry.update_status(interaction_id, %{
-        agent_state: "compilation_complete"
-      })
 
       # Invoke callback
       on_complete.(result)
@@ -161,15 +147,13 @@ defmodule CodeMySpec.Compile do
   defp extract_diagnostics([], acc), do: acc
 
   defp extract_diagnostics([line | rest], acc) do
-    cond do
-      # Match compilation error blocks: "== Compilation error in file <file> =="
-      String.starts_with?(line, "== Compilation error") ->
-        {diagnostic, remaining} = parse_compilation_error(line, rest)
-        extract_diagnostics(remaining, [diagnostic | acc])
-
+    # Match compilation error blocks: "== Compilation error in file <file> =="
+    if String.starts_with?(line, "== Compilation error") do
+      {diagnostic, remaining} = parse_compilation_error(line, rest)
+      extract_diagnostics(remaining, [diagnostic | acc])
+    else
       # Skip all other lines (including warnings)
-      true ->
-        extract_diagnostics(rest, acc)
+      extract_diagnostics(rest, acc)
     end
   end
 
@@ -237,29 +221,9 @@ defmodule CodeMySpec.Compile do
     Jason.decode!(json_string)
   end
 
-  # Create a temp file path for compilation output
   defp create_temp_file_path do
     temp_dir = System.tmp_dir!()
     filename = "compile_machine_#{System.unique_integer([:positive])}.json"
     Path.join(temp_dir, filename)
-  end
-
-  # Collect output from port
-  defp collect_output(port, acc \\ []) do
-    receive do
-      {^port, {:data, {:eol, line}}} ->
-        collect_output(port, [line | acc])
-
-      {^port, {:data, {:noeol, partial}}} ->
-        collect_output(port, [partial | acc])
-
-      {^port, {:exit_status, status}} ->
-        output =
-          acc
-          |> Enum.reverse()
-          |> Enum.join("\n")
-
-        {output, status}
-    end
   end
 end

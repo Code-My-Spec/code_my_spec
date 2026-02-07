@@ -71,9 +71,11 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
         tdd_mode = not implementation_exists
 
         working_dir = session[:working_dir]
+        compile_output_file = Keyword.get(opts, :compile_output_file)
+        test_output_file = Keyword.get(opts, :test_output_file)
 
         # Check compilation
-        case check_compilation(working_dir) do
+        case check_compilation(working_dir, compile_output_file) do
           {:ok, compile_result} when compile_result.score == 0.0 ->
             {:ok, :invalid, format_compilation_errors(compile_result)}
 
@@ -90,7 +92,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
               compile_result,
               test_file_path,
               tdd_mode,
-              opts
+              test_output_file
             )
         end
     end
@@ -224,8 +226,10 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     """
   end
 
-  defp check_compilation(working_dir) do
-    opts = if working_dir, do: [cwd: working_dir], else: []
+  defp check_compilation(working_dir, compile_output_file) do
+    opts =
+      [cwd: working_dir, output_file: compile_output_file]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
 
     case Compile.execute(opts) do
       %{status: :ok} ->
@@ -266,12 +270,12 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
          compile_result,
          test_file_path,
          tdd_mode,
-         _opts
+         test_output_file
        ) do
     working_dir = session[:working_dir]
 
     # Run tests to get test results
-    case run_tests(test_file_path, working_dir) do
+    case run_tests(test_file_path, working_dir, test_output_file) do
       {:ok, test_run} ->
         tdd_state_result = check_tdd_state(test_run, tdd_mode: tdd_mode)
         alignment_result = run_spec_alignment(scope, component, project, tdd_mode: tdd_mode)
@@ -301,8 +305,11 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     end
   end
 
-  defp run_tests(test_file_path, working_dir) do
-    opts = if working_dir, do: [project_root: working_dir], else: []
+  defp run_tests(test_file_path, working_dir, test_output_file) do
+    opts =
+      [project_root: working_dir, output_file: test_output_file]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
     Tests.execute([test_file_path], opts)
   end
 

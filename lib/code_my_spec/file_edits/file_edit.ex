@@ -5,6 +5,7 @@ defmodule CodeMySpec.FileEdits.FileEdit do
 
   schema "file_edits" do
     field :external_session_id, :string
+    field :agent_id, :string
     field :file_path, :string
 
     timestamps(type: :utc_datetime)

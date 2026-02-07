@@ -8,8 +8,8 @@ defmodule CodeMySpec.AgentTasks.TrackEditsTest do
   # Fixtures - Hook Input
   # ============================================================================
 
-  defp write_tool_input(session_id, file_path) do
-    %{
+  defp write_tool_input(session_id, file_path, opts \\ []) do
+    input = %{
       "hook_event_name" => "PostToolUse",
       "session_id" => session_id,
       "tool_name" => "Write",
@@ -18,10 +18,16 @@ defmodule CodeMySpec.AgentTasks.TrackEditsTest do
         "content" => "defmodule Foo do\nend"
       }
     }
+
+    if agent_id = Keyword.get(opts, :agent_id) do
+      Map.put(input, "agent_id", agent_id)
+    else
+      input
+    end
   end
 
-  defp edit_tool_input(session_id, file_path) do
-    %{
+  defp edit_tool_input(session_id, file_path, opts \\ []) do
+    input = %{
       "hook_event_name" => "PostToolUse",
       "session_id" => session_id,
       "tool_name" => "Edit",
@@ -31,6 +37,12 @@ defmodule CodeMySpec.AgentTasks.TrackEditsTest do
         "new_string" => "bar"
       }
     }
+
+    if agent_id = Keyword.get(opts, :agent_id) do
+      Map.put(input, "agent_id", agent_id)
+    else
+      input
+    end
   end
 
   defp read_tool_input(session_id, file_path) do
@@ -195,6 +207,41 @@ defmodule CodeMySpec.AgentTasks.TrackEditsTest do
 
       # Should only appear once
       assert Enum.count(edited_files, &(&1 == file_path)) == 1
+    end
+
+    test "tracks agent_id when present in hook input" do
+      session_id = Ecto.UUID.generate()
+      agent_id = "sub-agent-123"
+      file_path = "/path/to/agent_file.ex"
+
+      TrackEdits.run(write_tool_input(session_id, file_path, agent_id: agent_id))
+
+      # File appears in session-level query
+      assert file_path in FileEdits.get_edited_files(session_id)
+
+      # File appears in agent-level query
+      assert file_path in FileEdits.get_edited_files_by_agent(session_id, agent_id)
+    end
+
+    test "agent-scoped edits are separate from session-level edits" do
+      session_id = Ecto.UUID.generate()
+      agent_id = "sub-agent-456"
+
+      # Main session edits a file
+      TrackEdits.run(write_tool_input(session_id, "/path/main.ex"))
+
+      # Sub-agent edits a different file
+      TrackEdits.run(write_tool_input(session_id, "/path/agent.ex", agent_id: agent_id))
+
+      # Session query returns both
+      session_files = FileEdits.get_edited_files(session_id)
+      assert "/path/main.ex" in session_files
+      assert "/path/agent.ex" in session_files
+
+      # Agent query returns only agent's file
+      agent_files = FileEdits.get_edited_files_by_agent(session_id, agent_id)
+      assert "/path/agent.ex" in agent_files
+      refute "/path/main.ex" in agent_files
     end
   end
 end

@@ -1,6 +1,10 @@
 defmodule CodeMySpec.FileEdits do
   @moduledoc """
-  Tracks file edits by external session ID (e.g., Claude Code conversation).
+  Tracks file edits by external session ID and optional agent ID.
+
+  Files are always associated with a session. When edited by a sub-agent,
+  the agent_id is also stored so files can be looked up per-agent for
+  sub-agent validation, or per-session for main session validation.
   """
 
   import Ecto.Query
@@ -8,13 +12,17 @@ defmodule CodeMySpec.FileEdits do
   alias CodeMySpec.Repo
 
   @doc """
-  Record a file edit for an external session.
-  Ignores duplicates (same session + file_path).
+  Record a file edit for an external session, optionally scoped to an agent.
+  Ignores duplicates (same session + agent + file_path).
   """
-  @spec track_edit(String.t(), String.t()) :: :ok
-  def track_edit(external_session_id, file_path) do
+  @spec track_edit(String.t(), String.t(), String.t() | nil) :: :ok
+  def track_edit(external_session_id, file_path, agent_id \\ nil) do
     %FileEdit{}
-    |> Ecto.Changeset.change(external_session_id: external_session_id, file_path: file_path)
+    |> Ecto.Changeset.change(
+      external_session_id: external_session_id,
+      agent_id: agent_id,
+      file_path: file_path
+    )
     |> Repo.insert(on_conflict: :nothing)
 
     :ok
@@ -27,6 +35,18 @@ defmodule CodeMySpec.FileEdits do
   def get_edited_files(external_session_id) do
     FileEdit
     |> where([e], e.external_session_id == ^external_session_id)
+    |> select([e], e.file_path)
+    |> distinct(true)
+    |> Repo.all()
+  end
+
+  @doc """
+  Get file paths edited by a specific agent within a session.
+  """
+  @spec get_edited_files_by_agent(String.t(), String.t()) :: [String.t()]
+  def get_edited_files_by_agent(external_session_id, agent_id) do
+    FileEdit
+    |> where([e], e.external_session_id == ^external_session_id and e.agent_id == ^agent_id)
     |> select([e], e.file_path)
     |> Repo.all()
   end
@@ -46,13 +66,27 @@ defmodule CodeMySpec.FileEdits do
   @doc """
   Remove specific file paths from tracking for an external session.
   Used to clean up validated files that passed all checks.
-  """
-  @spec remove_edited_files(String.t(), [String.t()]) :: :ok
-  def remove_edited_files(_external_session_id, []), do: :ok
 
-  def remove_edited_files(external_session_id, file_paths) when is_list(file_paths) do
+  When agent_id is provided, only removes records for that agent.
+  Otherwise removes all matching records regardless of agent.
+  """
+  @spec remove_edited_files(String.t(), [String.t()], String.t() | nil) :: :ok
+  def remove_edited_files(external_session_id, file_paths, agent_id \\ nil)
+
+  def remove_edited_files(_external_session_id, [], _agent_id), do: :ok
+
+  def remove_edited_files(external_session_id, file_paths, nil) when is_list(file_paths) do
     FileEdit
     |> where([e], e.external_session_id == ^external_session_id)
+    |> where([e], e.file_path in ^file_paths)
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  def remove_edited_files(external_session_id, file_paths, agent_id) when is_list(file_paths) do
+    FileEdit
+    |> where([e], e.external_session_id == ^external_session_id and e.agent_id == ^agent_id)
     |> where([e], e.file_path in ^file_paths)
     |> Repo.delete_all()
 

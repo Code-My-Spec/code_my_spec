@@ -31,12 +31,18 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
   ## Options
   - `:scope` - A Scope struct with active_project (required for static analysis)
   - `:working_dir` - Project root directory (used to build Scope if not provided)
+  - `:agent_id` - When provided, only validates files edited by this agent (for SubagentStop).
+    When nil, validates all files in the session (for Stop).
   """
   @spec run(String.t(), keyword()) :: {:ok, :valid} | {:error, [Problem.t()]}
   def run(session_id, opts \\ []) do
-    Logger.info("[ValidateEdits] Starting validation for session: #{session_id}")
+    agent_id = Keyword.get(opts, :agent_id)
 
-    with {:ok, all_files} <- get_edited_files(session_id),
+    Logger.info(
+      "[ValidateEdits] Starting validation for session: #{session_id}, agent: #{agent_id || "all"}"
+    )
+
+    with {:ok, all_files} <- get_edited_files(session_id, agent_id),
          {:ok, categorized} <- categorize_files(all_files, opts),
          {:ok, scope} <- get_or_build_scope(all_files, opts),
          :ok <- compile_project(scope),
@@ -45,16 +51,18 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
          {:ok, sobelow_problems} <- run_sobelow(categorized.elixir_files, scope),
          {:ok, spex_problems} <- run_spex(categorized.spex_files, scope),
          {:ok, spec_problems} <- validate_spec_files(categorized.spec_files) do
-      all_problems = test_problems ++ credo_problems ++ sobelow_problems ++ spex_problems ++ spec_problems
+      all_problems =
+        test_problems ++ credo_problems ++ sobelow_problems ++ spex_problems ++ spec_problems
+
       Logger.info("[ValidateEdits] Total problems: #{length(all_problems)}")
 
       if all_problems == [] do
-        FileEdits.remove_edited_files(session_id, all_files)
+        FileEdits.remove_edited_files(session_id, all_files, agent_id)
         {:ok, :valid}
       else
         failed_files = extract_failed_files(all_problems)
         passed_files = all_files -- failed_files
-        FileEdits.remove_edited_files(session_id, passed_files)
+        FileEdits.remove_edited_files(session_id, passed_files, agent_id)
         {:error, all_problems}
       end
     else
@@ -71,9 +79,20 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
   # File Retrieval & Categorization
   # ============================================================================
 
-  defp get_edited_files(session_id) do
+  defp get_edited_files(session_id, nil) do
     files = FileEdits.get_edited_files(session_id)
-    Logger.info("[ValidateEdits] Found #{length(files)} edited files")
+    Logger.info("[ValidateEdits] Found #{length(files)} edited files for session")
+
+    if files == [] do
+      {:empty, :no_files}
+    else
+      {:ok, files}
+    end
+  end
+
+  defp get_edited_files(session_id, agent_id) do
+    files = FileEdits.get_edited_files_by_agent(session_id, agent_id)
+    Logger.info("[ValidateEdits] Found #{length(files)} edited files for agent #{agent_id}")
 
     if files == [] do
       {:empty, :no_files}

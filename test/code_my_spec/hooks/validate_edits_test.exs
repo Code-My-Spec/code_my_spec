@@ -153,6 +153,35 @@ defmodule CodeMySpec.AgentTasks.ValidateEditsTest do
       assert {:ok, :valid} = ValidateEdits.run(session_id)
     end
 
+    test "returns {:ok, :valid} when agent has no file edits" do
+      session_id = generate_session_id()
+      agent_id = "sub-agent-#{Ecto.UUID.generate()}"
+
+      # Track a file for the session (no agent)
+      track_edit(session_id, "/some/file.ex")
+
+      # Validate scoped to agent that has no edits
+      assert {:ok, :valid} = ValidateEdits.run(session_id, agent_id: agent_id)
+    end
+
+    test "validates only agent-scoped files when agent_id provided", %{tmp_dir: tmp_dir} do
+      session_id = generate_session_id()
+      agent_id = "sub-agent-#{Ecto.UUID.generate()}"
+
+      # Track a bad spec for the session (no agent)
+      bad_spec =
+        create_spec_file(tmp_dir, "docs/spec/bad.spec.md", spec_missing_required_sections())
+
+      track_edit(session_id, bad_spec)
+
+      # Track a valid spec for the agent
+      good_spec = create_spec_file(tmp_dir, "docs/spec/good.spec.md", valid_spec_content())
+      FileEdits.track_edit(session_id, good_spec, agent_id)
+
+      # Agent validation only sees the good spec
+      assert {:ok, :valid} = ValidateEdits.run(session_id, agent_id: agent_id)
+    end
+
     test "returns {:ok, :valid} when session has only non-spec file edits that pass Credo", %{
       tmp_dir: tmp_dir
     } do

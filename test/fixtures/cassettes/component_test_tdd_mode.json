@@ -1,0 +1,43 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile.machine",
+        "--output",
+        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_machine_test.json",
+        "--format",
+        "raw"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\n    warning: TestPhoenixProject.Blog.PostRepository.list_posts/1 is undefined or private. Did you mean:\n\n        * list_posts/0\n\n    │\n 34 │   defdelegate list_posts(scope), to: PostRepository\n    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/test_phoenix_project/blog.ex:34: TestPhoenixProject.Blog.list_posts/1\n\n    warning: TestPhoenixProject.Blog.PostRepository.get_post!/2 is undefined or private\n    │\n 35 │   defdelegate get_post!(scope, id), to: PostRepository\n    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/test_phoenix_project/blog.ex:35: TestPhoenixProject.Blog.get_post!/2\n\n    warning: TestPhoenixProject.Blog.PostRepository.change_post/3 is undefined or private\n    │\n 36 │   defdelegate change_post(scope, post, attrs \\\\ %{}), to: PostRepository\n    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/test_phoenix_project/blog.ex:36: TestPhoenixProject.Blog.change_post/3\n\n    warning: TestPhoenixProject.Blog.PostRepository.create_post/2 is undefined or private\n    │\n 39 │     with {:ok, post = %Post{}} <- PostRepository.create_post(scope, attrs) do\n    │                                                  ~\n    │\n    └─ lib/test_phoenix_project/blog.ex:39:50: TestPhoenixProject.Blog.create_post/2\n\n    warning: TestPhoenixProject.Blog.PostRepository.update_post/3 is undefined or private\n    │\n 48 │     with {:ok, post = %Post{}} <- PostRepository.update_post(scope, post, attrs) do\n    │                                                  ~\n    │\n    └─ lib/test_phoenix_project/blog.ex:48:50: TestPhoenixProject.Blog.update_post/3\n\n    warning: TestPhoenixProject.Blog.PostRepository.delete_post/2 is undefined or private. Did you mean:\n\n        * list_posts/0\n\n    │\n 57 │     with {:ok, post = %Post{}} <- PostRepository.delete_post(scope, post) do\n    │                                                  ~\n    │\n    └─ lib/test_phoenix_project/blog.ex:57:50: TestPhoenixProject.Blog.delete_post/2\n\n",
+      "recorded_at": "2026-02-06T23:15:22.580848Z"
+    },
+    {
+      "args": [
+        "test",
+        "test/test_phoenix_project/blog/post_repository_test.exs"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/test_output_test.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "\u001B[0mWaiting for lock on the build directory (held by process 31383)\n    warning: TestPhoenixProject.Blog.PostRepository.list_posts/1 is undefined or private. Did you mean:\n\n        * list_posts/0\n\n    │\n 34 │   defdelegate list_posts(scope), to: PostRepository\n    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/test_phoenix_project/blog.ex:34: TestPhoenixProject.Blog.list_posts/1\n\n    warning: TestPhoenixProject.Blog.PostRepository.get_post!/2 is undefined or private\n    │\n 35 │   defdelegate get_post!(scope, id), to: PostRepository\n    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/test_phoenix_project/blog.ex:35: TestPhoenixProject.Blog.get_post!/2\n\n    warning: TestPhoenixProject.Blog.PostRepository.change_post/3 is undefined or private\n    │\n 36 │   defdelegate change_post(scope, post, attrs \\\\ %{}), to: PostRepository\n    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/test_phoenix_project/blog.ex:36: TestPhoenixProject.Blog.change_post/3\n\n    warning: TestPhoenixProject.Blog.PostRepository.create_post/2 is undefined or private\n    │\n 39 │     with {:ok, post = %Post{}} <- PostRepository.create_post(scope, attrs) do\n    │                                                  ~\n    │\n    └─ lib/test_phoenix_project/blog.ex:39:50: TestPhoenixProject.Blog.create_post/2\n\n    warning: TestPhoenixProject.Blog.PostRepository.update_post/3 is undefined or private\n    │\n 48 │     with {:ok, post = %Post{}} <- PostRepository.update_post(scope, post, attrs) do\n    │                                                  ~\n    │\n    └─ lib/test_phoenix_project/blog.ex:48:50: TestPhoenixProject.Blog.update_post/3\n\n    warning: TestPhoenixProject.Blog.PostRepository.delete_post/2 is undefined or private. Did you mean:\n\n        * list_posts/0\n\n    │\n 57 │     with {:ok, post = %Post{}} <- PostRepository.delete_post(scope, post) do\n    │                                                  ~\n    │\n    └─ lib/test_phoenix_project/blog.ex:57:50: TestPhoenixProject.Blog.delete_post/2\n\nRunning ExUnit with seed: 173858, max_cases: 16\n\n.\nFinished in 0.03 seconds (0.00s async, 0.03s sync)\n1 test, 0 failures\n",
+      "recorded_at": "2026-02-06T23:15:26.260147Z"
+    }
+  ],
+  "ports": []
+}

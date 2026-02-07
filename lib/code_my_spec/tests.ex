@@ -16,6 +16,7 @@ defmodule CodeMySpec.Tests do
   - `args` - List of arguments to pass to mix test (e.g., ["test/my_test.exs", "--only", "integration"])
   - `opts` - Keyword list of options:
     - `:project_root` - Project root directory to run tests from (defaults to cwd)
+    - `:output_file` - Path for test results JSON (optional, defaults to temp file)
 
   ## Returns
 
@@ -33,7 +34,9 @@ defmodule CodeMySpec.Tests do
     project_root = Keyword.get(opts, :project_root, File.cwd!())
 
     temp_file =
-      Path.join(System.tmp_dir!(), "test_output_#{System.unique_integer([:positive])}.json")
+      Keyword.get_lazy(opts, :output_file, fn ->
+        Path.join(System.tmp_dir!(), "test_output_#{System.unique_integer([:positive])}.json")
+      end)
 
     test_args = ["test" | args]
     command = "mix " <> Enum.join(test_args, " ")
@@ -111,9 +114,9 @@ defmodule CodeMySpec.Tests do
       {:ok, Ecto.Changeset.apply_changes(changeset)}
     else
       errors =
-        changeset.errors
-        |> Enum.map(fn {field, {message, _opts}} -> "#{field}: #{message}" end)
-        |> Enum.join(", ")
+        Enum.map_join(changeset.errors, ", ", fn {field, {message, _opts}} ->
+          "#{field}: #{message}"
+        end)
 
       Logger.warning("Failed to build TestRun: #{errors}")
       {:error, {:parse_error, "Invalid test run data: #{errors}"}}

@@ -19,13 +19,17 @@ defmodule CodeMySpec.AgentTasks.TrackEdits do
   Returns an empty map to allow tool execution to proceed.
   """
   @spec run(hook_input :: map()) :: map()
-  def run(%{"tool_name" => tool, "tool_input" => input, "session_id" => session_id})
+  def run(%{"tool_name" => tool, "tool_input" => input, "session_id" => session_id} = hook_input)
       when tool in @edit_tools do
-    Logger.info("[TrackEdits] #{tool} tool detected (session: #{session_id})")
+    agent_id = Map.get(hook_input, "agent_id")
+
+    Logger.info(
+      "[TrackEdits] #{tool} tool detected (session: #{session_id}, agent: #{agent_id || "main"})"
+    )
 
     case extract_file_path(input) do
       {:ok, file_path} ->
-        FileEdits.track_edit(session_id, file_path)
+        FileEdits.track_edit(session_id, file_path, agent_id)
         Logger.info("[TrackEdits] Tracked: #{file_path}")
 
       :error ->
