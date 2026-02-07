@@ -13,11 +13,11 @@
       "command": "mix",
       "exit_code": 2,
       "opts": {
-        "cd": "/nonexistent/directory",
+        "cd": "/nonexistent",
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-02-06T14:37:13.859703Z"
+      "recorded_at": "2026-02-07T14:53:42.283358Z"
     }
   ],
   "ports": []
