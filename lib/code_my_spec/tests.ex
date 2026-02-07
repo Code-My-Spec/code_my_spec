@@ -38,7 +38,7 @@ defmodule CodeMySpec.Tests do
         Path.join(System.tmp_dir!(), "test_output_#{System.unique_integer([:positive])}.json")
       end)
 
-    test_args = ["test" | args]
+    test_args = ["test", "--formatter", "ClientUtils.TestFormatter" | args]
     command = "mix " <> Enum.join(test_args, " ")
     file_path = extract_file_path(args)
 
@@ -49,17 +49,20 @@ defmodule CodeMySpec.Tests do
 
     Logger.info("[Tests] Running: #{command}")
 
+    # Track whether we're using a caller-provided file (cache) vs a generated temp file
+    caller_provided_file = Keyword.has_key?(opts, :output_file)
+
     case System.cmd("mix", test_args, cd: project_root, stderr_to_stdout: true, env: env) do
       {raw_output, exit_code} ->
         json_content =
           case File.read(temp_file) do
             {:ok, content} ->
-              File.rm(temp_file)
+              unless caller_provided_file, do: File.rm(temp_file)
               content
 
             {:error, reason} ->
               Logger.warning("Failed to read test results file #{temp_file}: #{inspect(reason)}")
-              File.rm(temp_file)
+              unless caller_provided_file, do: File.rm(temp_file)
               "{}"
           end
 
