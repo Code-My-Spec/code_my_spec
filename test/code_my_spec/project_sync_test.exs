@@ -27,6 +27,10 @@ defmodule CodeMySpec.ProjectSyncTest do
           "https://github.com/johns10/test_phoenix_project.git"
         )
 
+      on_exit(fn ->
+        CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      end)
+
       {:ok, scope: scope, tmp_dir: project_dir}
     end
 

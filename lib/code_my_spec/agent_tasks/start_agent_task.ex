@@ -2,9 +2,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @moduledoc """
   Start an agent task session and generate the initial prompt.
 
-  Creates a database Session with proper environment configuration,
-  looks up the component if needed, and calls the appropriate AgentTask
-  module to generate the prompt.
+  Creates a filesystem-backed Session with proper configuration,
+  looks up the component if needed, sets virtual fields on the session,
+  and calls the appropriate AgentTask module to generate the prompt.
 
   ## Usage
 
@@ -19,9 +19,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Sessions
+  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.AgentTasks
 
   # Maps session type names to AgentTask modules
@@ -58,52 +58,48 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   - `:external_id` - Claude session ID (required)
   - `:session_type` - Type of agent task (required)
   - `:module_name` - Component module name (required for component tasks)
-  - `:working_dir` - Working directory (required)
 
   ## Returns
 
   - `{:ok, prompt, sync_result}` on success
   - `{:error, reason}` on failure
   """
-  @spec run(CodeMySpec.Scope.t(), map()) :: {:ok, String.t(), map()} | {:error, term()}
+  @spec run(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t(), map()} | {:error, term()}
   def run(scope, args) do
     external_id = Map.get(args, :external_id)
     session_type = Map.get(args, :session_type)
     module_name = Map.get(args, :module_name)
-    working_dir = Map.get(args, :working_dir)
 
     if session_type in @componentless_tasks do
-      run_componentless_task(scope, external_id, session_type, working_dir)
+      run_componentless_task(scope, external_id, session_type)
     else
-      run_component_task(scope, external_id, session_type, module_name, working_dir)
+      run_component_task(scope, external_id, session_type, module_name)
     end
   end
 
-  defp run_componentless_task(scope, external_id, session_type, working_dir) do
+  defp run_componentless_task(scope, external_id, session_type) do
     with {:ok, _} <- validate_external_id(external_id),
-         {:ok, _} <- validate_working_dir(working_dir),
-         {:ok, project} <- get_project(scope),
-         {:ok, sync_result} <- sync_project(scope, working_dir),
+         {:ok, _} <- validate_environment(scope),
+         {:ok, _project} <- get_project(scope),
+         {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, environment} <- build_environment(working_dir),
-         {:ok, _db_session} <- create_componentless_session(scope, external_id, agent_task_module, environment),
-         {:ok, task_session} <- build_componentless_task_session(external_id, project, environment),
-         {:ok, prompt} <- agent_task_module.command(scope, task_session) do
+         {:ok, session} <- create_session(scope, external_id, agent_task_module, nil),
+         session <- enrich_session(session, nil, scope),
+         {:ok, prompt} <- agent_task_module.command(scope, session) do
       {:ok, prompt, sync_result}
     end
   end
 
-  defp run_component_task(scope, external_id, session_type, module_name, working_dir) do
+  defp run_component_task(scope, external_id, session_type, module_name) do
     with {:ok, _} <- validate_external_id(external_id),
-         {:ok, _} <- validate_working_dir(working_dir),
-         {:ok, project} <- get_project(scope),
-         {:ok, sync_result} <- sync_project(scope, working_dir),
+         {:ok, _} <- validate_environment(scope),
+         {:ok, _project} <- get_project(scope),
+         {:ok, sync_result} <- sync_project(scope),
          {:ok, component} <- get_component(scope, module_name),
          {:ok, agent_task_module} <- resolve_session_type(session_type, component),
-         {:ok, environment} <- build_environment(working_dir),
-         {:ok, _db_session} <- create_session(scope, external_id, agent_task_module, component, environment),
-         {:ok, task_session} <- build_task_session(external_id, component, project, environment),
-         {:ok, prompt} <- agent_task_module.command(scope, task_session) do
+         {:ok, session} <- create_session(scope, external_id, agent_task_module, component),
+         session <- enrich_session(session, component, scope),
+         {:ok, prompt} <- agent_task_module.command(scope, session) do
       {:ok, prompt, sync_result}
     end
   end
@@ -116,11 +112,11 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   defp validate_external_id(external_id) when is_binary(external_id), do: {:ok, external_id}
 
-  defp validate_working_dir(nil) do
-    {:error, "Working directory is required"}
+  defp validate_environment(%{environment: nil}) do
+    {:error, "No environment configured (no working directory)"}
   end
 
-  defp validate_working_dir(working_dir) when is_binary(working_dir), do: {:ok, working_dir}
+  defp validate_environment(%{environment: env}) when not is_nil(env), do: {:ok, env}
 
   # Session type resolution
 
@@ -180,90 +176,28 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     end
   end
 
-  # Environment building - centralized here
+  # Session creation
 
-  @doc """
-  Build an Environment struct with the working directory properly configured.
-  This is the single source of truth for environment creation in agent tasks.
-  """
-  def build_environment(working_dir) when is_binary(working_dir) do
-    {:ok,
-     %Environment{
-       type: :cli,
-       cwd: working_dir,
-       ref: %{working_dir: working_dir},
-       metadata: %{}
-     }}
-  end
-
-  def build_environment(nil) do
-    {:error, "Cannot build environment without working directory"}
-  end
-
-  # Session creation - stores environment as embedded schema
-
-  defp create_session(scope, external_id, session_module, component, environment) do
-    Sessions.create_session(scope, %{
+  defp create_session(scope, external_id, session_module, component) do
+    attrs = %{
       type: session_module,
-      environment_type: :cli,
-      agent: :claude_code,
-      execution_mode: :manual,
-      component_id: component.id,
       external_conversation_id: external_id,
-      environment: environment_to_map(environment)
-    })
-  end
-
-  defp create_componentless_session(scope, external_id, session_module, environment) do
-    Sessions.create_session(scope, %{
-      type: session_module,
-      environment_type: :cli,
-      agent: :claude_code,
-      execution_mode: :manual,
-      component_id: nil,
-      external_conversation_id: external_id,
-      environment: environment_to_map(environment)
-    })
-  end
-
-  defp environment_to_map(%Environment{} = env) do
-    %{
-      type: env.type,
-      cwd: env.cwd,
-      ref: env.ref || %{},
-      metadata: env.metadata || %{}
+      component_module_name: component && component.module_name,
+      state: if(component, do: %{"component_id" => component.id}, else: %{})
     }
+
+    Sessions.create_session(scope, attrs)
   end
 
-  # Task session building
-
-  defp build_task_session(external_id, component, project, environment) do
-    {:ok,
-     %{
-       external_id: external_id,
-       component: component,
-       project: project,
-       environment_type: :cli,
-       working_dir: environment.cwd,
-       environment: environment
-     }}
-  end
-
-  defp build_componentless_task_session(external_id, project, environment) do
-    {:ok,
-     %{
-       external_id: external_id,
-       project: project,
-       environment_type: :cli,
-       working_dir: environment.cwd,
-       environment: environment
-     }}
+  # Set virtual fields on the session struct
+  defp enrich_session(%Session{} = session, component, scope) do
+    %{session | component: component, project: scope.active_project}
   end
 
   # Sync
 
-  defp sync_project(scope, working_dir) do
-    opts = [base_dir: working_dir]
+  defp sync_project(scope) do
+    opts = if scope.environment, do: [base_dir: scope.environment.cwd], else: []
 
     case Sync.sync_all(scope, opts) do
       {:ok, result} ->

@@ -43,14 +43,14 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   - {:ok, :invalid, errors} if tests fail (for Claude to fix)
   - {:error, reason} if something went wrong
   """
-  def evaluate(_scope, session, _opts \\ []) do
+  def evaluate(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
 
     %{test_file: test_file_path, code_file: code_file_path} =
       Utils.component_files(component, project)
 
     # Check required files exist
-    case check_required_files(session, test_file_path, code_file_path) do
+    case check_required_files(scope, test_file_path, code_file_path) do
       {:error, feedback} ->
         {:ok, :invalid, feedback}
 
@@ -147,9 +147,8 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     end)
   end
 
-  defp check_required_files(session, test_file_path, code_file_path) do
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+  defp check_required_files(scope, test_file_path, code_file_path) do
+    environment = scope.environment
 
     missing_files = []
 
@@ -187,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     #{file_list}
 
     You must write these files before evaluation can proceed.
-    Please create the files at the paths shown above.
+    Please create the files at the path shown above.
     """
   end
 

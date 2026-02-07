@@ -26,14 +26,12 @@ defmodule CodeMySpec.LocalServer.Controllers.AgentTaskController do
   """
   def start(conn) do
     scope = conn.assigns[:current_scope]
-    working_dir = conn.assigns[:working_dir]
     body = conn.body_params
 
     args = %{
       external_id: body["external_id"],
       session_type: body["session_type"],
-      module_name: body["module_name"],
-      working_dir: working_dir
+      module_name: body["module_name"]
     }
 
     case StartAgentTask.run(scope, args) do

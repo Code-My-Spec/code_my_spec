@@ -26,7 +26,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     %{component: component} = session
 
     with {:ok, rules} <- get_design_rules(scope, component) do
-      build_spec_prompt(session, rules)
+      build_spec_prompt(scope, session, rules)
     end
   end
 
@@ -44,8 +44,8 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   - {:ok, :invalid, errors} if the spec needs revision
   - {:error, reason} if something went wrong
   """
-  def evaluate(_scope, session, _opts \\ []) do
-    with {:ok, spec_content} <- read_spec_file(session),
+  def evaluate(scope, session, _opts \\ []) do
+    with {:ok, spec_content} <- read_spec_file(scope, session),
          {:ok, _document} <- validate_document(spec_content, session.component) do
       {:ok, :valid}
     else
@@ -66,7 +66,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     end
   end
 
-  defp build_spec_prompt(session, rules) do
+  defp build_spec_prompt(scope, session, rules) do
     %{project: project, component: component} = session
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
     document_spec = DocumentSpecProjector.project_spec(component.type)
@@ -84,8 +84,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
           ""
       end
 
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+    environment = scope.environment
 
     %{code_file: code_file, test_file: test_file} =
       Utils.component_files(component, project)
@@ -128,11 +127,10 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     {:ok, prompt}
   end
 
-  defp read_spec_file(session) do
+  defp read_spec_file(scope, session) do
     %{spec_file: path} = Utils.component_files(session.component, session.project)
 
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+    environment = scope.environment
 
     case Environments.read_file(environment, path) do
       {:ok, content} ->

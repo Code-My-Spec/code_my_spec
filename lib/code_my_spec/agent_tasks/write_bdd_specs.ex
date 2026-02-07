@@ -29,7 +29,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   """
   @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def command(scope, session, opts \\ []) do
-    env = get_environment(session)
+    env = scope.environment
     working_dir = get_working_dir(env)
 
     with {:ok, _sync_result} <- maybe_sync_project(scope, working_dir, opts),
@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   @spec evaluate(term(), map(), keyword()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, session, _opts \\ []) do
-    env = get_environment(session)
+    env = scope.environment
 
     with {:ok, story} <- resolve_story(scope, session, env) do
       validate_story_specs(env, story)
@@ -139,17 +139,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # ============================================================================
   # Environment Helpers
   # ============================================================================
-
-  defp get_environment(%{environment: %{cwd: _} = env}), do: env
-
-  defp get_environment(%{environment: %{ref: %{working_dir: dir}}}) do
-    %{type: :local, cwd: dir, ref: %{working_dir: dir}}
-  end
-
-  defp get_environment(_session) do
-    cwd = File.cwd!()
-    %{type: :local, cwd: cwd, ref: %{working_dir: cwd}}
-  end
 
   defp get_working_dir(%{cwd: cwd}) when is_binary(cwd), do: cwd
   defp get_working_dir(%{ref: %{working_dir: dir}}), do: dir

@@ -47,10 +47,10 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - {:ok, :invalid, errors} if the spec needs revision
   - {:error, reason} if something went wrong
   """
-  def evaluate(_scope, session, _opts \\ []) do
-    with {:ok, spec_content} <- read_spec_file(session),
+  def evaluate(scope, session, _opts \\ []) do
+    with {:ok, spec_content} <- read_spec_file(scope, session),
          {:ok, document} <- validate_document(spec_content),
-         {:ok, _paths} <- create_child_spec_files(session, document.sections) do
+         {:ok, _paths} <- create_child_spec_files(scope, session, document.sections) do
       {:ok, :valid}
     else
       {:error, validation_errors} when is_binary(validation_errors) ->
@@ -147,11 +147,10 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end)
   end
 
-  defp read_spec_file(session) do
+  defp read_spec_file(scope, session) do
     %{spec_file: path} = Utils.component_files(session.component, session.project)
 
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+    environment = scope.environment
 
     case Environments.read_file(environment, path) do
       {:ok, content} ->
@@ -173,17 +172,14 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     Documents.create_dynamic_document(spec_content, "context_spec")
   end
 
-  defp create_child_spec_files(session, %{"components" => components})
+  defp create_child_spec_files(scope, _session, %{"components" => components})
        when is_list(components) do
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
-
     results =
       Enum.map(components, fn %{module_name: module_name, description: description} ->
         %{spec_file: file_path} = Utils.component_files(module_name)
         content = build_child_spec_content(module_name, description)
 
-        case Environments.write_file(environment, file_path, content) do
+        case Environments.write_file(scope.environment, file_path, content) do
           :ok -> {:ok, file_path}
           {:error, reason} -> {:error, reason}
         end
@@ -195,7 +191,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end
   end
 
-  defp create_child_spec_files(_session, _sections), do: {:ok, []}
+  defp create_child_spec_files(_scope, _session, _sections), do: {:ok, []}
 
   defp build_child_spec_content(module_name, description) do
     """

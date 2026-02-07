@@ -18,7 +18,9 @@ defmodule CodeMySpec.Sessions.Session do
           status: :active | :complete | :failed | :cancelled | nil,
           component_module_name: String.t() | nil,
           external_conversation_id: String.t() | nil,
-          state: map() | nil
+          state: map() | nil,
+          component: any() | nil,
+          project: any() | nil
         }
 
   @primary_key false
@@ -30,6 +32,10 @@ defmodule CodeMySpec.Sessions.Session do
     field :component_module_name, :string
     field :external_conversation_id, :string
     field :state, :map
+
+    # Virtual fields — set at runtime, not persisted to JSON
+    field :component, :any, virtual: true
+    field :project, :any, virtual: true
   end
 
   @doc """

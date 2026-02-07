@@ -22,8 +22,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   completed steps based on check_status results.
   """
   @spec command(term(), map(), keyword()) :: {:ok, String.t()}
-  def command(_scope, session, _opts \\ []) do
-    env = session.environment
+  def command(scope, session, _opts \\ []) do
+    env = scope.environment
     status = check_status(env, session)
     prompt = build_setup_prompt(status)
     {:ok, prompt}
@@ -39,8 +39,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   """
   @spec evaluate(term(), map(), keyword()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
-  def evaluate(_scope, session, _opts \\ []) do
-    env = session.environment
+  def evaluate(scope, session, _opts \\ []) do
+    env = scope.environment
     status = check_status(env, session)
 
     case all_checks_pass?(status) do
@@ -329,25 +329,25 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   defp maybe_add_deps_instructions(
-         sections,
-         %{phoenix_project_exists: true, codemyspec_deps_installed: false} = status
-       ) do
+        sections,
+        %{phoenix_project_exists: true, codemyspec_deps_installed: false} = status
+      ) do
     [build_deps_instructions(status.missing_deps) | sections]
   end
 
   defp maybe_add_deps_instructions(sections, _status), do: sections
 
   defp maybe_add_docs_instructions(
-         sections,
-         %{docs_repo_configured: false} = status
-       ) do
+        sections,
+        %{docs_repo_configured: false} = status
+      ) do
     [build_docs_instructions(status) | sections]
   end
 
   defp maybe_add_docs_instructions(
-         sections,
-         %{docs_structure_complete: false} = status
-       ) do
+        sections,
+        %{docs_structure_complete: false} = status
+      ) do
     [build_docs_instructions(status) | sections]
   end
 

@@ -53,12 +53,12 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   - {:ok, :invalid, errors} if the review needs revision
   - {:error, reason} if something went wrong
   """
-  def evaluate(_scope, session, _opts \\ []) do
+  def evaluate(scope, session, _opts \\ []) do
     %{component: context_component, project: project} = session
 
     with {:ok, context_spec_path} <- get_context_spec_path(context_component, project),
          {:ok, review_file_path} <- calculate_review_file_path(context_spec_path),
-         {:ok, review_content} <- read_review_file(session, review_file_path),
+         {:ok, review_content} <- read_review_file(scope, review_file_path),
          {:ok, _document} <- validate_document(review_content) do
       {:ok, :valid}
     else
@@ -227,9 +227,8 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
 
   # Private functions - Evaluation
 
-  defp read_review_file(session, review_file_path) do
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+  defp read_review_file(scope, review_file_path) do
+    environment = scope.environment
 
     case Environments.read_file(environment, review_file_path) do
       {:ok, content} ->

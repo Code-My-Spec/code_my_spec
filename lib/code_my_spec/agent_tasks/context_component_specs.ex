@@ -25,7 +25,7 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
   Returns {:ok, prompt_text}
   """
   def command(scope, session, _opts \\ []) do
-    %{component: context_component, external_id: external_id} = session
+    %{component: context_component, external_conversation_id: external_id} = session
     # Ensure requirements are preloaded on context component
     IO.inspect("starting")
     context_component = ComponentRepository.get_component(scope, context_component.id)
@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
   - {:error, reason} if evaluation failed
   """
   def evaluate(scope, session, _opts \\ []) do
-    %{component: context_component, external_id: external_id} = session
+    %{component: context_component, external_conversation_id: external_id} = session
     # Ensure requirements are preloaded on context component
     context_component = ComponentRepository.get_component(scope, context_component.id)
 
@@ -100,19 +100,17 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
     context_needs_spec = Enum.any?(results, fn result -> not result.satisfied end)
 
     if context_needs_spec do
-      {:ok, environment} =
-        Environments.create(session.environment_type, working_dir: session[:working_dir])
-
       # Use ContextSpec.command/3 to generate the prompt content
       {:ok, prompt_content} = ContextSpec.command(scope, session)
 
       # Write prompt file (write_file will create parent directories)
       safe_name = safe_filename(context_component.module_name)
       relative_path = "#{prompt_dir(external_id)}/#{safe_name}_context.md"
+      environment = scope.environment
       :ok = Environments.write_file(environment, relative_path, prompt_content)
 
       # Store absolute path for orchestration prompt (agents need full path)
-      absolute_path = Path.join(session[:working_dir] || ".", relative_path)
+      absolute_path = Path.join(environment.cwd || ".", relative_path)
       {:ok, %{component: context_component, file_path: absolute_path, type: :context}}
     else
       {:ok, nil}
@@ -141,18 +139,13 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
   defp generate_child_prompt_files(scope, session, children_needing_specs, external_id) do
     %{project: project} = session
 
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
-
     prompt_files =
       Enum.map(children_needing_specs, fn child ->
         # Build a mini-session for the child component
         child_session = %{
-          external_id: external_id,
+          external_conversation_id: external_id,
           component: child,
-          project: project,
-          environment_type: session.environment_type,
-          working_dir: session[:working_dir]
+          project: project
         }
 
         # Use ComponentSpec.command/3 to generate the prompt content
@@ -161,10 +154,10 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
         # Write prompt file
         safe_name = safe_filename(child.module_name)
         relative_path = "#{prompt_dir(external_id)}/#{safe_name}.md"
-        :ok = Environments.write_file(environment, relative_path, prompt_content)
+        :ok = Environments.write_file(scope.environment, relative_path, prompt_content)
 
         # Store absolute path for orchestration prompt (agents need full path)
-        absolute_path = Path.join(session[:working_dir] || ".", relative_path)
+        absolute_path = Path.join(scope.environment.cwd || ".", relative_path)
 
         %{
           component: child,

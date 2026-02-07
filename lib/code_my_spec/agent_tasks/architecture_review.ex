@@ -26,7 +26,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
   """
   def command(scope, session, _opts \\ []) do
     %{project: project} = session
-    working_dir = Map.get(session, :working_dir)
+    working_dir = scope.environment && scope.environment.cwd
 
     unsatisfied_stories = Stories.list_unsatisfied_stories(scope)
     components = Components.list_components_with_dependencies(scope)

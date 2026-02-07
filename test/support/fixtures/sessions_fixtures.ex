@@ -4,9 +4,9 @@ defmodule CodeMySpec.SessionsFixtures do
   """
 
   @doc """
-  Generate a session in the given environment.
+  Generate a session in the given scope.
   """
-  def session_fixture(env, attrs \\ %{}) do
+  def session_fixture(scope, attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
         state: %{},
@@ -14,7 +14,7 @@ defmodule CodeMySpec.SessionsFixtures do
         type: CodeMySpec.AgentTasks.ContextSpec
       })
 
-    {:ok, session} = CodeMySpec.Sessions.create_session(env, attrs)
+    {:ok, session} = CodeMySpec.Sessions.create_session(scope, attrs)
 
     session
   end

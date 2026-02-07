@@ -7,6 +7,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
   import CodeMySpec.ComponentsFixtures
 
   alias CodeMySpec.AgentTasks.ComponentTest
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Support.TestAdapter
 
   @moduletag :tmp_dir
@@ -15,8 +16,9 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
   # Test Helpers
   # ============================================================================
 
-  defp create_scope(_context) do
+  defp create_scope(context) do
     scope = full_scope_fixture()
+    scope = %{scope | environment: Environment.new(:local, context.tmp_dir)}
     %{scope: scope}
   end
 
@@ -41,15 +43,12 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
     Map.put(context, :component, component)
   end
 
-  defp create_session(context, opts \\ []) do
-    %{project: project, component: component, tmp_dir: tmp_dir} = context
-    working_dir = Keyword.get(opts, :working_dir, tmp_dir)
+  defp create_session(context, _opts \\ []) do
+    %{project: project, component: component} = context
 
     session = %{
       project: project,
-      component: component,
-      environment_type: :local,
-      working_dir: working_dir
+      component: component
     }
 
     Map.put(context, :session, session)
@@ -242,6 +241,9 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
         TestAdapter.checkin(project_path)
       end)
 
+      # Add environment pointing to project_path
+      scope = %{scope | environment: Environment.new(:local, project_path)}
+
       %{scope: scope, project_path: project_path}
     end
 
@@ -260,9 +262,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
 
       session = %{
         project: project,
-        component: component,
-        environment_type: :local,
-        working_dir: project_path
+        component: component
       }
 
       # Fixed output file paths for cassette replay

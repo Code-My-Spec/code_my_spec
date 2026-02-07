@@ -5,6 +5,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
 
   alias CodeMySpec.AgentTasks.RefactorModule
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments.Environment
 
   @moduletag :tmp_dir
 
@@ -12,8 +13,9 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
   # Setup
   # ============================================================================
 
-  defp create_scope(_context) do
+  defp create_scope(context) do
     scope = full_scope_fixture()
+    scope = %{scope | environment: Environment.new(:local, context.tmp_dir)}
     %{scope: scope}
   end
 
@@ -77,15 +79,12 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
     |> Map.put(:child_components, [child1, child2])
   end
 
-  defp create_session(context, opts \\ []) do
+  defp create_session(context, _opts \\ []) do
     %{project: project, component: component} = context
-    working_dir = Keyword.get(opts, :working_dir, context[:tmp_dir])
 
     session = %{
       project: project,
-      component: component,
-      environment_type: :local,
-      working_dir: working_dir
+      component: component
     }
 
     Map.put(context, :session, session)
@@ -94,12 +93,11 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
   defp write_files(%{skip_write_files: true} = context), do: context
 
   defp write_files(context) do
-    %{component: component, project: project, session: session} = context
+    %{component: component, project: project, scope: scope} = context
     %{spec_file: spec_file, code_file: code_file, test_file: test_file} =
       CodeMySpec.Utils.component_files(component, project)
 
-    {:ok, environment} =
-      CodeMySpec.Environments.create(session.environment_type, working_dir: session.working_dir)
+    environment = scope.environment
 
     # Write sample files using environment
     CodeMySpec.Environments.write_file(environment, spec_file, """

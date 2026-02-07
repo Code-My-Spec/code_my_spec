@@ -70,18 +70,26 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
         target_component_id: post_cache.id
       })
 
-      %{
-        scope: scope,
-        components: [blog_context, post_schema, post_repository, post_cache]
-      }
-    end
-
-    @tag :integration
-    test "syncs project requirements with real test project", %{scope: scope} do
       # Clone from pool
       {:ok, project_dir} =
         CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
 
+      on_exit(fn ->
+        CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      end)
+
+      %{
+        scope: scope,
+        components: [blog_context, post_schema, post_repository, post_cache],
+        project_dir: project_dir
+      }
+    end
+
+    @tag :integration
+    test "syncs project requirements with real test project", %{
+      scope: scope,
+      project_dir: project_dir
+    } do
       file_list =
         DirWalker.stream(project_dir)
         |> Enum.map(&Path.relative_to(&1, project_dir))
@@ -115,8 +123,6 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
       assert is_list(result)
       assert length(result) > 0
-
-      File.rm_rf!(project_dir)
     end
   end
 

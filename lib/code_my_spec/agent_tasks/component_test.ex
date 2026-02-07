@@ -37,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
     with {:ok, test_rules} <- get_test_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
-      build_test_prompt(session, test_rules, similar_components)
+      build_test_prompt(scope, session, test_rules, similar_components)
     end
   end
 
@@ -62,15 +62,15 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       Utils.component_files(component, project)
 
     # First check that test file exists
-    case check_file_exists(session, test_file_path) do
+    case check_file_exists(scope, test_file_path) do
       false ->
         {:ok, :invalid, format_missing_file_error("test", test_file_path)}
 
       true ->
-        implementation_exists = check_implementation_exists(session, code_file_path)
+        implementation_exists = check_implementation_exists(scope, code_file_path)
         tdd_mode = not implementation_exists
 
-        working_dir = session[:working_dir]
+        working_dir = scope.environment && scope.environment.cwd
         compile_output_file = Keyword.get(opts, :compile_output_file)
         test_output_file = Keyword.get(opts, :test_output_file)
 
@@ -109,7 +109,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     end
   end
 
-  defp build_test_prompt(session, test_rules, similar_components) do
+  defp build_test_prompt(scope, session, test_rules, similar_components) do
     %{project: project, component: component} = session
     test_rules_text = Enum.map_join(test_rules, "\n\n", & &1.content)
     similar_text = format_similar_components(project, similar_components)
@@ -117,7 +117,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     %{spec_file: spec_file_path, test_file: test_file_path, code_file: code_file_path} =
       Utils.component_files(component, project)
 
-    implementation_exists = check_implementation_exists(session, code_file_path)
+    implementation_exists = check_implementation_exists(scope, code_file_path)
 
     tdd_section =
       if implementation_exists do
@@ -206,15 +206,18 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     end)
   end
 
-  defp check_file_exists(session, file_path) do
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+  defp check_file_exists(scope, file_path) do
+    environment = scope.environment
 
-    Environments.file_exists?(environment, file_path)
+    if environment do
+      Environments.file_exists?(environment, file_path)
+    else
+      false
+    end
   end
 
-  defp check_implementation_exists(session, code_file_path) do
-    check_file_exists(session, code_file_path)
+  defp check_implementation_exists(scope, code_file_path) do
+    check_file_exists(scope, code_file_path)
   end
 
   defp format_missing_file_error(file_type, file_path) do
@@ -264,7 +267,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
   defp run_quality_checks(
          scope,
-         session,
+         _session,
          component,
          project,
          compile_result,
@@ -272,7 +275,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
          tdd_mode,
          test_output_file
        ) do
-    working_dir = session[:working_dir]
+    working_dir = scope.environment && scope.environment.cwd
 
     # Run tests to get test results
     case run_tests(test_file_path, working_dir, test_output_file) do

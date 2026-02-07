@@ -22,7 +22,7 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
   Returns {:ok, prompt_text}
   """
   def command(scope, session, _opts \\ []) do
-    %{component: context_component, external_id: external_id} = session
+    %{component: context_component, external_conversation_id: external_id} = session
     # Ensure requirements are preloaded on context component
     context_component = ComponentRepository.get_component(scope, context_component.id)
 
@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
   - {:error, reason} if evaluation failed
   """
   def evaluate(scope, session, opts \\ []) do
-    %{component: context_component, external_id: external_id} = session
+    %{component: context_component, external_conversation_id: external_id} = session
     # Ensure requirements are preloaded on context component
     context_component = ComponentRepository.get_component(scope, context_component.id)
 
@@ -131,18 +131,14 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
          external_id
        ) do
     %{project: project} = session
-
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+    environment = scope.environment
 
     # Generate test prompt files
     test_prompts =
       Enum.map(components_needing_tests, fn child ->
         child_session = %{
           component: child,
-          project: project,
-          environment_type: session.environment_type,
-          working_dir: session[:working_dir]
+          project: project
         }
 
         {:ok, prompt_content} = ComponentTest.command(scope, child_session)
@@ -163,9 +159,7 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
       Enum.map(components_needing_code, fn child ->
         child_session = %{
           component: child,
-          project: project,
-          environment_type: session.environment_type,
-          working_dir: session[:working_dir]
+          project: project
         }
 
         {:ok, prompt_content} = ComponentCode.command(scope, child_session)
@@ -302,9 +296,7 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
       Enum.map(children, fn child ->
         child_session = %{
           component: child,
-          project: session.project,
-          environment_type: session.environment_type,
-          working_dir: session[:working_dir]
+          project: session.project
         }
 
         result = ComponentTest.evaluate(scope, child_session, opts)
@@ -319,9 +311,7 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
       Enum.map(children, fn child ->
         child_session = %{
           component: child,
-          project: session.project,
-          environment_type: session.environment_type,
-          working_dir: session[:working_dir]
+          project: session.project
         }
 
         result = ComponentCode.evaluate(scope, child_session, opts)

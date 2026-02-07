@@ -18,6 +18,7 @@ defmodule CodeMySpec.Users.Scope do
 
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.ClientUsers.ClientUser
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.User
@@ -28,7 +29,8 @@ defmodule CodeMySpec.Users.Scope do
             active_account_id: nil,
             active_project: nil,
             active_project_id: nil,
-            cwd: nil
+            cwd: nil,
+            environment: nil
 
   @type t :: %__MODULE__{
           user: User.t() | ClientUser.t() | nil,
@@ -37,7 +39,8 @@ defmodule CodeMySpec.Users.Scope do
           active_account_id: Ecto.UUID.t() | nil,
           active_project: Project.t() | nil,
           active_project_id: Ecto.UUID.t() | nil,
-          cwd: String.t() | nil
+          cwd: String.t() | nil,
+          environment: Environment.t() | nil
         }
 
   @doc """
@@ -95,7 +98,8 @@ defmodule CodeMySpec.Users.Scope do
          active_account_id: config["account_id"],
          active_project: project,
          active_project_id: project.id,
-         cwd: project_root
+         cwd: project_root,
+         environment: Environment.new(:local, project_root)
        }}
     end
   end

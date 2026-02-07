@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
   5. Relies on standard validate_edits hook for validation
   """
 
-  alias CodeMySpec.{Rules, Utils, Environments, Components}
+  alias CodeMySpec.{Rules, Utils, Components, Environments}
 
   @doc """
   Generate the command/prompt for Claude to start the refactoring session.
@@ -38,11 +38,10 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
 
   # Private functions
 
-  defp command_for_component(_scope, session) do
+  defp command_for_component(scope, session) do
     %{component: component, project: project} = session
 
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+    environment = scope.environment
 
     %{spec_file: spec_file, code_file: code_file, test_file: test_file} =
       Utils.component_files(component, project)
@@ -104,8 +103,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
   defp command_for_context(scope, session) do
     %{component: context, project: project} = session
 
-    {:ok, environment} =
-      Environments.create(session.environment_type, working_dir: session[:working_dir])
+    environment = scope.environment
 
     %{spec_file: context_spec_file} = Utils.component_files(context, project)
 

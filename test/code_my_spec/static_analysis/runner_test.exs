@@ -29,6 +29,14 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
     scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
+    on_exit(fn ->
+      # Clean up spec files created by tests (docs is a submodule, git clean won't reach it)
+      spec_file = Path.join(project_dir, "docs/spec/my_module.spec.md")
+      if File.exists?(spec_file), do: File.rm!(spec_file)
+
+      CodeMySpec.Support.TestAdapter.checkin(project_dir)
+    end)
+
     %{scope: scope, project: updated_project, project_dir: project_dir}
   end
 

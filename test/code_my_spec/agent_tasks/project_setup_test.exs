@@ -20,18 +20,19 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     }
   end
 
-  defp create_scope do
+  defp create_scope(tmp_dir) do
     %Scope{
       user: nil,
       active_account: nil,
       active_account_id: nil,
       active_project: nil,
-      active_project_id: nil
+      active_project_id: nil,
+      environment: create_environment(tmp_dir)
     }
   end
 
-  defp create_session(tmp_dir) do
-    %{environment: create_environment(tmp_dir)}
+  defp create_session(_tmp_dir) do
+    %{}
   end
 
   defp write_file!(tmp_dir, relative_path, content) do
@@ -323,7 +324,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
   describe "command/3" do
     test "returns full setup guide when starting from empty directory", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
@@ -338,7 +339,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "returns partial guide omitting completed steps", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Create a partial setup (Phoenix project exists, but missing other things)
@@ -356,7 +357,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     test "includes prerequisite installation when elixir_installed is false", %{tmp_dir: tmp_dir} do
       # This test would require mocking System.cmd to return an old Elixir version
       # For now, we verify the structure of the command function
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
@@ -368,7 +369,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     test "includes Phoenix installer setup when phoenix_installer_available is false", %{
       tmp_dir: tmp_dir
     } do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
@@ -378,7 +379,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "includes project creation when phoenix_project_exists is false", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Empty directory
@@ -389,7 +390,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "includes auth generation when auth_generated is false", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Create project without auth
@@ -402,7 +403,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "includes dependency block when codemyspec_deps_installed is false", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Create project without CodeMySpec deps
@@ -415,7 +416,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "includes submodule setup when docs_repo_configured is false", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Create project without docs submodule
@@ -428,7 +429,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "includes commit instructions between major steps", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
@@ -444,7 +445,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
   describe "evaluate/3" do
     test "returns valid when all required checks pass", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Create a fully set up project
@@ -458,7 +459,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "returns invalid with detailed feedback when checks fail", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Empty directory - many checks will fail
@@ -469,7 +470,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "feedback includes progress summary", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Partial setup
@@ -482,7 +483,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
 
     test "feedback includes specific remediation for each failing check", %{tmp_dir: tmp_dir} do
-      scope = create_scope()
+      scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
       # Empty directory

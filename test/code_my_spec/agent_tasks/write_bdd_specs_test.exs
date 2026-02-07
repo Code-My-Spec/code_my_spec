@@ -3,6 +3,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Users.Scope
   alias CodeMySpec.AgentTasks.WriteBddSpecs
 
   import CodeMySpec.UsersFixtures
@@ -16,16 +17,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   # Test Helpers
   # ============================================================================
 
-  defp create_environment(tmp_dir) do
-    %Environment{
-      type: :local,
-      ref: %{working_dir: tmp_dir},
-      cwd: tmp_dir,
-      metadata: %{}
-    }
+  defp scope_with_env(tmp_dir) do
+    scope = full_scope_fixture()
+    %{scope | environment: Environment.new(:local, tmp_dir)}
   end
 
-  defp session_with_story(scope, tmp_dir, story_opts \\ %{}) do
+  defp session_with_story(scope, _tmp_dir, story_opts \\ %{}) do
     component =
       component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.UserLoginLive"})
 
@@ -46,18 +43,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
     %{
       story_id: story.id,
-      story: story,
-      environment: create_environment(tmp_dir)
+      story: story
     }
   end
 
-  defp session_without_story(tmp_dir) do
-    %{
-      environment: create_environment(tmp_dir)
-    }
+  defp session_without_story(_tmp_dir) do
+    %{}
   end
 
-  defp session_with_unlinked_story(scope, tmp_dir) do
+  defp session_with_unlinked_story(scope, _tmp_dir) do
     # Story without component_id
     story = story_fixture(scope, %{title: "Unlinked Story", component_id: nil})
     criterion = criterion_fixture(scope, story, %{description: "Some criterion"})
@@ -65,8 +59,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
     %{
       story_id: story.id,
-      story: story,
-      environment: create_environment(tmp_dir)
+      story: story
     }
   end
 
@@ -167,7 +160,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   describe "command/3" do
     test "returns ok tuple with prompt text for valid session with story", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
@@ -176,7 +169,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes story title and description in prompt", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
@@ -184,7 +177,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes all acceptance criteria in prompt", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
@@ -193,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes expected file paths for each criterion", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       [criterion1, criterion2] = session.story.criteria
@@ -206,7 +199,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes Spex DSL syntax guide in prompt", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
@@ -218,7 +211,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes LiveView testing guide for liveview components", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
@@ -227,7 +220,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes Controller testing guide for controller components", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
 
       component =
         component_fixture(scope, %{type: "controller", module_name: "MyAppWeb.UserController"})
@@ -238,8 +231,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       session = %{
         story_id: story.id,
-        story: story,
-        environment: create_environment(tmp_dir)
+        story: story
       }
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
@@ -248,7 +240,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "scaffolds app_spex.ex and shared_givens.ex if they do not exist", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Without mix.exs, defaults to my_app
@@ -263,7 +255,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes current shared givens content in prompt", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Pre-create shared givens with custom content
@@ -285,14 +277,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "returns error if component is not linked", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_unlinked_story(scope, tmp_dir)
 
       assert {:error, :component_not_linked} = WriteBddSpecs.command(scope, session, skip_sync: true)
     end
 
     test "auto-selects top-priority incomplete story when no story_id", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
 
       # Create multiple stories with different priorities
       component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
@@ -314,7 +306,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "returns error when all stories complete and no story_id provided", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
       story = story_fixture(scope, %{title: "Complete Story", component_id: component.id})
       criterion = criterion_fixture(scope, story, %{description: "Done criterion"})
@@ -329,7 +321,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "skips fully covered story and selects next incomplete story", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
 
       # First story - higher priority, fully covered
@@ -356,7 +348,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "marks covered criteria in prompt", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Write spec for first criterion only
@@ -377,7 +369,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     test "returns {:ok, :valid} or compile error when all specs exist and are valid", %{
       tmp_dir: tmp_dir
     } do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Write valid specs for all criteria
@@ -405,7 +397,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "returns {:ok, :invalid, feedback} when spec file is missing", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Don't write any spec files
@@ -416,7 +408,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "returns {:ok, :invalid, feedback} when spec has syntax errors", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Write broken specs for all criteria
@@ -429,7 +421,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "returns {:ok, :invalid, feedback} when spec has no scenarios", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Write specs without scenarios for all criteria
@@ -443,7 +435,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "returns {:ok, :invalid, feedback} when scenarios have no steps", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Write specs without steps for all criteria
@@ -457,7 +449,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "includes criterion id and description in error feedback", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
       # Don't write any spec files
@@ -470,11 +462,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     end
 
     test "returns error when story cannot be resolved", %{tmp_dir: tmp_dir} do
-      scope = full_scope_fixture()
+      scope = scope_with_env(tmp_dir)
 
       session = %{
-        story_id: 999_999,
-        environment: create_environment(tmp_dir)
+        story_id: 999_999
       }
 
       assert {:error, :story_not_found} = WriteBddSpecs.evaluate(scope, session, [])

@@ -33,7 +33,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   """
   def command(scope, session, _opts \\ []) do
     %{project: project} = session
-    working_dir = Map.get(session, :working_dir)
+    working_dir = scope.environment && scope.environment.cwd
 
     stories = Stories.list_unsatisfied_stories(scope)
     component_count = Components.count_components(scope)
@@ -67,17 +67,16 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - {:ok, :invalid, feedback} if proposal has errors (blocks Claude from stopping)
   """
   def evaluate(scope, session, _opts \\ []) do
-    working_dir = Map.get(session, :working_dir, File.cwd!())
+    working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
     project = Map.get(session, :project)
     app_name = get_app_name(project)
 
-    with {:ok, env} <- Environments.create(:cli, working_dir: working_dir),
-         {:ok, content} <- read_proposal(env),
+    env = scope.environment || CodeMySpec.Environments.Environment.new(:cli, working_dir)
+
+    with {:ok, content} <- read_proposal(env),
          {:ok, proposal} <- Proposal.from_markdown(content, app_name: app_name),
          {:ok, story_ids} <- get_story_ids(scope),
          {:ok, _validated} <- Proposal.validate(proposal, story_ids: story_ids) do
-      Environments.destroy(env)
-
       # Proposal is valid - tell model to execute explicitly
       IO.puts("\n✓ Proposal validated successfully!")
       IO.puts("  Call `execute_proposal` to create spec files.")
