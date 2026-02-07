@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.OAuthControllerTest do
   use CodeMySpecWeb.ConnCase
 
+  import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures
 
   describe "GET /oauth/authorize" do
@@ -39,18 +40,20 @@ defmodule CodeMySpecWeb.OAuthControllerTest do
     test "returns error for invalid client", %{conn: conn} do
       user = user_fixture()
 
-      conn =
-        conn
-        |> log_in_user(user)
-        |> get(~p"/oauth/authorize", %{
-          "client_id" => "invalid-client",
-          "redirect_uri" => "https://example.com/callback",
-          "response_type" => "code",
-          "scope" => "read"
-        })
+      capture_log(fn ->
+        conn =
+          conn
+          |> log_in_user(user)
+          |> get(~p"/oauth/authorize", %{
+            "client_id" => "invalid-client",
+            "redirect_uri" => "https://example.com/callback",
+            "response_type" => "code",
+            "scope" => "read"
+          })
 
-      # Should return an error response instead of redirect for invalid client
-      assert conn.status == 422
+        # Should return an error response instead of redirect for invalid client
+        assert conn.status == 422
+      end)
     end
   end
 
