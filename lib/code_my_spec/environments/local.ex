@@ -6,7 +6,7 @@ defmodule CodeMySpec.Environments.Local do
   @impl true
   def create(opts) do
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
-    {:ok, %Environment{type: :local, ref: %{working_dir: working_dir}, cwd: working_dir}}
+    {:ok, %Environment{type: :local, cwd: working_dir}}
   end
 
   @impl true
@@ -14,7 +14,7 @@ defmodule CodeMySpec.Environments.Local do
 
   @impl true
   def read_file(env, path) do
-    resolved_path = resolve_path(path, env.ref.working_dir)
+    resolved_path = resolve_path(path, env.cwd)
     File.read(resolved_path)
   end
 
@@ -25,7 +25,7 @@ defmodule CodeMySpec.Environments.Local do
 
   @impl true
   def write_file(env, path, content) do
-    resolved_path = resolve_path(path, env.ref.working_dir)
+    resolved_path = resolve_path(path, env.cwd)
 
     with :ok <- File.mkdir_p(Path.dirname(resolved_path)) do
       File.write(resolved_path, content)
@@ -34,7 +34,7 @@ defmodule CodeMySpec.Environments.Local do
 
   @impl true
   def delete_file(env, path) do
-    resolved_path = resolve_path(path, env.ref.working_dir)
+    resolved_path = resolve_path(path, env.cwd)
 
     case File.rm(resolved_path) do
       :ok -> :ok
@@ -46,13 +46,13 @@ defmodule CodeMySpec.Environments.Local do
 
   @impl true
   def file_exists?(env, path) do
-    resolved_path = resolve_path(path, env.ref.working_dir)
+    resolved_path = resolve_path(path, env.cwd)
     File.exists?(resolved_path)
   end
 
   @impl true
   def glob(env, pattern) do
-    resolved_pattern = resolve_path(pattern, env.ref.working_dir)
+    resolved_pattern = resolve_path(pattern, env.cwd)
     Path.wildcard(resolved_pattern)
   end
 

@@ -26,7 +26,7 @@ defmodule CodeMySpec.Environments.Environment do
       %Environment{
         type: :local,
         cwd: "/path/to/project",
-        ref: %{working_dir: "/path/to/project"},
+        ref: %{},
         metadata: %{}
       }
 
