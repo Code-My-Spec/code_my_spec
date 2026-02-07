@@ -5,9 +5,8 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
   require Logger
 
-  alias CodeMySpec.AgentTasks.{TrackEdits, ValidateEdits}
+  alias CodeMySpec.AgentTasks.{EvaluateAgentTask, TrackEdits, ValidateEdits}
   alias CodeMySpec.Projects.Lifecycle
-  alias CodeMySpec.Sessions
 
   @doc """
   Process a hook event.
@@ -38,17 +37,8 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
     # Always run ValidateEdits
     validate_result = dispatch_validate_edits(session_id, cwd)
 
-    # Additionally run EvaluateAgentTask if there's an active session
-    eval_result =
-      case session_id && Sessions.get_active_session_by_external_id(scope, session_id) do
-        %{id: db_session_id} = session ->
-          Logger.info("[HookController] Found active session #{db_session_id}")
-          evaluate_agent_task(scope, session, cwd)
-
-        nil ->
-          Logger.info("[HookController] No active session for #{session_id}")
-          %{}
-      end
+    # Evaluate the session stack
+    eval_result = EvaluateAgentTask.run(scope)
 
     # Run Lifecycle check if agentic_mode is enabled
     lifecycle_result = dispatch_lifecycle_check(scope, cwd)
@@ -83,15 +73,6 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
     session_id
     |> ValidateEdits.run(opts)
     |> ValidateEdits.format_output()
-  end
-
-  defp evaluate_agent_task(scope, session, cwd) do
-    alias CodeMySpec.AgentTasks.EvaluateAgentTask
-
-    args = %{session_id: session.id}
-    args = if cwd, do: Map.put(args, :working_dir, cwd), else: args
-
-    EvaluateAgentTask.run(scope, args)
   end
 
   defp dispatch_lifecycle_check(nil, _cwd), do: %{}

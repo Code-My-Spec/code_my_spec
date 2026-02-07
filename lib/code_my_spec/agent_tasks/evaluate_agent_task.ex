@@ -1,154 +1,102 @@
 defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
   @moduledoc """
-  Evaluate/validate an agent task session's output.
+  Orchestrates evaluation of agent task sessions on stop hook.
 
-  Looks up the session by ID, determines its type, and calls the appropriate
-  AgentTask module's evaluate/3 function to validate Claude's output.
-
-  ## Usage
-
-  Typically called by the Stop hook after an agent task session completes.
-
-  ## Output
-
-  Returns a map for hook decision control:
-  - If valid: `%{}` (empty map allows Claude to stop), marks session complete
-  - If invalid: `%{"decision" => "block", "reason" => "<feedback>"}` (blocks Claude from stopping)
-  - If error: `%{}` (allows Claude to stop), error logged
+  Implements priority-level evaluation:
+  1. Evaluate ALL sessions at the highest priority level
+  2. Delete passing ones, collect feedback from ALL invalid ones at that level
+  3. If any invalid → block with combined concise feedback
+  4. If all pass at that level → move to next priority level down
+  5. Priority 0 (orchestrator) evaluates overall state, may create new level 1 tasks
   """
 
-  require Logger
-
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Components
   alias CodeMySpec.Sessions
-  alias CodeMySpec.ProjectSync.Sync
+  alias CodeMySpec.Users.Scope
 
   @doc """
-  Run evaluation and return the result map for hook output.
-  Does not perform any IO - caller is responsible for output.
+  Evaluate the session stack and return a hook decision map.
+
+  Returns `%{}` when all sessions pass (or none exist),
+  or `%{"decision" => "block", "reason" => feedback}` when any fail.
   """
-  @spec run(CodeMySpec.Scope.t(), map()) :: map()
-  def run(scope, args) do
-    session_id_arg = Map.get(args, :session_id)
-    working_dir = Map.get(args, :working_dir)
-
-    with {:ok, session_id} when not is_nil(session_id) <- resolve_session_id(session_id_arg),
-         {:ok, session} <- get_session(scope, session_id),
-         :ok <- check_session_active(session),
-         {:ok, task_session} <- build_task_session(session, working_dir),
-         {:ok, sync_result} <- sync_project(scope, working_dir),
-         result <- session.type.evaluate(scope, task_session) do
-      log_sync_metrics(sync_result)
-      maybe_complete_session(scope, session, result)
-      format_result(result)
-    else
-      {:ok, nil} ->
-        format_result({:ok, nil})
-
-      {:ok, {:already_closed, status}} ->
-        Logger.info("[EvaluateAgentTask] Session already #{status}, skipping evaluation")
-        %{}
-
-      {:error, reason} ->
-        format_setup_error(reason)
+  @spec run(Scope.t(), keyword()) :: map()
+  def run(%Scope{} = scope, opts \\ []) do
+    case Sessions.list_active_sessions(scope) do
+      {:ok, []} -> %{}
+      {:ok, sessions} -> evaluate_by_priority(sessions, scope, opts)
     end
+  end
+
+  defp evaluate_by_priority(sessions, scope, opts) do
+    sessions
+    |> Enum.group_by(& &1.priority)
+    |> Enum.sort_by(fn {priority, _} -> priority end, :desc)
+    |> evaluate_priority_levels(scope, opts)
+  end
+
+  defp evaluate_priority_levels([], _scope, _opts), do: %{}
+
+  defp evaluate_priority_levels([{_priority, level_sessions} | rest], scope, opts) do
+    results = Enum.map(level_sessions, &evaluate_one(scope, &1, opts))
+
+    {passed, failed} = Enum.split_with(results, &match?({:ok, :valid, _session}, &1))
+
+    # Delete passing sessions
+    Enum.each(passed, fn {:ok, :valid, session} ->
+      Sessions.delete_session(scope, session.id)
+    end)
+
+    case failed do
+      [] ->
+        evaluate_priority_levels(rest, scope, opts)
+
+      failures ->
+        build_combined_feedback(failures)
+    end
+  end
+
+  defp evaluate_one(scope, session, opts) do
+    session = enrich_session(scope, session)
+    module = session.type
+
+    case call_evaluate(module, scope, session, opts) do
+      {:ok, :valid} -> {:ok, :valid, session}
+      {:ok, :invalid, feedback} -> {:ok, :invalid, session, feedback}
+      {:error, reason} -> {:ok, :invalid, session, "Error: #{inspect(reason)}"}
+    end
+  end
+
+  defp enrich_session(scope, session) do
+    component =
+      if session.component_module_name do
+        Components.get_component_by_module_name(scope, session.component_module_name)
+      end
+
+    %{session | component: component, project: scope.active_project}
+  end
+
+  defp call_evaluate(module, scope, session, opts) do
+    module.evaluate(scope, session, opts)
   rescue
-    error ->
-      Logger.error("[EvaluateAgentTask] Error: #{Exception.message(error)}")
-      %{}
+    e -> {:error, Exception.message(e)}
   end
 
-  defp resolve_session_id(nil), do: {:ok, nil}
-  defp resolve_session_id(id) when is_binary(id), do: {:ok, id}
+  defp build_combined_feedback(failures) do
+    reasons =
+      failures
+      |> Enum.map(fn
+        {:ok, :invalid, session, feedback} ->
+          type_name =
+            session.type
+            |> Atom.to_string()
+            |> String.split(".")
+            |> List.last()
 
-  defp get_session(scope, session_id) do
-    case Sessions.get_session(scope, session_id) do
-      nil -> {:error, "Session not found: #{session_id}"}
-      session -> {:ok, session}
-    end
+          "[#{type_name}] #{feedback}"
+      end)
+      |> Enum.join("\n\n")
+
+    %{"decision" => "block", "reason" => reasons}
   end
-
-  defp check_session_active(%{status: :active}), do: :ok
-  defp check_session_active(%{status: status}), do: {:ok, {:already_closed, status}}
-
-  defp maybe_complete_session(scope, session, {:ok, :valid}) do
-    Sessions.update_session(scope, session, %{status: :complete})
-  end
-
-  defp maybe_complete_session(_scope, _session, _result), do: :ok
-
-  defp build_task_session(session, working_dir_override) do
-    # Session should have component and project preloaded
-    # Prefer environment from session (set by StartAgentTask), fall back to working_dir arg
-    environment = get_environment_from_session(session, working_dir_override)
-
-    {:ok,
-     %{
-       external_id: session.external_conversation_id,
-       component: session.component,
-       project: session.project,
-       environment_type: session.environment_type,
-       working_dir: environment.cwd,
-       environment: environment
-     }}
-  end
-
-  defp get_environment_from_session(session, working_dir_override) do
-    cond do
-      # First: use embedded environment from session
-      session.environment && session.environment.cwd ->
-        session.environment
-
-      # Second: use override passed in (backwards compatibility for old sessions)
-      working_dir_override ->
-        Environment.new(:cli, working_dir_override)
-
-      # Last resort
-      true ->
-        Environment.new(:cli, File.cwd!())
-    end
-  end
-
-  defp format_result({:ok, nil}), do: %{}
-
-  defp format_result({:ok, :valid}) do
-    Logger.info("[EvaluateAgentTask] All checks passed!")
-    %{}
-  end
-
-  defp format_result({:ok, :invalid, feedback}) do
-    %{"decision" => "block", "reason" => feedback}
-  end
-
-  defp format_result({:error, reason}) do
-    Logger.error("[EvaluateAgentTask] Error: #{format_error(reason)}")
-    %{}
-  end
-
-  defp format_setup_error(reason) do
-    Logger.error("[EvaluateAgentTask] Setup error: #{format_error(reason)}")
-    %{"decision" => "block", "reason" => format_error(reason)}
-  end
-
-  defp sync_project(scope, working_dir) do
-    opts = if working_dir, do: [base_dir: working_dir], else: []
-
-    case Sync.sync_all(scope, opts) do
-      {:ok, result} ->
-        {:ok, result}
-
-      {:error, reason} ->
-        {:error, "Sync failed: #{inspect(reason)}"}
-    end
-  end
-
-  defp log_sync_metrics(%{timings: timings}) do
-    Logger.info(
-      "[EvaluateAgentTask] Sync: contexts=#{timings.contexts_sync_ms}ms requirements=#{timings.requirements_sync_ms}ms total=#{timings.total_ms}ms"
-    )
-  end
-
-  defp format_error(reason) when is_binary(reason), do: reason
-  defp format_error(%Ecto.Changeset{} = changeset), do: inspect(changeset.errors)
-  defp format_error(reason), do: inspect(reason)
 end
