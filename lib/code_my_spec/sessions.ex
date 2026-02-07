@@ -1,59 +1,20 @@
 defmodule CodeMySpec.Sessions do
   @moduledoc """
-  The Sessions context.
+  Manages agent task sessions backed by the filesystem.
 
-  Currently provides DB-backed session CRUD used by StartAgentTask and
-  EvaluateAgentTask. Being replaced by filesystem-based SessionStack.
+  Each session is a directory under `.code_my_spec/internal/sessions/{id}/`
+  containing `session.json` and working files. All operations delegate to
+  SessionsRepository for CRUD and SessionStack for evaluation.
   """
 
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Sessions.SessionsRepository
+  alias CodeMySpec.Sessions.SessionStack
 
-  import Ecto.Query, warn: false
-
-  def get_session(%Scope{} = scope, id) do
-    Session
-    |> where([s], s.project_id == ^scope.active_project_id)
-    |> where([s], s.user_id == ^scope.user.id)
-    |> preload([
-      :project,
-      :component,
-      [component: :parent_component],
-      [child_sessions: [component: :project]]
-    ])
-    |> Repo.get(id)
-  end
-
-  def get_active_session_by_external_id(%Scope{} = scope, external_id) do
-    Session
-    |> where([s], s.external_conversation_id == ^external_id)
-    |> where([s], s.status == :active)
-    |> where([s], s.project_id == ^scope.active_project_id)
-    |> where([s], s.user_id == ^scope.user.id)
-    |> order_by([s], desc: s.inserted_at)
-    |> limit(1)
-    |> preload([
-      :project,
-      :component,
-      [component: :parent_component],
-      [child_sessions: [component: :project]]
-    ])
-    |> Repo.one()
-  end
-
-  def create_session(%Scope{} = scope, attrs) do
-    %Session{}
-    |> Session.changeset(attrs, scope)
-    |> Repo.insert()
-  end
-
-  def update_session(%Scope{} = scope, %Session{} = session, attrs) do
-    true = session.account_id == scope.active_account_id
-    true = session.user_id == scope.user.id
-
-    session
-    |> Session.changeset(attrs, scope)
-    |> Repo.update()
-  end
+  defdelegate create_session(env, attrs), to: SessionsRepository
+  defdelegate get_session(env, id), to: SessionsRepository
+  defdelegate list_sessions(env), to: SessionsRepository
+  defdelegate update_session(env, session), to: SessionsRepository
+  defdelegate delete_session(env, id), to: SessionsRepository
+  defdelegate clear_sessions(env), to: SessionsRepository
+  defdelegate evaluate(env, opts \\ []), to: SessionStack
 end

@@ -1,108 +1,121 @@
 defmodule CodeMySpec.Sessions.Session do
-  @moduledoc false
+  @moduledoc """
+  Embedded schema representing an agent task session.
 
-  alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Components.Component
-  alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Users.User
+  Serialized to/from JSON for filesystem storage — no database table.
+  Uses Ecto embedded schema for casting and validation via changesets.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Sessions.SessionType
+
   @type t :: %__MODULE__{
-          id: Ecto.UUID.t() | nil,
-          type: CodeMySpec.Sessions.SessionType.t() | nil,
-          agent: :claude_code | nil,
-          environment_type: :local | :vscode | :cli | nil,
-          environment: Environment.t() | nil,
-          execution_mode: :manual | :auto | :agentic | nil,
+          id: String.t() | nil,
+          type: SessionType.t() | nil,
+          priority: integer() | nil,
           status: :active | :complete | :failed | :cancelled | nil,
-          state: map() | nil,
-          display_name: String.t() | nil,
-          project_id: Ecto.UUID.t() | nil,
-          project: Project.t() | Ecto.Association.NotLoaded.t() | nil,
-          account_id: Ecto.UUID.t() | nil,
-          account: Account.t() | Ecto.Association.NotLoaded.t() | nil,
-          user_id: integer() | nil,
-          user: User.t() | Ecto.Association.NotLoaded.t() | nil,
-          component_id: Ecto.UUID.t() | nil,
-          component: Component.t() | Ecto.Association.NotLoaded.t() | nil,
-          session_id: Ecto.UUID.t() | nil,
-          parent_session: t() | Ecto.Association.NotLoaded.t() | nil,
-          child_sessions: [t()] | Ecto.Association.NotLoaded.t(),
+          component_module_name: String.t() | nil,
           external_conversation_id: String.t() | nil,
-          inserted_at: DateTime.t() | nil,
-          updated_at: DateTime.t() | nil
+          state: map() | nil
         }
 
-  @primary_key {:id, :binary_id, autogenerate: true}
-  schema "sessions" do
-    field :type, CodeMySpec.Sessions.SessionType
-    field :agent, Ecto.Enum, values: [:claude_code]
-    field :environment_type, Ecto.Enum, values: [:local, :vscode, :cli]
-    field :execution_mode, Ecto.Enum, values: [:manual, :auto, :agentic], default: :manual
-    field :status, Ecto.Enum, values: [:active, :complete, :failed, :cancelled], default: :active
+  @primary_key false
+  embedded_schema do
+    field :id, :string
+    field :type, SessionType
+    field :priority, :integer
+    field :status, Ecto.Enum, values: [:active, :complete, :failed, :cancelled]
+    field :component_module_name, :string
     field :external_conversation_id, :string
-    field :display_name, :string, virtual: true
-
     field :state, :map
-
-    embeds_one :environment, Environment, on_replace: :update
-
-    belongs_to :project, Project, type: :binary_id
-    belongs_to :account, Account, type: :binary_id
-    belongs_to :user, User
-    belongs_to :component, Component, type: :binary_id
-    belongs_to :parent_session, __MODULE__, foreign_key: :session_id, type: :binary_id
-
-    has_many :child_sessions, __MODULE__, foreign_key: :session_id, references: :id
-
-    timestamps(type: :utc_datetime)
   end
 
-  @doc false
-  def changeset(session, attrs, user_scope) do
+  @doc """
+  Build a changeset for creating or updating a session.
+
+  Casts fields from attrs, validates type is required and maps to a valid
+  agent task module, generates id if not present, and defaults status to :active.
+  """
+  @spec changeset(t(), map()) :: Ecto.Changeset.t()
+  def changeset(session, attrs) do
     session
     |> cast(attrs, [
       :id,
       :type,
-      :agent,
-      :environment_type,
-      :execution_mode,
+      :priority,
       :status,
-      :state,
-      :component_id,
-      :session_id,
-      :external_conversation_id
+      :component_module_name,
+      :external_conversation_id,
+      :state
     ])
-    |> cast_embed(:environment, with: &Environment.changeset/2)
     |> validate_required([:type])
-    |> put_change(:account_id, user_scope.active_account_id)
-    |> put_change(:project_id, user_scope.active_project_id)
-    |> put_change(:user_id, user_scope.user_id)
-    |> put_display_name()
+    |> put_id_if_missing()
+    |> put_default_status()
   end
 
-  defp put_display_name(%{changes: %{type: type}} = changeset) when not is_nil(type) do
-    put_change(changeset, :display_name, format_display_name(type))
+  @doc """
+  Serialize a Session struct to a JSON-encodable map.
+
+  Converts struct to map and converts atom values (type, status) to strings.
+  """
+  @spec to_json(t()) :: map()
+  def to_json(%__MODULE__{} = session) do
+    %{
+      id: session.id,
+      type: type_to_string(session.type),
+      priority: session.priority,
+      status: atom_to_string(session.status),
+      component_module_name: session.component_module_name,
+      external_conversation_id: session.external_conversation_id,
+      state: session.state
+    }
   end
 
-  defp put_display_name(%{data: %{type: type}} = changeset) when not is_nil(type) do
-    put_change(changeset, :display_name, format_display_name(type))
+  @doc """
+  Deserialize a JSON map into a Session struct.
+
+  Casts the map through changeset/2 and applies the changeset to produce a struct.
+  """
+  @spec from_json(map()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def from_json(json_map) do
+    changeset = changeset(%__MODULE__{}, json_map)
+
+    if changeset.valid? do
+      {:ok, apply_changes(changeset)}
+    else
+      {:error, changeset}
+    end
   end
 
-  defp put_display_name(changeset), do: changeset
+  # Private helpers
 
-  def format_display_name(%__MODULE__{type: type}) when is_atom(type),
-    do: format_display_name(type)
+  defp put_id_if_missing(changeset) do
+    case fetch_field(changeset, :id) do
+      {_source, nil} -> put_change(changeset, :id, Ecto.UUID.generate())
+      :error -> put_change(changeset, :id, Ecto.UUID.generate())
+      _ -> changeset
+    end
+  end
 
-  def format_display_name(type) when is_atom(type) do
+  defp put_default_status(changeset) do
+    case fetch_field(changeset, :status) do
+      {_source, nil} -> put_change(changeset, :status, :active)
+      :error -> put_change(changeset, :status, :active)
+      _ -> changeset
+    end
+  end
+
+  defp type_to_string(nil), do: nil
+
+  defp type_to_string(type) when is_atom(type) do
     type
-    |> Module.split()
+    |> Atom.to_string()
+    |> String.split(".")
     |> List.last()
-    |> String.replace_suffix("Sessions", "")
-    |> Recase.to_title()
   end
 
-  def format_display_name(_), do: nil
+  defp atom_to_string(nil), do: nil
+  defp atom_to_string(atom) when is_atom(atom), do: Atom.to_string(atom)
 end

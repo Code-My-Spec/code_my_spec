@@ -1,25 +1,21 @@
 defmodule CodeMySpec.SessionsFixtures do
   @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Sessions` context.
+  Test helpers for creating sessions via the `CodeMySpec.Sessions` context.
   """
 
   @doc """
-  Generate a session.
+  Generate a session in the given environment.
   """
-  def session_fixture(scope, attrs \\ %{}) do
+  def session_fixture(env, attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
-        agent: :claude_code,
-        environment_type: :local,
         state: %{},
         status: :active,
-        type: CodeMySpec.AgentTasks.ContextSpec,
-        display_name: "Context Spec"
+        type: CodeMySpec.AgentTasks.ContextSpec
       })
 
-    {:ok, session} = CodeMySpec.Sessions.create_session(scope, attrs)
+    {:ok, session} = CodeMySpec.Sessions.create_session(env, attrs)
 
-    CodeMySpec.Repo.preload(session, [:project, :component])
+    session
   end
 end
