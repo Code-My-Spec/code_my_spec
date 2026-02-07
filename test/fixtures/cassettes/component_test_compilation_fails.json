@@ -9,7 +9,7 @@
         "raw"
       ],
       "command": "mix",
-      "exit_code": 0,
+      "exit_code": 1,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "env": {
@@ -17,26 +17,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Compiling 1 file (.ex)\nGenerated test_phoenix_project app\n",
-      "recorded_at": "2026-02-06T23:15:32.917326Z"
-    },
-    {
-      "args": [
-        "test",
-        "test/test_phoenix_project/blog/post_repository_test.exs"
-      ],
-      "command": "mix",
-      "exit_code": 0,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
-        "env": {
-          "EXUNIT_JSON_OUTPUT_FILE": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/test_output_test.json",
-          "MIX_ENV": "test"
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Running ExUnit with seed: 188396, max_cases: 16\n\n.................\nFinished in 1.0 seconds (0.00s async, 1.0s sync)\n17 tests, 0 failures\n",
-      "recorded_at": "2026-02-06T23:15:42.329299Z"
+      "output": "==> sexy_spex\nCompiling 5 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\n\n== Compilation error in file lib/test_phoenix_project/blog/post_repository.ex ==\n** (TokenMissingError) token missing on lib/test_phoenix_project/blog/post_repository.ex:4:4:\n    error: missing terminator: end\n    │\n  1 │ defmodule TestPhoenixProject.Blog.PostRepository do\n    │                                                  └ unclosed delimiter\n  2 │   def broken do\n  3 │     # Missing end - actual syntax error\n  4 │ end\n    │    └ missing closing delimiter (expected \"end\")\n    │\n    └─ lib/test_phoenix_project/blog/post_repository.ex:4:4\n    (elixir 1.19.4) lib/kernel/parallel_compiler.ex:529: anonymous fn/5 in Kernel.ParallelCompiler.spawn_workers/8\n",
+      "recorded_at": "2026-02-07T23:09:00.044367Z"
     }
   ],
   "ports": []

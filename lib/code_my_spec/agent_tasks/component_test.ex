@@ -426,7 +426,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   defp run_spec_alignment(scope, component, project, tdd_mode: tdd_mode) do
     %{spec_file: spec_file_path} = Utils.component_files(component, project)
 
-    case StaticAnalysis.run(scope, :spec_alignment, spec_file: spec_file_path) do
+    case StaticAnalysis.run(scope, :spec_alignment, paths: [spec_file_path]) do
       {:ok, problems} ->
         test_problems = Enum.filter(problems, &(&1.category in ["missing_test", "extra_test"]))
         errors = Enum.map(test_problems, & &1.message)

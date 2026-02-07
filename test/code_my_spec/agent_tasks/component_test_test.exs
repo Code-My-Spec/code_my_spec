@@ -265,10 +265,10 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
         component: component
       }
 
-      # Fixed output file paths for cassette replay
+      # Use cached test results to avoid running mix test in the fixture project
       eval_opts = [
         compile_output_file: Path.join(System.tmp_dir!(), "compile_machine_test.json"),
-        test_output_file: Path.join(System.tmp_dir!(), "test_output_test.json")
+        test_output_file: TestAdapter.test_results_cache_path()
       ]
 
       %{
@@ -475,6 +475,9 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
         File.rm(spec_full_path)
         File.rm(test_full_path)
       end)
+
+      # Override test_output_file with failing cache for TDD mode
+      eval_opts = Keyword.put(eval_opts, :test_output_file, TestAdapter.test_results_failing_cache_path())
 
       use_cmd_cassette "component_test_tdd_mode" do
         # No implementation file - TDD mode
