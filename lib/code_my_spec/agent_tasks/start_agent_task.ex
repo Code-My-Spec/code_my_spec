@@ -18,11 +18,11 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks
   alias CodeMySpec.Components
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.AgentTasks
 
   # Maps session type names to AgentTask modules
   # Note: "spec" is handled specially in resolve_session_type/2 to auto-detect context vs component
@@ -38,11 +38,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "project_setup" => AgentTasks.ProjectSetup,
     "architecture_design" => AgentTasks.ArchitectureDesign,
     "architecture_review" => AgentTasks.ArchitectureReview,
-    "write_bdd_specs" => AgentTasks.WriteBddSpecs
+    "write_bdd_specs" => AgentTasks.WriteBddSpecs,
+    "manage_implementation" => AgentTasks.ManageImplementation
   }
 
   # Tasks that don't require a component/module_name
-  @componentless_tasks ["project_setup", "architecture_design", "architecture_review", "write_bdd_specs"]
+  @componentless_tasks ["project_setup", "architecture_design", "architecture_review", "write_bdd_specs", "manage_implementation"]
 
   @valid_types ["spec" | Map.keys(@session_type_map)]
 
