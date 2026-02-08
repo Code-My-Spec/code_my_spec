@@ -6,16 +6,18 @@ defmodule CodeMySpec.ProjectSync.Sync do
   synchronization operations (DB operations, file system operations).
   """
 
-  alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Components
   alias CodeMySpec.Architecture
+  alias CodeMySpec.Components
+  alias CodeMySpec.ProjectSync.StatusWriter
   alias CodeMySpec.Requirements.Sync, as: RequirementsSync
   alias CodeMySpec.Tests.TestRun
+  alias CodeMySpec.Users.Scope
 
   @type sync_result :: %{
           contexts: [Components.Component.t()],
           requirements_updated: integer(),
           architecture_views: [String.t()],
+          status_files: [String.t()],
           errors: [term()],
           timings: %{
             contexts_sync_ms: integer(),
@@ -66,6 +68,10 @@ defmodule CodeMySpec.ProjectSync.Sync do
            ) do
       contexts_sync_ms = System.monotonic_time(:millisecond) - contexts_start
 
+      # Refresh components from DB — update_parent_relationships may have changed
+      # parent_component_id values that the in-memory all_components doesn't reflect
+      refreshed_components = Components.list_components(scope)
+
       # Phase 3: Sync requirements for changed components
       requirements_start = System.monotonic_time(:millisecond)
       file_list = get_file_list(base_dir)
@@ -75,7 +81,7 @@ defmodule CodeMySpec.ProjectSync.Sync do
       components_with_requirements =
         RequirementsSync.sync_requirements(
           scope,
-          all_components,
+          refreshed_components,
           MapSet.new(expanded_changed_ids),
           file_list,
           test_run.failures,
@@ -95,6 +101,11 @@ defmodule CodeMySpec.ProjectSync.Sync do
         end
 
       architecture_ms = System.monotonic_time(:millisecond) - architecture_start
+
+      # Phase 5: Write context status files (roots only — children are inline via child_components)
+      root_components = Enum.filter(components_with_requirements, &is_nil(&1.parent_component_id))
+      status_files = StatusWriter.write_status_files(root_components, scope.environment)
+
       total_ms = System.monotonic_time(:millisecond) - total_start
 
       {:ok,
@@ -102,6 +113,7 @@ defmodule CodeMySpec.ProjectSync.Sync do
          contexts: components_with_requirements,
          requirements_updated: length(expanded_changed_ids),
          architecture_views: architecture_views,
+         status_files: status_files,
          errors: [],
          timings: %{
            contexts_sync_ms: contexts_sync_ms,

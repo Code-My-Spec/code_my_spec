@@ -7,7 +7,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - `evaluate/3` - Called by stop hook to validate output and provide feedback
   """
 
-  alias CodeMySpec.{Rules, Utils, Environments, Documents, Stories, Components}
+  alias CodeMySpec.{Components, Documents, Environments, Rules, Stories, Utils}
   alias CodeMySpec.Documents.DocumentSpecProjector
 
   @doc """
@@ -174,16 +174,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
   defp create_child_spec_files(scope, _session, %{"components" => components})
        when is_list(components) do
-    results =
-      Enum.map(components, fn %{module_name: module_name, description: description} ->
-        %{spec_file: file_path} = Utils.component_files(module_name)
-        content = build_child_spec_content(module_name, description)
-
-        case Environments.write_file(scope.environment, file_path, content) do
-          :ok -> {:ok, file_path}
-          {:error, reason} -> {:error, reason}
-        end
-      end)
+    results = Enum.map(components, &maybe_create_child_spec(scope, &1))
 
     case Enum.find(results, &match?({:error, _}, &1)) do
       nil -> {:ok, Enum.map(results, fn {:ok, path} -> path end)}
@@ -192,6 +183,21 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   end
 
   defp create_child_spec_files(_scope, _session, _sections), do: {:ok, []}
+
+  defp maybe_create_child_spec(scope, %{module_name: module_name, description: description}) do
+    %{spec_file: file_path} = Utils.component_files(module_name)
+
+    if Environments.file_exists?(scope.environment, file_path) do
+      {:ok, file_path}
+    else
+      content = build_child_spec_content(module_name, description)
+
+      case Environments.write_file(scope.environment, file_path, content) do
+        :ok -> {:ok, file_path}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
 
   defp build_child_spec_content(module_name, description) do
     """

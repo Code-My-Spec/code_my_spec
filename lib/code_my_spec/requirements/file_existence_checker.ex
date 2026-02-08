@@ -1,14 +1,18 @@
 defmodule CodeMySpec.Requirements.FileExistenceChecker do
+  @moduledoc """
+  Checks whether expected component files (spec, implementation, test, etc.) exist on disk.
+  """
+
   @behaviour CodeMySpec.Requirements.CheckerBehaviour
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Requirements.RequirementDefinition
-  alias CodeMySpec.Utils
   alias CodeMySpec.Environments
+  alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   def check(
-        %Scope{active_project: project},
+        %Scope{active_project: project} = scope,
         %RequirementDefinition{
           name: name,
           artifact_type: artifact_type,
@@ -17,13 +21,12 @@ defmodule CodeMySpec.Requirements.FileExistenceChecker do
           satisfied_by: satisfied_by
         } = _requirement_definition,
         %Component{} = component,
-        opts \\ []
+        _opts \\ []
       ) do
     files = Utils.component_files(component, project)
     file_key = file_key(name)
     file_path = Map.get(files, file_key)
-    environment_type = Keyword.get(opts, :environment_type, :cli)
-    {:ok, environment} = Environments.create(environment_type, opts)
+    environment = scope.environment
 
     {satisfied, details} =
       case Environments.file_exists?(environment, file_path) do
@@ -50,7 +53,6 @@ defmodule CodeMySpec.Requirements.FileExistenceChecker do
     }
   end
 
-  # TODO: Fragile
   def file_key("spec_file"), do: :spec_file
   def file_key("code_file"), do: :code_file
   def file_key("implementation_file"), do: :code_file

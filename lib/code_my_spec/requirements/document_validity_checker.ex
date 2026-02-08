@@ -8,14 +8,14 @@ defmodule CodeMySpec.Requirements.DocumentValidityChecker do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry
-  alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Documents
-  alias CodeMySpec.Utils
   alias CodeMySpec.Environments
+  alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   def check(
-        %Scope{active_project: project},
+        %Scope{active_project: project, environment: environment} = _scope,
         %RequirementDefinition{
           name: name,
           artifact_type: artifact_type,
@@ -24,13 +24,13 @@ defmodule CodeMySpec.Requirements.DocumentValidityChecker do
           satisfied_by: satisfied_by
         } = _requirement_definition,
         %Component{type: component_type} = component,
-        opts \\ []
+        _opts \\ []
       ) do
     # Get document_type from component type definition
     type_def = Registry.get_type(component_type)
     document_type = Map.get(type_def, :document_type)
 
-    {satisfied, details} = validate_document(component, project, document_type, opts)
+    {satisfied, details} = validate_document(component, project, document_type, environment)
 
     %{
       name: name,
@@ -45,12 +45,9 @@ defmodule CodeMySpec.Requirements.DocumentValidityChecker do
     }
   end
 
-  defp validate_document(%Component{} = component, project, document_type, opts) do
+  defp validate_document(%Component{} = component, project, document_type, environment) do
     files = Utils.component_files(component, project)
     spec_path = Map.get(files, :spec_file)
-
-    environment_type = Keyword.get(opts, :environment_type, :cli)
-    {:ok, environment} = Environments.create(environment_type, opts)
 
     case Environments.read_file(environment, spec_path) do
       {:ok, content} ->
