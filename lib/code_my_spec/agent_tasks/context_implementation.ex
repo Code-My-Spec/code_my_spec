@@ -7,12 +7,14 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
   - `evaluate/3` - Validates all components (including context itself) pass test and code quality checks
   """
 
-  alias CodeMySpec.{Requirements, Environments}
+  alias CodeMySpec.AgentTasks.{ComponentCode, ComponentTest}
   alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.AgentTasks.{ComponentTest, ComponentCode}
+  alias CodeMySpec.{Environments, Requirements}
+
+  defp session_dir(external_id), do: ".code_my_spec/internal/sessions/#{external_id}"
 
   defp prompt_dir(external_id),
-    do: ".code_my_spec/internal/sessions/#{external_id}/subagent_prompts"
+    do: "#{session_dir(external_id)}/subagent_prompts"
 
   @doc """
   Generate prompt files and orchestration instructions for implementing a context and its child components.
@@ -41,7 +43,13 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
              components_needing_code,
              external_id
            ) do
-      build_orchestration_prompt(context_component, prompt_files, external_id)
+      {:ok, orchestration_content} =
+        build_orchestration_prompt(context_component, prompt_files, external_id)
+
+      orchestration_path = "#{session_dir(external_id)}/context_implementation.md"
+      Environments.write_file(scope.environment, orchestration_path, orchestration_content)
+
+      {:ok, "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
     end
   end
 
@@ -362,19 +370,19 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
 
   defp cleanup_prompt_files(satisfied_children, external_id) do
     Enum.each(satisfied_children, fn child ->
-      safe_name = safe_filename(child.module_name)
-
-      # Clean up both test and code prompt files
-      Enum.each(["_test.md", "_code.md"], fn suffix ->
-        file_path = "#{prompt_dir(external_id)}/#{safe_name}#{suffix}"
-
-        if File.exists?(file_path) do
-          File.rm(file_path)
-        end
-      end)
+      cleanup_component_prompt_files(child, external_id)
     end)
 
     :ok
+  end
+
+  defp cleanup_component_prompt_files(child, external_id) do
+    safe_name = safe_filename(child.module_name)
+
+    Enum.each(["_test.md", "_code.md"], fn suffix ->
+      file_path = "#{prompt_dir(external_id)}/#{safe_name}#{suffix}"
+      if File.exists?(file_path), do: File.rm(file_path)
+    end)
   end
 
   defp cleanup_prompt_directory(external_id) do

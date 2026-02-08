@@ -1,9 +1,9 @@
 defmodule CodeMySpec.AgentTasks.DevelopContextTest do
   use CodeMySpec.DataCase, async: true
 
+  alias CodeMySpec.AgentTasks.DevelopContext
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.AgentTasks.DevelopContext
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
@@ -112,6 +112,11 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
     ".code_my_spec/internal/sessions/#{external_id}/subagent_prompts"
   end
 
+  defp read_orchestration_file(tmp_dir, external_id) do
+    Path.join(tmp_dir, ".code_my_spec/internal/sessions/#{external_id}/develop_context.md")
+    |> File.read!()
+  end
+
   # ============================================================================
   # command/3 Tests
   # ============================================================================
@@ -120,6 +125,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
     test "returns completion message when all phases are complete", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       {context, children} = create_context_with_children(scope)
+      external_id = "test-complete-#{System.unique_integer([:positive])}"
 
       # Create all spec files
       create_spec_file!(tmp_dir, context, scope.active_project)
@@ -139,11 +145,12 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
 
       # Reload context with requirements
       context = Components.get_component(scope, context.id)
-      session = create_session(scope, context)
+      session = create_session(scope, context, external_id)
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
-      assert prompt =~ "Context lifecycle is complete"
-      assert prompt =~ "No further action required"
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
+      assert content =~ "Context lifecycle is complete"
+      assert content =~ "No further action required"
     end
 
     test "generates context spec prompt when context spec is missing", %{tmp_dir: tmp_dir} do
@@ -154,9 +161,10 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
 
       # Don't create any spec files
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
-      assert prompt =~ "Context Specification"
-      assert prompt =~ "Context Lifecycle"
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
+      assert content =~ "Context Specification"
+      assert content =~ "Context Lifecycle"
 
       # Verify prompt file was created
       prompt_path = Path.join(tmp_dir, "#{prompt_dir(external_id)}/codemyspec_testcontext_context_spec.md")
@@ -179,14 +187,15 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
 
       session = create_session(scope, context, external_id)
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
 
       # Should be in component specs phase if children need specs
       # Or design review phase if no children found (context-only lifecycle)
-      assert prompt =~ "Component Specifications" or prompt =~ "Design Review"
+      assert content =~ "Component Specifications" or content =~ "Design Review"
 
       # If children were found, prompt files should be created
-      if prompt =~ "Component Specifications" do
+      if content =~ "Component Specifications" do
         for child <- children do
           safe_name =
             child.module_name
@@ -215,8 +224,9 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
 
       session = create_session(scope, context, external_id)
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
-      assert prompt =~ "Design Review"
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
+      assert content =~ "Design Review"
 
       # Verify design review prompt file was created
       safe_name =
@@ -255,8 +265,9 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       context = Components.get_component(scope, context.id)
       session = create_session(scope, context, external_id)
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
-      assert prompt =~ "Tests"
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
+      assert content =~ "Tests"
 
       # Verify test prompt files were created
       safe_name =
@@ -297,8 +308,9 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       context = Components.get_component(scope, context.id)
       session = create_session(scope, context, external_id)
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
-      assert prompt =~ "Implementation"
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
+      assert content =~ "Implementation"
 
       # Verify code prompt files were created
       safe_name =
@@ -332,16 +344,17 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       external_id = "test-#{System.unique_integer([:positive])}"
       session = create_session(scope, context, external_id)
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
 
       # Check orchestration structure
-      assert prompt =~ "Context Lifecycle"
-      assert prompt =~ "Lifecycle Phases"
-      assert prompt =~ "Current Phase"
-      assert prompt =~ "Subagent Usage"
-      assert prompt =~ "spec-writer"
-      assert prompt =~ "Prompt files to complete"
-      assert prompt =~ ".code_my_spec/internal/sessions/#{external_id}"
+      assert content =~ "Context Lifecycle"
+      assert content =~ "Lifecycle Phases"
+      assert content =~ "Current Phase"
+      assert content =~ "Subagent Usage"
+      assert content =~ "spec-writer"
+      assert content =~ "Prompt files to complete"
+      assert content =~ ".code_my_spec/internal/sessions/#{external_id}"
     end
   end
 
@@ -434,8 +447,9 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       session = create_session(scope, context, external_id)
 
       # Command should generate design review prompt (since specs complete but review missing)
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
-      assert prompt =~ "Design Review"
+      assert {:ok, _message} = DevelopContext.command(scope, session)
+      content = read_orchestration_file(tmp_dir, external_id)
+      assert content =~ "Design Review"
 
       safe_name =
         context.module_name

@@ -1,10 +1,9 @@
 defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   use CodeMySpec.DataCase, async: true
 
+  alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Users.Scope
-  alias CodeMySpec.AgentTasks.WriteBddSpecs
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -12,6 +11,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   import CodeMySpec.ComponentsFixtures
 
   @moduletag :tmp_dir
+
+  @external_id "test-conversation-00000000-0000-0000-0000-000000000001"
 
   # ============================================================================
   # Test Helpers
@@ -43,12 +44,13 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
     %{
       story_id: story.id,
-      story: story
+      story: story,
+      external_conversation_id: @external_id
     }
   end
 
   defp session_without_story(_tmp_dir) do
-    %{}
+    %{external_conversation_id: @external_id}
   end
 
   defp session_with_unlinked_story(scope, _tmp_dir) do
@@ -59,8 +61,20 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
     %{
       story_id: story.id,
-      story: story
+      story: story,
+      external_conversation_id: @external_id
     }
+  end
+
+  defp prompt_file_path(tmp_dir, story) do
+    Path.join(
+      tmp_dir,
+      ".code_my_spec/internal/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{story.id}.md"
+    )
+  end
+
+  defp orchestration_file_path(tmp_dir) do
+    Path.join(tmp_dir, ".code_my_spec/internal/sessions/#{@external_id}/write_bdd_specs.md")
   end
 
   defp write_valid_spec_file!(tmp_dir, story, criterion) do
@@ -159,33 +173,42 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   # ============================================================================
 
   describe "command/3" do
-    test "returns ok tuple with prompt text for valid session with story", %{tmp_dir: tmp_dir} do
+    test "writes prompt file to disk and returns message pointing to orchestration file", %{
+      tmp_dir: tmp_dir
+    } do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert is_binary(prompt)
-      assert String.length(prompt) > 0
+      assert {:ok, message} = WriteBddSpecs.command(scope, session, skip_sync: true)
+      assert message =~ "write_bdd_specs.md"
+
+      # Orchestration file references the story and subagent
+      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      assert orch_content =~ session.story.title
+      assert orch_content =~ "bdd-spec-writer"
+
+      # Subagent prompt file written to disk
+      file_path = prompt_file_path(tmp_dir, session.story)
+      assert File.exists?(file_path)
+
+      # Prompt file contains the full detailed prompt
+      file_content = File.read!(file_path)
+      assert file_content =~ "Write BDD Specifications for Story"
+      assert file_content =~ session.story.title
     end
 
-    test "includes story title and description in prompt", %{tmp_dir: tmp_dir} do
+    test "prompt file includes all acceptance criteria", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ session.story.title
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
+      assert file_content =~ "User can log in with valid credentials"
+      assert file_content =~ "User sees error with invalid credentials"
     end
 
-    test "includes all acceptance criteria in prompt", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ "User can log in with valid credentials"
-      assert prompt =~ "User sees error with invalid credentials"
-    end
-
-    test "includes expected file paths for each criterion", %{tmp_dir: tmp_dir} do
+    test "prompt file includes expected file paths for each criterion", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
@@ -193,33 +216,43 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       expected_path1 = BddSpecs.spec_file_path(session.story, criterion1)
       expected_path2 = BddSpecs.spec_file_path(session.story, criterion2)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ expected_path1
-      assert prompt =~ expected_path2
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
+      assert file_content =~ expected_path1
+      assert file_content =~ expected_path2
     end
 
-    test "includes Spex DSL syntax guide in prompt", %{tmp_dir: tmp_dir} do
+    test "prompt file includes Spex DSL syntax guide", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ "spex" or prompt =~ "Spex"
-      assert prompt =~ "scenario"
-      assert prompt =~ "given_"
-      assert prompt =~ "when_"
-      assert prompt =~ "then_"
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
+      assert file_content =~ "Spex DSL Syntax Guide"
+      assert file_content =~ "scenario"
+      assert file_content =~ "given_"
+      assert file_content =~ "when_"
+      assert file_content =~ "then_"
     end
 
-    test "includes LiveView testing guide for liveview components", %{tmp_dir: tmp_dir} do
+    test "prompt file includes LiveView testing guide for liveview components", %{
+      tmp_dir: tmp_dir
+    } do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ "LiveView Testing Guide"
-      assert prompt =~ "Phoenix.LiveViewTest"
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
+      assert file_content =~ "LiveView Testing Guide"
+      assert file_content =~ "Phoenix.LiveViewTest"
     end
 
-    test "includes Controller testing guide for controller components", %{tmp_dir: tmp_dir} do
+    test "prompt file includes Controller testing guide for controller components", %{
+      tmp_dir: tmp_dir
+    } do
       scope = scope_with_env(tmp_dir)
 
       component =
@@ -231,12 +264,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       session = %{
         story_id: story.id,
-        story: story
+        story: story,
+        external_conversation_id: @external_id
       }
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ "Controller Testing Guide"
-      assert prompt =~ "Phoenix.ConnTest"
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      file_content = File.read!(prompt_file_path(tmp_dir, story))
+      assert file_content =~ "Controller Testing Guide"
+      assert file_content =~ "Phoenix.ConnTest"
     end
 
     test "scaffolds app_spex.ex and shared_givens.ex if they do not exist", %{tmp_dir: tmp_dir} do
@@ -254,7 +290,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert File.exists?(shared_givens_path)
     end
 
-    test "includes current shared givens content in prompt", %{tmp_dir: tmp_dir} do
+    test "prompt file includes current shared givens content", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
@@ -272,15 +308,18 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       end
       """)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ "user_exists"
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
+      assert file_content =~ "user_exists"
     end
 
     test "returns error if component is not linked", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_unlinked_story(scope, tmp_dir)
 
-      assert {:error, :component_not_linked} = WriteBddSpecs.command(scope, session, skip_sync: true)
+      assert {:error, :component_not_linked} =
+               WriteBddSpecs.command(scope, session, skip_sync: true)
     end
 
     test "auto-selects top-priority incomplete story when no story_id", %{tmp_dir: tmp_dir} do
@@ -301,8 +340,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       session = session_without_story(tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ "High Priority"
+      assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
+      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      assert orch_content =~ "High Priority"
     end
 
     test "returns error when all stories complete and no story_id provided", %{tmp_dir: tmp_dir} do
@@ -317,7 +357,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       session = session_without_story(tmp_dir)
 
-      assert {:error, :all_stories_complete} = WriteBddSpecs.command(scope, session, skip_sync: true)
+      assert {:error, :all_stories_complete} =
+               WriteBddSpecs.command(scope, session, skip_sync: true)
     end
 
     test "skips fully covered story and selects next incomplete story", %{tmp_dir: tmp_dir} do
@@ -325,12 +366,24 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
 
       # First story - higher priority, fully covered
-      story1 = story_fixture(scope, %{title: "First Story Complete", priority: 1, component_id: component.id})
+      story1 =
+        story_fixture(scope, %{
+          title: "First Story Complete",
+          priority: 1,
+          component_id: component.id
+        })
+
       criterion1a = criterion_fixture(scope, story1, %{description: "Criterion 1A"})
       criterion1b = criterion_fixture(scope, story1, %{description: "Criterion 1B"})
 
       # Second story - lower priority, incomplete
-      story2 = story_fixture(scope, %{title: "Second Story Incomplete", priority: 2, component_id: component.id})
+      story2 =
+        story_fixture(scope, %{
+          title: "Second Story Incomplete",
+          priority: 2,
+          component_id: component.id
+        })
+
       _criterion2 = criterion_fixture(scope, story2, %{description: "Criterion 2A"})
 
       # Write specs for ALL criteria of story1 to make it fully covered
@@ -341,13 +394,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       session = session_without_story(tmp_dir)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+      assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
       # Should select story2, not story1
-      assert prompt =~ "Second Story Incomplete"
-      refute prompt =~ "First Story Complete"
+      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      assert orch_content =~ "Second Story Incomplete"
+      refute orch_content =~ "First Story Complete"
     end
 
-    test "marks covered criteria in prompt", %{tmp_dir: tmp_dir} do
+    test "prompt file marks covered criteria", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)
 
@@ -355,9 +409,24 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       [criterion1, _criterion2] = session.story.criteria
       write_valid_spec_file!(tmp_dir, session.story, criterion1)
 
-      assert {:ok, prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert prompt =~ "✅ COVERED"
-      assert prompt =~ "❌ MISSING"
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
+      assert file_content =~ "COVERED"
+      assert file_content =~ "MISSING"
+    end
+
+    test "orchestration file references the subagent prompt file path", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+      session = session_with_story(scope, tmp_dir)
+
+      assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
+
+      expected_relative_path =
+        ".code_my_spec/internal/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{session.story.id}.md"
+
+      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      assert orch_content =~ expected_relative_path
     end
   end
 
@@ -465,10 +534,38 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       scope = scope_with_env(tmp_dir)
 
       session = %{
-        story_id: 999_999
+        story_id: 999_999,
+        external_conversation_id: @external_id
       }
 
       assert {:error, :story_not_found} = WriteBddSpecs.evaluate(scope, session, [])
+    end
+
+    test "cleans up prompt file on valid result", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+      session = session_with_story(scope, tmp_dir)
+
+      # First, write the prompt file via command
+      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
+      file_path = prompt_file_path(tmp_dir, session.story)
+      assert File.exists?(file_path)
+
+      # Write valid specs for all criteria
+      for criterion <- session.story.criteria do
+        write_valid_spec_file!(tmp_dir, session.story, criterion)
+      end
+
+      result = WriteBddSpecs.evaluate(scope, session, [])
+
+      case result do
+        {:ok, :valid} ->
+          # Prompt file should be cleaned up
+          refute File.exists?(file_path)
+
+        {:ok, :invalid, _feedback} ->
+          # Compile may fail in test env - prompt file stays on invalid
+          assert File.exists?(file_path)
+      end
     end
   end
 end

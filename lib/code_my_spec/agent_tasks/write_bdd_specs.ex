@@ -12,12 +12,18 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Compile
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Stories
 
   require Logger
 
   @spex_dir "test/spex"
+
+  defp session_dir(external_id), do: ".code_my_spec/internal/sessions/#{external_id}"
+
+  defp prompt_dir(external_id),
+    do: "#{session_dir(external_id)}/subagent_prompts"
 
   @doc """
   Generate the prompt for Claude to create BDD specification files for a story.
@@ -31,6 +37,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   def command(scope, session, opts \\ []) do
     env = scope.environment
     working_dir = get_working_dir(env)
+    external_id = get_external_id(session)
 
     with {:ok, _sync_result} <- maybe_sync_project(scope, working_dir, opts),
          {:ok, story} <- resolve_story(scope, session, env),
@@ -40,7 +47,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       coverage = BddSpecs.check_story_coverage(env, story)
 
       prompt = build_story_prompt(env, story, component, coverage)
-      {:ok, prompt}
+
+      file_path = "#{prompt_dir(external_id)}/bdd_specs_story_#{story.id}.md"
+      :ok = Environments.write_file(env, file_path, prompt)
+
+      orchestration_content = build_orchestration_prompt(story, file_path)
+      orchestration_path = "#{session_dir(external_id)}/write_bdd_specs.md"
+      :ok = Environments.write_file(env, orchestration_path, orchestration_content)
+
+      {:ok, "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
     end
   end
 
@@ -55,9 +70,19 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, session, _opts \\ []) do
     env = scope.environment
+    external_id = get_external_id(session)
 
-    with {:ok, story} <- resolve_story(scope, session, env) do
-      validate_story_specs(env, story)
+    with {:ok, story} <- resolve_story(scope, session, env),
+         result <- validate_story_specs(env, story) do
+      case result do
+        {:ok, :valid} ->
+          cleanup_prompt_file(env, story, external_id)
+          cleanup_prompt_directory(env, external_id)
+          {:ok, :valid}
+
+        other ->
+          other
+      end
     end
   end
 
@@ -143,6 +168,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp get_working_dir(%{cwd: cwd}) when is_binary(cwd), do: cwd
   defp get_working_dir(%{ref: %{working_dir: dir}}), do: dir
   defp get_working_dir(_), do: File.cwd!()
+
+  defp get_external_id(%{external_conversation_id: id}) when is_binary(id), do: id
+  defp get_external_id(_), do: Ecto.UUID.generate()
 
   # ============================================================================
   # App Spex Setup
@@ -264,6 +292,24 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     else
       ""
     end
+  end
+
+  # ============================================================================
+  # Orchestration Prompt
+  # ============================================================================
+
+  defp build_orchestration_prompt(story, file_path) do
+    """
+    # Write BDD Specs: #{story.title}
+
+    **Story ID**: #{story.id}
+
+    A detailed prompt has been written to: `#{file_path}`
+
+    Invoke `@"CodeMySpec:bdd-spec-writer (agent)"` with the prompt file to generate BDD specifications for this story.
+
+    Write one spec file at a time, then wait for validation feedback before proceeding to the next.
+    """
   end
 
   # ============================================================================
@@ -461,9 +507,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   end
 
   defp build_criterion_guidance("liveview", spex_module) do
+    app_module = String.replace(spex_module, "Spex", "")
+
     """
     **Testing Approach for LiveView (SURFACE LAYER):**
     - **Test what users SEE and DO** - not internal function calls
+    - Use the project's existing `#{app_module}Web.ConnCase` - do NOT create additional case files
     - Use `Phoenix.LiveViewTest` for user interaction testing
     - Mount the LiveView with `live/2` - use plain string paths, not `~p` sigils
     - Use `form/3` + `render_submit/1` for form submissions
@@ -473,14 +522,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     defmodule #{spex_module}.FeatureNameSpex do
       use SexySpex
+      use #{app_module}Web.ConnCase
       import Phoenix.LiveViewTest
-      import Phoenix.ConnTest
-
-      @endpoint #{String.replace(spex_module, "Spex", "")}Web.Endpoint
-
-      setup do
-        {:ok, conn: build_conn()}
-      end
 
       import_givens #{spex_module}.SharedGivens
     end
@@ -489,10 +532,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   end
 
   defp build_criterion_guidance("controller", spex_module) do
+    app_module = String.replace(spex_module, "Spex", "")
+
     """
     **Testing Approach for Controller (SURFACE LAYER):**
     - **Test HTTP requests and responses** - not internal function calls
-    - Use `Phoenix.ConnTest` for HTTP testing
+    - Use the project's existing `#{app_module}Web.ConnCase` - do NOT create additional case files
     - Use `get/3`, `post/3`, `put/3`, `delete/3` for requests
     - Use plain string paths, not `~p` sigils
     - Assert with `html_response/2`, `json_response/2`, `redirected_to/1`
@@ -500,13 +545,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     defmodule #{spex_module}.FeatureNameSpex do
       use SexySpex
-      import Phoenix.ConnTest
-
-      @endpoint #{String.replace(spex_module, "Spex", "")}Web.Endpoint
-
-      setup do
-        {:ok, conn: build_conn()}
-      end
+      use #{app_module}Web.ConnCase
 
       import_givens #{spex_module}.SharedGivens
     end
@@ -534,7 +573,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp build_testing_guide("liveview", spex_module) do
     app_module = String.replace(spex_module, "Spex", "")
-    web_endpoint = "#{app_module}Web.Endpoint"
+    conn_case = "#{app_module}Web.ConnCase"
 
     """
     ## LiveView Testing Guide
@@ -550,18 +589,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     ### Required Setup
 
+    **IMPORTANT**: Use the project's existing `#{conn_case}` module. Do NOT create additional
+    case files, and do NOT manually set `@endpoint` or `setup do` blocks for conn - `ConnCase`
+    already provides these.
+
     ```elixir
     defmodule #{spex_module}.FeatureNameSpex do
       use SexySpex
+      use #{conn_case}
       import Phoenix.LiveViewTest
-      import Phoenix.ConnTest
-
-      @endpoint #{web_endpoint}
-
-      # Setup provides conn for each test
-      setup do
-        {:ok, conn: build_conn()}
-      end
 
       import_givens #{spex_module}.SharedGivens
     ```
@@ -631,14 +667,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     defmodule #{spex_module}.UserRegistrationSpex do
       use SexySpex
+      use #{conn_case}
       import Phoenix.LiveViewTest
-      import Phoenix.ConnTest
-
-      @endpoint #{web_endpoint}
-
-      setup do
-        {:ok, conn: build_conn()}
-      end
 
       import_givens #{spex_module}.SharedGivens
 
@@ -691,7 +721,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp build_testing_guide("controller", spex_module) do
     app_module = String.replace(spex_module, "Spex", "")
-    web_endpoint = "#{app_module}Web.Endpoint"
+    conn_case = "#{app_module}Web.ConnCase"
 
     """
     ## Controller Testing Guide
@@ -707,16 +737,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     ### Required Setup
 
+    **IMPORTANT**: Use the project's existing `#{conn_case}` module. Do NOT create additional
+    case files, and do NOT manually set `@endpoint` or `setup do` blocks for conn - `ConnCase`
+    already provides these.
+
     ```elixir
     defmodule #{spex_module}.FeatureNameSpex do
       use SexySpex
-      import Phoenix.ConnTest
-
-      @endpoint #{web_endpoint}
-
-      setup do
-        {:ok, conn: build_conn()}
-      end
+      use #{conn_case}
 
       import_givens #{spex_module}.SharedGivens
     ```
@@ -771,13 +799,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     defmodule #{spex_module}.ResourceManagementSpex do
       use SexySpex
-      import Phoenix.ConnTest
-
-      @endpoint #{web_endpoint}
-
-      setup do
-        {:ok, conn: build_conn()}
-      end
+      use #{conn_case}
 
       import_givens #{spex_module}.SharedGivens
 
@@ -844,6 +866,24 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     end
     ```
     """
+  end
+
+  # ============================================================================
+  # Prompt File Cleanup
+  # ============================================================================
+
+  defp cleanup_prompt_file(env, story, external_id) do
+    file_path = "#{prompt_dir(external_id)}/bdd_specs_story_#{story.id}.md"
+    Environments.delete_file(env, file_path)
+  end
+
+  defp cleanup_prompt_directory(env, external_id) do
+    dir = prompt_dir(external_id)
+
+    case Environments.list_directory(env, dir) do
+      {:ok, []} -> File.rmdir(dir)
+      _ -> :ok
+    end
   end
 
   # ============================================================================

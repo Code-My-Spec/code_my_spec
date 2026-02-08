@@ -27,8 +27,10 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     ContextSpec
   }
 
+  defp session_dir(external_id), do: ".code_my_spec/internal/sessions/#{external_id}"
+
   defp prompt_dir(external_id),
-    do: ".code_my_spec/internal/sessions/#{external_id}/subagent_prompts"
+    do: "#{session_dir(external_id)}/subagent_prompts"
 
   # Helper to get external ID from session (supports both old map format and new struct format)
   defp get_external_id(session) do
@@ -53,7 +55,13 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
          {:ok, phase_status} <- check_lifecycle_phases(scope, session, context_component, children),
          {:ok, prompt_files} <-
            generate_phase_prompts(scope, session, context_component, children, phase_status, external_id) do
-      build_orchestration_prompt(context_component, phase_status, prompt_files, external_id)
+      {:ok, orchestration_content} =
+        build_orchestration_prompt(context_component, phase_status, prompt_files, external_id)
+
+      orchestration_path = "#{session_dir(external_id)}/develop_context.md"
+      CodeMySpec.Environments.write_file(scope.environment, orchestration_path, orchestration_content)
+
+      {:ok, "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
     end
   end
 
