@@ -1,8 +1,9 @@
 defmodule CodeMySpec.ProjectSyncTest do
   use CodeMySpec.DataCase, async: true
 
-  alias CodeMySpec.ProjectSync
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ProjectSync
   alias CodeMySpec.Projects
 
   import CodeMySpec.UsersFixtures
@@ -30,6 +31,8 @@ defmodule CodeMySpec.ProjectSyncTest do
       on_exit(fn ->
         CodeMySpec.Support.TestAdapter.checkin(project_dir)
       end)
+
+      scope = %{scope | cwd: project_dir, environment: Environment.new(:local, project_dir)}
 
       {:ok, scope: scope, tmp_dir: project_dir}
     end

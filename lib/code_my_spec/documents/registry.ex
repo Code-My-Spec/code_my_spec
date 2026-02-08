@@ -176,6 +176,107 @@ defmodule CodeMySpec.Documents.Registry do
   - List any remaining action items if blocked
   """
 
+  @design_system_theme """
+  Format:
+  - Use H2 heading: ## Theme
+  - Name the DaisyUI theme or describe custom theme
+
+  Content:
+  - The `data-theme` attribute value used in the application layout
+  - Any theme overrides defined in `tailwind.config.js`
+  - Light/dark mode strategy (single theme, toggle, system preference)
+
+  Example:
+  ## Theme
+
+  Uses the `corporate` DaisyUI theme with dark mode toggle.
+  `data-theme="corporate"` on the root html element.
+  """
+
+  @design_system_colors """
+  Format:
+  - Use H2 heading: ## Colors
+  - Bullet list of semantic color roles with usage guidance
+
+  Content:
+  - Map each semantic role to when it should be used
+  - Roles: primary, secondary, accent, neutral, base, info, success, warning, error
+  - Include actual color values or DaisyUI variable names if customized
+  - Note any custom colors beyond the DaisyUI palette
+
+  Example:
+  ## Colors
+
+  - **Primary** (`primary`) — main actions, active navigation, links
+  - **Secondary** (`secondary`) — supporting actions, secondary buttons
+  - **Accent** (`accent`) — badges, highlights, attention-grabbing elements
+  - **Neutral** (`neutral`) — borders, muted text, dividers
+  - **Base** (`base-100/200/300`) — page background, card backgrounds, surface layers
+  """
+
+  @design_system_typography """
+  Format:
+  - Use H2 heading: ## Typography
+  - Describe heading hierarchy, body text, and font choices
+
+  Content:
+  - Heading sizes and weights (h1 through h4) and when to use each
+  - Body text size, line height, color
+  - Font family if overriding DaisyUI defaults
+  - Monospace usage for code or data display
+
+  Example:
+  ## Typography
+
+  - **h1** — page titles only, one per page (`text-2xl font-bold`)
+  - **h2** — section headings (`text-xl font-semibold`)
+  - **h3** — card titles, subsections (`text-lg font-medium`)
+  - **Body** — default DaisyUI body text
+  - **Monospace** — code snippets and technical identifiers
+  """
+
+  @design_system_layout """
+  Format:
+  - Use H2 heading: ## Layout
+  - Describe the application's page structure and navigation
+
+  Content:
+  - Navigation pattern (sidebar, top nav, both)
+  - Content area width and padding
+  - Page header/title conventions
+  - Common page templates (list page, detail page, form page, dashboard)
+  - Responsive breakpoints and behavior
+
+  Example:
+  ## Layout
+
+  - **Navigation**: Fixed sidebar with top header bar
+  - **Content width**: `max-w-7xl mx-auto` for main content area
+  - **Page header**: Always includes breadcrumb and page title
+  - **List pages**: Table with search/filter bar above, pagination below
+  - **Form pages**: Centered card with max-w-2xl
+  """
+
+  @design_system_tone """
+  Format:
+  - Use H2 heading: ## Tone
+  - Brief paragraph describing visual personality
+
+  Content:
+  - Overall aesthetic (minimal, dense, playful, corporate, etc.)
+  - Corner style (rounded vs sharp)
+  - Spacing density (tight vs airy)
+  - Shadow/elevation approach (flat vs layered)
+  - Any brand personality notes
+
+  Example:
+  ## Tone
+
+  Clean and professional. Rounded corners (`rounded-lg`), airy spacing,
+  minimal shadows. Dense data tables but spacious forms. No decorative
+  elements — every visual element should serve a functional purpose.
+  """
+
   @proposal_contexts """
   Format:
   - Use H2 heading: ## Contexts
@@ -329,6 +430,24 @@ defmodule CodeMySpec.Documents.Registry do
         "stories" => @review_stories,
         "issues" => @review_issues,
         "conclusion" => @review_conclusion
+      }
+    },
+    "design_system" => %{
+      overview: """
+      Design system documents define the visual identity and component conventions for a
+      Phoenix application. They establish the DaisyUI theme, color usage, typography,
+      layout patterns, and UI component conventions that all LiveViews and components
+      must follow for visual consistency.
+      """,
+      required_sections: ["theme", "colors", "typography", "layout", "tone"],
+      optional_sections: [],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "theme" => @design_system_theme,
+        "colors" => @design_system_colors,
+        "typography" => @design_system_typography,
+        "layout" => @design_system_layout,
+        "tone" => @design_system_tone
       }
     },
     "architecture_proposal" => %{

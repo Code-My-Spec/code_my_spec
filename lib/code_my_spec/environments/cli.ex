@@ -82,8 +82,9 @@ defmodule CodeMySpec.Environments.Cli do
   """
   @spec list_directory(env :: Environment.t(), path :: String.t()) ::
           {:ok, [String.t()]} | {:error, term()}
-  def list_directory(_env, path) do
-    File.ls(path)
+  def list_directory(env, path) do
+    resolved_path = resolve_path(path, env.cwd)
+    File.ls(resolved_path)
   end
 
   @doc """

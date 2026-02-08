@@ -19,8 +19,9 @@ defmodule CodeMySpec.Environments.Local do
   end
 
   @impl true
-  def list_directory(_env, path) do
-    File.ls(path)
+  def list_directory(env, path) do
+    resolved_path = resolve_path(path, env.cwd)
+    File.ls(resolved_path)
   end
 
   @impl true

@@ -6,6 +6,8 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
   Deletes passing ones, blocks with combined feedback if any are invalid.
   """
 
+  require Logger
+
   alias CodeMySpec.Components
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
@@ -19,8 +21,19 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
   @spec run(Scope.t(), keyword()) :: map()
   def run(%Scope{} = scope, opts \\ []) do
     case Sessions.list_active_sessions(scope) do
-      {:ok, []} -> %{}
-      {:ok, sessions} -> evaluate_level(sessions, scope, opts)
+      {:ok, []} ->
+        Logger.info("[EvaluateAgentTask] No active sessions found")
+        %{}
+
+      {:ok, sessions} ->
+        session_info =
+          Enum.map_join(sessions, ", ", fn s ->
+            type = s.type |> Atom.to_string() |> String.split(".") |> List.last()
+            "#{s.id}(#{type})"
+          end)
+
+        Logger.info("[EvaluateAgentTask] Evaluating #{length(sessions)} session(s): #{session_info}")
+        evaluate_level(sessions, scope, opts)
     end
   end
 
@@ -28,6 +41,8 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
     results = Enum.map(sessions, &evaluate_one(scope, &1, opts))
 
     {passed, failed} = Enum.split_with(results, &match?({:ok, :valid, _session}, &1))
+
+    Logger.info("[EvaluateAgentTask] Results: #{length(passed)} passed, #{length(failed)} failed")
 
     # Delete passing sessions
     Enum.each(passed, fn {:ok, :valid, session} ->
@@ -44,10 +59,21 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
     session = enrich_session(scope, session)
     module = session.type
 
+    type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
+    Logger.info("[EvaluateAgentTask] Evaluating session #{session.id} (#{type_name})")
+
     case call_evaluate(module, scope, session, opts) do
-      {:ok, :valid} -> {:ok, :valid, session}
-      {:ok, :invalid, feedback} -> {:ok, :invalid, session, feedback}
-      {:error, reason} -> {:ok, :invalid, session, "Error: #{inspect(reason)}"}
+      {:ok, :valid} ->
+        Logger.info("[EvaluateAgentTask] Session #{session.id} (#{type_name}): valid")
+        {:ok, :valid, session}
+
+      {:ok, :invalid, feedback} ->
+        Logger.info("[EvaluateAgentTask] Session #{session.id} (#{type_name}): invalid")
+        {:ok, :invalid, session, feedback}
+
+      {:error, reason} ->
+        Logger.warning("[EvaluateAgentTask] Session #{session.id} (#{type_name}): error - #{inspect(reason)}")
+        {:ok, :invalid, session, "Error: #{inspect(reason)}"}
     end
   end
 

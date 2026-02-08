@@ -8,7 +8,6 @@ defmodule CodeMySpec.Environments do
   """
 
   alias CodeMySpec.Environments.Environment
-  require Logger
 
   @doc """
   Create a new execution context and return an opaque Environment struct.
@@ -72,7 +71,6 @@ defmodule CodeMySpec.Environments do
   @spec write_file(env :: Environment.t(), path :: String.t(), content :: String.t()) ::
           :ok | {:error, term()}
   def write_file(%Environment{type: type} = env, path, content) do
-    Logger.info("environments write file called")
     impl(type).write_file(env, path, content)
   end
 

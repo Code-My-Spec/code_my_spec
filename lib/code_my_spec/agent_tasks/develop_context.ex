@@ -2,7 +2,16 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   @moduledoc """
   Orchestrates the full lifecycle of a context from specification through implementation.
 
-  Creates prompt files for all subagent tasks in order:
+  Writes prompt files to `docs/status/{root}/{context}/` — the same directory tree
+  that StatusWriter uses for status markdown. StatusWriter owns the `.md` status file
+  (e.g. `docs/status/metric_flow/accounts.md`); this module owns the action directory
+  (e.g. `docs/status/metric_flow/accounts/develop_context.md` + prompt files).
+
+  Paths are derived from the context component's module_name, making the whole
+  thing idempotent — same context always produces the same file paths regardless
+  of which session invokes it.
+
+  Lifecycle phases:
   1. Context spec (ContextSpec)
   2. Component specs (ComponentSpec) for each child
   3. Design review (ContextDesignReview)
@@ -10,14 +19,13 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   5. Code for each component (ComponentCode)
 
   Two main functions:
-  - `command/3` - Generates prompt files for all lifecycle phases, returns orchestration prompt
+  - `command/3` - Generates prompt files for incomplete phases, returns orchestration prompt
   - `evaluate/3` - Validates all phases complete and cleans up prompt files
   """
 
   require Logger
 
   alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.Utils
 
   alias CodeMySpec.AgentTasks.{
     ComponentCode,
@@ -27,38 +35,42 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     ContextSpec
   }
 
-  defp session_dir(external_id), do: ".code_my_spec/internal/sessions/#{external_id}"
+  @status_dir "docs/status"
 
-  defp prompt_dir(external_id),
-    do: "#{session_dir(external_id)}/subagent_prompts"
+  # Derive an action directory from the context component's module_name.
+  # MetricFlow.Accounts → docs/status/metric_flow/accounts
+  # Sits alongside the StatusWriter file (metric_flow/accounts.md).
+  defp context_status_dir(context_component) do
+    parts =
+      context_component.module_name
+      |> String.split(".")
+      |> Enum.map(&Macro.underscore/1)
 
-  # Helper to get external ID from session (supports both old map format and new struct format)
-  defp get_external_id(session) do
-    Map.get(session, :external_conversation_id) || Map.get(session, :external_id)
+    {dir_parts, [dirname]} = Enum.split(parts, -1)
+    Path.join([@status_dir | dir_parts] ++ [dirname])
   end
 
   @doc """
   Generate prompt files and orchestration instructions for the full context lifecycle.
 
   Checks each phase (spec, design review, test, code) and generates prompt files
-  for incomplete phases.
+  for incomplete phases. Files are written to `docs/status/{root}/{context}/`.
 
   Returns {:ok, prompt_text}
   """
   def command(scope, session, _opts \\ []) do
     %{component: context_component} = session
-    external_id = get_external_id(session)
-    # Ensure requirements and children are preloaded
     context_component = ComponentRepository.get_component(scope, context_component.id)
+    status_dir = context_status_dir(context_component)
 
     with {:ok, children} <- get_child_components(scope, context_component),
          {:ok, phase_status} <- check_lifecycle_phases(scope, session, context_component, children),
          {:ok, prompt_files} <-
-           generate_phase_prompts(scope, session, context_component, children, phase_status, external_id) do
+           generate_phase_prompts(scope, session, context_component, children, phase_status, status_dir) do
       {:ok, orchestration_content} =
-        build_orchestration_prompt(context_component, phase_status, prompt_files, external_id)
+        build_orchestration_prompt(context_component, phase_status, prompt_files, status_dir)
 
-      orchestration_path = "#{session_dir(external_id)}/develop_context.md"
+      orchestration_path = "#{status_dir}/develop_context.md"
       CodeMySpec.Environments.write_file(scope.environment, orchestration_path, orchestration_content)
 
       {:ok, "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
@@ -75,22 +87,38 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   """
   def evaluate(scope, session, _opts \\ []) do
     %{component: context_component} = session
-    external_id = get_external_id(session)
-    # Ensure requirements and children are preloaded
-    context_component = ComponentRepository.get_component(scope, context_component.id)
 
+    Logger.info("[DevelopContext] evaluate called for context: #{context_component.name} (#{context_component.module_name})")
+
+    context_component = ComponentRepository.get_component(scope, context_component.id)
+    status_dir = context_status_dir(context_component)
     working_dir = scope.environment && scope.environment.cwd
 
     with {:ok, children} <- get_child_components(scope, context_component),
          {:ok, phase_status} <- check_lifecycle_phases(scope, session, context_component, children),
-         :ok <- cleanup_completed_phases(phase_status, external_id, working_dir) do
+         :ok <- cleanup_completed_phases(phase_status, status_dir, working_dir) do
       case phase_status do
         %{complete: true} ->
-          cleanup_prompt_directory(external_id, working_dir)
+          Logger.info("[DevelopContext] All phases complete")
+          cleanup_status_directory(status_dir, working_dir)
           {:ok, :valid}
 
         %{incomplete_phases: incomplete} ->
-          feedback = build_feedback(incomplete, external_id)
+          phase_names = Enum.map_join(incomplete, ", ", fn {phase, _} -> Atom.to_string(phase) end)
+          Logger.info("[DevelopContext] Incomplete phases: #{phase_names}")
+
+          {:ok, prompt_files} =
+            generate_phase_prompts(scope, session, context_component, children, phase_status, status_dir)
+
+          Logger.info("[DevelopContext] Generated #{length(prompt_files)} prompt file(s)")
+
+          {:ok, orchestration_content} =
+            build_orchestration_prompt(context_component, phase_status, prompt_files, status_dir)
+
+          orchestration_path = "#{status_dir}/develop_context.md"
+          CodeMySpec.Environments.write_file(scope.environment, orchestration_path, orchestration_content)
+
+          feedback = build_feedback(incomplete, status_dir)
           {:ok, :invalid, feedback}
       end
     end
@@ -104,7 +132,6 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   end
 
   defp check_lifecycle_phases(scope, session, context_component, children) do
-    # Check each phase in order
     context_spec_status = check_context_spec(scope, session, context_component)
     component_specs_status = check_component_specs(scope, session, children)
     design_review_status = check_design_review(scope, session, context_component)
@@ -141,96 +168,124 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   defp maybe_add_phase(phases, name, status), do: [{name, status} | phases]
 
   defp check_context_spec(scope, session, context_component) do
-    %{spec_file: spec_path} = Utils.component_files(context_component, session.project)
+    child_session = %{component: context_component, project: session.project}
 
-    environment = scope.environment
-
-    if environment && CodeMySpec.Environments.file_exists?(environment, spec_path) do
-      :complete
-    else
-      {:missing, [context_component]}
+    case ContextSpec.evaluate(scope, child_session) do
+      {:ok, :valid} -> :complete
+      _ -> {:missing, [context_component]}
     end
   end
 
   defp check_component_specs(scope, session, children) do
-    environment = scope.environment
-
     missing =
       Enum.filter(children, fn child ->
-        %{spec_file: spec_path} = Utils.component_files(child, session.project)
+        child_session = %{component: child, project: session.project}
 
-        if environment do
-          not CodeMySpec.Environments.file_exists?(environment, spec_path)
-        else
-          true
+        case ComponentSpec.evaluate(scope, child_session) do
+          {:ok, :valid} -> false
+          _ -> true
         end
       end)
 
-    if Enum.empty?(missing) do
-      :complete
-    else
-      {:missing, missing}
-    end
+    if Enum.empty?(missing), do: :complete, else: {:missing, missing}
   end
 
   defp check_design_review(scope, session, context_component) do
-    %{spec_file: spec_path} = Utils.component_files(context_component, session.project)
-    review_path = String.replace_suffix(spec_path, ".spec.md", "/design_review.md")
+    child_session = %{component: context_component, project: session.project}
 
-    environment = scope.environment
-
-    if environment && CodeMySpec.Environments.file_exists?(environment, review_path) do
-      :complete
-    else
-      {:missing, [context_component]}
+    case ContextDesignReview.evaluate(scope, child_session) do
+      {:ok, :valid} -> :complete
+      _ -> {:missing, [context_component]}
     end
   end
 
   defp check_tests(scope, _session, components) do
+    Logger.info("[DevelopContext] check_tests: evaluating #{length(components)} component(s)")
+
     needing_tests =
       Enum.filter(components, fn component ->
+        requirements = component.requirements || []
+
         results =
           CodeMySpec.Requirements.check_requirements(
             scope,
             component,
-            component.requirements || [],
+            requirements,
             artifact_types: [:tests]
           )
 
-        Enum.any?(results, fn result -> not result.satisfied end)
+        unsatisfied = Enum.filter(results, fn result -> not result.satisfied end)
+
+        if unsatisfied != [] do
+          unsatisfied_names = Enum.map_join(unsatisfied, ", ", & &1.name)
+
+          Logger.info(
+            "[DevelopContext] check_tests: #{component.module_name} has #{Enum.count(unsatisfied)} unsatisfied test req(s): #{unsatisfied_names}"
+          )
+        else
+          Logger.info(
+            "[DevelopContext] check_tests: #{component.module_name} OK (#{Enum.count(results)} test req(s), all satisfied)"
+          )
+        end
+
+        unsatisfied != []
       end)
 
     if Enum.empty?(needing_tests) do
+      Logger.info("[DevelopContext] check_tests: all complete")
       :complete
     else
+      names = Enum.map_join(needing_tests, ", ", & &1.module_name)
+      Logger.info("[DevelopContext] check_tests: #{length(needing_tests)} component(s) need tests: #{names}")
       {:missing, needing_tests}
     end
   end
 
   defp check_code(scope, _session, components) do
+    Logger.info("[DevelopContext] check_code: evaluating #{length(components)} component(s)")
+
     needing_code =
       Enum.filter(components, fn component ->
+        requirements = component.requirements || []
+
         results =
           CodeMySpec.Requirements.check_requirements(
             scope,
             component,
-            component.requirements || [],
+            requirements,
             artifact_types: [:code]
           )
 
-        Enum.any?(results, fn result -> not result.satisfied end)
+        unsatisfied = Enum.filter(results, fn result -> not result.satisfied end)
+
+        if unsatisfied != [] do
+          unsatisfied_names = Enum.map_join(unsatisfied, ", ", & &1.name)
+
+          Logger.info(
+            "[DevelopContext] check_code: #{component.module_name} has #{Enum.count(unsatisfied)} unsatisfied code req(s): #{unsatisfied_names}"
+          )
+        else
+          Logger.info(
+            "[DevelopContext] check_code: #{component.module_name} OK (#{Enum.count(results)} code req(s), all satisfied)"
+          )
+        end
+
+        unsatisfied != []
       end)
 
     if Enum.empty?(needing_code) do
+      Logger.info("[DevelopContext] check_code: all complete")
       :complete
     else
+      names = Enum.map_join(needing_code, ", ", & &1.module_name)
+      Logger.info("[DevelopContext] check_code: #{length(needing_code)} component(s) need code: #{names}")
       {:missing, needing_code}
     end
   end
 
   # Private functions - Prompt generation
 
-  defp generate_phase_prompts(scope, session, context_component, _children, phase_status, external_id) do
+  defp generate_phase_prompts(scope, session, context_component, _children, phase_status, status_dir) do
     environment = scope.environment
 
     ctx = %{
@@ -238,7 +293,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
       session: session,
       context_component: context_component,
       environment: environment,
-      external_id: external_id
+      status_dir: status_dir
     }
 
     prompt_files =
@@ -253,138 +308,93 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   end
 
   defp maybe_add_context_spec_prompts(acc, %{context_spec: {:missing, _}} = _status, ctx) do
-    acc ++ generate_context_spec_prompt(ctx.scope, ctx.session, ctx.context_component, ctx.environment, ctx.external_id)
+    acc ++ generate_context_spec_prompt(ctx.scope, ctx.session, ctx.context_component, ctx.environment, ctx.status_dir)
   end
 
   defp maybe_add_context_spec_prompts(acc, _status, _ctx), do: acc
 
   defp maybe_add_component_spec_prompts(acc, %{component_specs: {:missing, missing}}, ctx) do
-    acc ++ generate_component_spec_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.external_id)
+    acc ++ generate_component_spec_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.status_dir)
   end
 
   defp maybe_add_component_spec_prompts(acc, _status, _ctx), do: acc
 
   defp maybe_add_design_review_prompts(acc, %{context_spec: :complete, component_specs: :complete, design_review: {:missing, _}}, ctx) do
-    acc ++ generate_design_review_prompt(ctx.scope, ctx.session, ctx.context_component, ctx.environment, ctx.external_id)
+    acc ++ generate_design_review_prompt(ctx.scope, ctx.session, ctx.context_component, ctx.environment, ctx.status_dir)
   end
 
   defp maybe_add_design_review_prompts(acc, _status, _ctx), do: acc
 
   defp maybe_add_test_prompts(acc, %{design_review: :complete, tests: {:missing, missing}}, ctx) do
-    acc ++ generate_test_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.external_id)
+    acc ++ generate_test_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.status_dir)
   end
 
   defp maybe_add_test_prompts(acc, _status, _ctx), do: acc
 
   defp maybe_add_code_prompts(acc, %{tests: :complete, code: {:missing, missing}}, ctx) do
-    acc ++ generate_code_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.external_id)
+    acc ++ generate_code_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.status_dir)
   end
 
   defp maybe_add_code_prompts(acc, _status, _ctx), do: acc
 
-  defp generate_context_spec_prompt(scope, session, context_component, environment, external_id) do
-    child_session = %{
-      component: context_component,
-      project: session.project
-    }
-
+  defp generate_context_spec_prompt(scope, session, context_component, environment, status_dir) do
+    child_session = %{component: context_component, project: session.project}
     {:ok, prompt_content} = ContextSpec.command(scope, child_session)
 
     safe_name = safe_filename(context_component.module_name)
-    file_path = "#{prompt_dir(external_id)}/#{safe_name}_context_spec.md"
+    file_path = "#{status_dir}/#{safe_name}_context_spec.md"
     :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
 
-    [%{
-      component: context_component,
-      file_path: file_path,
-      prompt_type: :context_spec,
-      phase: 1
-    }]
+    [%{component: context_component, file_path: file_path, prompt_type: :context_spec, phase: 1}]
   end
 
-  defp generate_component_spec_prompts(scope, session, children, environment, external_id) do
+  defp generate_component_spec_prompts(scope, session, children, environment, status_dir) do
     Enum.map(children, fn child ->
-      child_session = %{
-        component: child,
-        project: session.project
-      }
-
+      child_session = %{component: child, project: session.project}
       {:ok, prompt_content} = ComponentSpec.command(scope, child_session)
 
       safe_name = safe_filename(child.module_name)
-      file_path = "#{prompt_dir(external_id)}/#{safe_name}_component_spec.md"
+      file_path = "#{status_dir}/#{safe_name}_component_spec.md"
       :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
 
-      %{
-        component: child,
-        file_path: file_path,
-        prompt_type: :component_spec,
-        phase: 2
-      }
+      %{component: child, file_path: file_path, prompt_type: :component_spec, phase: 2}
     end)
   end
 
-  defp generate_design_review_prompt(scope, session, context_component, environment, external_id) do
-    child_session = %{
-      component: context_component,
-      project: session.project
-    }
-
+  defp generate_design_review_prompt(scope, session, context_component, environment, status_dir) do
+    child_session = %{component: context_component, project: session.project}
     {:ok, prompt_content} = ContextDesignReview.command(scope, child_session)
 
     safe_name = safe_filename(context_component.module_name)
-    file_path = "#{prompt_dir(external_id)}/#{safe_name}_design_review.md"
+    file_path = "#{status_dir}/#{safe_name}_design_review.md"
     :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
 
-    [%{
-      component: context_component,
-      file_path: file_path,
-      prompt_type: :design_review,
-      phase: 3
-    }]
+    [%{component: context_component, file_path: file_path, prompt_type: :design_review, phase: 3}]
   end
 
-  defp generate_test_prompts(scope, session, components, environment, external_id) do
+  defp generate_test_prompts(scope, session, components, environment, status_dir) do
     Enum.map(components, fn component ->
-      child_session = %{
-        component: component,
-        project: session.project
-      }
-
+      child_session = %{component: component, project: session.project}
       {:ok, prompt_content} = ComponentTest.command(scope, child_session)
 
       safe_name = safe_filename(component.module_name)
-      file_path = "#{prompt_dir(external_id)}/#{safe_name}_test.md"
+      file_path = "#{status_dir}/#{safe_name}_test.md"
       :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
 
-      %{
-        component: component,
-        file_path: file_path,
-        prompt_type: :test,
-        phase: 4
-      }
+      %{component: component, file_path: file_path, prompt_type: :test, phase: 4}
     end)
   end
 
-  defp generate_code_prompts(scope, session, components, environment, external_id) do
+  defp generate_code_prompts(scope, session, components, environment, status_dir) do
     Enum.map(components, fn component ->
-      child_session = %{
-        component: component,
-        project: session.project
-      }
-
+      child_session = %{component: component, project: session.project}
       {:ok, prompt_content} = ComponentCode.command(scope, child_session)
 
       safe_name = safe_filename(component.module_name)
-      file_path = "#{prompt_dir(external_id)}/#{safe_name}_code.md"
+      file_path = "#{status_dir}/#{safe_name}_code.md"
       :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
 
-      %{
-        component: component,
-        file_path: file_path,
-        prompt_type: :code,
-        phase: 5
-      }
+      %{component: component, file_path: file_path, prompt_type: :code, phase: 5}
     end)
   end
 
@@ -396,7 +406,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
 
   # Private functions - Prompt building
 
-  defp build_orchestration_prompt(_context_component, %{complete: true}, _prompt_files, _external_id) do
+  defp build_orchestration_prompt(_context_component, %{complete: true}, _prompt_files, _status_dir) do
     {:ok,
      """
      Context lifecycle is complete. All phases have passed:
@@ -410,7 +420,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
      """}
   end
 
-  defp build_orchestration_prompt(context_component, phase_status, prompt_files, _external_id) do
+  defp build_orchestration_prompt(context_component, phase_status, prompt_files, _status_dir) do
     current_phase = determine_current_phase(phase_status)
     phase_text = format_phase_instructions(current_phase, prompt_files)
 
@@ -506,9 +516,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
 
   # Private functions - Cleanup
 
-  defp cleanup_completed_phases(phase_status, external_id, working_dir) do
-    # When all phases complete, phase_status is %{complete: true} without individual keys
-    # In that case, clean up ALL phase files
+  defp cleanup_completed_phases(phase_status, status_dir, working_dir) do
     completed_suffixes =
       if phase_status[:complete] == true do
         [:context_spec, :component_specs, :design_review, :tests, :code]
@@ -519,7 +527,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
         |> Enum.flat_map(&phase_to_suffixes/1)
       end
 
-    dir = resolve_prompt_dir(external_id, working_dir)
+    dir = resolve_dir(status_dir, working_dir)
 
     with true <- File.exists?(dir),
          {:ok, files} <- File.ls(dir) do
@@ -541,26 +549,22 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   defp phase_to_suffixes(:tests), do: ["_test.md"]
   defp phase_to_suffixes(:code), do: ["_code.md"]
 
-  defp cleanup_prompt_directory(external_id, working_dir) do
-    dir = resolve_prompt_dir(external_id, working_dir)
+  # When all phases complete, remove the entire status directory for this context.
+  # The status .md file (owned by StatusWriter) remains — only action files are cleaned.
+  defp cleanup_status_directory(status_dir, working_dir) do
+    dir = resolve_dir(status_dir, working_dir)
 
     if File.exists?(dir) and File.dir?(dir) do
-      case File.ls(dir) do
-        {:ok, []} -> File.rmdir(dir)
-        _ -> :ok
-      end
+      File.rm_rf(dir)
     end
 
     :ok
   end
 
-  defp resolve_prompt_dir(external_id, nil), do: prompt_dir(external_id)
+  defp resolve_dir(status_dir, nil), do: status_dir
+  defp resolve_dir(status_dir, working_dir), do: Path.join(working_dir, status_dir)
 
-  defp resolve_prompt_dir(external_id, working_dir) do
-    Path.join(working_dir, prompt_dir(external_id))
-  end
-
-  defp build_feedback(incomplete_phases, external_id) do
+  defp build_feedback(incomplete_phases, status_dir) do
     phases_text =
       Enum.map_join(incomplete_phases, "\n\n", fn {phase, status} ->
         case status do
@@ -578,8 +582,10 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
 
     #{phases_text}
 
-    Please complete the pending phases. Prompt files are located in:
-    #{prompt_dir(external_id)}/
+    Re-read `#{status_dir}/develop_context.md` for updated instructions.
+
+    Prompt files are located in:
+    #{status_dir}/
 
     - For spec prompts: invoke `@"CodeMySpec:spec-writer (agent)"`
     - For test prompts: invoke `@"CodeMySpec:test-writer (agent)"`

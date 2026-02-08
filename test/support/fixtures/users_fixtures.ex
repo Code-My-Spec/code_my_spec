@@ -8,6 +8,7 @@ defmodule CodeMySpec.UsersFixtures do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
@@ -72,7 +73,9 @@ defmodule CodeMySpec.UsersFixtures do
     account = account_fixture()
     member_fixture(user, account)
     project = user_scope_fixture(user, account) |> project_fixture()
+
     user_scope_fixture(user, account, project)
+    |> Map.put(:environment, Environment.new(:local, nil))
   end
 
   def full_preferences_fixture() do
