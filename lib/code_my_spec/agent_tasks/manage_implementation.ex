@@ -2,17 +2,15 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   @moduledoc """
   Master agent task that orchestrates the full implementation lifecycle of a project.
 
-  Enables agentic mode on the project and provides the master prompt that drives
-  the agent through an iterative loop:
+  Provides the master prompt that drives the agent through an iterative loop:
 
   1. Write BDD specs for the next incomplete story (via `/write-bdd-specs`)
-  2. Develop context to make failing BDD specs pass (via `/implement-context`)
+  2. Develop context to make failing BDD specs pass (via `/develop-context`)
   3. Repeat until all stories are complete and all specs pass
   """
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Environments
-  alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSync.Sync
 
   require Logger
@@ -25,9 +23,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     working_dir = get_working_dir(env)
     external_id = get_external_id(session)
 
-    with {:ok, _sync_result} <- maybe_sync_project(scope, working_dir, opts),
-         {:ok, _project} <-
-           Projects.update_project(scope, scope.active_project, %{agentic_mode: true}) do
+    with {:ok, _sync_result} <- maybe_sync_project(scope, working_dir, opts) do
       prompt_path = "#{session_dir(external_id)}/master_prompt.md"
 
       unless Environments.file_exists?(env, prompt_path) do
@@ -52,7 +48,6 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
             {:ok, :invalid, next_story_prompt()}
 
           nil ->
-            disable_agentic_mode(scope)
             {:ok, :valid}
         end
       end
@@ -95,7 +90,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
 
   defp orchestration_message(prompt_path) do
     """
-    Agentic mode enabled. Your orchestration instructions have been written to:
+    Your orchestration instructions have been written to:
 
     `#{prompt_path}`
 
@@ -129,7 +124,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
 
     1. **`/write-bdd-specs`** — Delegates to a sub-agent that generates BDD specifications
        for the next incomplete user story. These become failing tests that define "done".
-    2. **`/implement-context`** — Delegates to a sub-agent that develops the context and
+    2. **`/develop-context`** — Delegates to a sub-agent that develops the context and
        makes failing BDD specs pass. Do not review the implementation yourself.
     3. **Repeat** — The evaluate hook will tell you whether specs pass or if more stories
        remain. Follow its guidance. Do not run tests or inspect results yourself.
@@ -148,7 +143,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     ## When to Stop
 
     The evaluate hook will signal completion when all stories are done and all specs pass.
-    It will also disable agentic mode automatically. Trust the hook.
+    Trust the hook.
     """
   end
 
@@ -173,7 +168,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     Failing specs:
     #{failure_details}
 
-    Invoke `/implement-context` to implement the functionality these specs require.
+    Invoke `/develop-context` to implement the functionality these specs require.
     """
   end
 
@@ -184,7 +179,4 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     """
   end
 
-  defp disable_agentic_mode(scope) do
-    Projects.update_project(scope, scope.active_project, %{agentic_mode: false})
-  end
 end

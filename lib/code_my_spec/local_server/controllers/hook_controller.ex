@@ -6,7 +6,6 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
   require Logger
 
   alias CodeMySpec.AgentTasks.{EvaluateAgentTask, TrackEdits, ValidateEdits}
-  alias CodeMySpec.Projects.Lifecycle
 
   @doc """
   Process a hook event.
@@ -50,23 +49,30 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
     # Evaluate the session stack
     eval_result = EvaluateAgentTask.run(scope)
 
-    # Run Lifecycle check if agentic_mode is enabled
-    lifecycle_result = dispatch_lifecycle_check(scope, cwd)
-
     # Merge all results
-    validate_result
-    |> merge_hook_results(eval_result)
-    |> merge_hook_results(lifecycle_result)
+    merge_hook_results(validate_result, eval_result)
   end
 
   defp dispatch(_scope, "SubagentStop", session_id, cwd, hook_input, req_id) do
     agent_id = Map.get(hook_input, "agent_id")
+    agent_transcript_path = Map.get(hook_input, "agent_transcript_path")
 
     Logger.info(
       "[HookController] [#{req_id}] Dispatching SubagentStop handler, agent_id: #{agent_id || "none"}"
     )
 
-    dispatch_validate_edits(session_id, cwd, req_id, agent_id: agent_id)
+    # Extract edited files directly from the subagent's transcript
+    files =
+      if agent_transcript_path do
+        case TrackEdits.extract_files_from_transcript(agent_transcript_path) do
+          {:ok, paths} -> paths
+          {:error, _} -> []
+        end
+      else
+        []
+      end
+
+    dispatch_validate_edits(session_id, cwd, req_id, agent_id: agent_id, files: files)
   end
 
   defp dispatch(_scope, "PostToolUse", _session_id, _cwd, hook_input, _req_id) do
@@ -98,23 +104,6 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
     Logger.info("[HookController] [#{req_id}] ValidateEdits completed: #{elem(result, 0)}")
 
     ValidateEdits.format_output(result)
-  end
-
-  defp dispatch_lifecycle_check(nil, _cwd), do: %{}
-
-  defp dispatch_lifecycle_check(scope, cwd) do
-    project = scope.active_project
-
-    if project && project.agentic_mode do
-      Logger.info("[HookController] Agentic mode enabled, running lifecycle check")
-      opts = if cwd, do: [working_dir: cwd], else: []
-
-      scope
-      |> Lifecycle.evaluate(opts)
-      |> Lifecycle.format_hook_result(scope)
-    else
-      %{}
-    end
   end
 
   defp merge_hook_results(result1, result2) do

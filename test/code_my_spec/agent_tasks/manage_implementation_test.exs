@@ -4,7 +4,6 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
   alias CodeMySpec.AgentTasks.ManageImplementation
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Projects
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -84,18 +83,6 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
   # ============================================================================
 
   describe "command/3" do
-    test "enables agentic_mode on the project", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = %{}
-
-      refute scope.active_project.agentic_mode
-
-      assert {:ok, _prompt} = ManageImplementation.command(scope, session)
-
-      {:ok, updated_project} = Projects.get_project(scope, scope.active_project.id)
-      assert updated_project.agentic_mode
-    end
-
     test "returns orchestration message pointing to prompt file", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = %{}
@@ -117,7 +104,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
 
       content = File.read!(prompt_path)
       assert content =~ "write-bdd-specs"
-      assert content =~ "implement-context"
+      assert content =~ "develop-context"
       assert content =~ "docs/architecture/"
     end
   end
@@ -173,14 +160,10 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
       end
     end
 
-    test "returns {:ok, :valid} and disables agentic_mode when all stories complete and specs pass",
+    test "returns {:ok, :valid} when all stories complete and specs pass",
          %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       {story, criterion, _component} = create_story_with_criteria(scope)
-
-      # Enable agentic_mode first
-      {:ok, _} =
-        Projects.update_project(scope, scope.active_project, %{agentic_mode: true})
 
       # Write spec files to make all stories "complete" (full coverage)
       write_all_spec_files!(tmp_dir, [{story, [criterion]}])
@@ -190,9 +173,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
 
       case result do
         {:ok, :valid} ->
-          # Verify agentic_mode was disabled
-          {:ok, updated_project} = Projects.get_project(scope, scope.active_project.id)
-          refute updated_project.agentic_mode
+          assert true
 
         {:ok, :invalid, _feedback} ->
           # In test env, mix spex may fail (no real mix project)
