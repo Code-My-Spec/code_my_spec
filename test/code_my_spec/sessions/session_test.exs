@@ -2,7 +2,6 @@ defmodule CodeMySpec.Sessions.SessionTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.AgentTasks
 
   describe "changeset/2" do
@@ -25,7 +24,10 @@ defmodule CodeMySpec.Sessions.SessionTest do
       assert get_change_or_data(changeset, :priority) == 10
       assert get_change_or_data(changeset, :status) == :active
       assert get_change_or_data(changeset, :component_module_name) == attrs.component_module_name
-      assert get_change_or_data(changeset, :external_conversation_id) == attrs.external_conversation_id
+
+      assert get_change_or_data(changeset, :external_conversation_id) ==
+               attrs.external_conversation_id
+
       assert get_change_or_data(changeset, :state) == attrs.state
     end
 

@@ -21,9 +21,6 @@ defmodule CodeMySpec.Application do
         {CodeMySpec.McpServers.StoriesServer, transport: :streamable_http},
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
         {CodeMySpec.McpServers.AnalyticsAdminServer, transport: :streamable_http},
-        # Start a worker by calling: CodeMySpec.Worker.start_link(arg)
-        # {CodeMySpec.Worker, arg},
-        # Start to serve requests, typically the last entry
         CodeMySpecWeb.Endpoint
       ]
       |> children(env)

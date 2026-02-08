@@ -43,7 +43,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       {:error, "No working directory available"}
     else
       with {:ok, spec_dir} <- get_spec_directory(cwd),
-           {:ok, spec_files} <- find_spec_files(spec_dir, opts[:paths]) do
+           {:ok, spec_files} <- find_spec_files(spec_dir, opts) do
         problems =
           spec_files
           |> Enum.flat_map(&analyze_spec_file(&1, cwd, project_id))
@@ -69,28 +69,14 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     end
   end
 
-  defp find_spec_files(_spec_dir, spec_file: spec_file) when is_binary(spec_file) do
-    if File.exists?(spec_file), do: {:ok, [spec_file]}, else: {:ok, []}
-  end
+  defp find_spec_files(spec_dir, opts) when is_list(opts) do
+    case Keyword.get(opts, :paths) do
+      nil ->
+        {:ok, Path.wildcard(Path.join(spec_dir, "**/*.spec.md"))}
 
-  defp find_spec_files(spec_dir, nil) do
-    spec_files =
-      Path.join(spec_dir, "**/*.spec.md")
-      |> Path.wildcard()
-
-    {:ok, spec_files}
-  end
-
-  defp find_spec_files(spec_dir, paths) when is_list(paths) do
-    spec_files =
-      paths
-      |> Enum.flat_map(fn path ->
-        full_path = Path.join([spec_dir, path, "**/*.spec.md"])
-        Path.wildcard(full_path)
-      end)
-      |> Enum.uniq()
-
-    {:ok, spec_files}
+      paths when is_list(paths) ->
+        {:ok, Enum.filter(paths, &File.exists?/1)}
+    end
   end
 
   defp analyze_spec_file(spec_file_path, cwd, project_id) do

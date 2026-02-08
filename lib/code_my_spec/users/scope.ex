@@ -143,11 +143,28 @@ defmodule CodeMySpec.Users.Scope do
       project_id ->
         case CodeMySpec.Repo.get(Project, project_id) do
           %Project{} = project ->
-            {:ok, project}
+            sync_project_from_config(project, config)
 
           nil ->
             create_project_from_config(config, working_dir)
         end
+    end
+  end
+
+  defp sync_project_from_config(project, config) do
+    attrs =
+      %{}
+      |> maybe_put(:name, config["name"])
+      |> maybe_put(:module_name, config["module_name"])
+      |> maybe_put(:description, config["description"])
+      |> maybe_put(:account_id, config["account_id"])
+
+    if attrs == %{} do
+      {:ok, project}
+    else
+      project
+      |> Ecto.Changeset.cast(attrs, Map.keys(attrs))
+      |> CodeMySpec.Repo.update()
     end
   end
 
@@ -162,4 +179,7 @@ defmodule CodeMySpec.Users.Scope do
 
     CodeMySpec.Repo.insert(struct(Project, attrs))
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

@@ -39,7 +39,7 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
     agent_id = Keyword.get(opts, :agent_id)
 
     Logger.info(
-      "[ValidateEdits] Starting validation for session: #{session_id}, agent: #{agent_id || "all"}"
+      "[ValidateEdits] Starting validation for session: #{session_id}, agent: #{agent_id || "all"}, pid: #{inspect(self())}"
     )
 
     with {:ok, all_files} <- get_edited_files(session_id, agent_id),
@@ -434,8 +434,8 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
         severity: :error,
         source: "spex",
         source_type: :test,
-        file_path: get_in(failure, [:error, :file]) || "unknown",
-        line: get_in(failure, [:error, :line]),
+        file_path: (failure.error && failure.error.file) || "unknown",
+        line: failure.error && failure.error.line,
         message: format_spex_message(failure),
         category: "spex_failure"
       }
@@ -560,6 +560,10 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
         max_problems: 20
       )
 
+    %{"decision" => "block", "reason" => reason}
+  end
+
+  def format_output({:error, reason}) when is_binary(reason) do
     %{"decision" => "block", "reason" => reason}
   end
 end
