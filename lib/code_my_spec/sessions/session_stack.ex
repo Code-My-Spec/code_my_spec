@@ -12,8 +12,12 @@ defmodule CodeMySpec.Sessions.SessionStack do
   """
   def list_active(env) do
     case SessionsRepository.list_sessions(env) do
+      {:ok, []} ->
+        {:ok, []}
+
       {:ok, sessions} ->
-        {:ok, Enum.sort_by(sessions, & &1.priority, :desc)}
+        max_priority = sessions |> Enum.map(& &1.priority) |> Enum.max()
+        {:ok, Enum.filter(sessions, &(&1.priority == max_priority))}
 
       error ->
         error

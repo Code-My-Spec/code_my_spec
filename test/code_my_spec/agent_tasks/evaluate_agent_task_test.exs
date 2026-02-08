@@ -2,10 +2,10 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
   use CodeMySpec.DataCase, async: false
 
   alias CodeMySpec.AgentTasks.EvaluateAgentTask
-  alias CodeMySpec.Sessions.SessionsRepository
-  alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Sessions.SessionsRepository
+  alias CodeMySpec.Users.Scope
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures
@@ -117,7 +117,7 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
       assert {:ok, %Session{}} = SessionsRepository.get_session(env, passing_session.id)
     end
 
-    test "passing higher priority, failing lower → blocks with lower-priority feedback", %{
+    test "passing higher priority only evaluates top level, ignores lower", %{
       scope: scope,
       env: env
     } do
@@ -129,8 +129,8 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
           state: %{}
         })
 
-      # Low priority session that fails
-      {:ok, _low_failing} =
+      # Low priority session that would fail — but should not be evaluated
+      {:ok, low_session} =
         SessionsRepository.create_session(env, %{
           type: "ComponentSpec",
           priority: 1,
@@ -143,9 +143,11 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
       # High-priority session should be deleted (it passed)
       assert {:error, :not_found} = SessionsRepository.get_session(env, high_session.id)
 
-      # Should block on the low-priority session
-      assert result["decision"] == "block"
-      assert result["reason"] =~ "ComponentSpec"
+      # Low-priority session should still exist (not evaluated)
+      assert {:ok, _} = SessionsRepository.get_session(env, low_session.id)
+
+      # No block — only the top level was evaluated and it passed
+      assert result == %{}
     end
 
     test "deletes valid sessions, keeps invalid ones", %{scope: scope, env: env} do

@@ -2,12 +2,8 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
   @moduledoc """
   Orchestrates evaluation of agent task sessions on stop hook.
 
-  Implements priority-level evaluation:
-  1. Evaluate ALL sessions at the highest priority level
-  2. Delete passing ones, collect feedback from ALL invalid ones at that level
-  3. If any invalid → block with combined concise feedback
-  4. If all pass at that level → move to next priority level down
-  5. Priority 0 (orchestrator) evaluates overall state, may create new level 1 tasks
+  Evaluates all sessions at the highest priority level (returned by SessionStack).
+  Deletes passing ones, blocks with combined feedback if any are invalid.
   """
 
   alias CodeMySpec.Components
@@ -24,21 +20,12 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
   def run(%Scope{} = scope, opts \\ []) do
     case Sessions.list_active_sessions(scope) do
       {:ok, []} -> %{}
-      {:ok, sessions} -> evaluate_by_priority(sessions, scope, opts)
+      {:ok, sessions} -> evaluate_level(sessions, scope, opts)
     end
   end
 
-  defp evaluate_by_priority(sessions, scope, opts) do
-    sessions
-    |> Enum.group_by(& &1.priority)
-    |> Enum.sort_by(fn {priority, _} -> priority end, :desc)
-    |> evaluate_priority_levels(scope, opts)
-  end
-
-  defp evaluate_priority_levels([], _scope, _opts), do: %{}
-
-  defp evaluate_priority_levels([{_priority, level_sessions} | rest], scope, opts) do
-    results = Enum.map(level_sessions, &evaluate_one(scope, &1, opts))
+  defp evaluate_level(sessions, scope, opts) do
+    results = Enum.map(sessions, &evaluate_one(scope, &1, opts))
 
     {passed, failed} = Enum.split_with(results, &match?({:ok, :valid, _session}, &1))
 
@@ -48,11 +35,8 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
     end)
 
     case failed do
-      [] ->
-        evaluate_priority_levels(rest, scope, opts)
-
-      failures ->
-        build_combined_feedback(failures)
+      [] -> %{}
+      failures -> build_combined_feedback(failures)
     end
   end
 
@@ -85,7 +69,7 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
   defp build_combined_feedback(failures) do
     reasons =
       failures
-      |> Enum.map(fn
+      |> Enum.map_join("\n\n", fn
         {:ok, :invalid, session, feedback} ->
           type_name =
             session.type
@@ -95,7 +79,6 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
 
           "[#{type_name}] #{feedback}"
       end)
-      |> Enum.join("\n\n")
 
     %{"decision" => "block", "reason" => reasons}
   end

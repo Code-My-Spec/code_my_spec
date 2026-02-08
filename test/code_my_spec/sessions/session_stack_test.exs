@@ -1,9 +1,9 @@
 defmodule CodeMySpec.Sessions.SessionStackTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Sessions.SessionStack
-  alias CodeMySpec.Sessions.SessionsRepository
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Sessions.SessionsRepository
+  alias CodeMySpec.Sessions.SessionStack
 
   setup do
     tmp_dir =
@@ -25,7 +25,7 @@ defmodule CodeMySpec.Sessions.SessionStackTest do
       assert {:ok, []} = SessionStack.list_active(env)
     end
 
-    test "returns sessions sorted by priority descending", %{env: env} do
+    test "returns only sessions at the highest priority level", %{env: env} do
       {:ok, _low} =
         SessionsRepository.create_session(env, %{
           type: "ArchitectureReview",
@@ -48,10 +48,37 @@ defmodule CodeMySpec.Sessions.SessionStackTest do
         })
 
       assert {:ok, sessions} = SessionStack.list_active(env)
-      assert length(sessions) == 3
+      assert length(sessions) == 1
 
       priorities = Enum.map(sessions, & &1.priority)
-      assert priorities == [10, 5, 1]
+      assert priorities == [10]
+    end
+
+    test "returns multiple sessions at the same highest priority", %{env: env} do
+      {:ok, _} =
+        SessionsRepository.create_session(env, %{
+          type: "ArchitectureReview",
+          priority: 1,
+          state: %{}
+        })
+
+      {:ok, _} =
+        SessionsRepository.create_session(env, %{
+          type: "ArchitectureReview",
+          priority: 1,
+          state: %{}
+        })
+
+      {:ok, _} =
+        SessionsRepository.create_session(env, %{
+          type: "ArchitectureReview",
+          priority: 0,
+          state: %{}
+        })
+
+      assert {:ok, sessions} = SessionStack.list_active(env)
+      assert length(sessions) == 2
+      assert Enum.all?(sessions, &(&1.priority == 1))
     end
   end
 end
