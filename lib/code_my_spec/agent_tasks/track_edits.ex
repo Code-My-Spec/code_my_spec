@@ -10,6 +10,8 @@ defmodule CodeMySpec.AgentTasks.TrackEdits do
   require Logger
 
   alias CodeMySpec.FileEdits
+  alias CodeMySpec.Transcripts
+  alias CodeMySpec.Transcripts.ClaudeCode.{Entry, ToolCall}
 
   @edit_tools ~w(Write Edit)
 
@@ -52,6 +54,41 @@ defmodule CodeMySpec.AgentTasks.TrackEdits do
   def run(_hook_input) do
     Logger.info("[TrackEdits] No tool_name in input")
     %{}
+  end
+
+  @doc """
+  Extract edited file paths from a transcript file.
+
+  Parses the transcript and returns all unique file paths from Write/Edit tool calls.
+  Used at SubagentStop to get the file list directly without DB round-tripping.
+  """
+  @spec extract_files_from_transcript(String.t()) :: {:ok, [String.t()]} | {:error, term()}
+  def extract_files_from_transcript(transcript_path) do
+    Logger.info("[TrackEdits] Parsing transcript: #{transcript_path}")
+
+    case Transcripts.parse(transcript_path) do
+      {:ok, transcript} ->
+        file_paths =
+          transcript.entries
+          |> Enum.filter(&Entry.assistant?/1)
+          |> Enum.flat_map(&Entry.tool_use_blocks/1)
+          |> Enum.map(&ToolCall.new/1)
+          |> Enum.filter(&ToolCall.file_modifying?/1)
+          |> Enum.map(&ToolCall.file_path/1)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.uniq()
+
+        Logger.info("[TrackEdits] Found #{length(file_paths)} edited files in transcript")
+
+        {:ok, file_paths}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[TrackEdits] Failed to parse transcript #{transcript_path}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
   end
 
   defp extract_file_path(%{"file_path" => file_path}) when is_binary(file_path),

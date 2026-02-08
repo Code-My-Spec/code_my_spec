@@ -42,7 +42,7 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
       "[ValidateEdits] Starting validation for session: #{session_id}, agent: #{agent_id || "all"}, pid: #{inspect(self())}"
     )
 
-    with {:ok, all_files} <- get_edited_files(session_id, agent_id),
+    with {:ok, all_files} <- get_files(session_id, opts),
          {:ok, categorized} <- categorize_files(all_files, opts),
          {:ok, scope} <- get_or_build_scope(all_files, opts),
          :ok <- compile_project(scope),
@@ -78,6 +78,18 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
   # ============================================================================
   # File Retrieval & Categorization
   # ============================================================================
+
+  defp get_files(session_id, opts) do
+    case Keyword.get(opts, :files) do
+      files when is_list(files) and files != [] ->
+        Logger.info("[ValidateEdits] Using #{length(files)} files provided directly")
+        {:ok, files}
+
+      _ ->
+        agent_id = Keyword.get(opts, :agent_id)
+        get_edited_files(session_id, agent_id)
+    end
+  end
 
   defp get_edited_files(session_id, nil) do
     files = FileEdits.get_edited_files(session_id)
