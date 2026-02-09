@@ -39,11 +39,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "architecture_design" => AgentTasks.ArchitectureDesign,
     "architecture_review" => AgentTasks.ArchitectureReview,
     "write_bdd_specs" => AgentTasks.WriteBddSpecs,
-    "manage_implementation" => AgentTasks.ManageImplementation
+    "manage_implementation" => AgentTasks.ManageImplementation,
+    "design_ui" => AgentTasks.DesignUi
   }
 
   # Tasks that don't require a component/module_name
-  @componentless_tasks ["project_setup", "architecture_design", "architecture_review", "write_bdd_specs", "manage_implementation"]
+  @componentless_tasks ["project_setup", "architecture_design", "architecture_review", "write_bdd_specs", "manage_implementation", "design_ui"]
 
   @valid_types ["spec" | Map.keys(@session_type_map)]
 

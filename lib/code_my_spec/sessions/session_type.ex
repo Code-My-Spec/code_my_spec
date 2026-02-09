@@ -18,7 +18,8 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ProjectSetup,
     AgentTasks.WriteBddSpecs,
     AgentTasks.ManageImplementation,
-    AgentTasks.DevelopContext
+    AgentTasks.DevelopContext,
+    AgentTasks.DesignUi
   ]
 
   @type t :: atom()
