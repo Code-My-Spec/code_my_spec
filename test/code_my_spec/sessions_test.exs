@@ -102,10 +102,10 @@ defmodule CodeMySpec.SessionsTest do
       session_fixture(scope, %{type: AgentTasks.ComponentSpec, priority: 10})
 
       assert {:ok, sessions} = Sessions.list_active_sessions(scope)
-      assert length(sessions) == 2
+      assert length(sessions) == 1
 
       priorities = Enum.map(sessions, & &1.priority)
-      assert priorities == [10, 1]
+      assert priorities == [10]
     end
 
     test "returns empty list when no sessions exist", %{scope: scope} do

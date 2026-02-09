@@ -1,8 +1,8 @@
 defmodule CodeMySpec.Sessions.SessionTypeTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.AgentTasks
+  alias CodeMySpec.Sessions.SessionType
 
   # ============================================================================
   # Fixtures
@@ -20,7 +20,10 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ArchitectureDesign,
       AgentTasks.ArchitectureReview,
       AgentTasks.ProjectSetup,
-      AgentTasks.WriteBddSpecs
+      AgentTasks.WriteBddSpecs,
+      AgentTasks.ManageImplementation,
+      AgentTasks.DevelopContext,
+      AgentTasks.DesignUi
     ]
   end
 
@@ -36,7 +39,10 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ArchitectureDesign",
       "ArchitectureReview",
       "ProjectSetup",
-      "WriteBddSpecs"
+      "WriteBddSpecs",
+      "ManageImplementation",
+      "DevelopContext",
+      "DesignUi"
     ]
   end
 
@@ -72,6 +78,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.ArchitectureReview} = SessionType.cast("ArchitectureReview")
       assert {:ok, AgentTasks.ProjectSetup} = SessionType.cast("ProjectSetup")
       assert {:ok, AgentTasks.WriteBddSpecs} = SessionType.cast("WriteBddSpecs")
+      assert {:ok, AgentTasks.ManageImplementation} = SessionType.cast("ManageImplementation")
+      assert {:ok, AgentTasks.DevelopContext} = SessionType.cast("DevelopContext")
+      assert {:ok, AgentTasks.DesignUi} = SessionType.cast("DesignUi")
     end
 
     test "returns module atom for valid atom" do
@@ -107,6 +116,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
 
       # Verify all expected module atoms are present as values
       mapper_values = Map.values(mapper)
+
       for module <- valid_module_atoms() do
         assert module in mapper_values, "Expected mapper to include module: #{inspect(module)}"
       end
