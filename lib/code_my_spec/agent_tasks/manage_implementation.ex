@@ -30,7 +30,8 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
         :ok = Environments.write_file(env, prompt_path, build_master_prompt())
       end
 
-      {:ok, orchestration_message(prompt_path)}
+      next_action = assess_current_state(env, scope)
+      {:ok, orchestration_message(prompt_path, next_action)}
     end
   end
 
@@ -88,13 +89,63 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   # Prompt Building
   # ============================================================================
 
-  defp orchestration_message(prompt_path) do
+  defp assess_current_state(env, scope) do
+    case run_bdd_specs(env) do
+      {:ok, failures, exit_code} when exit_code != 0 or failures != [] ->
+        {:failing_specs, failures}
+
+      {:ok, _failures, _exit_code} ->
+        case BddSpecs.get_next_incomplete_story(env, scope) do
+          %{} = _story -> :next_story
+          nil -> :all_complete
+        end
+
+      {:error, _reason} ->
+        :next_story
+    end
+  end
+
+  defp orchestration_message(prompt_path, next_action) do
     """
     Your orchestration instructions have been written to:
 
     `#{prompt_path}`
 
     Read this file to understand your role and begin the implementation lifecycle.
+
+    #{next_action_instruction(next_action)}
+    """
+  end
+
+  defp next_action_instruction({:failing_specs, failures}) do
+    failure_details =
+      Enum.map_join(failures, "\n", fn f -> "- #{f.spex}: #{f.scenario}" end)
+
+    """
+    ## Immediate Action Required
+
+    There are **failing BDD specs** that need implementation work. Do NOT write more specs.
+    Invoke `/develop-context` now to make these failing specs pass.
+
+    Failing specs:
+    #{failure_details}
+    """
+  end
+
+  defp next_action_instruction(:next_story) do
+    """
+    ## Immediate Action Required
+
+    All current BDD specs pass (or none exist yet). There are incomplete stories remaining.
+    Invoke `/write-bdd-specs` to generate specs for the next story.
+    """
+  end
+
+  defp next_action_instruction(:all_complete) do
+    """
+    ## Status: Complete
+
+    All stories are complete and all BDD specs pass. No further action needed.
     """
   end
 
