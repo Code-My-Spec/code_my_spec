@@ -244,4 +244,40 @@ defmodule CodeMySpec.AgentTasks.TrackEditsTest do
       refute "/path/main.ex" in agent_files
     end
   end
+
+  # ============================================================================
+  # FileEdits context functions
+  # ============================================================================
+
+  describe "list_all/0" do
+    test "returns empty list when no edits exist" do
+      assert FileEdits.list_all() == []
+    end
+
+    test "returns all file edit records across sessions" do
+      FileEdits.track_edit("session-1", "/path/a.ex")
+      FileEdits.track_edit("session-1", "/path/b.ex")
+      FileEdits.track_edit("session-2", "/path/c.ex")
+
+      result = FileEdits.list_all()
+      assert length(result) == 3
+
+      paths = Enum.map(result, & &1.file_path) |> Enum.sort()
+      assert paths == ["/path/a.ex", "/path/b.ex", "/path/c.ex"]
+    end
+  end
+
+  describe "truncate_all/0" do
+    test "returns :ok when no edits exist" do
+      assert FileEdits.truncate_all() == :ok
+    end
+
+    test "deletes all file edit records" do
+      FileEdits.track_edit("session-1", "/path/a.ex")
+      FileEdits.track_edit("session-2", "/path/b.ex")
+
+      assert FileEdits.truncate_all() == :ok
+      assert FileEdits.list_all() == []
+    end
+  end
 end

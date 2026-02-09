@@ -92,4 +92,21 @@ defmodule CodeMySpec.FileEdits do
 
     :ok
   end
+
+  @doc """
+  List all file edit records.
+  """
+  @spec list_all() :: [FileEdit.t()]
+  def list_all do
+    Repo.all(FileEdit)
+  end
+
+  @doc """
+  Delete all file edit records.
+  """
+  @spec truncate_all() :: :ok
+  def truncate_all do
+    Repo.delete_all(FileEdit)
+    :ok
+  end
 end
