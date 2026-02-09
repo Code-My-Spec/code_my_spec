@@ -118,6 +118,48 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   end
 
   @doc """
+  Atomically replaces problems for specific file paths within a project.
+
+  Deletes all existing problems matching the given file paths, then inserts the new
+  problems. Problems for other file paths in the project are left untouched.
+
+  ## Parameters
+
+    * `scope` - The user scope with active project
+    * `file_paths` - List of file path strings whose problems should be replaced
+    * `problems` - List of problem structs or maps with problem attributes to insert
+
+  ## Examples
+
+      iex> replace_problems_for_files(scope, ["lib/app/accounts.ex"], [%{message: "New", ...}])
+      {:ok, [%Problem{}, ...]}
+
+      iex> replace_problems_for_files(scope, ["lib/app/accounts.ex"], [])
+      {:ok, []}
+
+      iex> replace_problems_for_files(scope, [], problems)
+      {:ok, []}
+
+  """
+  @spec replace_problems_for_files(Scope.t(), [String.t()], [Problem.t() | map()]) ::
+          {:ok, [Problem.t()]} | {:error, term()}
+  def replace_problems_for_files(_scope, [], _problems), do: {:ok, []}
+
+  def replace_problems_for_files(%Scope{active_project_id: project_id}, file_paths, problems)
+      when is_list(file_paths) and is_list(problems) do
+    Repo.transaction(fn ->
+      Problem
+      |> where([p], p.project_id == ^project_id and p.file_path in ^file_paths)
+      |> Repo.delete_all()
+
+      case insert_all_problems(problems, project_id) do
+        {:error, changeset} -> Repo.rollback(changeset)
+        {:ok, inserted_problems} -> inserted_problems
+      end
+    end)
+  end
+
+  @doc """
   Removes all problems for the active project in scope.
 
   ## Parameters

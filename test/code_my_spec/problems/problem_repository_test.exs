@@ -310,6 +310,99 @@ defmodule CodeMySpec.Problems.ProblemRepositoryTest do
     end
   end
 
+  describe "replace_problems_for_files/3" do
+    test "replaces only matching files, leaves others intact", %{scope: scope} do
+      # Create problems across different files
+      keep_problem = problem_fixture(scope, %{file_path: "lib/app/keep.ex", message: "Keep me"})
+
+      _replace1 =
+        problem_fixture(scope, %{file_path: "lib/app/accounts.ex", message: "Old accounts"})
+
+      _replace2 =
+        problem_fixture(scope, %{file_path: "lib/app/users.ex", message: "Old users"})
+
+      assert length(Repo.all(Problem)) == 3
+
+      new_problems = [
+        valid_problem_attrs(%{file_path: "lib/app/accounts.ex", message: "New accounts"}),
+        valid_problem_attrs(%{file_path: "lib/app/users.ex", message: "New users"})
+      ]
+
+      assert {:ok, inserted} =
+               ProblemRepository.replace_problems_for_files(
+                 scope,
+                 ["lib/app/accounts.ex", "lib/app/users.ex"],
+                 new_problems
+               )
+
+      assert length(inserted) == 2
+
+      all = Repo.all(Problem)
+      assert length(all) == 3
+
+      # The untouched file's problem should still be there
+      assert Repo.get(Problem, keep_problem.id) != nil
+
+      messages = Enum.map(all, & &1.message)
+      assert "Keep me" in messages
+      assert "New accounts" in messages
+      assert "New users" in messages
+      refute "Old accounts" in messages
+      refute "Old users" in messages
+    end
+
+    test "empty file_paths is a no-op", %{scope: scope} do
+      existing = problem_fixture(scope, %{message: "Existing"})
+
+      assert {:ok, []} =
+               ProblemRepository.replace_problems_for_files(scope, [], [
+                 valid_problem_attrs(%{message: "Should not appear"})
+               ])
+
+      all = Repo.all(Problem)
+      assert length(all) == 1
+      assert hd(all).id == existing.id
+    end
+
+    test "empty problems list clears files' problems", %{scope: scope} do
+      _target = problem_fixture(scope, %{file_path: "lib/app/target.ex", message: "Gone"})
+      keep = problem_fixture(scope, %{file_path: "lib/app/other.ex", message: "Stay"})
+
+      assert {:ok, []} =
+               ProblemRepository.replace_problems_for_files(
+                 scope,
+                 ["lib/app/target.ex"],
+                 []
+               )
+
+      all = Repo.all(Problem)
+      assert length(all) == 1
+      assert hd(all).id == keep.id
+    end
+
+    test "atomic rollback on invalid data", %{scope: scope} do
+      existing =
+        problem_fixture(scope, %{file_path: "lib/app/accounts.ex", message: "Original"})
+
+      invalid_problems = [
+        valid_problem_attrs(%{file_path: "lib/app/accounts.ex", message: "Valid"}),
+        %{message: "Invalid - missing fields"}
+      ]
+
+      assert {:error, _changeset} =
+               ProblemRepository.replace_problems_for_files(
+                 scope,
+                 ["lib/app/accounts.ex"],
+                 invalid_problems
+               )
+
+      # Original problem should still exist due to rollback
+      all = Repo.all(Problem)
+      assert length(all) == 1
+      assert hd(all).id == existing.id
+    end
+  end
+
   describe "clear_project_problems/1" do
     test "deletes all problems for the project", %{scope: scope} do
       problem_list_fixture(scope, 3)
