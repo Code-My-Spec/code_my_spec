@@ -55,7 +55,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       orchestration_path = "#{session_dir(external_id)}/write_bdd_specs.md"
       :ok = Environments.write_file(env, orchestration_path, orchestration_content)
 
-      {:ok, "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
+      {:ok,
+       "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
     end
   end
 
@@ -114,14 +115,20 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # ============================================================================
 
   defp get_story_component(_scope, %{component_id: nil} = story) do
-    Logger.warning("[WriteBddSpecs] Story #{story.id} (#{story.title}) has no component_id linked")
+    Logger.warning(
+      "[WriteBddSpecs] Story #{story.id} (#{story.title}) has no component_id linked"
+    )
+
     {:error, :component_not_linked}
   end
 
   defp get_story_component(scope, %{component_id: component_id} = story) do
     case Components.get_component(scope, component_id) do
       nil ->
-        Logger.warning("[WriteBddSpecs] Story #{story.id} (#{story.title}) references component_id=#{component_id} but component not found")
+        Logger.warning(
+          "[WriteBddSpecs] Story #{story.id} (#{story.title}) references component_id=#{component_id} but component not found"
+        )
+
         {:error, :component_not_found}
 
       component ->
@@ -306,9 +313,22 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     A detailed prompt has been written to: `#{file_path}`
 
-    Invoke `@"CodeMySpec:bdd-spec-writer (agent)"` with the prompt file to generate BDD specifications for this story.
+    ## Instructions
 
-    Write one spec file at a time, then wait for validation feedback before proceeding to the next.
+    Use the `@"CodeMySpec:bdd-spec-writer (agent)"` subagent to generate BDD specifications for this story.
+
+    Pass it the prompt file path above. The prompt contains:
+    - Story context and acceptance criteria with expected file paths
+    - Component type and testing approach (LiveView, Controller, etc.)
+    - Spex DSL syntax guide and shared givens
+
+    The bdd-spec-writer agent will:
+    1. Write ONE spec file per criterion
+    2. Run `mix compile` to verify it compiles
+    3. Stop and return for validation after each file
+
+    After each spec file is written, validation will check that the file exists, parses correctly,
+    has scenarios with Given/When/Then steps, and compiles. Fix any issues before proceeding to the next criterion.
     """
   end
 
@@ -381,7 +401,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
         scenario "test case" do          # No context parameter on scenario
           given_ :user_registered        # Shared given - sets up state through UI
           given_ "specific setup", context do  # Inline given takes context when needed
-            {:ok, Map.put(context, :extra, true)}
+            Map.put(context, :extra, true)
           end
           # ...
         end
@@ -448,15 +468,16 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     ### Step Return Values
 
-    **IMPORTANT**: Steps must return specific values:
+    **IMPORTANT**: Steps must return specific values to update context correctly:
 
-    - `given_` and `when_` steps: Return `{:ok, updated_context}` to pass data forward
-    - `then_` steps: Return `:ok` after assertions (not `context`)
+    - `given_` and `when_` steps: Return a **plain map** (the updated context)
+    - `then_` steps: Return `:ok` after assertions (or any non-map value)
+    - If a step returns a non-map value, context remains unchanged
 
     ```elixir
     given_ "user navigates to registration", context do
       {:ok, view, _html} = live(context.conn, "/users/register")
-      {:ok, Map.put(context, :view, view)}
+      Map.put(context, :view, view)
     end
 
     then_ "user sees welcome message", context do
@@ -611,7 +632,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     given_ "the registration page is loaded", context do
       {:ok, view, _html} = live(context.conn, "/users/register")
-      {:ok, Map.put(context, :view, view)}
+      Map.put(context, :view, view)
     end
     ```
 
@@ -621,7 +642,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       html = context.view
         |> form("#registration-form", user: %{email: "test@example.com", password: "SecurePass123!"})
         |> render_submit()
-      {:ok, Map.put(context, :result_html, html)}
+      Map.put(context, :result_html, html)
     end
     ```
 
@@ -629,7 +650,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     when_ "user clicks the submit button", context do
       html = context.view |> element("button", "Submit") |> render_click()
-      {:ok, Map.put(context, :html, html)}
+      Map.put(context, :html, html)
     end
     ```
 
@@ -673,17 +694,17 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       import_givens #{spex_module}.SharedGivens
 
       spex "User registration" do
-        scenario "user registers with valid credentials" do
+        scenario "user registers with valid credentials", context do
           given_ "the registration page is loaded", context do
             {:ok, view, _html} = live(context.conn, "/users/register")
-            {:ok, Map.put(context, :view, view)}
+            Map.put(context, :view, view)
           end
 
           when_ "user submits valid credentials", context do
             html = context.view
               |> form("#registration-form", user: %{email: "test@example.com", password: "SecurePass123!"})
               |> render_submit()
-            {:ok, Map.put(context, :result_html, html)}
+            Map.put(context, :result_html, html)
           end
 
           then_ "user sees welcome message", context do
@@ -693,17 +714,17 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
           end
         end
 
-        scenario "user sees validation errors for invalid input" do
+        scenario "user sees validation errors for invalid input", context do
           given_ "the registration page is loaded", context do
             {:ok, view, _html} = live(context.conn, "/users/register")
-            {:ok, Map.put(context, :view, view)}
+            Map.put(context, :view, view)
           end
 
           when_ "user submits invalid email", context do
             html = context.view
               |> form("#registration-form", user: %{email: "invalid", password: "short"})
               |> render_submit()
-            {:ok, Map.put(context, :result_html, html)}
+            Map.put(context, :result_html, html)
           end
 
           then_ "user sees error messages", context do
@@ -758,7 +779,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     when_ "user visits the page", context do
       conn = get(context.conn, "/api/resource")
-      {:ok, Map.put(context, :conn, conn)}
+      Map.put(context, :conn, conn)
     end
     ```
 
@@ -766,7 +787,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     ```elixir
     when_ "user submits data", context do
       conn = post(context.conn, "/api/resource", %{name: "Test"})
-      {:ok, Map.put(context, :conn, conn)}
+      Map.put(context, :conn, conn)
     end
     ```
 
@@ -804,12 +825,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       import_givens #{spex_module}.SharedGivens
 
       spex "Resource management" do
-        scenario "user creates resource successfully" do
+        scenario "user creates resource successfully", context do
           when_ "user submits valid data", context do
             conn = post(context.conn, "/api/resources", %{
               resource: %{name: "Test Resource"}
             })
-            {:ok, Map.put(context, :conn, conn)}
+            Map.put(context, :conn, conn)
           end
 
           then_ "API returns created resource", context do
@@ -977,7 +998,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     errors =
       Enum.map_join(diagnostics, "\n", fn diagnostic ->
         file = Map.get(diagnostic, :file) || Map.get(diagnostic, "file") || "unknown"
-        message = Map.get(diagnostic, :message) || Map.get(diagnostic, "message") || "unknown error"
+
+        message =
+          Map.get(diagnostic, :message) || Map.get(diagnostic, "message") || "unknown error"
+
         position = Map.get(diagnostic, :position) || Map.get(diagnostic, "position")
         line = if position, do: Map.get(position, :line) || Map.get(position, "line"), else: nil
 
