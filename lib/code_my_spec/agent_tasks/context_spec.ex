@@ -7,8 +7,8 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - `evaluate/3` - Called by stop hook to validate output and provide feedback
   """
 
-  alias CodeMySpec.{Components, Documents, Environments, Rules, Stories, Utils}
-  alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.AgentTasks.TaskMarker
+  alias CodeMySpec.{Components, Documents, Documents.DocumentSpecProjector, Environments, Rules, Stories, Utils}
 
   @doc """
   Generate the command/prompt for Claude to create a context spec.
@@ -28,8 +28,9 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
     with {:ok, rules} <- get_design_rules(scope),
          similar <- Components.list_similar_components(scope, component),
-         stories <- Stories.list_component_stories(scope, component.id) do
-      build_spec_prompt(session, rules, stories, similar)
+         stories <- Stories.list_component_stories(scope, component.id),
+         {:ok, prompt} <- build_spec_prompt(session, rules, stories, similar) do
+      {:ok, TaskMarker.build("ContextSpec", component.module_name) <> "\n\n" <> prompt}
     end
   end
 

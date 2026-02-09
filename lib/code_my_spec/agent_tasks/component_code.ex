@@ -4,10 +4,11 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
 
   Two main functions:
   - `command/3` - Called by slash command to generate the implementation prompt
-  - `evaluate/3` - Called by stop hook to run tests and provide feedback
+  - `evaluate/3` - Called by stop hook to check implementation file exists
   """
 
-  alias CodeMySpec.{Components, Environments, Rules, Tests, Utils}
+  alias CodeMySpec.AgentTasks.TaskMarker
+  alias CodeMySpec.{Components, Environments, Rules, Utils}
 
   @doc """
   Generate the command/prompt for Claude to implement a component.
@@ -25,50 +26,28 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
 
     with {:ok, rules} <- get_implementation_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
-      build_implementation_prompt(project, component, rules, similar_components)
+      {:ok, prompt} = build_implementation_prompt(project, component, rules, similar_components)
+      {:ok, TaskMarker.build("ComponentCode", component.module_name) <> "\n\n" <> prompt}
     end
   end
 
   @doc """
-  Evaluate Claude's output by running tests and providing feedback.
+  Evaluate Claude's output by checking the code file exists.
 
-  Called by the stop hook after Claude implements the component. This:
-  1. Runs the component's test file
-  2. Parses test results
-  3. Returns success if all tests pass
-  4. Returns test failures for Claude to fix
+  Called by the stop hook after Claude implements the component.
 
   Returns:
-  - {:ok, :valid} if all tests pass
-  - {:ok, :invalid, errors} if tests fail (for Claude to fix)
-  - {:error, reason} if something went wrong
+  - {:ok, :valid} if the code file exists
+  - {:ok, :invalid, feedback} if the code file is missing
   """
   def evaluate(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
+    %{code_file: code_file_path} = Utils.component_files(component, project)
 
-    %{test_file: test_file_path, code_file: code_file_path} =
-      Utils.component_files(component, project)
-
-    # Check required files exist
-    case check_required_files(scope, test_file_path, code_file_path) do
-      {:error, feedback} ->
-        {:ok, :invalid, feedback}
-
-      :ok ->
-        case run_tests(test_file_path) do
-          {:ok, test_run} ->
-            case test_run.stats.failures do
-              0 ->
-                {:ok, :valid}
-
-              _count ->
-                {:ok, :invalid, build_test_failure_feedback(test_run)}
-            end
-
-          {:error, {:parse_error, output}} ->
-            # Tests couldn't even run (compile error, etc.)
-            {:ok, :invalid, build_execution_error_feedback(output)}
-        end
+    if Environments.file_exists?(scope.environment, code_file_path) do
+      {:ok, :valid}
+    else
+      {:ok, :invalid, "Implementation file not found at #{code_file_path}. Please create it."}
     end
   end
 
@@ -147,82 +126,4 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     end)
   end
 
-  defp check_required_files(scope, test_file_path, code_file_path) do
-    environment = scope.environment
-
-    missing_files = []
-
-    missing_files =
-      if Environments.file_exists?(environment, code_file_path) do
-        missing_files
-      else
-        missing_files ++ [{:code, code_file_path}]
-      end
-
-    missing_files =
-      if Environments.file_exists?(environment, test_file_path) do
-        missing_files
-      else
-        missing_files ++ [{:test, test_file_path}]
-      end
-
-    case missing_files do
-      [] ->
-        :ok
-
-      files ->
-        feedback = format_missing_files_error(files)
-        {:error, feedback}
-    end
-  end
-
-  defp format_missing_files_error(missing_files) do
-    file_list =
-      Enum.map_join(missing_files, "\n", fn {type, path} -> "- #{type} file: #{path}" end)
-
-    """
-    Required files do not exist:
-
-    #{file_list}
-
-    You must write these files before evaluation can proceed.
-    Please create the files at the path shown above.
-    """
-  end
-
-  defp run_tests(test_file_path) do
-    Tests.execute([test_file_path])
-  end
-
-  defp build_test_failure_feedback(%{failures: failures, stats: stats}) do
-    failure_details =
-      Enum.map_join(failures, "\n\n", fn failure ->
-        error_detail =
-          case failure.error do
-            %{message: message} -> "Error: #{message}"
-            nil -> "No error details available"
-          end
-
-        "#{failure.full_title}\n#{error_detail}"
-      end)
-
-    """
-    Tests failed: #{stats.failures} of #{stats.tests} tests failed.
-
-    Failures:
-    #{failure_details}
-
-    Please fix the implementation to make these tests pass.
-    """
-  end
-
-  defp build_execution_error_feedback(output) do
-    """
-    Tests could not run due to an error (likely a compile error):
-
-    #{output}
-
-    Please fix the code so the tests can run.
-    """
-  end
 end

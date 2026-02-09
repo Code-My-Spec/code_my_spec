@@ -7,6 +7,8 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   - `evaluate/3` - Called by stop hook to run tests and validate quality
   """
 
+  alias CodeMySpec.AgentTasks.TaskMarker
+
   alias CodeMySpec.{
     Compile,
     Components,
@@ -37,7 +39,8 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
     with {:ok, test_rules} <- get_test_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
-      build_test_prompt(scope, session, test_rules, similar_components)
+      {:ok, prompt} = build_test_prompt(scope, session, test_rules, similar_components)
+      {:ok, TaskMarker.build("ComponentTest", component.module_name) <> "\n\n" <> prompt}
     end
   end
 

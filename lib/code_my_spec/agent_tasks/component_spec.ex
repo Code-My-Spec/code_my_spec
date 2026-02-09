@@ -7,9 +7,9 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   - `evaluate/3` - Called by stop hook to validate output and provide feedback
   """
 
-  alias CodeMySpec.{Rules, Utils, Environments, Documents}
-  alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.{Documents, Documents.DocumentSpecProjector, Environments, Rules, Utils}
 
   @doc """
   Generate the command/prompt for Claude to create a component spec.
@@ -25,8 +25,9 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   def command(scope, session, _opts \\ []) do
     %{component: component} = session
 
-    with {:ok, rules} <- get_design_rules(scope, component) do
-      build_spec_prompt(scope, session, rules)
+    with {:ok, rules} <- get_design_rules(scope, component),
+         {:ok, prompt} <- build_spec_prompt(scope, session, rules) do
+      {:ok, TaskMarker.build("ComponentSpec", component.module_name) <> "\n\n" <> prompt}
     end
   end
 
