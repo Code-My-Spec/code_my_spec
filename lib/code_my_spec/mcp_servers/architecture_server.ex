@@ -1,4 +1,6 @@
 defmodule CodeMySpec.McpServers.ArchitectureServer do
+  @moduledoc "MCP server exposing architecture management tools to AI agents."
+
   use Hermes.Server,
     name: "architecture-server",
     version: "1.0.0",
@@ -19,8 +21,7 @@ defmodule CodeMySpec.McpServers.ArchitectureServer do
     end
   end
 
-  # Spec file management (read-only + metadata updates)
-  component(CodeMySpec.McpServers.Architecture.Tools.UpdateSpecMetadata)
+  # Spec file management (read-only)
   component(CodeMySpec.McpServers.Architecture.Tools.ListSpecs)
   component(CodeMySpec.McpServers.Architecture.Tools.ListSpecNames)
   component(CodeMySpec.McpServers.Architecture.Tools.GetSpec)
