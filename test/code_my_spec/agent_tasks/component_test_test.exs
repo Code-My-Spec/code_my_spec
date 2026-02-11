@@ -1,14 +1,13 @@
 defmodule CodeMySpec.AgentTasks.ComponentTestTest do
   @moduledoc false
   use CodeMySpec.DataCase
-  use ExCliVcr
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
+  import CodeMySpec.RequirementsFixtures
 
   alias CodeMySpec.AgentTasks.ComponentTest
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Support.TestAdapter
 
   @moduletag :tmp_dir
 
@@ -185,7 +184,15 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
 
     test "indicates validation mode when implementation exists", context do
       context = setup_all_files(context)
-      %{session: session, scope: scope} = context
+      %{session: session, scope: scope, component: component} = context
+
+      # Create satisfied implementation_file requirement
+      requirement_fixture(scope, component, %{
+        name: "implementation_file",
+        artifact_type: :code,
+        description: "Component implementation file exists",
+        satisfied: true
+      })
 
       assert {:ok, prompt} = ComponentTest.command(scope, session)
 
@@ -212,374 +219,163 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
   end
 
   # ============================================================================
-  # evaluate/3 Tests - Early Exit Paths (no compilation needed)
+  # evaluate/3 Tests
   # ============================================================================
 
   describe "evaluate/3" do
     setup [:create_scope, :create_project, :create_component, :create_session]
 
-    test "returns invalid when test file doesn't exist", %{session: session, scope: scope} do
-      # No test file written - this test returns early, no compilation happens
-      assert {:ok, :invalid, error_message} = ComponentTest.evaluate(scope, session)
-      assert error_message =~ "test file does not exist"
-    end
-  end
-
-  # ============================================================================
-  # evaluate/3 Tests - Full Flow (requires real mix project)
-  # ============================================================================
-
-  describe "evaluate/3 with real project" do
-    @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
-
-    setup _context do
-      # Clone from pool using the same pattern as credo_test
-      scope = full_scope_fixture()
-      {:ok, project_path} = TestAdapter.clone(scope, @test_repo_url)
-
-      on_exit(fn ->
-        TestAdapter.checkin(project_path)
-      end)
-
-      # Add environment pointing to project_path
-      scope = %{scope | environment: Environment.new(:local, project_path)}
-
-      %{scope: scope, project_path: project_path}
-    end
-
-    setup context do
-      %{scope: scope, project_path: project_path} = context
-      project = scope.active_project
-
-      # Create component with module name matching test project structure
-      component = component_fixture(scope, %{
-        name: "PostRepository",
-        description: "Repository for blog posts",
-        type: "repository",
-        module_name: "TestPhoenixProject.Blog.PostRepository",
-        project_id: project.id
+    defp satisfy_test_requirements(scope, component) do
+      requirement_fixture(scope, component, %{
+        name: "test_file",
+        artifact_type: :tests,
+        description: "Component test file exists",
+        satisfied: true
       })
 
-      session = %{
-        project: project,
-        component: component
-      }
-
-      # Use cached test results to avoid running mix test in the fixture project
-      eval_opts = [
-        compile_output_file: Path.join(System.tmp_dir!(), "compile_machine_test.json"),
-        test_output_file: TestAdapter.test_results_cache_path()
-      ]
-
-      %{
-        scope: scope,
-        project: project,
-        project_path: project_path,
-        component: component,
-        session: session,
-        eval_opts: eval_opts
-      }
+      requirement_fixture(scope, component, %{
+        name: "test_spec_alignment",
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions",
+        satisfied: true
+      })
     end
 
-    @tag timeout: 120_000
-    test "returns invalid when compilation fails", %{
+    test "returns invalid when test_file requirement is unsatisfied", %{
       session: session,
       scope: scope,
-      project_path: project_path,
-      component: component,
-      project: project,
-      eval_opts: eval_opts
+      component: component
     } do
-      # Write a valid test file (required for evaluate to proceed)
-      %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
-      test_path = Path.join(project_path, test_file)
-      File.mkdir_p!(Path.dirname(test_path))
+      requirement_fixture(scope, component, %{
+        name: "test_file",
+        artifact_type: :tests,
+        description: "Component test file exists",
+        satisfied: false,
+        details: %{reason: "File missing", path: "test/test_app/test_module_test.exs"}
+      })
 
-      test_content = """
-      defmodule TestPhoenixProject.Blog.PostRepositoryTest do
-        use ExUnit.Case
-
-        test "placeholder" do
-          assert true
-        end
-      end
-      """
-
-      File.write!(test_path, test_content)
-
-      # Write a broken implementation file - mix compile compiles lib/, not test/
-      %{code_file: code_file} = CodeMySpec.Utils.component_files(component, project)
-      code_path = Path.join(project_path, code_file)
-      File.mkdir_p!(Path.dirname(code_path))
-
-      broken_content = """
-      defmodule TestPhoenixProject.Blog.PostRepository do
-        def broken do
-          # Missing end - actual syntax error
-      end
-      """
-
-      File.write!(code_path, broken_content)
-
-      # Ensure cleanup happens even if test fails
-      on_exit(fn ->
-        File.rm(test_path)
-        File.rm(code_path)
-      end)
-
-      use_cmd_cassette "component_test_compilation_fails" do
-        result = ComponentTest.evaluate(scope, session, eval_opts)
-
-        assert {:ok, :invalid, error_message} = result
-        assert error_message =~ "Compilation failed" or error_message =~ "error"
-      end
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert feedback =~ "requirements not met"
     end
 
-    @tag timeout: 120_000
-    test "runs quality checks when compilation passes", %{
+    test "returns invalid when test_spec_alignment requirement is unsatisfied", %{
       session: session,
       scope: scope,
-      project_path: project_path,
-      component: component,
-      project: project,
-      eval_opts: eval_opts
+      component: component
     } do
-      # Write spec file
-      %{spec_file: spec_file} = CodeMySpec.Utils.component_files(component, project)
-      spec_full_path = Path.join(project_path, spec_file)
-      File.mkdir_p!(Path.dirname(spec_full_path))
+      requirement_fixture(scope, component, %{
+        name: "test_file",
+        artifact_type: :tests,
+        description: "Component test file exists",
+        satisfied: true
+      })
 
-      spec_content = """
-      # PostRepository
+      requirement_fixture(scope, component, %{
+        name: "test_spec_alignment",
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions",
+        satisfied: false,
+        details: %{reason: "Test alignment issues", problems: ["Missing test for foo/1"]}
+      })
 
-      ## Functions
-
-      ### list_posts/0
-
-      Lists all posts.
-
-      **Test Assertions**:
-      - returns list of posts
-
-      ## Dependencies
-      - Ecto
-      """
-
-      File.write!(spec_full_path, spec_content)
-
-      # Write a valid test file
-      %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
-      test_full_path = Path.join(project_path, test_file)
-      File.mkdir_p!(Path.dirname(test_full_path))
-
-      test_content = """
-      defmodule TestPhoenixProject.Blog.PostRepositoryTest do
-        use ExUnit.Case
-
-        describe "list_posts/0" do
-          test "returns list of posts" do
-            result = TestPhoenixProject.Blog.PostRepository.list_posts()
-            assert is_list(result)
-          end
-        end
-      end
-      """
-
-      File.write!(test_full_path, test_content)
-
-      # Write implementation
-      %{code_file: code_file} = CodeMySpec.Utils.component_files(component, project)
-      code_full_path = Path.join(project_path, code_file)
-      File.mkdir_p!(Path.dirname(code_full_path))
-
-      code_content = """
-      defmodule TestPhoenixProject.Blog.PostRepository do
-        @moduledoc false
-
-        def list_posts, do: []
-      end
-      """
-
-      File.write!(code_full_path, code_content)
-
-      # Ensure cleanup happens even if test fails
-      on_exit(fn ->
-        File.rm(spec_full_path)
-        File.rm(test_full_path)
-        File.rm(code_full_path)
-      end)
-
-      use_cmd_cassette "component_test_quality_checks" do
-        result = ComponentTest.evaluate(scope, session, eval_opts)
-
-        # Should complete without error (valid or invalid based on quality checks)
-        assert match?({:ok, :valid}, result) or match?({:ok, :invalid, _}, result)
-      end
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert feedback =~ "requirements not met"
+      assert feedback =~ "Test alignment issues"
     end
 
-    @tag timeout: 120_000
-    test "checks TDD state when no implementation exists", %{
+    test "returns valid when all test requirements satisfied and no problems", %{
       session: session,
       scope: scope,
-      project_path: project_path,
-      component: component,
-      project: project,
-      eval_opts: eval_opts
+      component: component
     } do
-      # Write spec file
-      %{spec_file: spec_file} = CodeMySpec.Utils.component_files(component, project)
-      spec_full_path = Path.join(project_path, spec_file)
-      File.mkdir_p!(Path.dirname(spec_full_path))
+      satisfy_test_requirements(scope, component)
 
-      spec_content = """
-      # PostRepository
-
-      ## Functions
-
-      ### list_posts/0
-
-      Lists all posts.
-
-      **Test Assertions**:
-      - returns list of posts
-
-      ## Dependencies
-      - Ecto
-      """
-
-      File.write!(spec_full_path, spec_content)
-
-      # Write test file that references non-existent module
-      %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
-      test_full_path = Path.join(project_path, test_file)
-      File.mkdir_p!(Path.dirname(test_full_path))
-
-      test_content = """
-      defmodule TestPhoenixProject.Blog.PostRepositoryTest do
-        use ExUnit.Case
-
-        describe "list_posts/0" do
-          test "returns list of posts" do
-            # This should fail in TDD mode - module doesn't exist
-            result = TestPhoenixProject.Blog.PostRepository.list_posts()
-            assert is_list(result)
-          end
-        end
-      end
-      """
-
-      File.write!(test_full_path, test_content)
-
-      # Ensure cleanup happens even if test fails
-      on_exit(fn ->
-        File.rm(spec_full_path)
-        File.rm(test_full_path)
-      end)
-
-      # Override test_output_file with failing cache for TDD mode
-      eval_opts = Keyword.put(eval_opts, :test_output_file, TestAdapter.test_results_failing_cache_path())
-
-      use_cmd_cassette "component_test_tdd_mode" do
-        # No implementation file - TDD mode
-        result = ComponentTest.evaluate(scope, session, eval_opts)
-
-        # In TDD mode, should return a result (could be valid if tests properly fail,
-        # or invalid if something is wrong)
-        assert match?({:ok, :valid}, result) or match?({:ok, :invalid, _}, result)
-      end
+      assert {:ok, :valid} = ComponentTest.evaluate(scope, session)
     end
 
-    @tag timeout: 120_000
-    test "detects misalignment between spec and tests", %{
+    test "returns valid when only test failure problems exist (TDD mode)", %{
       session: session,
       scope: scope,
-      project_path: project_path,
       component: component,
-      project: project,
-      eval_opts: eval_opts
+      project: project
     } do
-      # Write spec with many test assertions
-      %{spec_file: spec_file} = CodeMySpec.Utils.component_files(component, project)
-      spec_full_path = Path.join(project_path, spec_file)
-      File.mkdir_p!(Path.dirname(spec_full_path))
-
-      # Spec requires 5 tests
-      spec_content = """
-      # PostRepository
-
-      ## Functions
-
-      ### list_posts/0
-
-      Lists all posts.
-
-      **Test Assertions**:
-      - returns list of posts
-      - handles empty database
-      - filters by status
-      - sorts by date
-      - paginates results
-
-      ## Dependencies
-      - Ecto
-      """
-
-      File.write!(spec_full_path, spec_content)
-
-      # Write test file with only 1 test (well below 0.9 alignment)
+      satisfy_test_requirements(scope, component)
       %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
-      test_full_path = Path.join(project_path, test_file)
-      File.mkdir_p!(Path.dirname(test_full_path))
 
-      test_content = """
-      defmodule TestPhoenixProject.Blog.PostRepositoryTest do
-        use ExUnit.Case
+      # Create a test failure problem — should be filtered out
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(scope, [
+          %{
+            severity: :error,
+            source_type: :test,
+            source: "exunit",
+            file_path: test_file,
+            message: "test failed: expected true, got false",
+            category: "test_failure"
+          }
+        ])
 
-        describe "list_posts/0" do
-          test "returns list of posts" do
-            assert is_list([])
-          end
-        end
-      end
-      """
+      assert {:ok, :valid} = ComponentTest.evaluate(scope, session)
+    end
 
-      File.write!(test_full_path, test_content)
+    test "returns invalid when non-test problems exist", %{
+      session: session,
+      scope: scope,
+      component: component,
+      project: project
+    } do
+      satisfy_test_requirements(scope, component)
+      %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
 
-      # Write implementation
-      %{code_file: code_file} = CodeMySpec.Utils.component_files(component, project)
-      code_full_path = Path.join(project_path, code_file)
-      File.mkdir_p!(Path.dirname(code_full_path))
+      # Create a compilation problem — should NOT be filtered out
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(scope, [
+          %{
+            severity: :error,
+            source_type: :static_analysis,
+            source: "compiler",
+            file_path: test_file,
+            message: "undefined function foo/0",
+            category: "undefined_function"
+          }
+        ])
 
-      code_content = """
-      defmodule TestPhoenixProject.Blog.PostRepository do
-        @moduledoc false
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert feedback =~ "undefined function"
+    end
 
-        def list_posts, do: []
-      end
-      """
+    test "filters out test failures but keeps other problems", %{
+      session: session,
+      scope: scope,
+      component: component,
+      project: project
+    } do
+      satisfy_test_requirements(scope, component)
+      %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
 
-      File.write!(code_full_path, code_content)
+      # Create both a test failure and a credo problem
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(scope, [
+          %{
+            severity: :error,
+            source_type: :test,
+            source: "exunit",
+            file_path: test_file,
+            message: "test failed",
+            category: "test_failure"
+          },
+          %{
+            severity: :warning,
+            source_type: :static_analysis,
+            source: "credo",
+            file_path: test_file,
+            message: "Module has no @moduledoc",
+            category: "readability"
+          }
+        ])
 
-      # Ensure cleanup happens even if test fails
-      on_exit(fn ->
-        File.rm(spec_full_path)
-        File.rm(test_full_path)
-        File.rm(code_full_path)
-      end)
-
-      use_cmd_cassette "component_test_alignment" do
-        result = ComponentTest.evaluate(scope, session, eval_opts)
-
-        # With poor alignment, should return invalid
-        case result do
-          {:ok, :invalid, errors} ->
-            assert is_binary(errors)
-
-          {:ok, :valid} ->
-            # If it passes, the alignment check is lenient
-            assert true
-        end
-      end
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert feedback =~ "moduledoc"
     end
   end
 end

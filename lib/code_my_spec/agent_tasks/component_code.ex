@@ -8,7 +8,11 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   """
 
   alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{Components, Environments, Rules, Utils}
+  alias CodeMySpec.Components
+  alias CodeMySpec.Components.ComponentRepository
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementsFormatter
+  alias CodeMySpec.{Rules, Utils}
 
   @doc """
   Generate the command/prompt for Claude to implement a component.
@@ -41,13 +45,22 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   - {:ok, :invalid, feedback} if the code file is missing
   """
   def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
-    %{code_file: code_file_path} = Utils.component_files(component, project)
+    %{component: component} = session
+    component = ComponentRepository.get_component(scope, component.id)
+    requirements = component.requirements || []
 
-    if Environments.file_exists?(scope.environment, code_file_path) do
+    code_reqs =
+      Requirements.check_requirements(scope, component, requirements,
+        artifact_types: [:code]
+      )
+
+    unsatisfied = Enum.filter(code_reqs, &(not &1.satisfied))
+
+    if Enum.empty?(unsatisfied) do
       {:ok, :valid}
     else
-      {:ok, :invalid, "Implementation file not found at #{code_file_path}. Please create it."}
+      feedback = RequirementsFormatter.format_unsatisfied(unsatisfied, context: "Code requirements not met:")
+      {:ok, :invalid, feedback}
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   @moduledoc """
-  Central registry of all requirement definitions used across component types. 
-  Provides reusable requirement templates that combine checkers, session types, 
+  Central registry of all requirement definitions used across component types.
+  Provides reusable requirement templates that combine checkers, session types,
   and categorization for consistent requirement checking.
   """
 
@@ -11,6 +11,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   alias CodeMySpec.Requirements.FileExistenceChecker
   alias CodeMySpec.Requirements.HierarchicalChecker
   alias CodeMySpec.Requirements.RequirementDefinition
+  alias CodeMySpec.Requirements.SpecTestAlignmentChecker
   alias CodeMySpec.Requirements.TestStatusChecker
 
   @spec spec_file() :: RequirementDefinition.t()
@@ -69,6 +70,20 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec test_spec_alignment() :: RequirementDefinition.t()
+  def test_spec_alignment do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "test_spec_alignment",
+        checker: SpecTestAlignmentChecker,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions"
+      })
+
+    definition
+  end
+
   @spec tests_passing() :: RequirementDefinition.t()
   def tests_passing do
     {:ok, definition} =
@@ -76,7 +91,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "tests_passing",
         checker: TestStatusChecker,
         satisfied_by: nil,
-        artifact_type: :tests,
+        artifact_type: :code,
         description: "Component tests are passing"
       })
 
@@ -188,6 +203,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       spec_valid(),
       implementation_file(),
       test_file(),
+      test_spec_alignment(),
       tests_passing()
     ]
   end

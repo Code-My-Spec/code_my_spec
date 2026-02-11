@@ -3,8 +3,10 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Components
+  alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Support.TestAdapter
+  alias CodeMySpec.Tests.TestRun
 
   @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
 
@@ -71,11 +73,10 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
       })
 
       # Clone from pool
-      {:ok, project_dir} =
-        CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
+      {:ok, project_dir} = TestAdapter.clone(scope, @test_repo_url)
 
       on_exit(fn ->
-        CodeMySpec.Support.TestAdapter.checkin(project_dir)
+        TestAdapter.checkin(project_dir)
       end)
 
       %{
@@ -96,7 +97,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
         |> Enum.to_list()
 
       # Read cached test results
-      test_output = File.read!(CodeMySpec.Support.TestAdapter.test_results_cache_path())
+      test_output = File.read!(TestAdapter.test_results_cache_path())
 
       test_results = parse_test_results(test_output)
 
@@ -122,13 +123,13 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
       |> Map.drop([:dependencies])
 
       assert is_list(result)
-      assert length(result) > 0
+      assert result != []
     end
   end
 
   defp parse_test_results(output) do
     {:ok, data} = Jason.decode(output)
-    changeset = CodeMySpec.Tests.TestRun.changeset(data)
+    changeset = TestRun.changeset(data)
 
     Ecto.Changeset.apply_changes(changeset)
   end

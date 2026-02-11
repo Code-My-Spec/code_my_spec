@@ -36,6 +36,7 @@ defmodule CodeMySpec.Components.Registry do
         RequirementDefinitionData.dependencies_satisfied(),
         RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
+        RequirementDefinitionData.test_spec_alignment(),
         RequirementDefinitionData.tests_passing()
       ],
       document_type: "context_spec",
@@ -54,6 +55,7 @@ defmodule CodeMySpec.Components.Registry do
         RequirementDefinitionData.dependencies_satisfied(),
         RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
+        RequirementDefinitionData.test_spec_alignment(),
         RequirementDefinitionData.tests_passing()
       ],
       document_type: "context_spec",

@@ -4,24 +4,18 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
   Two main functions:
   - `command/3` - Called by slash command to generate the test writing prompt
-  - `evaluate/3` - Called by stop hook to run tests and validate quality
+  - `evaluate/3` - Called by stop hook to check test requirements are satisfied
   """
 
   alias CodeMySpec.AgentTasks.TaskMarker
-
-  alias CodeMySpec.{
-    Compile,
-    Components,
-    Components.Component,
-    Environments,
-    Rules,
-    StaticAnalysis,
-    Tests,
-    Utils
-  }
-
-  @required_alignment_score 0.9
-  @required_overall_score 0.95
+  alias CodeMySpec.Components
+  alias CodeMySpec.Components.{Component, ComponentRepository}
+  alias CodeMySpec.Problems
+  alias CodeMySpec.Problems.ProblemRenderer
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementsFormatter
+  alias CodeMySpec.Rules
+  alias CodeMySpec.Utils
 
   @doc """
   Generate the command/prompt for Claude to write component tests.
@@ -45,63 +39,58 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   end
 
   @doc """
-  Evaluate Claude's output by running tests and checking quality.
+  Evaluate whether the test file was written correctly.
 
-  Called by the stop hook after Claude writes tests. This:
-  1. Checks compilation
-  2. Runs tests
-  3. Validates TDD state (tests should fail if no implementation)
-  4. Checks spec alignment (tests match spec assertions)
+  Called by the stop hook after Claude writes tests. Checks that:
+  1. The test file exists
+  2. No blocking problems (compilation errors, credo, spec alignment)
+
+  Test failures are filtered out — failing tests are expected in TDD mode
+  when the implementation doesn't exist yet.
 
   Returns:
-  - {:ok, :valid} if all quality checks pass
-  - {:ok, :invalid, errors} if quality checks fail (for Claude to fix)
-  - {:error, reason} if something went wrong
+  - {:ok, :valid} if the test file exists with no blocking problems
+  - {:ok, :invalid, feedback} if the test file is missing or has blocking problems
   """
-  def evaluate(scope, session, opts \\ []) do
+  def evaluate(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
+    component = ComponentRepository.get_component(scope, component.id)
+    requirements = component.requirements || []
 
-    %{test_file: test_file_path, code_file: code_file_path} =
-      Utils.component_files(component, project)
+    # Check test-artifact requirements (test_file, test_spec_alignment)
+    test_reqs =
+      Requirements.check_requirements(scope, component, requirements,
+        artifact_types: [:tests]
+      )
 
-    # First check that test file exists
-    case check_file_exists(scope, test_file_path) do
-      false ->
-        {:ok, :invalid, format_missing_file_error("test", test_file_path)}
+    unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
 
-      true ->
-        implementation_exists = check_implementation_exists(scope, code_file_path)
-        tdd_mode = not implementation_exists
+    if unsatisfied != [] do
+      feedback = RequirementsFormatter.format_unsatisfied(unsatisfied, context: "Test requirements not met:")
+      {:ok, :invalid, feedback}
+    else
+      # Requirements pass — check for non-test-failure problems
+      %{test_file: test_file_path} = Utils.component_files(component, project)
 
-        working_dir = scope.environment && scope.environment.cwd
-        compile_output_file = Keyword.get(opts, :compile_output_file)
-        test_output_file = Keyword.get(opts, :test_output_file)
+      problems =
+        Problems.list_project_problems(scope, file_path: test_file_path)
+        |> Enum.reject(&(&1.source_type == :test))
 
-        # Check compilation
-        case check_compilation(working_dir, compile_output_file) do
-          {:ok, compile_result} when compile_result.score == 0.0 ->
-            {:ok, :invalid, format_compilation_errors(compile_result)}
+      if Enum.empty?(problems) do
+        {:ok, :valid}
+      else
+        feedback =
+          ProblemRenderer.render_for_feedback(problems,
+            context: "Test file has problems (test failures are OK, these are not):",
+            max_problems: 20
+          )
 
-          {:ok, compile_result} ->
-            # Compilation passed, run quality checks
-            # Ensure scope has cwd set for static analysis
-            scope = ensure_scope_cwd(scope, working_dir)
-
-            run_quality_checks(
-              scope,
-              session,
-              component,
-              project,
-              compile_result,
-              test_file_path,
-              tdd_mode,
-              test_output_file
-            )
-        end
+        {:ok, :invalid, feedback}
+      end
     end
   end
 
-  # Private functions
+  # Private functions - command
 
   defp get_test_rules(_scope, component) do
     component_type = component.type
@@ -117,10 +106,10 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     test_rules_text = Enum.map_join(test_rules, "\n\n", & &1.content)
     similar_text = format_similar_components(project, similar_components)
 
-    %{spec_file: spec_file_path, test_file: test_file_path, code_file: code_file_path} =
+    %{spec_file: spec_file_path, test_file: test_file_path} =
       Utils.component_files(component, project)
 
-    implementation_exists = check_implementation_exists(scope, code_file_path)
+    implementation_exists = implementation_exists?(scope, component)
 
     tdd_section =
       if implementation_exists do
@@ -209,244 +198,17 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     end)
   end
 
-  defp check_file_exists(scope, file_path) do
-    environment = scope.environment
+  defp implementation_exists?(scope, component) do
+    component = ComponentRepository.get_component(scope, component.id)
+    requirements = component.requirements || []
 
-    if environment do
-      Environments.file_exists?(environment, file_path)
-    else
-      false
-    end
+    code_reqs =
+      Requirements.check_requirements(scope, component, requirements,
+        artifact_types: [:code],
+        include: ["implementation_file"]
+      )
+
+    Enum.any?(code_reqs, & &1.satisfied)
   end
 
-  defp check_implementation_exists(scope, code_file_path) do
-    check_file_exists(scope, code_file_path)
-  end
-
-  defp format_missing_file_error(file_type, file_path) do
-    """
-    Required #{file_type} file does not exist: #{file_path}
-
-    You must write the #{file_type} file before evaluation can proceed.
-    Please create the file at the path shown above.
-    """
-  end
-
-  defp check_compilation(working_dir, compile_output_file) do
-    opts =
-      [cwd: working_dir, output_file: compile_output_file]
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-
-    case Compile.execute(opts) do
-      %{status: :ok} ->
-        {:ok, %{score: 1.0, errors: []}}
-
-      %{status: :error, data: %{compiler_results: diagnostics}} ->
-        errors = format_diagnostics(diagnostics)
-        {:ok, %{score: 0.0, errors: errors}}
-    end
-  end
-
-  defp ensure_scope_cwd(scope, nil), do: scope
-  defp ensure_scope_cwd(scope, working_dir), do: Map.put(scope, :cwd, working_dir)
-
-  defp format_diagnostics(diagnostics) when is_list(diagnostics) do
-    Enum.map(diagnostics, fn
-      %{message: message, file: file, position: %{line: line}} ->
-        "#{file}:#{line}: #{message}"
-
-      %{message: message, file: file} ->
-        "#{file}: #{message}"
-
-      %{message: message} ->
-        message
-
-      other ->
-        inspect(other)
-    end)
-  end
-
-  defp format_diagnostics(other), do: [inspect(other)]
-
-  defp run_quality_checks(
-         scope,
-         _session,
-         component,
-         project,
-         compile_result,
-         test_file_path,
-         tdd_mode,
-         test_output_file
-       ) do
-    working_dir = scope.environment && scope.environment.cwd
-
-    # Run tests to get test results
-    case run_tests(test_file_path, working_dir, test_output_file) do
-      {:ok, test_run} ->
-        tdd_state_result = check_tdd_state(test_run, tdd_mode: tdd_mode)
-        alignment_result = run_spec_alignment(scope, component, project, tdd_mode: tdd_mode)
-
-        overall_score =
-          (compile_result.score + tdd_state_result.score + alignment_result.score) / 3
-
-        case validate_quality(compile_result, tdd_state_result, alignment_result, overall_score) do
-          :ok ->
-            {:ok, :valid}
-
-          {:error, errors} ->
-            feedback =
-              format_quality_errors(
-                errors,
-                compile_result,
-                tdd_state_result,
-                alignment_result,
-                overall_score
-              )
-
-            {:ok, :invalid, feedback}
-        end
-
-      {:error, {:parse_error, output}} ->
-        {:ok, :invalid, "Tests could not run: #{output}"}
-    end
-  end
-
-  defp run_tests(test_file_path, working_dir, test_output_file) do
-    opts =
-      [project_root: working_dir, output_file: test_output_file]
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-
-    Tests.execute([test_file_path], opts)
-  end
-
-  defp validate_quality(compile_result, tdd_state_result, alignment_result, overall_score) do
-    errors = []
-
-    errors =
-      if compile_result.score < 1.0 do
-        errors ++ compile_result.errors
-      else
-        errors
-      end
-
-    errors =
-      if tdd_state_result.score < 1.0 do
-        errors ++ tdd_state_result.errors
-      else
-        errors
-      end
-
-    errors =
-      if alignment_result.score < @required_alignment_score do
-        alignment_error = """
-        Test alignment score (#{Float.round(alignment_result.score, 2)}) is below required threshold (#{@required_alignment_score}).
-        Tests must be at least 90% aligned with spec assertions.
-        """
-
-        errors ++ [alignment_error | alignment_result.errors]
-      else
-        errors
-      end
-
-    errors =
-      if overall_score < @required_overall_score do
-        overall_error = """
-        Overall quality score (#{Float.round(overall_score, 2)}) is below required threshold (#{@required_overall_score}).
-        """
-
-        errors ++ [overall_error]
-      else
-        errors
-      end
-
-    if Enum.empty?(errors) do
-      :ok
-    else
-      {:error, errors}
-    end
-  end
-
-  defp format_compilation_errors(compile_result) do
-    """
-    Compilation failed:
-
-    #{Enum.map_join(compile_result.errors, "\n", &String.trim/1)}
-
-    Please fix the compilation errors in the test file.
-    """
-  end
-
-  defp format_quality_errors(
-         errors,
-         compile_result,
-         tdd_state_result,
-         alignment_result,
-         overall_score
-       ) do
-    """
-    Quality checks failed:
-
-    Compilation Score: #{compile_result.score}
-    TDD State Score: #{tdd_state_result.score}
-    Alignment Score: #{Float.round(alignment_result.score, 2)}
-    Overall Score: #{Float.round(overall_score, 2)} (required: >= #{@required_overall_score})
-
-    Errors:
-    #{Enum.map_join(errors, "\n", fn error -> "- #{String.trim(error)}" end)}
-
-    Please fix the test file to address these quality issues.
-    """
-  end
-
-  # TDD state checking - validates all tests are failing when no implementation exists
-
-  defp check_tdd_state(_test_run, tdd_mode: false), do: %{score: 1.0, errors: []}
-
-  defp check_tdd_state(%{stats: %{failures: failures, passes: 0}}, tdd_mode: true)
-       when failures > 0 do
-    %{score: 1.0, errors: []}
-  end
-
-  defp check_tdd_state(%{stats: %{passes: passes}}, tdd_mode: true) when passes > 0 do
-    %{
-      score: 0.0,
-      errors: [
-        """
-        #{passes} test(s) are passing, but these tests are written against a non-existent module.
-        Ensure you are not calling components of the module, or non-applicable functions.
-        All tests should be failing in TDD mode before implementation exists.
-        """
-      ]
-    }
-  end
-
-  defp check_tdd_state(%{stats: %{failures: 0, passes: 0}}, tdd_mode: true) do
-    %{score: 0.0, errors: ["No tests were executed"]}
-  end
-
-  # Spec alignment checking using StaticAnalysis.Analyzers.SpecAlignment
-
-  defp run_spec_alignment(scope, component, project, tdd_mode: tdd_mode) do
-    %{spec_file: spec_file_path} = Utils.component_files(component, project)
-
-    case StaticAnalysis.run(scope, :spec_alignment, paths: [spec_file_path]) do
-      {:ok, problems} ->
-        test_problems = Enum.filter(problems, &(&1.category in ["missing_test", "extra_test"]))
-        errors = Enum.map(test_problems, & &1.message)
-
-        # In TDD mode, missing tests are expected (no implementation yet)
-        errors =
-          if tdd_mode,
-            do: Enum.reject(errors, &String.contains?(&1, "Missing test")),
-            else: errors
-
-        # Score: 1.0 if no problems, decrease by 0.1 per problem (min 0.0)
-        score = if Enum.empty?(errors), do: 1.0, else: max(0.0, 1.0 - length(errors) * 0.1)
-
-        %{score: score, errors: errors}
-
-      {:error, reason} ->
-        %{score: 0.0, errors: [reason]}
-    end
-  end
 end
