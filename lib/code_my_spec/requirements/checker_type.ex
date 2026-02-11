@@ -6,6 +6,7 @@ defmodule CodeMySpec.Requirements.CheckerType do
       CodeMySpec.Requirements.TestStatusChecker,
       CodeMySpec.Requirements.DependencyChecker,
       CodeMySpec.Requirements.HierarchicalChecker,
-      CodeMySpec.Requirements.ContextReviewFileChecker
+      CodeMySpec.Requirements.ContextReviewFileChecker,
+      CodeMySpec.Requirements.SpecTestAlignmentChecker
     ]
 end

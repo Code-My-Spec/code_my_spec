@@ -139,7 +139,9 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
     mapped_test_files = map_code_to_test_files(code_files, project_root)
     all_test_files = Enum.uniq(test_files ++ mapped_test_files)
 
-    Logger.info("[ValidateEdits] Categorized - spec: #{length(spec_files)}, test: #{length(all_test_files)}, spex: #{length(spex_files)}, code: #{length(code_files)}, elixir: #{length(elixir_files)}")
+    Logger.info(
+      "[ValidateEdits] Categorized - spec: #{length(spec_files)}, test: #{length(all_test_files)}, spex: #{length(spex_files)}, code: #{length(code_files)}, elixir: #{length(elixir_files)}"
+    )
 
     {:ok,
      %{
@@ -207,7 +209,10 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
   end
 
   defp build_scope_from_working_dir(nil) do
-    Logger.warning("[ValidateEdits] No scope or working_dir provided, static analysis will be skipped")
+    Logger.warning(
+      "[ValidateEdits] No scope or working_dir provided, static analysis will be skipped"
+    )
+
     {:ok, nil}
   end
 
@@ -217,7 +222,10 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
         {:ok, scope}
 
       {:error, _} ->
-        Logger.warning("[ValidateEdits] Could not build scope from #{working_dir}, skipping static analysis")
+        Logger.warning(
+          "[ValidateEdits] Could not build scope from #{working_dir}, skipping static analysis"
+        )
+
         {:ok, nil}
     end
   end

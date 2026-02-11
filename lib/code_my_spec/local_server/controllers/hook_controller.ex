@@ -5,7 +5,8 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
   require Logger
 
-  alias CodeMySpec.AgentTasks.{EvaluateAgentTask, TrackEdits, ValidateEdits}
+  alias CodeMySpec.AgentTasks.TrackEdits
+  alias CodeMySpec.Validation
 
   @doc """
   Process a hook event.
@@ -22,7 +23,6 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
     event_name = Map.get(body, "hook_event_name", "unknown")
     session_id = Map.get(body, "session_id")
     agent_id = Map.get(body, "agent_id")
-    cwd = Map.get(body, "cwd") || conn.assigns[:working_dir]
 
     # Generate a request ID to correlate logs across the full hook lifecycle
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
@@ -31,7 +31,7 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
       "[HookController] [#{req_id}] Event: #{event_name}, session: #{session_id}, agent: #{agent_id || "none"}, pid: #{inspect(self())}"
     )
 
-    result = dispatch(scope, event_name, session_id, cwd, body, req_id)
+    result = dispatch(scope, event_name, session_id, body, req_id)
 
     Logger.info("[HookController] [#{req_id}] Completed: #{inspect(Map.keys(result))}")
 
@@ -40,20 +40,27 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
     |> Plug.Conn.send_resp(200, Jason.encode!(result))
   end
 
-  defp dispatch(scope, "Stop", session_id, cwd, _hook_input, req_id) do
+  defp dispatch(scope, "Stop", session_id, hook_input, req_id) do
+    transcript_path = Map.get(hook_input, "transcript_path")
+    stop_hook_active = Map.get(hook_input, "stop_hook_active", false)
+
     Logger.info("[HookController] [#{req_id}] Dispatching Stop handler")
 
-    # Always run ValidateEdits
-    validate_result = dispatch_validate_edits(session_id, cwd, req_id)
+    if stop_hook_active do
+      Logger.info("[HookController] [#{req_id}] Stop hook already active, allowing stop")
+      %{}
+    else
+      result =
+        Validation.validate_stop(scope,
+          transcript_path: transcript_path,
+          session_id: session_id
+        )
 
-    # Evaluate the session stack
-    eval_result = EvaluateAgentTask.run(scope)
-
-    # Merge all results
-    merge_hook_results(validate_result, eval_result)
+      Validation.format_output(result)
+    end
   end
 
-  defp dispatch(_scope, "SubagentStop", session_id, cwd, hook_input, req_id) do
+  defp dispatch(scope, "SubagentStop", _session_id, hook_input, req_id) do
     agent_id = Map.get(hook_input, "agent_id")
     agent_transcript_path = Map.get(hook_input, "agent_transcript_path")
 
@@ -61,67 +68,17 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
       "[HookController] [#{req_id}] Dispatching SubagentStop handler, agent_id: #{agent_id || "none"}"
     )
 
-    # Extract edited files directly from the subagent's transcript
-    files =
-      if agent_transcript_path do
-        case TrackEdits.extract_files_from_transcript(agent_transcript_path) do
-          {:ok, paths} -> paths
-          {:error, _} -> []
-        end
-      else
-        []
-      end
+    result = Validation.validate_subagent(scope, transcript_path: agent_transcript_path)
 
-    dispatch_validate_edits(session_id, cwd, req_id, agent_id: agent_id, files: files)
+    Validation.format_output(result)
   end
 
-  defp dispatch(_scope, "PostToolUse", _session_id, _cwd, hook_input, _req_id) do
+  defp dispatch(_scope, "PostToolUse", _session_id, hook_input, _req_id) do
     TrackEdits.run(hook_input)
   end
 
-  defp dispatch(_scope, event_name, _session_id, _cwd, _hook_input, req_id) do
+  defp dispatch(_scope, event_name, _session_id, _hook_input, req_id) do
     Logger.warning("[HookController] [#{req_id}] Unhandled hook event: #{event_name}")
     %{}
-  end
-
-  defp dispatch_validate_edits(session_id, cwd, req_id, extra_opts \\ [])
-
-  defp dispatch_validate_edits(nil, _cwd, req_id, _extra_opts) do
-    Logger.warning("[HookController] [#{req_id}] No session_id, skipping validation")
-    %{}
-  end
-
-  defp dispatch_validate_edits(session_id, cwd, req_id, extra_opts) do
-    opts = if cwd, do: [working_dir: cwd], else: []
-    opts = opts ++ extra_opts
-
-    Logger.info(
-      "[HookController] [#{req_id}] Starting ValidateEdits.run, session: #{session_id}, opts: #{inspect(Keyword.keys(opts))}"
-    )
-
-    result = ValidateEdits.run(session_id, opts)
-
-    Logger.info("[HookController] [#{req_id}] ValidateEdits completed: #{elem(result, 0)}")
-
-    ValidateEdits.format_output(result)
-  end
-
-  defp merge_hook_results(result1, result2) do
-    case {result1["decision"], result2["decision"]} do
-      {"block", "block"} ->
-        %{
-          "decision" => "block",
-          "reason" => "#{result1["reason"]}\n\n#{result2["reason"]}"
-        }
-
-      {"block", _} ->
-        result1
-
-      {_, "block"} ->
-        result2
-
-      _ ->
-        Map.merge(result1, result2)
-    end
   end
 end

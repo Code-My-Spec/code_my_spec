@@ -1,12 +1,21 @@
 defmodule CodeMySpec.Requirements.TestStatusChecker do
+  @moduledoc """
+  Checks whether a component's tests are passing by querying persisted Problems.
+
+  Looks for test-source problems associated with the component's test file.
+  No problems means tests are passing; problems mean tests are failing.
+  """
+
   @behaviour CodeMySpec.Requirements.CheckerBehaviour
 
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   def check(
-        %Scope{},
+        %Scope{} = scope,
         %RequirementDefinition{
           name: name,
           artifact_type: artifact_type,
@@ -14,30 +23,23 @@ defmodule CodeMySpec.Requirements.TestStatusChecker do
           checker: checker,
           satisfied_by: satisfied_by
         } = _requirement_definition,
-        %Component{component_status: component_status},
+        %Component{} = component,
         _opts \\ []
       ) do
+    %{test_file: test_file_path} = Utils.component_files(component, scope.active_project)
+
+    test_problems =
+      Problems.list_project_problems(scope, source_type: :test, file_path: test_file_path)
+
     {satisfied, details} =
-      case {String.to_existing_atom(name), component_status} do
-        {:tests_passing, %{test_exists: false}} ->
-          {false, %{reason: "No test file exists"}}
-
-        {:tests_passing, %{test_status: :passing}} ->
-          {true, %{status: "Tests are passing"}}
-
-        {:tests_passing, %{test_status: :failing}} ->
-          {false, %{reason: "Tests are failing"}}
-
-        {:tests_passing, %{test_status: :not_run}} ->
-          {false, %{reason: "Tests have not been run"}}
-
-        # Handle case where component_status is nil (shouldn't happen but defensive)
-        {_, nil} ->
-          {false, %{reason: "Component status not available"}}
-
-        # Handle case where component_status doesn't match expected structure
-        {_, _} ->
-          {false, %{reason: "Invalid component status structure"}}
+      if Enum.empty?(test_problems) do
+        {true, %{status: "No test problems found"}}
+      else
+        {false,
+         %{
+           reason: "Test failures found",
+           problem_count: length(test_problems)
+         }}
       end
 
     %{
