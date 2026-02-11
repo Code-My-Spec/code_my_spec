@@ -1,0 +1,202 @@
+defmodule CodeMySpec.AgentTasks.LiveViewSpec do
+  @moduledoc """
+  Agent task that generates a LiveView specification.
+
+  Like ComponentSpec but for UI components — produces specs following the UI spec format:
+  route, params, child components, user interactions, dependencies, and a structural
+  Design section describing layout structure, DaisyUI component choices, and responsive
+  behavior in prose.
+
+  Two main functions:
+  - `command/3` - Generates the spec-writing prompt including UI format guidance
+  - `evaluate/3` - Validates the spec via specification requirements
+  """
+
+  require Logger
+
+  alias CodeMySpec.AgentTasks.TaskMarker
+  alias CodeMySpec.Components
+  alias CodeMySpec.Components.Component
+  alias CodeMySpec.Components.{ComponentRepository, Registry}
+  alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementsFormatter
+  alias CodeMySpec.Rules
+  alias CodeMySpec.Utils
+
+  @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def command(scope, session, _opts \\ []) do
+    %{component: component} = session
+
+    with {:ok, rules} <- get_design_rules(component),
+         {:ok, prompt} <- build_spec_prompt(scope, session, rules) do
+      {:ok, TaskMarker.build("LiveViewSpec", component.module_name) <> "\n\n" <> prompt}
+    end
+  end
+
+  @spec evaluate(term(), map(), keyword()) ::
+          {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
+  def evaluate(scope, session, _opts \\ []) do
+    %{component: component} = session
+    component = ComponentRepository.get_component(scope, component.id)
+
+    spec_reqs = check_artifact_requirements(scope, component, :specification)
+    satisfied_count = Enum.count(spec_reqs, & &1.satisfied)
+    total = length(spec_reqs)
+    unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
+
+    Logger.info(
+      "[LiveViewSpec] evaluate #{component.module_name}: #{satisfied_count}/#{total} specification requirements pass"
+    )
+
+    if Enum.empty?(unsatisfied) do
+      {:ok, :valid}
+    else
+      feedback =
+        RequirementsFormatter.format_unsatisfied(unsatisfied,
+          context: "Spec requirements not met:"
+        )
+
+      {:ok, :invalid, feedback}
+    end
+  end
+
+  defp check_artifact_requirements(scope, component, artifact_type) do
+    requirements = component.requirements || []
+
+    case Requirements.check_requirements(scope, component, requirements,
+           artifact_types: [artifact_type]
+         ) do
+      [] ->
+        # No persisted requirements — fall back to Registry definitions
+        Registry.get_requirements_for_type(component.type)
+        |> Enum.filter(&(&1.artifact_type == artifact_type))
+        |> then(&Requirements.check_requirements(scope, component, &1, []))
+
+      results ->
+        results
+    end
+  end
+
+  # Private functions
+
+  defp get_design_rules(%{type: nil}), do: {:error, :invalid_component_type}
+  defp get_design_rules(%{type: ""}), do: {:error, :invalid_component_type}
+
+  defp get_design_rules(component) do
+    Rules.find_matching_rules(component.type, "design")
+    |> case do
+      rules when is_list(rules) -> {:ok, rules}
+    end
+  end
+
+  defp build_spec_prompt(scope, session, rules) do
+    %{project: project, component: component} = session
+    rules_text = Enum.map_join(rules, "\n\n", & &1.content)
+    document_spec = DocumentSpecProjector.project_spec(component.type)
+    %{spec_file: spec_file_path} = Utils.component_files(component, project)
+
+    parent_component_clause =
+      case Map.get(component, :parent_component, nil) do
+        %Component{} = parent_component ->
+          %{spec_file: parent_spec_file_path} =
+            Utils.component_files(parent_component, project)
+
+          "Parent Component Spec: #{parent_spec_file_path}"
+
+        _ ->
+          ""
+      end
+
+    environment = scope.environment
+
+    %{code_file: code_file, test_file: test_file} =
+      Utils.component_files(component, project)
+
+    existing_implementation_clause =
+      if Environments.file_exists?(environment, code_file) do
+        "Existing Implementation: #{code_file}"
+      else
+        "The implementation doesn't exist yet."
+      end
+
+    existing_test_clause =
+      if Environments.file_exists?(environment, test_file) do
+        "Existing tests: #{test_file}"
+      else
+        "The tests don't exist yet."
+      end
+
+    similar_components_clause = build_similar_components_clause(scope, component)
+
+    prompt =
+      """
+      Generate a LiveView spec for the following.
+      Project: #{project.name}
+      Project Description: #{project.description}
+      Component Name: #{component.name}
+      Component Description: #{component.description || "No description provided"}
+      Type: #{component.type}
+      #{parent_component_clause}
+      #{existing_implementation_clause}
+      #{existing_test_clause}
+      #{similar_components_clause}
+
+      Design Rules:
+      #{rules_text}
+
+      Document Specifications:
+      #{document_spec}
+
+      ## UI Spec Format
+
+      The spec should follow the LiveView UI spec format with these sections:
+
+      ### Route
+      Define the URL path pattern (e.g., `/accounts/:id/manage`).
+
+      ### Params
+      Document URL parameters and their types.
+
+      ### Child Components
+      List child LiveView components referenced by this view.
+
+      ### User Interactions
+      Map each user action to its behavior and context calls:
+      - Event name → What happens + which context function is called
+
+      ### Dependencies
+      List context module dependencies.
+
+      ### Design
+      Describe the layout structure, DaisyUI component choices, and responsive behavior
+      in prose. This is a structural description, not renderable HTML. Example:
+
+      ```
+      Layout: sidebar navigation + main content area
+      Navigation: AccountLive.Components.Navigation with active tab
+      Main content:
+        - Card: Account settings form (name, description fields)
+        - Card.danger: Delete account section (owners only, with confirmation)
+      Components: .card, .form-control, .btn-primary, .btn-error
+      Responsive: Stack cards vertically on mobile
+      ```
+
+      Write the document to #{spec_file_path}.
+      """
+
+    {:ok, prompt}
+  end
+
+  defp build_similar_components_clause(scope, component) do
+    case Components.list_similar_components(scope, component) do
+      [] ->
+        ""
+
+      similar_components ->
+        names = Enum.map_join(similar_components, ", ", & &1.name)
+        "Similar Components (for pattern inspiration): #{names}"
+    end
+  end
+end

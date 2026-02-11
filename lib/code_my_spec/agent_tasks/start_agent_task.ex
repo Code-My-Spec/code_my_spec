@@ -40,7 +40,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "architecture_review" => AgentTasks.ArchitectureReview,
     "write_bdd_specs" => AgentTasks.WriteBddSpecs,
     "manage_implementation" => AgentTasks.ManageImplementation,
-    "design_ui" => AgentTasks.DesignUi
+    "design_ui" => AgentTasks.DesignUi,
+    "liveview_spec" => AgentTasks.LiveViewSpec
   }
 
   # Tasks that don't require a component/module_name
@@ -126,7 +127,11 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     {:error, "Session type is required. Valid types: #{Enum.join(@valid_types, ", ")}"}
   end
 
-  # Auto-detect context vs component spec based on module structure
+  # Auto-detect context vs component vs liveview spec based on component type
+  defp resolve_session_type("spec", %{type: type}) when type in ["liveview", "liveview_component"] do
+    {:ok, AgentTasks.LiveViewSpec}
+  end
+
   defp resolve_session_type("spec", component) do
     if Components.context?(component) do
       {:ok, AgentTasks.ContextSpec}
