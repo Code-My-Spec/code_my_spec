@@ -75,6 +75,9 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
       # Clone from pool
       {:ok, project_dir} = TestAdapter.clone(scope, @test_repo_url)
 
+      # Point environment cwd at the cloned repo so checkers can find files
+      scope = put_in(scope.environment.cwd, project_dir)
+
       on_exit(fn ->
         TestAdapter.checkin(project_dir)
       end)
