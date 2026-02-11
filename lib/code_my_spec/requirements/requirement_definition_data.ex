@@ -6,6 +6,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   """
 
   alias CodeMySpec.Requirements.ContextReviewFileChecker
+  alias CodeMySpec.Requirements.ContextReviewValidityChecker
   alias CodeMySpec.Requirements.DependencyChecker
   alias CodeMySpec.Requirements.DocumentValidityChecker
   alias CodeMySpec.Requirements.FileExistenceChecker
@@ -149,6 +150,20 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ContextDesignReview,
         artifact_type: :review,
         description: "Context design review file exists"
+      })
+
+    definition
+  end
+
+  @spec review_valid() :: RequirementDefinition.t()
+  def review_valid do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "review_valid",
+        checker: ContextReviewValidityChecker,
+        satisfied_by: CodeMySpec.AgentTasks.ContextDesignReview,
+        artifact_type: :review,
+        description: "Context design review is valid"
       })
 
     definition

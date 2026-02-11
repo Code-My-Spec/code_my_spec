@@ -1,4 +1,6 @@
 defmodule CodeMySpec.Requirements.CheckerType do
+  @moduledoc false
+
   use CodeMySpec.Utils.ModuleType,
     valid_types: [
       CodeMySpec.Requirements.FileExistenceChecker,
@@ -7,6 +9,7 @@ defmodule CodeMySpec.Requirements.CheckerType do
       CodeMySpec.Requirements.DependencyChecker,
       CodeMySpec.Requirements.HierarchicalChecker,
       CodeMySpec.Requirements.ContextReviewFileChecker,
+      CodeMySpec.Requirements.ContextReviewValidityChecker,
       CodeMySpec.Requirements.SpecTestAlignmentChecker
     ]
 end

@@ -118,7 +118,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
           orchestration_path = "#{status_dir}/develop_context.md"
           CodeMySpec.Environments.write_file(scope.environment, orchestration_path, orchestration_content)
 
-          feedback = build_feedback(incomplete, status_dir)
+          feedback = build_feedback(context_component, incomplete, status_dir)
           {:ok, :invalid, feedback}
       end
     end
@@ -564,32 +564,24 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   defp resolve_dir(status_dir, nil), do: status_dir
   defp resolve_dir(status_dir, working_dir), do: Path.join(working_dir, status_dir)
 
-  defp build_feedback(incomplete_phases, status_dir) do
+  defp build_feedback(context_component, incomplete_phases, status_dir) do
     phases_text =
-      Enum.map_join(incomplete_phases, "\n\n", fn {phase, status} ->
+      Enum.map_join(incomplete_phases, "\n", fn {phase, status} ->
         case status do
           {:missing, components} ->
-            component_list = Enum.map_join(components, "\n  ", & &1.name)
-            "**#{format_phase_name(phase)}**: Missing for:\n  #{component_list}"
+            names = Enum.map_join(components, ", ", & &1.name)
+            "- #{format_phase_name(phase)}: #{names}"
 
           _ ->
-            "**#{format_phase_name(phase)}**: Incomplete"
+            "- #{format_phase_name(phase)}: incomplete"
         end
       end)
 
     """
-    The following lifecycle phases are incomplete:
-
+    Context "#{context_component.name}" (#{context_component.module_name}) has incomplete phases:
     #{phases_text}
 
-    Re-read `#{status_dir}/develop_context.md` for updated instructions.
-
-    Prompt files are located in:
-    #{status_dir}/
-
-    - For spec prompts: invoke `@"CodeMySpec:spec-writer (agent)"`
-    - For test prompts: invoke `@"CodeMySpec:test-writer (agent)"`
-    - For code prompts: invoke `@"CodeMySpec:code-writer (agent)"`
+    Instructions: `#{status_dir}/develop_context.md`
     """
   end
 end

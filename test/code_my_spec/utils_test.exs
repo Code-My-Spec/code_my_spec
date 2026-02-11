@@ -1,9 +1,9 @@
 defmodule CodeMySpec.UtilsTest do
   use CodeMySpec.DataCase, async: true
 
-  alias CodeMySpec.Utils
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Utils
 
   describe "component_files/2" do
     setup do
@@ -62,7 +62,7 @@ defmodule CodeMySpec.UtilsTest do
 
       files = Utils.component_files(component, project)
 
-      assert files.review_file == "docs/design/code_my_spec/documents/design_review.md"
+      assert files.review_file == "docs/spec/code_my_spec/documents/design_review.md"
     end
 
     test "includes review_file for coordination_context types", %{project: project} do
@@ -76,7 +76,7 @@ defmodule CodeMySpec.UtilsTest do
 
       files = Utils.component_files(component, project)
 
-      assert files.review_file == "docs/design/code_my_spec/sessions/design_review.md"
+      assert files.review_file == "docs/spec/code_my_spec/sessions/design_review.md"
     end
   end
 

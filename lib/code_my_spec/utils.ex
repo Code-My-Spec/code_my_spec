@@ -1,4 +1,6 @@
 defmodule CodeMySpec.Utils do
+  @moduledoc false
+
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Utils.Paths
@@ -22,7 +24,7 @@ defmodule CodeMySpec.Utils do
 
     # Add review_file for context components (both :context and :coordination_context)
     if type in ["context", "coordination_context"] do
-      Map.put(base_files, :review_file, "docs/design/#{module_path}/design_review.md")
+      Map.put(base_files, :review_file, "docs/spec/#{module_path}/design_review.md")
     else
       base_files
     end
@@ -46,8 +48,7 @@ defmodule CodeMySpec.Utils do
       end)
     end)
     |> flatten_errors()
-    |> Enum.map(fn {field, message} -> "#{field}: #{message}" end)
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", fn {field, message} -> "#{field}: #{message}" end)
   end
 
   defp safe_to_string(_key, value, _opts) do
@@ -60,8 +61,7 @@ defmodule CodeMySpec.Utils do
         {:parameterized, {Ecto.Enum, %{mappings: mappings}}} when is_list(mappings) ->
           mappings
           |> Keyword.values()
-          |> Enum.map(&to_string/1)
-          |> Enum.join(", ")
+          |> Enum.map_join(", ", &to_string/1)
 
         _ ->
           inspect(value)
@@ -71,27 +71,27 @@ defmodule CodeMySpec.Utils do
   defp flatten_errors(errors, prefix \\ nil) do
     Enum.flat_map(errors, fn {field, value} ->
       field_name = if prefix, do: "#{prefix}.#{field}", else: field
-
-      cond do
-        is_list(value) and Enum.all?(value, &is_map/1) ->
-          # embeds_many: list of maps with errors
-          value
-          |> Enum.with_index()
-          |> Enum.flat_map(fn {item_errors, index} ->
-            flatten_errors(item_errors, "#{field_name}[#{index}]")
-          end)
-
-        is_list(value) ->
-          # list of error messages
-          Enum.map(value, fn msg -> {field_name, msg} end)
-
-        is_map(value) ->
-          # nested map of errors
-          flatten_errors(value, field_name)
-
-        true ->
-          [{field_name, value}]
-      end
+      flatten_error_value(field_name, value)
     end)
+  end
+
+  defp flatten_error_value(field_name, value) when is_list(value) do
+    if Enum.all?(value, &is_map/1) do
+      value
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {item_errors, index} ->
+        flatten_errors(item_errors, "#{field_name}[#{index}]")
+      end)
+    else
+      Enum.map(value, fn msg -> {field_name, msg} end)
+    end
+  end
+
+  defp flatten_error_value(field_name, value) when is_map(value) do
+    flatten_errors(value, field_name)
+  end
+
+  defp flatten_error_value(field_name, value) do
+    [{field_name, value}]
   end
 end

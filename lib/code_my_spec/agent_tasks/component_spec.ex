@@ -7,9 +7,17 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   - `evaluate/3` - Called by stop hook to validate output and provide feedback
   """
 
+  require Logger
+
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.{Documents, Documents.DocumentSpecProjector, Environments, Rules, Utils}
+  alias CodeMySpec.Components.{ComponentRepository, Registry}
+  alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementsFormatter
+  alias CodeMySpec.Rules
+  alias CodeMySpec.Utils
 
   @doc """
   Generate the command/prompt for Claude to create a component spec.
@@ -46,13 +54,44 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   - {:error, reason} if something went wrong
   """
   def evaluate(scope, session, _opts \\ []) do
-    with {:ok, spec_content} <- read_spec_file(scope, session),
-         {:ok, _document} <- validate_document(spec_content, session.component) do
+    %{component: component} = session
+    component = ComponentRepository.get_component(scope, component.id)
+
+    spec_reqs = check_artifact_requirements(scope, component, :specification)
+    satisfied_count = Enum.count(spec_reqs, & &1.satisfied)
+    total = length(spec_reqs)
+    unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
+
+    Logger.info(
+      "[ComponentSpec] evaluate #{component.module_name}: #{satisfied_count}/#{total} specification requirements pass"
+    )
+
+    if Enum.empty?(unsatisfied) do
       {:ok, :valid}
     else
-      {:error, validation_errors} when is_binary(validation_errors) ->
-        # Spec exists but is invalid - return errors for Claude to fix
-        {:ok, :invalid, build_revision_feedback(validation_errors)}
+      feedback =
+        RequirementsFormatter.format_unsatisfied(unsatisfied,
+          context: "Spec requirements not met:"
+        )
+
+      {:ok, :invalid, feedback}
+    end
+  end
+
+  defp check_artifact_requirements(scope, component, artifact_type) do
+    requirements = component.requirements || []
+
+    case Requirements.check_requirements(scope, component, requirements,
+           artifact_types: [artifact_type]
+         ) do
+      [] ->
+        # No persisted requirements — fall back to Registry definitions
+        Registry.get_requirements_for_type(component.type)
+        |> Enum.filter(&(&1.artifact_type == artifact_type))
+        |> then(&Requirements.check_requirements(scope, component, &1, []))
+
+      results ->
+        results
     end
   end
 
@@ -128,39 +167,4 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     {:ok, prompt}
   end
 
-  defp read_spec_file(scope, session) do
-    %{spec_file: path} = Utils.component_files(session.component, session.project)
-
-    environment = scope.environment
-
-    case Environments.read_file(environment, path) do
-      {:ok, content} ->
-        if String.trim(content) == "" do
-          {:error, "Spec file is empty"}
-        else
-          {:ok, content}
-        end
-
-      {:error, :enoent} ->
-        {:error, "Spec file not found at #{path}"}
-
-      {:error, error} ->
-        {:error, "Failed to read file #{path}: #{inspect(error)}"}
-    end
-  end
-
-  defp validate_document(spec_content, component) do
-    Documents.create_dynamic_document(spec_content, component.type)
-  end
-
-  defp build_revision_feedback(validation_errors) do
-    """
-    The component design failed validation:
-
-    Validation errors:
-    #{validation_errors}
-
-    Please revise the component design to address these validation errors while maintaining the overall structure and intent of the design.
-    """
-  end
 end

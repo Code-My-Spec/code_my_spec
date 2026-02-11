@@ -7,8 +7,16 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   - `evaluate/3` - Called by stop hook to validate the review document
   """
 
+  require Logger
+
   alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{Components, Documents, Documents.DocumentSpecProjector, Environments, Stories, Utils}
+  alias CodeMySpec.Components
+  alias CodeMySpec.Components.{ComponentRepository, Registry}
+  alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementsFormatter
+  alias CodeMySpec.Stories
+  alias CodeMySpec.Utils
 
   @doc """
   Generate the command/prompt for Claude to review a context design.
@@ -56,20 +64,47 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   - {:error, reason} if something went wrong
   """
   def evaluate(scope, session, _opts \\ []) do
-    %{component: context_component, project: project} = session
+    %{component: component} = session
+    component = ComponentRepository.get_component(scope, component.id)
 
-    with {:ok, context_spec_path} <- get_context_spec_path(context_component, project),
-         {:ok, review_file_path} <- calculate_review_file_path(context_spec_path),
-         {:ok, review_content} <- read_review_file(scope, review_file_path),
-         {:ok, _document} <- validate_document(review_content) do
+    review_reqs = check_artifact_requirements(scope, component, :review)
+    satisfied_count = Enum.count(review_reqs, & &1.satisfied)
+    total = length(review_reqs)
+    unsatisfied = Enum.filter(review_reqs, &(not &1.satisfied))
+
+    Logger.info(
+      "[ContextDesignReview] evaluate #{component.module_name}: #{satisfied_count}/#{total} review requirements pass"
+    )
+
+    if Enum.empty?(unsatisfied) do
       {:ok, :valid}
     else
-      {:error, validation_errors} when is_binary(validation_errors) ->
-        {:ok, :invalid, build_revision_feedback(validation_errors)}
+      feedback =
+        RequirementsFormatter.format_unsatisfied(unsatisfied,
+          context: "Design review requirements not met:"
+        )
+
+      {:ok, :invalid, feedback}
     end
   end
 
   # Private functions - Data extraction
+
+  defp check_artifact_requirements(scope, component, artifact_type) do
+    requirements = component.requirements || []
+
+    case Requirements.check_requirements(scope, component, requirements,
+           artifact_types: [artifact_type]
+         ) do
+      [] ->
+        Registry.get_requirements_for_type(component.type)
+        |> Enum.filter(&(&1.artifact_type == artifact_type))
+        |> then(&Requirements.check_requirements(scope, component, &1, []))
+
+      results ->
+        results
+    end
+  end
 
   defp get_context_spec_path(context_component, project) do
     %{spec_file: spec_file_path} = Utils.component_files(context_component, project)
@@ -227,39 +262,4 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
 
   defp format_project_executive_summary(_project), do: ""
 
-  # Private functions - Evaluation
-
-  defp read_review_file(scope, review_file_path) do
-    environment = scope.environment
-
-    case Environments.read_file(environment, review_file_path) do
-      {:ok, content} ->
-        if String.trim(content) == "" do
-          {:error, "Review file is empty"}
-        else
-          {:ok, content}
-        end
-
-      {:error, :enoent} ->
-        {:error, "Review file not found at #{review_file_path}"}
-
-      {:error, error} ->
-        {:error, "Failed to read file #{review_file_path}: #{inspect(error)}"}
-    end
-  end
-
-  defp validate_document(review_content) do
-    Documents.create_dynamic_document(review_content, "design_review")
-  end
-
-  defp build_revision_feedback(validation_errors) do
-    """
-    The design review document failed validation:
-
-    Validation errors:
-    #{validation_errors}
-
-    Please revise the review document to address these validation errors while maintaining the overall findings and conclusions.
-    """
-  end
 end

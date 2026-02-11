@@ -54,7 +54,13 @@ defmodule CodeMySpec.AgentTasks.ValidateEdits do
       all_problems =
         test_problems ++ credo_problems ++ sobelow_problems ++ spex_problems ++ spec_problems
 
-      Logger.info("[ValidateEdits] Total problems: #{length(all_problems)}")
+      Logger.info(
+        "[ValidateEdits] Validation complete: #{length(all_files)} files, " <>
+          "#{length(all_problems)} problems " <>
+          "(test: #{length(test_problems)}, credo: #{length(credo_problems)}, " <>
+          "sobelow: #{length(sobelow_problems)}, spex: #{length(spex_problems)}, " <>
+          "spec: #{length(spec_problems)})"
+      )
 
       if all_problems == [] do
         FileEdits.remove_edited_files(session_id, all_files, agent_id)

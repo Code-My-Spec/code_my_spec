@@ -7,8 +7,19 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - `evaluate/3` - Called by stop hook to validate output and provide feedback
   """
 
+  require Logger
+
   alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{Components, Documents, Documents.DocumentSpecProjector, Environments, Rules, Stories, Utils}
+  alias CodeMySpec.Components
+  alias CodeMySpec.Components.{ComponentRepository, Registry}
+  alias CodeMySpec.Documents
+  alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementsFormatter
+  alias CodeMySpec.Rules
+  alias CodeMySpec.Stories
+  alias CodeMySpec.Utils
 
   @doc """
   Generate the command/prompt for Claude to create a context spec.
@@ -49,18 +60,52 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - {:error, reason} if something went wrong
   """
   def evaluate(scope, session, _opts \\ []) do
-    with {:ok, spec_content} <- read_spec_file(scope, session),
-         {:ok, document} <- validate_document(spec_content),
-         {:ok, _paths} <- create_child_spec_files(scope, session, document.sections) do
-      {:ok, :valid}
+    %{component: component} = session
+    component = ComponentRepository.get_component(scope, component.id)
+
+    spec_reqs = check_artifact_requirements(scope, component, :specification)
+    satisfied_count = Enum.count(spec_reqs, & &1.satisfied)
+    total = length(spec_reqs)
+    unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
+
+    Logger.info(
+      "[ContextSpec] evaluate #{component.module_name}: #{satisfied_count}/#{total} specification requirements pass"
+    )
+
+    if unsatisfied != [] do
+      feedback =
+        RequirementsFormatter.format_unsatisfied(unsatisfied,
+          context: "Context spec requirements not met:"
+        )
+
+      {:ok, :invalid, feedback}
     else
-      {:error, validation_errors} when is_binary(validation_errors) ->
-        # Spec exists but is invalid - return errors for Claude to fix
-        {:ok, :invalid, build_revision_feedback(validation_errors)}
+      # Requirements pass — create child spec stubs (won't overwrite existing)
+      with {:ok, spec_content} <- read_spec_file(scope, session),
+           {:ok, document} <- validate_document(spec_content),
+           {:ok, _paths} <- create_child_spec_files(scope, session, document.sections) do
+        {:ok, :valid}
+      end
     end
   end
 
   # Private functions
+
+  defp check_artifact_requirements(scope, component, artifact_type) do
+    requirements = component.requirements || []
+
+    case Requirements.check_requirements(scope, component, requirements,
+           artifact_types: [artifact_type]
+         ) do
+      [] ->
+        Registry.get_requirements_for_type(component.type)
+        |> Enum.filter(&(&1.artifact_type == artifact_type))
+        |> then(&Requirements.check_requirements(scope, component, &1, []))
+
+      results ->
+        results
+    end
+  end
 
   defp get_design_rules(_scope) do
     rules = Rules.find_matching_rules("context", "design")
@@ -208,14 +253,4 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     """
   end
 
-  defp build_revision_feedback(validation_errors) do
-    """
-    The context specification failed validation:
-
-    Validation errors:
-    #{validation_errors}
-
-    Please revise the context specification to address these validation errors while maintaining the overall structure and intent of the design.
-    """
-  end
 end
