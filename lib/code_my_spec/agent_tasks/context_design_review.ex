@@ -179,26 +179,23 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
 
     ## Review Tasks
 
-    1. **Read All Spec Files**: Read the context spec and all child component specs.
+    1. **Read All Spec Files**: Read the context spec and every child component spec. Do not skip any.
 
-    2. **Validate Architecture**:
-       - Proper separation of concerns between components
-       - Appropriate use of component types (schema, repository, service, etc.)
-       - Logical dependency relationships
-       - No circular dependencies
+    2. **Cross-check types against descriptions**: For every function, verify the @spec types make sense for what the component description says it does. A module described as doing numeric operations must use numeric types, not strings.
 
-    3. **Check Integration**:
-       - Child components integrate cleanly with the context
-       - Clear public APIs and delegation points
-       - Data flow is well-defined
+    3. **Verify every function belongs**: Each function in a component must align with that component's stated purpose. Flag any function that doesn't belong (e.g. multiply/2 in an addition-only module).
 
-    4. **Verify Story Coverage**:
-       - Each user story can be satisfied by the design
-       - No gaps in acceptance criteria coverage
+    4. **Check test assertions for contradictions**: Read each function's Test Assertions list. Flag any pair of assertions that contradict each other (e.g. same input producing different expected outputs).
 
-    5. **Fix Issues**: If you find problems, update the spec files directly.
+    5. **Validate dependencies exist**: Every module listed in a Dependencies section must correspond to a real component in this architecture. Cross-reference against the context spec's Components section.
 
-    6. **Write Review**: Document your findings using the format below.
+    6. **Check context delegates match child APIs**: The context spec's Delegates section should reference functions that actually exist in child component specs.
+
+    7. **Verify story coverage**: Each user story's acceptance criteria should map to at least one function across the specs.
+
+    8. **Fix Issues**: If you find ANY problems in steps 2-6, you MUST update the spec files directly before writing the review. Do not write a passing review with known issues.
+
+    9. **Write Review**: Document your findings using the format below. The Issues section is REQUIRED if you fixed anything.
 
     ## Review Document Format
     #{document_spec}
