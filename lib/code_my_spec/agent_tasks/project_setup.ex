@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   alias CodeMySpec.Environments.Environment
 
-  @required_deps [:credo, :client_utils, :mix_machine, :sobelow, :sexy_spex]
+  @required_deps [:credo, :client_utils, :sobelow, :sexy_spex]
   @min_elixir_version {1, 18, 0}
 
   @doc """
@@ -468,8 +468,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Add these dependencies to your `mix.exs` file in the `deps/0` function. Look up the latest versions on hex.pm for each package:
 
     - `:credo` - static code analysis
-    - `:client_utils` - CodeMySpec client utilities
-    - `:mix_machine` - mix task utilities (use git: "https://github.com/johns10/mix_machine")
+    - `:client_utils` - CodeMySpec client utilities (includes diagnostics and spex compilers)
     - `:sobelow` - security-focused static analysis
     - `:sexy_spex` - BDD specification testing
 
@@ -477,6 +476,24 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ```bash
     mix deps.get
     ```
+
+    Also add the diagnostics compilers to your `mix.exs` project config.
+    Note: `:spex` must come between `:elixir` and `:app` so that Boundary
+    can trace cross-module calls in spex files before its analysis runs:
+
+    ```elixir
+    def project do
+      [
+        compilers: [:boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app, :diagnostics],
+        spex: [pattern: "test/spex/**/*_spex.exs"],
+        ...
+      ]
+    end
+    ```
+
+    The `:spex` compiler compiles your BDD spec `.exs` files and catches boundary
+    violations. The `:diagnostics` compiler runs last and writes all diagnostics
+    from every compiler to a `diagnostics.jsonl` file.
     """
   end
 
