@@ -269,7 +269,8 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       assert File.exists?(prompt_path)
     end
 
-    test "generates test prompts only when design review is complete", %{tmp_dir: tmp_dir} do
+    test "generates implementation prompts (test+code per component) when design review is complete",
+         %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       {context, children} = create_context_with_children(scope)
 
@@ -281,41 +282,13 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
 
       create_design_review_file!(tmp_dir, context, scope.active_project)
 
+      # Create unsatisfied test AND code requirements for all components
       for component <- [context | children] do
         requirement_fixture(scope, component, %{
           name: "tests_requirement",
           artifact_type: :tests,
           satisfied: false
         })
-      end
-
-      context = Components.get_component(scope, context.id)
-      session = create_session(scope, context)
-
-      assert {:ok, _message} = DevelopContext.command(scope, session)
-      content = read_orchestration_file(tmp_dir, context.module_name)
-      assert content =~ "Tests"
-
-      status_dir = context_status_dir(context.module_name)
-      safe_name = context.module_name |> String.replace(".", "_") |> String.downcase()
-      prompt_path = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_test.md")
-      assert File.exists?(prompt_path)
-    end
-
-    test "generates code prompts only when tests are complete", %{tmp_dir: tmp_dir} do
-      scope = create_scope_with_env(tmp_dir)
-      {context, children} = create_context_with_children(scope)
-
-      create_spec_file!(tmp_dir, context, scope.active_project)
-
-      for child <- children do
-        create_spec_file!(tmp_dir, child, scope.active_project)
-      end
-
-      create_design_review_file!(tmp_dir, context, scope.active_project)
-
-      for component <- [context | children] do
-        create_satisfied_requirements!(scope, component, :tests)
 
         requirement_fixture(scope, component, %{
           name: "code_requirement",
@@ -332,9 +305,22 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       assert content =~ "Implementation"
 
       status_dir = context_status_dir(context.module_name)
-      safe_name = context.module_name |> String.replace(".", "_") |> String.downcase()
-      prompt_path = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_code.md")
-      assert File.exists?(prompt_path)
+
+      # Verify both _test.md and _code.md prompt files generated per component
+      for component <- [context | children] do
+        safe_name = component.module_name |> String.replace(".", "_") |> String.downcase()
+
+        test_path = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_test.md")
+        assert File.exists?(test_path), "Expected test prompt for #{component.name}"
+
+        code_path = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_code.md")
+        assert File.exists?(code_path), "Expected code prompt for #{component.name}"
+      end
+
+      # Verify orchestration content mentions dependency order and component grouping
+      assert content =~ "dependency order"
+      assert content =~ "Schemas"
+      assert content =~ "Repositories"
     end
 
     test "writes prompt files to docs/status/ directory structure", %{tmp_dir: tmp_dir} do
@@ -416,20 +402,19 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
 
       assert {:ok, :invalid, feedback} = DevelopContext.evaluate(scope, session)
       assert feedback =~ "Context Specification"
-      assert feedback =~ "Missing for"
+      assert feedback =~ "incomplete phases"
       assert feedback =~ context.name
     end
 
-    test "feedback includes status directory path and subagent instructions", %{tmp_dir: tmp_dir} do
+    test "feedback includes context name and status directory path", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       {context, _children} = create_context_with_children(scope)
       session = create_session(scope, context)
 
       assert {:ok, :invalid, feedback} = DevelopContext.evaluate(scope, session)
+      assert feedback =~ context.name
+      assert feedback =~ context.module_name
       assert feedback =~ context_status_dir(context.module_name)
-      assert feedback =~ "spec-writer"
-      assert feedback =~ "test-writer"
-      assert feedback =~ "code-writer"
     end
 
     test "cleans up prompt files for completed phases", %{tmp_dir: tmp_dir} do
@@ -490,7 +475,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
 
       create_design_review_file!(tmp_dir, context, scope.active_project)
 
-      # Create unsatisfied test requirements (phase 4 needed)
+      # Create unsatisfied test requirements (implementation phase needed)
       for component <- [context | children] do
         requirement_fixture(scope, component, %{
           name: "tests_requirement",
@@ -502,30 +487,33 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       context = Components.get_component(scope, context.id)
       session = create_session(scope, context)
 
-      # Initial command generates test prompts
-      assert {:ok, _message} = DevelopContext.command(scope, session)
+      # Initial command generates implementation prompts
+      assert {:ok, message} = DevelopContext.command(scope, session)
 
-      # Now call evaluate - it should regenerate prompts for the tests phase
+      # Now call evaluate - it should regenerate prompts for the implementation phase
       assert {:ok, :invalid, feedback} = DevelopContext.evaluate(scope, session)
 
       # Verify test prompt files are generated
       status_dir = context_status_dir(context.module_name)
       safe_name = context.module_name |> String.replace(".", "_") |> String.downcase()
       test_prompt_path = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_test.md")
-      assert File.exists?(test_prompt_path), "Test prompt file should be generated for next phase"
 
-      # Verify orchestration file is updated to show "Tests" as current phase
+      assert File.exists?(test_prompt_path),
+             "Test prompt file should be generated for implementation phase"
+
+      # Verify orchestration file is updated to show "Implementation" as current phase
       orchestration_content = read_orchestration_file(tmp_dir, context.module_name)
-      assert orchestration_content =~ "Current Phase: Tests"
+      assert orchestration_content =~ "Current Phase: Implementation"
 
       # Verify old design review prompt files are cleaned up
       design_review_prompt = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_design_review.md")
+
       refute File.exists?(design_review_prompt),
              "Design review prompt should be cleaned up after phase completes"
 
       # Verify feedback references status directory
       assert feedback =~ "develop_context.md"
-      assert feedback =~ "Re-read"
+      assert feedback =~ "incomplete phases"
     end
 
     test "removes status directory when all phases complete", %{tmp_dir: tmp_dir} do
