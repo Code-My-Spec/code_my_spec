@@ -400,6 +400,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
      Invoke the appropriate subagent for each prompt file:
 
      - For spec prompts: `@"CodeMySpec:spec-writer (agent)"`
+     - For design review prompts: `@"CodeMySpec:spec-writer (agent)"`
      - For test prompts: `@"CodeMySpec:test-writer (agent)"`
      - For code prompts: `@"CodeMySpec:code-writer (agent)"`
 
