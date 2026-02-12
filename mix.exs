@@ -73,7 +73,7 @@ defmodule CodeMySpec.MixProject do
       {:ngrok, git: "https://github.com/johns10/ex_ngrok", branch: "main", only: [:dev]},
       {:mix_machine, git: "https://github.com/johns10/mix_machine", branch: "master"},
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
-      {:client_utils, "~> 0.1.7"},
+      {:client_utils, "~> 0.1.8"},
       {:credo, "~> 1.7.13"},
 
       # Normal deps
