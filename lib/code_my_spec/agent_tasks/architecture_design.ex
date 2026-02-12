@@ -10,10 +10,11 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - `evaluate/3` - Called by stop hook (currently auto-approves)
   """
 
-  alias CodeMySpec.{Components, Stories, Architecture}
+  alias CodeMySpec.{Architecture, Components, Stories}
   alias CodeMySpec.Architecture.Proposal
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
 
   @proposal_path "docs/architecture/proposal.md"
 
@@ -25,9 +26,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - Unsatisfied user stories
   - Component counts by type
   - References to architecture view files
-
-  For greenfield projects (0 components), uses a specialized workflow
-  with story analysis and proposal tools.
 
   Returns {:ok, prompt_text}
   """
@@ -48,12 +46,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     Architecture.generate_views(scope, output_dir: output_dir)
 
-    prompt =
-      if component_count == 0 do
-        build_greenfield_prompt(project, stories, output_dir)
-      else
-        build_design_prompt(project, stories, component_count, output_dir)
-      end
+    prompt = build_prompt(project, stories, component_count, output_dir)
 
     {:ok, prompt}
   end
@@ -71,7 +64,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     project = Map.get(session, :project)
     app_name = get_app_name(project)
 
-    env = scope.environment || CodeMySpec.Environments.Environment.new(:cli, working_dir)
+    env = scope.environment || Environment.new(:cli, working_dir)
 
     with {:ok, content} <- read_proposal(env),
          {:ok, proposal} <- Proposal.from_markdown(content, app_name: app_name),
@@ -127,11 +120,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   defp format_validation_errors(errors) do
     error_list =
       errors
-      |> Enum.map(fn err ->
+      |> Enum.map_join("\n", fn err ->
         details = if err.details, do: "\n  Details: #{inspect(err.details)}", else: ""
         "- #{err.message}#{details}"
       end)
-      |> Enum.join("\n")
 
     """
     Proposal validation failed:
@@ -144,17 +136,36 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   # Private functions
 
-  defp build_greenfield_prompt(project, stories, _output_dir) do
+  defp build_prompt(project, stories, component_count, output_dir) do
     stories_section = format_stories(stories)
     app_name = derive_app_name(project.name)
     document_spec = DocumentSpecProjector.project_spec("architecture_proposal")
-    proposal_path = "docs/architecture/proposal.md"
+
+    architecture_section =
+      if component_count > 0 do
+        """
+        ## Current Architecture
+
+        The project has #{component_count} existing components. Review the architecture views for details:
+
+        - **Overview:** #{Path.join(output_dir, "overview.md")}
+        - **Dependency Graph:** #{Path.join(output_dir, "dependency_graph.mmd")}
+        - **Namespace Hierarchy:** #{Path.join(output_dir, "namespace_hierarchy.md")}
+
+        Use the architecture tools to browse existing components:
+        - `list_specs` or `list_spec_names` - Browse existing components
+        - `get_spec` - Read component specifications
+        - `get_component_view` - See a component's dependency tree
+        - `validate_dependency_graph` - Check for circular dependencies
+        """
+      else
+        ""
+      end
 
     """
-    # Greenfield Architecture Design Session
+    # Architecture Design Session
 
     You are beginning an architecture design session for the **#{project.name}** project.
-    This is a **greenfield project** with no existing components.
 
     ## Project Overview
 
@@ -162,7 +173,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     **App Module:** #{app_name}
     **Description:** #{project.description || "No description provided"}
 
-    ## User Stories
+    #{architecture_section}## User Stories
 
     #{stories_section}
 
@@ -185,9 +196,11 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     - **Surface Component**: What screen/endpoint handles the user interaction? (LiveView, Controller)
     - **Context/Child**: What domain logic implements this? (Schema, Module)
 
+    Consider how new components relate to existing ones (if any).
+
     ### Step 3: Write the Proposal
 
-    Write your proposal directly to: `#{proposal_path}`
+    Write your proposal directly to: `#{@proposal_path}`
 
     The proposal must follow this exact format:
 
@@ -207,7 +220,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     ## Begin
 
     1. Optionally use `analyze_stories` to identify patterns
-    2. Write your proposal to `#{proposal_path}`
+    2. Write your proposal to `#{@proposal_path}`
     3. Stop - the system will validate your proposal
     4. If valid, call `execute_proposal` to create spec files
     """
@@ -217,50 +230,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     project_name
     |> String.replace(~r/[^a-zA-Z0-9]/, "")
     |> Macro.camelize()
-  end
-
-  defp build_design_prompt(project, stories, component_count, output_dir) do
-    stories_section = format_stories(stories)
-
-    """
-    # Architecture Design Session
-
-    You are beginning an architecture design session for the #{project.name} project.
-
-    ## Project Overview
-
-    **Name:** #{project.name}
-    **Description:** #{project.description || "No description provided"}
-
-    ## Current Architecture
-
-    The project has #{component_count} components. Review the architecture views for details:
-
-    - **Overview:** #{Path.join(output_dir, "overview.md")}
-    - **Dependency Graph:** #{Path.join(output_dir, "dependency_graph.mmd")}
-    - **Namespace Hierarchy:** #{Path.join(output_dir, "namespace_hierarchy.md")}
-
-    ## Unsatisfied User Stories
-
-    #{stories_section}
-
-    ## Your Task
-
-    Design how these stories should be implemented in the architecture:
-
-    1. **Read the architecture views** to understand the current system structure
-    2. **Map stories to surface components** - Which controllers, LiveViews, or CLI modules handle each story?
-    3. **Identify new components needed** - What bounded contexts, schemas, or modules are missing?
-    4. **Consider dependencies** - How do new components relate to existing ones?
-
-    Use the architecture tools to:
-    - `list_specs` or `list_spec_names` - Browse existing components
-    - `get_spec` - Read component specifications
-    - `get_component_view` - See a component's dependency tree
-    - `validate_dependency_graph` - Check for circular dependencies
-
-    Begin by reading the architecture overview, then write a proposal to `docs/architecture/proposal.md`.
-    """
   end
 
   defp format_stories([]) do
