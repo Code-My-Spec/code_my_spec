@@ -15,8 +15,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   1. Context spec (ContextSpec)
   2. Component specs (ComponentSpec) for each child
   3. Design review (ContextDesignReview)
-  4. Tests for each component (ComponentTest)
-  5. Code for each component (ComponentCode)
+  4. Implementation (tests + code per component in dependency order)
 
   Two main functions:
   - `command/3` - Generates prompt files for incomplete phases, returns orchestration prompt
@@ -53,7 +52,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   @doc """
   Generate prompt files and orchestration instructions for the full context lifecycle.
 
-  Checks each phase (spec, design review, test, code) and generates prompt files
+  Checks each phase (spec, design review, implementation) and generates prompt files
   for incomplete phases. Files are written to `docs/status/{root}/{context}/`.
 
   Returns {:ok, prompt_text}
@@ -135,16 +134,14 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     context_spec_status = check_context_spec(scope, session, context_component)
     component_specs_status = check_component_specs(scope, session, children)
     design_review_status = check_design_review(scope, session, context_component)
-    tests_status = check_tests(scope, session, [context_component | children])
-    code_status = check_code(scope, session, [context_component | children])
+    implementation_status = check_implementation(scope, session, [context_component | children])
 
     incomplete_phases =
       []
       |> maybe_add_phase(:context_spec, context_spec_status)
       |> maybe_add_phase(:component_specs, component_specs_status)
       |> maybe_add_phase(:design_review, design_review_status)
-      |> maybe_add_phase(:tests, tests_status)
-      |> maybe_add_phase(:code, code_status)
+      |> maybe_add_phase(:implementation, implementation_status)
 
     status =
       if Enum.empty?(incomplete_phases) do
@@ -156,8 +153,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
           context_spec: context_spec_status,
           component_specs: component_specs_status,
           design_review: design_review_status,
-          tests: tests_status,
-          code: code_status
+          implementation: implementation_status
         }
       end
 
@@ -199,14 +195,15 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     end
   end
 
-  defp check_tests(scope, _session, components) do
-    Logger.info("[DevelopContext] check_tests: evaluating #{length(components)} component(s)")
+  defp check_implementation(scope, _session, components) do
+    Logger.info("[DevelopContext] check_implementation: evaluating #{length(components)} component(s)")
 
-    needing_tests =
-      Enum.filter(components, fn component ->
+    components_with_needs =
+      components
+      |> Enum.map(fn component ->
         requirements = component.requirements || []
 
-        results =
+        test_results =
           CodeMySpec.Requirements.check_requirements(
             scope,
             component,
@@ -214,41 +211,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
             artifact_types: [:tests]
           )
 
-        unsatisfied = Enum.filter(results, fn result -> not result.satisfied end)
-
-        if unsatisfied != [] do
-          unsatisfied_names = Enum.map_join(unsatisfied, ", ", & &1.name)
-
-          Logger.info(
-            "[DevelopContext] check_tests: #{component.module_name} has #{Enum.count(unsatisfied)} unsatisfied test req(s): #{unsatisfied_names}"
-          )
-        else
-          Logger.info(
-            "[DevelopContext] check_tests: #{component.module_name} OK (#{Enum.count(results)} test req(s), all satisfied)"
-          )
-        end
-
-        unsatisfied != []
-      end)
-
-    if Enum.empty?(needing_tests) do
-      Logger.info("[DevelopContext] check_tests: all complete")
-      :complete
-    else
-      names = Enum.map_join(needing_tests, ", ", & &1.module_name)
-      Logger.info("[DevelopContext] check_tests: #{length(needing_tests)} component(s) need tests: #{names}")
-      {:missing, needing_tests}
-    end
-  end
-
-  defp check_code(scope, _session, components) do
-    Logger.info("[DevelopContext] check_code: evaluating #{length(components)} component(s)")
-
-    needing_code =
-      Enum.filter(components, fn component ->
-        requirements = component.requirements || []
-
-        results =
+        code_results =
           CodeMySpec.Requirements.check_requirements(
             scope,
             component,
@@ -256,30 +219,26 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
             artifact_types: [:code]
           )
 
-        unsatisfied = Enum.filter(results, fn result -> not result.satisfied end)
+        needs_tests = Enum.any?(test_results, fn r -> not r.satisfied end)
+        needs_code = Enum.any?(code_results, fn r -> not r.satisfied end)
 
-        if unsatisfied != [] do
-          unsatisfied_names = Enum.map_join(unsatisfied, ", ", & &1.name)
+        needs =
+          (if needs_tests, do: [:test], else: []) ++
+            if(needs_code, do: [:code], else: [])
 
-          Logger.info(
-            "[DevelopContext] check_code: #{component.module_name} has #{Enum.count(unsatisfied)} unsatisfied code req(s): #{unsatisfied_names}"
-          )
-        else
-          Logger.info(
-            "[DevelopContext] check_code: #{component.module_name} OK (#{Enum.count(results)} code req(s), all satisfied)"
-          )
-        end
-
-        unsatisfied != []
+        {component, needs}
       end)
+      |> Enum.filter(fn {_component, needs} -> needs != [] end)
 
-    if Enum.empty?(needing_code) do
-      Logger.info("[DevelopContext] check_code: all complete")
+    if Enum.empty?(components_with_needs) do
+      Logger.info("[DevelopContext] check_implementation: all complete")
       :complete
     else
-      names = Enum.map_join(needing_code, ", ", & &1.module_name)
-      Logger.info("[DevelopContext] check_code: #{length(needing_code)} component(s) need code: #{names}")
-      {:missing, needing_code}
+      for {comp, needs} <- components_with_needs do
+        Logger.info("[DevelopContext] check_implementation: #{comp.module_name} needs #{inspect(needs)}")
+      end
+
+      {:missing, components_with_needs}
     end
   end
 
@@ -301,8 +260,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
       |> maybe_add_context_spec_prompts(phase_status, ctx)
       |> maybe_add_component_spec_prompts(phase_status, ctx)
       |> maybe_add_design_review_prompts(phase_status, ctx)
-      |> maybe_add_test_prompts(phase_status, ctx)
-      |> maybe_add_code_prompts(phase_status, ctx)
+      |> maybe_add_implementation_prompts(phase_status, ctx)
 
     {:ok, prompt_files}
   end
@@ -325,17 +283,11 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
 
   defp maybe_add_design_review_prompts(acc, _status, _ctx), do: acc
 
-  defp maybe_add_test_prompts(acc, %{design_review: :complete, tests: {:missing, missing}}, ctx) do
-    acc ++ generate_test_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.status_dir)
+  defp maybe_add_implementation_prompts(acc, %{design_review: :complete, implementation: {:missing, components_with_needs}}, ctx) do
+    acc ++ generate_implementation_prompts(ctx.scope, ctx.session, components_with_needs, ctx.environment, ctx.status_dir)
   end
 
-  defp maybe_add_test_prompts(acc, _status, _ctx), do: acc
-
-  defp maybe_add_code_prompts(acc, %{tests: :complete, code: {:missing, missing}}, ctx) do
-    acc ++ generate_code_prompts(ctx.scope, ctx.session, missing, ctx.environment, ctx.status_dir)
-  end
-
-  defp maybe_add_code_prompts(acc, _status, _ctx), do: acc
+  defp maybe_add_implementation_prompts(acc, _status, _ctx), do: acc
 
   defp generate_context_spec_prompt(scope, session, context_component, environment, status_dir) do
     child_session = %{component: context_component, project: session.project}
@@ -372,29 +324,32 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     [%{component: context_component, file_path: file_path, prompt_type: :design_review, phase: 3}]
   end
 
-  defp generate_test_prompts(scope, session, components, environment, status_dir) do
-    Enum.map(components, fn component ->
+  defp generate_implementation_prompts(scope, session, components_with_needs, environment, status_dir) do
+    Enum.flat_map(components_with_needs, fn {component, needs} ->
       child_session = %{component: component, project: session.project}
-      {:ok, prompt_content} = ComponentTest.command(scope, child_session)
-
       safe_name = safe_filename(component.module_name)
-      file_path = "#{status_dir}/#{safe_name}_test.md"
-      :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
 
-      %{component: component, file_path: file_path, prompt_type: :test, phase: 4}
-    end)
-  end
+      test_prompts =
+        if :test in needs do
+          {:ok, prompt_content} = ComponentTest.command(scope, child_session)
+          file_path = "#{status_dir}/#{safe_name}_test.md"
+          :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
+          [%{component: component, file_path: file_path, prompt_type: :test, phase: 4}]
+        else
+          []
+        end
 
-  defp generate_code_prompts(scope, session, components, environment, status_dir) do
-    Enum.map(components, fn component ->
-      child_session = %{component: component, project: session.project}
-      {:ok, prompt_content} = ComponentCode.command(scope, child_session)
+      code_prompts =
+        if :code in needs do
+          {:ok, prompt_content} = ComponentCode.command(scope, child_session)
+          file_path = "#{status_dir}/#{safe_name}_code.md"
+          :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
+          [%{component: component, file_path: file_path, prompt_type: :code, phase: 4}]
+        else
+          []
+        end
 
-      safe_name = safe_filename(component.module_name)
-      file_path = "#{status_dir}/#{safe_name}_code.md"
-      :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
-
-      %{component: component, file_path: file_path, prompt_type: :code, phase: 5}
+      test_prompts ++ code_prompts
     end)
   end
 
@@ -413,7 +368,6 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
      - Context specification
      - Component specifications
      - Design review
-     - Tests
      - Implementation
 
      No further action required.
@@ -435,8 +389,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
      1. **Context Spec** - Define the bounded context architecture
      2. **Component Specs** - Design each child component
      3. **Design Review** - Validate architecture before implementation
-     4. **Tests** - Write tests for each component
-     5. **Code** - Implement each component
+     4. **Implementation** - Tests + code per component in dependency order
 
      ## Current Phase: #{format_phase_name(current_phase)}
 
@@ -452,17 +405,14 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
 
      ## Workflow
 
-     1. Complete all tasks in the current phase
-     2. The stop hook will validate and advance to the next phase
-     3. Continue until all phases complete
+     1. Complete all tasks listed above for the current phase
+     2. **Stop the session** — end your turn so the stop hook can validate your work
+     3. The stop hook will check your progress and provide instructions for the next phase
+     4. If the hook blocks the stop, follow its feedback and repeat from step 1
 
-     ## Completion
-
-     The stop hook will validate:
-     - All spec files exist and are valid
-     - Design review passes
-     - All tests compile and align with specs
-     - All implementations pass tests
+     **Important:** You must stop after completing each phase. Do not attempt to
+     continue to the next phase on your own — the stop hook generates the prompt
+     files you need for each subsequent phase.
      """}
   end
 
@@ -471,8 +421,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
       match?({:missing, _}, phase_status[:context_spec]) -> :context_spec
       match?({:missing, _}, phase_status[:component_specs]) -> :component_specs
       match?({:missing, _}, phase_status[:design_review]) -> :design_review
-      match?({:missing, _}, phase_status[:tests]) -> :tests
-      match?({:missing, _}, phase_status[:code]) -> :code
+      match?({:missing, _}, phase_status[:implementation]) -> :implementation
       true -> :complete
     end
   end
@@ -480,9 +429,61 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   defp format_phase_name(:context_spec), do: "Context Specification"
   defp format_phase_name(:component_specs), do: "Component Specifications"
   defp format_phase_name(:design_review), do: "Design Review"
-  defp format_phase_name(:tests), do: "Tests"
-  defp format_phase_name(:code), do: "Implementation"
+  defp format_phase_name(:implementation), do: "Implementation"
   defp format_phase_name(:complete), do: "Complete"
+
+  defp format_phase_instructions(:implementation, prompt_files) do
+    phase_files = Enum.filter(prompt_files, fn pf -> pf.phase == 4 end)
+
+    if Enum.empty?(phase_files) do
+      "No prompt files generated for this phase."
+    else
+      by_component =
+        phase_files
+        |> Enum.group_by(& &1.component.id)
+        |> Enum.map(fn {_id, files} ->
+          component = hd(files).component
+          test_file = Enum.find(files, &(&1.prompt_type == :test))
+          code_file = Enum.find(files, &(&1.prompt_type == :code))
+          {component, test_file, code_file}
+        end)
+        |> Enum.sort_by(fn {comp, _, _} -> comp.name end)
+
+      component_tasks = Enum.map_join(by_component, "\n", &format_component_task/1)
+
+      """
+      Implement in dependency order:
+      - **Schemas** first (no dependencies)
+      - **Repositories** next (depend on schemas)
+      - **Services/Logic** (depend on repositories and schemas)
+      - **Context module** last (delegates to and coordinates all the above)
+
+      For each component: write tests first, then implement code. Verify tests pass before moving to the next component.
+
+      Components to implement:
+
+      #{component_tasks}
+
+      For each component, invoke the appropriate subagent with the prompt file:
+      - Test prompts: `@"CodeMySpec:test-writer (agent)"`
+      - Code prompts: `@"CodeMySpec:code-writer (agent)"`
+      """
+    end
+  end
+
+  defp format_component_task({component, test_file, code_file}) do
+    test_line =
+      if test_file,
+        do: "  - [ ] Test: `#{test_file.file_path}`",
+        else: "  - [x] Tests: passing"
+
+    code_line =
+      if code_file,
+        do: "  - [ ] Code: `#{code_file.file_path}`",
+        else: "  - [x] Code: passing"
+
+    "- **#{component.name}** (#{component.type})\n#{test_line}\n#{code_line}"
+  end
 
   defp format_phase_instructions(phase, prompt_files) do
     phase_files = Enum.filter(prompt_files, fn pf -> pf.prompt_type == phase or pf.phase == phase_to_number(phase) end)
@@ -509,9 +510,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   defp phase_to_number(:component_specs), do: 2
   defp phase_to_number(:component_spec), do: 2
   defp phase_to_number(:design_review), do: 3
-  defp phase_to_number(:tests), do: 4
-  defp phase_to_number(:test), do: 4
-  defp phase_to_number(:code), do: 5
+  defp phase_to_number(:implementation), do: 4
   defp phase_to_number(_), do: 0
 
   # Private functions - Cleanup
@@ -519,10 +518,10 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   defp cleanup_completed_phases(phase_status, status_dir, working_dir) do
     completed_suffixes =
       if phase_status[:complete] == true do
-        [:context_spec, :component_specs, :design_review, :tests, :code]
+        [:context_spec, :component_specs, :design_review, :implementation]
         |> Enum.flat_map(&phase_to_suffixes/1)
       else
-        [:context_spec, :component_specs, :design_review, :tests, :code]
+        [:context_spec, :component_specs, :design_review, :implementation]
         |> Enum.filter(fn phase -> phase_status[phase] == :complete end)
         |> Enum.flat_map(&phase_to_suffixes/1)
       end
@@ -546,8 +545,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   defp phase_to_suffixes(:context_spec), do: ["_context_spec.md"]
   defp phase_to_suffixes(:component_specs), do: ["_component_spec.md"]
   defp phase_to_suffixes(:design_review), do: ["_design_review.md"]
-  defp phase_to_suffixes(:tests), do: ["_test.md"]
-  defp phase_to_suffixes(:code), do: ["_code.md"]
+  defp phase_to_suffixes(:implementation), do: ["_test.md", "_code.md"]
 
   # When all phases complete, remove the entire status directory for this context.
   # The status .md file (owned by StatusWriter) remains — only action files are cleaned.
@@ -568,8 +566,13 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     phases_text =
       Enum.map_join(incomplete_phases, "\n", fn {phase, status} ->
         case status do
-          {:missing, components} ->
-            names = Enum.map_join(components, ", ", & &1.name)
+          {:missing, items} ->
+            names =
+              Enum.map_join(items, ", ", fn
+                {component, _needs} -> component.name
+                component -> component.name
+              end)
+
             "- #{format_phase_name(phase)}: #{names}"
 
           _ ->
@@ -581,7 +584,8 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     Context "#{context_component.name}" (#{context_component.module_name}) has incomplete phases:
     #{phases_text}
 
-    Instructions: `#{status_dir}/develop_context.md`
+    Read your updated instructions at `#{status_dir}/develop_context.md` and complete the current phase.
+    When you finish the phase, stop the session again so validation can advance you to the next phase.
     """
   end
 end

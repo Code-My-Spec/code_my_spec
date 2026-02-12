@@ -42,22 +42,16 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
   defp dispatch(scope, "Stop", session_id, hook_input, req_id) do
     transcript_path = Map.get(hook_input, "transcript_path")
-    stop_hook_active = Map.get(hook_input, "stop_hook_active", false)
 
     Logger.info("[HookController] [#{req_id}] Dispatching Stop handler")
 
-    if stop_hook_active do
-      Logger.info("[HookController] [#{req_id}] Stop hook already active, allowing stop")
-      %{}
-    else
-      result =
-        Validation.validate_stop(scope,
-          transcript_path: transcript_path,
-          session_id: session_id
-        )
+    result =
+      Validation.validate_stop(scope,
+        transcript_path: transcript_path,
+        session_id: session_id
+      )
 
-      Validation.format_output(result)
-    end
+    Validation.format_output(result)
   end
 
   defp dispatch(scope, "SubagentStop", _session_id, hook_input, req_id) do
