@@ -10,6 +10,7 @@ defmodule CodeMySpec.Validation.Pipeline do
   require Logger
 
   alias CodeMySpec.BddSpecs
+  alias CodeMySpec.Components
   alias CodeMySpec.Documents
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
@@ -433,7 +434,7 @@ defmodule CodeMySpec.Validation.Pipeline do
   defp validate_single_spec(path) do
     with {:ok, content} <- File.read(path),
          :ok <- validate_not_empty(content),
-         doc_type <- document_type_from_path(path),
+         doc_type <- document_type_from_content(content, path),
          {:ok, _doc} <- Documents.create_dynamic_document(content, doc_type) do
       []
     else
@@ -460,6 +461,24 @@ defmodule CodeMySpec.Validation.Pipeline do
       message: message,
       category: category
     }
+  end
+
+  defp document_type_from_content(content, path) do
+    case extract_type_section(content) do
+      nil -> document_type_from_path(path)
+      component_type -> Components.Registry.get_type(component_type).document_type
+    end
+  end
+
+  defp extract_type_section(content) do
+    content
+    |> String.split("\n")
+    |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
+    |> Enum.drop(1)
+    |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> List.first()
   end
 
   defp document_type_from_path(path) do
