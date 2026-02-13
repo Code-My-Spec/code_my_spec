@@ -23,6 +23,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.WriteBddSpecs,
       AgentTasks.ManageImplementation,
       AgentTasks.DevelopContext,
+      AgentTasks.DevelopLiveView,
       AgentTasks.DesignUi
     ]
   end
@@ -42,6 +43,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "WriteBddSpecs",
       "ManageImplementation",
       "DevelopContext",
+      "DevelopLiveView",
       "DesignUi"
     ]
   end
@@ -80,6 +82,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.WriteBddSpecs} = SessionType.cast("WriteBddSpecs")
       assert {:ok, AgentTasks.ManageImplementation} = SessionType.cast("ManageImplementation")
       assert {:ok, AgentTasks.DevelopContext} = SessionType.cast("DevelopContext")
+      assert {:ok, AgentTasks.DevelopLiveView} = SessionType.cast("DevelopLiveView")
       assert {:ok, AgentTasks.DesignUi} = SessionType.cast("DesignUi")
     end
 
