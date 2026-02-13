@@ -246,6 +246,11 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     Enum.map_join(criteria, "\n", fn criterion -> "- #{criterion}" end)
   end
 
+  defp format_acceptance_criteria(other) do
+    Logger.warning("[ContextDesignReview] Invalid acceptance_criteria: #{inspect(other)}")
+    "- None specified"
+  end
+
   defp format_project_executive_summary(%{executive_summary: nil}), do: ""
 
   defp format_project_executive_summary(%{executive_summary: summary})
