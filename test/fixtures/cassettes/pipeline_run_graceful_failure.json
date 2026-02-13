@@ -1,0 +1,59 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "DIAGNOSTICS_OUTPUT": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/compiler_ok_cache.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-02-13T03:40:24.607525Z"
+    },
+    {
+      "args": [
+        "credo",
+        "suggest",
+        "--format",
+        "json",
+        "--all",
+        "--all-priorities",
+        "--no-color",
+        "/nonexistent/test_test.exs"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "\n22:40:25.971 [error] Task #PID<0.194.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/nonexistent/test_test.exs\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/nonexistent/test_test.exs\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/nonexistent/test_test.exs\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
+      "recorded_at": "2026-02-13T03:40:26.003049Z"
+    },
+    {
+      "args": [
+        "sobelow",
+        "--format",
+        "json",
+        "--private"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "{\n  \"findings\": {\n    \"high_confidence\": [\n      {\n        \"line\": 0,\n        \"type\": \"Config.HTTPS: HTTPS Not Enabled\",\n        \"file\": \"config/prod.exs\"\n      },\n      {\n        \"line\": 12,\n        \"type\": \"Config.CSP: Missing Content-Security-Policy\",\n        \"file\": \"lib/test_phoenix_project_web/router.ex\",\n        \"pipeline\": \"browser\"\n      }\n    ],\n    \"low_confidence\": [],\n    \"medium_confidence\": []\n  },\n  \"sobelow_version\": \"0.14.1\",\n  \"total_findings\": 2\n}\n",
+      "recorded_at": "2026-02-13T03:40:27.302273Z"
+    }
+  ],
+  "ports": []
+}

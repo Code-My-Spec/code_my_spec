@@ -11,6 +11,7 @@ defmodule CodeMySpec.Validation.Pipeline do
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Documents
+  alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Tests
@@ -28,6 +29,7 @@ defmodule CodeMySpec.Validation.Pipeline do
 
   def run(%Scope{} = scope, files, opts) when is_list(files) do
     categorized = categorize_files(files)
+    clear_stale_problems(scope, categorized)
 
     case compile_project(scope, opts) do
       :ok ->
@@ -41,6 +43,7 @@ defmodule CodeMySpec.Validation.Pipeline do
 
       {:error, reason} ->
         Logger.error("[Pipeline] Compilation failed: #{reason}")
+        Problems.clear_problems_for_source(scope, [source: "compiler"], :all)
 
         [
           %Problem{
@@ -90,6 +93,64 @@ defmodule CodeMySpec.Validation.Pipeline do
   end
 
   @doc """
+  Clear stale problems for all categorized file groups, scoped by source.
+
+  Each validator only clears problems matching its own source identifier
+  for the files it checks. This prevents one validator from accidentally
+  wiping another validator's results.
+  """
+  @spec clear_stale_problems(Scope.t() | nil, map()) :: :ok
+  def clear_stale_problems(nil, _categorized), do: :ok
+
+  def clear_stale_problems(%Scope{} = scope, categorized) do
+    project_root = get_project_root(scope)
+
+    rel = fn files -> relativize_paths(files, project_root) end
+
+    # Tests: clear source_type: :test (excluding source: "spex") for test_files
+    if categorized.test_files != [] do
+      Problems.clear_problems_for_source(
+        scope,
+        [source_type: :test, exclude_source: "spex"],
+        rel.(categorized.test_files)
+      )
+    end
+
+    # Credo: clear source: "credo" for elixir_files
+    if categorized.elixir_files != [] do
+      Problems.clear_problems_for_source(scope, [source: "credo"], rel.(categorized.elixir_files))
+    end
+
+    # Sobelow: clear source: "sobelow" for elixir_files
+    if categorized.elixir_files != [] do
+      Problems.clear_problems_for_source(
+        scope,
+        [source: "sobelow"],
+        rel.(categorized.elixir_files)
+      )
+    end
+
+    # Spex: clear source: "spex" for spex_files
+    if categorized.spex_files != [] do
+      Problems.clear_problems_for_source(scope, [source: "spex"], rel.(categorized.spex_files))
+    end
+
+    # Spec validation: clear source: "spec_validation" for spec_files
+    if categorized.spec_files != [] do
+      Problems.clear_problems_for_source(
+        scope,
+        [source: "spec_validation"],
+        rel.(categorized.spec_files)
+      )
+    end
+
+    # Compiler: always clear project-wide (compilation is project-wide)
+    Problems.clear_problems_for_source(scope, [source: "compiler"], :all)
+
+    :ok
+  end
+
+  @doc """
   Compile the project once before running validators.
   """
   @spec compile_project(Scope.t() | nil, keyword()) :: :ok | {:error, String.t()}
@@ -107,7 +168,11 @@ defmodule CodeMySpec.Validation.Pipeline do
       Logger.info("[Pipeline] Compiling project at #{project_root}")
 
       compile_opts = [cwd: project_root]
-      compile_opts = if f = opts[:compile_output_file], do: Keyword.put(compile_opts, :output_file, f), else: compile_opts
+
+      compile_opts =
+        if f = opts[:compile_output_file],
+          do: Keyword.put(compile_opts, :output_file, f),
+          else: compile_opts
 
       case CodeMySpec.Compile.execute(compile_opts) do
         %{status: :ok} -> :ok
@@ -148,33 +213,28 @@ defmodule CodeMySpec.Validation.Pipeline do
     Logger.info("[Pipeline] Running #{length(existing_files)} test files")
 
     test_opts = [project_root: project_root]
-    test_opts = if f = opts[:test_output_file], do: Keyword.put(test_opts, :output_file, f), else: test_opts
 
-    case Tests.execute(existing_files, test_opts) do
-      {:ok, %TestRun{failures: failures}} when failures != [] ->
-        {:ok, convert_test_failures(failures)}
+    test_opts =
+      if f = opts[:test_output_file], do: Keyword.put(test_opts, :output_file, f), else: test_opts
 
-      {:ok, %TestRun{execution_status: :error}} ->
+    existing_files
+    |> Tests.execute(test_opts)
+    |> handle_test_result(existing_files)
+  end
 
-        {:ok,
-         [
-           %Problem{
-             severity: :error,
-             source: "exunit",
-             source_type: :test,
-             file_path: hd(existing_files),
-             message: "Test execution failed. Check compilation errors.",
-             category: "test_error"
-           }
-         ]}
+  defp handle_test_result({:ok, %TestRun{failures: failures}}, _files) when failures != [] do
+    {:ok, convert_test_failures(failures)}
+  end
 
-      {:ok, _} ->
-        {:ok, []}
+  defp handle_test_result({:ok, %TestRun{execution_status: :error} = run}, files) do
+    {:ok, parse_execution_errors(run.raw_output || "", files)}
+  end
 
-      {:error, reason} ->
-        Logger.error("[Pipeline] Test execution failed: #{inspect(reason)}")
-        {:ok, []}
-    end
+  defp handle_test_result({:ok, _}, _files), do: {:ok, []}
+
+  defp handle_test_result({:error, reason}, _files) do
+    Logger.error("[Pipeline] Test execution failed: #{inspect(reason)}")
+    {:ok, []}
   end
 
   @doc """
@@ -310,6 +370,18 @@ defmodule CodeMySpec.Validation.Pipeline do
   defp get_project_root(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "", do: cwd
   defp get_project_root(_scope), do: nil
 
+  defp relativize_paths(paths, nil), do: paths
+
+  defp relativize_paths(paths, project_root) do
+    paths
+    |> Enum.flat_map(fn path ->
+      relative = Path.relative_to(path, project_root)
+      # Include both forms so we match however the problem was stored
+      if relative == path, do: [path], else: Enum.uniq([path, relative])
+    end)
+    |> Enum.uniq()
+  end
+
   defp filter_problems_by_files(problems, files) do
     file_set = MapSet.new(files)
 
@@ -414,5 +486,68 @@ defmodule CodeMySpec.Validation.Pipeline do
       _ ->
         parts
     end
+  end
+
+  # Parse raw test output when execution_status is :error.
+  # Extracts compiler warnings/errors and categorizes them properly
+  # so they don't get confused with test failures.
+  defp parse_execution_errors(raw_output, fallback_files) do
+    compiler_problems = extract_compiler_problems(raw_output)
+
+    if compiler_problems != [] do
+      compiler_problems
+    else
+      # Couldn't parse — fall back to generic but still tag as compilation
+      [
+        %Problem{
+          severity: :error,
+          source: "compiler",
+          source_type: :static_analysis,
+          file_path: hd(fallback_files),
+          message:
+            "Test execution failed due to compilation errors. Raw output: #{String.slice(raw_output, 0..300)}",
+          category: "compilation_error"
+        }
+      ]
+    end
+  end
+
+  # Extract structured compiler problems from raw mix output.
+  # Matches the standard Elixir compiler warning/error format:
+  #   warning: message (file.ex:line)
+  #   or the multi-line format with │ and └─ file:line
+  @compiler_warning_re ~r/warning: (.+?)(?:\n.*?)*?└─ (.+?):(\d+)/
+  @compiler_error_re ~r/\*\* \((\w+)\) (.+?):(\d+): (.+)/
+
+  defp extract_compiler_problems(raw_output) do
+    warning_problems =
+      Regex.scan(@compiler_warning_re, raw_output)
+      |> Enum.map(fn [_full, message, file, line] ->
+        %Problem{
+          severity: :warning,
+          source: "compiler",
+          source_type: :static_analysis,
+          file_path: String.trim(file),
+          line: String.to_integer(line),
+          message: String.trim(message),
+          category: "compiler_warning"
+        }
+      end)
+
+    error_problems =
+      Regex.scan(@compiler_error_re, raw_output)
+      |> Enum.map(fn [_full, _error_type, file, line, message] ->
+        %Problem{
+          severity: :error,
+          source: "compiler",
+          source_type: :static_analysis,
+          file_path: String.trim(file),
+          line: String.to_integer(line),
+          message: String.trim(message),
+          category: "compilation_error"
+        }
+      end)
+
+    warning_problems ++ error_problems
   end
 end

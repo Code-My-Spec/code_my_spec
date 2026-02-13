@@ -178,7 +178,65 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     {:ok, count}
   end
 
+  @doc """
+  Clears problems matching a source filter for specific file paths within a project.
+
+  Used for stale problem clearing: each validator clears only its own source's problems
+  for the files it's about to re-check, preventing one validator from wiping another's results.
+
+  ## Parameters
+
+    * `scope` - The user scope with active project
+    * `source_filter` - Keyword list with `:source` and/or `:source_type` filters
+    * `file_paths` - List of file path strings whose matching problems should be cleared.
+      Pass `:all` to clear matching problems project-wide (used for compiler errors).
+
+  ## Examples
+
+      iex> clear_problems_for_source(scope, [source: "credo"], ["lib/app.ex"])
+      {:ok, 2}
+
+      iex> clear_problems_for_source(scope, [source: "compiler"], :all)
+      {:ok, 1}
+
+  """
+  @spec clear_problems_for_source(Scope.t(), keyword(), [String.t()] | :all) ::
+          {:ok, integer()}
+  def clear_problems_for_source(%Scope{active_project_id: project_id}, source_filter, file_paths) do
+    query =
+      Problem
+      |> where([p], p.project_id == ^project_id)
+      |> apply_source_filter(source_filter)
+      |> apply_file_scope(file_paths)
+
+    {count, _} = Repo.delete_all(query)
+    {:ok, count}
+  end
+
   # Private helpers
+
+  defp apply_source_filter(query, []), do: query
+
+  defp apply_source_filter(query, [{:source, value} | rest]) do
+    query |> where([p], p.source == ^value) |> apply_source_filter(rest)
+  end
+
+  defp apply_source_filter(query, [{:source_type, value} | rest]) do
+    query |> where([p], p.source_type == ^value) |> apply_source_filter(rest)
+  end
+
+  defp apply_source_filter(query, [{:exclude_source, value} | rest]) do
+    query |> where([p], p.source != ^value) |> apply_source_filter(rest)
+  end
+
+  defp apply_source_filter(query, [_ | rest]), do: apply_source_filter(query, rest)
+
+  defp apply_file_scope(query, :all), do: query
+  defp apply_file_scope(query, []), do: where(query, [_p], false)
+
+  defp apply_file_scope(query, file_paths) when is_list(file_paths) do
+    where(query, [p], p.file_path in ^file_paths)
+  end
 
   defp apply_filters(query, []), do: query
 

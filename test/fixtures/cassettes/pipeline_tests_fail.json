@@ -1,0 +1,25 @@
+{
+  "commands": [
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/test_results_failing_cache.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n==> test_phoenix_project\nPaths given to \"mix test\" did not match any directory/file: ../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs\n",
+      "recorded_at": "2026-02-13T03:28:35.879770Z"
+    }
+  ],
+  "ports": []
+}

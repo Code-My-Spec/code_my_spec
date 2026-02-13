@@ -1,0 +1,23 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_diagnostics_37.jsonl",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n",
+      "recorded_at": "2026-02-13T03:28:33.560741Z"
+    }
+  ],
+  "ports": []
+}
