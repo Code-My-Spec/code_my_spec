@@ -181,23 +181,7 @@ defmodule CodeMySpec.Components.Sync do
       # Update parent relationships for affected components
       newly_updated_ids =
         affected_components
-        |> Enum.map(fn component ->
-          new_parent = find_nearest_ancestor(component.module_name, component_map)
-
-          # Only update if parent actually changed
-          cond do
-            new_parent && new_parent.id != component.parent_component_id ->
-              Components.update_component(scope, component, %{parent_component_id: new_parent.id})
-              component.id
-
-            is_nil(new_parent) && !is_nil(component.parent_component_id) ->
-              Components.update_component(scope, component, %{parent_component_id: nil})
-              component.id
-
-            true ->
-              nil
-          end
-        end)
+        |> Enum.map(&maybe_update_parent(scope, &1, component_map))
         |> Enum.reject(&is_nil/1)
 
       # Return expanded set: original changed + newly updated
@@ -250,16 +234,16 @@ defmodule CodeMySpec.Components.Sync do
     if force do
       {file_infos, []}
     else
-      Enum.split_with(file_infos, fn file_info ->
-        module_name = derive_module_from_path(file_info.path, base_dir, type)
+      Enum.split_with(file_infos, &file_changed?(&1, synced_at_map, type, base_dir))
+    end
+  end
 
-        case Map.get(synced_at_map, module_name) do
-          # New component
-          nil -> true
-          # Check if file is newer than last sync
-          synced_at -> DateTime.compare(file_info.mtime, synced_at) == :gt
-        end
-      end)
+  defp file_changed?(file_info, synced_at_map, type, base_dir) do
+    module_name = derive_module_from_path(file_info.path, base_dir, type)
+
+    case Map.get(synced_at_map, module_name) do
+      nil -> true
+      synced_at -> DateTime.compare(file_info.mtime, synced_at) == :gt
     end
   end
 
@@ -309,12 +293,15 @@ defmodule CodeMySpec.Components.Sync do
     # Extract description from intro text (content after H1, before first H2)
     description = extract_intro_text(content)
 
+    # Extract component type from ## Type section, falling back to namespace-derived type
+    type = extract_type_section(content) || type_from_namespace(module_name)
+
     # Extract dependencies from ## Dependencies section
     dependencies = extract_dependencies(content)
 
     %{
       module_name: module_name,
-      type: type_from_namespace(module_name),
+      type: type,
       description: description,
       dependencies: dependencies,
       spec_path: path,
@@ -369,6 +356,17 @@ defmodule CodeMySpec.Components.Sync do
     end
   end
 
+  defp extract_type_section(content) do
+    content
+    |> String.split("\n")
+    |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
+    |> Enum.drop(1)
+    |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> List.first()
+  end
+
   defp extract_dependencies(content) do
     # Find the ## Dependencies section and extract module names
     content
@@ -405,15 +403,13 @@ defmodule CodeMySpec.Components.Sync do
   defp path_to_module(path) do
     path
     |> String.split("/")
-    |> Enum.map(&camelize/1)
-    |> Enum.join(".")
+    |> Enum.map_join(".", &camelize/1)
   end
 
   defp camelize(string) do
     string
     |> String.split("_")
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join("")
+    |> Enum.map_join(&String.capitalize/1)
   end
 
   @doc """
@@ -485,49 +481,64 @@ defmodule CodeMySpec.Components.Sync do
   # --- Dependency syncing ---
 
   defp sync_dependencies(scope, changed_data, all_components) do
-    # Build module_name -> component lookup
     component_map = Map.new(all_components, &{&1.module_name, &1})
 
     Enum.each(changed_data, fn data ->
-      source_component = Map.get(component_map, data.module_name)
+      case Map.get(component_map, data.module_name) do
+        nil -> :ok
+        source -> sync_component_dependencies(scope, source, data, component_map)
+      end
+    end)
+  end
 
-      if source_component do
-        # Get current dependencies for this component
-        current_deps = Components.list_component_dependencies(scope, source_component.id)
-        current_target_ids = MapSet.new(current_deps, & &1.target_component_id)
+  defp sync_component_dependencies(scope, source_component, data, component_map) do
+    current_deps = Components.list_component_dependencies(scope, source_component.id)
+    current_target_ids = MapSet.new(current_deps, & &1.target_component_id)
 
-        # Resolve declared dependencies to component IDs
-        declared_deps =
-          (data.dependencies || [])
-          |> Enum.map(&Map.get(component_map, &1))
-          |> Enum.reject(&is_nil/1)
-          |> Enum.reject(&(&1.id == source_component.id))
+    declared_deps =
+      (data.dependencies || [])
+      |> Enum.map(&Map.get(component_map, &1))
+      |> Enum.reject(&(is_nil(&1) || &1.id == source_component.id))
 
-        declared_target_ids = MapSet.new(declared_deps, & &1.id)
+    declared_target_ids = MapSet.new(declared_deps, & &1.id)
 
-        # Add new dependencies
-        new_deps = MapSet.difference(declared_target_ids, current_target_ids)
+    # Add new dependencies
+    MapSet.difference(declared_target_ids, current_target_ids)
+    |> Enum.each(fn target_id ->
+      Components.create_dependency(scope, %{
+        source_component_id: source_component.id,
+        target_component_id: target_id
+      })
+    end)
 
-        Enum.each(new_deps, fn target_id ->
-          Components.create_dependency(scope, %{
-            source_component_id: source_component.id,
-            target_component_id: target_id
-          })
-        end)
+    # Remove old dependencies that are no longer declared
+    removed_deps = MapSet.difference(current_target_ids, declared_target_ids)
 
-        # Remove old dependencies that are no longer declared
-        removed_deps = MapSet.difference(current_target_ids, declared_target_ids)
-
-        Enum.each(current_deps, fn dep ->
-          if dep.target_component_id in removed_deps do
-            Components.delete_dependency(scope, dep)
-          end
-        end)
+    Enum.each(current_deps, fn dep ->
+      if dep.target_component_id in removed_deps do
+        Components.delete_dependency(scope, dep)
       end
     end)
   end
 
   # --- Parent relationships (optimized) ---
+
+  defp maybe_update_parent(scope, component, component_map) do
+    new_parent = find_nearest_ancestor(component.module_name, component_map)
+
+    cond do
+      new_parent && new_parent.id != component.parent_component_id ->
+        Components.update_component(scope, component, %{parent_component_id: new_parent.id})
+        component.id
+
+      is_nil(new_parent) && !is_nil(component.parent_component_id) ->
+        Components.update_component(scope, component, %{parent_component_id: nil})
+        component.id
+
+      true ->
+        nil
+    end
+  end
 
   defp parent_changed?(component, _component_map, changed_module_names) do
     parent_name = parent_module_name(component.module_name)

@@ -114,6 +114,36 @@ defmodule CodeMySpec.Components.Registry do
       icon: "book-open",
       color: "teal"
     },
+    "liveview" => %{
+      requirements: [
+        RequirementDefinitionData.liveview_spec_file(),
+        RequirementDefinitionData.liveview_spec_valid(),
+        RequirementDefinitionData.implementation_file(),
+        RequirementDefinitionData.test_file(),
+        RequirementDefinitionData.test_spec_alignment(),
+        RequirementDefinitionData.tests_passing()
+      ],
+      document_type: "liveview",
+      display_name: "LiveView",
+      description: "Phoenix LiveView page with real-time UI interactions",
+      icon: "window",
+      color: "emerald"
+    },
+    "liveview_component" => %{
+      requirements: [
+        RequirementDefinitionData.liveview_spec_file(),
+        RequirementDefinitionData.liveview_spec_valid(),
+        RequirementDefinitionData.implementation_file(),
+        RequirementDefinitionData.test_file(),
+        RequirementDefinitionData.test_spec_alignment(),
+        RequirementDefinitionData.tests_passing()
+      ],
+      document_type: "liveview",
+      display_name: "LiveView Component",
+      description: "Reusable Phoenix LiveView component",
+      icon: "puzzle-piece",
+      color: "teal"
+    },
     "other" => %{
       requirements: RequirementDefinitionData.default_requirements(),
       display_name: "Other",

@@ -197,6 +197,34 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec liveview_spec_file() :: RequirementDefinition.t()
+  def liveview_spec_file do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "spec_file",
+        checker: FileExistenceChecker,
+        satisfied_by: CodeMySpec.AgentTasks.LiveViewSpec,
+        artifact_type: :specification,
+        description: "LiveView specification file exists"
+      })
+
+    definition
+  end
+
+  @spec liveview_spec_valid() :: RequirementDefinition.t()
+  def liveview_spec_valid do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "spec_valid",
+        checker: DocumentValidityChecker,
+        satisfied_by: CodeMySpec.AgentTasks.LiveViewSpec,
+        artifact_type: :specification,
+        description: "LiveView specification is valid"
+      })
+
+    definition
+  end
+
   @spec schema_spec_valid() :: RequirementDefinition.t()
   def schema_spec_valid do
     {:ok, definition} =

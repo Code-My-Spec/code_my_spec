@@ -151,40 +151,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
       Document Specifications:
       #{document_spec}
 
-      ## UI Spec Format
-
-      The spec should follow the LiveView UI spec format with these sections:
-
-      ### Route
-      Define the URL path pattern (e.g., `/accounts/:id/manage`).
-
-      ### Params
-      Document URL parameters and their types.
-
-      ### Child Components
-      List child LiveView components referenced by this view.
-
-      ### User Interactions
-      Map each user action to its behavior and context calls:
-      - Event name → What happens + which context function is called
-
-      ### Dependencies
-      List context module dependencies.
-
-      ### Design
-      Describe the layout structure, DaisyUI component choices, and responsive behavior
-      in prose. This is a structural description, not renderable HTML. Example:
-
-      ```
-      Layout: sidebar navigation + main content area
-      Navigation: AccountLive.Components.Navigation with active tab
-      Main content:
-        - Card: Account settings form (name, description fields)
-        - Card.danger: Delete account section (owners only, with confirmation)
-      Components: .card, .form-control, .btn-primary, .btn-error
-      Responsive: Stack cards vertically on mobile
-      ```
-
       Write the document to #{spec_file_path}.
       """
 

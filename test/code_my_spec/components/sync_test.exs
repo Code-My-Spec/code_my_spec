@@ -390,6 +390,50 @@ defmodule CodeMySpec.Components.SyncTest do
     end
   end
 
+    test "uses ## Type section from spec when present", %{scope: scope, tmp_dir: tmp_dir} do
+      path = module_to_spec_path(tmp_dir, "MyAppWeb.DashboardLive")
+      File.mkdir_p!(Path.dirname(path))
+
+      File.write!(path, """
+      # MyAppWeb.DashboardLive
+
+      Main dashboard page.
+
+      ## Type
+
+      liveview
+
+      ## Route
+
+      `/dashboard`
+
+      ## User Interactions
+
+      - **phx-click="refresh"**: Reload data.
+
+      ## Dependencies
+
+      - MyApp.Accounts
+      """)
+
+      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+
+      dashboard = Enum.find(components, &(&1.module_name == "MyAppWeb.DashboardLive"))
+      assert dashboard.type == "liveview"
+    end
+
+    test "falls back to namespace-derived type when ## Type section is absent", %{
+      scope: scope,
+      tmp_dir: tmp_dir
+    } do
+      write_spec(tmp_dir, "MyApp.Accounts")
+
+      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+
+      accounts = Enum.find(components, &(&1.module_name == "MyApp.Accounts"))
+      assert accounts.type == "context"
+    end
+
   describe "sync_changed/2" do
     test "returns all components and changed IDs on first sync", %{scope: scope, tmp_dir: tmp_dir} do
       write_spec(tmp_dir, "MyApp.Accounts")
@@ -413,7 +457,7 @@ defmodule CodeMySpec.Components.SyncTest do
       {:ok, all_components, second_changed_ids} = Sync.sync_changed(scope, base_dir: tmp_dir)
 
       assert length(all_components) == 1
-      assert length(second_changed_ids) == 0
+      assert second_changed_ids == []
     end
 
     test "returns only changed component IDs when file is modified", %{

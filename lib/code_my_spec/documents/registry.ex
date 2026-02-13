@@ -12,6 +12,25 @@ defmodule CodeMySpec.Documents.Registry do
           section_descriptions: %{String.t() => String.t()}
         }
 
+  @spec_type """
+  Format:
+  - Use H2 heading
+  - Single line with the component type string
+
+  Content:
+  - Declares the component type for this module
+  - Must be a lowercase string matching a known component type
+  - Used by sync to set the component's type in the database
+
+  Examples:
+  - ## Type
+    liveview
+  - ## Type
+    schema
+  - ## Type
+    genserver
+  """
+
   @spec_components """
   Format:
   - Use H2 heading
@@ -176,6 +195,90 @@ defmodule CodeMySpec.Documents.Registry do
   - List any remaining action items if blocked
   """
 
+  @spec_route """
+  Format:
+  - Use H2 heading
+  - Single line with the URL path pattern in backticks
+
+  Content:
+  - Define the URL path pattern for this LiveView
+  - Use colon-prefixed parameters for dynamic segments (e.g., `:id`, `:slug`)
+
+  Examples:
+  - ## Route
+    `/accounts/:id/manage`
+  """
+
+  @spec_params """
+  Format:
+  - Use H2 heading
+  - Bullet list of parameter names and types, or "None"
+
+  Content:
+  - Document URL parameters and their types
+  - Only include path and query parameters relevant to this LiveView
+
+  Examples:
+  - ## Params
+    - `id` - integer, account ID
+  - ## Params
+    None
+  """
+
+  @spec_liveview_components """
+  Format:
+  - Use H2 heading
+  - Bullet list of child component module names, or "None"
+
+  Content:
+  - List LiveView components (function components, live components) used by this view
+  - Include brief description of each component's role
+
+  Examples:
+  - ## Components
+    - AccountLive.Components.Navigation - sidebar navigation with active tab
+    - AccountLive.Components.SettingsForm - account settings form
+  - ## Components
+    None
+  """
+
+  @spec_user_interactions """
+  Format:
+  - Use H2 heading
+  - Bold event names with descriptions
+
+  Content:
+  - Map each user action to its behavior and context calls
+  - Use Phoenix event format (phx-change, phx-submit, phx-click)
+  - Describe what happens and which context function is called
+
+  Examples:
+  - ## User Interactions
+    - **phx-submit="save"**: Validate form params, call Accounts.update_account/2, flash success or show errors.
+    - **phx-change="validate"**: Live-validate form inputs and update changeset in assigns.
+  """
+
+  @spec_design """
+  Format:
+  - Use H2 heading
+  - Structured prose describing layout, components, and responsive behavior
+
+  Content:
+  - Describe the layout structure (sidebar, grid, single-column, etc.)
+  - List DaisyUI component choices (e.g., .card, .btn-primary, .form-control)
+  - Describe responsive behavior
+  - This is a structural description, not renderable HTML
+
+  Examples:
+  - ## Design
+    Layout: Centered single-column page
+    Main content:
+      - Card: Account settings form (name, description fields)
+      - Card.danger: Delete account section (owners only, with confirmation)
+    Components: .card, .form-control, .btn-primary, .btn-error
+    Responsive: Stack cards vertically on mobile
+  """
+
   @proposal_contexts """
   Format:
   - Use H2 heading: ## Contexts
@@ -262,6 +365,7 @@ defmodule CodeMySpec.Documents.Registry do
     optional_sections: ["fields"],
     allowed_additional_sections: [],
     section_descriptions: %{
+      "type" => @spec_type,
       "delegates" => @spec_delegates,
       "functions" => @spec_functions,
       "dependencies" => @spec_dependencies,
@@ -281,6 +385,7 @@ defmodule CodeMySpec.Documents.Registry do
       optional_sections: ["functions", "dependencies"],
       allowed_additional_sections: [],
       section_descriptions: %{
+        "type" => @spec_type,
         "functions" => @spec_functions,
         "dependencies" => @spec_dependencies,
         "fields" => @spec_fields
@@ -300,6 +405,7 @@ defmodule CodeMySpec.Documents.Registry do
       optional_sections: ["fields"],
       allowed_additional_sections: [],
       section_descriptions: %{
+        "type" => @spec_type,
         "delegates" => @spec_delegates,
         "functions" => @spec_functions,
         "dependencies" => @spec_dependencies,
@@ -329,6 +435,30 @@ defmodule CodeMySpec.Documents.Registry do
         "stories" => @review_stories,
         "issues" => @review_issues,
         "conclusion" => @review_conclusion
+      }
+    },
+    "liveview" => %{
+      overview: """
+      LiveView spec documents define Phoenix LiveView pages including routing,
+      user interactions, layout design, and dependencies. They follow a UI-focused
+      format describing what the view does and how it looks, with detailed function
+      specifications for mount, handle_event, and render callbacks.
+
+      Specs should focus on WHAT the view does, not HOW it does it. Keep them concise
+      and human-readable, as they're consumed by both humans and AI agents.
+      """,
+      required_sections: ["route", "user interactions", "dependencies"],
+      optional_sections: ["params", "components", "design", "functions"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "type" => @spec_type,
+        "route" => @spec_route,
+        "params" => @spec_params,
+        "components" => @spec_liveview_components,
+        "user interactions" => @spec_user_interactions,
+        "design" => @spec_design,
+        "dependencies" => @spec_dependencies,
+        "functions" => @spec_functions
       }
     },
     "architecture_proposal" => %{

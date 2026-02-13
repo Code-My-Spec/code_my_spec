@@ -78,21 +78,21 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
     """
     # #{component.module_name}
 
-    **Type**: liveview
+    ## Type
 
-    ## Functions
+    liveview
 
-    ### mount/3
+    ## Route
 
-    Initializes the LiveView.
+    `/dashboard`
 
-    ```elixir
-    @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
-    ```
+    ## User Interactions
+
+    - **phx-click="refresh"**: Reload dashboard data from context.
 
     ## Dependencies
 
-    None
+    - TestApp.Accounts
     """
   end
 
@@ -249,6 +249,28 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
                prompt =~ "event" or prompt =~ "Event"
 
       assert prompt =~ "Design" or prompt =~ "design"
+    end
+
+    test "document specification includes liveview-specific sections from registry", %{
+      tmp_dir: tmp_dir
+    } do
+      scope = create_scope(tmp_dir)
+      component = create_liveview_component(scope)
+      session = create_session(scope, component)
+
+      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+
+      # Required liveview sections should appear in the document spec
+      assert prompt =~ "Route"
+      assert prompt =~ "User Interactions"
+      assert prompt =~ "Dependencies"
+
+      # Optional liveview sections should appear
+      assert prompt =~ "Params"
+      assert prompt =~ "Design"
+
+      # Should NOT contain default spec sections that don't apply to liveviews
+      refute prompt =~ "Delegates"
     end
 
     test "returns error if rules cannot be loaded", %{tmp_dir: tmp_dir} do

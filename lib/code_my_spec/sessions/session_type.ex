@@ -19,6 +19,8 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.WriteBddSpecs,
     AgentTasks.ManageImplementation,
     AgentTasks.DevelopContext,
+    AgentTasks.DevelopLiveView,
+    AgentTasks.LiveViewSpec,
     AgentTasks.DesignUi
   ]
 

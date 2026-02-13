@@ -82,10 +82,9 @@ defmodule CodeMySpec.Documents do
     |> String.replace(~r{^.*/docs/spec/}, "")
     |> String.replace_suffix(".spec.md", "")
     |> String.split("/")
-    |> Enum.map(fn part ->
-      part |> String.split("_") |> Enum.map(&String.capitalize/1) |> Enum.join("")
+    |> Enum.map_join(".", fn part ->
+      part |> String.split("_") |> Enum.map_join(&String.capitalize/1)
     end)
-    |> Enum.join(".")
   end
 
   defp extract_h1_module(content) do
@@ -123,9 +122,9 @@ defmodule CodeMySpec.Documents do
   Returns `{:ok, document}` with sections map and type or `{:error, reason}` on failure.
   """
   def create_dynamic_document(markdown_content, document_type) do
-    doc_def = CodeMySpec.Documents.Registry.get_definition(document_type)
-
-    with :ok <- validate_h1_title(markdown_content, document_type),
+    with :ok <- validate_document_type(document_type),
+         doc_def = CodeMySpec.Documents.Registry.get_definition(document_type),
+         :ok <- validate_h1_title(markdown_content, document_type),
          {:ok, sections} <- MarkdownParser.parse(markdown_content),
          :ok <- validate_required_sections(sections, doc_def.required_sections),
          :ok <-
@@ -138,6 +137,11 @@ defmodule CodeMySpec.Documents do
       {:ok, %{sections: sections, type: document_type}}
     end
   end
+
+  defp validate_document_type(type) when is_binary(type) and byte_size(type) > 0, do: :ok
+  defp validate_document_type(nil), do: {:error, "Document type is required"}
+  defp validate_document_type(""), do: {:error, "Document type is required"}
+  defp validate_document_type(_), do: {:error, "Document type must be a string"}
 
   # Spec files (spec, schema, context_spec) must have a valid H1 title
   @spec_types ["spec", "schema", "context_spec"]
@@ -179,6 +183,9 @@ defmodule CodeMySpec.Documents do
     end
   end
 
+  # Metadata sections allowed in any document type
+  @metadata_sections ["type"]
+
   defp validate_additional_sections(_sections, _required, _optional, "*"), do: :ok
 
   defp validate_additional_sections(
@@ -196,7 +203,9 @@ defmodule CodeMySpec.Documents do
       end)
 
     allowed_sections =
-      MapSet.new(flattened_required ++ optional_sections ++ allowed_additional)
+      MapSet.new(
+        flattened_required ++ optional_sections ++ allowed_additional ++ @metadata_sections
+      )
 
     actual_sections = MapSet.new(Map.keys(sections))
     disallowed = MapSet.difference(actual_sections, allowed_sections)

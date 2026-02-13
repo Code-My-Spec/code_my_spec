@@ -243,6 +243,74 @@ defmodule CodeMySpec.DocumentsTest do
       assert error =~ "dependencies"
       refute error =~ "delegates OR functions"
     end
+
+    test "returns error when document_type is nil" do
+      markdown = """
+      # MyModule
+
+      ## Functions
+
+      ### my_func/1
+      Does something.
+
+      ## Dependencies
+      - Other.Module
+      """
+
+      assert {:error, error} = Documents.create_dynamic_document(markdown, nil)
+      assert error =~ "Document type is required"
+    end
+
+    test "returns error when document_type is empty string" do
+      markdown = "# MyModule\n\n## Functions\n\n### f/0\nDoes stuff.\n\n## Dependencies\nNone\n"
+
+      assert {:error, error} = Documents.create_dynamic_document(markdown, "")
+      assert error =~ "Document type is required"
+    end
+
+    test "allows ## Type section in any document type" do
+      markdown = """
+      # MyModule.Spec
+
+      ## Type
+
+      genserver
+
+      ## Delegates
+      - func/1: Other.func/1
+
+      ## Dependencies
+      - Other.Module
+      """
+
+      assert {:ok, document} = Documents.create_dynamic_document(markdown, "spec")
+      assert document.sections["type"] == "genserver"
+    end
+
+    test "allows ## Type section in liveview document type" do
+      markdown = """
+      # MyAppWeb.DashboardLive
+
+      ## Type
+
+      liveview
+
+      ## Route
+
+      `/dashboard`
+
+      ## User Interactions
+
+      - **phx-click="refresh"**: Reload data.
+
+      ## Dependencies
+
+      - MyApp.Accounts
+      """
+
+      assert {:ok, document} = Documents.create_dynamic_document(markdown, "liveview")
+      assert document.sections["type"] == "liveview"
+    end
   end
 
   describe "validate_h1_matches_path/2" do
