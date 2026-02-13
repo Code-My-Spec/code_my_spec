@@ -7,6 +7,7 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
   alias CodeMySpec.Sessions.SessionsRepository
   alias CodeMySpec.Users.Scope
 
+  import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures
 
@@ -82,8 +83,14 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
           state: %{}
         })
 
-      result = EvaluateAgentTask.run(scope)
+      result =
+        capture_log(fn ->
+          send(self(), {:result, EvaluateAgentTask.run(scope)})
+        end)
 
+      assert result =~ "No component found"
+
+      assert_received {:result, result}
       assert result["decision"] == "block"
       assert is_binary(result["reason"])
       # Should contain feedback from both sessions
@@ -108,7 +115,11 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
           state: %{}
         })
 
-      result = EvaluateAgentTask.run(scope)
+      capture_log(fn ->
+        send(self(), {:result, EvaluateAgentTask.run(scope)})
+      end)
+
+      assert_received {:result, result}
 
       # Should block on the high-priority session
       assert result["decision"] == "block"
@@ -147,6 +158,7 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
       assert {:ok, _} = SessionsRepository.get_session(env, low_session.id)
 
       # No block — only the top level was evaluated and it passed
+      # (no capture_log needed — the ComponentSpec session is never evaluated)
       assert result == %{}
     end
 
@@ -168,8 +180,11 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTaskTest do
           state: %{}
         })
 
-      result = EvaluateAgentTask.run(scope)
+      capture_log(fn ->
+        send(self(), {:result, EvaluateAgentTask.run(scope)})
+      end)
 
+      assert_received {:result, result}
       assert result["decision"] == "block"
 
       # Valid session should be deleted
