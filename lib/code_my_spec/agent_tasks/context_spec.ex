@@ -9,6 +9,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{ComponentRepository, Registry}
@@ -60,7 +61,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - {:error, reason} if something went wrong
   """
   def evaluate(scope, session, _opts \\ []) do
-    %{component: component} = session
+    %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
 
     spec_reqs = check_artifact_requirements(scope, component, :specification)
@@ -72,20 +73,28 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
       "[ContextSpec] evaluate #{component.module_name}: #{satisfied_count}/#{total} specification requirements pass"
     )
 
-    if unsatisfied != [] do
-      feedback =
+    req_feedback =
+      if Enum.empty?(unsatisfied) do
+        nil
+      else
         RequirementsFormatter.format_unsatisfied(unsatisfied,
           context: "Context spec requirements not met:"
         )
-
-      {:ok, :invalid, feedback}
-    else
-      # Requirements pass — create child spec stubs (won't overwrite existing)
-      with {:ok, spec_content} <- read_spec_file(scope, session),
-           {:ok, document} <- validate_document(spec_content),
-           {:ok, _paths} <- create_child_spec_files(scope, session, document.sections) do
-        {:ok, :valid}
       end
+
+    problem_feedback = ProblemFeedback.for_spec_task(scope, component, project)
+
+    case ProblemFeedback.combine(req_feedback, problem_feedback) do
+      {:ok, :invalid, _feedback} = invalid ->
+        invalid
+
+      {:ok, :valid} ->
+        # Requirements and problems pass — create child spec stubs (won't overwrite existing)
+        with {:ok, spec_content} <- read_spec_file(scope, session),
+             {:ok, document} <- validate_document(spec_content),
+             {:ok, _paths} <- create_child_spec_files(scope, session, document.sections) do
+          {:ok, :valid}
+        end
     end
   end
 

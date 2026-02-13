@@ -7,6 +7,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   - `evaluate/3` - Called by stop hook to check implementation file exists
   """
 
+  alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
@@ -45,23 +46,26 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   - {:ok, :invalid, feedback} if the code file is missing
   """
   def evaluate(scope, session, _opts \\ []) do
-    %{component: component} = session
+    %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
     requirements = component.requirements || []
 
     code_reqs =
-      Requirements.check_requirements(scope, component, requirements,
-        artifact_types: [:code]
-      )
+      Requirements.check_requirements(scope, component, requirements, artifact_types: [:code])
 
     unsatisfied = Enum.filter(code_reqs, &(not &1.satisfied))
 
-    if Enum.empty?(unsatisfied) do
-      {:ok, :valid}
-    else
-      feedback = RequirementsFormatter.format_unsatisfied(unsatisfied, context: "Code requirements not met:")
-      {:ok, :invalid, feedback}
-    end
+    req_feedback =
+      if Enum.empty?(unsatisfied) do
+        nil
+      else
+        RequirementsFormatter.format_unsatisfied(unsatisfied,
+          context: "Code requirements not met:"
+        )
+      end
+
+    problem_feedback = ProblemFeedback.for_code_task(scope, component, project)
+    ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
   # Private functions
@@ -138,5 +142,4 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       |> String.trim()
     end)
   end
-
 end

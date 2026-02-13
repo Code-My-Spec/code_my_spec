@@ -14,6 +14,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
@@ -38,7 +39,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
   @spec evaluate(term(), map(), keyword()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, session, _opts \\ []) do
-    %{component: component} = session
+    %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
 
     spec_reqs = check_artifact_requirements(scope, component, :specification)
@@ -50,16 +51,17 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
       "[LiveViewSpec] evaluate #{component.module_name}: #{satisfied_count}/#{total} specification requirements pass"
     )
 
-    if Enum.empty?(unsatisfied) do
-      {:ok, :valid}
-    else
-      feedback =
+    req_feedback =
+      if Enum.empty?(unsatisfied) do
+        nil
+      else
         RequirementsFormatter.format_unsatisfied(unsatisfied,
           context: "Spec requirements not met:"
         )
+      end
 
-      {:ok, :invalid, feedback}
-    end
+    problem_feedback = ProblemFeedback.for_spec_task(scope, component, project)
+    ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
   defp check_artifact_requirements(scope, component, artifact_type) do

@@ -9,6 +9,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.{ComponentRepository, Registry}
@@ -54,7 +55,16 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   - {:error, reason} if something went wrong
   """
   def evaluate(scope, session, _opts \\ []) do
-    %{component: component} = session
+    %{component: component, project: project} = session
+
+    if is_nil(component) do
+      {:error, "No component found for session (module: #{session.component_module_name})"}
+    else
+      evaluate_component(scope, component, project)
+    end
+  end
+
+  defp evaluate_component(scope, component, project) do
     component = ComponentRepository.get_component(scope, component.id)
 
     spec_reqs = check_artifact_requirements(scope, component, :specification)
@@ -66,16 +76,17 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
       "[ComponentSpec] evaluate #{component.module_name}: #{satisfied_count}/#{total} specification requirements pass"
     )
 
-    if Enum.empty?(unsatisfied) do
-      {:ok, :valid}
-    else
-      feedback =
+    req_feedback =
+      if Enum.empty?(unsatisfied) do
+        nil
+      else
         RequirementsFormatter.format_unsatisfied(unsatisfied,
           context: "Spec requirements not met:"
         )
+      end
 
-      {:ok, :invalid, feedback}
-    end
+    problem_feedback = ProblemFeedback.for_spec_task(scope, component, project)
+    ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
   defp check_artifact_requirements(scope, component, artifact_type) do

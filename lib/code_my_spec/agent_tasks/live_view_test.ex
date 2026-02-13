@@ -11,11 +11,10 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   - `evaluate/3` - Called by stop hook to check test requirements are satisfied
   """
 
+  alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
-  alias CodeMySpec.Problems
-  alias CodeMySpec.Problems.ProblemRenderer
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -43,32 +42,17 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
 
     unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
 
-    if unsatisfied != [] do
-      feedback =
+    req_feedback =
+      if Enum.empty?(unsatisfied) do
+        nil
+      else
         RequirementsFormatter.format_unsatisfied(unsatisfied,
           context: "Test requirements not met:"
         )
-
-      {:ok, :invalid, feedback}
-    else
-      %{test_file: test_file_path} = Utils.component_files(component, project)
-
-      problems =
-        Problems.list_project_problems(scope, file_path: test_file_path)
-        |> Enum.reject(&(&1.source_type == :test))
-
-      if Enum.empty?(problems) do
-        {:ok, :valid}
-      else
-        feedback =
-          ProblemRenderer.render_for_feedback(problems,
-            context: "Test file has problems (test failures are OK, these are not):",
-            max_problems: 20
-          )
-
-        {:ok, :invalid, feedback}
       end
-    end
+
+    problem_feedback = ProblemFeedback.for_test_task(scope, component, project)
+    ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
   # Private functions

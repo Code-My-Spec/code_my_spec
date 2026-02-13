@@ -69,7 +69,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
     """)
   end
 
-  defp write_spec_file!(tmp_dir, component, project, content \\ nil) do
+  defp write_spec_file!(tmp_dir, component, project, content) do
     %{spec_file: spec_path} = CodeMySpec.Utils.component_files(component, project)
     write_file!(tmp_dir, spec_path, content || valid_spec_content(component))
   end
@@ -368,6 +368,45 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
 
       assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, session)
       assert is_binary(feedback)
+    end
+
+    test "returns {:ok, :invalid, feedback} when spec file has problems even if requirements pass",
+         %{tmp_dir: tmp_dir} do
+      scope = create_scope(tmp_dir)
+      component = create_liveview_component(scope)
+
+      requirement_fixture(scope, component, %{
+        name: "spec_file",
+        artifact_type: :specification,
+        satisfied: true
+      })
+
+      requirement_fixture(scope, component, %{
+        name: "spec_valid",
+        artifact_type: :specification,
+        satisfied: true
+      })
+
+      %{spec_file: spec_file} =
+        CodeMySpec.Utils.component_files(component, scope.active_project)
+
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(scope, [
+          %{
+            severity: :error,
+            source_type: :static_analysis,
+            source: "spec_validation",
+            file_path: spec_file,
+            message: "Missing required section: Functions",
+            category: "document_structure"
+          }
+        ])
+
+      component = Components.get_component(scope, component.id)
+      session = create_session(scope, component)
+
+      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, session)
+      assert feedback =~ "Missing required section"
     end
   end
 end

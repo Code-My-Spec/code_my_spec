@@ -153,5 +153,104 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
 
       assert {:ok, :valid} = ComponentCode.evaluate(scope, session)
     end
+
+    test "returns invalid when problems exist on code file even if requirements pass", %{
+      session: session,
+      scope: scope,
+      component: component,
+      project: project
+    } do
+      satisfy_code_requirements(scope, component)
+      %{code_file: code_file} = CodeMySpec.Utils.component_files(component, project)
+
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(scope, [
+          %{
+            severity: :warning,
+            source_type: :static_analysis,
+            source: "credo",
+            file_path: code_file,
+            message: "Modules should have a @moduledoc tag",
+            category: "readability"
+          }
+        ])
+
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert feedback =~ "@moduledoc"
+    end
+
+    test "returns invalid when problems exist on test file even if requirements pass", %{
+      session: session,
+      scope: scope,
+      component: component,
+      project: project
+    } do
+      satisfy_code_requirements(scope, component)
+      %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
+
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(scope, [
+          %{
+            severity: :error,
+            source_type: :test,
+            source: "exunit",
+            file_path: test_file,
+            message: "test failed: expected true, got false",
+            category: "test_failure"
+          }
+        ])
+
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert feedback =~ "test failed"
+    end
+
+    test "combines requirement and problem feedback when both fail", %{
+      session: session,
+      scope: scope,
+      component: component,
+      project: project
+    } do
+      requirement_fixture(scope, component, %{
+        name: "implementation_file",
+        artifact_type: :code,
+        description: "Component implementation file exists",
+        satisfied: false,
+        details: %{reason: "File missing"}
+      })
+
+      %{code_file: code_file} = CodeMySpec.Utils.component_files(component, project)
+
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(scope, [
+          %{
+            severity: :error,
+            source_type: :static_analysis,
+            source: "compiler",
+            file_path: code_file,
+            message: "undefined function foo/0",
+            category: "undefined_function"
+          }
+        ])
+
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert feedback =~ "requirements not met"
+      assert feedback =~ "undefined function"
+    end
+  end
+
+  defp satisfy_code_requirements(scope, component) do
+    requirement_fixture(scope, component, %{
+      name: "implementation_file",
+      artifact_type: :code,
+      description: "Component implementation file exists",
+      satisfied: true
+    })
+
+    requirement_fixture(scope, component, %{
+      name: "tests_passing",
+      artifact_type: :code,
+      description: "Component tests are passing",
+      satisfied: true
+    })
   end
 end
