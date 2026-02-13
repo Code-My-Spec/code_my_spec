@@ -50,7 +50,6 @@ defmodule CodeMySpec.Compile do
 
     {output, exit_code} =
       System.cmd("mix", ["compile", "--return-errors"], cmd_opts)
-      |> IO.inspect(label: :compile_output)
 
     result_data =
       case File.read(output_file) do

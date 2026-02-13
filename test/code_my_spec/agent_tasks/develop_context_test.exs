@@ -488,7 +488,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       session = create_session(scope, context)
 
       # Initial command generates implementation prompts
-      assert {:ok, message} = DevelopContext.command(scope, session)
+      assert {:ok, _message} = DevelopContext.command(scope, session)
 
       # Now call evaluate - it should regenerate prompts for the implementation phase
       assert {:ok, :invalid, feedback} = DevelopContext.evaluate(scope, session)

@@ -472,20 +472,6 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     end
   end
 
-  defp format_component_task({component, test_file, code_file}) do
-    test_line =
-      if test_file,
-        do: "  - [ ] Test: `#{test_file.file_path}`",
-        else: "  - [x] Tests: passing"
-
-    code_line =
-      if code_file,
-        do: "  - [ ] Code: `#{code_file.file_path}`",
-        else: "  - [x] Code: passing"
-
-    "- **#{component.name}** (#{component.type})\n#{test_line}\n#{code_line}"
-  end
-
   defp format_phase_instructions(phase, prompt_files) do
     phase_files = Enum.filter(prompt_files, fn pf -> pf.prompt_type == phase or pf.phase == phase_to_number(phase) end)
 
@@ -505,6 +491,20 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
       Read each prompt file and invoke the appropriate subagent.
       """
     end
+  end
+
+  defp format_component_task({component, test_file, code_file}) do
+    test_line =
+      if test_file,
+        do: "  - [ ] Test: `#{test_file.file_path}`",
+        else: "  - [x] Tests: passing"
+
+    code_line =
+      if code_file,
+        do: "  - [ ] Code: `#{code_file.file_path}`",
+        else: "  - [x] Code: passing"
+
+    "- **#{component.name}** (#{component.type})\n#{test_line}\n#{code_line}"
   end
 
   defp phase_to_number(:context_spec), do: 1
