@@ -45,7 +45,8 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
              stories,
              review_file_path
            ) do
-      {:ok, TaskMarker.build("ContextDesignReview", context_component.module_name) <> "\n\n" <> prompt}
+      {:ok,
+       TaskMarker.build("ContextDesignReview", context_component.module_name) <> "\n\n" <> prompt}
     end
   end
 
@@ -226,7 +227,7 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     stories
     |> Enum.with_index(1)
     |> Enum.map_join("\n\n", fn {story, index} ->
-      acceptance_criteria = format_acceptance_criteria(story.acceptance_criteria)
+      acceptance_criteria = format_acceptance_criteria(story.criteria)
 
       """
       ### Story #{index}: #{story.title}
@@ -243,7 +244,7 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   defp format_acceptance_criteria([]), do: "- None specified"
 
   defp format_acceptance_criteria(criteria) when is_list(criteria) do
-    Enum.map_join(criteria, "\n", fn criterion -> "- #{criterion}" end)
+    Enum.map_join(criteria, "\n", fn criterion -> "- #{criterion.description}" end)
   end
 
   defp format_acceptance_criteria(other) do
@@ -263,5 +264,4 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   end
 
   defp format_project_executive_summary(_project), do: ""
-
 end

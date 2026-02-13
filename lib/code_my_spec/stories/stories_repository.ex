@@ -125,6 +125,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       where: s.component_id == ^component_id and s.project_id == ^scope.active_project_id
     )
     |> Repo.all()
+    |> Repo.preload([:criteria, :tags])
   end
 
   def get_story(%Scope{} = scope, id) do
