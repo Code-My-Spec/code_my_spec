@@ -3,9 +3,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   Orchestrates the full lifecycle of a LiveView from specification through implementation.
 
   Mirrors DevelopContext's phased approach adapted for LiveView components:
-  spec the LiveView, spec child components, run design review, then implement
-  (tests + code) in dependency order — child components first, then the parent
-  LiveView that composes them.
+  spec the LiveView, spec child components, then implement (tests + code) in
+  dependency order — child components first, then the parent LiveView that
+  composes them.
 
   Uses LiveViewSpec/LiveViewTest/LiveViewCode for the parent LiveView and
   ComponentSpec/ComponentTest/ComponentCode for child components.
@@ -17,8 +17,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   Lifecycle phases:
   1. LiveView spec (LiveViewSpec)
   2. Component specs (ComponentSpec) for each child
-  3. Design review (ContextDesignReview)
-  4. Implementation (LiveViewTest + LiveViewCode for parent,
+  3. Implementation (LiveViewTest + LiveViewCode for parent,
      ComponentTest + ComponentCode for children in dependency order)
 
   Two main functions:
@@ -34,7 +33,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     ComponentCode,
     ComponentSpec,
     ComponentTest,
-    ContextDesignReview,
     LiveViewCode,
     LiveViewSpec,
     LiveViewTest
@@ -57,7 +55,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   @doc """
   Generate prompt files and orchestration instructions for the full LiveView lifecycle.
 
-  Checks each phase (spec, design review, implementation) and generates prompt files
+  Checks each phase (spec, implementation) and generates prompt files
   for incomplete phases. Files are written to `docs/status/{root}/{live_view}/`.
 
   Returns {:ok, prompt_text}
@@ -154,14 +152,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   defp check_lifecycle_phases(scope, session, liveview_component, children) do
     liveview_spec_status = check_liveview_spec(scope, session, liveview_component)
     component_specs_status = check_component_specs(scope, session, children)
-    design_review_status = check_design_review(scope, session, liveview_component)
     implementation_status = check_implementation(scope, liveview_component, children)
 
     incomplete_phases =
       []
       |> maybe_add_phase(:liveview_spec, liveview_spec_status)
       |> maybe_add_phase(:component_specs, component_specs_status)
-      |> maybe_add_phase(:design_review, design_review_status)
       |> maybe_add_phase(:implementation, implementation_status)
 
     status =
@@ -173,7 +169,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
           incomplete_phases: incomplete_phases,
           liveview_spec: liveview_spec_status,
           component_specs: component_specs_status,
-          design_review: design_review_status,
           implementation: implementation_status
         }
       end
@@ -205,32 +200,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
       end)
 
     if Enum.empty?(missing), do: :complete, else: {:missing, missing}
-  end
-
-  defp check_design_review(scope, session, liveview_component) do
-    # LiveView types don't have :review requirements in the Registry by default,
-    # so ContextDesignReview.evaluate/3 would return :valid even without a review.
-    # We check both: the evaluator for quality validation when requirements exist,
-    # and file existence as a baseline gate.
-    child_session = %{component: liveview_component, project: session.project}
-
-    case ContextDesignReview.evaluate(scope, child_session) do
-      {:ok, :valid} ->
-        if review_file_exists?(scope, session, liveview_component) do
-          :complete
-        else
-          {:missing, [liveview_component]}
-        end
-
-      _ ->
-        {:missing, [liveview_component]}
-    end
-  end
-
-  defp review_file_exists?(scope, session, component) do
-    spec_path = CodeMySpec.Utils.component_files(component, session.project).spec_file
-    review_path = String.replace_suffix(spec_path, ".spec.md", "/design_review.md")
-    CodeMySpec.Environments.file_exists?(scope.environment, review_path)
   end
 
   defp check_implementation(scope, liveview_component, children) do
@@ -310,7 +279,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
       []
       |> maybe_add_liveview_spec_prompts(phase_status, ctx)
       |> maybe_add_component_spec_prompts(phase_status, ctx)
-      |> maybe_add_design_review_prompts(phase_status, ctx)
       |> maybe_add_implementation_prompts(phase_status, ctx)
 
     {:ok, prompt_files}
@@ -342,26 +310,13 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
 
   defp maybe_add_component_spec_prompts(acc, _status, _ctx), do: acc
 
-  defp maybe_add_design_review_prompts(
-         acc,
-         %{liveview_spec: :complete, component_specs: :complete, design_review: {:missing, _}},
-         ctx
-       ) do
-    acc ++
-      generate_design_review_prompt(
-        ctx.scope,
-        ctx.session,
-        ctx.liveview_component,
-        ctx.environment,
-        ctx.status_dir
-      )
-  end
-
-  defp maybe_add_design_review_prompts(acc, _status, _ctx), do: acc
-
   defp maybe_add_implementation_prompts(
          acc,
-         %{design_review: :complete, implementation: {:missing, components_with_needs}},
+         %{
+           liveview_spec: :complete,
+           component_specs: :complete,
+           implementation: {:missing, components_with_needs}
+         },
          ctx
        ) do
     acc ++
@@ -401,24 +356,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     end)
   end
 
-  defp generate_design_review_prompt(scope, session, liveview_component, environment, status_dir) do
-    child_session = %{component: liveview_component, project: session.project}
-    {:ok, prompt_content} = ContextDesignReview.command(scope, child_session)
-
-    safe_name = safe_filename(liveview_component.module_name)
-    file_path = "#{status_dir}/#{safe_name}_design_review.md"
-    :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
-
-    [
-      %{
-        component: liveview_component,
-        file_path: file_path,
-        prompt_type: :design_review,
-        phase: 3
-      }
-    ]
-  end
-
   defp generate_implementation_prompts(
          scope,
          session,
@@ -445,7 +382,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
       {:ok, content} = test_command(scope, session, is_parent)
       file_path = "#{dir}/#{name}_test.md"
       :ok = CodeMySpec.Environments.write_file(env, file_path, content)
-      [%{component: component, file_path: file_path, prompt_type: :test, phase: 4}]
+      [%{component: component, file_path: file_path, prompt_type: :test, phase: 3}]
     else
       []
     end
@@ -456,7 +393,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
       {:ok, content} = code_command(scope, session, is_parent)
       file_path = "#{dir}/#{name}_code.md"
       :ok = CodeMySpec.Environments.write_file(env, file_path, content)
-      [%{component: component, file_path: file_path, prompt_type: :code, phase: 4}]
+      [%{component: component, file_path: file_path, prompt_type: :code, phase: 3}]
     else
       []
     end
@@ -487,7 +424,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
      LiveView lifecycle is complete. All phases have passed:
      - LiveView specification
      - Component specifications
-     - Design review
      - Implementation
 
      No further action required.
@@ -508,8 +444,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
 
      1. **LiveView Spec** - Define the LiveView architecture, route, interactions
      2. **Component Specs** - Design each child component
-     3. **Design Review** - Validate architecture before implementation
-     4. **Implementation** - Tests + code in dependency order (children first, parent last)
+     3. **Implementation** - Tests + code in dependency order (children first, parent last)
 
      ## Current Phase: #{format_phase_name(current_phase)}
 
@@ -520,7 +455,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
      Invoke the appropriate subagent for each prompt file:
 
      - For spec prompts: `@"CodeMySpec:spec-writer (agent)"`
-     - For design review prompts: `@"CodeMySpec:spec-writer (agent)"`
      - For test prompts: `@"CodeMySpec:test-writer (agent)"`
      - For code prompts: `@"CodeMySpec:code-writer (agent)"`
 
@@ -541,7 +475,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     cond do
       match?({:missing, _}, phase_status[:liveview_spec]) -> :liveview_spec
       match?({:missing, _}, phase_status[:component_specs]) -> :component_specs
-      match?({:missing, _}, phase_status[:design_review]) -> :design_review
       match?({:missing, _}, phase_status[:implementation]) -> :implementation
       true -> :complete
     end
@@ -549,12 +482,11 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
 
   defp format_phase_name(:liveview_spec), do: "LiveView Specification"
   defp format_phase_name(:component_specs), do: "Component Specifications"
-  defp format_phase_name(:design_review), do: "Design Review"
   defp format_phase_name(:implementation), do: "Implementation"
   defp format_phase_name(:complete), do: "Complete"
 
   defp format_phase_instructions(:implementation, prompt_files) do
-    phase_files = Enum.filter(prompt_files, fn pf -> pf.phase == 4 end)
+    phase_files = Enum.filter(prompt_files, fn pf -> pf.phase == 3 end)
 
     if Enum.empty?(phase_files) do
       "No prompt files generated for this phase."
@@ -631,8 +563,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   defp phase_to_number(:liveview_spec), do: 1
   defp phase_to_number(:component_specs), do: 2
   defp phase_to_number(:component_spec), do: 2
-  defp phase_to_number(:design_review), do: 3
-  defp phase_to_number(:implementation), do: 4
+  defp phase_to_number(:implementation), do: 3
   defp phase_to_number(_), do: 0
 
   # Private functions - Cleanup
@@ -640,10 +571,10 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   defp cleanup_completed_phases(phase_status, status_dir, working_dir) do
     completed_suffixes =
       if phase_status[:complete] == true do
-        [:liveview_spec, :component_specs, :design_review, :implementation]
+        [:liveview_spec, :component_specs, :implementation]
         |> Enum.flat_map(&phase_to_suffixes/1)
       else
-        [:liveview_spec, :component_specs, :design_review, :implementation]
+        [:liveview_spec, :component_specs, :implementation]
         |> Enum.filter(fn phase -> phase_status[phase] == :complete end)
         |> Enum.flat_map(&phase_to_suffixes/1)
       end
@@ -666,7 +597,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
 
   defp phase_to_suffixes(:liveview_spec), do: ["_live_view_spec.md"]
   defp phase_to_suffixes(:component_specs), do: ["_component_spec.md"]
-  defp phase_to_suffixes(:design_review), do: ["_design_review.md"]
   defp phase_to_suffixes(:implementation), do: ["_test.md", "_code.md"]
 
   defp cleanup_status_directory(status_dir, working_dir) do

@@ -90,7 +90,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, session} <- create_session(scope, external_id, agent_task_module, nil),
          session <- enrich_session(session, nil, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
-      {:ok, prompt, sync_result}
+      {:ok, with_project_context(prompt), sync_result}
     end
   end
 
@@ -104,8 +104,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, session} <- create_session(scope, external_id, agent_task_module, component),
          session <- enrich_session(session, component, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
-      {:ok, prompt, sync_result}
+      {:ok, with_project_context(prompt), sync_result}
     end
+  end
+
+  defp with_project_context(prompt) do
+    "Read `docs/AGENTS.md` for project documentation structure.\n\n" <> prompt
   end
 
   # Validation

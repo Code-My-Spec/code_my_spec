@@ -130,36 +130,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
     """
   end
 
-  defp create_design_review_file!(tmp_dir, component, project) do
-    spec_path = CodeMySpec.Utils.component_files(component, project).spec_file
-    review_path = String.replace_suffix(spec_path, ".spec.md", "/design_review.md")
-    full_path = Path.join(tmp_dir, review_path)
-    full_path |> Path.dirname() |> File.mkdir_p!()
-
-    content = """
-    # Design Review: #{component.name}
-
-    ## Overview
-
-    LiveView overview.
-
-    ## Architecture
-
-    Architecture details.
-
-    ## Integration
-
-    Integration notes.
-
-    ## Conclusion
-
-    APPROVED
-    """
-
-    File.write!(full_path, content)
-    full_path
-  end
-
   defp create_satisfied_requirements!(scope, component, artifact_type) do
     requirement_fixture(scope, component, %{
       name: "#{artifact_type}_requirement",
@@ -206,18 +176,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
 
-      # Create design review
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-
       # Mark all requirements as satisfied
       for component <- [liveview | children] do
         create_satisfied_requirements!(scope, component, :specification)
         create_satisfied_requirements!(scope, component, :tests)
         create_satisfied_requirements!(scope, component, :code)
       end
-
-      # Also mark review requirements as satisfied for the LiveView
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Reload liveview with requirements
       liveview = Components.get_component(scope, liveview.id)
@@ -273,51 +237,18 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       end
     end
 
-    test "generates design review prompt only when LiveView and component specs are complete", %{
-      tmp_dir: tmp_dir
-    } do
-      scope = create_scope_with_env(tmp_dir)
-      {liveview, children} = create_liveview_with_children(scope)
-
-      # Create all spec files but not design review
-      create_spec_file!(tmp_dir, liveview, scope.active_project)
-
-      for child <- children do
-        create_spec_file!(tmp_dir, child, scope.active_project)
-      end
-
-      # Mark spec requirements as satisfied so spec phase is complete
-      for component <- [liveview | children] do
-        create_satisfied_requirements!(scope, component, :specification)
-      end
-
-      session = create_session(scope, liveview)
-
-      assert {:ok, _message} = DevelopLiveView.command(scope, session)
-      content = read_orchestration_file(tmp_dir, liveview.module_name)
-      assert content =~ "Design Review"
-
-      status_dir = liveview_status_dir(liveview.module_name)
-      safe_name = safe_filename(liveview.module_name)
-      prompt_path = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_design_review.md")
-      assert File.exists?(prompt_path)
-    end
-
     test "generates LiveViewTest prompt for parent when implementation phase and tests needed", %{
       tmp_dir: tmp_dir
     } do
       scope = create_scope_with_env(tmp_dir)
       {liveview, children} = create_liveview_with_children(scope)
 
-      # Complete spec + design review phases
+      # Complete spec phases
       create_spec_file!(tmp_dir, liveview, scope.active_project)
 
       for child <- children do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
-
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Mark spec requirements as satisfied
       for component <- [liveview | children] do
@@ -356,15 +287,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       scope = create_scope_with_env(tmp_dir)
       {liveview, children} = create_liveview_with_children(scope)
 
-      # Complete spec + design review phases
+      # Complete spec phases
       create_spec_file!(tmp_dir, liveview, scope.active_project)
 
       for child <- children do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
-
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Mark spec requirements as satisfied
       for component <- [liveview | children] do
@@ -404,15 +332,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       scope = create_scope_with_env(tmp_dir)
       {liveview, children} = create_liveview_with_children(scope)
 
-      # Complete spec + design review phases
+      # Complete spec phases
       create_spec_file!(tmp_dir, liveview, scope.active_project)
 
       for child <- children do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
-
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Mark spec requirements as satisfied
       for component <- [liveview | children] do
@@ -453,15 +378,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       scope = create_scope_with_env(tmp_dir)
       {liveview, children} = create_liveview_with_children(scope)
 
-      # Complete spec + design review phases
+      # Complete spec phases
       create_spec_file!(tmp_dir, liveview, scope.active_project)
 
       for child <- children do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
-
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Mark spec requirements as satisfied
       for component <- [liveview | children] do
@@ -493,23 +415,15 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       end
     end
 
-    test "does not generate implementation prompts when design review is incomplete", %{
+    test "does not generate implementation prompts when specs are incomplete", %{
       tmp_dir: tmp_dir
     } do
       scope = create_scope_with_env(tmp_dir)
       {liveview, children} = create_liveview_with_children(scope)
 
-      # Create all spec files but NO design review
+      # Create LiveView spec but NOT child specs
       create_spec_file!(tmp_dir, liveview, scope.active_project)
-
-      for child <- children do
-        create_spec_file!(tmp_dir, child, scope.active_project)
-      end
-
-      # Mark spec requirements as satisfied
-      for component <- [liveview | children] do
-        create_satisfied_requirements!(scope, component, :specification)
-      end
+      create_satisfied_requirements!(scope, liveview, :specification)
 
       # Create unsatisfied implementation requirements
       for component <- [liveview | children] do
@@ -524,10 +438,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       session = create_session(scope, liveview)
 
       assert {:ok, _message} = DevelopLiveView.command(scope, session)
-      content = read_orchestration_file(tmp_dir, liveview.module_name)
-
-      # Should be in design review phase, not implementation
-      assert content =~ "Design Review"
 
       # No implementation prompt files should exist
       status_dir = liveview_status_dir(liveview.module_name)
@@ -538,10 +448,10 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
         code_path = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_code.md")
 
         refute File.exists?(test_path),
-               "Should not generate test prompt for #{component.name} before design review"
+               "Should not generate test prompt for #{component.name} before specs complete"
 
         refute File.exists?(code_path),
-               "Should not generate code prompt for #{component.name} before design review"
+               "Should not generate code prompt for #{component.name} before specs complete"
       end
     end
 
@@ -620,15 +530,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       scope = create_scope_with_env(tmp_dir)
       {liveview, children} = create_liveview_with_children(scope)
 
-      # Complete spec + design review phases
+      # Complete spec phases
       create_spec_file!(tmp_dir, liveview, scope.active_project)
 
       for child <- children do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
-
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Mark spec requirements as satisfied
       for component <- [liveview | children] do
@@ -678,15 +585,11 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
 
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-
       for component <- [liveview | children] do
         create_satisfied_requirements!(scope, component, :specification)
         create_satisfied_requirements!(scope, component, :tests)
         create_satisfied_requirements!(scope, component, :code)
       end
-
-      create_satisfied_requirements!(scope, liveview, :review)
 
       liveview = Components.get_component(scope, liveview.id)
       session = create_session(scope, liveview)
@@ -723,7 +626,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       assert feedback =~ "Component" or feedback =~ "Spec" or feedback =~ "incomplete"
     end
 
-    test "returns {:ok, :invalid, feedback} when design review phase is incomplete", %{
+    test "returns {:ok, :invalid, feedback} when implementation phase is incomplete", %{
       tmp_dir: tmp_dir
     } do
       scope = create_scope_with_env(tmp_dir)
@@ -735,34 +638,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       for child <- children do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
-
-      # Mark spec requirements as satisfied
-      for component <- [liveview | children] do
-        create_satisfied_requirements!(scope, component, :specification)
-      end
-
-      session = create_session(scope, liveview)
-
-      assert {:ok, :invalid, feedback} = DevelopLiveView.evaluate(scope, session)
-      assert is_binary(feedback)
-      assert feedback =~ "Design Review" or feedback =~ "review" or feedback =~ "incomplete"
-    end
-
-    test "returns {:ok, :invalid, feedback} when implementation phase is incomplete", %{
-      tmp_dir: tmp_dir
-    } do
-      scope = create_scope_with_env(tmp_dir)
-      {liveview, children} = create_liveview_with_children(scope)
-
-      # Complete spec + design review phases
-      create_spec_file!(tmp_dir, liveview, scope.active_project)
-
-      for child <- children do
-        create_spec_file!(tmp_dir, child, scope.active_project)
-      end
-
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Mark spec requirements as satisfied
       for component <- [liveview | children] do
@@ -812,39 +687,21 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
     test "cleans up prompt files for completed phases", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
-      {liveview, children} = create_liveview_with_children(scope)
-
-      # Create all spec files to mark spec phases complete
-      create_spec_file!(tmp_dir, liveview, scope.active_project)
-
-      for child <- children do
-        create_spec_file!(tmp_dir, child, scope.active_project)
-      end
-
-      # Mark spec requirements as satisfied
-      for component <- [liveview | children] do
-        create_satisfied_requirements!(scope, component, :specification)
-      end
+      {liveview, _children} = create_liveview_with_children(scope)
 
       session = create_session(scope, liveview)
 
-      # Command should generate design review prompt
+      # Command should generate spec prompts when no specs exist
       assert {:ok, _message} = DevelopLiveView.command(scope, session)
-      content = read_orchestration_file(tmp_dir, liveview.module_name)
-      assert content =~ "Design Review"
 
       status_dir = liveview_status_dir(liveview.module_name)
       safe_name = safe_filename(liveview.module_name)
-      design_review_prompt = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_design_review.md")
-      assert File.exists?(design_review_prompt)
+      spec_prompt = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_live_view_spec.md")
+      assert File.exists?(spec_prompt)
 
-      # Now create the design review file to complete that phase
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
-
-      # Reload liveview
-      liveview = Components.get_component(scope, liveview.id)
-      session = create_session(scope, liveview)
+      # Now create spec file and mark requirements satisfied to complete spec phase
+      create_spec_file!(tmp_dir, liveview, scope.active_project)
+      create_satisfied_requirements!(scope, liveview, :specification)
 
       # Evaluate should clean up completed phase prompt files
       result = DevelopLiveView.evaluate(scope, session)
@@ -855,9 +712,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
         other -> flunk("Unexpected result: #{inspect(other)}")
       end
 
-      # Design review prompt should be cleaned up since design_review phase is now complete
-      refute File.exists?(design_review_prompt),
-             "Design review prompt should be cleaned up after phase completes"
+      # Spec prompt should be cleaned up since liveview_spec phase is now complete
+      refute File.exists?(spec_prompt),
+             "Spec prompt should be cleaned up after phase completes"
     end
 
     test "removes status directory when all phases complete", %{tmp_dir: tmp_dir} do
@@ -871,17 +728,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
 
-      # Create design review
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-
       # Mark all requirements as satisfied
       for component <- [liveview | children] do
         create_satisfied_requirements!(scope, component, :specification)
         create_satisfied_requirements!(scope, component, :tests)
         create_satisfied_requirements!(scope, component, :code)
       end
-
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Create status directory with a leftover file
       status_dir_path = Path.join(tmp_dir, liveview_status_dir(liveview.module_name))
@@ -903,15 +755,12 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       scope = create_scope_with_env(tmp_dir)
       {liveview, children} = create_liveview_with_children(scope)
 
-      # Complete phases 1-3: specs + design review
+      # Complete spec phases
       create_spec_file!(tmp_dir, liveview, scope.active_project)
 
       for child <- children do
         create_spec_file!(tmp_dir, child, scope.active_project)
       end
-
-      create_design_review_file!(tmp_dir, liveview, scope.active_project)
-      create_satisfied_requirements!(scope, liveview, :review)
 
       # Mark spec requirements as satisfied
       for component <- [liveview | children] do
@@ -947,12 +796,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       # Verify orchestration file is updated to show implementation as current phase
       orchestration_content = read_orchestration_file(tmp_dir, liveview.module_name)
       assert orchestration_content =~ "Implementation"
-
-      # Verify old design review prompt files are cleaned up
-      design_review_prompt = Path.join(tmp_dir, "#{status_dir}/#{safe_name}_design_review.md")
-
-      refute File.exists?(design_review_prompt),
-             "Design review prompt should be cleaned up after phase completes"
 
       # Verify feedback references status directory
       assert feedback =~ "develop_live_view.md"
