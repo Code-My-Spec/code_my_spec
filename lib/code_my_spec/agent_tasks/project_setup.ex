@@ -95,6 +95,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       codemyspec_deps_installed: deps_check.installed,
       missing_deps: deps_check.missing,
       docs_repo_configured: docs_check.repo_configured,
+      docs_agents_md_exists: docs_check.agents_md_exists,
       docs_structure_complete: docs_check.structure_complete,
       missing_docs_dirs: docs_check.missing_dirs,
       cli_config_exists: cli_config_check.exists,
@@ -246,11 +247,13 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     docs_path = Path.join(working_dir, "docs")
 
     repo_configured = File.dir?(docs_path)
+    agents_md_exists = File.exists?(Path.join(docs_path, "AGENTS.md"))
 
     {structure_complete, missing_dirs} = check_docs_directories(docs_path, app_name)
 
     %{
       repo_configured: repo_configured,
+      agents_md_exists: agents_md_exists,
       structure_complete: structure_complete,
       missing_dirs: missing_dirs
     }
@@ -303,6 +306,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_project_creation_instructions(status)
     |> maybe_add_deps_instructions(status)
     |> maybe_add_docs_instructions(status)
+    |> maybe_add_agents_md_instructions(status)
     |> maybe_add_cli_config_instructions(status)
     |> Enum.reverse()
     |> Enum.join("\n\n")
@@ -353,6 +357,12 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_docs_instructions(sections, _status), do: sections
 
+  defp maybe_add_agents_md_instructions(sections, %{docs_agents_md_exists: true}), do: sections
+
+  defp maybe_add_agents_md_instructions(sections, %{docs_agents_md_exists: false} = status) do
+    [build_agents_md_instructions(status.app_name) | sections]
+  end
+
   defp maybe_add_cli_config_instructions(sections, %{cli_config_has_project_id: true}),
     do: sections
 
@@ -368,6 +378,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Phoenix project", status.phoenix_project_exists},
       {"CodeMySpec deps", status.codemyspec_deps_installed},
       {"Docs repository", status.docs_repo_configured},
+      {"Docs AGENTS.md", status.docs_agents_md_exists},
       {"Docs structure", status.docs_structure_complete},
       {"CLI config", status.cli_config_has_project_id}
     ]
@@ -538,6 +549,152 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     """
   end
 
+  defp build_agents_md_instructions(app_name) do
+    content = agents_md_content(app_name)
+
+    """
+    ## Create docs/AGENTS.md
+
+    This file orients AI agents working on your project. Write the following to `docs/AGENTS.md`:
+
+    ```markdown
+    #{content}
+    ```
+    """
+  end
+
+  @doc """
+  Generate the generalized AGENTS.md content for a project.
+
+  Takes the app name (e.g., "my_app") and returns markdown content
+  that orients agents to the project's docs structure.
+  """
+  def agents_md_content(app_name) do
+    app = app_name || "your_app"
+
+    """
+    # Project Development Guide
+
+    This guide describes how the project's `docs/` directory works so you can locate what you need efficiently.
+
+    ## Project Structure
+
+    ```
+    docs/
+    ├── AGENTS.md              ← You are here
+    ├── architecture/          ← System component graph and dependencies
+    ├── status/                ← Implementation status of every component
+    ├── spec/                  ← Specifications for every module
+    ├── rules/                 ← Coding standards by component type
+    ├── issues/                ← Known bugs and technical debt
+    └── knowledge/             ← Domain-specific operational knowledge
+    ```
+
+    ## Progressive Disclosure: Where to Look
+
+    ### 1. Orientation — What exists and how it's organized
+
+    Start here to understand the system shape.
+
+    | Need | File |
+    |---|---|
+    | List of all components, types, and dependencies | `architecture/overview.md` |
+    | Hierarchical tree view by Elixir namespace | `architecture/namespace_hierarchy.md` |
+    | Dependency graph (Mermaid) | `architecture/dependency_graph.mmd` |
+
+    ### 2. Status — What's done and what's not
+
+    Check here before starting work on a component.
+
+    | Need | File |
+    |---|---|
+    | Top-level status of all contexts | `status/#{app}.md` |
+    | Web layer status | `status/#{app}_web.md` |
+    | Status of a specific context | `status/#{app}/<context_name>.md` |
+
+    Status files use a checklist format:
+    ```
+    - [ ] spec_file - Context specification file exists
+    - [x] implementation_file - Component implementation file exists
+    - [ ] test_file - Component test file exists
+    - [x] tests_passing - Component tests are passing
+    ```
+
+    ### 3. Specifications — What a module should do
+
+    Read before implementing or modifying any module.
+
+    | Need | File |
+    |---|---|
+    | Spec for a module | `spec/<module_path>.spec.md` |
+
+    Specs follow a standard format:
+    - **Title**: Fully qualified module name with type
+    - **Delegates**: Functions delegated to other modules
+    - **Functions**: Public API with `@spec`, process steps, and test assertions
+    - **Dependencies**: Required modules
+    - **Fields**: (schemas only) Ecto field definitions
+
+    Spec paths mirror the Elixir module namespace.
+
+    ### 4. Rules — Coding standards for each component type
+
+    Read before writing code. Rules are scoped by component type.
+
+    | Component Type | Design Rules | Test Rules |
+    |---|---|---|
+    | Context | `rules/context_design.md` | — |
+    | Repository | `rules/repository_design.md` | `rules/repository_test.md` |
+    | Schema | `rules/schema_design.md` | — |
+    | LiveView | `rules/liveview_design.md` | — |
+    | LiveView component | `rules/liveview_component_design.md` | — |
+    | Elixir (general) | `rules/elixir_design.md` | `rules/elixir_test.md` |
+
+    ### 5. Issues — Known problems and technical debt
+
+    Check before working in an area to avoid known pitfalls.
+
+    Issues live in `issues/` as individual markdown files describing the problem, reproduction steps, and possible solutions.
+
+    ### 6. Knowledge — Operational knowledge
+
+    Deep dives on specific topics that don't fit elsewhere. Check `knowledge/` for available guides.
+
+    ## Phoenix Contexts Architecture
+
+    All code follows Phoenix Contexts conventions:
+
+    - **Contexts** are the public API boundary. They live at `lib/#{app}/<context_name>.ex` and delegate to child modules.
+    - **Repositories** handle data access. They live under the context namespace.
+    - **Schemas** define Ecto schemas. They live under the context namespace.
+    - **Scope** is the first parameter to all public context functions. It carries user, account, project, and optionally working directory.
+
+    ### Key Conventions
+
+    - All public functions accept `%Scope{}` as the first parameter
+    - Database queries filter by scope foreign keys
+    - Return consistent `{:ok, result}` / `{:error, reason}` tuples
+
+    ## Working with the Docs Directory
+
+    **Before implementing a component:**
+    1. Check `status/` — is it already done?
+    2. Read `spec/` — what should it do?
+    3. Read `rules/` — what conventions apply to this component type?
+    4. Check `issues/` — are there known problems in this area?
+
+    **Before modifying an existing component:**
+    1. Read the spec to understand the intended behavior
+    2. Read the current implementation
+    3. Check if there are open issues related to it
+    4. Follow the rules for that component type
+
+    **When you need context on the bigger picture:**
+    1. Read `architecture/namespace_hierarchy.md` for the component tree
+    2. Read `architecture/overview.md` for dependency relationships
+    """
+  end
+
   defp build_cli_config_instructions(status) do
     config_status =
       cond do
@@ -589,6 +746,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       status.phoenix_project_exists and
       status.codemyspec_deps_installed and
       status.docs_repo_configured and
+      status.docs_agents_md_exists and
       status.docs_structure_complete and
       status.cli_config_has_project_id
   end
@@ -605,6 +763,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"CodeMySpec deps", status.codemyspec_deps_installed,
        "Add missing deps to mix.exs: #{inspect(status.missing_deps)}"},
       {"Docs repository", status.docs_repo_configured, "Create docs directory: mkdir -p docs"},
+      {"Docs AGENTS.md", status.docs_agents_md_exists,
+       "Create docs/AGENTS.md — see setup instructions for content"},
       {"Docs structure", status.docs_structure_complete,
        "Create directories: #{Enum.join(status.missing_docs_dirs, ", ")}"},
       {"CLI config", status.cli_config_has_project_id,
