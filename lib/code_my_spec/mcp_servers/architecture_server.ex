@@ -21,17 +21,7 @@ defmodule CodeMySpec.McpServers.ArchitectureServer do
     end
   end
 
-  # Spec file management (read-only)
-  component(CodeMySpec.McpServers.Architecture.Tools.ListSpecs)
-  component(CodeMySpec.McpServers.Architecture.Tools.ListSpecNames)
-  component(CodeMySpec.McpServers.Architecture.Tools.GetSpec)
-  component(CodeMySpec.McpServers.Architecture.Tools.DeleteSpec)
-
   # Architecture analysis
-  component(CodeMySpec.McpServers.Architecture.Tools.GetComponentView)
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
-
-  # Proposal execution (explicit action after validation)
-  component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
 end

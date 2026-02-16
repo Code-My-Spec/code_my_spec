@@ -7,7 +7,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   Two main functions:
   - `command/3` - Called by slash command to generate the design prompt
-  - `evaluate/3` - Called by stop hook (currently auto-approves)
+  - `evaluate/3` - Called by stop hook to validate and execute the proposal
   """
 
   alias CodeMySpec.{Architecture, Components, Stories}
@@ -54,10 +54,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @doc """
   Evaluate the architecture design session output.
 
-  Reads the proposal file and validates it (does NOT execute).
+  Reads the proposal file, validates it, and executes it (creating specs and linking stories).
   Returns:
-  - {:ok, :valid} if proposal is valid (model should then call execute_proposal)
-  - {:ok, :invalid, feedback} if proposal has errors (blocks Claude from stopping)
+  - {:ok, :valid} if proposal is valid and execution succeeds
+  - {:ok, :invalid, feedback} if proposal has errors or execution fails
   """
   def evaluate(scope, session, _opts \\ []) do
     working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
@@ -69,10 +69,12 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     with {:ok, content} <- read_proposal(env),
          {:ok, proposal} <- Proposal.from_markdown(content, app_name: app_name),
          {:ok, story_ids} <- get_story_ids(scope),
-         {:ok, _validated} <- Proposal.validate(proposal, story_ids: story_ids) do
-      # Proposal is valid - tell model to execute explicitly
-      IO.puts("\n✓ Proposal validated successfully!")
-      IO.puts("  Call `execute_proposal` to create spec files.")
+         {:ok, _validated} <- Proposal.validate(proposal, story_ids: story_ids),
+         {:ok, result} <- Proposal.execute(proposal, scope, working_dir: working_dir) do
+      IO.puts("\n✓ Proposal validated and executed successfully!")
+      IO.puts("  Created #{result.created_contexts} contexts, #{result.created_components} components")
+      IO.puts("  Linked #{result.linked_stories} stories")
+      IO.puts("  Spec files written to docs/spec/")
       {:ok, :valid}
     else
       {:error, :proposal_not_found} ->
@@ -152,11 +154,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         - **Dependency Graph:** #{Path.join(output_dir, "dependency_graph.mmd")}
         - **Namespace Hierarchy:** #{Path.join(output_dir, "namespace_hierarchy.md")}
 
-        Use the architecture tools to browse existing components:
-        - `list_specs` or `list_spec_names` - Browse existing components
-        - `get_spec` - Read component specifications
-        - `get_component_view` - See a component's dependency tree
-        - `validate_dependency_graph` - Check for circular dependencies
+        Browse existing specs directly:
+        - Run `tree docs/spec/` or `ls -R docs/spec/` to see all component specs
+        - Read any spec file directly to review its contents
+        - Use `validate_dependency_graph` tool to check for circular dependencies
         """
       else
         ""
@@ -211,18 +212,16 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     - Children: `#{app_name}.{Context}.{Child}` (e.g., `#{app_name}.Accounts.User`)
     - Surface: `#{app_name}Web.{Name}Live` or `#{app_name}Web.{Name}Controller`
 
-    ### Step 4: Validate and Execute
+    ### Step 4: Submit for Validation
 
-    1. Stop when your proposal is complete - the system will validate it
-    2. If validation passes, call `execute_proposal` to create the spec files
-    3. Use `execute_proposal` with `dry_run: true` first to preview what will be created
+    Stop when your proposal is complete. The system will automatically validate and execute it,
+    creating all spec files and linking stories. If validation fails, you'll receive feedback to fix.
 
     ## Begin
 
     1. Optionally use `analyze_stories` to identify patterns
     2. Write your proposal to `#{@proposal_path}`
-    3. Stop - the system will validate your proposal
-    4. If valid, call `execute_proposal` to create spec files
+    3. Stop - the system will validate and execute your proposal
     """
   end
 

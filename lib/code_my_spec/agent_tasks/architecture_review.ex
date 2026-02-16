@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
   - `evaluate/3` - Called by stop hook (currently auto-approves)
   """
 
-  alias CodeMySpec.{Components, Stories, Architecture}
+  alias CodeMySpec.{Architecture, Components, Stories}
 
   @doc """
   Generate the command/prompt for Claude to review architecture.
@@ -124,11 +124,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
     - Ensuring clean separation between surface (interface) and domain (logic) layers
     - Creating spec files for any missing components identified in the review
 
-    Use the architecture tools to investigate and make changes:
-    - `list_specs` or `list_spec_names` - Browse existing components
-    - `get_spec` - Read component specifications
-    - `get_component_view` - See a component's dependency tree
-    - `create_spec` - Create new component specifications
+    Use the filesystem and architecture tools to investigate and make changes:
+    - Run `tree docs/spec/` or `ls -R docs/spec/` to browse existing component specs
+    - Read spec files directly to review their contents
     - `validate_dependency_graph` - Check for circular dependencies
     """
   end
@@ -146,14 +144,14 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
       domain_components: length(domain_components),
       contexts: Enum.count(components, &(&1.type == "context")),
       circular_dependencies: calculate_cycles(dependency_validation),
-      orphaned_components: Enum.count(components, &is_orphaned?/1)
+      orphaned_components: Enum.count(components, &orphaned?/1)
     }
   end
 
   defp calculate_cycles(:ok), do: 0
   defp calculate_cycles({:error, cycles}), do: length(cycles)
 
-  defp is_orphaned?(component) do
+  defp orphaned?(component) do
     incoming = component.incoming_dependencies || []
     outgoing = component.outgoing_dependencies || []
 
@@ -199,30 +197,35 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
         |> Enum.group_by(& &1.type)
         |> Enum.sort_by(fn {type, _} -> component_type_order(type) end)
 
-      by_type
-      |> Enum.map_join("\n\n", fn {type, comps} ->
+      Enum.map_join(by_type, "\n\n", fn {type, comps} ->
         "**#{String.capitalize(type)}s** (#{length(comps)}):\n" <>
-          (comps
-           |> Enum.take(5)
-           |> Enum.map_join("\n", fn comp ->
-             dep_count =
-               case comp.outgoing_dependencies do
-                 %Ecto.Association.NotLoaded{} -> 0
-                 deps when is_list(deps) -> length(deps)
-                 _ -> 0
-               end
-
-             "  - #{comp.name} (#{comp.module_name}) - #{dep_count} dependencies"
-           end)
-           |> then(fn formatted ->
-             if length(comps) > 5 do
-               "#{formatted}\n  - ... and #{length(comps) - 5} more"
-             else
-               formatted
-             end
-           end))
+          format_component_list(comps)
       end)
     end
+  end
+
+  defp format_component_list(comps) do
+    formatted =
+      comps
+      |> Enum.take(5)
+      |> Enum.map_join("\n", &format_component_line/1)
+
+    if length(comps) > 5 do
+      "#{formatted}\n  - ... and #{length(comps) - 5} more"
+    else
+      formatted
+    end
+  end
+
+  defp format_component_line(comp) do
+    dep_count =
+      case comp.outgoing_dependencies do
+        %Ecto.Association.NotLoaded{} -> 0
+        deps when is_list(deps) -> length(deps)
+        _ -> 0
+      end
+
+    "  - #{comp.name} (#{comp.module_name}) - #{dep_count} dependencies"
   end
 
   defp component_type_order("controller"), do: 1
