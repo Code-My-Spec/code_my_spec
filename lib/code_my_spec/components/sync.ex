@@ -35,9 +35,7 @@ defmodule CodeMySpec.Components.Sync do
   2. Spec's H1 title
   3. Path-derived name (lowest priority)
 
-  Component type is determined by namespace depth:
-  - 2 parts (e.g., MyApp.Accounts) → context
-  - 3+ parts (e.g., MyApp.Accounts.User) → module
+  Component type comes from the spec's `## Type` section. If absent, nil.
 
   ## Options
 
@@ -204,9 +202,7 @@ defmodule CodeMySpec.Components.Sync do
   2. Spec's H1 title
   3. Path-derived name (lowest priority)
 
-  Component type is determined by namespace depth:
-  - 2 parts (e.g., MyApp.Accounts) → context_spec
-  - 3+ parts (e.g., MyApp.Accounts.User) → spec
+  Component type comes from the spec's `## Type` section. If absent, nil.
 
   ## Options
 
@@ -294,7 +290,7 @@ defmodule CodeMySpec.Components.Sync do
     description = extract_intro_text(content)
 
     # Extract component type from ## Type section, falling back to namespace-derived type
-    type = extract_type_section(content) || type_from_namespace(module_name)
+    type = extract_type_section(content)
 
     # Extract dependencies from ## Dependencies section
     dependencies = extract_dependencies(content)
@@ -326,7 +322,7 @@ defmodule CodeMySpec.Components.Sync do
 
     %{
       module_name: module_name,
-      type: type_from_namespace(module_name),
+      type: nil,
       description: nil,
       dependencies: [],
       spec_path: nil,
@@ -412,21 +408,6 @@ defmodule CodeMySpec.Components.Sync do
     |> Enum.map_join(&String.capitalize/1)
   end
 
-  @doc """
-  Determines component type from module namespace depth.
-
-  - 2 parts (e.g., MyApp.Accounts) → "context"
-  - 3+ parts (e.g., MyApp.Accounts.User) → "module"
-  """
-  def type_from_namespace(module_name) when is_binary(module_name) do
-    parts = String.split(module_name, ".")
-
-    case length(parts) do
-      n when n <= 2 -> "context"
-      _ -> "module"
-    end
-  end
-
   # --- Merging ---
 
   defp merge_by_module_name(spec_data, impl_data) do
@@ -469,7 +450,7 @@ defmodule CodeMySpec.Components.Sync do
     attrs = %{
       module_name: data.module_name,
       name: data.module_name |> String.split(".") |> List.last(),
-      type: data.type || "module",
+      type: data.type,
       description: data.description,
       parent_component_id: nil,
       synced_at: synced_at

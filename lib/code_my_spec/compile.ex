@@ -48,22 +48,38 @@ defmodule CodeMySpec.Compile do
 
     cmd_opts = if cwd, do: Keyword.put(cmd_opts, :cd, cwd), else: cmd_opts
 
+    Logger.debug("[Compile] output_file=#{output_file}")
+    Logger.debug("[Compile] cwd=#{inspect(cwd)}")
+    Logger.debug("[Compile] env=#{inspect(cmd_opts[:env])}")
+
     {output, exit_code} =
       System.cmd("mix", ["compile", "--return-errors"], cmd_opts)
+
+    Logger.debug("[Compile] exit_code=#{exit_code}")
+    Logger.debug("[Compile] output_file exists?=#{File.exists?(output_file)}")
+    Logger.debug("[Compile] raw output (first 500 chars): #{String.slice(output, 0, 500)}")
 
     result_data =
       case File.read(output_file) do
         {:ok, content} when byte_size(content) > 0 ->
+          Logger.debug("[Compile] Read JSONL from diagnostics file (#{byte_size(content)} bytes)")
           parse_jsonl(content)
 
         {:ok, _} ->
-          # file exists but empty — compilation clean, no diagnostics
+          Logger.debug("[Compile] Diagnostics file exists but empty — clean compilation")
           []
 
-        _ ->
-          # Diagnostics file wasn't written or is empty — fall back to parsing raw output
-          Logger.warning("Diagnostics file not available, falling back to raw output parsing")
-          parse_raw(output)
+        {:error, _reason} when exit_code == 0 ->
+          Logger.debug("[Compile] Diagnostics file not found but compilation succeeded — treating as clean")
+          []
+
+        {:error, _reason} ->
+          Logger.warning(
+            "[Compile] Diagnostics file not written (compilation failed with exit code #{exit_code})"
+          )
+
+          # Return raw output as the error — the project likely lacks the :diagnostics compiler
+          [%{"message" => String.trim(output), "severity" => "error"}]
       end
 
     %{
@@ -112,81 +128,6 @@ defmodule CodeMySpec.Compile do
       end
     end)
   end
-
-  # Parse raw compiler output into diagnostic structs
-  # Fallback for when the diagnostics JSONL file isn't available
-  def parse_raw(output) when is_binary(output) do
-    output
-    |> String.split("\n")
-    |> extract_diagnostics([])
-    |> Enum.reverse()
-  end
-
-  def parse_raw(output), do: output
-
-  # Extract diagnostics from lines of output
-  defp extract_diagnostics([], acc), do: acc
-
-  defp extract_diagnostics([line | rest], acc) do
-    if String.starts_with?(line, "== Compilation error") do
-      {diagnostic, remaining} = parse_compilation_error(line, rest)
-      extract_diagnostics(remaining, [diagnostic | acc])
-    else
-      extract_diagnostics(rest, acc)
-    end
-  end
-
-  # Parse a compilation error block
-  defp parse_compilation_error(first_line, rest) do
-    file =
-      case Regex.run(~r/== Compilation error in file (.+?) ==/, first_line) do
-        [_, file] -> file
-        _ -> nil
-      end
-
-    {error_type, message, location, remaining} = parse_error_details(rest)
-
-    diagnostic = %CodeMySpec.Compile.Diagnostic{
-      severity: :error,
-      message: "#{error_type}: #{message}",
-      file: file || location[:file],
-      position: if(location, do: %{line: location[:line]}, else: nil)
-    }
-
-    {diagnostic, remaining}
-  end
-
-  defp parse_error_details([line | rest]) do
-    {error_type, message} =
-      case Regex.run(~r/^\*\*\s*\(([^)]+)\)\s*(.+)$/, line) do
-        [_, error_type, msg] -> {error_type, String.trim(msg)}
-        _ -> {"Error", String.trim(line)}
-      end
-
-    {location, remaining} = extract_location(rest)
-
-    {error_type, message, location, remaining}
-  end
-
-  defp parse_error_details([]), do: {"Error", "", nil, []}
-
-  defp extract_location([line | rest] = lines) do
-    case Regex.run(~r/└─\s+([^:]+):(\d+)(?::(\d+))?/, line) do
-      [_, file, line_num | _] ->
-        location = %{file: file, line: String.to_integer(line_num)}
-        {location, rest}
-
-      nil ->
-        if String.trim(line) == "" or String.starts_with?(line, "==>") or
-             String.contains?(line, "Compiling") do
-          {nil, lines}
-        else
-          extract_location(rest)
-        end
-    end
-  end
-
-  defp extract_location([]), do: {nil, []}
 
   defp create_temp_file_path do
     temp_dir = System.tmp_dir!()

@@ -2,23 +2,21 @@
   "commands": [
     {
       "args": [
-        "compile.machine",
-        "--output",
-        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
-        "--format",
-        "raw"
+        "compile",
+        "--return-errors"
       ],
       "command": "mix",
       "exit_code": 0,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
           "MIX_ENV": "test"
         },
         "stderr_to_stdout": true
       },
-      "output": "==> sexy_spex\nCompiling 6 files (.ex)\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\n",
-      "recorded_at": "2026-02-10T20:07:31.882020Z"
+      "output": "",
+      "recorded_at": "2026-02-15T22:15:52.958210Z"
     },
     {
       "args": [
@@ -28,7 +26,7 @@
         "/Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs"
       ],
       "command": "mix",
-      "exit_code": 2,
+      "exit_code": 0,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "env": {
@@ -37,8 +35,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n==> test_phoenix_project\nRunning ExUnit with seed: 440106, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n    warning: TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n    │\n  9 │       assert Post.title_slug(post) == \"my-first-post\"\n    │                   ~\n    │\n    └─ /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:9:19: TestPhoenixProject.Blog.PostTest.\"test title_slug/1 converts title to lowercase hyphenated slug\"/1\n    └─ /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:14:19: TestPhoenixProject.Blog.PostTest.\"test title_slug/1 handles consecutive spaces\"/1\n    └─ /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:19:19: TestPhoenixProject.Blog.PostTest.\"test title_slug/1 handles already lowercase single word\"/1\n\n\n\n  1) test title_slug/1 handles consecutive spaces (TestPhoenixProject.Blog.PostTest)\n     /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:12\n     ** (UndefinedFunctionError) function TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n     code: assert Post.title_slug(post) == \"hello-world\"\n     stacktrace:\n       (test_phoenix_project 0.1.0) TestPhoenixProject.Blog.Post.title_slug(%TestPhoenixProject.Blog.Post{__meta__: #Ecto.Schema.Metadata<:built, \"posts\">, id: nil, title: \"Hello   World\", content: nil, published: false, user_id: nil, inserted_at: nil, updated_at: nil})\n       /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:14: (test)\n\n\n\n  2) test title_slug/1 converts title to lowercase hyphenated slug (TestPhoenixProject.Blog.PostTest)\n     /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:7\n     ** (UndefinedFunctionError) function TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n     code: assert Post.title_slug(post) == \"my-first-post\"\n     stacktrace:\n       (test_phoenix_project 0.1.0) TestPhoenixProject.Blog.Post.title_slug(%TestPhoenixProject.Blog.Post{__meta__: #Ecto.Schema.Metadata<:built, \"posts\">, id: nil, title: \"My First Post\", content: nil, published: false, user_id: nil, inserted_at: nil, updated_at: nil})\n       /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:9: (test)\n\n\n\n  3) test title_slug/1 handles already lowercase single word (TestPhoenixProject.Blog.PostTest)\n     /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:17\n     ** (UndefinedFunctionError) function TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n     code: assert Post.title_slug(post) == \"hello\"\n     stacktrace:\n       (test_phoenix_project 0.1.0) TestPhoenixProject.Blog.Post.title_slug(%TestPhoenixProject.Blog.Post{__meta__: #Ecto.Schema.Metadata<:built, \"posts\">, id: nil, title: \"hello\", content: nil, published: false, user_id: nil, inserted_at: nil, updated_at: nil})\n       /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:19: (test)\n\n\nFinished in 0.02 seconds (0.02s async, 0.00s sync)\n3 tests, 3 failures\n",
-      "recorded_at": "2026-02-10T20:07:37.582406Z"
+      "output": "Running ExUnit with seed: 439346, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n......\nFinished in 0.1 seconds (0.00s async, 0.1s sync)\n6 tests, 0 failures\n",
+      "recorded_at": "2026-02-15T22:15:54.654722Z"
     },
     {
       "args": [
@@ -58,8 +56,8 @@
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "stderr_to_stdout": true
       },
-      "output": "==> file_system\nCompiling 7 files (.ex)\nGenerated file_system app\n==> mime\nCompiling 1 file (.ex)\nGenerated mime app\n==> nimble_options\nCompiling 3 files (.ex)\nGenerated nimble_options app\n==> bunt\nCompiling 2 files (.ex)\nGenerated bunt app\n==> comeonin\nCompiling 3 files (.ex)\nGenerated comeonin app\n==> plug_crypto\nCompiling 5 files (.ex)\nGenerated plug_crypto app\n==> hpax\nCompiling 4 files (.ex)\nGenerated hpax app\n==> mint\nCompiling 1 file (.erl)\nCompiling 20 files (.ex)\nGenerated mint app\n==> erlex\nCompiling 2 files (.erl)\nCompiling 1 file (.ex)\nGenerated erlex app\n==> elixir_make\nCompiling 8 files (.ex)\nGenerated elixir_make app\n==> bcrypt_elixir\nmkdir -p \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/dev/lib/bcrypt_elixir/priv\"\ncc -g -O3 -Wall -Wno-format-truncation -I\"/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/include\" -Ic_src -fPIC -shared -dynamiclib -undefined dynamic_lookup c_src/bcrypt_nif.c c_src/blowfish.c -o \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/dev/lib/bcrypt_elixir/priv/bcrypt_nif.so\"\nCompiling 3 files (.ex)\nGenerated bcrypt_elixir app\n==> logger_file_backend\nCompiling 1 file (.ex)\nGenerated logger_file_backend app\n==> decimal\nCompiling 4 files (.ex)\nGenerated decimal app\n==> jason\nCompiling 10 files (.ex)\nGenerated jason app\n==> esbuild\nCompiling 4 files (.ex)\nGenerated esbuild app\n==> client_utils\nCompiling 4 files (.ex)\nGenerated client_utils app\n==> mix_machine\nCompiling 6 files (.ex)\nGenerated mix_machine app\n==> sobelow\nCompiling 51 files (.ex)\nGenerated sobelow app\n==> sexy_spex\nCompiling 8 files (.ex)\nGenerated sexy_spex app\n==> telemetry_metrics\nCompiling 7 files (.ex)\nGenerated telemetry_metrics app\n==> thousand_island\nCompiling 18 files (.ex)\nGenerated thousand_island app\n==> db_connection\nCompiling 18 files (.ex)\nGenerated db_connection app\n==> ecto\nCompiling 56 files (.ex)\nGenerated ecto app\n==> phoenix_html\nCompiling 6 files (.ex)\nGenerated phoenix_html app\n==> phoenix_template\nCompiling 4 files (.ex)\nGenerated phoenix_template app\n==> expo\nCompiling 2 files (.erl)\nCompiling 22 files (.ex)\nGenerated expo app\n==> gettext\nCompiling 18 files (.ex)\nGenerated gettext app\n==> phoenix_pubsub\nCompiling 12 files (.ex)\nGenerated phoenix_pubsub app\n==> dns_cluster\nCompiling 1 file (.ex)\nGenerated dns_cluster app\n==> dialyxir\nCompiling 67 files (.ex)\nGenerated dialyxir app\n==> credo\nCompiling 254 files (.ex)\nGenerated credo app\n==> plug\nCompiling 1 file (.erl)\nCompiling 42 files (.ex)\nGenerated plug app\n==> postgrex\nCompiling 69 files (.ex)\nCompiling lib/postgrex/default_types.ex (it's taking more than 10s)\nGenerated postgrex app\n==> phoenix_ecto\nCompiling 7 files (.ex)\nGenerated phoenix_ecto app\n==> ecto_sql\nCompiling 25 files (.ex)\nGenerated ecto_sql app\n==> nimble_pool\nCompiling 2 files (.ex)\nGenerated nimble_pool app\n==> finch\nCompiling 14 files (.ex)\nGenerated finch app\n==> req\nCompiling 19 files (.ex)\nGenerated req app\n==> tailwind\nCompiling 3 files (.ex)\nGenerated tailwind app\n==> websock\nCompiling 1 file (.ex)\nGenerated websock app\n==> bandit\nCompiling 54 files (.ex)\nGenerated bandit app\n==> swoosh\nCompiling 55 files (.ex)\nGenerated swoosh app\n==> websock_adapter\nCompiling 4 files (.ex)\nGenerated websock_adapter app\n==> phoenix\nCompiling 74 files (.ex)\nGenerated phoenix app\n==> phoenix_live_reload\nCompiling 5 files (.ex)\nGenerated phoenix_live_reload app\n==> phoenix_live_view\nCompiling 49 files (.ex)\nGenerated phoenix_live_view app\n==> phoenix_live_dashboard\nCompiling 36 files (.ex)\nGenerated phoenix_live_dashboard app\n{\n  \"issues\": [\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.ModuleDoc\",\n      \"column\": 11,\n      \"column_end\": 39,\n      \"filename\": \"/Users/johndavenport/Documents/github/test_phoenix_project/lib/test_phoenix_project/blog/post.ex\",\n      \"line_no\": 1,\n      \"message\": \"Modules should have a @moduledoc tag.\",\n      \"priority\": 1,\n      \"scope\": \"TestPhoenixProject.Blog.Post\",\n      \"trigger\": \"TestPhoenixProject.Blog.Post\"\n    }\n  ]\n}\n",
-      "recorded_at": "2026-02-10T20:09:36.461120Z"
+      "output": "{\n  \"issues\": [\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.ModuleDoc\",\n      \"column\": 11,\n      \"column_end\": 39,\n      \"filename\": \"/Users/johndavenport/Documents/github/test_phoenix_project/lib/test_phoenix_project/blog/post.ex\",\n      \"line_no\": 1,\n      \"message\": \"Modules should have a @moduledoc tag.\",\n      \"priority\": 1,\n      \"scope\": \"TestPhoenixProject.Blog.Post\",\n      \"trigger\": \"TestPhoenixProject.Blog.Post\"\n    }\n  ]\n}\n",
+      "recorded_at": "2026-02-15T22:15:55.575501Z"
     },
     {
       "args": [
@@ -75,25 +73,7 @@
         "stderr_to_stdout": true
       },
       "output": "{\n  \"findings\": {\n    \"high_confidence\": [\n      {\n        \"line\": 0,\n        \"type\": \"Config.HTTPS: HTTPS Not Enabled\",\n        \"file\": \"config/prod.exs\"\n      },\n      {\n        \"line\": 12,\n        \"type\": \"Config.CSP: Missing Content-Security-Policy\",\n        \"file\": \"lib/test_phoenix_project_web/router.ex\",\n        \"pipeline\": \"browser\"\n      }\n    ],\n    \"low_confidence\": [],\n    \"medium_confidence\": []\n  },\n  \"sobelow_version\": \"0.14.1\",\n  \"total_findings\": 2\n}\n",
-      "recorded_at": "2026-02-10T20:09:38.518193Z"
-    },
-    {
-      "args": [
-        "compile",
-        "--return-errors"
-      ],
-      "command": "mix",
-      "exit_code": 0,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
-        "env": {
-          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
-          "MIX_ENV": "test"
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n",
-      "recorded_at": "2026-02-12T15:31:01.664177Z"
+      "recorded_at": "2026-02-15T22:15:56.501289Z"
     }
   ],
   "ports": []

@@ -2,23 +2,21 @@
   "commands": [
     {
       "args": [
-        "compile.machine",
-        "--output",
-        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
-        "--format",
-        "raw"
+        "compile",
+        "--return-errors"
       ],
       "command": "mix",
       "exit_code": 0,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
           "MIX_ENV": "test"
         },
         "stderr_to_stdout": true
       },
-      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n",
-      "recorded_at": "2026-02-10T20:11:08.525440Z"
+      "output": "",
+      "recorded_at": "2026-02-15T22:15:40.682559Z"
     },
     {
       "args": [
@@ -28,7 +26,7 @@
         "/Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs"
       ],
       "command": "mix",
-      "exit_code": 2,
+      "exit_code": 0,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "env": {
@@ -37,8 +35,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n==> test_phoenix_project\nRunning ExUnit with seed: 928674, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n    warning: TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n    │\n  9 │       assert Post.title_slug(post) == \"my-first-post\"\n    │                   ~\n    │\n    └─ /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:9:19: TestPhoenixProject.Blog.PostTest.\"test title_slug/1 converts title to lowercase hyphenated slug\"/1\n    └─ /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:14:19: TestPhoenixProject.Blog.PostTest.\"test title_slug/1 handles consecutive spaces\"/1\n    └─ /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:19:19: TestPhoenixProject.Blog.PostTest.\"test title_slug/1 handles already lowercase single word\"/1\n\n\n\n  1) test title_slug/1 handles consecutive spaces (TestPhoenixProject.Blog.PostTest)\n     /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:12\n     ** (UndefinedFunctionError) function TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n     code: assert Post.title_slug(post) == \"hello-world\"\n     stacktrace:\n       (test_phoenix_project 0.1.0) TestPhoenixProject.Blog.Post.title_slug(%TestPhoenixProject.Blog.Post{__meta__: #Ecto.Schema.Metadata<:built, \"posts\">, id: nil, title: \"Hello   World\", content: nil, published: false, user_id: nil, inserted_at: nil, updated_at: nil})\n       /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:14: (test)\n\n\n\n  2) test title_slug/1 converts title to lowercase hyphenated slug (TestPhoenixProject.Blog.PostTest)\n     /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:7\n     ** (UndefinedFunctionError) function TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n     code: assert Post.title_slug(post) == \"my-first-post\"\n     stacktrace:\n       (test_phoenix_project 0.1.0) TestPhoenixProject.Blog.Post.title_slug(%TestPhoenixProject.Blog.Post{__meta__: #Ecto.Schema.Metadata<:built, \"posts\">, id: nil, title: \"My First Post\", content: nil, published: false, user_id: nil, inserted_at: nil, updated_at: nil})\n       /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:9: (test)\n\n\n\n  3) test title_slug/1 handles already lowercase single word (TestPhoenixProject.Blog.PostTest)\n     /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:17\n     ** (UndefinedFunctionError) function TestPhoenixProject.Blog.Post.title_slug/1 is undefined or private\n     code: assert Post.title_slug(post) == \"hello\"\n     stacktrace:\n       (test_phoenix_project 0.1.0) TestPhoenixProject.Blog.Post.title_slug(%TestPhoenixProject.Blog.Post{__meta__: #Ecto.Schema.Metadata<:built, \"posts\">, id: nil, title: \"hello\", content: nil, published: false, user_id: nil, inserted_at: nil, updated_at: nil})\n       /Users/johndavenport/Documents/github/test_phoenix_project/test/test_phoenix_project/blog/post_test.exs:19: (test)\n\n\nFinished in 0.01 seconds (0.01s async, 0.00s sync)\n3 tests, 3 failures\n",
-      "recorded_at": "2026-02-10T20:11:11.047962Z"
+      "output": "Running ExUnit with seed: 658816, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n......\nFinished in 0.2 seconds (0.00s async, 0.2s sync)\n6 tests, 0 failures\n",
+      "recorded_at": "2026-02-15T22:15:42.938588Z"
     },
     {
       "args": [
@@ -59,7 +57,7 @@
         "stderr_to_stdout": true
       },
       "output": "{\n  \"issues\": [\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.ModuleDoc\",\n      \"column\": 11,\n      \"column_end\": 39,\n      \"filename\": \"/Users/johndavenport/Documents/github/test_phoenix_project/lib/test_phoenix_project/blog/post.ex\",\n      \"line_no\": 1,\n      \"message\": \"Modules should have a @moduledoc tag.\",\n      \"priority\": 1,\n      \"scope\": \"TestPhoenixProject.Blog.Post\",\n      \"trigger\": \"TestPhoenixProject.Blog.Post\"\n    }\n  ]\n}\n",
-      "recorded_at": "2026-02-10T20:11:12.593503Z"
+      "recorded_at": "2026-02-15T22:15:44.236390Z"
     },
     {
       "args": [
@@ -75,25 +73,7 @@
         "stderr_to_stdout": true
       },
       "output": "{\n  \"findings\": {\n    \"high_confidence\": [\n      {\n        \"line\": 0,\n        \"type\": \"Config.HTTPS: HTTPS Not Enabled\",\n        \"file\": \"config/prod.exs\"\n      },\n      {\n        \"line\": 12,\n        \"type\": \"Config.CSP: Missing Content-Security-Policy\",\n        \"file\": \"lib/test_phoenix_project_web/router.ex\",\n        \"pipeline\": \"browser\"\n      }\n    ],\n    \"low_confidence\": [],\n    \"medium_confidence\": []\n  },\n  \"sobelow_version\": \"0.14.1\",\n  \"total_findings\": 2\n}\n",
-      "recorded_at": "2026-02-10T20:11:13.985590Z"
-    },
-    {
-      "args": [
-        "compile",
-        "--return-errors"
-      ],
-      "command": "mix",
-      "exit_code": 0,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
-        "env": {
-          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
-          "MIX_ENV": "test"
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "==> sexy_spex\nCompiling 6 files (.ex)\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\n",
-      "recorded_at": "2026-02-12T15:30:41.133323Z"
+      "recorded_at": "2026-02-15T22:15:45.375851Z"
     }
   ],
   "ports": []

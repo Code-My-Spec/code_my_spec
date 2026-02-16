@@ -422,7 +422,7 @@ defmodule CodeMySpec.Components.SyncTest do
       assert dashboard.type == "liveview"
     end
 
-    test "falls back to namespace-derived type when ## Type section is absent", %{
+    test "defaults to module type when ## Type section is absent", %{
       scope: scope,
       tmp_dir: tmp_dir
     } do
@@ -431,7 +431,7 @@ defmodule CodeMySpec.Components.SyncTest do
       {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
 
       accounts = Enum.find(components, &(&1.module_name == "MyApp.Accounts"))
-      assert accounts.type == "context"
+      assert accounts.type == "module"
     end
 
   describe "sync_changed/2" do

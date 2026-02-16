@@ -2,23 +2,21 @@
   "commands": [
     {
       "args": [
-        "compile.machine",
-        "--output",
-        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
-        "--format",
-        "raw"
+        "compile",
+        "--return-errors"
       ],
       "command": "mix",
       "exit_code": 0,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
           "MIX_ENV": "test"
         },
         "stderr_to_stdout": true
       },
-      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n",
-      "recorded_at": "2026-02-10T20:10:03.690134Z"
+      "output": "",
+      "recorded_at": "2026-02-15T22:16:20.333600Z"
     },
     {
       "args": [
@@ -37,8 +35,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n==> test_phoenix_project\nRunning ExUnit with seed: 729676, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n.................\nFinished in 1.1 seconds (0.00s async, 1.1s sync)\n17 tests, 0 failures\n",
-      "recorded_at": "2026-02-10T20:10:08.023412Z"
+      "output": "Running ExUnit with seed: 714934, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n.................\nFinished in 0.3 seconds (0.00s async, 0.3s sync)\n17 tests, 0 failures\n",
+      "recorded_at": "2026-02-15T22:16:22.087224Z"
     },
     {
       "args": [
@@ -58,7 +56,7 @@
         "stderr_to_stdout": true
       },
       "output": "{\n  \"issues\": []\n}\n",
-      "recorded_at": "2026-02-10T20:10:10.689488Z"
+      "recorded_at": "2026-02-15T22:16:23.020698Z"
     },
     {
       "args": [
@@ -74,25 +72,7 @@
         "stderr_to_stdout": true
       },
       "output": "{\n  \"findings\": {\n    \"high_confidence\": [\n      {\n        \"line\": 0,\n        \"type\": \"Config.HTTPS: HTTPS Not Enabled\",\n        \"file\": \"config/prod.exs\"\n      },\n      {\n        \"line\": 12,\n        \"type\": \"Config.CSP: Missing Content-Security-Policy\",\n        \"file\": \"lib/test_phoenix_project_web/router.ex\",\n        \"pipeline\": \"browser\"\n      }\n    ],\n    \"low_confidence\": [],\n    \"medium_confidence\": []\n  },\n  \"sobelow_version\": \"0.14.1\",\n  \"total_findings\": 2\n}\n",
-      "recorded_at": "2026-02-10T20:10:13.337750Z"
-    },
-    {
-      "args": [
-        "compile",
-        "--return-errors"
-      ],
-      "command": "mix",
-      "exit_code": 0,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
-        "env": {
-          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
-          "MIX_ENV": "test"
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "==> sexy_spex\n    warning: redefining module SexySpex.Runtime (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/sexy_spex/ebin/Elixir.SexySpex.Runtime.beam)\n    │\n  1 │ defmodule SexySpex.Runtime do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/sexy_spex/runtime.ex:1: SexySpex.Runtime (module)\n\n",
-      "recorded_at": "2026-02-12T15:30:53.870443Z"
+      "recorded_at": "2026-02-15T22:16:23.907023Z"
     }
   ],
   "ports": []
