@@ -5,7 +5,9 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   Provides the master prompt that drives the agent through an iterative loop:
 
   1. Write BDD specs for the next incomplete story (via `/write-bdd-specs`)
-  2. Develop context to make failing BDD specs pass (via `/develop-context`)
+  2. Develop the component to make failing BDD specs pass:
+     - Backend contexts via `/develop-context`
+     - LiveView components via `/develop-liveview`
   3. Repeat until all stories are complete and all specs pass
   """
 
@@ -125,7 +127,10 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     ## Immediate Action Required
 
     There are **failing BDD specs** that need implementation work. Do NOT write more specs.
-    Invoke `/develop-context` now to make these failing specs pass.
+    Check `docs/architecture/dependency_graph.mmd` and `docs/status/` to determine the
+    component type and what still needs work, then invoke the appropriate command:
+    - `/develop-context` for backend contexts
+    - `/develop-liveview <ModuleName>` for LiveView components
 
     Failing specs:
     #{failure_details}
@@ -175,17 +180,27 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
 
     1. **`/write-bdd-specs`** — Delegates to a sub-agent that generates BDD specifications
        for the next incomplete user story. These become failing tests that define "done".
-    2. **`/develop-context`** — Delegates to a sub-agent that develops the context and
-       makes failing BDD specs pass. Do not review the implementation yourself.
+    2. **Implement** — Decide what to develop next by consulting:
+       - `docs/architecture/dependency_graph.mmd` — Shows all components, their types,
+         and dependency relationships
+       - `docs/status/` — Shows implementation progress for each component (what's done
+         and what still needs work)
+
+       Then choose the right command:
+       - **`/develop-context`** — For backend context components (type: `context`,
+         `coordination_context`). Develops the context and makes failing BDD specs pass.
+       - **`/develop-liveview <ModuleName>`** — For LiveView components (type: `liveview`,
+         `liveview_component`). Orchestrates the full LiveView lifecycle: specification,
+         child component specs, and implementation in dependency order.
     3. **Repeat** — The evaluate hook will tell you whether specs pass or if more stories
        remain. Follow its guidance. Do not run tests or inspect results yourself.
 
-    ## Architecture Reference
+    ## Architecture & Status Reference
 
-    The full architecture documentation is at `docs/architecture/`:
-    - `overview.md` — Component catalog with descriptions and dependencies
-    - `dependency_graph.mmd` — Mermaid dependency graph between contexts
-    - `namespace_hierarchy.md` — Module namespace tree
+    - `docs/architecture/dependency_graph.mmd` — Component dependency graph with types
+    - `docs/architecture/overview.md` — Component catalog with descriptions and dependencies
+    - `docs/architecture/namespace_hierarchy.md` — Module namespace tree
+    - `docs/status/` — Per-component implementation status (specs, tests, code)
 
     ## What You Should NOT Do
 
@@ -213,13 +228,16 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
       Enum.map_join(failures, "\n", fn f -> "- #{f.spex}: #{f.scenario}" end)
 
     """
-    BDD specs are failing. The specs define the correct behavior — you need to write
-    code to make them pass.
+    BDD specs are failing. The specs define the correct behavior — you need to
+    implement the component to make them pass.
 
     Failing specs:
     #{failure_details}
 
-    Invoke `/develop-context` to implement the functionality these specs require.
+    Check `docs/architecture/dependency_graph.mmd` and `docs/status/` to determine the
+    component type and what still needs work, then invoke:
+    - `/develop-context` for backend contexts
+    - `/develop-liveview <ModuleName>` for LiveView components
     """
   end
 
@@ -229,5 +247,4 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     Invoke `/write-bdd-specs` to generate specs for the next story.
     """
   end
-
 end
