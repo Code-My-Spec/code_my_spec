@@ -139,7 +139,10 @@ defmodule CodeMySpec.Documents.Parsers.ContextParser do
     trimmed = String.trim(text)
 
     # Format with stories: Name (type) [Stories: X, Y]: Description
-    case Regex.run(~r/^`?([^`\(]+)`?\s*\(([^\)]+)\)\s*\[Stories:\s*([^\]]+)\](?:[\s:-]+(.+))?$/, trimmed) do
+    case Regex.run(
+           ~r/^`?([^`\(]+)`?\s*\(([^\)]+)\)\s*\[Stories:\s*([^\]]+)\](?:[\s:-]+(.+))?$/,
+           trimmed
+         ) do
       [_, name, type, stories_str, description] ->
         %{
           name: clean_name(name),

@@ -62,7 +62,10 @@ defmodule CodeMySpec.BddSpecs do
 
     # Debug: log what story_ids we found in the spec files
     found_story_ids = specs |> Enum.map(& &1.story_id) |> Enum.uniq()
-    Logger.debug("[BddSpecs] list_specs_for_story: looking for story_id=#{story_id}, found story_ids in files: #{inspect(found_story_ids)}")
+
+    Logger.debug(
+      "[BddSpecs] list_specs_for_story: looking for story_id=#{story_id}, found story_ids in files: #{inspect(found_story_ids)}"
+    )
 
     Enum.filter(specs, &(&1.story_id == story_id))
   end
@@ -77,7 +80,8 @@ defmodule CodeMySpec.BddSpecs do
 
   """
   @spec list_specs_for_criterion(Environment.t(), integer()) :: [Spec.t()]
-  def list_specs_for_criterion(%Environment{} = env, criterion_id) when is_integer(criterion_id) do
+  def list_specs_for_criterion(%Environment{} = env, criterion_id)
+      when is_integer(criterion_id) do
     env
     |> list_specs()
     |> Enum.filter(&(&1.criterion_id == criterion_id))
@@ -116,7 +120,10 @@ defmodule CodeMySpec.BddSpecs do
 
     # Use criteria embedded in story (loaded via stories API)
     criteria = story.criteria || []
-    Logger.debug("[BddSpecs] story.criteria is_list: #{is_list(criteria)}, length: #{if is_list(criteria), do: length(criteria), else: "N/A"}")
+
+    Logger.debug(
+      "[BddSpecs] story.criteria is_list: #{is_list(criteria)}, length: #{if is_list(criteria), do: length(criteria), else: "N/A"}"
+    )
 
     all_criterion_ids = Enum.map(criteria, & &1.id)
     Logger.debug("[BddSpecs] all_criterion_ids: #{inspect(all_criterion_ids)}")
@@ -133,7 +140,9 @@ defmodule CodeMySpec.BddSpecs do
 
     missing_criterion_ids = all_criterion_ids -- covered_criterion_ids
 
-    Logger.debug("[BddSpecs] check_story_coverage result: covered=#{length(covered_criterion_ids)}, missing=#{length(missing_criterion_ids)}")
+    Logger.debug(
+      "[BddSpecs] check_story_coverage result: covered=#{length(covered_criterion_ids)}, missing=#{length(missing_criterion_ids)}"
+    )
 
     %{
       covered: covered_criterion_ids,
@@ -237,11 +246,17 @@ defmodule CodeMySpec.BddSpecs do
   defp parse_spec_file(file_path) do
     case Parser.parse_file(file_path) do
       {:ok, spec} ->
-        Logger.debug("[BddSpecs] parse_spec_file: SUCCESS for #{file_path}, story_id=#{inspect(spec.story_id)}, criterion_id=#{inspect(spec.criterion_id)}")
+        Logger.debug(
+          "[BddSpecs] parse_spec_file: SUCCESS for #{file_path}, story_id=#{inspect(spec.story_id)}, criterion_id=#{inspect(spec.criterion_id)}"
+        )
+
         spec
 
       {:error, reason} ->
-        Logger.warning("[BddSpecs] parse_spec_file: FAILED for #{file_path}, reason=#{inspect(reason)}")
+        Logger.warning(
+          "[BddSpecs] parse_spec_file: FAILED for #{file_path}, reason=#{inspect(reason)}"
+        )
+
         nil
     end
   end

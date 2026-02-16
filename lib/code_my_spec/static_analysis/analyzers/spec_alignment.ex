@@ -404,16 +404,32 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     |> Enum.flat_map(fn
       {{name, arity}, actual_tests} when is_atom(name) and is_integer(arity) ->
         spec_assertions = Map.get(spec_assertions_map, {name, arity}, [])
-        find_extra_tests_for_function(name, arity, actual_tests, spec_assertions, test_path, project_id)
+
+        find_extra_tests_for_function(
+          name,
+          arity,
+          actual_tests,
+          spec_assertions,
+          test_path,
+          project_id
+        )
 
       {_other_key, _tests} ->
         []
     end)
   end
 
-  defp find_extra_tests_for_function(_name, _arity, _actual_tests, [], _test_path, _project_id), do: []
+  defp find_extra_tests_for_function(_name, _arity, _actual_tests, [], _test_path, _project_id),
+    do: []
 
-  defp find_extra_tests_for_function(name, arity, actual_tests, spec_assertions, test_path, project_id) do
+  defp find_extra_tests_for_function(
+         name,
+         arity,
+         actual_tests,
+         spec_assertions,
+         test_path,
+         project_id
+       ) do
     actual_tests
     |> Enum.reject(&test_has_matching_assertion?(&1, spec_assertions))
     |> Enum.map(fn extra_test ->

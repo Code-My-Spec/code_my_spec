@@ -10,7 +10,15 @@ defmodule CodeMySpec.Requirements.Sync do
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.{Component, ComponentStatus, DependencyTree, HierarchicalTree, Registry}
+
+  alias CodeMySpec.Components.{
+    Component,
+    ComponentStatus,
+    DependencyTree,
+    HierarchicalTree,
+    Registry
+  }
+
   alias CodeMySpec.{Requirements, Utils}
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Tests.TestResult
@@ -109,10 +117,15 @@ defmodule CodeMySpec.Requirements.Sync do
 
     case Components.update_component(scope, component, update_attrs, opts) do
       {:ok, updated} ->
-        if updated.component_status, do: updated, else: Map.put(updated, :component_status, component_status)
+        if updated.component_status,
+          do: updated,
+          else: Map.put(updated, :component_status, component_status)
 
       {:error, changeset} ->
-        Logger.error("[RequirementsSync] Failed to update component status: #{inspect(changeset.errors)}")
+        Logger.error(
+          "[RequirementsSync] Failed to update component status: #{inspect(changeset.errors)}"
+        )
+
         Map.put(component, :component_status, component_status)
     end
   end
@@ -167,7 +180,10 @@ defmodule CodeMySpec.Requirements.Sync do
         Map.put(requirement, :component, %Ecto.Association.NotLoaded{})
 
       {:error, changeset} ->
-        Logger.error("[RequirementsSync] Failed to create requirement: #{inspect(changeset.errors)}")
+        Logger.error(
+          "[RequirementsSync] Failed to create requirement: #{inspect(changeset.errors)}"
+        )
+
         nil
     end
   end

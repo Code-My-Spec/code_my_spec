@@ -160,7 +160,8 @@ defmodule CodeMySpec.Validation.PipelineTest do
       categorized = %{empty_categorized() | elixir_files: [elixir_file]}
       Pipeline.clear_stale_problems(scope, categorized)
 
-      assert [] == Problems.list_project_problems(scope, source: "sobelow", file_path: elixir_file)
+      assert [] ==
+               Problems.list_project_problems(scope, source: "sobelow", file_path: elixir_file)
     end
 
     test "clears spex-source problems for spex_files", %{scope: scope} do

@@ -40,7 +40,13 @@ defmodule CodeMySpec.UserPreferencesTest do
     test "create_user_preferences/2 with valid data creates a user_preference" do
       project_id = Ecto.UUID.generate()
       account_id = Ecto.UUID.generate()
-      valid_attrs = %{token: "some token", active_account_id: account_id, active_project_id: project_id}
+
+      valid_attrs = %{
+        token: "some token",
+        active_account_id: account_id,
+        active_project_id: project_id
+      }
+
       scope = user_scope_fixture()
 
       assert {:ok, %UserPreference{} = user_preference} =

@@ -178,5 +178,4 @@ defmodule CodeMySpec.Environments.Cli do
       path
     end
   end
-
 end

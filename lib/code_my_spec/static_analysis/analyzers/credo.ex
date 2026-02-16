@@ -105,7 +105,15 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   end
 
   defp build_credo_args(opts) do
-    base_args = ["credo", "suggest", "--format", "json", "--all", "--all-priorities", "--no-color"]
+    base_args = [
+      "credo",
+      "suggest",
+      "--format",
+      "json",
+      "--all",
+      "--all-priorities",
+      "--no-color"
+    ]
 
     args =
       case Keyword.get(opts, :config_file) do

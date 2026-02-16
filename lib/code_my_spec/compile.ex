@@ -70,7 +70,10 @@ defmodule CodeMySpec.Compile do
           []
 
         {:error, _reason} when exit_code == 0 ->
-          Logger.debug("[Compile] Diagnostics file not found but compilation succeeded — treating as clean")
+          Logger.debug(
+            "[Compile] Diagnostics file not found but compilation succeeded — treating as clean"
+          )
+
           []
 
         {:error, _reason} ->

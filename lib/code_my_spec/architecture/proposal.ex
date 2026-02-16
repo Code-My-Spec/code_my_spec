@@ -318,9 +318,21 @@ defmodule CodeMySpec.Architecture.Proposal do
       errors
     else
       messages = []
-      messages = if invalid_contexts != [], do: ["Contexts must start with '#{app_name}.'" | messages], else: messages
-      messages = if invalid_surfaces != [], do: ["Surface components must start with '#{app_web}.'" | messages], else: messages
-      messages = if invalid_children != [], do: ["Children must start with their parent context name" | messages], else: messages
+
+      messages =
+        if invalid_contexts != [],
+          do: ["Contexts must start with '#{app_name}.'" | messages],
+          else: messages
+
+      messages =
+        if invalid_surfaces != [],
+          do: ["Surface components must start with '#{app_web}.'" | messages],
+          else: messages
+
+      messages =
+        if invalid_children != [],
+          do: ["Children must start with their parent context name" | messages],
+          else: messages
 
       [
         %{
@@ -572,16 +584,24 @@ defmodule CodeMySpec.Architecture.Proposal do
       case file_results do
         {:ok, created_components} ->
           # Sync to database and link stories to surface components
-          Logger.debug("[Proposal] Starting sync_and_link_components with #{length(created_components)} components")
-          linked_count = sync_and_link_components(scope, created_components)
-          Logger.debug("[Proposal] sync_and_link_components complete, linked_count: #{linked_count}")
+          Logger.debug(
+            "[Proposal] Starting sync_and_link_components with #{length(created_components)} components"
+          )
 
-          result = {:ok,
-           %{
-             created_contexts: Enum.count(proposal.contexts),
-             created_components: length(created_components),
-             linked_stories: linked_count
-           }}
+          linked_count = sync_and_link_components(scope, created_components)
+
+          Logger.debug(
+            "[Proposal] sync_and_link_components complete, linked_count: #{linked_count}"
+          )
+
+          result =
+            {:ok,
+             %{
+               created_contexts: Enum.count(proposal.contexts),
+               created_components: length(created_components),
+               linked_stories: linked_count
+             }}
+
           Logger.info("[Proposal] Execution complete: #{inspect(result)}")
           result
 
@@ -597,18 +617,27 @@ defmodule CodeMySpec.Architecture.Proposal do
 
     components
     |> Enum.reduce(0, fn comp_attrs, linked_count ->
-      Logger.debug("[Proposal] Processing component: #{comp_attrs.module_name}, type: #{comp_attrs.type}")
+      Logger.debug(
+        "[Proposal] Processing component: #{comp_attrs.module_name}, type: #{comp_attrs.type}"
+      )
 
       case sync_component_to_db(scope, comp_attrs) do
         %{id: component_id} = component ->
-          Logger.debug("[Proposal] Component synced: #{component.module_name} -> id=#{component_id}")
+          Logger.debug(
+            "[Proposal] Component synced: #{component.module_name} -> id=#{component_id}"
+          )
 
           # Link stories to surface components (liveview, controller)
           # Handle "(existing)" suffix in type (e.g., "liveview (existing)")
           base_type = comp_attrs.type |> String.split(" ") |> hd()
+
           if base_type in ["liveview", "controller"] do
             story_ids = Map.get(comp_attrs, :story_ids, [])
-            Logger.info("[Proposal] Linking #{length(story_ids)} stories to #{comp_attrs.module_name}: #{inspect(story_ids)}")
+
+            Logger.info(
+              "[Proposal] Linking #{length(story_ids)} stories to #{comp_attrs.module_name}: #{inspect(story_ids)}"
+            )
+
             link_stories_to_component(scope, story_ids, component_id)
             linked_count + length(story_ids)
           else
@@ -616,11 +645,17 @@ defmodule CodeMySpec.Architecture.Proposal do
           end
 
         {:error, reason} ->
-          Logger.error("[Proposal] Failed to sync component #{comp_attrs.module_name}: #{inspect(reason)}")
+          Logger.error(
+            "[Proposal] Failed to sync component #{comp_attrs.module_name}: #{inspect(reason)}"
+          )
+
           linked_count
 
         other ->
-          Logger.error("[Proposal] Unexpected return from sync_component_to_db: #{inspect(other)}")
+          Logger.error(
+            "[Proposal] Unexpected return from sync_component_to_db: #{inspect(other)}"
+          )
+
           linked_count
       end
     end)
@@ -630,7 +665,9 @@ defmodule CodeMySpec.Architecture.Proposal do
     Enum.each(story_ids, fn story_id ->
       case Stories.get_story(scope, story_id) do
         nil ->
-          Logger.warning("[Proposal] Story #{story_id} not found for scope project #{inspect(scope.active_project_id)}")
+          Logger.warning(
+            "[Proposal] Story #{story_id} not found for scope project #{inspect(scope.active_project_id)}"
+          )
 
         story ->
           case Stories.set_story_component(scope, story, component_id) do

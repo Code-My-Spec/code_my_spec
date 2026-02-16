@@ -145,7 +145,11 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
   describe "command/3" do
     setup [:create_scope, :create_project, :create_component, :create_session]
 
-    test "returns prompt with component information", %{session: session, scope: scope, component: component} do
+    test "returns prompt with component information", %{
+      session: session,
+      scope: scope,
+      component: component
+    } do
       assert {:ok, prompt} = ComponentTest.command(scope, session)
 
       assert is_binary(prompt)
@@ -159,14 +163,19 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
       assert prompt =~ "Test Rules:"
     end
 
-    test "includes similar components when available", %{session: session, scope: scope, project: project} do
+    test "includes similar components when available", %{
+      session: session,
+      scope: scope,
+      project: project
+    } do
       # Create a similar component (same type)
-      _similar = component_fixture(scope, %{
-        name: "SimilarModule",
-        type: "module",
-        module_name: "TestApp.SimilarModule",
-        project_id: project.id
-      })
+      _similar =
+        component_fixture(scope, %{
+          name: "SimilarModule",
+          type: "module",
+          module_name: "TestApp.SimilarModule",
+          project_id: project.id
+        })
 
       assert {:ok, prompt} = ComponentTest.command(scope, session)
 

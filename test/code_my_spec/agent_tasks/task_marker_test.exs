@@ -7,7 +7,8 @@ defmodule CodeMySpec.AgentTasks.TaskMarkerTest do
     test "returns HTML comment with type and component" do
       result = TaskMarker.build("ComponentTest", "MetricFlow.Accounts.User")
 
-      assert result == ~s(<!-- cms:task type="ComponentTest" component="MetricFlow.Accounts.User" -->)
+      assert result ==
+               ~s(<!-- cms:task type="ComponentTest" component="MetricFlow.Accounts.User" -->)
     end
 
     test "handles simple module names" do

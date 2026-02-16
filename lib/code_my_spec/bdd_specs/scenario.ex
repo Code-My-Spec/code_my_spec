@@ -18,7 +18,8 @@ defmodule CodeMySpec.BddSpecs.Scenario do
           tags: list(atom())
         }
 
-  @derive {Jason.Encoder, only: [:name, :given_steps, :when_steps, :then_steps, :line_number, :tags]}
+  @derive {Jason.Encoder,
+           only: [:name, :given_steps, :when_steps, :then_steps, :line_number, :tags]}
   defstruct name: nil,
             line_number: nil,
             given_steps: [],
@@ -72,7 +73,9 @@ defmodule CodeMySpec.BddSpecs.Scenario do
     }
 
     {scenario, types}
-    |> cast(attrs, [:name, :given_steps, :when_steps, :then_steps, :line_number, :tags], empty_values: [])
+    |> cast(attrs, [:name, :given_steps, :when_steps, :then_steps, :line_number, :tags],
+      empty_values: []
+    )
     |> validate_name()
     |> validate_positive_line_number()
   end
@@ -172,7 +175,8 @@ defmodule CodeMySpec.BddSpecs.Scenario do
     changeset = validate_length(changeset, :name, min: 1, max: 500)
 
     # Only add "can't be blank" error if name is missing AND length validation didn't already add an error
-    if get_change(changeset, :name) == nil and get_field(changeset, :name) == nil and changeset.errors[:name] == nil do
+    if get_change(changeset, :name) == nil and get_field(changeset, :name) == nil and
+         changeset.errors[:name] == nil do
       add_error(changeset, :name, "can't be blank", validation: :required)
     else
       changeset

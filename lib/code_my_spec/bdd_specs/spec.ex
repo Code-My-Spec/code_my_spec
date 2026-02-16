@@ -86,13 +86,17 @@ defmodule CodeMySpec.BddSpecs.Spec do
 
       scenarios =
         case get_change(changeset, :scenarios) do
-          nil -> []
+          nil ->
+            []
+
           scenario_changesets when is_list(scenario_changesets) ->
             Enum.map(scenario_changesets, fn
               %Ecto.Changeset{} = cs -> Ecto.Changeset.apply_action!(cs, :insert)
               scenario -> scenario
             end)
-          scenarios -> scenarios
+
+          scenarios ->
+            scenarios
         end
 
       %{data | scenarios: scenarios}

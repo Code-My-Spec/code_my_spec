@@ -46,7 +46,11 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
     |> Response.json(%{
       success: true,
       dry_run: dry_run,
-      message: if(dry_run, do: "Dry run complete - no changes made", else: "Proposal executed successfully"),
+      message:
+        if(dry_run,
+          do: "Dry run complete - no changes made",
+          else: "Proposal executed successfully"
+        ),
       created_contexts: result.created_contexts,
       created_components: result.created_components,
       linked_stories: result.linked_stories
@@ -136,7 +140,13 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
     })
   end
 
-  def specs_list_paginated_response(%{specs: specs, total: total, limit: limit, offset: offset, has_more: has_more}) do
+  def specs_list_paginated_response(%{
+        specs: specs,
+        total: total,
+        limit: limit,
+        offset: offset,
+        has_more: has_more
+      }) do
     Response.tool()
     |> Response.json(%{
       specs: Enum.map(specs, &spec_summary/1),

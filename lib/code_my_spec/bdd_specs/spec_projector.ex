@@ -47,6 +47,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
 
         # Add summary statistics
         total_stories = length(stories)
+
         stories_with_specs =
           Enum.count(stories, fn story ->
             Map.get(specs_by_story, story.id, []) != []

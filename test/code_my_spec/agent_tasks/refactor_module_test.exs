@@ -94,6 +94,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
 
   defp write_files(context) do
     %{component: component, project: project, scope: scope} = context
+
     %{spec_file: spec_file, code_file: code_file, test_file: test_file} =
       CodeMySpec.Utils.component_files(component, project)
 
@@ -197,7 +198,10 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
       assert prompt =~ "use ExUnit.Case"
     end
 
-    test "instructs agent to modify spec first, then tests, then code", %{session: session, scope: scope} do
+    test "instructs agent to modify spec first, then tests, then code", %{
+      session: session,
+      scope: scope
+    } do
       assert {:ok, prompt} = RefactorModule.command(scope, session)
 
       # Check for the ordering instruction
@@ -233,7 +237,11 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
       assert prompt =~ "Project:"
     end
 
-    test "includes component context in prompt", %{session: session, component: component, scope: scope} do
+    test "includes component context in prompt", %{
+      session: session,
+      component: component,
+      scope: scope
+    } do
       assert {:ok, prompt} = RefactorModule.command(scope, session)
 
       assert prompt =~ component.name
@@ -308,7 +316,10 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
       assert prompt =~ test_file
     end
 
-    test "instructs agent to consider ripple effects on child components", %{session: session, scope: scope} do
+    test "instructs agent to consider ripple effects on child components", %{
+      session: session,
+      scope: scope
+    } do
       assert {:ok, prompt} = RefactorModule.command(scope, session)
 
       assert prompt =~ "child components"

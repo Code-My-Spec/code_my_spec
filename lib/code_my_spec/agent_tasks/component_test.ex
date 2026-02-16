@@ -58,9 +58,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
     # Check test-artifact requirements (test_file, test_spec_alignment)
     test_reqs =
-      Requirements.check_requirements(scope, component, requirements,
-        artifact_types: [:tests]
-      )
+      Requirements.check_requirements(scope, component, requirements, artifact_types: [:tests])
 
     unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
 
@@ -68,7 +66,9 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       if Enum.empty?(unsatisfied) do
         nil
       else
-        RequirementsFormatter.format_unsatisfied(unsatisfied, context: "Test requirements not met:")
+        RequirementsFormatter.format_unsatisfied(unsatisfied,
+          context: "Test requirements not met:"
+        )
       end
 
     problem_feedback = ProblemFeedback.for_test_task(scope, component, project)
@@ -195,5 +195,4 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
     Enum.any?(code_reqs, & &1.satisfied)
   end
-
 end

@@ -90,7 +90,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
-      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
+
+      scope =
+        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
 
       assert Credo.available?(scope) == false
     end
@@ -265,7 +267,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
-      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
+
+      scope =
+        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
 
       use_cmd_cassette "static_analysis_credo_run_nonexistent", ignore: [[:opts, :cd]] do
         capture_log(fn ->

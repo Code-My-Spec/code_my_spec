@@ -10,7 +10,7 @@ defmodule CodeMySpec.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: [:phoenix_live_view] ++ Mix.compilers(),
+      compilers: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app],
       listeners: [Phoenix.CodeReloader],
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
@@ -48,7 +48,7 @@ defmodule CodeMySpec.MixProject do
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.1.0-rc.0"},
+      {:phoenix_live_view, "~> 1.1"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
@@ -73,7 +73,7 @@ defmodule CodeMySpec.MixProject do
       {:ngrok, git: "https://github.com/johns10/ex_ngrok", branch: "main", only: [:dev]},
       {:mix_machine, git: "https://github.com/johns10/mix_machine", branch: "master"},
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
-      {:client_utils, "~> 0.1.8"},
+      {:client_utils, "~> 0.1.12"},
       {:credo, "~> 1.7.13"},
 
       # Normal deps
@@ -116,12 +116,6 @@ defmodule CodeMySpec.MixProject do
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "agent_test"],
-      user_test: [
-        "ecto.create --quiet",
-        "ecto.migrate --quiet",
-        fn args -> Mix.Tasks.Test.run(args) end
-      ],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind code_my_spec", "esbuild code_my_spec"],
       "assets.deploy": [

@@ -6,7 +6,9 @@ defmodule CodeMySpec.Repo.Migrations.CreateComponentTags do
     # Named component_tags to distinguish from existing content tags table
     create table(:component_tags) do
       add :name, :string, null: false
-      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
+        null: false
 
       timestamps(type: :utc_datetime)
     end
@@ -26,7 +28,9 @@ defmodule CodeMySpec.Repo.Migrations.CreateComponentTags do
       add :tag_id, references(:component_tags, on_delete: :delete_all), null: false
       add :taggable_type, :taggable_type, null: false
       add :taggable_id, :binary, null: false
-      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
+        null: false
 
       timestamps(type: :utc_datetime)
     end

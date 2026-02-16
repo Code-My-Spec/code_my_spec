@@ -57,9 +57,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
     requirements = component.requirements || []
 
     code_reqs =
-      Requirements.check_requirements(scope, component, requirements,
-        artifact_types: [:code]
-      )
+      Requirements.check_requirements(scope, component, requirements, artifact_types: [:code])
 
     unsatisfied = Enum.filter(code_reqs, &(not &1.satisfied))
 

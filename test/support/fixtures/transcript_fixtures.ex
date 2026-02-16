@@ -597,12 +597,15 @@ defmodule CodeMySpec.TranscriptFixtures do
       ),
       build_entry(user_entry_json(%{"uuid" => "user-2"})),
       build_entry(
-        assistant_entry_with_tools([
-          write_tool_json(%{
-            "id" => "write_2",
-            "input" => %{"file_path" => "/src/new.ex", "content" => "v2"}
-          })
-        ], %{"uuid" => "assistant-2"})
+        assistant_entry_with_tools(
+          [
+            write_tool_json(%{
+              "id" => "write_2",
+              "input" => %{"file_path" => "/src/new.ex", "content" => "v2"}
+            })
+          ],
+          %{"uuid" => "assistant-2"}
+        )
       )
     ]
 
@@ -617,7 +620,11 @@ defmodule CodeMySpec.TranscriptFixtures do
       build_entry(user_entry_json()),
       build_entry(
         assistant_entry_with_tools([
-          %{"id" => "edit_bad", "name" => "Edit", "input" => %{"old_string" => "a", "new_string" => "b"}},
+          %{
+            "id" => "edit_bad",
+            "name" => "Edit",
+            "input" => %{"old_string" => "a", "new_string" => "b"}
+          },
           edit_tool_json(%{"id" => "edit_good"})
         ])
       )

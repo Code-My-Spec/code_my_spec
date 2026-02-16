@@ -47,7 +47,9 @@ defmodule CodeMySpec.Accounts.MembersRepositoryTest do
     test "returns error when account does not exist" do
       user = user_fixture()
 
-      assert {:error, changeset} = MembersRepository.add_user_to_account(user.id, Ecto.UUID.generate())
+      assert {:error, changeset} =
+               MembersRepository.add_user_to_account(user.id, Ecto.UUID.generate())
+
       assert "does not exist" in errors_on(changeset).account
     end
   end

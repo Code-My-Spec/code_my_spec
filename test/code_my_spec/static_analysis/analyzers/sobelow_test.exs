@@ -83,7 +83,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
-      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/invalid/path")
+
+      scope =
+        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/invalid/path")
 
       assert Sobelow.available?(scope) == false
     end
@@ -207,7 +209,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
-      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/invalid/path")
+
+      scope =
+        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/invalid/path")
 
       use_cmd_cassette "static_analysis_sobelow_run_nonexistent", ignore: [[:opts, :cd]] do
         capture_log(fn ->

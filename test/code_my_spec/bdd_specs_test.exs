@@ -34,7 +34,11 @@ defmodule CodeMySpec.BddSpecsTest do
 
   # Create an Environment struct for BddSpecs functions
   defp create_environment(scope) do
-    %Environment{type: :local, cwd: scope.active_project.code_repo, ref: %{working_dir: scope.active_project.code_repo}}
+    %Environment{
+      type: :local,
+      cwd: scope.active_project.code_repo,
+      ref: %{working_dir: scope.active_project.code_repo}
+    }
   end
 
   defp cleanup_test_directory(scope) do

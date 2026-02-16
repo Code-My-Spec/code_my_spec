@@ -62,7 +62,11 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
       # Verify id is a valid UUID
       assert is_binary(session.id)
       assert String.length(session.id) == 36
-      assert String.match?(session.id, ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+
+      assert String.match?(
+               session.id,
+               ~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+             )
     end
 
     test "returns error for invalid attrs (missing type)", %{env: env} do
@@ -74,7 +78,10 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
       assert %{type: ["can't be blank"]} = errors_on(changeset)
     end
 
-    test "session.json is valid JSON that roundtrips through from_json", %{env: env, tmp_dir: tmp_dir} do
+    test "session.json is valid JSON that roundtrips through from_json", %{
+      env: env,
+      tmp_dir: tmp_dir
+    } do
       attrs = %{
         type: AgentTasks.ComponentTest,
         priority: 2,
@@ -128,7 +135,10 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
       assert {:error, :not_found} = SessionsRepository.get_session(env, non_existent_id)
     end
 
-    test "returns {:error, :not_found} when session.json is missing", %{env: env, tmp_dir: tmp_dir} do
+    test "returns {:error, :not_found} when session.json is missing", %{
+      env: env,
+      tmp_dir: tmp_dir
+    } do
       # Create directory but don't create session.json
       session_id = Ecto.UUID.generate()
       session_dir = Path.join([tmp_dir, @sessions_dir, session_id])

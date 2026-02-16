@@ -632,7 +632,8 @@ defmodule CodeMySpec.Architecture.ProposalTest do
         })
 
       # Create stories to link
-      {:ok, story} = Stories.create_story(scope, %{title: "Login Story", description: "User can login"})
+      {:ok, story} =
+        Stories.create_story(scope, %{title: "Login Story", description: "User can login"})
 
       proposal =
         Proposal.new(%{

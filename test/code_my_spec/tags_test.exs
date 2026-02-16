@@ -308,7 +308,9 @@ defmodule CodeMySpec.TagsTest do
       assert {:ok, _} = Tags.get_or_create_tag(scope, "ValidTag123")
 
       # Invalid format - direct changeset test
-      changeset = Tag.changeset(%Tag{}, %{name: "invalid tag!", project_id: scope.active_project_id})
+      changeset =
+        Tag.changeset(%Tag{}, %{name: "invalid tag!", project_id: scope.active_project_id})
+
       refute changeset.valid?
       assert changeset.errors[:name]
     end

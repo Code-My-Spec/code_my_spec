@@ -186,6 +186,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       write_core_components(env)
 
       assert {:ok, prompt} = DesignUi.command(scope, session)
+
       assert prompt =~ "core_components" or prompt =~ "CoreComponents" or prompt =~ "button" or
                prompt =~ "modal"
     end

@@ -390,49 +390,49 @@ defmodule CodeMySpec.Components.SyncTest do
     end
   end
 
-    test "uses ## Type section from spec when present", %{scope: scope, tmp_dir: tmp_dir} do
-      path = module_to_spec_path(tmp_dir, "MyAppWeb.DashboardLive")
-      File.mkdir_p!(Path.dirname(path))
+  test "uses ## Type section from spec when present", %{scope: scope, tmp_dir: tmp_dir} do
+    path = module_to_spec_path(tmp_dir, "MyAppWeb.DashboardLive")
+    File.mkdir_p!(Path.dirname(path))
 
-      File.write!(path, """
-      # MyAppWeb.DashboardLive
+    File.write!(path, """
+    # MyAppWeb.DashboardLive
 
-      Main dashboard page.
+    Main dashboard page.
 
-      ## Type
+    ## Type
 
-      liveview
+    liveview
 
-      ## Route
+    ## Route
 
-      `/dashboard`
+    `/dashboard`
 
-      ## User Interactions
+    ## User Interactions
 
-      - **phx-click="refresh"**: Reload data.
+    - **phx-click="refresh"**: Reload data.
 
-      ## Dependencies
+    ## Dependencies
 
-      - MyApp.Accounts
-      """)
+    - MyApp.Accounts
+    """)
 
-      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+    {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
 
-      dashboard = Enum.find(components, &(&1.module_name == "MyAppWeb.DashboardLive"))
-      assert dashboard.type == "liveview"
-    end
+    dashboard = Enum.find(components, &(&1.module_name == "MyAppWeb.DashboardLive"))
+    assert dashboard.type == "liveview"
+  end
 
-    test "defaults to module type when ## Type section is absent", %{
-      scope: scope,
-      tmp_dir: tmp_dir
-    } do
-      write_spec(tmp_dir, "MyApp.Accounts")
+  test "defaults to module type when ## Type section is absent", %{
+    scope: scope,
+    tmp_dir: tmp_dir
+  } do
+    write_spec(tmp_dir, "MyApp.Accounts")
 
-      {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
+    {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
 
-      accounts = Enum.find(components, &(&1.module_name == "MyApp.Accounts"))
-      assert accounts.type == "module"
-    end
+    accounts = Enum.find(components, &(&1.module_name == "MyApp.Accounts"))
+    assert accounts.type == "module"
+  end
 
   describe "sync_changed/2" do
     test "returns all components and changed IDs on first sync", %{scope: scope, tmp_dir: tmp_dir} do
@@ -697,6 +697,7 @@ defmodule CodeMySpec.Components.SyncTest do
       # Initial sync with dependencies
       write_spec_with_deps(tmp_dir, "MyApp.Repo", [])
       write_spec_with_deps(tmp_dir, "MyApp.Accounts.User", [])
+
       write_spec_with_deps(tmp_dir, "MyApp.Accounts.UserRepository", [
         "MyApp.Repo",
         "MyApp.Accounts.User"

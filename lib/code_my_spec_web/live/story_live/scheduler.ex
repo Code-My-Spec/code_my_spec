@@ -72,7 +72,7 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
           <p class="text-base-content/60 mb-4">Create your first story to start scheduling.</p>
         </div>
       </div>
-
+      
     <!-- Colocated Hook -->
       <script :type={Phoenix.LiveView.ColocatedHook} name=".StoryScheduler">
         export default {

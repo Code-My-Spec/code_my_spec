@@ -212,7 +212,9 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       account = account_with_owner_fixture(user)
       scope_no_repo = user_scope_fixture(user, account)
       project = project_fixture(scope_no_repo)
-      scope_no_repo = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
+
+      scope_no_repo =
+        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
 
       capture_log(fn ->
         assert {:error, message} = Runner.run(scope_no_repo, :credo)

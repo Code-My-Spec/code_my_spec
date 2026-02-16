@@ -24,7 +24,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
     with {:ok, scope} <- Validators.validate_project_scope(frame),
          {:ok, stories} <- Stories.list_project_stories(scope) do
       if stories == [] do
-        {:reply, ArchitectureMapper.error("No stories found. Import stories first using the stories tools."), frame}
+        {:reply,
+         ArchitectureMapper.error(
+           "No stories found. Import stories first using the stories tools."
+         ), frame}
       else
         analysis = analyze_stories(stories)
         response = format_response(analysis)
@@ -32,10 +35,16 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
       end
     else
       {:error, :authentication_failed} ->
-        {:reply, ArchitectureMapper.error("Authentication failed. Please run 'codemyspec auth login' to re-authenticate."), frame}
+        {:reply,
+         ArchitectureMapper.error(
+           "Authentication failed. Please run 'codemyspec auth login' to re-authenticate."
+         ), frame}
 
       {:error, :needs_authentication} ->
-        {:reply, ArchitectureMapper.error("Authentication required. Please run 'codemyspec auth login' to authenticate."), frame}
+        {:reply,
+         ArchitectureMapper.error(
+           "Authentication required. Please run 'codemyspec auth login' to authenticate."
+         ), frame}
 
       {:error, reason} ->
         {:reply, ArchitectureMapper.error("Failed to fetch data: #{inspect(reason)}"), frame}

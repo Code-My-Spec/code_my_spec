@@ -358,7 +358,8 @@ defmodule CodeMySpec.DocumentsTest do
       Nested module.
       """
 
-      path = "/project/docs/spec/code_my_spec/mcp_servers/architecture/tools/get_component_view.spec.md"
+      path =
+        "/project/docs/spec/code_my_spec/mcp_servers/architecture/tools/get_component_view.spec.md"
 
       assert :ok = Documents.validate_h1_matches_path(content, path)
     end

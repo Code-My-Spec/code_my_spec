@@ -24,6 +24,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ManageImplementation,
       AgentTasks.DevelopContext,
       AgentTasks.DevelopLiveView,
+      AgentTasks.LiveViewSpec,
       AgentTasks.DesignUi
     ]
   end
@@ -44,6 +45,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ManageImplementation",
       "DevelopContext",
       "DevelopLiveView",
+      "LiveViewSpec",
       "DesignUi"
     ]
   end

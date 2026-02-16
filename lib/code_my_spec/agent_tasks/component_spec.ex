@@ -177,5 +177,4 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
 
     {:ok, prompt}
   end
-
 end

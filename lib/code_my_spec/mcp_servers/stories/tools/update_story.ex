@@ -25,6 +25,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
       doc: "Story ID to update (use list_story_titles to find IDs)"
 
     field :title, :string, doc: "New title (optional)"
+
     field :description, :string,
       doc:
         "New description in 'As a [role], I want [goal] so that [value]' format. " <>
@@ -33,8 +34,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
     field :acceptance_criteria, {:list, :string},
       doc: "Replace unverified criteria with these (optional)"
 
-    field :tags, {:list, :string},
-      doc: "Replace all tags with these (optional)"
+    field :tags, {:list, :string}, doc: "Replace all tags with these (optional)"
   end
 
   @impl true

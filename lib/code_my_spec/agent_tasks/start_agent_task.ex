@@ -46,7 +46,14 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   }
 
   # Tasks that don't require a component/module_name
-  @componentless_tasks ["project_setup", "architecture_design", "architecture_review", "write_bdd_specs", "manage_implementation", "design_ui"]
+  @componentless_tasks [
+    "project_setup",
+    "architecture_design",
+    "architecture_review",
+    "write_bdd_specs",
+    "manage_implementation",
+    "design_ui"
+  ]
 
   @valid_types ["spec" | Map.keys(@session_type_map)]
 
@@ -133,7 +140,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   # Auto-detect context vs component vs liveview spec based on component type
-  defp resolve_session_type("spec", %{type: type}) when type in ["liveview", "liveview_component"] do
+  defp resolve_session_type("spec", %{type: type})
+       when type in ["liveview", "liveview_component"] do
     {:ok, AgentTasks.LiveViewSpec}
   end
 

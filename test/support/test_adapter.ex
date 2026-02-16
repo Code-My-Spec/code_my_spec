@@ -129,10 +129,7 @@ defmodule CodeMySpec.Support.TestAdapter do
   end
 
   defp url_to_repo_type(repo_url) do
-    cond do
-      String.contains?(repo_url, "test_content_repo") -> :content_repo
-      true -> :code_repo
-    end
+    if String.contains?(repo_url, "test_content_repo"), do: :content_repo, else: :code_repo
   end
 
   @doc """
@@ -363,7 +360,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result = CodeMySpec.Compile.execute(cwd: code_repo_fixture_abs)
-      File.cp!(result.output_file, compiler_ok_cache_abs)
+      save_compile_result(result, compiler_ok_cache_abs)
 
       if !File.exists?(compiler_ok_cache_abs), do: raise("Compiler OK cache failed to be created")
     end
@@ -380,7 +377,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result = CodeMySpec.Compile.execute(cwd: code_repo_fixture_abs)
-      File.cp!(result.output_file, compiler_warnings_cache_abs)
+      save_compile_result(result, compiler_warnings_cache_abs)
 
       if !File.exists?(compiler_warnings_cache_abs),
         do: raise("Compiler warnings cache failed to be created")
@@ -401,7 +398,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result = CodeMySpec.Compile.execute(cwd: code_repo_fixture_abs)
-      File.cp!(result.output_file, compiler_errors_cache_abs)
+      save_compile_result(result, compiler_errors_cache_abs)
 
       if !File.exists?(compiler_errors_cache_abs),
         do: raise("Compiler errors cache failed to be created")
@@ -526,5 +523,10 @@ defmodule CodeMySpec.Support.TestAdapter do
 
       IO.puts("[TestAdapter] Spex cache generation complete!")
     end
+  end
+
+  defp save_compile_result(result, cache_path) do
+    File.mkdir_p!(Path.dirname(cache_path))
+    File.cp!(result.output_file, cache_path)
   end
 end

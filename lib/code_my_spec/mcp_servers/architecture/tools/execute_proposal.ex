@@ -39,6 +39,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
       Environments.destroy(env)
 
       Logger.debug("[ExecuteProposal] Calling Proposal.execute")
+
       case Proposal.execute(proposal, scope, dry_run: dry_run, working_dir: working_dir) do
         {:ok, result} ->
           Logger.info("[ExecuteProposal] Execution succeeded: #{inspect(result)}")
@@ -81,7 +82,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
   end
 
   defp get_app_name(%{active_project: %{module_name: name}}) when is_binary(name), do: {:ok, name}
-  defp get_app_name(%{active_project: %{name: name}}) when is_binary(name), do: {:ok, Macro.camelize(name)}
+
+  defp get_app_name(%{active_project: %{name: name}}) when is_binary(name),
+    do: {:ok, Macro.camelize(name)}
+
   defp get_app_name(_), do: {:error, "Project must have module_name or name"}
 
   defp format_success(result, dry_run) do

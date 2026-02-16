@@ -307,13 +307,23 @@ defmodule CodeMySpec.BddSpecs.ScenarioTest do
     end
 
     test "returns correct count for scenario with only given steps" do
-      scenario = %Scenario{name: "test", given_steps: ["step 1", "step 2"], when_steps: [], then_steps: []}
+      scenario = %Scenario{
+        name: "test",
+        given_steps: ["step 1", "step 2"],
+        when_steps: [],
+        then_steps: []
+      }
 
       assert Scenario.step_count(scenario) == 2
     end
 
     test "returns correct count for scenario with only when steps" do
-      scenario = %Scenario{name: "test", given_steps: [], when_steps: ["step 1", "step 2", "step 3"], then_steps: []}
+      scenario = %Scenario{
+        name: "test",
+        given_steps: [],
+        when_steps: ["step 1", "step 2", "step 3"],
+        then_steps: []
+      }
 
       assert Scenario.step_count(scenario) == 3
     end
@@ -392,19 +402,34 @@ defmodule CodeMySpec.BddSpecs.ScenarioTest do
     end
 
     test "returns only given steps when other types are empty" do
-      scenario = %Scenario{name: "test", given_steps: ["given 1", "given 2"], when_steps: [], then_steps: []}
+      scenario = %Scenario{
+        name: "test",
+        given_steps: ["given 1", "given 2"],
+        when_steps: [],
+        then_steps: []
+      }
 
       assert Scenario.all_steps(scenario) == ["given 1", "given 2"]
     end
 
     test "returns only when steps when other types are empty" do
-      scenario = %Scenario{name: "test", given_steps: [], when_steps: ["when 1", "when 2"], then_steps: []}
+      scenario = %Scenario{
+        name: "test",
+        given_steps: [],
+        when_steps: ["when 1", "when 2"],
+        then_steps: []
+      }
 
       assert Scenario.all_steps(scenario) == ["when 1", "when 2"]
     end
 
     test "returns only then steps when other types are empty" do
-      scenario = %Scenario{name: "test", given_steps: [], when_steps: [], then_steps: ["then 1", "then 2"]}
+      scenario = %Scenario{
+        name: "test",
+        given_steps: [],
+        when_steps: [],
+        then_steps: ["then 1", "then 2"]
+      }
 
       assert Scenario.all_steps(scenario) == ["then 1", "then 2"]
     end

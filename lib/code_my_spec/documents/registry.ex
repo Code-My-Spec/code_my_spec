@@ -447,8 +447,8 @@ defmodule CodeMySpec.Documents.Registry do
       Specs should focus on WHAT the view does, not HOW it does it. Keep them concise
       and human-readable, as they're consumed by both humans and AI agents.
       """,
-      required_sections: ["route", "user interactions", "dependencies"],
-      optional_sections: ["params", "components", "design", "functions"],
+      required_sections: ["route", "user interactions", "dependencies", "design"],
+      optional_sections: ["params", "components"],
       allowed_additional_sections: [],
       section_descriptions: %{
         "type" => @spec_type,

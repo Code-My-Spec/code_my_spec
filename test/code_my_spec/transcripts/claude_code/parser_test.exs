@@ -44,7 +44,9 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.ParserTest do
       assert {:ok, %Transcript{}} = result
     end
 
-    test "handles empty transcript file returning Transcript with empty entries list", %{tmp_dir: tmp_dir} do
+    test "handles empty transcript file returning Transcript with empty entries list", %{
+      tmp_dir: tmp_dir
+    } do
       path = create_empty_transcript(tmp_dir)
 
       {:ok, transcript} = Parser.parse(path)

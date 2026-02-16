@@ -261,5 +261,4 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     #{description}
     """
   end
-
 end

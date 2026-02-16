@@ -49,7 +49,8 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
       orchestration_path = "#{session_dir(external_id)}/context_implementation.md"
       Environments.write_file(scope.environment, orchestration_path, orchestration_content)
 
-      {:ok, "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
+      {:ok,
+       "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
     end
   end
 

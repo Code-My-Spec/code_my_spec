@@ -20,7 +20,8 @@ defmodule CodeMySpec.Tags do
   @doc """
   Adds a tag to a story. Creates the tag if it doesn't exist.
   """
-  @spec add_tag(Scope.t(), Story.t(), String.t()) :: {:ok, StoryTag.t()} | {:error, Ecto.Changeset.t()}
+  @spec add_tag(Scope.t(), Story.t(), String.t()) ::
+          {:ok, StoryTag.t()} | {:error, Ecto.Changeset.t()}
   def add_tag(%Scope{} = scope, %Story{} = story, tag_name) do
     with {:ok, tag} <- TagRepository.get_or_create_tag(scope, tag_name) do
       TagRepository.create_story_tag(%{tag_id: tag.id, story_id: story.id})
@@ -38,7 +39,9 @@ defmodule CodeMySpec.Tags do
 
       tag ->
         case TagRepository.get_story_tag(tag.id, story.id) do
-          nil -> {:error, :not_found}
+          nil ->
+            {:error, :not_found}
+
           story_tag ->
             TagRepository.delete_story_tag(story_tag)
             :ok
@@ -70,7 +73,8 @@ defmodule CodeMySpec.Tags do
   Adds missing tags, removes extras. Idempotent.
   """
   @spec sync_tags(Scope.t(), Story.t(), [String.t()]) :: {:ok, Story.t()}
-  def sync_tags(%Scope{} = scope, %Story{} = story, desired_tag_names) when is_list(desired_tag_names) do
+  def sync_tags(%Scope{} = scope, %Story{} = story, desired_tag_names)
+      when is_list(desired_tag_names) do
     current_tags = list_story_tags(scope, story)
     current_names = MapSet.new(current_tags, & &1.name)
     desired_names = MapSet.new(desired_tag_names)

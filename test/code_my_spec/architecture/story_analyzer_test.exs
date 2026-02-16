@@ -28,8 +28,8 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
       result = StoryAnalyzer.analyze(stories, app_name: "Fuellytics")
 
       assert Enum.all?(result.suggested_contexts, fn ctx ->
-        String.starts_with?(ctx.name, "Fuellytics")
-      end)
+               String.starts_with?(ctx.name, "Fuellytics")
+             end)
     end
   end
 
@@ -104,9 +104,10 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
 
     test "limits to top 20 entities" do
       # Create many stories with different entities
-      stories = for i <- 1..50 do
-        build_story(i, "Entity#{i} Story", "Description about Entity#{i}")
-      end
+      stories =
+        for i <- 1..50 do
+          build_story(i, "Entity#{i} Story", "Description about Entity#{i}")
+        end
 
       entities = StoryAnalyzer.extract_entities(stories)
 

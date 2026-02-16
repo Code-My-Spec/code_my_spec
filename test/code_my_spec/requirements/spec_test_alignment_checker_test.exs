@@ -25,7 +25,9 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
   end
 
   defp write_spec_file(tmp_dir, module_name, content) do
-    relative_path = module_name |> String.split(".") |> Enum.map(&Macro.underscore/1) |> Path.join()
+    relative_path =
+      module_name |> String.split(".") |> Enum.map(&Macro.underscore/1) |> Path.join()
+
     spec_path = Path.join([tmp_dir, "docs", "spec", "#{relative_path}.spec.md"])
     File.mkdir_p!(Path.dirname(spec_path))
     File.write!(spec_path, content)
@@ -33,7 +35,9 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
   end
 
   defp write_impl_file(tmp_dir, module_name, content) do
-    relative_path = module_name |> String.split(".") |> Enum.map(&Macro.underscore/1) |> Path.join()
+    relative_path =
+      module_name |> String.split(".") |> Enum.map(&Macro.underscore/1) |> Path.join()
+
     impl_path = Path.join([tmp_dir, "lib", "#{relative_path}.ex"])
     File.mkdir_p!(Path.dirname(impl_path))
     File.write!(impl_path, content)
@@ -41,7 +45,9 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
   end
 
   defp write_test_file(tmp_dir, module_name, content) do
-    relative_path = module_name |> String.split(".") |> Enum.map(&Macro.underscore/1) |> Path.join()
+    relative_path =
+      module_name |> String.split(".") |> Enum.map(&Macro.underscore/1) |> Path.join()
+
     test_path = Path.join([tmp_dir, "test", "#{relative_path}_test.exs"])
     File.mkdir_p!(Path.dirname(test_path))
     File.write!(test_path, content)
@@ -51,7 +57,10 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
   describe "check/4" do
     setup [:setup_scope]
 
-    test "returns satisfied when spec assertions match test file", %{scope: scope, tmp_dir: tmp_dir} do
+    test "returns satisfied when spec assertions match test file", %{
+      scope: scope,
+      tmp_dir: tmp_dir
+    } do
       module_name = "TestApp.Aligned"
       component = %Component{module_name: module_name, type: "module"}
 

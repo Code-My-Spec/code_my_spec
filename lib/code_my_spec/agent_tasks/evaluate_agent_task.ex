@@ -32,7 +32,10 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
             "#{s.id}(#{type})"
           end)
 
-        Logger.info("[EvaluateAgentTask] Evaluating #{length(sessions)} session(s): #{session_info}")
+        Logger.info(
+          "[EvaluateAgentTask] Evaluating #{length(sessions)} session(s): #{session_info}"
+        )
+
         evaluate_level(sessions, scope, opts)
     end
   end
@@ -72,7 +75,10 @@ defmodule CodeMySpec.AgentTasks.EvaluateAgentTask do
         {:ok, :invalid, session, feedback}
 
       {:error, reason} ->
-        Logger.warning("[EvaluateAgentTask] Session #{session.id} (#{type_name}): error - #{inspect(reason)}")
+        Logger.warning(
+          "[EvaluateAgentTask] Session #{session.id} (#{type_name}): error - #{inspect(reason)}"
+        )
+
         {:ok, :invalid, session, "Error: #{inspect(reason)}"}
     end
   end

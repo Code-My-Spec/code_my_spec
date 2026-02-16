@@ -38,7 +38,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
             story ->
               case Tags.add_tag(scope, story, params.tag) do
                 {:ok, _tagging} -> {:ok, story_id}
-                {:error, _changeset} -> {:ok, story_id}  # Already tagged is OK
+                # Already tagged is OK
+                {:error, _changeset} -> {:ok, story_id}
               end
           end
         end)

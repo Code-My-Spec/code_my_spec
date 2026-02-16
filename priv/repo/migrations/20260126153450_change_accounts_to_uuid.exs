@@ -5,9 +5,12 @@ defmodule CodeMySpec.Repo.Migrations.ChangeAccountsToUuid do
   def up do
     # Drop indexes that reference account_id
     drop_if_exists unique_index(:members, [:user_id, :account_id])
+
     drop_if_exists unique_index(:invitations, [:email, :account_id],
                      where: "accepted_at IS NULL AND cancelled_at IS NULL",
-                     name: :unique_account_email_when_nulls)
+                     name: :unique_account_email_when_nulls
+                   )
+
     drop_if_exists index(:members, [:account_id])
     drop_if_exists index(:invitations, [:account_id])
     drop_if_exists index(:sessions, [:account_id])
@@ -276,9 +279,11 @@ defmodule CodeMySpec.Repo.Migrations.ChangeAccountsToUuid do
 
     # Recreate unique indexes
     create unique_index(:members, [:user_id, :account_id])
+
     create unique_index(:invitations, [:email, :account_id],
              where: "accepted_at IS NULL AND cancelled_at IS NULL",
-             name: :unique_account_email_when_nulls)
+             name: :unique_account_email_when_nulls
+           )
   end
 
   def down do

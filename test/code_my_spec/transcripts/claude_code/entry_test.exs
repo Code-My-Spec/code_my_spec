@@ -18,28 +18,50 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.EntryTest do
   end
 
   defp assistant_entry_with_tool_use do
-    Entry.new(assistant_with_tool_use_json(%{
-      "message" => %{
-        "role" => "assistant",
-        "content" => [
-          %{"type" => "text", "text" => "Let me read that file."},
-          %{"type" => "tool_use", "id" => "tool_1", "name" => "Read", "input" => %{"file_path" => "/src/main.ex"}},
-          %{"type" => "tool_use", "id" => "tool_2", "name" => "Grep", "input" => %{"pattern" => "def "}}
-        ]
-      }
-    }))
+    Entry.new(
+      assistant_with_tool_use_json(%{
+        "message" => %{
+          "role" => "assistant",
+          "content" => [
+            %{"type" => "text", "text" => "Let me read that file."},
+            %{
+              "type" => "tool_use",
+              "id" => "tool_1",
+              "name" => "Read",
+              "input" => %{"file_path" => "/src/main.ex"}
+            },
+            %{
+              "type" => "tool_use",
+              "id" => "tool_2",
+              "name" => "Grep",
+              "input" => %{"pattern" => "def "}
+            }
+          ]
+        }
+      })
+    )
   end
 
   defp user_entry_with_tool_results do
-    Entry.new(user_with_tool_result_json(%{
-      "message" => %{
-        "role" => "user",
-        "content" => [
-          %{"type" => "tool_result", "tool_use_id" => "tool_1", "content" => "file contents here"},
-          %{"type" => "tool_result", "tool_use_id" => "tool_2", "content" => "grep results here"}
-        ]
-      }
-    }))
+    Entry.new(
+      user_with_tool_result_json(%{
+        "message" => %{
+          "role" => "user",
+          "content" => [
+            %{
+              "type" => "tool_result",
+              "tool_use_id" => "tool_1",
+              "content" => "file contents here"
+            },
+            %{
+              "type" => "tool_result",
+              "tool_use_id" => "tool_2",
+              "content" => "grep results here"
+            }
+          ]
+        }
+      })
+    )
   end
 
   # ============================================================================
@@ -190,13 +212,14 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.EntryTest do
     end
 
     test "returns nil when message has no content field" do
-      entry = Entry.new(%{
-        "type" => "user",
-        "uuid" => "test-uuid",
-        "timestamp" => "2024-01-15T10:30:00Z",
-        "sessionId" => "test-session",
-        "message" => %{"role" => "user"}
-      })
+      entry =
+        Entry.new(%{
+          "type" => "user",
+          "uuid" => "test-uuid",
+          "timestamp" => "2024-01-15T10:30:00Z",
+          "sessionId" => "test-session",
+          "message" => %{"role" => "user"}
+        })
 
       assert Entry.content(entry) == nil
     end
@@ -220,13 +243,14 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.EntryTest do
     end
 
     test "returns nil when message has no role field" do
-      entry = Entry.new(%{
-        "type" => "user",
-        "uuid" => "test-uuid",
-        "timestamp" => "2024-01-15T10:30:00Z",
-        "sessionId" => "test-session",
-        "message" => %{"content" => "test"}
-      })
+      entry =
+        Entry.new(%{
+          "type" => "user",
+          "uuid" => "test-uuid",
+          "timestamp" => "2024-01-15T10:30:00Z",
+          "sessionId" => "test-session",
+          "message" => %{"content" => "test"}
+        })
 
       assert Entry.role(entry) == nil
     end
@@ -244,14 +268,17 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.EntryTest do
     end
 
     test "returns empty list for assistant entries with no tool use" do
-      entry = Entry.new(assistant_entry_json(%{
-        "message" => %{
-          "role" => "assistant",
-          "content" => [
-            %{"type" => "text", "text" => "Just a text response."}
-          ]
-        }
-      }))
+      entry =
+        Entry.new(
+          assistant_entry_json(%{
+            "message" => %{
+              "role" => "assistant",
+              "content" => [
+                %{"type" => "text", "text" => "Just a text response."}
+              ]
+            }
+          })
+        )
 
       assert Entry.tool_use_blocks(entry) == []
     end

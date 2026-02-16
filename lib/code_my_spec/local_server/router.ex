@@ -41,7 +41,8 @@ defmodule CodeMySpec.LocalServer.Router do
   end
 
   # MCP routes - require localhost, working dir, and scope
-  forward "/mcp/architecture", to: CodeMySpec.LocalServer.McpPlug,
+  forward "/mcp/architecture",
+    to: CodeMySpec.LocalServer.McpPlug,
     init_opts: [server: CodeMySpec.McpServers.ArchitectureServer]
 
   match _ do

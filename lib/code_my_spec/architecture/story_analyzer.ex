@@ -38,7 +38,8 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
         }
 
   @domain_keywords %{
-    "verification" => ~w(verify verification validate check confirm approve photo camera image upload ocr),
+    "verification" =>
+      ~w(verify verification validate check confirm approve photo camera image upload ocr),
     "notification" => ~w(sms email alert notify notification message send reminder),
     "authentication" => ~w(login auth authenticate token session user password sign),
     "dashboard" => ~w(dashboard panel view list monitor display real-time realtime),
@@ -89,7 +90,6 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
       suggestion: "Minimal controller endpoint serving PWA shell"
     }
   ]
-
 
   @doc """
   Performs comprehensive analysis on a list of stories.
@@ -329,7 +329,9 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     contexts
     |> Enum.with_index(1)
     |> Enum.map(fn {ctx, idx} ->
-      entities_str = if ctx.entities == [], do: "None detected", else: Enum.join(ctx.entities, ", ")
+      entities_str =
+        if ctx.entities == [], do: "None detected", else: Enum.join(ctx.entities, ", ")
+
       story_ids_str = Enum.join(ctx.story_ids, ", ")
 
       """

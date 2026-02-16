@@ -308,8 +308,8 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "test", context do
-            given_ "first given", context, do: context
-            given_ "second given", context, do: context
+            given_("first given", context, do: context)
+            given_("second given", context, do: context)
           end
         end
 
@@ -323,8 +323,8 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "test", context do
-            when_ "first action", context, do: context
-            when_ "second action", context, do: context
+            when_("first action", context, do: context)
+            when_("second action", context, do: context)
           end
         end
 
@@ -338,9 +338,9 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "test", context do
-            then_ "first assertion", context, do: assert(true)
-            then_ "second assertion", context, do: assert(true)
-            then_ "third assertion", context, do: assert(true)
+            then_("first assertion", context, do: assert(true))
+            then_("second assertion", context, do: assert(true))
+            then_("third assertion", context, do: assert(true))
           end
         end
 
@@ -355,9 +355,9 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "test", context do
-            given_ "setup", context, do: context
-            when_ "action", context, do: context
-            then_ "result", context, do: assert(true)
+            given_("setup", context, do: context)
+            when_("action", context, do: context)
+            then_("result", context, do: assert(true))
           end
         end
 
@@ -371,9 +371,9 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "test", context do
-            given_ "user is logged in", context, do: context
-            when_ "user clicks logout button", context, do: context
-            then_ "user session is terminated", context, do: assert(true)
+            given_("user is logged in", context, do: context)
+            when_("user clicks logout button", context, do: context)
+            then_("user session is terminated", context, do: assert(true))
           end
         end
 
@@ -389,7 +389,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote line: 42 do
           scenario "test", context do
-            given_ "step", context, do: context
+            given_("step", context, do: context)
           end
         end
 
@@ -416,8 +416,8 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "only setup", context do
-            given_ "precondition 1", context, do: context
-            given_ "precondition 2", context, do: context
+            given_("precondition 1", context, do: context)
+            given_("precondition 2", context, do: context)
           end
         end
 
@@ -431,11 +431,11 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "mixed", context do
-            given_ "setup 1", context, do: context
-            when_ "action 1", context, do: context
-            given_ "setup 2", context, do: context
-            then_ "assertion 1", context, do: assert(true)
-            when_ "action 2", context, do: context
+            given_("setup 1", context, do: context)
+            when_("action 1", context, do: context)
+            given_("setup 2", context, do: context)
+            then_("assertion 1", context, do: assert(true))
+            when_("action 2", context, do: context)
           end
         end
 
@@ -449,9 +449,9 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       scenario_ast =
         quote do
           scenario "grouped", context do
-            given_ "given step", context, do: context
-            when_ "when step", context, do: context
-            then_ "then step", context, do: assert(true)
+            given_("given step", context, do: context)
+            when_("when step", context, do: context)
+            then_("then step", context, do: assert(true))
           end
         end
 

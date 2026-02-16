@@ -95,12 +95,10 @@ defmodule CodeMySpec.Validation do
         pipeline_ms = System.monotonic_time(:millisecond) - pipeline_start
 
         # persist + sync BEFORE evaluate so requirements are fresh
+        # Always sync — subagents may have edited files that don't appear
+        # in the main session's transcript.
         sync_start = System.monotonic_time(:millisecond)
-
-        if edited_files != [] do
-          persist_and_sync(scope, edited_files, pipeline_problems)
-        end
-
+        persist_and_sync(scope, edited_files, pipeline_problems)
         sync_ms = System.monotonic_time(:millisecond) - sync_start
 
         eval_start = System.monotonic_time(:millisecond)

@@ -71,7 +71,9 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedback do
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def combine(nil, nil), do: {:ok, :valid}
   def combine(req_feedback, nil) when is_binary(req_feedback), do: {:ok, :invalid, req_feedback}
-  def combine(nil, problem_feedback) when is_binary(problem_feedback), do: {:ok, :invalid, problem_feedback}
+
+  def combine(nil, problem_feedback) when is_binary(problem_feedback),
+    do: {:ok, :invalid, problem_feedback}
 
   def combine(req_feedback, problem_feedback)
       when is_binary(req_feedback) and is_binary(problem_feedback) do

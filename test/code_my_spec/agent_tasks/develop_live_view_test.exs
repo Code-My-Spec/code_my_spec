@@ -486,7 +486,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       # Component spec prompts should NOT be generated since phase is complete
       for child <- children do
         child_safe_name = safe_filename(child.module_name)
-        child_prompt_path = Path.join(tmp_dir, "#{status_dir}/#{child_safe_name}_component_spec.md")
+
+        child_prompt_path =
+          Path.join(tmp_dir, "#{status_dir}/#{child_safe_name}_component_spec.md")
 
         refute File.exists?(child_prompt_path),
                "Should not generate component spec prompt for #{child.name}"
@@ -658,7 +660,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
       assert {:ok, :invalid, feedback} = DevelopLiveView.evaluate(scope, session)
       assert is_binary(feedback)
-      assert feedback =~ "Implementation" or feedback =~ "implementation" or feedback =~ "incomplete"
+
+      assert feedback =~ "Implementation" or feedback =~ "implementation" or
+               feedback =~ "incomplete"
     end
 
     test "feedback includes list of incomplete phases and affected components", %{

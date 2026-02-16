@@ -25,7 +25,10 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
       [working_dir | _] ->
         case resolve_project_root(working_dir) do
           {:ok, project_root} ->
-            Logger.debug("[LocalServer] Working directory: #{working_dir} -> project root: #{project_root}")
+            Logger.debug(
+              "[LocalServer] Working directory: #{working_dir} -> project root: #{project_root}"
+            )
+
             assign(conn, :working_dir, project_root)
 
           {:error, reason} ->

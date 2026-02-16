@@ -36,7 +36,9 @@ defmodule CodeMySpec.Repo.Migrations.SimplifyTagsSchema do
       add :tag_id, references(:component_tags, on_delete: :delete_all), null: false
       add :taggable_type, :taggable_type, null: false
       add :taggable_id, :binary, null: false
-      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
+        null: false
 
       timestamps(type: :utc_datetime)
     end

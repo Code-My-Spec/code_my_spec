@@ -22,7 +22,8 @@ defmodule CodeMySpec.Documents do
         {:error, "Missing H1 title. Expected: # #{expected_module}"}
 
       actual_module != expected_module ->
-        {:error, "H1 title '#{actual_module}' does not match expected '#{expected_module}' based on file path"}
+        {:error,
+         "H1 title '#{actual_module}' does not match expected '#{expected_module}' based on file path"}
 
       true ->
         :ok

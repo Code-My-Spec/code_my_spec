@@ -32,7 +32,11 @@ defmodule CodeMySpec.Stories do
   defp broadcast(%Scope{active_account: nil} = _scope, _message), do: :ok
 
   defp broadcast(%Scope{} = scope, message) do
-    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{scope.active_account_id}:stories", message)
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "user:#{scope.active_account_id}:stories",
+      message
+    )
   end
 
   # Private helper to get the implementation module
@@ -190,7 +194,8 @@ defmodule CodeMySpec.Stories do
   def set_story_component(%Scope{} = scope, %Story{} = story, component_id) do
     # Support both full account struct and account_id only (CLI context)
     # Skip authorization check if no account context (MCP/CLI mode with project-only scope)
-    account_id = if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
+    account_id =
+      if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
 
     if account_id && story.account_id != account_id do
       {:error, :unauthorized}
@@ -213,7 +218,8 @@ defmodule CodeMySpec.Stories do
 
   """
   def clear_story_component(%Scope{} = scope, %Story{} = story) do
-    account_id = if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
+    account_id =
+      if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
 
     if account_id && story.account_id != account_id do
       {:error, :unauthorized}

@@ -68,11 +68,12 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.ToolCallTest do
     end
 
     test "handles atom keys in input map" do
-      tool_call = ToolCall.new(%{
-        id: "toolu_456",
-        name: "Write",
-        input: %{file_path: "/src/new.ex"}
-      })
+      tool_call =
+        ToolCall.new(%{
+          id: "toolu_456",
+          name: "Write",
+          input: %{file_path: "/src/new.ex"}
+        })
 
       assert tool_call.id == "toolu_456"
       assert tool_call.name == "Write"
@@ -103,11 +104,12 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.ToolCallTest do
     end
 
     test "returns nil for empty input map" do
-      tool_call = ToolCall.new(%{
-        "id" => "toolu_empty",
-        "name" => "Unknown",
-        "input" => %{}
-      })
+      tool_call =
+        ToolCall.new(%{
+          "id" => "toolu_empty",
+          "name" => "Unknown",
+          "input" => %{}
+        })
 
       assert ToolCall.file_path(tool_call) == nil
     end

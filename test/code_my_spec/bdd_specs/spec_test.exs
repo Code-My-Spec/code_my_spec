@@ -49,8 +49,18 @@ defmodule CodeMySpec.BddSpecs.SpecTest do
       attrs =
         valid_attrs()
         |> Map.put(:scenarios, [
-          %{name: "Successful login", given_steps: ["user exists"], when_steps: ["user logs in"], then_steps: ["user is authenticated"]},
-          %{name: "Failed login", given_steps: ["invalid credentials"], when_steps: ["user attempts login"], then_steps: ["error is shown"]}
+          %{
+            name: "Successful login",
+            given_steps: ["user exists"],
+            when_steps: ["user logs in"],
+            then_steps: ["user is authenticated"]
+          },
+          %{
+            name: "Failed login",
+            given_steps: ["invalid credentials"],
+            when_steps: ["user attempts login"],
+            then_steps: ["error is shown"]
+          }
         ])
 
       changeset = Spec.changeset(%Spec{}, attrs)
@@ -95,7 +105,12 @@ defmodule CodeMySpec.BddSpecs.SpecTest do
         |> Map.put(:criterion_id, 456)
         |> Map.put(:tags, [:integration, :auth])
         |> Map.put(:scenarios, [
-          %{name: "Login scenario", given_steps: ["user exists"], when_steps: ["user logs in"], then_steps: ["user is authenticated"]}
+          %{
+            name: "Login scenario",
+            given_steps: ["user exists"],
+            when_steps: ["user logs in"],
+            then_steps: ["user is authenticated"]
+          }
         ])
 
       spec = Spec.new(attrs)
@@ -122,8 +137,18 @@ defmodule CodeMySpec.BddSpecs.SpecTest do
       attrs =
         valid_attrs()
         |> Map.put(:scenarios, [
-          %{name: "Scenario 1", given_steps: ["step 1"], when_steps: ["step 2"], then_steps: ["step 3"]},
-          %{name: "Scenario 2", given_steps: ["step A"], when_steps: ["step B"], then_steps: ["step C"]}
+          %{
+            name: "Scenario 1",
+            given_steps: ["step 1"],
+            when_steps: ["step 2"],
+            then_steps: ["step 3"]
+          },
+          %{
+            name: "Scenario 2",
+            given_steps: ["step A"],
+            when_steps: ["step B"],
+            then_steps: ["step C"]
+          }
         ])
 
       spec = Spec.new(attrs)

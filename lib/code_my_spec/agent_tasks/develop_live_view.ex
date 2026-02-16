@@ -66,16 +66,30 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     status_dir = liveview_status_dir(liveview_component)
 
     with {:ok, children} <- get_child_components(scope, liveview_component),
-         {:ok, phase_status} <- check_lifecycle_phases(scope, session, liveview_component, children),
+         {:ok, phase_status} <-
+           check_lifecycle_phases(scope, session, liveview_component, children),
          {:ok, prompt_files} <-
-           generate_phase_prompts(scope, session, liveview_component, children, phase_status, status_dir) do
+           generate_phase_prompts(
+             scope,
+             session,
+             liveview_component,
+             children,
+             phase_status,
+             status_dir
+           ) do
       {:ok, orchestration_content} =
         build_orchestration_prompt(liveview_component, phase_status, prompt_files, status_dir)
 
       orchestration_path = "#{status_dir}/develop_live_view.md"
-      CodeMySpec.Environments.write_file(scope.environment, orchestration_path, orchestration_content)
 
-      {:ok, "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
+      CodeMySpec.Environments.write_file(
+        scope.environment,
+        orchestration_path,
+        orchestration_content
+      )
+
+      {:ok,
+       "Your instructions have been written to: `#{orchestration_path}`\n\nRead this file to begin."}
     end
   end
 
@@ -99,7 +113,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     working_dir = scope.environment && scope.environment.cwd
 
     with {:ok, children} <- get_child_components(scope, liveview_component),
-         {:ok, phase_status} <- check_lifecycle_phases(scope, session, liveview_component, children),
+         {:ok, phase_status} <-
+           check_lifecycle_phases(scope, session, liveview_component, children),
          :ok <- cleanup_completed_phases(phase_status, status_dir, working_dir) do
       case phase_status do
         %{complete: true} ->
@@ -234,7 +249,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
         needs_code = Enum.any?(code_results, fn r -> not r.satisfied end)
 
         needs =
-          (if needs_tests, do: [:test], else: []) ++
+          if(needs_tests, do: [:test], else: []) ++
             if(needs_code, do: [:code], else: [])
 
         {component, needs}
@@ -340,7 +355,14 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     file_path = "#{status_dir}/#{safe_name}_live_view_spec.md"
     :ok = CodeMySpec.Environments.write_file(environment, file_path, prompt_content)
 
-    [%{component: liveview_component, file_path: file_path, prompt_type: :liveview_spec, phase: 1}]
+    [
+      %{
+        component: liveview_component,
+        file_path: file_path,
+        prompt_type: :liveview_spec,
+        phase: 1
+      }
+    ]
   end
 
   defp generate_component_spec_prompts(scope, session, children, environment, status_dir) do
