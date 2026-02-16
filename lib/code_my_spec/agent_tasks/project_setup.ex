@@ -83,6 +83,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     # CLI config
     cli_config_check = check_cli_config(working_dir)
 
+    # Ignored components (optional)
+    ignored_components_check = check_ignored_components(working_dir)
+
     %{
       elixir_installed: elixir_check.installed,
       elixir_version: elixir_check.version,
@@ -99,7 +102,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       docs_structure_complete: docs_check.structure_complete,
       missing_docs_dirs: docs_check.missing_dirs,
       cli_config_exists: cli_config_check.exists,
-      cli_config_has_project_id: cli_config_check.has_project_id
+      cli_config_has_project_id: cli_config_check.has_project_id,
+      ignored_components_configured: ignored_components_check.configured
     }
   end
 
@@ -279,6 +283,37 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     {Enum.empty?(missing), missing}
   end
 
+  # Ignored components check (optional — not gated in all_checks_pass?)
+
+  @default_ignored_components [
+    "Repo",
+    "Endpoint",
+    "Router",
+    "Mailer",
+    "Telemetry",
+    "Application",
+    "Gettext"
+  ]
+
+  defp check_ignored_components(working_dir) do
+    config_path = Path.join([working_dir, ".code_my_spec", "config.yml"])
+
+    if File.exists?(config_path) do
+      case YamlElixir.read_from_file(config_path) do
+        {:ok, config} when is_map(config) ->
+          %{
+            configured:
+              is_list(config["ignored_components"]) and config["ignored_components"] != []
+          }
+
+        _ ->
+          %{configured: false}
+      end
+    else
+      %{configured: false}
+    end
+  end
+
   # CLI config check
 
   defp check_cli_config(working_dir) do
@@ -308,6 +343,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_docs_instructions(status)
     |> maybe_add_agents_md_instructions(status)
     |> maybe_add_cli_config_instructions(status)
+    |> maybe_add_ignored_components_instructions(status)
     |> Enum.reverse()
     |> Enum.join("\n\n")
   end
@@ -333,25 +369,25 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   defp maybe_add_deps_instructions(
-        sections,
-        %{phoenix_project_exists: true, codemyspec_deps_installed: false} = status
-      ) do
+         sections,
+         %{phoenix_project_exists: true, codemyspec_deps_installed: false} = status
+       ) do
     [build_deps_instructions(status.missing_deps) | sections]
   end
 
   defp maybe_add_deps_instructions(sections, _status), do: sections
 
   defp maybe_add_docs_instructions(
-        sections,
-        %{docs_repo_configured: false} = status
-      ) do
+         sections,
+         %{docs_repo_configured: false} = status
+       ) do
     [build_docs_instructions(status) | sections]
   end
 
   defp maybe_add_docs_instructions(
-        sections,
-        %{docs_structure_complete: false} = status
-      ) do
+         sections,
+         %{docs_structure_complete: false} = status
+       ) do
     [build_docs_instructions(status) | sections]
   end
 
@@ -368,6 +404,36 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_cli_config_instructions(sections, status) do
     [build_cli_config_instructions(status) | sections]
+  end
+
+  defp maybe_add_ignored_components_instructions(sections, %{ignored_components_configured: true}),
+       do: sections
+
+  defp maybe_add_ignored_components_instructions(sections, _status) do
+    default_list = Enum.map_join(@default_ignored_components, ", ", &"\"#{&1}\"")
+
+    instruction = """
+    ## Configure Ignored Components (Optional)
+
+    Boilerplate Phoenix modules (Repo, Endpoint, Router, etc.) clutter status output
+    without being domain components that need spec/test tracking.
+
+    Add `ignored_components` to `.code_my_spec/config.yml`:
+
+    ```yaml
+    ignored_components:
+    #{Enum.map_join(@default_ignored_components, "\n", &"  - #{&1}")}
+    ```
+
+    Or via the CLI:
+    ```bash
+    cms config set ignored_components #{default_list}
+    ```
+
+    These components will be excluded from `docs/status/` files and completion counts.
+    """
+
+    [instruction | sections]
   end
 
   defp build_status_summary(status) do
@@ -489,13 +555,15 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ```
 
     Also add the diagnostics compilers to your `mix.exs` project config.
-    Note: `:spex` must come between `:elixir` and `:app` so that Boundary
-    can trace cross-module calls in spex files before its analysis runs:
+    Note: `:diagnostics` must be first so its `after_compiler` hooks are
+    registered before `:elixir` runs. `:spex` must come between `:elixir`
+    and `:app` so that Boundary can trace cross-module calls in spex files
+    before its analysis runs:
 
     ```elixir
     def project do
       [
-        compilers: [:boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app, :diagnostics],
+        compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app],
         spex: [pattern: "test/spex/**/*_spex.exs"],
         ...
       ]
@@ -503,8 +571,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ```
 
     The `:spex` compiler compiles your BDD spec `.exs` files and catches boundary
-    violations. The `:diagnostics` compiler runs last and writes all diagnostics
-    from every compiler to a `diagnostics.jsonl` file.
+    violations. The `:diagnostics` compiler registers `after_compiler` hooks that
+    write all diagnostics to a `diagnostics.jsonl` file, even when compilation
+    fails with syntax errors.
     """
   end
 

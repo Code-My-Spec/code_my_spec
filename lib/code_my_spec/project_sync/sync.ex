@@ -95,7 +95,9 @@ defmodule CodeMySpec.ProjectSync.Sync do
       architecture_output_dir = Keyword.get(opts, :architecture_output_dir, "docs/architecture/")
 
       architecture_views =
-        case Architecture.generate_views(scope, output_dir: Path.join(base_dir, architecture_output_dir)) do
+        case Architecture.generate_views(scope,
+               output_dir: Path.join(base_dir, architecture_output_dir)
+             ) do
           {:ok, paths} -> paths
           {:error, _reason} -> []
         end
@@ -104,7 +106,11 @@ defmodule CodeMySpec.ProjectSync.Sync do
 
       # Phase 5: Write context status files (roots only — children are inline via child_components)
       root_components = Enum.filter(components_with_requirements, &is_nil(&1.parent_component_id))
-      status_files = StatusWriter.write_status_files(root_components, scope.environment)
+      ignored_components = get_ignored_components(scope)
+      status_opts = [ignored_components: ignored_components]
+
+      status_files =
+        StatusWriter.write_status_files(root_components, scope.environment, status_opts)
 
       total_ms = System.monotonic_time(:millisecond) - total_start
 
@@ -142,6 +148,22 @@ defmodule CodeMySpec.ProjectSync.Sync do
     end)
     |> Enum.filter(&File.regular?/1)
     |> Enum.map(&Path.relative_to(&1, project_root))
+  end
+
+  # Gets ignored components from local config. Returns [] when unavailable.
+  defp get_ignored_components(%Scope{cwd: nil}), do: []
+
+  defp get_ignored_components(%Scope{cwd: cwd}) do
+    case Scope.read_local_config(cwd) do
+      {:ok, config} ->
+        case config["ignored_components"] do
+          list when is_list(list) -> list
+          _ -> []
+        end
+
+      {:error, _} ->
+        []
+    end
   end
 
   # Gets the latest test run, or creates an empty one if none exists

@@ -34,14 +34,23 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
   Each child context gets its own file with all descendants inline.
   All files are written flat in docs/status/.
 
+  ## Options
+
+    * `:ignored_components` - list of component name strings (last module segment)
+      to exclude from status output (e.g., `["Repo", "Endpoint", "Router"]`)
+
   Returns list of written file paths (relative to environment cwd).
   """
-  @spec write_status_files([map()], Environment.t()) :: [String.t()]
-  def write_status_files([], _env), do: []
+  @spec write_status_files([map()], Environment.t(), keyword()) :: [String.t()]
+  def write_status_files(root_components, env, opts \\ [])
+  def write_status_files([], _env, _opts), do: []
 
-  def write_status_files(root_components, %Environment{} = env) do
+  def write_status_files(root_components, %Environment{} = env, opts) do
+    ignored = Keyword.get(opts, :ignored_components, [])
+
     written_files =
       Enum.flat_map(root_components, fn root ->
+        root = filter_tree(root, ignored)
         children = root.child_components || []
 
         root_path = component_path(root)
@@ -65,13 +74,53 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
     written_files
   end
 
-  defp collect_descendants(component) do
+  @doc false
+  def collect_descendants(component) do
     children = component.child_components || []
 
     Enum.flat_map(children, fn child ->
       [child | collect_descendants(child)]
     end)
     |> Enum.sort_by(& &1.name)
+  end
+
+  @doc """
+  Returns `{satisfied_count, total_count}` for a context and all its descendants.
+
+  Collects all requirements from the context itself plus every descendant component.
+  A context is considered complete when all requirements are satisfied AND total > 0.
+  """
+  @spec context_completion(map()) :: {non_neg_integer(), non_neg_integer()}
+  def context_completion(context) do
+    all_components = [context | collect_descendants(context)]
+
+    all_requirements =
+      Enum.flat_map(all_components, fn comp ->
+        comp.requirements || []
+      end)
+
+    total = length(all_requirements)
+    satisfied = Enum.count(all_requirements, & &1.satisfied)
+    {satisfied, total}
+  end
+
+  @doc """
+  Recursively removes components whose `name` matches any entry in `ignored`.
+
+  Filters at every level of the `child_components` tree.
+  """
+  @spec filter_tree(map(), [String.t()]) :: map()
+  def filter_tree(component, []), do: component
+
+  def filter_tree(component, ignored) do
+    children = component.child_components || []
+
+    filtered_children =
+      children
+      |> Enum.reject(fn child -> child.name in ignored end)
+      |> Enum.map(fn child -> filter_tree(child, ignored) end)
+
+    %{component | child_components: filtered_children}
   end
 
   # Hierarchical path under docs/status/.
@@ -107,16 +156,20 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
       context_list =
         children
         |> Enum.sort_by(& &1.name)
-        |> Enum.map(fn child ->
-          path = component_path(child)
-          "- [#{child.module_name}](#{path})"
-        end)
+        |> Enum.map(&render_context_line/1)
 
       lines = lines ++ ["\n## Contexts\n"] ++ context_list ++ [""]
       Enum.join(lines, "\n")
     else
       Enum.join(lines, "\n")
     end
+  end
+
+  defp render_context_line(child) do
+    path = component_path(child)
+    {satisfied, total} = context_completion(child)
+    checkbox = if satisfied == total and total > 0, do: "[x]", else: "[ ]"
+    "- #{checkbox} [#{child.module_name}](#{path}) (#{satisfied}/#{total})"
   end
 
   defp render_context(context, descendants) do
