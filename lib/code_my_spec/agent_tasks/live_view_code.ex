@@ -14,11 +14,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.AgentTasks.TaskMarker
+  alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
-  alias CodeMySpec.{Rules, Utils}
+  alias CodeMySpec.{Rules, Stories, Utils}
 
   @doc """
   Generate the command/prompt for Claude to implement a LiveView.
@@ -37,7 +38,11 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
 
     with {:ok, rules} <- get_implementation_rules(component) do
       similar_components = Components.list_similar_components(scope, component)
-      {:ok, prompt} = build_implementation_prompt(project, component, rules, similar_components)
+      bdd_spec_files = get_bdd_spec_files(scope, component)
+
+      {:ok, prompt} =
+        build_implementation_prompt(project, component, rules, similar_components, bdd_spec_files)
+
       {:ok, TaskMarker.build("LiveViewCode", component.module_name) <> "\n\n" <> prompt}
     end
   end
@@ -71,10 +76,60 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
       end
 
     problem_feedback = ProblemFeedback.for_code_task(scope, component, project)
-    ProblemFeedback.combine(req_feedback, problem_feedback)
+    spex_feedback = check_bdd_specs(scope, component)
+
+    [req_feedback, problem_feedback, spex_feedback]
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> {:ok, :valid}
+      feedbacks -> {:ok, :invalid, Enum.join(feedbacks, "\n\n")}
+    end
   end
 
-  # Private functions
+  # Private functions - BDD specs
+
+  defp get_bdd_spec_files(scope, component) do
+    env = scope.environment
+
+    Stories.list_component_stories(scope, component.id)
+    |> Enum.flat_map(fn story -> BddSpecs.list_specs_for_story(env, story.id) end)
+    |> Enum.map(& &1.file_path)
+    |> Enum.uniq()
+  end
+
+  defp check_bdd_specs(scope, component) do
+    spec_files = get_bdd_spec_files(scope, component)
+
+    if Enum.empty?(spec_files) do
+      nil
+    else
+      run_bdd_specs(spec_files, scope.environment.cwd)
+    end
+  end
+
+  defp run_bdd_specs(spec_files, cwd) do
+    case BddSpecs.run_specs(spec_files, project_root: cwd, quiet: true) do
+      {:ok, failures, exit_code} when exit_code != 0 or failures != [] ->
+        failure_list =
+          Enum.map_join(failures, "\n", fn f -> "- #{f.spex}: #{f.scenario}" end)
+
+        """
+        BDD specs are failing for stories satisfied by this component:
+
+        #{failure_list}
+
+        Fix the implementation so these specs pass.
+        """
+
+      {:ok, _failures, _exit_code} ->
+        nil
+
+      {:error, _reason} ->
+        nil
+    end
+  end
+
+  # Private functions - Rules and prompt building
 
   defp get_implementation_rules(component) do
     Rules.find_matching_rules(component.type, "code")
@@ -83,7 +138,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
     end
   end
 
-  defp build_implementation_prompt(project, component, rules, similar_components) do
+  defp build_implementation_prompt(project, component, rules, similar_components, bdd_spec_files) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
 
     %{
@@ -93,6 +148,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
     } = Utils.component_files(component, project)
 
     similar_components_text = format_similar_components(project, similar_components)
+    bdd_spec_text = format_bdd_spec_instructions(bdd_spec_files)
 
     prompt =
       """
@@ -116,6 +172,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
       6. Implement all public API functions specified in the spec
       7. Ensure the implementation satisfies the tests
       8. Follow project patterns for similar components
+      #{bdd_spec_text}
 
       Similar Components (for implementation pattern inspiration):
       #{similar_components_text}
@@ -127,6 +184,22 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
       """
 
     {:ok, prompt}
+  end
+
+  defp format_bdd_spec_instructions([]), do: ""
+
+  defp format_bdd_spec_instructions(bdd_spec_files) do
+    file_list = Enum.map_join(bdd_spec_files, "\n", fn f -> "  - #{f}" end)
+
+    """
+
+    BDD Acceptance Specs:
+    This component satisfies user stories with BDD specs. After the unit tests
+    pass, also run these BDD specs and iterate until they pass:
+    #{file_list}
+
+    Run them with: mix spex <file_path>
+    """
   end
 
   defp format_similar_components(_project, []), do: "No similar components provided"

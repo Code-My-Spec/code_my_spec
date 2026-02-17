@@ -5,10 +5,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.RequirementsFixtures
+  import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.AgentTasks.LiveViewCode
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Stories
 
   @moduletag :tmp_dir
 
@@ -360,6 +362,77 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
     end
   end
 
+  # ============================================================================
+  # BDD Spec Integration Tests
+  # ============================================================================
+
+  describe "command/3 with BDD specs" do
+    setup [:create_scope, :create_project, :create_component, :create_session]
+
+    test "includes BDD spec instructions when component satisfies a story with specs", %{
+      session: session,
+      scope: scope,
+      component: component
+    } do
+      story = story_fixture(scope)
+      {:ok, _} = Stories.set_story_component(scope, story, component.id)
+      create_spex_file(scope.environment.cwd, story.id, 1)
+
+      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert prompt =~ "BDD Acceptance Specs"
+      assert prompt =~ "mix spex"
+    end
+
+    test "does not include BDD spec instructions when component has no stories", %{
+      session: session,
+      scope: scope
+    } do
+      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      refute prompt =~ "BDD Acceptance Specs"
+    end
+
+    test "does not include BDD spec instructions when story has no spec files", %{
+      session: session,
+      scope: scope,
+      component: component
+    } do
+      story = story_fixture(scope)
+      {:ok, _} = Stories.set_story_component(scope, story, component.id)
+
+      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      refute prompt =~ "BDD Acceptance Specs"
+    end
+  end
+
+  describe "evaluate/3 with BDD specs" do
+    setup [:create_scope, :create_project, :create_component, :create_session]
+
+    test "returns valid when component has no stories", %{
+      session: session,
+      scope: scope,
+      component: component
+    } do
+      satisfy_code_requirements(scope, component)
+      assert {:ok, :valid} = LiveViewCode.evaluate(scope, session)
+    end
+
+    test "returns valid when story has no spec files", %{
+      session: session,
+      scope: scope,
+      component: component
+    } do
+      story = story_fixture(scope)
+      {:ok, _} = Stories.set_story_component(scope, story, component.id)
+      satisfy_code_requirements(scope, component)
+
+      assert {:ok, :valid} = LiveViewCode.evaluate(scope, session)
+    end
+  end
+
+  # ============================================================================
+  # Test Helpers
+  # ============================================================================
+
   defp satisfy_code_requirements(scope, component) do
     requirement_fixture(scope, component, %{
       name: "implementation_file",
@@ -374,5 +447,31 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
       description: "Component tests are passing",
       satisfied: true
     })
+  end
+
+  defp create_spex_file(tmp_dir, story_id, criterion_id) do
+    spex_dir = Path.join([tmp_dir, "test/spex", "#{story_id}_user_story"])
+    File.mkdir_p!(spex_dir)
+    file_path = Path.join(spex_dir, "criterion_#{criterion_id}_spex.exs")
+
+    File.write!(file_path, """
+    defmodule TestSpex#{story_id}_#{criterion_id} do
+      use SexySpex
+
+      spex "test spec", story_id: #{story_id}, criterion_id: #{criterion_id} do
+        scenario "test scenario", context do
+          given_ "a precondition", context do
+            context
+          end
+
+          then_ "an expected outcome", _context do
+            assert true
+          end
+        end
+      end
+    end
+    """)
+
+    file_path
   end
 end
