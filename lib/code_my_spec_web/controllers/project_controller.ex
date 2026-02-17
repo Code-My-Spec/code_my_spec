@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb.ProjectController do
   defp project_json(project) do
     %{
       id: project.id,
+      account_id: project.account_id,
       name: project.name,
       description: project.description,
       module_name: project.module_name,

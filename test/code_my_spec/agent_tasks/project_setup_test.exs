@@ -107,13 +107,87 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
           {:credo, "~> 1.7.13"},
           {:client_utils, git: "https://github.com/example/client_utils"},
           {:mix_machine, "~> 1.0"},
-          {:sobelow, "~> 0.13"}
+          {:sobelow, "~> 0.13"},
+          {:sexy_spex, "~> 0.1.0", only: :test},
+          {:boundary, "~> 0.10"}
         ]
       end
     end
     """
 
     write_file!(tmp_dir, "mix.exs", content)
+  end
+
+  # Creates a mix.exs with full compiler and spex configuration
+  defp create_fully_configured_mix_exs(tmp_dir, app_name) do
+    content = """
+    defmodule #{Macro.camelize(app_name)}.MixProject do
+      use Mix.Project
+
+      def project do
+        [
+          app: :#{app_name},
+          version: "0.1.0",
+          elixir: "~> 1.18",
+          compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app],
+          spex: [pattern: "test/spex/**/*_spex.exs"],
+          deps: deps()
+        ]
+      end
+
+      def application do
+        [
+          mod: {#{Macro.camelize(app_name)}.Application, []},
+          extra_applications: [:logger]
+        ]
+      end
+
+      def cli do
+        [
+          preferred_envs: [spex: :test]
+        ]
+      end
+
+      defp elixirc_paths(:test), do: ["lib", "test/support", "test/spex"]
+      defp elixirc_paths(_), do: ["lib"]
+
+      defp aliases do
+        [
+          spex: ["spex --quiet"]
+        ]
+      end
+
+      defp deps do
+        [
+          {:phoenix, "~> 1.7"},
+          {:phoenix_live_view, "~> 0.20"},
+          {:credo, "~> 1.7.13"},
+          {:client_utils, git: "https://github.com/example/client_utils"},
+          {:sobelow, "~> 0.13"},
+          {:sexy_spex, "~> 0.1.0", only: :test},
+          {:boundary, "~> 0.10"}
+        ]
+      end
+    end
+    """
+
+    write_file!(tmp_dir, "mix.exs", content)
+  end
+
+  defp create_test_boundary_files(tmp_dir, app_name) do
+    module_name = Macro.camelize(app_name)
+
+    write_file!(tmp_dir, "test/spex/#{app_name}_spex.ex", """
+    defmodule #{module_name}Spex do
+      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+    end
+    """)
+
+    write_file!(tmp_dir, "test/support/#{app_name}_test.ex", """
+    defmodule #{module_name}Test do
+      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+    end
+    """)
   end
 
   defp create_phoenix_project_structure(tmp_dir, app_name) do
@@ -249,7 +323,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       assert status.codemyspec_deps_installed == false
       assert is_list(status.missing_deps)
-      assert length(status.missing_deps) > 0
+      assert status.missing_deps != []
     end
 
     test "returns docs_repo_configured false when docs submodule missing", %{tmp_dir: tmp_dir} do
@@ -277,7 +351,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       assert status.docs_structure_complete == false
       assert is_list(status.missing_docs_dirs)
-      assert length(status.missing_docs_dirs) > 0
+      assert status.missing_docs_dirs != []
     end
 
     test "extracts app_name from mix.exs project definition", %{tmp_dir: tmp_dir} do
@@ -315,6 +389,90 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       assert is_boolean(status.postgresql_available)
       # The overall status check should still work even if PostgreSQL isn't available
       assert is_map(status)
+    end
+
+    test "returns compilers_configured false when compilers not set", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.compilers_configured == false
+    end
+
+    test "returns compilers_configured true when boundary and spex in compilers", %{
+      tmp_dir: tmp_dir
+    } do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      create_fully_configured_mix_exs(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.compilers_configured == true
+    end
+
+    test "returns spex_config_complete false when spex not configured", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.spex_config_complete == false
+    end
+
+    test "returns spex_config_complete true when fully configured", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      create_fully_configured_mix_exs(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.spex_config_complete == true
+    end
+
+    test "returns test_boundaries_configured false when no boundary files", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.test_boundaries_configured == false
+    end
+
+    test "returns test_boundaries_configured true when boundary files exist", %{
+      tmp_dir: tmp_dir
+    } do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      create_test_boundary_files(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.test_boundaries_configured == true
+    end
+
+    test "returns boundary in missing_deps when not in mix.exs", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert :boundary in status.missing_deps
     end
   end
 

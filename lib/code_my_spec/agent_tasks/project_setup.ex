@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   alias CodeMySpec.Environments.Environment
 
-  @required_deps [:credo, :client_utils, :sobelow, :sexy_spex]
+  @required_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
   @min_elixir_version {1, 18, 0}
 
   @doc """
@@ -83,6 +83,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     # CLI config
     cli_config_check = check_cli_config(working_dir)
 
+    # Build tooling checks
+    compilers_check = check_compilers(working_dir, project_check.phoenix_project_exists)
+    spex_config_check = check_spex_config(working_dir, project_check.phoenix_project_exists)
+    test_boundaries_check = check_test_boundaries(working_dir, app_name)
+
     # Ignored components (optional)
     ignored_components_check = check_ignored_components(working_dir)
 
@@ -97,6 +102,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       compilation_errors: compilation_check.errors,
       codemyspec_deps_installed: deps_check.installed,
       missing_deps: deps_check.missing,
+      compilers_configured: compilers_check.configured,
+      spex_config_complete: spex_config_check.complete,
+      test_boundaries_configured: test_boundaries_check.configured,
       docs_repo_configured: docs_check.repo_configured,
       docs_agents_md_exists: docs_check.agents_md_exists,
       docs_structure_complete: docs_check.structure_complete,
@@ -285,15 +293,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   # Ignored components check (optional — not gated in all_checks_pass?)
 
-  @default_ignored_components [
-    "Repo",
-    "Endpoint",
-    "Router",
-    "Mailer",
-    "Telemetry",
-    "Application",
-    "Gettext"
-  ]
+  @default_ignored_suffixes ~w(Repo Endpoint Router Mailer Telemetry Application Gettext)
 
   defp check_ignored_components(working_dir) do
     config_path = Path.join([working_dir, ".code_my_spec", "config.yml"])
@@ -311,6 +311,70 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       end
     else
       %{configured: false}
+    end
+  end
+
+  # Compiler checks
+
+  defp check_compilers(working_dir, project_exists) do
+    if project_exists do
+      mix_exs_path = Path.join(working_dir, "mix.exs")
+
+      case File.read(mix_exs_path) do
+        {:ok, content} ->
+          has_boundary = Regex.match?(~r/compilers:.*:boundary/, content)
+          has_spex = Regex.match?(~r/compilers:.*:spex/, content)
+          %{configured: has_boundary and has_spex}
+
+        _ ->
+          %{configured: false}
+      end
+    else
+      %{configured: false}
+    end
+  end
+
+  # Spex config checks
+
+  defp check_spex_config(working_dir, project_exists) do
+    if project_exists do
+      mix_exs_path = Path.join(working_dir, "mix.exs")
+
+      case File.read(mix_exs_path) do
+        {:ok, content} ->
+          has_pattern = Regex.match?(~r/spex:\s*\[pattern:/, content)
+          has_elixirc_paths = Regex.match?(~r/elixirc_paths.*test\/spex/, content)
+          has_preferred_env = Regex.match?(~r/spex:\s*:test/, content)
+          has_alias = Regex.match?(~r/spex:\s*\["spex/, content)
+
+          %{complete: has_pattern and has_elixirc_paths and has_preferred_env and has_alias}
+
+        _ ->
+          %{complete: false}
+      end
+    else
+      %{complete: false}
+    end
+  end
+
+  # Test boundaries check
+
+  defp check_test_boundaries(_working_dir, nil), do: %{configured: false}
+
+  defp check_test_boundaries(working_dir, app_name) do
+    spex_namespace_path = Path.join([working_dir, "test", "spex", "#{app_name}_spex.ex"])
+    test_namespace_path = Path.join([working_dir, "test", "support", "#{app_name}_test.ex"])
+
+    spex_has_boundary = file_contains_boundary?(spex_namespace_path)
+    test_has_boundary = file_contains_boundary?(test_namespace_path)
+
+    %{configured: spex_has_boundary and test_has_boundary}
+  end
+
+  defp file_contains_boundary?(path) do
+    case File.read(path) do
+      {:ok, content} -> String.contains?(content, "use Boundary")
+      _ -> false
     end
   end
 
@@ -340,6 +404,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_phoenix_installer_instructions(status)
     |> maybe_add_project_creation_instructions(status)
     |> maybe_add_deps_instructions(status)
+    |> maybe_add_compiler_instructions(status)
+    |> maybe_add_spex_config_instructions(status)
+    |> maybe_add_sexy_spex_local_dep_note(status)
+    |> maybe_add_test_boundaries_instructions(status)
     |> maybe_add_docs_instructions(status)
     |> maybe_add_agents_md_instructions(status)
     |> maybe_add_cli_config_instructions(status)
@@ -377,6 +445,141 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_deps_instructions(sections, _status), do: sections
 
+  defp maybe_add_compiler_instructions(
+         sections,
+         %{phoenix_project_exists: true, compilers_configured: false}
+       ) do
+    instruction = """
+    ## Configure Compilers
+
+    Add `:boundary` and `:spex` to the compilers list in `mix.exs`.
+    The `:diagnostics` compiler must be first so its `after_compiler` hooks are
+    registered before `:elixir` runs. The `:spex` compiler must come between
+    `:elixir` and `:app` so Boundary can trace cross-module calls in spex files:
+
+    ```elixir
+    def project do
+      [
+        compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app],
+        ...
+      ]
+    end
+    ```
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_compiler_instructions(sections, _status), do: sections
+
+  defp maybe_add_spex_config_instructions(
+         sections,
+         %{phoenix_project_exists: true, spex_config_complete: false}
+       ) do
+    instruction = """
+    ## Configure Spex
+
+    Add the following to your `mix.exs` to enable BDD spec testing:
+
+    **1. Add spex pattern to `project/0`:**
+    ```elixir
+    def project do
+      [
+        spex: [pattern: "test/spex/**/*_spex.exs"],
+        ...
+      ]
+    end
+    ```
+
+    **2. Add `"test/spex"` to `elixirc_paths(:test)`:**
+    ```elixir
+    defp elixirc_paths(:test), do: ["lib", "test/support", "test/spex"]
+    ```
+
+    **3. Add `spex: :test` to `preferred_envs` in `cli/0`:**
+    ```elixir
+    def cli do
+      [
+        preferred_envs: [spex: :test]
+      ]
+    end
+    ```
+
+    **4. Add spex alias to `aliases/0`:**
+    ```elixir
+    defp aliases do
+      [
+        spex: ["spex --quiet"],
+        ...
+      ]
+    end
+    ```
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_spex_config_instructions(sections, _status), do: sections
+
+  defp maybe_add_sexy_spex_local_dep_note(
+         sections,
+         %{phoenix_project_exists: true, codemyspec_deps_installed: false}
+       ) do
+    instruction = """
+    ## Note: sexy_spex Local Dependency
+
+    The published hex version of `sexy_spex` does not yet include `SexySpex.Givens`,
+    which is required by the generated `shared_givens.ex`. Until a new version is
+    published, use the local path dependency:
+
+    ```elixir
+    {:sexy_spex, path: "/Users/johndavenport/Documents/github/spex"}
+    ```
+
+    Replace the path with the location of your local spex checkout.
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_sexy_spex_local_dep_note(sections, _status), do: sections
+
+  defp maybe_add_test_boundaries_instructions(
+         sections,
+         %{phoenix_project_exists: true, test_boundaries_configured: false} = status
+       ) do
+    app_name = status.app_name || "your_app"
+    module_name = Macro.camelize(app_name)
+
+    instruction = """
+    ## Configure Test and Spex Boundaries
+
+    Create boundary namespace modules so Boundary can track cross-context calls
+    in test and spex files.
+
+    **1. Create `test/spex/#{app_name}_spex.ex`:**
+    ```elixir
+    defmodule #{module_name}Spex do
+      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+    end
+    ```
+
+    **2. Create `test/support/#{app_name}_test.ex`:**
+    ```elixir
+    defmodule #{module_name}Test do
+      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+    end
+    ```
+
+    These modules declare top-level boundaries for the test and spex namespaces,
+    allowing Boundary to verify that test code only depends on the main application.
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_test_boundaries_instructions(sections, _status), do: sections
+
   defp maybe_add_docs_instructions(
          sections,
          %{docs_repo_configured: false} = status
@@ -410,27 +613,31 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        do: sections
 
   defp maybe_add_ignored_components_instructions(sections, _status) do
-    default_list = Enum.map_join(@default_ignored_components, ", ", &"\"#{&1}\"")
+    example_names = Enum.map(@default_ignored_suffixes, &"MyApp.#{&1}")
+    example_yaml = Enum.map_join(example_names, "\n", &"  - #{&1}")
+    example_cli = Enum.map_join(example_names, ", ", &"\"#{&1}\"")
 
     instruction = """
     ## Configure Ignored Components (Optional)
 
-    Boilerplate Phoenix modules (Repo, Endpoint, Router, etc.) clutter status output
-    without being domain components that need spec/test tracking.
+    Boilerplate Phoenix modules (Repo, Endpoint, Router, etc.) clutter the component
+    graph and status output without being domain components that need spec/test tracking.
 
-    Add `ignored_components` to `.code_my_spec/config.yml`:
+    Add `ignored_components` to `.code_my_spec/config.yml` using **fully qualified module names**
+    (replace `MyApp` with your application's base module):
 
     ```yaml
     ignored_components:
-    #{Enum.map_join(@default_ignored_components, "\n", &"  - #{&1}")}
+    #{example_yaml}
     ```
 
     Or via the CLI:
     ```bash
-    cms config set ignored_components #{default_list}
+    cms config set ignored_components #{example_cli}
     ```
 
-    These components will be excluded from `docs/status/` files and completion counts.
+    These components will be excluded from sync, dependency graphs, architecture views,
+    and status files.
     """
 
     [instruction | sections]
@@ -443,6 +650,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"PostgreSQL", status.postgresql_available},
       {"Phoenix project", status.phoenix_project_exists},
       {"CodeMySpec deps", status.codemyspec_deps_installed},
+      {"Compilers (boundary + spex)", status.compilers_configured},
+      {"Spex config", status.spex_config_complete},
+      {"Test boundaries", status.test_boundaries_configured},
       {"Docs repository", status.docs_repo_configured},
       {"Docs AGENTS.md", status.docs_agents_md_exists},
       {"Docs structure", status.docs_structure_complete},
@@ -809,39 +1019,26 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   # Evaluation helpers
 
+  @required_check_keys [
+    :elixir_installed,
+    :phoenix_installer_available,
+    :phoenix_project_exists,
+    :codemyspec_deps_installed,
+    :compilers_configured,
+    :spex_config_complete,
+    :docs_repo_configured,
+    :docs_agents_md_exists,
+    :docs_structure_complete,
+    :cli_config_has_project_id
+  ]
+
   defp all_checks_pass?(status) do
-    status.elixir_installed and
-      status.phoenix_installer_available and
-      status.phoenix_project_exists and
-      status.codemyspec_deps_installed and
-      status.docs_repo_configured and
-      status.docs_agents_md_exists and
-      status.docs_structure_complete and
-      status.cli_config_has_project_id
+    Enum.all?(@required_check_keys, &Map.get(status, &1))
   end
 
   defp build_evaluation_feedback(status) do
-    checks = [
-      {"Elixir 1.18+", status.elixir_installed, "Install Elixir 1.18+ using asdf or brew"},
-      {"Phoenix installer", status.phoenix_installer_available,
-       "Run: mix archive.install hex phx_new"},
-      {"Phoenix project", status.phoenix_project_exists,
-       "Run: mix phx.new . --app your_app_name"},
-      {"Project compiles", status.project_compiles,
-       "Fix compilation errors: #{status.compilation_errors}"},
-      {"CodeMySpec deps", status.codemyspec_deps_installed,
-       "Add missing deps to mix.exs: #{inspect(status.missing_deps)}"},
-      {"Docs repository", status.docs_repo_configured, "Create docs directory: mkdir -p docs"},
-      {"Docs AGENTS.md", status.docs_agents_md_exists,
-       "Create docs/AGENTS.md — see setup instructions for content"},
-      {"Docs structure", status.docs_structure_complete,
-       "Create directories: #{Enum.join(status.missing_docs_dirs, ", ")}"},
-      {"CLI config", status.cli_config_has_project_id,
-       "Create .code_my_spec/config.yml with project_id from CodeMySpec server"}
-    ]
-
-    passing = Enum.filter(checks, fn {_, passed, _} -> passed end)
-    failing = Enum.reject(checks, fn {_, passed, _} -> passed end)
+    checks = evaluation_checks(status)
+    {passing, failing} = Enum.split_with(checks, fn {_, passed, _} -> passed end)
 
     completed = length(passing)
     total = length(checks)
@@ -862,6 +1059,33 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     #{next_action}
     """
+  end
+
+  defp evaluation_checks(status) do
+    [
+      {"Elixir 1.18+", status.elixir_installed, "Install Elixir 1.18+ using asdf or brew"},
+      {"Phoenix installer", status.phoenix_installer_available,
+       "Run: mix archive.install hex phx_new"},
+      {"Phoenix project", status.phoenix_project_exists,
+       "Run: mix phx.new . --app your_app_name"},
+      {"Project compiles", status.project_compiles,
+       "Fix compilation errors: #{status.compilation_errors}"},
+      {"CodeMySpec deps", status.codemyspec_deps_installed,
+       "Add missing deps to mix.exs: #{inspect(status.missing_deps)}"},
+      {"Compilers (boundary + spex)", status.compilers_configured,
+       "Add compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app] to project/0"},
+      {"Spex config", status.spex_config_complete,
+       "Add spex pattern, elixirc_paths(:test) with test/spex, preferred_envs spex: :test, and spex alias"},
+      {"Test boundaries", status.test_boundaries_configured,
+       "Create boundary namespace modules in test/spex/ and test/support/ with use Boundary"},
+      {"Docs repository", status.docs_repo_configured, "Create docs directory: mkdir -p docs"},
+      {"Docs AGENTS.md", status.docs_agents_md_exists,
+       "Create docs/AGENTS.md — see setup instructions for content"},
+      {"Docs structure", status.docs_structure_complete,
+       "Create directories: #{Enum.join(status.missing_docs_dirs, ", ")}"},
+      {"CLI config", status.cli_config_has_project_id,
+       "Create .code_my_spec/config.yml with project_id from CodeMySpec server"}
+    ]
   end
 
   defp build_passing_section([]), do: ""
