@@ -33,7 +33,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     tag_names = Enum.map(tags, & &1.name)
 
     tags_line =
-      if length(tag_names) > 0 do
+      if tag_names != [] do
         "\n**Tags:** #{Enum.join(tag_names, ", ")}"
       else
         ""
@@ -84,9 +84,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         end
       else
         story_lines =
-          stories
-          |> Enum.map(fn s -> "- #{s.title} (ID: #{s.id})" end)
-          |> Enum.join("\n")
+          Enum.map_join(stories, "\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
 
         range_start = offset + 1
         range_end = offset + count
@@ -120,9 +118,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         "No stories found."
       else
         title_lines =
-          titles
-          |> Enum.map(fn t -> "- #{t.title} (ID: #{t.id})" end)
-          |> Enum.join("\n")
+          Enum.map_join(titles, "\n", fn t -> "- #{t.title} (ID: #{t.id})" end)
 
         "#{count} stories:\n#{title_lines}"
       end
@@ -137,8 +133,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     story_lines =
       stories
       |> Enum.take(5)
-      |> Enum.map(fn s -> "- #{s.title} (ID: #{s.id})" end)
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
 
     more = if count > 5, do: "\n... and #{count - 5} more", else: ""
     summary = "Created #{count} stories:\n#{story_lines}#{more}"
@@ -155,8 +150,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         lines =
           successes
           |> Enum.take(3)
-          |> Enum.map(fn s -> "- #{s.title} (ID: #{s.id})" end)
-          |> Enum.join("\n")
+          |> Enum.map_join("\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
 
         more = if created_count > 3, do: "\n  ... and #{created_count - 3} more", else: ""
         "Created #{created_count} stories:\n#{lines}#{more}"
@@ -167,15 +161,14 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     failure_lines =
       failures
       |> Enum.take(3)
-      |> Enum.map(fn {index, changeset} ->
+      |> Enum.map_join("\n", fn {index, changeset} ->
         errors = Formatters.extract_errors(changeset)
 
         error_text =
-          errors |> Enum.map(fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end) |> Enum.join("; ")
+          Enum.map_join(errors, "; ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
 
         "- Story #{index + 1}: #{error_text}"
       end)
-      |> Enum.join("\n")
 
     more_failures =
       if failed_count > 3, do: "\n... and #{failed_count - 3} more failures", else: ""
@@ -254,9 +247,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         "No stories found with tag '#{tag_name}'."
       else
         story_lines =
-          stories
-          |> Enum.map(fn s -> "- #{s.title} (ID: #{s.id})" end)
-          |> Enum.join("\n")
+          Enum.map_join(stories, "\n", fn s -> "- #{s.title} (ID: #{s.id})" end)
 
         "#{count} stories with tag '#{tag_name}':\n#{story_lines}"
       end
@@ -278,7 +269,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       if count == 0 do
         "No tags found in this project. Use update_story with tags field to add tags."
       else
-        tag_list = Enum.map(tags, fn t -> "- #{t.name}" end) |> Enum.join("\n")
+        tag_list = Enum.map_join(tags, "\n", fn t -> "- #{t.name}" end)
         "#{count} tags in project:\n#{tag_list}"
       end
 
@@ -295,11 +286,11 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
           "Tagged #{success_count} stories with '#{tag_name}'."
 
         success_count == 0 ->
-          failed_ids = Enum.map(failures, fn {:error, id, _} -> id end) |> Enum.join(", ")
+          failed_ids = Enum.map_join(failures, ", ", fn {:error, id, _} -> id end)
           "Failed to tag stories. Not found: #{failed_ids}"
 
         true ->
-          failed_ids = Enum.map(failures, fn {:error, id, _} -> id end) |> Enum.join(", ")
+          failed_ids = Enum.map_join(failures, ", ", fn {:error, id, _} -> id end)
           "Tagged #{success_count} stories with '#{tag_name}'. Not found: #{failed_ids}"
       end
 
@@ -395,7 +386,8 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       description: story.description,
       acceptance_criteria: story.acceptance_criteria,
       criteria: format_criteria(story.criteria),
-      component_id: story.component_id
+      component_id: story.component_id,
+      priority: story.priority
     }
 
     if Ecto.assoc_loaded?(story.tags) do
@@ -410,7 +402,8 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       id: story.id,
       title: story.title,
       description: story.description,
-      component_id: story.component_id
+      component_id: story.component_id,
+      priority: story.priority
     }
 
     base =

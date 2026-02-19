@@ -35,6 +35,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
       doc: "Replace unverified criteria with these (optional)"
 
     field :tags, {:list, :string}, doc: "Replace all tags with these (optional)"
+
+    field :priority, :integer,
+      doc: "Priority order (1 = highest). Lower numbers are higher priority. (optional)"
   end
 
   @impl true

@@ -27,6 +27,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
     field :acceptance_criteria, {:list, :string},
       required: true,
       doc: "List of acceptance criteria strings"
+
+    field :priority, :integer,
+      doc: "Priority order (1 = highest). Lower numbers are higher priority."
   end
 
   @impl true
