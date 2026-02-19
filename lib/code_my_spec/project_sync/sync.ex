@@ -53,11 +53,18 @@ defmodule CodeMySpec.ProjectSync.Sync do
     total_start = System.monotonic_time(:millisecond)
     base_dir = Keyword.get(opts, :base_dir, File.cwd!())
 
+    # Read ignored components once, pass upstream to Components.Sync
+    ignored_components = get_ignored_components(scope)
+
     # Phase 1: Sync components (identify what changed)
     contexts_start = System.monotonic_time(:millisecond)
 
     with {:ok, all_components, changed_component_ids} <-
-           Components.Sync.sync_changed(scope, base_dir: base_dir, force: true),
+           Components.Sync.sync_changed(scope,
+             base_dir: base_dir,
+             force: true,
+             ignored_components: ignored_components
+           ),
          # Phase 2: Update parent relationships (expand changed set)
          {:ok, expanded_changed_ids} <-
            Components.Sync.update_parent_relationships(
@@ -70,7 +77,7 @@ defmodule CodeMySpec.ProjectSync.Sync do
 
       # Refresh components from DB — update_parent_relationships may have changed
       # parent_component_id values that the in-memory all_components doesn't reflect
-      refreshed_components = Components.list_components(scope)
+      refreshed_components = Components.list_components_with_dependencies(scope)
 
       # Phase 3: Sync requirements for changed components
       requirements_start = System.monotonic_time(:millisecond)
@@ -106,11 +113,9 @@ defmodule CodeMySpec.ProjectSync.Sync do
 
       # Phase 5: Write context status files (roots only — children are inline via child_components)
       root_components = Enum.filter(components_with_requirements, &is_nil(&1.parent_component_id))
-      ignored_components = get_ignored_components(scope)
-      status_opts = [ignored_components: ignored_components]
 
       status_files =
-        StatusWriter.write_status_files(root_components, scope.environment, status_opts)
+        StatusWriter.write_status_files(root_components, scope.environment)
 
       total_ms = System.monotonic_time(:millisecond) - total_start
 

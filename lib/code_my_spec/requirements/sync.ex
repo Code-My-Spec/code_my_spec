@@ -97,7 +97,7 @@ defmodule CodeMySpec.Requirements.Sync do
     |> Enum.map(&Requirements.clear_requirements(scope, &1, opts))
     |> Enum.map(&check_local_requirements(&1, scope, opts))
     |> DependencyTree.build()
-    |> HierarchicalTree.build()
+    |> HierarchicalTree.enrich()
     |> Enum.map(&check_dependency_requirements(&1, scope, opts))
     |> Enum.sort_by(& &1.name)
   end

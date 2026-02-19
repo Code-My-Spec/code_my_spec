@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Components.HierarchicalTreeTest do
   use ExUnit.Case
   doctest CodeMySpec.Components.HierarchicalTree
-  alias CodeMySpec.Components.{HierarchicalTree, Component}
+  alias CodeMySpec.Components.{Component, HierarchicalTree}
 
   describe "build/1" do
     test "returns empty list for empty input" do
@@ -244,7 +244,7 @@ defmodule CodeMySpec.Components.HierarchicalTreeTest do
     end
   end
 
-  describe "is_ancestor?/3" do
+  describe "ancestor?/3" do
     test "returns true when component is ancestor" do
       root = %Component{
         id: 1,
@@ -269,8 +269,8 @@ defmodule CodeMySpec.Components.HierarchicalTreeTest do
 
       all_components = [root, middle, leaf]
 
-      assert HierarchicalTree.is_ancestor?(root, leaf, all_components) == true
-      assert HierarchicalTree.is_ancestor?(middle, leaf, all_components) == true
+      assert HierarchicalTree.ancestor?(root, leaf, all_components) == true
+      assert HierarchicalTree.ancestor?(middle, leaf, all_components) == true
     end
 
     test "returns false when component is not ancestor" do
@@ -297,8 +297,8 @@ defmodule CodeMySpec.Components.HierarchicalTreeTest do
 
       all_components = [root, sibling1, sibling2]
 
-      assert HierarchicalTree.is_ancestor?(sibling1, sibling2, all_components) == false
-      assert HierarchicalTree.is_ancestor?(sibling2, sibling1, all_components) == false
+      assert HierarchicalTree.ancestor?(sibling1, sibling2, all_components) == false
+      assert HierarchicalTree.ancestor?(sibling2, sibling1, all_components) == false
     end
 
     test "returns false when component is same as potential ancestor" do
@@ -309,7 +309,7 @@ defmodule CodeMySpec.Components.HierarchicalTreeTest do
         parent_component_id: nil
       }
 
-      assert HierarchicalTree.is_ancestor?(component, component, [component]) == false
+      assert HierarchicalTree.ancestor?(component, component, [component]) == false
     end
   end
 end

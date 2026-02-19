@@ -13,7 +13,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzer do
     Registry
   }
 
-  alias CodeMySpec.{Requirements, Utils, Components}
+  alias CodeMySpec.{Components, Requirements, Utils}
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Tests.TestResult
   alias CodeMySpec.Users.Scope
@@ -35,7 +35,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzer do
     |> Enum.map(&analyze_local_component_status(&1, file_list, failures, scope, opts))
     |> Enum.map(&check_local_requirements(&1, scope, opts))
     |> DependencyTree.build()
-    |> HierarchicalTree.build()
+    |> HierarchicalTree.enrich()
     |> Enum.map(&check_dependency_requirements(&1, scope, opts))
     |> Enum.sort_by(& &1.name)
   end
@@ -62,7 +62,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzer do
         end
 
       {:error, changeset} ->
-        Logger.error("#{__MODULE__} failed to update component", changeset: changeset)
+        Logger.error("#{__MODULE__} failed to update component: #{inspect(changeset.errors)}")
         # Fallback: manually set component_status if update failed
         Map.put(component, :component_status, component_status)
     end
@@ -86,9 +86,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzer do
             Map.put(requirement, :component, %Ecto.Association.NotLoaded{})
 
           {:error, changeset} ->
-            Logger.error("#{__MODULE__} failed check_local_requirements",
-              changeset: changeset
-            )
+            Logger.error("#{__MODULE__} failed check_local_requirements: #{inspect(changeset.errors)}")
 
             nil
         end
@@ -116,9 +114,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzer do
             Map.put(requirement, :component, %Ecto.Association.NotLoaded{})
 
           {:error, changeset} ->
-            Logger.error("#{__MODULE__} failed check_dependency_requirements",
-              changeset: changeset
-            )
+            Logger.error("#{__MODULE__} failed check_dependency_requirements: #{inspect(changeset.errors)}")
 
             nil
         end

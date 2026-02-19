@@ -1,16 +1,21 @@
 defmodule CodeMySpec.Architecture.MermaidProjector do
   @moduledoc """
-  Generates a simple Mermaid flowchart showing contexts and their dependency relationships.
+  Generates a simple Mermaid flowchart showing contexts, liveviews, and their
+  dependency relationships.
 
   Dependencies are "rolled up" from child components to their parent contexts.
   For example, if `MyApp.Accounts.User` depends on `MyApp.Repo`, the graph shows
   an edge from `MyApp.Accounts` to `MyApp.Repo` (if both are contexts).
+
+  LiveViews appear as their own nodes with edges to the contexts they depend on.
   """
 
   alias CodeMySpec.Components.Component
 
+  @graph_types ["context", "liveview"]
+
   @doc """
-  Generates a Mermaid flowchart showing contexts and their dependencies.
+  Generates a Mermaid flowchart showing contexts, liveviews, and their dependencies.
 
   ## Parameters
     - components: List of Component structs (should include all components with dependencies preloaded)
@@ -20,17 +25,16 @@ defmodule CodeMySpec.Architecture.MermaidProjector do
   """
   @spec project([Component.t()]) :: String.t()
   def project(components) do
-    contexts = filter_contexts(components)
-    context_names = MapSet.new(contexts, & &1.module_name)
+    graph_nodes = filter_graph_nodes(components)
+    node_names = MapSet.new(graph_nodes, & &1.module_name)
 
-    # Build edges by rolling up all component dependencies to context level
-    edges = build_rolled_up_edges(components, context_names)
+    edges = build_rolled_up_edges(components, node_names)
 
-    build_flowchart(contexts, edges)
+    build_flowchart(graph_nodes, edges)
   end
 
-  defp filter_contexts(components) do
-    Enum.filter(components, &(&1.type == "context"))
+  defp filter_graph_nodes(components) do
+    Enum.filter(components, &(&1.type in @graph_types))
   end
 
   defp build_flowchart([], _edges), do: "flowchart TD"
@@ -51,20 +55,20 @@ defmodule CodeMySpec.Architecture.MermaidProjector do
     "#{sanitized_id}[#{module_name}]"
   end
 
-  # Roll up dependencies from all components to their parent contexts
-  defp build_rolled_up_edges(components, context_names) do
+  # Roll up dependencies from all components to their nearest graph node
+  defp build_rolled_up_edges(components, node_names) do
     components
     |> Enum.flat_map(fn component ->
-      source_context = find_parent_context(component.module_name, context_names)
+      source_node = find_graph_node(component.module_name, node_names)
       deps = Map.get(component, :outgoing_dependencies, []) || []
 
       Enum.map(deps, fn dep ->
         target = dep.target_component
-        target_context = find_parent_context(target.module_name, context_names)
-        {source_context, target_context}
+        target_node = find_graph_node(target.module_name, node_names)
+        {source_node, target_node}
       end)
     end)
-    # Filter out self-loops and nil contexts
+    # Filter out self-loops and nil nodes
     |> Enum.filter(fn {source, target} ->
       source != nil and target != nil and source != target
     end)
@@ -77,17 +81,16 @@ defmodule CodeMySpec.Architecture.MermaidProjector do
     end)
   end
 
-  # Find the parent context for a module name
-  # Returns the module name itself if it's a context, or walks up the namespace
-  defp find_parent_context(module_name, context_names) do
-    if MapSet.member?(context_names, module_name) do
+  # Find the nearest graph node for a module name.
+  # Returns the module name itself if it's a graph node, or walks up the namespace.
+  defp find_graph_node(module_name, node_names) do
+    if MapSet.member?(node_names, module_name) do
       module_name
     else
-      # Walk up the namespace looking for a context
       parent = parent_module_name(module_name)
 
       if parent do
-        find_parent_context(parent, context_names)
+        find_graph_node(parent, node_names)
       else
         nil
       end

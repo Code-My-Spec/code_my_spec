@@ -31,6 +31,25 @@ defmodule CodeMySpec.Components.HierarchicalTree do
   end
 
   @doc """
+  Enrich all components with their nested child_components.
+
+  Unlike `build/1` which returns only root components, this returns ALL
+  components with their `child_components` populated. Use this when you
+  need child data on every component (e.g., for requirements checking).
+  """
+  @spec enrich([Component.t()]) :: [Component.t()]
+  def enrich([]), do: []
+
+  def enrich(components) when is_list(components) do
+    component_map = build_component_map(components)
+
+    Enum.map(components, fn component ->
+      children = build_nested_children(component, component_map, MapSet.new([component.id]))
+      %{component | child_components: children}
+    end)
+  end
+
+  @doc """
   Build hierarchical tree for a single component.
 
   Recursively builds nested child_components using all available components.
@@ -64,8 +83,8 @@ defmodule CodeMySpec.Components.HierarchicalTree do
   @doc """
   Check if component A is an ancestor of component B.
   """
-  @spec is_ancestor?(Component.t(), Component.t(), [Component.t()]) :: boolean()
-  def is_ancestor?(potential_ancestor, component, all_components) do
+  @spec ancestor?(Component.t(), Component.t(), [Component.t()]) :: boolean()
+  def ancestor?(potential_ancestor, component, all_components) do
     # Component cannot be its own ancestor
     if potential_ancestor.id == component.id do
       false
@@ -75,16 +94,16 @@ defmodule CodeMySpec.Components.HierarchicalTree do
     end
   end
 
-  @spec build_component_map([Component.t()]) :: component_map()
-  defp build_component_map(components) do
-    components
-    |> Enum.into(%{}, fn component -> {component.id, component} end)
-  end
-
   @spec find_root_components([Component.t()]) :: [Component.t()]
   defp find_root_components(components) do
     components
     |> Enum.filter(fn component -> is_nil(component.parent_component_id) end)
+  end
+
+  @spec build_component_map([Component.t()]) :: component_map()
+  defp build_component_map(components) do
+    components
+    |> Enum.into(%{}, fn component -> {component.id, component} end)
   end
 
   @spec build_nested_tree(Component.t(), component_map(), visited_set()) :: Component.t()
