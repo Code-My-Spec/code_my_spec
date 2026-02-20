@@ -7,15 +7,17 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   WriteBddSpecs, DevelopContext, and DevelopLiveView, tracks the current task
   via a status file, and returns delegated prompts directly.
 
-  The orchestration decision is driven by BDD spec results:
+  The orchestration is **story-focused** and driven by BDD spec results:
 
-    1. Run BDD specs
-    2. If specs are failing → develop the next prioritized context/liveview
-    3. If specs are passing → write BDD specs for the next incomplete story
-    4. If all specs pass and no stories remain → done
+    1. Run all BDD specs globally
+    2. If specs are **failing** → map failures to stories → find the highest-priority
+       failing story → develop its component chain in dependency order
+    3. If specs are **passing** → find the next story needing BDD spec coverage → write specs
+    4. If all stories have passing specs and full coverage → done
 
   This creates an interleaved loop: write specs for one story, develop until
-  those specs pass, then write specs for the next story.
+  those specs pass, then write specs for the next story. Development stays
+  focused on a single story at a time.
 
   State transitions:
 
@@ -29,7 +31,9 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   """
 
   alias CodeMySpec.BddSpecs
+  alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.DependencyTree
   alias CodeMySpec.Environments
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Stories
@@ -40,7 +44,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
 
   @status_path "docs/status/implementation_status.json"
 
-  @developable_types ["context", "coordination_context", "liveview", "liveview_component"]
+  @developable_types ["context", "coordination_context", "controller", "liveview", "liveview_component"]
 
   # ============================================================================
   # Public API
@@ -87,13 +91,13 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   end
 
   # ============================================================================
-  # Orchestration Decision (BDD-spec driven)
+  # Orchestration Decision (BDD-spec driven, story-focused)
   # ============================================================================
 
   defp decide_next_task(env, scope) do
     case run_bdd_specs(env) do
       {:ok, failures, exit_code} when exit_code != 0 or failures != [] ->
-        decide_on_failing_specs(scope, failures)
+        decide_on_failing_specs(env, scope, failures)
 
       {:ok, _failures, _exit_code} ->
         decide_on_passing_specs(env, scope)
@@ -103,10 +107,43 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     end
   end
 
-  defp decide_on_failing_specs(scope, failures) do
-    case find_next_component(scope) do
-      {component, task_module} -> {:develop, component, task_module}
-      nil -> {:specs_failing_no_target, failures}
+  defp decide_on_failing_specs(env, scope, failures) do
+    # Map failures to story IDs from parsed failure details
+    failing_story_ids =
+      failures
+      |> Enum.map(fn f -> Parser.derive_story_id(f.spex) end)
+      |> Enum.reject(&is_nil/1)
+      |> MapSet.new()
+
+    # Fallback: if no story IDs from failures (e.g., compilation errors that
+    # prevent JSONL output), derive from spec files that exist on disk
+    failing_story_ids =
+      if MapSet.size(failing_story_ids) == 0 do
+        Environments.glob(env, "test/spex/**/*_spex.exs")
+        |> Enum.map(&Parser.derive_story_id/1)
+        |> Enum.reject(&is_nil/1)
+        |> MapSet.new()
+      else
+        failing_story_ids
+      end
+
+    # Find the highest-priority story among those with failing specs
+    stories = Stories.list_project_stories_by_priority(scope)
+
+    target_story =
+      Enum.find(stories, fn story ->
+        MapSet.member?(failing_story_ids, story.id)
+      end)
+
+    case target_story do
+      nil ->
+        {:specs_failing_no_target, failures}
+
+      story ->
+        case find_next_developable_for_story(scope, story) do
+          {:develop, _story, _component, _task_module} = result -> result
+          {:story_blocked, _story, _reason} = result -> result
+        end
     end
   end
 
@@ -117,70 +154,76 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     end
   end
 
-  defp dispatch_next_task(env, scope, session) do
-    case decide_next_task(env, scope) do
-      {:write_bdd_specs, story} ->
-        bdd_session = %{
-          story_id: story.id,
-          external_conversation_id: get_external_id(session)
-        }
+  # ============================================================================
+  # Story-Focused Component Finding
+  # ============================================================================
 
-        {:ok, prompt} = WriteBddSpecs.command(scope, bdd_session, skip_sync: true)
-        write_status(env, %{task: "write_bdd_specs", story_id: story.id})
-        {:ok, wrap_prompt("Write BDD Specs: #{story.title}", prompt)}
+  defp find_next_developable_for_story(scope, story) do
+    all_components = Components.list_components_with_dependencies(scope)
+    component_map = Map.new(all_components, fn c -> {c.id, c} end)
 
-      {:develop, component, task_module} ->
-        dev_session = %{component: component, project: scope.active_project}
-        {:ok, prompt} = task_module.command(scope, dev_session)
+    case Map.get(component_map, story.component_id) do
+      nil ->
+        {:story_blocked, story, "Story has no linked component"}
 
-        write_status(env, %{
-          task: task_key(task_module),
-          module_name: component.module_name,
-          component_id: component.id
-        })
+      target ->
+        # Collect the transitive dependency chain for this story's component
+        chain_ids = collect_transitive_deps(target, component_map, MapSet.new())
+        chain_ids = MapSet.put(chain_ids, target.id)
 
-        {:ok, wrap_prompt("Develop: #{component.name}", prompt)}
+        # Filter all_components to just this chain, then topologically sort
+        chain_components =
+          all_components
+          |> Enum.filter(fn c -> MapSet.member?(chain_ids, c.id) end)
+          |> DependencyTree.build()
 
-      {:specs_failing_no_target, failures} ->
-        clear_status(env)
-        {:ok, wrap_prompt("BDD Specs Failing", format_failure_details(failures))}
+        # Find first developable component with unsatisfied requirements
+        # whose own dependencies are satisfied
+        developable =
+          Enum.find(chain_components, fn c ->
+            c.type in @developable_types and
+              has_unsatisfied_requirements?(c) and
+              dependencies_satisfied?(c)
+          end)
 
-      :all_complete ->
-        clear_status(env)
+        case developable do
+          nil ->
+            {:story_blocked, story, "No developable component found in dependency chain"}
 
-        {:ok,
-         "All stories are complete and all components are implemented. No further action needed."}
+          component ->
+            {:develop, story, component, task_module_for_component(component)}
+        end
     end
   end
 
-  # ============================================================================
-  # Component Finding (context/liveview level only)
-  # ============================================================================
+  defp collect_transitive_deps(component, component_map, visited) do
+    deps =
+      case component.dependencies do
+        %Ecto.Association.NotLoaded{} -> []
+        deps -> deps
+      end
 
-  defp find_next_component(scope) do
-    ready_components =
-      Components.components_with_unsatisfied_requirements(scope)
-      |> Enum.filter(fn c -> c.type in @developable_types and dependencies_satisfied?(c) end)
-
-    stories = Stories.list_project_stories_by_priority(scope)
-
-    # Build component_id → min_priority map from stories
-    priority_map =
-      Enum.reduce(stories, %{}, fn story, acc ->
-        if story.component_id,
-          do: Map.put_new(acc, story.component_id, story.priority),
-          else: acc
-      end)
-
-    ready_components
-    |> Enum.sort_by(fn c ->
-      {Map.get(priority_map, c.id, :infinity), c.name}
+    Enum.reduce(deps, visited, fn dep, acc ->
+      collect_dep(dep, component_map, acc)
     end)
-    |> List.first()
-    |> case do
-      nil -> nil
-      component -> {component, task_module_for_component(component)}
+  end
+
+  defp collect_dep(dep, component_map, visited) do
+    if MapSet.member?(visited, dep.id) do
+      visited
+    else
+      visited = MapSet.put(visited, dep.id)
+
+      case Map.get(component_map, dep.id) do
+        nil -> visited
+        dep_component -> collect_transitive_deps(dep_component, component_map, visited)
+      end
     end
+  end
+
+  defp has_unsatisfied_requirements?(component) do
+    requirements = component.requirements || []
+    Enum.any?(requirements, fn r -> not r.satisfied end)
   end
 
   defp dependencies_satisfied?(component) do
@@ -197,11 +240,61 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   end
 
   # ============================================================================
+  # Dispatch
+  # ============================================================================
+
+  defp dispatch_next_task(env, scope, session) do
+    case decide_next_task(env, scope) do
+      {:write_bdd_specs, story} ->
+        bdd_session = %{
+          story_id: story.id,
+          external_conversation_id: get_external_id(session)
+        }
+
+        {:ok, prompt} = WriteBddSpecs.command(scope, bdd_session, skip_sync: true)
+        write_status(env, %{task: "write_bdd_specs", story_id: story.id})
+        {:ok, wrap_prompt("Write BDD Specs: #{story.title}", prompt)}
+
+      {:develop, story, component, task_module} ->
+        dev_session = %{component: component, project: scope.active_project}
+        {:ok, prompt} = task_module.command(scope, dev_session)
+
+        write_status(env, %{
+          task: task_key(task_module),
+          module_name: component.module_name,
+          component_id: component.id,
+          target_story_id: story.id
+        })
+
+        {:ok, wrap_prompt("Develop: #{component.name} (Story: #{story.title})", prompt)}
+
+      {:specs_failing_no_target, failures} ->
+        clear_status(env)
+        {:ok, wrap_prompt("BDD Specs Failing", format_failure_details(failures))}
+
+      {:story_blocked, story, reason} ->
+        clear_status(env)
+
+        {:ok,
+         wrap_prompt(
+           "Story Blocked: #{story.title}",
+           "Cannot develop story: #{reason}"
+         )}
+
+      :all_complete ->
+        clear_status(env)
+
+        {:ok,
+         "All stories are complete and all components are implemented. No further action needed."}
+    end
+  end
+
+  # ============================================================================
   # Task Module Mapping
   # ============================================================================
 
   defp task_module_for_component(%{type: type})
-       when type in ["context", "coordination_context"],
+       when type in ["context", "coordination_context", "controller"],
        do: DevelopContext
 
   defp task_module_for_component(%{type: type})
@@ -252,22 +345,28 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     wrap_prompt("Write BDD Specs: #{story.title}", prompt)
   end
 
-  defp dispatch_advance(env, scope, _session, {:develop, component, task_module}) do
+  defp dispatch_advance(env, scope, _session, {:develop, story, component, task_module}) do
     dev_session = %{component: component, project: scope.active_project}
     {:ok, prompt} = task_module.command(scope, dev_session)
 
     write_status(env, %{
       task: task_key(task_module),
       module_name: component.module_name,
-      component_id: component.id
+      component_id: component.id,
+      target_story_id: story.id
     })
 
-    wrap_prompt("Develop: #{component.name}", prompt)
+    wrap_prompt("Develop: #{component.name} (Story: #{story.title})", prompt)
   end
 
   defp dispatch_advance(env, _scope, _session, {:specs_failing_no_target, failures}) do
     clear_status(env)
     wrap_prompt("BDD Specs Failing", format_failure_details(failures))
+  end
+
+  defp dispatch_advance(env, _scope, _session, {:story_blocked, story, reason}) do
+    clear_status(env)
+    wrap_prompt("Story Blocked: #{story.title}", "Cannot develop story: #{reason}")
   end
 
   # ============================================================================
@@ -289,7 +388,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
       Enum.map_join(failures, "\n", fn f -> "- #{f.spex}: #{f.scenario}" end)
 
     """
-    BDD specs are failing but no context or LiveView component is ready for development.
+    BDD specs are failing but no component in the target story's dependency chain is ready for development.
     This may indicate a configuration issue or missing component-to-story mapping.
 
     Failing specs:

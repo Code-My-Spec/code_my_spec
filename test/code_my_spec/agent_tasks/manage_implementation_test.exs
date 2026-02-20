@@ -8,6 +8,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.AcceptanceCriteriaFixtures
   import CodeMySpec.ComponentsFixtures
+  import CodeMySpec.DependencyFixtures
   import CodeMySpec.RequirementsFixtures
 
   @moduletag :tmp_dir
@@ -23,16 +24,16 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
     %{scope | environment: Environment.new(:local, tmp_dir)}
   end
 
-  defp create_story_with_criteria(scope) do
+  defp create_story_with_criteria(scope, attrs \\ %{}) do
     component =
-      component_fixture(scope, %{type: "context", module_name: "MyApp.Accounts"})
+      component_fixture(scope, Map.merge(%{type: "context", module_name: "MyApp.Accounts"}, attrs[:component] || %{}))
 
     story =
-      story_fixture(scope, %{
+      story_fixture(scope, Map.merge(%{
         title: "User Registration",
         priority: 1,
         component_id: component.id
-      })
+      }, attrs[:story] || %{}))
 
     criterion =
       criterion_fixture(scope, story, %{description: "User can register with email"})
@@ -107,7 +108,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
   # ============================================================================
 
   describe "command/3" do
-    test "delegates to WriteBddSpecs when stories need specs", %{tmp_dir: tmp_dir} do
+    test "writes specs when no BDD spec files exist for a story", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       {story, _criterion, _component} = create_story_with_criteria(scope)
       session = %{}
@@ -116,50 +117,125 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
       assert message =~ "Write BDD Specs"
       assert message =~ story.title
 
-      # Status file should be written
       assert {:ok, status} = read_status_file(tmp_dir)
       assert status["task"] == "write_bdd_specs"
       assert status["story_id"] == story.id
     end
 
-    test "delegates to DevelopContext when stories complete but context needs work",
-         %{tmp_dir: tmp_dir} do
+    test "develops component linked to story when specs are failing", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
-      # Create story with full spec coverage (all criteria covered)
-      {story, criterion, _component} = create_story_with_criteria(scope)
+      # Create story with spec file on disk (so specs will "fail" with non-zero exit)
+      {story, criterion, component} = create_story_with_criteria(scope)
       write_valid_spec_file!(tmp_dir, story, criterion)
 
-      # Create a context component with unsatisfied requirements
-      component =
+      # Give the story's component an unsatisfied requirement so it needs development
+      requirement_fixture(scope, component, %{
+        name: "spec_file",
+        artifact_type: :specification,
+        description: "Component spec exists",
+        satisfied: false
+      })
+
+      session = %{}
+
+      assert {:ok, message} = ManageImplementation.command(scope, session, skip_sync: true)
+      assert message =~ "Develop"
+      assert message =~ story.title
+
+      assert {:ok, status} = read_status_file(tmp_dir)
+      assert status["task"] == "develop_context"
+      assert status["component_id"] == component.id
+      assert status["target_story_id"] == story.id
+    end
+
+    test "develops dependency before target component", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+
+      # Create a dependency component (no story, but in the chain)
+      dep_component =
         create_component_with_unsatisfied_requirement(scope, %{
           type: "context",
-          module_name: "MyApp.Billing"
+          module_name: "MyApp.Core"
         })
+
+      # Create target component that depends on dep_component
+      target_component = component_fixture(scope, %{
+        type: "context",
+        module_name: "MyApp.Accounts"
+      })
+
+      # Add unsatisfied requirement to target
+      requirement_fixture(scope, target_component, %{
+        name: "spec_file",
+        artifact_type: :specification,
+        description: "Component spec exists",
+        satisfied: false
+      })
+
+      # Mark target's dependencies as not satisfied
+      requirement_fixture(scope, target_component, %{
+        name: "dependencies_satisfied",
+        artifact_type: :specification,
+        description: "All dependencies satisfied",
+        satisfied: false
+      })
+
+      # Create the dependency relationship: target depends on dep
+      dependency_fixture(scope, target_component, dep_component)
+
+      # Create story linked to the target component
+      story =
+        story_fixture(scope, %{
+          title: "User Registration",
+          priority: 1,
+          component_id: target_component.id
+        })
+
+      criterion =
+        criterion_fixture(scope, story, %{description: "User can register"})
+
+      # Write spec file so BDD specs will be "found" (failing)
+      write_valid_spec_file!(tmp_dir, %{story | criteria: [criterion]}, criterion)
 
       session = %{}
 
       assert {:ok, message} = ManageImplementation.command(scope, session, skip_sync: true)
       assert message =~ "Develop"
 
+      # Should develop the dependency first since target's deps aren't satisfied
       assert {:ok, status} = read_status_file(tmp_dir)
-      assert status["task"] == "develop_context"
-      assert status["component_id"] == component.id
+      assert status["component_id"] == dep_component.id
+      assert status["target_story_id"] == story.id
     end
 
-    test "delegates to DevelopLiveView for liveview components", %{tmp_dir: tmp_dir} do
+    test "develops liveview component linked to story", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
-      # Create story with full spec coverage
-      {story, criterion, _component} = create_story_with_criteria(scope)
-      write_valid_spec_file!(tmp_dir, story, criterion)
+      # Create story with liveview component
+      liveview_component = component_fixture(scope, %{
+        type: "liveview",
+        module_name: "MyAppWeb.DashboardLive"
+      })
 
-      # Create a liveview component with unsatisfied requirements
-      component =
-        create_component_with_unsatisfied_requirement(scope, %{
-          type: "liveview",
-          module_name: "MyAppWeb.DashboardLive"
+      requirement_fixture(scope, liveview_component, %{
+        name: "spec_file",
+        artifact_type: :specification,
+        description: "Component spec exists",
+        satisfied: false
+      })
+
+      story =
+        story_fixture(scope, %{
+          title: "Dashboard View",
+          priority: 1,
+          component_id: liveview_component.id
         })
+
+      criterion =
+        criterion_fixture(scope, story, %{description: "User sees dashboard"})
+
+      write_valid_spec_file!(tmp_dir, %{story | criteria: [criterion]}, criterion)
 
       session = %{}
 
@@ -168,24 +244,26 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
 
       assert {:ok, status} = read_status_file(tmp_dir)
       assert status["task"] == "develop_live_view"
-      assert status["component_id"] == component.id
+      assert status["component_id"] == liveview_component.id
+      assert status["target_story_id"] == story.id
     end
 
     test "returns all_complete when no work remains", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = %{}
 
-      # No stories, no components with unsatisfied requirements
       assert {:ok, message} = ManageImplementation.command(scope, session, skip_sync: true)
       assert message =~ "All stories are complete"
     end
 
-    test "prioritizes stories over component development", %{tmp_dir: tmp_dir} do
+    test "writes specs for stories without BDD coverage even when other components need work",
+         %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
-      # Create both: a story needing specs AND a component needing work
+      # Create a story needing specs (no spec file on disk)
       {story, _criterion, _component} = create_story_with_criteria(scope)
 
+      # Create an unrelated component with unsatisfied requirements
       create_component_with_unsatisfied_requirement(scope, %{
         type: "context",
         module_name: "MyApp.Other"
@@ -194,7 +272,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
       session = %{}
 
       assert {:ok, message} = ManageImplementation.command(scope, session, skip_sync: true)
-      # Should pick BDD specs first (story has missing coverage)
+      # No spec files exist, so specs trivially pass → write specs for incomplete story
       assert message =~ "Write BDD Specs"
       assert message =~ story.title
     end
@@ -216,14 +294,11 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
       scope = scope_with_env(tmp_dir)
       {story, _criterion, _component} = create_story_with_criteria(scope)
 
-      # Write a status file indicating we're working on BDD specs
       write_status_file!(tmp_dir, %{task: "write_bdd_specs", story_id: story.id})
 
       session = %{}
       result = ManageImplementation.evaluate(scope, session)
 
-      # WriteBddSpecs.evaluate will likely return :invalid (specs not valid yet in test env)
-      # or :error. Either way it should not crash.
       assert match?({:ok, :invalid, _}, result) or
                match?({:ok, :valid}, result) or
                match?({:error, _}, result)
@@ -238,13 +313,13 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
       write_status_file!(tmp_dir, %{
         task: "develop_context",
         module_name: "MyApp.Accounts",
-        component_id: component.id
+        component_id: component.id,
+        target_story_id: Ecto.UUID.generate()
       })
 
       session = %{}
       result = ManageImplementation.evaluate(scope, session)
 
-      # DevelopContext.evaluate will check phases — in test env may return :invalid or :valid
       assert match?({:ok, :invalid, _}, result) or
                match?({:ok, :valid}, result) or
                match?({:error, _}, result)
@@ -253,7 +328,6 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
     test "handles errors gracefully", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
-      # Write a status file with an invalid component_id to trigger an error path
       write_status_file!(tmp_dir, %{
         task: "develop_context",
         module_name: "MyApp.NonExistent",
@@ -263,7 +337,6 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
       session = %{}
       result = ManageImplementation.evaluate(scope, session)
 
-      # Should handle gracefully (rescue catches errors)
       assert match?({:error, _}, result) or
                match?({:ok, :invalid, _}, result) or
                match?({:ok, :valid}, result)
@@ -288,10 +361,8 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
     test "all_complete clears status file", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
-      # Write a leftover status file
       write_status_file!(tmp_dir, %{task: "write_bdd_specs", story_id: 999})
 
-      # No stories or components → all_complete → clears status
       assert {:ok, message} = ManageImplementation.command(scope, %{}, skip_sync: true)
       assert message =~ "All stories are complete"
 
