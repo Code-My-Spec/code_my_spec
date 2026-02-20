@@ -41,6 +41,7 @@ defmodule CodeMySpec.Components.Sync do
 
   - `:base_dir` - Base directory to scan (defaults to current working directory)
   - `:force` - When true, ignores mtime and syncs all files (defaults to false)
+  - `:ignored_components` - List of fully qualified module names to exclude (e.g., `["MyApp.Repo"]`)
 
   ## Optimization
 
@@ -97,6 +98,11 @@ defmodule CodeMySpec.Components.Sync do
         MapSet.new(unchanged_spec_modules),
         MapSet.new(unchanged_impl_modules)
       )
+
+    # Filter out ignored components (by fully qualified module name)
+    ignored = MapSet.new(Keyword.get(opts, :ignored_components, []))
+    changed_merged = reject_ignored(changed_merged, ignored)
+    unchanged_module_names = MapSet.difference(unchanged_module_names, ignored)
 
     # Upsert ONLY changed components
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -222,6 +228,14 @@ defmodule CodeMySpec.Components.Sync do
     error ->
       Logger.error("Error during sync_all: #{inspect(error)}")
       {:error, error}
+  end
+
+  defp reject_ignored(merged_data, %MapSet{} = ignored) do
+    if MapSet.size(ignored) == 0 do
+      merged_data
+    else
+      Enum.reject(merged_data, &(&1.module_name in ignored))
+    end
   end
 
   # --- File filtering (new optimization) ---
