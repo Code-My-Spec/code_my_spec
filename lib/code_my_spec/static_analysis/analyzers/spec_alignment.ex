@@ -380,6 +380,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       spec_assertions
       |> Enum.reject(&assertion_has_matching_test?(&1, actual_tests))
       |> Enum.map(fn missing_assertion ->
+        normalized_assertion = normalize_string(missing_assertion)
+        normalized_tests = Enum.map(actual_tests, &normalize_string/1)
+
         %Problem{
           severity: :warning,
           source_type: :static_analysis,
@@ -387,7 +390,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
           file_path: test_path,
           line: 1,
           message:
-            "Missing test assertion for #{name}/#{arity}: spec requires test for '#{missing_assertion}'",
+            "Missing test assertion for #{name}/#{arity}: spec requires test for '#{missing_assertion}' (normalized: '#{normalized_assertion}'). Existing tests normalized: #{inspect(normalized_tests)}",
           category: "missing_test",
           project_id: project_id
         }
@@ -433,6 +436,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     actual_tests
     |> Enum.reject(&test_has_matching_assertion?(&1, spec_assertions))
     |> Enum.map(fn extra_test ->
+      normalized_test = normalize_string(extra_test)
+      normalized_assertions = Enum.map(spec_assertions, &normalize_string/1)
+
       %Problem{
         severity: :warning,
         source_type: :static_analysis,
@@ -440,7 +446,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
         file_path: test_path,
         line: 1,
         message:
-          "Extra test found for #{name}/#{arity}: '#{extra_test}' is not documented in spec",
+          "Extra test found for #{name}/#{arity}: '#{extra_test}' is not documented in spec (normalized: '#{normalized_test}'). Spec assertions normalized: #{inspect(normalized_assertions)}",
         category: "extra_test",
         project_id: project_id
       }
@@ -476,7 +482,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
   defp normalize_string(str) do
     str
     |> String.downcase()
-    |> String.replace(~r/[^\w\s]/, "")
+    |> String.replace("_", " ")
+    |> String.replace(~r/[^a-z0-9\s]/u, "")
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
   end
