@@ -15,10 +15,16 @@ defmodule CodeMySpec.Utils do
       ) do
     module_path = Paths.module_to_path(module_name)
 
+    # Phoenix convention: LiveViews and LiveComponents live in a `live/` subdirectory
+    source_path =
+      if type in ["liveview", "liveview_component"],
+        do: inject_live_dir(module_path),
+        else: module_path
+
     base_files = %{
       design_file: "docs/design/#{module_path}.md",
-      code_file: "lib/#{module_path}.ex",
-      test_file: "test/#{module_path}_test.exs",
+      code_file: "lib/#{source_path}.ex",
+      test_file: "test/#{source_path}_test.exs",
       spec_file: "docs/spec/#{module_path}.spec.md"
     }
 
@@ -39,6 +45,19 @@ defmodule CodeMySpec.Utils do
       test_file: "test/#{module_path}_test.exs",
       spec_file: "docs/spec/#{module_path}.spec.md"
     }
+  end
+
+  # Insert `live/` after the first path segment for Phoenix LiveView convention.
+  # e.g., "fuellytics_web/card_management_live" → "fuellytics_web/live/card_management_live"
+  # No-op if `live` is already in the path (e.g., module is MyAppWeb.Live.SomeLive).
+  defp inject_live_dir(module_path) do
+    case Path.split(module_path) do
+      [root | rest] ->
+        if "live" in rest, do: module_path, else: Path.join([root, "live" | rest])
+
+      _ ->
+        module_path
+    end
   end
 
   def changeset_error_to_string(%Ecto.Changeset{} = changeset) do

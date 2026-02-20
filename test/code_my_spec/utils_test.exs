@@ -65,6 +65,56 @@ defmodule CodeMySpec.UtilsTest do
       assert files.review_file == "docs/spec/code_my_spec/documents/design_review.md"
     end
 
+    test "injects live/ directory for liveview types", %{project: project} do
+      component = %Component{
+        id: Ecto.UUID.generate(),
+        project_id: project.id,
+        name: "CardManagementLive",
+        module_name: "FuellyticsWeb.CardManagementLive",
+        type: "liveview"
+      }
+
+      files = Utils.component_files(component, project)
+
+      assert files.code_file == "lib/fuellytics_web/live/card_management_live.ex"
+      assert files.test_file == "test/fuellytics_web/live/card_management_live_test.exs"
+      # spec and design files use module path without live/ injection
+      assert files.spec_file == "docs/spec/fuellytics_web/card_management_live.spec.md"
+      assert files.design_file == "docs/design/fuellytics_web/card_management_live.md"
+    end
+
+    test "injects live/ directory for liveview_component types", %{project: project} do
+      component = %Component{
+        id: Ecto.UUID.generate(),
+        project_id: project.id,
+        name: "CardList",
+        module_name: "FuellyticsWeb.CardList",
+        type: "liveview_component"
+      }
+
+      files = Utils.component_files(component, project)
+
+      assert files.code_file == "lib/fuellytics_web/live/card_list.ex"
+      assert files.test_file == "test/fuellytics_web/live/card_list_test.exs"
+    end
+
+    test "does not double-inject live/ when module already has Live namespace", %{
+      project: project
+    } do
+      component = %Component{
+        id: Ecto.UUID.generate(),
+        project_id: project.id,
+        name: "DashboardLive",
+        module_name: "FuellyticsWeb.Live.DashboardLive",
+        type: "liveview"
+      }
+
+      files = Utils.component_files(component, project)
+
+      assert files.code_file == "lib/fuellytics_web/live/dashboard_live.ex"
+      refute files.code_file =~ "live/live"
+    end
+
     test "includes review_file for coordination_context types", %{project: project} do
       component = %Component{
         id: Ecto.UUID.generate(),

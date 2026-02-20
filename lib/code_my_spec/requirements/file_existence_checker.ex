@@ -5,6 +5,8 @@ defmodule CodeMySpec.Requirements.FileExistenceChecker do
 
   @behaviour CodeMySpec.Requirements.CheckerBehaviour
 
+  require Logger
+
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments
   alias CodeMySpec.Requirements.RequirementDefinition
@@ -27,6 +29,10 @@ defmodule CodeMySpec.Requirements.FileExistenceChecker do
     file_key = file_key(name)
     file_path = Map.get(files, file_key)
     environment = scope.environment
+
+    Logger.debug(
+      "[FileExistenceChecker] #{component.module_name} (#{component.type}) #{name} -> #{file_path}"
+    )
 
     {satisfied, details} =
       case Environments.file_exists?(environment, file_path) do
