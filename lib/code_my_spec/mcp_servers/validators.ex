@@ -12,11 +12,11 @@ defmodule CodeMySpec.McpServers.Validators do
     |> Map.get(:current_scope)
     |> case do
       nil -> nil
-      scope -> Map.get(scope, :active_account)
+      scope -> scope.active_account_id || (scope.active_account && scope.active_account.id)
     end
     |> case do
       nil -> {:error, :missing_active_account}
-      _account -> {:ok, frame}
+      _account_id -> {:ok, frame}
     end
   end
 
@@ -29,11 +29,11 @@ defmodule CodeMySpec.McpServers.Validators do
     |> Map.get(:current_scope)
     |> case do
       nil -> nil
-      scope -> Map.get(scope, :active_project)
+      scope -> scope.active_project_id || (scope.active_project && scope.active_project.id)
     end
     |> case do
       nil -> {:error, :missing_active_project}
-      _project -> {:ok, frame}
+      _project_id -> {:ok, frame}
     end
   end
 

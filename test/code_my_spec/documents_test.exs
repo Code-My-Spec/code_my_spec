@@ -306,6 +306,10 @@ defmodule CodeMySpec.DocumentsTest do
       ## Dependencies
 
       - MyApp.Accounts
+
+      ## Design
+
+      It looks awesome
       """
 
       assert {:ok, document} = Documents.create_dynamic_document(markdown, "liveview")

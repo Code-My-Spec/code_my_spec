@@ -101,7 +101,8 @@ defmodule CodeMySpec.MixProject do
       {:httpoison, "~> 2.0"},
       {:uuid, "~> 1.1.8"},
       {:inflex, "~> 2.1.0"},
-      {:sexy_spex, "~> 0.1.0"}
+      {:sexy_spex, "~> 0.1.0"},
+      {:oauth2, "~> 2.0"}
     ]
   end
 

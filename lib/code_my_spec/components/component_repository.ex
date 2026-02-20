@@ -1,11 +1,13 @@
 defmodule CodeMySpec.Components.ComponentRepository do
+  @moduledoc false
+
   import Ecto.Query, warn: false
 
   require Logger
 
+  alias CodeMySpec.Components.Component
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Components.Component
 
   @spec list_components(Scope.t()) :: [Component.t()]
   def list_components(%Scope{active_project_id: project_id}) do
@@ -258,7 +260,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
     # Get all component IDs that are reachable from entry points (components with stories)
     entry_components =
       Enum.filter(all_components, fn c ->
-        length(c.stories || []) > 0
+        (c.stories || []) != []
       end)
 
     dependency_ids =
@@ -270,7 +272,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
     all_components
     |> Enum.filter(fn c ->
       c.type == "context" and
-        length(c.stories || []) == 0 and
+        (c.stories || []) == [] and
         not MapSet.member?(dependency_ids, c.id)
     end)
   end
@@ -289,12 +291,11 @@ defmodule CodeMySpec.Components.ComponentRepository do
       # Recursively get dependencies of dependencies
       indirect_deps =
         (component.outgoing_dependencies || [])
-        |> Enum.flat_map(fn dep ->
-          case Enum.find(all_components, &(&1.id == dep.target_component.id)) do
-            nil -> []
-            dep_component -> get_all_dependency_ids(dep_component, all_components, visited)
-          end
+        |> Enum.map(fn dep ->
+          Enum.find(all_components, &(&1.id == dep.target_component.id))
         end)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.flat_map(&get_all_dependency_ids(&1, all_components, visited))
 
       direct_deps ++ indirect_deps
     end
@@ -323,14 +324,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
           {:ok, [Component.t()]} | {:error, term()}
   def create_components_with_dependencies(%Scope{} = scope, component_attrs_list, dependencies) do
     Repo.transaction(fn ->
-      # Create all components
-      created_components =
-        Enum.reduce_while(component_attrs_list, [], fn attrs, acc ->
-          case create_component(scope, attrs) do
-            {:ok, component} -> {:cont, [component | acc]}
-            {:error, changeset} -> {:halt, {:error, changeset}}
-          end
-        end)
+      created_components = create_components_in_order(scope, component_attrs_list)
 
       case created_components do
         {:error, changeset} ->
@@ -338,48 +332,67 @@ defmodule CodeMySpec.Components.ComponentRepository do
 
         components ->
           components = Enum.reverse(components)
-
-          # Create dependencies
-          case create_dependencies_for_components(scope, components, dependencies) do
-            :ok -> components
-            {:error, reason} -> Repo.rollback(reason)
-          end
+          maybe_create_dependencies(scope, components, dependencies)
       end
     end)
   end
 
-  defp create_dependencies_for_components(_scope, _components, []), do: :ok
+  defp create_components_in_order(scope, attrs_list) do
+    Enum.reduce_while(attrs_list, [], fn attrs, acc ->
+      case create_component(scope, attrs) do
+        {:ok, component} -> {:cont, [component | acc]}
+        {:error, changeset} -> {:halt, {:error, changeset}}
+      end
+    end)
+  end
+
+  defp maybe_create_dependencies(_scope, components, []), do: components
+
+  defp maybe_create_dependencies(scope, components, dependencies) do
+    case create_dependencies_for_components(scope, components, dependencies) do
+      :ok -> components
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
 
   defp create_dependencies_for_components(scope, components, dependencies) do
     alias CodeMySpec.Components.DependencyRepository
 
-    dependencies
-    |> Enum.reduce_while(:ok, fn dep_module_name, _acc ->
-      case get_component_by_module_name(scope, dep_module_name) do
-        nil ->
-          {:cont, :ok}
+    source_id = List.first(components).id
 
-        target_component ->
-          dependency_attrs = %{
-            source_component_id: List.first(components).id,
-            target_component_id: target_component.id
-          }
-
-          case DependencyRepository.create_dependency(scope, dependency_attrs) do
-            {:ok, _} -> {:cont, :ok}
-            {:error, changeset} -> {:halt, {:error, changeset}}
-          end
-      end
+    Enum.reduce_while(dependencies, :ok, fn dep_module_name, _acc ->
+      create_single_dependency(scope, source_id, dep_module_name, DependencyRepository)
     end)
+  end
+
+  defp create_single_dependency(scope, source_id, dep_module_name, dep_repo) do
+    case get_component_by_module_name(scope, dep_module_name) do
+      nil ->
+        {:cont, :ok}
+
+      target_component ->
+        attrs = %{source_component_id: source_id, target_component_id: target_component.id}
+
+        case dep_repo.create_dependency(scope, attrs) do
+          {:ok, _} -> {:cont, :ok}
+          {:error, changeset} -> {:halt, {:error, changeset}}
+        end
+    end
   end
 
   @spec components_with_unsatisfied_requirements(Scope.t()) :: [Component.t()]
   def components_with_unsatisfied_requirements(%Scope{active_project_id: project_id}) do
+    component_ids =
+      Component
+      |> where([c], c.project_id == ^project_id)
+      |> join(:inner, [c], r in assoc(c, :requirements))
+      |> where([c, r], r.satisfied == false)
+      |> select([c], c.id)
+      |> distinct(true)
+      |> Repo.all()
+
     Component
-    |> where([c], c.project_id == ^project_id)
-    |> join(:inner, [c], r in assoc(c, :requirements))
-    |> where([c, r], r.satisfied == false)
-    |> distinct([c], c.id)
+    |> where([c], c.id in ^component_ids)
     |> preload(:requirements)
     |> Repo.all()
   end
