@@ -10,6 +10,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   from any point and provides flexibility for the agent to adapt to different starting states.
   """
 
+  alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Environments.Environment
 
   @required_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
@@ -88,10 +89,14 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     spex_config_check = check_spex_config(working_dir, project_check.phoenix_project_exists)
     test_boundaries_check = check_test_boundaries(working_dir, app_name)
 
+    # Auth check
+    auth_check = check_auth_status()
+
     # Ignored components (optional)
     ignored_components_check = check_ignored_components(working_dir)
 
     %{
+      user_authenticated: auth_check.authenticated,
       elixir_installed: elixir_check.installed,
       elixir_version: elixir_check.version,
       phoenix_installer_available: phoenix_installer,
@@ -113,6 +118,21 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       cli_config_has_project_id: cli_config_check.has_project_id,
       ignored_components_configured: ignored_components_check.configured
     }
+  end
+
+  # Auth check
+
+  defp check_auth_status do
+    authenticated =
+      try do
+        OAuthClient.authenticated?()
+      rescue
+        _ -> false
+      catch
+        _, _ -> false
+      end
+
+    %{authenticated: authenticated}
   end
 
   # System prerequisite checks
@@ -400,6 +420,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp build_setup_prompt(status) do
     [build_status_summary(status)]
+    |> maybe_add_auth_instructions(status)
     |> maybe_add_elixir_instructions(status)
     |> maybe_add_phoenix_installer_instructions(status)
     |> maybe_add_project_creation_instructions(status)
@@ -414,6 +435,12 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_ignored_components_instructions(status)
     |> Enum.reverse()
     |> Enum.join("\n\n")
+  end
+
+  defp maybe_add_auth_instructions(sections, %{user_authenticated: true}), do: sections
+
+  defp maybe_add_auth_instructions(sections, %{user_authenticated: false}) do
+    [build_auth_instructions() | sections]
   end
 
   defp maybe_add_elixir_instructions(sections, %{elixir_installed: true}), do: sections
@@ -645,6 +672,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp build_status_summary(status) do
     checks = [
+      {"Authenticated", status.user_authenticated},
       {"Elixir 1.18+", status.elixir_installed},
       {"Phoenix installer", status.phoenix_installer_available},
       {"PostgreSQL", status.postgresql_available},
@@ -674,6 +702,29 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Progress: #{completed} of #{total} steps complete
 
     #{check_lines}
+    """
+  end
+
+  defp build_auth_instructions do
+    """
+    ## Authenticate with CodeMySpec
+
+    You need to log in to your CodeMySpec account before initializing the project.
+
+    1. **Start the auth flow**:
+    ```bash
+    curl -s -X POST http://localhost:4002/api/bootstrap/auth/start
+    ```
+
+    This returns a JSON response with an `auth_url`. Tell the user to open that URL
+    in their browser to log in.
+
+    2. **Wait for the user to complete login**, then verify:
+    ```bash
+    curl -s http://localhost:4002/api/bootstrap/auth/status
+    ```
+
+    Once `authenticated` is `true`, you can proceed to list projects and init.
     """
   end
 
@@ -988,29 +1039,32 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       end
 
     """
-    ## Configure CLI for CodeMySpec
+    ## Initialize CodeMySpec Project Config
 
     #{config_status}
 
-    Initialize the CodeMySpec CLI configuration:
+    Use the bootstrap API to initialize the project config. The local server
+    runs on port 4002 and handles auth and init without interactive CLI commands.
 
-    1. First, ensure you're logged in to CodeMySpec:
+    1. **Check auth status** (should already be authenticated from earlier step):
     ```bash
-    cms login
+    curl -s http://localhost:4002/api/bootstrap/auth/status
     ```
 
-    2. Run the init command to create the config file:
+    2. **List available projects**:
     ```bash
-    cms init
+    curl -s http://localhost:4002/api/bootstrap/projects
     ```
 
-    This will prompt you to select from your existing projects on the CodeMySpec server,
-    or you can specify a project ID directly:
+    3. **Initialize with a project ID** (ask the user which project to select):
     ```bash
-    cms init --project-id <YOUR_PROJECT_ID>
+    curl -s -X POST http://localhost:4002/api/bootstrap/init \
+      -H "Content-Type: application/json" \
+      -H "X-Working-Dir: $(pwd)" \
+      -d '{"project_id": "<PROJECT_ID>"}'
     ```
 
-    3. Add to `.gitignore` (the config contains project-specific IDs):
+    4. **Add `.code_my_spec/` to `.gitignore`** (the config contains project-specific IDs):
     ```bash
     echo ".code_my_spec/" >> .gitignore
     ```
@@ -1020,6 +1074,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   # Evaluation helpers
 
   @required_check_keys [
+    :user_authenticated,
     :elixir_installed,
     :phoenix_installer_available,
     :phoenix_project_exists,
@@ -1063,6 +1118,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp evaluation_checks(status) do
     [
+      {"Authenticated", status.user_authenticated,
+       "Run: curl -s -X POST http://localhost:4002/api/bootstrap/auth/start, then visit the auth_url, then verify with curl -s http://localhost:4002/api/bootstrap/auth/status"},
       {"Elixir 1.18+", status.elixir_installed, "Install Elixir 1.18+ using asdf or brew"},
       {"Phoenix installer", status.phoenix_installer_available,
        "Run: mix archive.install hex phx_new"},
@@ -1084,7 +1141,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Docs structure", status.docs_structure_complete,
        "Create directories: #{Enum.join(status.missing_docs_dirs, ", ")}"},
       {"CLI config", status.cli_config_has_project_id,
-       "Create .code_my_spec/config.yml with project_id from CodeMySpec server"}
+       "Run curl -s http://localhost:4002/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}
     ]
   end
 

@@ -8,7 +8,7 @@ defmodule CodeMySpec.LocalServer.Router do
   use Plug.Router
   require Logger
 
-  alias CodeMySpec.LocalServer.Controllers.{AgentTaskController, HookController}
+  alias CodeMySpec.LocalServer.Controllers.{AgentTaskController, BootstrapController, HookController}
   alias CodeMySpec.LocalServer.Plugs
 
   plug :match
@@ -21,6 +21,54 @@ defmodule CodeMySpec.LocalServer.Router do
     |> put_resp_content_type("application/json")
     |> send_resp(200, Jason.encode!(%{status: "ok"}))
   end
+
+  # --- Bootstrap routes (LocalOnly only, no LocalScope) ---
+
+  # Check auth status
+  get "/api/bootstrap/auth/status" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&BootstrapController.auth_status/1)
+  end
+
+  # Start OAuth PKCE flow
+  post "/api/bootstrap/auth/start" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&BootstrapController.auth_start/1)
+  end
+
+  # OAuth callback (browser redirects here)
+  get "/api/bootstrap/auth/callback" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&BootstrapController.auth_callback/1)
+  end
+
+  # List projects from server
+  get "/api/bootstrap/projects" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&BootstrapController.list_projects/1)
+  end
+
+  # Init project config
+  post "/api/bootstrap/init" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&BootstrapController.init_project/1)
+  end
+
+  # Project setup (no config.yml needed — this is what creates it)
+  post "/api/bootstrap/setup" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&BootstrapController.setup_project/1)
+  end
+
+  # --- Existing routes ---
 
   # Agent task API - require localhost, working dir, and scope
   post "/api/agent-tasks/start" do

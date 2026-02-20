@@ -20,6 +20,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
@@ -44,6 +45,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "design_ui" => AgentTasks.DesignUi,
     "liveview_spec" => AgentTasks.LiveViewSpec
   }
+
+  # Tasks that run without a project or config.yml
+  @bootstrap_tasks ["project_setup"]
 
   # Tasks that don't require a component/module_name
   @componentless_tasks [
@@ -81,10 +85,25 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     session_type = Map.get(args, :session_type)
     module_name = Map.get(args, :module_name)
 
-    if session_type in @componentless_tasks do
-      run_componentless_task(scope, external_id, session_type)
-    else
-      run_component_task(scope, external_id, session_type, module_name)
+    cond do
+      session_type in @bootstrap_tasks ->
+        run_bootstrap_task(scope, external_id, session_type)
+
+      session_type in @componentless_tasks ->
+        run_componentless_task(scope, external_id, session_type)
+
+      true ->
+        run_component_task(scope, external_id, session_type, module_name)
+    end
+  end
+
+  defp run_bootstrap_task(scope, external_id, session_type) do
+    with {:ok, _} <- validate_external_id(external_id),
+         {:ok, agent_task_module} <- resolve_session_type(session_type, nil) do
+      # Bootstrap tasks get a minimal scope — just environment/cwd, no project needed
+      bootstrap_scope = ensure_environment(scope)
+      {:ok, prompt} = agent_task_module.command(bootstrap_scope, %{})
+      {:ok, prompt, %{}}
     end
   end
 
@@ -126,6 +145,18 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp validate_external_id(external_id) when is_binary(external_id), do: {:ok, external_id}
+
+  # Ensures scope has an environment, building a minimal one from cwd if needed
+  defp ensure_environment(%{environment: nil, cwd: cwd} = scope) when is_binary(cwd) do
+    %{scope | environment: Environment.new(:local, cwd)}
+  end
+
+  defp ensure_environment(%{environment: nil} = scope) do
+    cwd = File.cwd!()
+    %{scope | environment: Environment.new(:local, cwd)}
+  end
+
+  defp ensure_environment(scope), do: scope
 
   defp validate_environment(%{environment: nil}) do
     {:error, "No environment configured (no working directory)"}

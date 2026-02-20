@@ -4,17 +4,15 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
 
   The working directory tells the MCP server which project Claude Code is
   connected from. This plug traverses up from the given directory to find
-  the project root (containing `.code_my_spec/config.yml`), enabling
-  commands to work from any subdirectory within a project.
+  the project root (containing `mix.exs`), enabling commands to work from
+  any subdirectory within a project. Falls back to the provided directory
+  if no `mix.exs` is found (e.g., pre-init bootstrap).
   """
 
   import Plug.Conn
   require Logger
 
   @behaviour Plug
-
-  @config_dir ".code_my_spec"
-  @config_file "config.yml"
 
   @impl true
   def init(opts), do: opts
@@ -62,23 +60,25 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
         {:error, "Path is not a directory"}
 
       true ->
-        find_project_root(expanded)
+        find_project_root(expanded, expanded)
     end
   end
 
-  # Traverses up the directory tree to find the project root
-  defp find_project_root(dir) do
-    config_path = Path.join([dir, @config_dir, @config_file])
+  # Traverses up the directory tree looking for mix.exs.
+  # Falls back to the original directory if not found (pre-init bootstrap).
+  defp find_project_root(dir, original_dir) do
+    mix_exs_path = Path.join(dir, "mix.exs")
 
     cond do
-      File.exists?(config_path) ->
+      File.exists?(mix_exs_path) ->
         {:ok, dir}
 
       dir == "/" or dir == Path.dirname(dir) ->
-        {:error, "No .code_my_spec/config.yml found in directory tree"}
+        # No mix.exs found — fall back to the provided directory
+        {:ok, original_dir}
 
       true ->
-        find_project_root(Path.dirname(dir))
+        find_project_root(Path.dirname(dir), original_dir)
     end
   end
 end
