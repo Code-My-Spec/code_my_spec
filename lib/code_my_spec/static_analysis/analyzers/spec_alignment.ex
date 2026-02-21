@@ -109,10 +109,6 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
           }
         ]
     end
-  rescue
-    exception ->
-      Logger.warning("Failed to analyze spec file #{spec_file_path}: #{inspect(exception)}")
-      []
   end
 
   defp extract_module_name_from_content(content) do

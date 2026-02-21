@@ -33,10 +33,8 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   def evaluate(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
-    requirements = component.requirements || []
 
-    test_reqs =
-      Requirements.check_requirements(scope, component, requirements, artifact_types: [:tests])
+    test_reqs = Requirements.check_artifact_requirements(scope, component, :tests)
 
     unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
 
@@ -71,6 +69,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
       Utils.component_files(component, project)
 
     implementation_exists = implementation_exists?(scope, component)
+    core_components_path = core_components_path(project)
 
     tdd_section =
       if implementation_exists do
@@ -116,6 +115,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
 
       Parent Context Design File: #{parent_spec_file_path}
       Component Design File: #{spec_file_path}
+      Core Components: #{core_components_path}
 
       Similar Components (for test pattern inspiration):
       #{similar_text}
@@ -127,6 +127,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
 
       Focus on:
       - Reading the design files to understand the component architecture and parent context
+      - Reading #{core_components_path} to understand what function components the LiveView uses
       - Mounting the LiveView via live/2 and testing mount assigns
       - Testing handle_event callbacks with render_click, render_submit, etc.
       - Validating rendered HTML structure with has_element? and render assertions
@@ -136,6 +137,11 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
       """
 
     {:ok, prompt}
+  end
+
+  defp core_components_path(project) do
+    web_module = Macro.underscore(project.module_name <> "Web")
+    "lib/#{web_module}/components/core_components.ex"
   end
 
   defp format_similar_components(_project, []), do: "No similar components provided"

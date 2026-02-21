@@ -43,8 +43,8 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentChecker do
              }}
           end
 
-        {:error, _} ->
-          {true, %{status: "Could not check alignment (no spec dir or cwd)"}}
+        {:error, reason} ->
+          {false, %{reason: "Could not check alignment: #{reason}"}}
       end
 
     %{

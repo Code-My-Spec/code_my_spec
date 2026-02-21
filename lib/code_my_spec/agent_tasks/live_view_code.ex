@@ -59,10 +59,8 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
   def evaluate(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
-    requirements = component.requirements || []
 
-    code_reqs =
-      Requirements.check_requirements(scope, component, requirements, artifact_types: [:code])
+    code_reqs = Requirements.check_artifact_requirements(scope, component, :code)
 
     unsatisfied = Enum.filter(code_reqs, &(not &1.satisfied))
 
@@ -149,6 +147,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
 
     similar_components_text = format_similar_components(project, similar_components)
     bdd_spec_text = format_bdd_spec_instructions(bdd_spec_files)
+    core_components_path = core_components_path(project)
 
     prompt =
       """
@@ -162,16 +161,18 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
 
       Spec File: #{spec_file_path}
       Test File: #{test_file_path}
+      Core Components: #{core_components_path}
 
       Implementation Instructions:
       1. Read the spec file to understand the component architecture
       2. Read the test file to understand the expected behavior and any test fixtures
-      3. Read the resources directory index (resources/README.md) for LiveView-specific guidance
-      4. Consult topic-specific resources as needed during implementation
-      5. Create all necessary module files following the component spec
-      6. Implement all public API functions specified in the spec
-      7. Ensure the implementation satisfies the tests
-      8. Follow project patterns for similar components
+      3. Read #{core_components_path} to understand available function components (e.g., <.button>, <.input>, <.table>)
+      4. Read the resources directory index (resources/README.md) for LiveView-specific guidance
+      5. Consult topic-specific resources as needed during implementation
+      6. Create all necessary module files following the component spec
+      7. Implement all public API functions specified in the spec
+      8. Ensure the implementation satisfies the tests
+      9. Follow project patterns for similar components
       #{bdd_spec_text}
 
       Similar Components (for implementation pattern inspiration):
@@ -184,6 +185,11 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
       """
 
     {:ok, prompt}
+  end
+
+  defp core_components_path(project) do
+    web_module = Macro.underscore(project.module_name <> "Web")
+    "lib/#{web_module}/components/core_components.ex"
   end
 
   defp format_bdd_spec_instructions([]), do: ""

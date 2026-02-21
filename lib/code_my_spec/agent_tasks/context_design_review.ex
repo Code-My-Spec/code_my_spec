@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
 
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.{ComponentRepository, Registry}
+  alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
@@ -68,7 +68,7 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     %{component: component} = session
     component = ComponentRepository.get_component(scope, component.id)
 
-    review_reqs = check_artifact_requirements(scope, component, :review)
+    review_reqs = Requirements.check_artifact_requirements(scope, component, :review)
     satisfied_count = Enum.count(review_reqs, & &1.satisfied)
     total = length(review_reqs)
     unsatisfied = Enum.filter(review_reqs, &(not &1.satisfied))
@@ -90,22 +90,6 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   end
 
   # Private functions - Data extraction
-
-  defp check_artifact_requirements(scope, component, artifact_type) do
-    requirements = component.requirements || []
-
-    case Requirements.check_requirements(scope, component, requirements,
-           artifact_types: [artifact_type]
-         ) do
-      [] ->
-        Registry.get_requirements_for_type(component.type)
-        |> Enum.filter(&(&1.artifact_type == artifact_type))
-        |> then(&Requirements.check_requirements(scope, component, &1, []))
-
-      results ->
-        results
-    end
-  end
 
   defp get_context_spec_path(context_component, project) do
     %{spec_file: spec_file_path} = Utils.component_files(context_component, project)

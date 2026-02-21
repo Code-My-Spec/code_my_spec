@@ -48,10 +48,8 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   def evaluate(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
-    requirements = component.requirements || []
 
-    code_reqs =
-      Requirements.check_requirements(scope, component, requirements, artifact_types: [:code])
+    code_reqs = Requirements.check_artifact_requirements(scope, component, :code)
 
     unsatisfied = Enum.filter(code_reqs, &(not &1.satisfied))
 

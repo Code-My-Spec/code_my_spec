@@ -113,11 +113,17 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
       post_cache = Enum.find(result, &(&1.name == "PostCache"))
       assert post_cache.requirements |> Enum.any?(&(&1.satisfied == false))
 
-      post = Enum.find(result, &(&1.name == "Post"))
-      assert post.requirements |> Enum.all?(&(&1.satisfied == true))
+      # test_spec_alignment correctly returns unsatisfied when spec analysis errors,
+      # rather than silently passing. All other requirements should be satisfied.
+      for component_name <- ["Post", "PostRepository"] do
+        component = Enum.find(result, &(&1.name == component_name))
 
-      post_repository = Enum.find(result, &(&1.name == "PostRepository"))
-      assert post_repository.requirements |> Enum.all?(&(&1.satisfied == true))
+        {_alignment_reqs, other_reqs} =
+          Enum.split_with(component.requirements, &(&1.name == "test_spec_alignment"))
+
+        assert other_reqs |> Enum.all?(&(&1.satisfied == true)),
+               "Expected all non-alignment requirements satisfied for #{component_name}"
+      end
 
       blog_context = Enum.find(result, &(&1.name == "Blog"))
       assert blog_context.requirements |> Enum.any?(&(&1.satisfied == false))

@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.{ComponentRepository, Registry}
+  alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
@@ -64,7 +64,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
 
-    spec_reqs = check_artifact_requirements(scope, component, :specification)
+    spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
     satisfied_count = Enum.count(spec_reqs, & &1.satisfied)
     total = length(spec_reqs)
     unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
@@ -99,22 +99,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   end
 
   # Private functions
-
-  defp check_artifact_requirements(scope, component, artifact_type) do
-    requirements = component.requirements || []
-
-    case Requirements.check_requirements(scope, component, requirements,
-           artifact_types: [artifact_type]
-         ) do
-      [] ->
-        Registry.get_requirements_for_type(component.type)
-        |> Enum.filter(&(&1.artifact_type == artifact_type))
-        |> then(&Requirements.check_requirements(scope, component, &1, []))
-
-      results ->
-        results
-    end
-  end
 
   defp get_design_rules(_scope) do
     rules = Rules.find_matching_rules("context", "design")

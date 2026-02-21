@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Components.{ComponentRepository, Registry}
+  alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Requirements
@@ -42,7 +42,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
     %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
 
-    spec_reqs = check_artifact_requirements(scope, component, :specification)
+    spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
     satisfied_count = Enum.count(spec_reqs, & &1.satisfied)
     total = length(spec_reqs)
     unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
@@ -62,23 +62,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
 
     problem_feedback = ProblemFeedback.for_spec_task(scope, component, project)
     ProblemFeedback.combine(req_feedback, problem_feedback)
-  end
-
-  defp check_artifact_requirements(scope, component, artifact_type) do
-    requirements = component.requirements || []
-
-    case Requirements.check_requirements(scope, component, requirements,
-           artifact_types: [artifact_type]
-         ) do
-      [] ->
-        # No persisted requirements — fall back to Registry definitions
-        Registry.get_requirements_for_type(component.type)
-        |> Enum.filter(&(&1.artifact_type == artifact_type))
-        |> then(&Requirements.check_requirements(scope, component, &1, []))
-
-      results ->
-        results
-    end
   end
 
   # Private functions

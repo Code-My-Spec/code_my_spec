@@ -54,11 +54,9 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   def evaluate(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
     component = ComponentRepository.get_component(scope, component.id)
-    requirements = component.requirements || []
 
     # Check test-artifact requirements (test_file, test_spec_alignment)
-    test_reqs =
-      Requirements.check_requirements(scope, component, requirements, artifact_types: [:tests])
+    test_reqs = Requirements.check_artifact_requirements(scope, component, :tests)
 
     unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
 

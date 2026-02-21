@@ -7,8 +7,44 @@ defmodule CodeMySpec.Requirements do
   - From persisted requirements: Filters based on already-computed satisfaction
   """
 
-  alias CodeMySpec.Requirements.{RequirementsRepository, RequirementDefinition, Requirement}
+  require Logger
+
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Components.Registry
+  alias CodeMySpec.Requirements.{Requirement, RequirementDefinition, RequirementsRepository}
+
+  @doc """
+  Check artifact requirements with Registry fallback.
+
+  First checks persisted requirements filtered by artifact_type.
+  If none exist (not yet synced), falls back to running Registry-defined
+  checkers live.
+  """
+  def check_artifact_requirements(scope, component, artifact_type) do
+    requirements = component.requirements || []
+
+    case check_requirements(scope, component, requirements,
+           artifact_types: [artifact_type]
+         ) do
+      [] ->
+        fallback =
+          Registry.get_requirements_for_type(component.type)
+          |> Enum.filter(&(&1.artifact_type == artifact_type))
+          |> then(&check_requirements(scope, component, &1, []))
+
+        if fallback == [] do
+          Logger.warning(
+            "[Requirements] No requirements found for #{component.module_name} " <>
+              "(artifact_type: #{artifact_type})"
+          )
+        end
+
+        fallback
+
+      results ->
+        results
+    end
+  end
 
   defdelegate clear_all_project_requirements(scope), to: RequirementsRepository
   defdelegate clear_requirements(scope, component, opts \\ []), to: RequirementsRepository
@@ -72,13 +108,13 @@ defmodule CodeMySpec.Requirements do
 
     requirements
     |> Enum.filter(fn %Requirement{name: name, artifact_type: artifact_type} ->
-      exclude = length(exclude_types) > 0 and name in exclude_types
+      exclude = exclude_types != [] and name in exclude_types
 
       include =
-        (length(include_types) > 0 and name in include_types) or length(include_types) == 0
+        (include_types != [] and name in include_types) or include_types == []
 
       artifact_match =
-        length(artifact_types) == 0 or artifact_type in artifact_types
+        artifact_types == [] or artifact_type in artifact_types
 
       include && !exclude && artifact_match
     end)

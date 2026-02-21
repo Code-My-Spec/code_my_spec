@@ -213,18 +213,18 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
       assert Enum.any?(result.details.problems, &(&1 =~ "Extra test"))
     end
 
-    test "returns satisfied when no cwd available" do
+    test "returns unsatisfied when no cwd available" do
       scope = full_scope_fixture()
       # scope.cwd is nil by default from full_scope_fixture
       component = %Component{module_name: "TestApp.NoCwd", type: "module"}
 
       result = SpecTestAlignmentChecker.check(scope, @requirement_definition, component)
 
-      assert result.satisfied == true
-      assert result.details.status =~ "Could not check alignment"
+      assert result.satisfied == false
+      assert result.details.reason =~ "Could not check alignment"
     end
 
-    test "returns satisfied when spec dir does not exist", %{scope: scope, tmp_dir: tmp_dir} do
+    test "returns unsatisfied when spec dir does not exist", %{scope: scope, tmp_dir: tmp_dir} do
       # tmp_dir exists but has no docs/spec directory
       module_name = "TestApp.NoSpecDir"
       component = %Component{module_name: module_name, type: "module"}
@@ -234,8 +234,8 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
 
       result = SpecTestAlignmentChecker.check(scope, @requirement_definition, component)
 
-      assert result.satisfied == true
-      assert result.details.status =~ "Could not check alignment"
+      assert result.satisfied == false
+      assert result.details.reason =~ "Could not check alignment"
     end
 
     test "includes all required result fields", %{scope: scope} do
