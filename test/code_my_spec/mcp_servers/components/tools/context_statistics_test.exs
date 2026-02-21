@@ -137,7 +137,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatisticsTest do
     end
 
     test "defaults to story_count sorting" do
-      frame = %Frame{assigns: %{current_scope: %{active_account_id: UUID.uuid4()}}}
+      scope = %{active_account_id: UUID.uuid4(), active_project_id: nil, active_project: nil}
+      frame = %Frame{assigns: %{current_scope: scope}}
 
       # Test that it uses default when no sort_by provided
       assert {:reply, _response, ^frame} = ContextStatistics.execute(%{}, frame)
