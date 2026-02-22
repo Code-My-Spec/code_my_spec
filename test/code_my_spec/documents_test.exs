@@ -325,7 +325,7 @@ defmodule CodeMySpec.DocumentsTest do
       User module description.
       """
 
-      path = "/some/project/docs/spec/code_my_spec/accounts/user.spec.md"
+      path = "/some/project/.code_my_spec/spec/code_my_spec/accounts/user.spec.md"
 
       assert :ok = Documents.validate_h1_matches_path(content, path)
     end
@@ -337,7 +337,7 @@ defmodule CodeMySpec.DocumentsTest do
       Short module name.
       """
 
-      path = "/some/project/docs/spec/code_my_spec/accounts/user.spec.md"
+      path = "/some/project/.code_my_spec/spec/code_my_spec/accounts/user.spec.md"
 
       assert {:error, message} = Documents.validate_h1_matches_path(content, path)
       assert message =~ "does not match expected"
@@ -349,7 +349,7 @@ defmodule CodeMySpec.DocumentsTest do
       Just some content without an H1.
       """
 
-      path = "/some/project/docs/spec/code_my_spec/accounts/user.spec.md"
+      path = "/some/project/.code_my_spec/spec/code_my_spec/accounts/user.spec.md"
 
       assert {:error, message} = Documents.validate_h1_matches_path(content, path)
       assert message =~ "Missing H1 title"
@@ -363,7 +363,7 @@ defmodule CodeMySpec.DocumentsTest do
       """
 
       path =
-        "/project/docs/spec/code_my_spec/mcp_servers/architecture/tools/get_component_view.spec.md"
+        "/project/.code_my_spec/spec/code_my_spec/mcp_servers/architecture/tools/get_component_view.spec.md"
 
       assert :ok = Documents.validate_h1_matches_path(content, path)
     end
@@ -372,12 +372,12 @@ defmodule CodeMySpec.DocumentsTest do
   describe "validate_internal_dependencies/2" do
     setup do
       tmp_dir = System.tmp_dir!() |> Path.join("docs_validation_test_#{:rand.uniform(10000)}")
-      File.mkdir_p!(Path.join(tmp_dir, "docs/spec/code_my_spec/accounts"))
+      File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/code_my_spec/accounts"))
       File.mkdir_p!(Path.join(tmp_dir, "lib/code_my_spec/accounts"))
 
       # Create a spec file
       File.write!(
-        Path.join(tmp_dir, "docs/spec/code_my_spec/accounts/user.spec.md"),
+        Path.join(tmp_dir, ".code_my_spec/spec/code_my_spec/accounts/user.spec.md"),
         "# CodeMySpec.Accounts.User\n"
       )
 

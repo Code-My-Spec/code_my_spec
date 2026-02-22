@@ -6,8 +6,8 @@ defmodule CodeMySpec.ProjectSync.ChangeHandler do
   which file changed, then delegates to `ProjectSync.Sync` for the actual synchronization.
   """
 
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.ProjectSync.Sync
+  alias CodeMySpec.Users.Scope
 
   @doc """
   Routes a file system change event to the appropriate sync operation.
@@ -23,7 +23,7 @@ defmodule CodeMySpec.ProjectSync.ChangeHandler do
 
   ## Examples
 
-      iex> handle_file_change(scope, "docs/spec/foo.spec.md", [:modified])
+      iex> handle_file_change(scope, ".code_my_spec/spec/foo.spec.md", [:modified])
       :ok
 
       iex> handle_file_change(scope, "lib/foo.ex", [:created])
@@ -73,7 +73,7 @@ defmodule CodeMySpec.ProjectSync.ChangeHandler do
 
   ## Examples
 
-      iex> determine_file_type("docs/spec/foo.spec.md")
+      iex> determine_file_type(".code_my_spec/spec/foo.spec.md")
       :spec
 
       iex> determine_file_type("lib/foo.ex")
@@ -88,19 +88,17 @@ defmodule CodeMySpec.ProjectSync.ChangeHandler do
   @spec determine_file_type(String.t()) :: :spec | :implementation | :other
   def determine_file_type(path) when is_binary(path) do
     cond do
-      is_spec_file?(path) -> :spec
-      is_implementation_file?(path) -> :implementation
+      spec_file?(path) -> :spec
+      implementation_file?(path) -> :implementation
       true -> :other
     end
   end
 
-  # Check if path is a spec file in docs/spec directory
-  defp is_spec_file?(path) do
-    String.ends_with?(path, ".spec.md") and String.contains?(path, "docs/spec/")
+  defp spec_file?(path) do
+    String.ends_with?(path, ".spec.md") and String.contains?(path, CodeMySpec.Paths.spec_prefix())
   end
 
-  # Check if path is an implementation file in lib directory
-  defp is_implementation_file?(path) do
+  defp implementation_file?(path) do
     String.ends_with?(path, ".ex") and String.contains?(path, "/lib/")
   end
 end

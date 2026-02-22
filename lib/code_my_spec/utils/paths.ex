@@ -4,6 +4,8 @@ defmodule CodeMySpec.Utils.Paths do
   particularly for determining context paths.
   """
 
+  alias CodeMySpec.Paths
+
   @doc """
   Takes any file path (spec file, implementation file, test file, or directory)
   and returns the canonical context path.
@@ -14,12 +16,12 @@ defmodule CodeMySpec.Utils.Paths do
   ## Examples
 
       # Spec file -> context directory
-      iex> resolve_context_path("docs/spec/code_my_spec/accounts.spec.md")
-      {:ok, "docs/spec/code_my_spec/accounts"}
+      iex> resolve_context_path(".code_my_spec/spec/code_my_spec/accounts.spec.md")
+      {:ok, ".code_my_spec/spec/code_my_spec/accounts"}
 
       # Spec file in subdirectory -> context directory
-      iex> resolve_context_path("docs/spec/code_my_spec/accounts/accounts.spec.md")
-      {:ok, "docs/spec/code_my_spec/accounts"}
+      iex> resolve_context_path(".code_my_spec/spec/code_my_spec/accounts/accounts.spec.md")
+      {:ok, ".code_my_spec/spec/code_my_spec/accounts"}
 
       # Implementation context file -> context directory
       iex> resolve_context_path("lib/code_my_spec/accounts.ex")
@@ -30,8 +32,8 @@ defmodule CodeMySpec.Utils.Paths do
       {:ok, "lib/code_my_spec/accounts"}
 
       # Direct context directory path
-      iex> resolve_context_path("docs/spec/code_my_spec/accounts")
-      {:ok, "docs/spec/code_my_spec/accounts"}
+      iex> resolve_context_path(".code_my_spec/spec/code_my_spec/accounts")
+      {:ok, ".code_my_spec/spec/code_my_spec/accounts"}
 
       # Non-context file
       iex> resolve_context_path("lib/code_my_spec/utils/paths.ex")
@@ -166,7 +168,7 @@ defmodule CodeMySpec.Utils.Paths do
     is_valid_context =
       cond do
         # Check for spec file in the directory
-        String.starts_with?(normalized_path, "docs/spec/") ->
+        String.starts_with?(normalized_path, Paths.spec_prefix()) ->
           spec_file = Path.join(normalized_path, "#{base_name}.spec.md")
           File.exists?(spec_file)
 
@@ -225,19 +227,19 @@ defmodule CodeMySpec.Utils.Paths do
 
       # From implementation file
       iex> spec_path("lib/code_my_spec/accounts.ex")
-      {:ok, "docs/spec/code_my_spec/accounts.spec.md"}
+      {:ok, ".code_my_spec/spec/code_my_spec/accounts.spec.md"}
 
       # From component file
       iex> spec_path("lib/code_my_spec/accounts/user.ex")
-      {:ok, "docs/spec/code_my_spec/accounts.spec.md"}
+      {:ok, ".code_my_spec/spec/code_my_spec/accounts.spec.md"}
 
       # From test file
       iex> spec_path("test/code_my_spec/accounts_test.exs")
-      {:ok, "docs/spec/code_my_spec/accounts.spec.md"}
+      {:ok, ".code_my_spec/spec/code_my_spec/accounts.spec.md"}
 
       # From spec file (returns same)
-      iex> spec_path("docs/spec/code_my_spec/accounts.spec.md")
-      {:ok, "docs/spec/code_my_spec/accounts.spec.md"}
+      iex> spec_path(".code_my_spec/spec/code_my_spec/accounts.spec.md")
+      {:ok, ".code_my_spec/spec/code_my_spec/accounts.spec.md"}
   """
   @spec spec_path(String.t()) :: {:ok, String.t()} | {:error, :not_a_context_path}
   def spec_path(path) when is_binary(path) do
@@ -247,11 +249,11 @@ defmodule CodeMySpec.Utils.Paths do
       context_name = Path.basename(context_path)
 
       # Build the spec directory path
-      # e.g., "lib/code_my_spec/accounts" -> "docs/spec/code_my_spec"
+      # e.g., "lib/code_my_spec/accounts" -> ".code_my_spec/spec/code_my_spec"
       spec_base_dir =
         context_path
-        |> String.replace_prefix("lib/", "docs/spec/")
-        |> String.replace_prefix("test/", "docs/spec/")
+        |> String.replace_prefix("lib/", Paths.spec_prefix())
+        |> String.replace_prefix("test/", Paths.spec_prefix())
         |> Path.dirname()
 
       spec_file_path = Path.join(spec_base_dir, "#{context_name}.spec.md")
@@ -266,7 +268,7 @@ defmodule CodeMySpec.Utils.Paths do
   ## Examples
 
       # From spec file
-      iex> implementation_path("docs/spec/code_my_spec/accounts.spec.md")
+      iex> implementation_path(".code_my_spec/spec/code_my_spec/accounts.spec.md")
       {:ok, "lib/code_my_spec/accounts"}
 
       # From implementation file
@@ -285,8 +287,8 @@ defmodule CodeMySpec.Utils.Paths do
         {:ok, context_path}
       else
         # Convert from spec path to lib path
-        # e.g., "docs/spec/code_my_spec/accounts" -> "lib/code_my_spec/accounts"
-        lib_path = String.replace_prefix(context_path, "docs/spec/", "lib/")
+        # e.g., ".code_my_spec/spec/code_my_spec/accounts" -> "lib/code_my_spec/accounts"
+        lib_path = String.replace_prefix(context_path, Paths.spec_prefix(), "lib/")
         {:ok, lib_path}
       end
     end
@@ -299,7 +301,7 @@ defmodule CodeMySpec.Utils.Paths do
   ## Examples
 
       # From spec file
-      iex> test_path("docs/spec/code_my_spec/accounts.spec.md")
+      iex> test_path(".code_my_spec/spec/code_my_spec/accounts.spec.md")
       {:ok, "test/code_my_spec"}
 
       # From implementation file
@@ -313,7 +315,7 @@ defmodule CodeMySpec.Utils.Paths do
       test_base_path =
         context_path
         |> String.replace_prefix("lib/", "test/")
-        |> String.replace_prefix("docs/spec/", "test/")
+        |> String.replace_prefix(Paths.spec_prefix(), "test/")
 
       {:ok, test_base_path}
     end

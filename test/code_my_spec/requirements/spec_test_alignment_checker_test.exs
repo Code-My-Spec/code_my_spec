@@ -28,7 +28,7 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
     relative_path =
       module_name |> String.split(".") |> Enum.map(&Macro.underscore/1) |> Path.join()
 
-    spec_path = Path.join([tmp_dir, "docs", "spec", "#{relative_path}.spec.md"])
+    spec_path = Path.join([tmp_dir, ".code_my_spec", "spec", "#{relative_path}.spec.md"])
     File.mkdir_p!(Path.dirname(spec_path))
     File.write!(spec_path, content)
     spec_path
@@ -230,7 +230,7 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
       component = %Component{module_name: module_name, type: "module"}
 
       # Verify no spec dir
-      refute File.dir?(Path.join(tmp_dir, "docs/spec"))
+      refute File.dir?(Path.join(tmp_dir, ".code_my_spec/spec"))
 
       result = SpecTestAlignmentChecker.check(scope, @requirement_definition, component)
 

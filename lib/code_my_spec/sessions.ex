@@ -2,7 +2,7 @@ defmodule CodeMySpec.Sessions do
   @moduledoc """
   Manages agent task sessions backed by the filesystem.
 
-  Each session is a directory under `.code_my_spec/internal/sessions/{id}/`
+  Each session is a directory under `.code_my_spec/sessions/{id}/`
   containing `session.json` and working files. All CRUD operations extract
   `scope.environment` and delegate to SessionsRepository.
   """

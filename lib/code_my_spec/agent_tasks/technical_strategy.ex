@@ -7,26 +7,21 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   approach), then delegates per-topic validation to ResearchTopic.
 
   Handles three phases:
-  1. **Pre-made decisions** — writes ADRs for standard stack choices
+  1. **Pre-made decisions** — auto-writes ADRs for standard stack choices before prompting
   2. **Research** — identifies and researches new technology topics
   3. **Knowledge & Bootstrap** — builds knowledge base and configures libraries
 
   Artifacts produced:
-  - `docs/architecture/decisions.md` — index of all decisions
-  - `docs/architecture/decisions/{topic}.md` — individual decision records
-  - `docs/knowledge/{topic}/` — research findings (required for non-pre-made topics)
-  - `docs/status/research/{topic}.md` — transient research prompts (cleaned up)
+  - `.code_my_spec/architecture/decisions.md` — index of all decisions
+  - `.code_my_spec/architecture/decisions/{topic}.md` — individual decision records
+  - `.code_my_spec/knowledge/{topic}/` — research findings (required for non-pre-made topics)
+  - `.code_my_spec/status/research/{topic}.md` — transient research prompts (cleaned up)
   """
 
   require Logger
 
   alias CodeMySpec.AgentTasks.ResearchTopic
-  alias CodeMySpec.{Components, Environments, Stories}
-
-  @decisions_dir "docs/architecture/decisions"
-  @decisions_index "docs/architecture/decisions.md"
-  @knowledge_dir "docs/knowledge"
-  @research_dir "docs/status/research"
+  alias CodeMySpec.{Components, Environments, Paths, Stories}
 
   # Pre-made technology decisions that are part of the standard CodeMySpec stack.
   # These get written as accepted ADRs before any research begins.
@@ -119,10 +114,10 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   @doc """
   Generate the orchestration prompt for the technical strategy session.
 
-  Reads architecture overview, project deps, existing decisions, and story
-  titles, then builds a prompt instructing the agent to write pre-made
-  decisions, identify new topics, research them, build knowledge, and
-  bootstrap the project.
+  Writes any missing pre-made decision ADRs directly to the environment,
+  then reads architecture overview, project deps, existing decisions, and
+  story titles to build a prompt for the remaining work (research, knowledge,
+  bootstrap).
 
   Returns {:ok, prompt_text}
   """
@@ -130,11 +125,12 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     env = scope.environment
     project = scope.active_project
 
+    ensure_premade_decisions(env)
+
     component_count = Components.count_components(scope)
     mix_exs = read_mix_exs(env)
     existing_decisions = list_existing_decisions(env)
     story_titles = list_story_titles(scope)
-    missing_premade = missing_premade_decisions(existing_decisions)
 
     prompt =
       build_prompt(
@@ -142,8 +138,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         component_count,
         mix_exs,
         existing_decisions,
-        story_titles,
-        missing_premade
+        story_titles
       )
 
     {:ok, prompt}
@@ -187,6 +182,42 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     end
   end
 
+  @doc """
+  Write all missing pre-made decision ADR files to the environment.
+
+  Returns the count of decisions written.
+  """
+  def ensure_premade_decisions(env) do
+    existing = list_existing_decisions(env)
+    missing = missing_premade_decisions(existing)
+
+    Enum.each(missing, &write_premade_decision(env, &1))
+
+    length(missing)
+  end
+
+  defp write_premade_decision(env, decision) do
+    content =
+      """
+      # #{decision.title}
+
+      ## Status
+      Accepted (pre-made)
+
+      ## Context
+      #{decision.context}
+
+      ## Decision
+      #{decision.decision}
+
+      ## Consequences
+      This is a pre-made decision for the standard CodeMySpec stack.
+      """
+      |> String.trim_leading()
+
+    Environments.write_file(env, "#{Paths.decisions_dir()}/#{decision.topic}.md", content)
+  end
+
   # ============================================================================
   # Data Loading
   # ============================================================================
@@ -199,7 +230,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   end
 
   defp list_existing_decisions(env) do
-    case Environments.glob(env, "#{@decisions_dir}/*.md") do
+    case Environments.glob(env, "#{Paths.decisions_dir()}/*.md") do
       files when is_list(files) ->
         files
         |> Enum.map(&Path.basename(&1, ".md"))
@@ -218,7 +249,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   end
 
   defp list_research_topics(env) do
-    case Environments.glob(env, "#{@research_dir}/*.md") do
+    case Environments.glob(env, "#{Paths.research_dir()}/*.md") do
       files when is_list(files) ->
         Enum.map(files, &Path.basename(&1, ".md"))
 
@@ -228,7 +259,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   end
 
   defp decisions_index_exists?(env) do
-    Environments.file_exists?(env, @decisions_index) == true
+    Environments.file_exists?(env, Paths.decisions_index()) == true
   end
 
   defp premade_topics do
@@ -245,7 +276,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     existing_decisions
     |> Enum.reject(&(&1 in premade))
     |> Enum.filter(fn topic ->
-      case Environments.glob(env, "#{@knowledge_dir}/#{topic}/**") do
+      case Environments.glob(env, "#{Paths.knowledge_dir()}/#{topic}/**") do
         files when is_list(files) and files != [] -> false
         _ -> true
       end
@@ -256,21 +287,13 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   # Prompt Building
   # ============================================================================
 
-  defp build_prompt(
-         project,
-         component_count,
-         mix_exs,
-         existing_decisions,
-         story_titles,
-         missing_premade
-       ) do
+  defp build_prompt(project, component_count, mix_exs, existing_decisions, story_titles) do
     sections =
       [
         build_header(project),
         build_architecture_section(component_count),
         build_deps_section(mix_exs),
         build_existing_decisions_section(existing_decisions),
-        build_premade_decisions_section(missing_premade),
         build_stories_section(story_titles),
         build_instructions()
       ]
@@ -298,9 +321,9 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
     The project has #{component_count} components defined. Review the architecture views for details:
 
-    - **Overview:** `docs/architecture/overview.md`
-    - **Dependency Graph:** `docs/architecture/dependency_graph.mmd`
-    - **Namespace Hierarchy:** `docs/architecture/namespace_hierarchy.md`
+    - **Overview:** `#{Paths.architecture_dir()}/overview.md`
+    - **Dependency Graph:** `#{Paths.architecture_dir()}/dependency_graph.mmd`
+    - **Namespace Hierarchy:** `#{Paths.architecture_dir()}/namespace_hierarchy.md`
     """
   end
 
@@ -324,50 +347,11 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     """
     ## Existing Decisions
 
-    The following topics already have decision records in `#{@decisions_dir}/`:
+    The following topics already have decision records in `#{Paths.decisions_dir()}/`:
 
     #{decision_list}
 
     Review these to avoid duplicating work. You can update existing decisions if needed.
-    """
-  end
-
-  defp build_premade_decisions_section([]), do: nil
-
-  defp build_premade_decisions_section(missing_premade) do
-    records =
-      Enum.map_join(missing_premade, "\n\n", fn d ->
-        """
-        ### `#{d.topic}`
-
-        Write to `#{@decisions_dir}/#{d.topic}.md`:
-
-        ```markdown
-        # #{d.title}
-
-        ## Status
-        Accepted (pre-made)
-
-        ## Context
-        #{d.context}
-
-        ## Decision
-        #{d.decision}
-
-        ## Consequences
-        This is a pre-made decision for the standard CodeMySpec stack.
-        ```\
-        """
-      end)
-
-    """
-    ## Pre-made Decisions to Write
-
-    The following technology decisions are pre-made and must be written as decision
-    records **before** identifying topics that need research. Write each one exactly
-    as shown — do not research alternatives for these.
-
-    #{records}
     """
   end
 
@@ -389,13 +373,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     """
     ## Instructions
 
-    ### Step 1: Write Pre-made Decisions
-
-    If the "Pre-made Decisions to Write" section above lists any decisions, write
-    each one as a decision record now. These are standard stack choices — copy them
-    exactly as shown, then add each to the decisions index.
-
-    ### Step 2: Identify Topics
+    ### Step 1: Identify Topics
 
     Analyze the architecture, stories, and current dependencies to identify technology
     decisions that need to be made. Skip topics already covered by pre-made or
@@ -406,41 +384,41 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     - **Infrastructure:** Caching, background jobs, file storage
     - **Integrations:** Third-party APIs, payment processing, auth providers
 
-    ### Step 3: Write Research Prompts
+    ### Step 2: Write Research Prompts
 
     For each topic you identify, write a freeform research prompt to
-    `docs/status/research/{topic}.md`. The filename becomes the topic name.
+    `#{Paths.status_dir()}/research/{topic}.md`. The filename becomes the topic name.
 
-    Example: `docs/status/research/wallaby.md` might contain:
+    Example: `#{Paths.status_dir()}/research/wallaby.md` might contain:
     ```
     Research Wallaby for browser-based integration testing of Phoenix LiveView.
     Compare with alternatives like Hound. Consider CI setup requirements.
     ```
 
-    ### Step 4: Research Each Topic
+    ### Step 3: Research Each Topic
 
     For each research prompt file, invoke the **researcher** subagent
     (`@"CodeMySpec:researcher (agent)"`) to:
     - Search documentation and community resources
     - Evaluate options against project requirements
-    - Write a decision record to `docs/architecture/decisions/{topic}.md`
+    - Write a decision record to `#{Paths.decisions_dir()}/{topic}.md`
 
-    ### Step 5: Build Knowledge Base
+    ### Step 4: Build Knowledge Base
 
     For each **researched** (non-pre-made) topic that now has a decision record,
     invoke the **researcher** subagent to build knowledge entries in
-    `#{@knowledge_dir}/{topic}/`. Each topic should have at least one knowledge
+    `#{Paths.knowledge_dir()}/{topic}/`. Each topic should have at least one knowledge
     file covering setup, configuration, and usage patterns relevant to this project.
 
     Do **not** build knowledge entries for pre-made decisions — those are
     well-known technologies that don't need project-specific documentation.
 
-    ### Step 6: Update the Index
+    ### Step 5: Update the Index
 
-    Ensure `#{@decisions_index}` exists and lists **all** decision records
+    Ensure `#{Paths.decisions_index()}` exists and lists **all** decision records
     (both pre-made and researched) with their status.
 
-    ### Step 7: Bootstrap
+    ### Step 6: Bootstrap
 
     Now that all decisions are made, configure the project:
 
@@ -453,7 +431,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     4. **Smoke test** — write a small test (e.g., in `test/smoke_test.exs`)
        that verifies the newly added libraries load and basic functionality works
 
-    ### Step 8: Stop
+    ### Step 7: Stop
 
     When all topics have been researched, knowledge built, and the project
     bootstrapped, stop the session so validation can check your work.
@@ -507,7 +485,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
       if index_exists do
         parts
       else
-        ["- Decisions index not found at `#{@decisions_index}`" | parts]
+        ["- Decisions index not found at `#{Paths.decisions_index()}`" | parts]
       end
 
     parts =
@@ -522,7 +500,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
     parts =
       Enum.reduce(missing_knowledge, parts, fn topic, acc ->
-        ["- Topic \"#{topic}\" has no knowledge entries in `#{@knowledge_dir}/#{topic}/`" | acc]
+        ["- Topic \"#{topic}\" has no knowledge entries in `#{Paths.knowledge_dir()}/#{topic}/`" | acc]
       end)
 
     issue_list = parts |> Enum.reverse() |> Enum.join("\n")

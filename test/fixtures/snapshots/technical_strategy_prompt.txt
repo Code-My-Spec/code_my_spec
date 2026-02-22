@@ -1,0 +1,208 @@
+# Technical Strategy Session
+
+You are conducting a technical strategy session for the **some name** project.
+
+Your goal is to identify technology decisions that need to be made, research the
+options, and produce decision records with supporting knowledge.
+
+
+## Current Dependencies
+
+```elixir
+defmodule MathTestProject.MixProject do
+  use Mix.Project
+
+  def project do
+    [
+      app: :math_test_project,
+      version: "0.1.0",
+      elixir: "~> 1.19",
+      elixirc_paths: elixirc_paths(Mix.env()),
+      start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
+      deps: deps(),
+      compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app],
+      spex: [pattern: "test/spex/**/*_spex.exs"],
+      listeners: [Phoenix.CodeReloader]
+    ]
+  end
+
+  # Configuration for the OTP application.
+  #
+  # Type `mix help compile.app` for more information.
+  def application do
+    [
+      mod: {MathTestProject.Application, []},
+      extra_applications: [:logger, :runtime_tools]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [precommit: :test, spex: :test]
+    ]
+  end
+
+  # Specifies which paths to compile per environment.
+  defp elixirc_paths(:test), do: ["lib", "test/support", "test/spex"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  # Specifies your project dependencies.
+  #
+  # Type `mix help deps` for examples and options.
+  defp deps do
+    [
+      {:phoenix, "~> 1.8.1"},
+      {:phoenix_ecto, "~> 4.5"},
+      {:ecto_sql, "~> 3.13"},
+      {:postgrex, ">= 0.0.0"},
+      {:phoenix_html, "~> 4.1"},
+      {:phoenix_live_reload, "~> 1.2", only: :dev},
+      {:phoenix_live_view, "~> 1.1.0"},
+      {:lazy_html, ">= 0.1.0", only: :test},
+      {:phoenix_live_dashboard, "~> 0.8.3"},
+      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+      {:heroicons,
+       github: "tailwindlabs/heroicons",
+       tag: "v2.2.0",
+       sparse: "optimized",
+       app: false,
+       compile: false,
+       depth: 1},
+      {:swoosh, "~> 1.16"},
+      {:req, "~> 0.5"},
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
+      {:gettext, "~> 0.26"},
+      {:jason, "~> 1.2"},
+      {:dns_cluster, "~> 0.2.0"},
+      {:bandit, "~> 1.5"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:client_utils, "~> 0.1.12", only: :test},
+      {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false},
+      {:boundary, "~> 0.10.4", runtime: false},
+      {:sexy_spex, path: "/Users/johndavenport/Documents/github/spex", only: :test}
+    ]
+  end
+
+  # Aliases are shortcuts or tasks specific to the current project.
+  # For example, to install project dependencies and perform other setup tasks, run:
+  #
+  #     $ mix setup
+  #
+  # See the documentation for `Mix` for more info on aliases.
+  defp aliases do
+    [
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.build": ["compile", "tailwind math_test_project", "esbuild math_test_project"],
+      "assets.deploy": [
+        "tailwind math_test_project --minify",
+        "esbuild math_test_project --minify",
+        "phx.digest"
+      ],
+      spex: ["spex --quiet"],
+      precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"]
+    ]
+  end
+end
+
+```
+
+
+## Existing Decisions
+
+The following topics already have decision records in `.code_my_spec/architecture/decisions/`:
+
+- `bdd-testing`
+- `daisyui`
+- `dotenvy`
+- `elixir`
+- `exvcr`
+- `liveview`
+- `ngrok`
+- `phoenix`
+- `phx-gen-auth`
+- `tailwind`
+
+Review these to avoid duplicating work. You can update existing decisions if needed.
+
+
+## User Stories
+
+These stories inform what technology decisions may be needed:
+
+- Addition
+- Calculation History
+- Clear History
+- Subtraction
+
+
+## Instructions
+
+### Step 1: Identify Topics
+
+Analyze the architecture, stories, and current dependencies to identify technology
+decisions that need to be made. Skip topics already covered by pre-made or
+existing decisions. Common categories include:
+
+- **Testing:** Integration test framework, E2E approach, test data strategy
+- **Deployment:** Hosting, CI/CD, release strategy
+- **Infrastructure:** Caching, background jobs, file storage
+- **Integrations:** Third-party APIs, payment processing, auth providers
+
+### Step 2: Write Research Prompts
+
+For each topic you identify, write a freeform research prompt to
+`.code_my_spec/status/research/{topic}.md`. The filename becomes the topic name.
+
+Example: `.code_my_spec/status/research/wallaby.md` might contain:
+```
+Research Wallaby for browser-based integration testing of Phoenix LiveView.
+Compare with alternatives like Hound. Consider CI setup requirements.
+```
+
+### Step 3: Research Each Topic
+
+For each research prompt file, invoke the **researcher** subagent
+(`@"CodeMySpec:researcher (agent)"`) to:
+- Search documentation and community resources
+- Evaluate options against project requirements
+- Write a decision record to `.code_my_spec/architecture/decisions/{topic}.md`
+
+### Step 4: Build Knowledge Base
+
+For each **researched** (non-pre-made) topic that now has a decision record,
+invoke the **researcher** subagent to build knowledge entries in
+`.code_my_spec/knowledge/{topic}/`. Each topic should have at least one knowledge
+file covering setup, configuration, and usage patterns relevant to this project.
+
+Do **not** build knowledge entries for pre-made decisions — those are
+well-known technologies that don't need project-specific documentation.
+
+### Step 5: Update the Index
+
+Ensure `.code_my_spec/architecture/decisions.md` exists and lists **all** decision records
+(both pre-made and researched) with their status.
+
+### Step 6: Bootstrap
+
+Now that all decisions are made, configure the project:
+
+1. **Add libraries** — add any newly decided dependencies to `mix.exs` and
+   run `mix deps.get`
+2. **Configure** — add necessary configuration to `config/config.exs`,
+   `config/dev.exs`, `config/test.exs`, and `config/runtime.exs` as needed
+3. **Wire up** — update `application.ex` if new supervision trees or
+   workers are needed, create any required initialization modules
+4. **Smoke test** — write a small test (e.g., in `test/smoke_test.exs`)
+   that verifies the newly added libraries load and basic functionality works
+
+### Step 7: Stop
+
+When all topics have been researched, knowledge built, and the project
+bootstrapped, stop the session so validation can check your work.

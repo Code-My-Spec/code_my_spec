@@ -47,7 +47,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   defp write_existing_decision(env, topic, content \\ nil) do
     write_file!(
       env,
-      "docs/architecture/decisions/#{topic}.md",
+      ".code_my_spec/architecture/decisions/#{topic}.md",
       content ||
         """
         # Use #{topic}
@@ -64,7 +64,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   defp write_decisions_index(env, content \\ nil) do
     write_file!(
       env,
-      "docs/architecture/decisions.md",
+      ".code_my_spec/architecture/decisions.md",
       content ||
         """
         # Architecture Decisions
@@ -78,7 +78,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   defp write_research_prompt(env, topic, content \\ nil) do
     write_file!(
       env,
-      "docs/status/research/#{topic}.md",
+      ".code_my_spec/status/research/#{topic}.md",
       content || "Research #{topic} for the project."
     )
   end
@@ -86,7 +86,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   defp write_knowledge(env, topic) do
     write_file!(
       env,
-      "docs/knowledge/#{topic}/overview.md",
+      ".code_my_spec/knowledge/#{topic}/overview.md",
       "# #{topic}\n\nKnowledge about #{topic}."
     )
   end
@@ -169,7 +169,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
 
     test "instructs agent to write research prompts", %{scope: scope, session: session} do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "docs/status/research/"
+      assert prompt =~ ".code_my_spec/status/research/"
     end
 
     test "instructs agent to use researcher subagent", %{scope: scope, session: session} do
@@ -177,40 +177,45 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       assert prompt =~ "researcher"
     end
 
-    test "includes pre-made decisions section when none are written yet", %{
+    test "writes missing pre-made decision ADR files to the environment", %{
       scope: scope,
       session: session
     } do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "Pre-made Decisions to Write"
-      assert prompt =~ "elixir"
-      assert prompt =~ "phoenix"
-      assert prompt =~ "daisyui"
-      assert prompt =~ "Accepted (pre-made)"
-    end
-
-    test "excludes pre-made decisions that already have ADRs", %{scope: scope, session: session} do
       env = scope.environment
+      # Pre-write two so they're already present
       write_existing_decision(env, "elixir")
       write_existing_decision(env, "phoenix")
 
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      # Should still show remaining pre-made decisions
-      assert prompt =~ "Pre-made Decisions to Write"
-      assert prompt =~ "daisyui"
+      assert {:ok, _prompt} = TechnicalStrategy.command(scope, session)
+
+      # All pre-made decisions should now have files
+      for d <- TechnicalStrategy.premade_decisions() do
+        path = Path.join(env.cwd, ".code_my_spec/architecture/decisions/#{d.topic}.md")
+        assert File.exists?(path), "Expected ADR file for #{d.topic}"
+      end
+
+      # Pre-existing files should not be overwritten (still have original content)
+      elixir_content = File.read!(Path.join(env.cwd, ".code_my_spec/architecture/decisions/elixir.md"))
+      assert elixir_content =~ "We decided to use elixir"
     end
 
-    test "omits pre-made decisions section when all are written", %{
+    test "does not include pre-made decisions section in prompt", %{
       scope: scope,
       session: session
     } do
-      write_all_premade_decisions(scope.environment)
-
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      # The section heading is "## Pre-made Decisions to Write" — when no
-      # missing pre-made decisions exist, this section should be absent.
-      refute prompt =~ "## Pre-made Decisions to Write"
-      refute prompt =~ "Accepted (pre-made)"
+      refute prompt =~ "Pre-made Decisions to Write"
+    end
+
+    test "lists pre-made decisions as existing decisions after writing them", %{
+      scope: scope,
+      session: session
+    } do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert prompt =~ "Existing Decisions"
+      assert prompt =~ "elixir"
+      assert prompt =~ "phoenix"
+      assert prompt =~ "daisyui"
     end
 
     test "includes knowledge base building step", %{scope: scope, session: session} do

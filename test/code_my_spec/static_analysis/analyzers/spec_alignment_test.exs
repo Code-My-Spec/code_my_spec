@@ -28,7 +28,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     on_exit(fn ->
       # Clean up docs/spec files we created (it's a submodule, pool reset won't clean it)
-      docs_spec_dir = Path.join(project_dir, "docs/spec")
+      docs_spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       if File.exists?(docs_spec_dir), do: File.rm_rf!(docs_spec_dir)
 
       CodeMySpec.Support.TestAdapter.checkin(project_dir)
@@ -42,7 +42,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -97,14 +97,14 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       File.write!(test_file, test_content)
 
       # Scope to just our created spec file to avoid problems from fixture specs
-      assert {:ok, []} = SpecAlignment.run(scope, paths: ["docs/spec/my_module.spec.md"])
+      assert {:ok, []} = SpecAlignment.run(scope, paths: [".code_my_spec/spec/my_module.spec.md"])
     end
 
     test "detects missing function implementations (function in spec but not in code)", %{
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -140,7 +140,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -175,7 +175,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -222,7 +222,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -290,7 +290,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -358,7 +358,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -382,7 +382,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       # Scope to just our created spec file
       assert {:ok, problems} =
-               SpecAlignment.run(scope, paths: ["docs/spec/non_existent_module.spec.md"])
+               SpecAlignment.run(scope, paths: [".code_my_spec/spec/non_existent_module.spec.md"])
 
       assert problems == []
     end
@@ -392,7 +392,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       project_dir: project_dir
     } do
       # Create spec directory (required for analyzer to run)
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       impl_file = Path.join(project_dir, "lib/no_spec_module.ex")
@@ -408,7 +408,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       # Use a path that has no spec files to test "no spec" scenario
       assert {:ok, problems} =
-               SpecAlignment.run(scope, paths: ["docs/spec/no_spec_module.spec.md"])
+               SpecAlignment.run(scope, paths: [".code_my_spec/spec/no_spec_module.spec.md"])
 
       assert problems == []
     end
@@ -417,7 +417,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -440,7 +440,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -472,7 +472,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -510,7 +510,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       File.write!(impl_file, impl_content)
 
       # Scope to just our created spec file
-      assert {:ok, problems} = SpecAlignment.run(scope, paths: ["docs/spec/my_module.spec.md"])
+      assert {:ok, problems} = SpecAlignment.run(scope, paths: [".code_my_spec/spec/my_module.spec.md"])
 
       assert problems == []
     end
@@ -519,7 +519,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -555,7 +555,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -589,7 +589,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "sets appropriate severity levels (error for missing impl, warning for extra functions)",
          %{scope: scope, project_dir: project_dir} do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -635,7 +635,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -669,7 +669,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "handles parsing errors in spec files gracefully (returns Problem about invalid spec)",
          %{scope: scope, project_dir: project_dir} do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = "This is not valid spec markdown"
@@ -685,7 +685,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       spec_content = """
@@ -710,7 +710,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       subdir = Path.join(spec_dir, "subdir")
@@ -769,7 +769,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       scope: scope,
       project_dir: project_dir
     } do
-      spec_dir = Path.join(project_dir, "docs/spec")
+      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       assert SpecAlignment.available?(scope) == true

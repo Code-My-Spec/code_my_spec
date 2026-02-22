@@ -26,7 +26,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzerTest do
       components = [component]
 
       file_list = [
-        "docs/design/my_app/users.md",
+        ".code_my_spec/design/my_app/users.md",
         "lib/my_app/users.ex",
         "test/my_app/users_test.exs"
       ]
@@ -101,7 +101,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzerTest do
       components = [component]
 
       file_list = [
-        "docs/design/my_app/users.md",
+        ".code_my_spec/design/my_app/users.md",
         "lib/my_app/users.ex",
         "test/my_app/users_test.exs"
       ]
@@ -158,7 +158,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzerTest do
       components = [users, posts]
 
       file_list = [
-        "docs/design/my_app/users.md",
+        ".code_my_spec/design/my_app/users.md",
         "lib/my_app/users.ex",
         "test/my_app/users_test.exs",
         # Posts missing design and test
@@ -260,7 +260,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzerTest do
       components = [component]
 
       file_list = [
-        "docs/design/my_app/accounts/user_profile.md",
+        ".code_my_spec/design/my_app/accounts/user_profile.md",
         "lib/my_app/accounts/user_profile.ex",
         "test/my_app/accounts/user_profile_test.exs"
       ]
@@ -296,7 +296,7 @@ defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzerTest do
 
       # Create file list that matches some expected files
       file_list = [
-        "docs/design/my_app/user_context.md",
+        ".code_my_spec/design/my_app/user_context.md",
         "lib/my_app/user_context.ex",
         "test/my_app/user_context_test.exs"
       ]

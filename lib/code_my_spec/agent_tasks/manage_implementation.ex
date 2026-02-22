@@ -36,7 +36,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
 
   require Logger
 
-  @status_path "docs/status/implementation_status.json"
+  @status_path CodeMySpec.Paths.implementation_status_path()
 
   @developable_types [
     "context",

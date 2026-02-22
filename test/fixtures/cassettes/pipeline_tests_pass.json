@@ -59,6 +59,26 @@
       },
       "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
       "recorded_at": "2026-02-15T21:10:25.390907Z"
+    },
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "../code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project_web/controllers/page_controller_test.exs"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_2",
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/test_results_cache.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Paths given to \"mix test\" did not match any directory/file: ../code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project_web/controllers/page_controller_test.exs\n",
+      "recorded_at": "2026-02-22T17:22:38.852254Z"
     }
   ],
   "ports": []

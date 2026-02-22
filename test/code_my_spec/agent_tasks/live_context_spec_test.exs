@@ -36,7 +36,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
   end
 
   defp create_spec_file!(tmp_dir, component, _project) do
-    spec_path = "docs/spec/test_app_web/user_live.spec.md"
+    spec_path = ".code_my_spec/spec/test_app_web/user_live.spec.md"
     full_path = Path.join(tmp_dir, spec_path)
     full_path |> Path.dirname() |> File.mkdir_p!()
 
@@ -167,9 +167,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
       assert {:ok, :valid} = LiveContextSpec.evaluate(scope, session)
 
       # Check that child spec stubs were created
-      index_stub = Path.join(tmp_dir, "docs/spec/test_app_web/user_live/index.spec.md")
-      show_stub = Path.join(tmp_dir, "docs/spec/test_app_web/user_live/show.spec.md")
-      form_stub = Path.join(tmp_dir, "docs/spec/test_app_web/user_live/form_component.spec.md")
+      index_stub = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_live/index.spec.md")
+      show_stub = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_live/show.spec.md")
+      form_stub = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_live/form_component.spec.md")
 
       assert File.exists?(index_stub), "Expected Index child stub at #{index_stub}"
       assert File.exists?(show_stub), "Expected Show child stub at #{show_stub}"
@@ -183,7 +183,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
       create_spec_file!(tmp_dir, live_context, scope.active_project)
 
       # Pre-create a child spec with custom content
-      index_path = Path.join(tmp_dir, "docs/spec/test_app_web/user_live/index.spec.md")
+      index_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_live/index.spec.md")
       index_path |> Path.dirname() |> File.mkdir_p!()
       File.write!(index_path, "# Custom content\nDo not overwrite")
 

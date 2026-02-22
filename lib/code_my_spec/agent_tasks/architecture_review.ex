@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
   - `evaluate/3` - Called by stop hook (currently auto-approves)
   """
 
-  alias CodeMySpec.{Architecture, Components, Stories}
+  alias CodeMySpec.{Architecture, Components, Paths, Stories}
 
   @doc """
   Generate the command/prompt for Claude to review architecture.
@@ -35,9 +35,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
     # Generate fresh architecture views
     output_dir =
       if working_dir do
-        Path.join(working_dir, "docs/architecture/")
+        Path.join(working_dir, Paths.architecture_dir())
       else
-        "docs/architecture/"
+        Paths.architecture_dir()
       end
 
     Architecture.generate_views(scope, output_dir: output_dir)

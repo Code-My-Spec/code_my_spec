@@ -22,7 +22,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
 
-  @status_dir "docs/status"
+  @status_dir CodeMySpec.Paths.status_dir()
 
   @doc """
   Writes status files for a hierarchical tree of components.

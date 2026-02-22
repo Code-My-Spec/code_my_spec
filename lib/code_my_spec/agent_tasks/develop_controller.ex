@@ -25,7 +25,7 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
     ComponentTest
   }
 
-  @status_dir "docs/status"
+  @status_dir CodeMySpec.Paths.status_dir()
 
   defp controller_status_dir(controller_component) do
     parts =
@@ -104,48 +104,44 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
     with {:ok, phase_status} <-
            check_lifecycle_phases(scope, session, controller_component),
          :ok <- cleanup_completed_phases(phase_status, status_dir, working_dir) do
-      case phase_status do
-        %{complete: true} ->
-          Logger.info("[DevelopController] All phases complete")
-          cleanup_status_directory(status_dir, working_dir)
-          {:ok, :valid}
-
-        %{incomplete_phases: incomplete} ->
-          phase_names =
-            Enum.map_join(incomplete, ", ", fn {phase, _} -> Atom.to_string(phase) end)
-
-          Logger.info("[DevelopController] Incomplete phases: #{phase_names}")
-
-          {:ok, prompt_files} =
-            generate_phase_prompts(
-              scope,
-              session,
-              controller_component,
-              phase_status,
-              status_dir
-            )
-
-          {:ok, orchestration_content} =
-            build_orchestration_prompt(
-              controller_component,
-              session.project,
-              phase_status,
-              prompt_files,
-              status_dir
-            )
-
-          orchestration_path = "#{status_dir}/develop_controller.md"
-
-          CodeMySpec.Environments.write_file(
-            scope.environment,
-            orchestration_path,
-            orchestration_content
-          )
-
-          feedback = build_feedback(controller_component, incomplete, status_dir)
-          {:ok, :invalid, feedback}
-      end
+      handle_phase_result(phase_status, scope, session, controller_component, status_dir, working_dir)
     end
+  end
+
+  defp handle_phase_result(%{complete: true}, _scope, _session, _component, status_dir, working_dir) do
+    Logger.info("[DevelopController] All phases complete")
+    cleanup_status_directory(status_dir, working_dir)
+    {:ok, :valid}
+  end
+
+  defp handle_phase_result(%{incomplete_phases: incomplete} = phase_status, scope, session, controller_component, status_dir, _working_dir) do
+    phase_names =
+      Enum.map_join(incomplete, ", ", fn {phase, _} -> Atom.to_string(phase) end)
+
+    Logger.info("[DevelopController] Incomplete phases: #{phase_names}")
+
+    {:ok, prompt_files} =
+      generate_phase_prompts(scope, session, controller_component, phase_status, status_dir)
+
+    {:ok, orchestration_content} =
+      build_orchestration_prompt(
+        controller_component,
+        session.project,
+        phase_status,
+        prompt_files,
+        status_dir
+      )
+
+    orchestration_path = "#{status_dir}/develop_controller.md"
+
+    CodeMySpec.Environments.write_file(
+      scope.environment,
+      orchestration_path,
+      orchestration_content
+    )
+
+    feedback = build_feedback(controller_component, incomplete, status_dir)
+    {:ok, :invalid, feedback}
   end
 
   # ============================================================================
@@ -502,7 +498,7 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
 
       json_module ->
         json_module_path = Paths.module_to_path(json_module)
-        spec_path = "docs/spec/#{json_module_path}.spec.md"
+        spec_path = CodeMySpec.Paths.spec_file(json_module_path)
 
         case CodeMySpec.Environments.file_exists?(scope.environment, spec_path) do
           true ->

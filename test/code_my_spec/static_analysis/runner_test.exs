@@ -31,7 +31,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
     on_exit(fn ->
       # Clean up spec files created by tests (docs is a submodule, git clean won't reach it)
-      spec_file = Path.join(project_dir, "docs/spec/my_module.spec.md")
+      spec_file = Path.join(project_dir, ".code_my_spec/spec/my_module.spec.md")
       if File.exists?(spec_file), do: File.rm!(spec_file)
 
       CodeMySpec.Support.TestAdapter.checkin(project_dir)
@@ -89,7 +89,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   describe "run/3" do
     test "executes specified analyzer and returns Problems", %{scope: scope} do
       # Create spec directory for SpecAlignment analyzer
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, problems} = Runner.run(scope, :spec_alignment)
@@ -102,14 +102,14 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
     test "passes options through to analyzer", %{scope: scope} do
       # SpecAlignment can take paths option
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, _problems} = Runner.run(scope, :spec_alignment, paths: ["lib"])
     end
 
     test "validates Problems have project_id set", %{scope: scope} do
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       # Create a spec file that will generate a problem
@@ -149,7 +149,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "supports all registered analyzer types", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_all_types", ignore: [[:opts, :cd]] do
         # Create spec directory for SpecAlignment
-        spec_dir = Path.join(scope.cwd, "docs/spec")
+        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
         File.mkdir_p!(spec_dir)
 
         # Test each analyzer that's available
@@ -188,7 +188,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "returns error when analyzer is not available", %{scope: scope} do
       # SpecAlignment requires a spec directory - if it doesn't exist, it's not available
       # Make sure spec directory doesn't exist
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.rm_rf!(spec_dir)
 
       assert {:error, message} = Runner.run(scope, :spec_alignment)
@@ -232,7 +232,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "executes all available analyzers in parallel", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_run_all", ignore: [[:opts, :cd]] do
         # Create spec directory to make SpecAlignment available
-        spec_dir = Path.join(scope.cwd, "docs/spec")
+        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
         File.mkdir_p!(spec_dir)
 
         assert {:ok, problems} = Runner.run_all(scope)
@@ -244,7 +244,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "aggregates Problems from available analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_aggregate", ignore: [[:opts, :cd]] do
         # Create spec directory and a spec with missing implementation
-        spec_dir = Path.join(scope.cwd, "docs/spec")
+        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
         File.mkdir_p!(spec_dir)
 
         spec_content = """
@@ -333,7 +333,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "handles concurrent execution without race conditions", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_concurrent", ignore: [[:opts, :cd]] do
         # Create spec directory
-        spec_dir = Path.join(scope.cwd, "docs/spec")
+        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
         File.mkdir_p!(spec_dir)
 
         # Run multiple times concurrently
@@ -362,7 +362,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "continues execution when one analyzer fails (error isolation)", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_error_isolation", ignore: [[:opts, :cd]] do
         # Create spec directory to enable SpecAlignment
-        spec_dir = Path.join(scope.cwd, "docs/spec")
+        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
         File.mkdir_p!(spec_dir)
 
         # Even if one analyzer might have issues, run_all should continue
@@ -389,7 +389,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "respects timeout option for slow analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_runner_timeout", ignore: [[:opts, :cd]] do
         # Create spec directory
-        spec_dir = Path.join(scope.cwd, "docs/spec")
+        spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
         File.mkdir_p!(spec_dir)
 
         # Run with a very short timeout - some analyzers may timeout

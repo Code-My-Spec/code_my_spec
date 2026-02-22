@@ -149,7 +149,7 @@
       },
       example: %{
         title: "Stories Context Design",
-        file: "docs/design/code_my_spec/stories.md",
+        file: ".code_my_spec/design/code_my_spec/stories.md",
         description: "Entity ownership, access patterns, public API, dependencies"
       }
     },

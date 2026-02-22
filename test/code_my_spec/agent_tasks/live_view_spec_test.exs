@@ -350,7 +350,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
         description: "Component specification file exists",
         details: %{
           reason: "File missing",
-          path: "docs/spec/test_app_web/dashboard_live.spec.md"
+          path: ".code_my_spec/spec/test_app_web/dashboard_live.spec.md"
         }
       })
 

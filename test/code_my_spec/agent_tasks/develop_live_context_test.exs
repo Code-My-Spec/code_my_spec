@@ -62,7 +62,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
       |> Enum.map(&Macro.underscore/1)
       |> Path.join()
 
-    spec_path = "docs/spec/#{module_path}.spec.md"
+    spec_path = ".code_my_spec/spec/#{module_path}.spec.md"
     full_path = Path.join(tmp_dir, spec_path)
     full_path |> Path.dirname() |> File.mkdir_p!()
     content = valid_spec_content(component)
@@ -166,7 +166,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
       |> Enum.map(&Macro.underscore/1)
 
     {dir_parts, [dirname]} = Enum.split(parts, -1)
-    Path.join(["docs/status" | dir_parts] ++ [dirname])
+    Path.join([".code_my_spec/status" | dir_parts] ++ [dirname])
   end
 
   defp read_orchestration_file(tmp_dir, module_name) do

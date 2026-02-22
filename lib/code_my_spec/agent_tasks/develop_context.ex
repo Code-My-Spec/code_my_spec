@@ -34,7 +34,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     ContextSpec
   }
 
-  @status_dir "docs/status"
+  @status_dir CodeMySpec.Paths.status_dir()
 
   # Derive an action directory from the context component's module_name.
   # MetricFlow.Accounts → docs/status/metric_flow/accounts
@@ -113,45 +113,40 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
          {:ok, phase_status} <-
            check_lifecycle_phases(scope, session, context_component, children),
          :ok <- cleanup_completed_phases(phase_status, status_dir, working_dir) do
-      case phase_status do
-        %{complete: true} ->
-          Logger.info("[DevelopContext] All phases complete")
-          cleanup_status_directory(status_dir, working_dir)
-          {:ok, :valid}
-
-        %{incomplete_phases: incomplete} ->
-          phase_names =
-            Enum.map_join(incomplete, ", ", fn {phase, _} -> Atom.to_string(phase) end)
-
-          Logger.info("[DevelopContext] Incomplete phases: #{phase_names}")
-
-          {:ok, prompt_files} =
-            generate_phase_prompts(
-              scope,
-              session,
-              context_component,
-              children,
-              phase_status,
-              status_dir
-            )
-
-          Logger.info("[DevelopContext] Generated #{length(prompt_files)} prompt file(s)")
-
-          {:ok, orchestration_content} =
-            build_orchestration_prompt(context_component, phase_status, prompt_files, status_dir)
-
-          orchestration_path = "#{status_dir}/develop_context.md"
-
-          CodeMySpec.Environments.write_file(
-            scope.environment,
-            orchestration_path,
-            orchestration_content
-          )
-
-          feedback = build_feedback(context_component, incomplete, status_dir)
-          {:ok, :invalid, feedback}
-      end
+      handle_phase_result(phase_status, scope, session, context_component, children, status_dir, working_dir)
     end
+  end
+
+  defp handle_phase_result(%{complete: true}, _scope, _session, _component, _children, status_dir, working_dir) do
+    Logger.info("[DevelopContext] All phases complete")
+    cleanup_status_directory(status_dir, working_dir)
+    {:ok, :valid}
+  end
+
+  defp handle_phase_result(%{incomplete_phases: incomplete} = phase_status, scope, session, context_component, children, status_dir, _working_dir) do
+    phase_names =
+      Enum.map_join(incomplete, ", ", fn {phase, _} -> Atom.to_string(phase) end)
+
+    Logger.info("[DevelopContext] Incomplete phases: #{phase_names}")
+
+    {:ok, prompt_files} =
+      generate_phase_prompts(scope, session, context_component, children, phase_status, status_dir)
+
+    Logger.info("[DevelopContext] Generated #{length(prompt_files)} prompt file(s)")
+
+    {:ok, orchestration_content} =
+      build_orchestration_prompt(context_component, phase_status, prompt_files, status_dir)
+
+    orchestration_path = "#{status_dir}/develop_context.md"
+
+    CodeMySpec.Environments.write_file(
+      scope.environment,
+      orchestration_path,
+      orchestration_content
+    )
+
+    feedback = build_feedback(context_component, incomplete, status_dir)
+    {:ok, :invalid, feedback}
   end
 
   # Private functions - Phase checking

@@ -42,7 +42,7 @@ defmodule CodeMySpec.ProjectSync.Sync do
     - `scope` - The user scope
     - `opts` - Options (optional)
       - `:base_dir` - Base directory to sync from (defaults to current working directory)
-      - `:architecture_output_dir` - Directory for architecture views (defaults to "docs/architecture/")
+      - `:architecture_output_dir` - Directory for architecture views (defaults to ".code_my_spec/architecture/")
 
   ## Returns
     - `{:ok, sync_result}` on success
@@ -99,7 +99,8 @@ defmodule CodeMySpec.ProjectSync.Sync do
 
       # Phase 4: Generate architecture views
       architecture_start = System.monotonic_time(:millisecond)
-      architecture_output_dir = Keyword.get(opts, :architecture_output_dir, "docs/architecture/")
+      architecture_output_dir =
+        Keyword.get(opts, :architecture_output_dir, CodeMySpec.Paths.architecture_dir())
 
       architecture_views =
         case Architecture.generate_views(scope,

@@ -61,13 +61,13 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       result = StatusWriter.write_status_files([app], env)
 
-      assert "docs/status/my_app.md" in result
-      assert "docs/status/my_app/accounts.md" in result
-      assert "docs/status/my_app/billing.md" in result
+      assert ".code_my_spec/status/my_app.md" in result
+      assert ".code_my_spec/status/my_app/accounts.md" in result
+      assert ".code_my_spec/status/my_app/billing.md" in result
 
-      assert File.exists?(Path.join(tmp_dir, "docs/status/my_app.md"))
-      assert File.exists?(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
-      assert File.exists?(Path.join(tmp_dir, "docs/status/my_app/billing.md"))
+      assert File.exists?(Path.join(tmp_dir, ".code_my_spec/status/my_app.md"))
+      assert File.exists?(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
+      assert File.exists?(Path.join(tmp_dir, ".code_my_spec/status/my_app/billing.md"))
     end
 
     test "renders descendants inline in context file", %{tmp_dir: tmp_dir, env: env} do
@@ -96,11 +96,11 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       result = StatusWriter.write_status_files([app], env)
 
-      assert "docs/status/my_app.md" in result
-      assert "docs/status/my_app/accounts.md" in result
+      assert ".code_my_spec/status/my_app.md" in result
+      assert ".code_my_spec/status/my_app/accounts.md" in result
 
       # User is rendered inline in accounts file, not as a separate file
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
       assert content =~ "## MyApp.Accounts.User (schema)"
     end
 
@@ -125,7 +125,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app.md"))
       assert content =~ "## Contexts"
       assert content =~ "[MyApp.Accounts]"
     end
@@ -156,7 +156,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
       assert content =~ "- [x] spec_file - Specification file exists"
     end
 
@@ -182,7 +182,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
       assert content =~ "- [ ] test_file - Test file exists"
     end
 
@@ -211,7 +211,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
       assert content =~ "- [x] spec_file - Spec exists"
       assert content =~ "- [ ] test_file - Test exists"
       assert content =~ "- [x] impl_file - Impl exists"
@@ -235,7 +235,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
       assert content =~ "_No requirements defined_"
     end
 
@@ -243,7 +243,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
       tmp_dir: tmp_dir,
       env: env
     } do
-      status_dir = Path.join(tmp_dir, "docs/status")
+      status_dir = Path.join(tmp_dir, ".code_my_spec/status")
       File.mkdir_p!(status_dir)
 
       File.write!(Path.join(status_dir, "stale.md"), "stale")
@@ -266,7 +266,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      assert File.exists?(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
+      assert File.exists?(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
       assert File.exists?(Path.join(status_dir, "stale.md"))
       assert File.exists?(Path.join(status_dir, ".gitkeep"))
     end
@@ -294,7 +294,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app/accounts.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app/accounts.md"))
       assert content =~ "## MyApp.Accounts (context)"
     end
 
@@ -335,10 +335,10 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       result = StatusWriter.write_status_files([app], env)
 
-      assert "docs/status/my_app.md" in result
-      assert "docs/status/my_app/integrations.md" in result
+      assert ".code_my_spec/status/my_app.md" in result
+      assert ".code_my_spec/status/my_app/integrations.md" in result
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app/integrations.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app/integrations.md"))
       assert content =~ "## MyApp.Integrations (context)"
       assert content =~ "## MyApp.Integrations.Providers (module)"
       assert content =~ "## MyApp.Integrations.Providers.Behaviour (module)"
@@ -377,7 +377,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app.md"))
       assert content =~ "- [x] [MyApp.Accounts]"
       assert content =~ "(2/2)"
       assert content =~ "- [ ] [MyApp.Billing]"
@@ -417,7 +417,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app.md"))
       # 3 total: 1 on context + 2 on User descendant, all satisfied
       assert content =~ "- [x] [MyApp.Accounts]"
       assert content =~ "(3/3)"
@@ -441,7 +441,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
 
       StatusWriter.write_status_files([app], env)
 
-      content = File.read!(Path.join(tmp_dir, "docs/status/my_app.md"))
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app.md"))
       assert content =~ "- [ ] [MyApp.Accounts]"
       assert content =~ "(0/0)"
     end

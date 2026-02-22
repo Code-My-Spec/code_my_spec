@@ -31,7 +31,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
   end
 
   defp write_design_system_html(env, content \\ nil) do
-    write_file!(env, "docs/design/design_system.html", content || valid_design_system_html())
+    write_file!(env, ".code_my_spec/design/design_system.html", content || valid_design_system_html())
   end
 
   defp write_template_file(env) do
@@ -300,7 +300,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
     end
 
     test "returns error when file cannot be parsed as HTML", %{scope: scope, session: session} do
-      write_file!(scope.environment, "docs/design/design_system.html", "")
+      write_file!(scope.environment, ".code_my_spec/design/design_system.html", "")
 
       result = DesignUi.evaluate(scope, session)
 

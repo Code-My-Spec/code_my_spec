@@ -2,72 +2,77 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @moduledoc """
   Per-story agent task for QA-testing a single user story.
 
-  Handles testing one story via the `web` CLI tool and producing its artifacts:
-  - A QA result at `docs/qa/{story_slug}.md`
-  - Optionally, issue files in `docs/issues/`
-
-  Can be invoked standalone or delegated to by QaApp.
+  Loads BDD specs for the story, projects them into readable format,
+  and tells the agent to test that area of the application using the
+  `web` CLI tool. The agent decides how to authenticate, navigate,
+  and verify — we just give it the specs and point it at the router.
 
   Two main functions:
-  - `command/3` - Reads QA brief and existing result, builds focused prompt
-  - `evaluate/3` - Validates the story has a QA result and cleans up brief
+  - `command/3` - Loads BDD specs, projects them, builds focused prompt
+  - `evaluate/3` - Validates the QA result document exists and has required structure
   """
 
-  alias CodeMySpec.Environments
+  require Logger
 
-  @qa_dir "docs/qa"
-  @briefs_dir "docs/status/qa"
-  @issues_dir "docs/issues"
+  alias CodeMySpec.{BddSpecs, Environments, Paths, Stories}
+  alias CodeMySpec.BddSpecs.SpecProjector
 
   @doc """
   Generate the QA prompt for a single story.
 
-  Reads the QA brief (if one exists), checks for an existing result,
-  lists existing issues, and builds a prompt instructing the agent to
-  test the story using the `web` tool.
-
-  The story slug is taken from `session.state["topic"]`.
+  Takes a story ID from `session.state["topic"]`, loads BDD specs,
+  projects them using SpecProjector, and builds a prompt pointing
+  the agent at the router and specs.
 
   Returns {:ok, prompt_text}
   """
   def command(scope, session, _opts \\ []) do
-    story_slug = get_topic(session)
+    story_id = get_story_id(session)
     env = scope.environment
 
-    qa_brief = read_qa_brief(env, story_slug)
-    existing_result = read_existing_result(env, story_slug)
+    story = Stories.get_story!(scope, story_id)
+    app_name = derive_app_name(env)
+    router_path = "lib/#{app_name}_web/router.ex"
+    {spec_projections, spec_file_paths} = load_specs(env, story_id)
+    existing_result = read_existing_result(env, story_id)
     existing_issues = list_existing_issues(env)
 
-    prompt = build_prompt(story_slug, qa_brief, existing_result, existing_issues)
+    prompt =
+      build_prompt(
+        story_id,
+        story,
+        router_path,
+        spec_projections,
+        spec_file_paths,
+        existing_result,
+        existing_issues
+      )
+
     {:ok, prompt}
   end
 
   @doc """
   Validate the story's QA result is complete.
 
-  Checks:
-  1. QA result exists at `docs/qa/{story_slug}.md` and is non-empty
-  2. On success, cleans up the QA brief file
+  Checks that `docs/qa/{story_id}.md` exists, is non-empty,
+  and contains the required status line.
 
   Returns:
   - {:ok, :valid} if checks pass
   - {:ok, :invalid, feedback} if something is missing
   """
   def evaluate(scope, session, _opts \\ []) do
-    story_slug = get_topic(session)
+    story_id = get_story_id(session)
     env = scope.environment
-    working_dir = env && env.cwd
 
-    issues = []
-    issues = check_qa_result(env, story_slug, issues)
+    issues = check_qa_result(env, story_id, [])
 
     case issues do
       [] ->
-        cleanup_qa_brief(story_slug, working_dir)
         {:ok, :valid}
 
       issues ->
-        feedback = format_feedback(story_slug, issues)
+        feedback = format_feedback(story_id, issues)
         {:ok, :invalid, feedback}
     end
   end
@@ -76,20 +81,30 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Helpers
   # ============================================================================
 
-  defp get_topic(%{state: %{"topic" => topic}}), do: topic
-  defp get_topic(_session), do: raise("QaStory requires session.state[\"topic\"]")
-
-  defp read_qa_brief(env, story_slug) do
-    path = "#{@briefs_dir}/#{story_slug}.md"
-
-    case Environments.read_file(env, path) do
-      {:ok, content} -> content
-      _ -> nil
+  defp get_story_id(%{state: %{"topic" => topic}}) do
+    case Integer.parse(to_string(topic)) do
+      {id, _} -> id
+      :error -> raise "QaStory requires a numeric story ID in session.state[\"topic\"], got: #{inspect(topic)}"
     end
   end
 
-  defp read_existing_result(env, story_slug) do
-    path = "#{@qa_dir}/#{story_slug}.md"
+  defp get_story_id(_session), do: raise("QaStory requires session.state[\"topic\"]")
+
+  defp derive_app_name(env) do
+    case Environments.read_file(env, "mix.exs") do
+      {:ok, content} ->
+        case Regex.run(~r/app:\s*:(\w+)/, content) do
+          [_, app_name] -> app_name
+          _ -> "my_app"
+        end
+
+      _ ->
+        "my_app"
+    end
+  end
+
+  defp read_existing_result(env, story_id) do
+    path = "#{Paths.qa_dir()}/#{story_id}.md"
 
     case Environments.read_file(env, path) do
       {:ok, content} -> content
@@ -98,7 +113,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   defp list_existing_issues(env) do
-    case Environments.glob(env, "#{@issues_dir}/*.md") do
+    case Environments.glob(env, "#{Paths.issues_dir()}/*.md") do
       files when is_list(files) and files != [] ->
         files
         |> Enum.map(&Path.basename/1)
@@ -110,51 +125,122 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   # ============================================================================
+  # Spec Loading
+  # ============================================================================
+
+  @doc false
+  def load_specs(env, story_id) do
+    specs = BddSpecs.list_specs_for_story(env, story_id)
+
+    if Enum.empty?(specs) do
+      {[], []}
+    else
+      projections = Enum.map(specs, &SpecProjector.project_full/1)
+      file_paths = Enum.map(specs, & &1.file_path)
+      {projections, file_paths}
+    end
+  end
+
+  # ============================================================================
   # Prompt Building
   # ============================================================================
 
-  defp build_prompt(story_slug, qa_brief, existing_result, existing_issues) do
+  defp build_prompt(
+         story_id,
+         story,
+         router_path,
+         spec_projections,
+         spec_file_paths,
+         existing_result,
+         existing_issues
+       ) do
     sections =
       [
-        build_header(story_slug),
-        build_brief_section(qa_brief),
-        build_existing_result_section(story_slug, existing_result),
+        build_header(story_id),
+        build_story_section(story),
+        build_specs_section(spec_projections, spec_file_paths),
+        build_router_section(router_path),
+        build_existing_result_section(story_id, existing_result),
         build_existing_issues_section(existing_issues),
-        build_instructions(story_slug)
+        build_instructions(story_id),
+        build_output_format(story_id)
       ]
       |> Enum.reject(&is_nil/1)
 
     Enum.join(sections, "\n\n")
   end
 
-  defp build_header(story_slug) do
+  defp build_header(story_id) do
     """
-    # QA Story: #{story_slug}
+    # QA Story: #{story_id}
 
-    You are testing the user story **#{story_slug}** by using the `web` CLI tool
-    to browse the running application and verify it works correctly.
-    """
-  end
-
-  defp build_brief_section(nil), do: nil
-
-  defp build_brief_section(brief) do
-    """
-    ## QA Brief
-
-    The following brief describes what to test for this story:
-
-    #{brief}
+    You are testing story **#{story_id}** by browsing the running
+    application with the `web` CLI tool. Read the `web-cli` knowledge article
+    for tool usage patterns and flags.
     """
   end
 
-  defp build_existing_result_section(_story_slug, nil), do: nil
+  defp build_story_section(story) do
+    criteria_text = format_criteria(Map.get(story, :criteria, []))
 
-  defp build_existing_result_section(story_slug, content) do
+    """
+    ## Story: #{story.title}
+
+    #{story.description || "_No description._"}
+
+    ### Acceptance Criteria
+
+    #{criteria_text}
+    """
+  end
+
+  defp format_criteria([]), do: "_No acceptance criteria defined._"
+
+  defp format_criteria(criteria) do
+    Enum.map_join(criteria, "\n", fn c -> "- #{c.description}" end)
+  end
+
+  defp build_specs_section([], []) do
+    """
+    ## BDD Specs
+
+    No BDD specs found for this story. Read the router to discover relevant
+    routes and test the area of the application related to this story.
+    """
+  end
+
+  defp build_specs_section(projections, file_paths) do
+    paths_list = Enum.map_join(file_paths, "\n", &"- `#{&1}`")
+    projected_specs = Enum.join(projections, "\n\n---\n\n")
+
+    """
+    ## BDD Specs
+
+    **Spec files** (read these for exact selectors and test data):
+    #{paths_list}
+
+    ### Projected Specs
+
+    #{projected_specs}
+    """
+  end
+
+  defp build_router_section(router_path) do
+    """
+    ## Router
+
+    Read the router at `#{router_path}` to discover routes, authentication
+    pipelines, and how to navigate the application.
+    """
+  end
+
+  defp build_existing_result_section(_story_id, nil), do: nil
+
+  defp build_existing_result_section(story_id, content) do
     """
     ## Existing QA Result
 
-    A previous QA result exists at `#{@qa_dir}/#{story_slug}.md`:
+    A previous QA result exists at `#{Paths.qa_dir()}/#{story_id}.md`:
 
     ```markdown
     #{content}
@@ -178,45 +264,41 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp build_instructions(story_slug) do
+  defp build_instructions(story_id) do
     """
     ## Instructions
 
-    ### Using the `web` tool
+    1. Read the BDD spec files listed above — they contain exact element selectors,
+       form data, and assertions that define what this story should do
+    2. Read the router to understand authentication and available routes
+    3. Ensure the Phoenix server is running
+    4. Use the `web` tool to browse and test the application area covered by this story
+    5. For every bug found, create an issue file in `#{Paths.issues_dir()}/#{story_id}-<description>.md`
+    6. Write your QA result to `#{Paths.qa_dir()}/#{story_id}.md` using the format below
+    """
+  end
 
-    - **Visit a page**: `web http://localhost:4000/some-route`
-    - **Take a screenshot**: `web http://localhost:4000/some-route --screenshot docs/qa/screenshots/#{story_slug}/page.png`
-    - **Fill a form**: `web http://localhost:4000/page --form "form_id" --input "field[name]" --value "test" --after-submit http://localhost:4000/next`
-    - **JS interactions**: `web http://localhost:4000/page --js "document.querySelector('.btn').click()"`
-    - **Maintain session**: Use `--profile qa` on all requests to keep cookies/auth
+  defp build_output_format(story_id) do
+    """
+    ## Required Output Format
 
-    ### For authenticated routes
+    Write your result to `#{Paths.qa_dir()}/#{story_id}.md` with this structure:
 
-    1. First log in using the app's login form with `--profile qa`
-    2. Then visit authenticated routes with `--profile qa` to reuse the session
+    ```markdown
+    # QA: Story #{story_id}
 
-    ### Testing approach
+    ## Status: PASS | FAIL | PARTIAL
 
-    1. Focus on the routes and functionality related to this story
-    2. Test the happy path first, then edge cases
-    3. Check page content against acceptance criteria from the brief
-    4. Look for: broken pages, missing content, form errors, UI glitches, 500 errors
+    ## Scenarios Tested
+    - [scenario name]: PASS/FAIL — [details]
 
-    ### Filing issues
+    ## Issues Found
+    - [description] → `docs/issues/#{story_id}-xxx.md`
+    (or "None")
 
-    For every bug or problem you find, create an issue file in `#{@issues_dir}/`:
-
-    - Filename: descriptive kebab-case, e.g. `#{@issues_dir}/#{story_slug}-form-500-error.md`
-    - Content: describe the problem, what you expected, what happened, and the route
-
-    ### Write QA Result
-
-    Write the result to `#{@qa_dir}/#{story_slug}.md`. Include:
-
-    - What routes you visited for this story
-    - What you tested (happy path, edge cases)
-    - What passed and what failed
-    - References to any issues you filed
+    ## Evidence
+    - [screenshots, key observations, web tool output excerpts]
+    ```
 
     When complete, stop the session so validation can check your work.
     """
@@ -226,15 +308,22 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Evaluation
   # ============================================================================
 
-  defp check_qa_result(env, story_slug, issues) do
-    path = "#{@qa_dir}/#{story_slug}.md"
+  defp check_qa_result(env, story_id, issues) do
+    path = "#{Paths.qa_dir()}/#{story_id}.md"
 
     case Environments.read_file(env, path) do
       {:ok, content} when is_binary(content) ->
-        if String.trim(content) == "" do
-          [{:empty_result, "QA result at `#{path}` is empty"} | issues]
-        else
-          issues
+        content = String.trim(content)
+
+        cond do
+          content == "" ->
+            [{:empty_result, "QA result at `#{path}` is empty"} | issues]
+
+          not String.contains?(content, "## Status:") ->
+            [{:missing_status, "QA result at `#{path}` is missing the `## Status:` section"} | issues]
+
+          true ->
+            issues
         end
 
       _ ->
@@ -242,26 +331,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp cleanup_qa_brief(_story_slug, nil), do: :ok
-
-  defp cleanup_qa_brief(story_slug, working_dir) do
-    path = Path.join(working_dir, "#{@briefs_dir}/#{story_slug}.md")
-
-    if File.exists?(path) do
-      File.rm(path)
-    end
-
-    :ok
-  end
-
-  defp format_feedback(story_slug, issues) do
+  defp format_feedback(story_id, issues) do
     issue_list =
       issues
       |> Enum.reverse()
       |> Enum.map_join("\n", fn {_type, message} -> "- #{message}" end)
 
     """
-    QA story "#{story_slug}" is incomplete:
+    QA story #{story_id} is incomplete:
 
     #{issue_list}
 

@@ -9,10 +9,9 @@ defmodule CodeMySpec.Architecture do
   alias CodeMySpec.Architecture.{MermaidProjector, NamespaceProjector, OverviewProjector}
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
+  alias CodeMySpec.Paths
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-
-  @default_output_dir "docs/architecture"
 
   # Delegate projector functions
   defdelegate generate_overview(components), to: OverviewProjector, as: :project
@@ -23,14 +22,14 @@ defmodule CodeMySpec.Architecture do
   Generates all architectural view files and writes them to the configured output directory.
 
   ## Options
-    * `:output_dir` - Directory to write files to (default: "docs/architecture/")
+    * `:output_dir` - Directory to write files to (default: ".code_my_spec/architecture/")
     * `:only` - List of view types to generate (default: all)
               Valid values: [:overview, :dependency_graph, :namespace_hierarchy]
 
   ## Examples
 
       iex> generate_views(scope)
-      {:ok, ["docs/architecture/overview.md", "docs/architecture/dependency_graph.mmd", "docs/architecture/namespace_hierarchy.md"]}
+      {:ok, [".code_my_spec/architecture/overview.md", ".code_my_spec/architecture/dependency_graph.mmd", ".code_my_spec/architecture/namespace_hierarchy.md"]}
 
       iex> generate_views(scope, output_dir: "/tmp/arch", only: [:overview])
       {:ok, ["/tmp/arch/overview.md"]}
@@ -38,7 +37,7 @@ defmodule CodeMySpec.Architecture do
   """
   @spec generate_views(Scope.t(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
   def generate_views(%Scope{} = scope, opts \\ []) do
-    output_dir = Keyword.get(opts, :output_dir, @default_output_dir)
+    output_dir = Keyword.get(opts, :output_dir, Paths.architecture_dir())
     only = Keyword.get(opts, :only, [:overview, :dependency_graph, :namespace_hierarchy])
 
     components = Components.list_components_with_dependencies(scope)

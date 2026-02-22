@@ -75,7 +75,7 @@ defmodule CodeMySpec.Components.SyncTest do
 
   defp module_to_spec_path(tmp_dir, module_name) do
     parts = module_name |> String.split(".") |> Enum.map(&Macro.underscore/1)
-    Path.join([tmp_dir, "docs/spec" | parts]) <> ".spec.md"
+    Path.join([tmp_dir, ".code_my_spec/spec" | parts]) <> ".spec.md"
   end
 
   defp module_to_impl_path(tmp_dir, module_name) do
@@ -112,7 +112,7 @@ defmodule CodeMySpec.Components.SyncTest do
       tmp_dir: tmp_dir
     } do
       write_raw_file(tmp_dir, "lib/my_app/utils/helpers.ex", "# no defmodule here")
-      write_raw_file(tmp_dir, "docs/spec/my_app/utils/helpers.spec.md", "No H1 title here")
+      write_raw_file(tmp_dir, ".code_my_spec/spec/my_app/utils/helpers.spec.md", "No H1 title here")
 
       {:ok, components, _errors} = Sync.sync_all(scope, base_dir: tmp_dir)
 

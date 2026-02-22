@@ -66,7 +66,7 @@ defmodule CodeMySpec.Documents do
       |> String.split(".")
       |> Enum.map(&Macro.underscore/1)
 
-    Path.join([base_dir, "docs/spec" | path_parts]) <> ".spec.md"
+    Path.join([base_dir, CodeMySpec.Paths.spec_dir() | path_parts]) <> ".spec.md"
   end
 
   defp module_to_impl_path(module_name, base_dir) do
@@ -80,7 +80,7 @@ defmodule CodeMySpec.Documents do
 
   defp module_name_from_path(path) do
     path
-    |> String.replace(~r{^.*/docs/spec/}, "")
+    |> String.replace(~r{^.*/#{Regex.escape(CodeMySpec.Paths.spec_dir())}/}, "")
     |> String.replace_suffix(".spec.md", "")
     |> String.split("/")
     |> Enum.map_join(".", fn part ->

@@ -19,6 +19,7 @@ defmodule CodeMySpec.Components.Sync do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Sync.FileInfo
+  alias CodeMySpec.Paths
   alias CodeMySpec.Users.Scope
 
   @type parse_error :: {path :: String.t(), reason :: term()}
@@ -58,7 +59,7 @@ defmodule CodeMySpec.Components.Sync do
     synced_at_map = Map.new(existing_components, fn c -> {c.module_name, c.synced_at} end)
 
     # Collect file infos with mtimes
-    spec_file_infos = FileInfo.collect_files(base_dir, "docs/spec/**/*.spec.md")
+    spec_file_infos = FileInfo.collect_files(base_dir, Paths.spec_glob())
     impl_file_infos = FileInfo.collect_files(base_dir, "lib/**/*.ex")
 
     # PRE-FILTER by mtime BEFORE parsing (key optimization)
@@ -397,7 +398,7 @@ defmodule CodeMySpec.Components.Sync do
   defp derive_module_from_path(path, base_dir, :spec) do
     path
     |> String.replace_prefix("#{base_dir}/", "")
-    |> String.replace_prefix("docs/spec/", "")
+    |> String.replace_prefix(Paths.spec_prefix(), "")
     |> String.replace_suffix(".spec.md", "")
     |> path_to_module()
   end

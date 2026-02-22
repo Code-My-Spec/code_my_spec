@@ -1,7 +1,9 @@
 defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
-  alias Hermes.Server.Response
-  alias CodeMySpec.McpServers.Formatters
+  @moduledoc false
+
   alias CodeMySpec.Architecture.StoryAnalyzer
+  alias CodeMySpec.McpServers.Formatters
+  alias Hermes.Server.Response
 
   # Story analysis response (hybrid text + JSON)
   def story_analysis_response(analysis) do
@@ -296,6 +298,6 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
       |> String.split(".")
       |> Enum.map(&Macro.underscore/1)
 
-    Path.join(["docs/spec" | path_parts]) <> ".spec.md"
+    Path.join([CodeMySpec.Paths.spec_dir() | path_parts]) <> ".spec.md"
   end
 end

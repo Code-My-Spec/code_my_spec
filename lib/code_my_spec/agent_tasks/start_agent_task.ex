@@ -163,7 +163,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp with_project_context(prompt) do
-    "Read `docs/AGENTS.md` for project documentation structure.\n\n" <> prompt
+    "Read `.code_my_spec/` for project documentation structure.\n\n" <> prompt
   end
 
   # Validation

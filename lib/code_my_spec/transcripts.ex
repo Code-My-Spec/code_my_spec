@@ -103,4 +103,27 @@ defmodule CodeMySpec.Transcripts do
   @spec get_tool_calls(Transcript.t(), tool_name :: String.t()) ::
           [CodeMySpec.Transcripts.ClaudeCode.ToolCall.t()]
   defdelegate get_tool_calls(transcript, tool_name), to: FileExtractor
+
+  @doc """
+  Extract file-modifying tool calls (Edit and Write) in chronological order.
+
+  Unlike `extract_edited_files/1` which deduplicates to unique paths, this
+  returns every file-modifying operation in order, preserving duplicates.
+  Used by the Replayer to apply operations sequentially.
+
+  ## Parameters
+
+    - `transcript` - The Transcript struct to extract operations from
+
+  ## Returns
+
+    List of ToolCall structs for Edit and Write operations in chronological order
+
+  ## Examples
+
+      iex> Transcripts.get_file_operations(transcript)
+      [%ToolCall{name: "Edit", ...}, %ToolCall{name: "Write", ...}]
+  """
+  @spec get_file_operations(Transcript.t()) :: [CodeMySpec.Transcripts.ClaudeCode.ToolCall.t()]
+  defdelegate get_file_operations(transcript), to: FileExtractor
 end

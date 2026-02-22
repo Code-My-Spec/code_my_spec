@@ -69,12 +69,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   defp prompt_file_path(tmp_dir, story) do
     Path.join(
       tmp_dir,
-      ".code_my_spec/internal/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{story.id}.md"
+      ".code_my_spec/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{story.id}.md"
     )
   end
 
   defp orchestration_file_path(tmp_dir) do
-    Path.join(tmp_dir, ".code_my_spec/internal/sessions/#{@external_id}/write_bdd_specs.md")
+    Path.join(tmp_dir, ".code_my_spec/sessions/#{@external_id}/write_bdd_specs.md")
   end
 
   defp write_valid_spec_file!(tmp_dir, story, criterion) do
@@ -423,7 +423,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
 
       expected_relative_path =
-        ".code_my_spec/internal/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{session.story.id}.md"
+        ".code_my_spec/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{session.story.id}.md"
 
       orch_content = File.read!(orchestration_file_path(tmp_dir))
       assert orch_content =~ expected_relative_path

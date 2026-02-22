@@ -95,6 +95,33 @@ defmodule CodeMySpec.Transcripts.ClaudeCode.FileExtractor do
     |> Enum.filter(fn %ToolCall{name: name} -> name == tool_name end)
   end
 
+  @doc """
+  Extract file-modifying tool calls (Edit and Write) in chronological order.
+
+  Unlike `extract_edited_files/1` which deduplicates to unique paths, this
+  returns every file-modifying operation in order, preserving duplicates.
+  Used by the Replayer to apply operations sequentially.
+
+  ## Parameters
+
+    - `transcript` - The Transcript struct to extract operations from
+
+  ## Returns
+
+    List of ToolCall structs for Edit and Write operations in chronological order
+
+  ## Examples
+
+      iex> FileExtractor.get_file_operations(transcript)
+      [%ToolCall{name: "Edit", ...}, %ToolCall{name: "Write", ...}]
+  """
+  @spec get_file_operations(Transcript.t()) :: [ToolCall.t()]
+  def get_file_operations(%Transcript{} = transcript) do
+    transcript
+    |> get_tool_calls()
+    |> Enum.filter(&file_modifying?/1)
+  end
+
   defp file_modifying?(%ToolCall{name: name}) when name in @file_modifying_tools, do: true
   defp file_modifying?(%ToolCall{}), do: false
 end

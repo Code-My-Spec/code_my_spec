@@ -13,7 +13,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
 
   @moduletag :tmp_dir
 
-  @status_path "docs/status/implementation_status.json"
+  @status_path ".code_my_spec/status/implementation_status.json"
 
   # ============================================================================
   # Test Helpers

@@ -12,6 +12,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   alias CodeMySpec.Code.ElixirAst
   alias CodeMySpec.Documents.MarkdownParser
+  alias CodeMySpec.Paths
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Users.Scope
 
@@ -26,7 +27,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
   @impl true
   @spec available?(Scope.t()) :: boolean()
   def available?(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "" do
-    spec_dir = Path.join(cwd, "docs/spec")
+    spec_dir = Path.join(cwd, Paths.spec_dir())
     File.dir?(spec_dir)
   rescue
     _ -> false
@@ -60,7 +61,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
   # Private functions
 
   defp get_spec_directory(cwd) do
-    spec_dir = Path.join(cwd, "docs/spec")
+    spec_dir = Path.join(cwd, Paths.spec_dir())
 
     if File.dir?(spec_dir) do
       {:ok, spec_dir}

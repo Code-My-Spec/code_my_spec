@@ -10,13 +10,13 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - `evaluate/3` - Called by stop hook to validate and execute the proposal
   """
 
-  alias CodeMySpec.{Architecture, Components, Stories}
+  alias CodeMySpec.{Architecture, Components, Paths, Stories}
   alias CodeMySpec.Architecture.Proposal
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
 
-  @proposal_path "docs/architecture/proposal.md"
+  @proposal_path Paths.proposal_path()
 
   @doc """
   Generate the command/prompt for Claude to start architecture design.
@@ -39,9 +39,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     # Generate fresh architecture views
     output_dir =
       if working_dir do
-        Path.join(working_dir, "docs/architecture/")
+        Path.join(working_dir, Paths.architecture_dir())
       else
-        "docs/architecture/"
+        Paths.architecture_dir()
       end
 
     Architecture.generate_views(scope, output_dir: output_dir)

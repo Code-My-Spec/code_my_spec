@@ -6,7 +6,7 @@ defmodule CodeMySpec.Rules do
 
   defstruct [:name, :content, :component_type, :session_type]
 
-  @rules_directory "docs/rules"
+  @rules_directory CodeMySpec.Paths.rules_dir()
 
   @doc """
   Finds matching rules based on component type and session type.

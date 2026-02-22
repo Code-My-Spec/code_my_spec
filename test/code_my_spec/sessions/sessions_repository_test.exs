@@ -1,11 +1,11 @@
 defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Sessions.SessionsRepository
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.AgentTasks
+  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Sessions.SessionsRepository
 
-  @sessions_dir ".code_my_spec/internal/sessions"
+  @sessions_dir ".code_my_spec/sessions"
 
   setup do
     tmp_dir =

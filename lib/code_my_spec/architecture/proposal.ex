@@ -623,46 +623,38 @@ defmodule CodeMySpec.Architecture.Proposal do
     components = to_components(proposal)
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
 
-    with {:ok, env} <- Environments.create(:cli, working_dir: working_dir) do
-      # Write spec files
-      file_results =
-        Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
-          case write_spec_file(env, comp_attrs) do
-            :ok -> {:cont, {:ok, [comp_attrs | created]}}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-        end)
+    with {:ok, env} <- Environments.create(:cli, working_dir: working_dir),
+         {:ok, created_components} <- write_all_spec_files(env, components) do
+      linked_count = sync_and_link_components(scope, created_components)
 
-      Environments.destroy(env)
+      Logger.debug(
+        "[Proposal] sync_and_link_components complete, linked_count: #{linked_count}"
+      )
 
-      case file_results do
-        {:ok, created_components} ->
-          # Sync to database and link stories to surface components
-          Logger.debug(
-            "[Proposal] Starting sync_and_link_components with #{length(created_components)} components"
-          )
+      result =
+        {:ok,
+         %{
+           created_contexts: Enum.count(proposal.contexts),
+           created_components: length(created_components),
+           linked_stories: linked_count
+         }}
 
-          linked_count = sync_and_link_components(scope, created_components)
-
-          Logger.debug(
-            "[Proposal] sync_and_link_components complete, linked_count: #{linked_count}"
-          )
-
-          result =
-            {:ok,
-             %{
-               created_contexts: Enum.count(proposal.contexts),
-               created_components: length(created_components),
-               linked_stories: linked_count
-             }}
-
-          Logger.info("[Proposal] Execution complete: #{inspect(result)}")
-          result
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      Logger.info("[Proposal] Execution complete: #{inspect(result)}")
+      result
     end
+  end
+
+  defp write_all_spec_files(env, components) do
+    result =
+      Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
+        case write_spec_file(env, comp_attrs) do
+          :ok -> {:cont, {:ok, [comp_attrs | created]}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
+
+    Environments.destroy(env)
+    result
   end
 
   defp sync_and_link_components(scope, components) do
@@ -786,7 +778,7 @@ defmodule CodeMySpec.Architecture.Proposal do
       |> Enum.map(&String.trim/1)
       |> Enum.map(&Macro.underscore/1)
 
-    Path.join(["docs/spec" | path_parts]) <> ".spec.md"
+    Path.join([CodeMySpec.Paths.spec_dir() | path_parts]) <> ".spec.md"
   end
 
   defp generate_spec_template(attrs) do

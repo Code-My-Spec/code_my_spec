@@ -216,9 +216,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   end
 
   defp create_docs_structure(tmp_dir, app_name) do
-    File.mkdir_p!(Path.join(tmp_dir, "docs/rules"))
-    File.mkdir_p!(Path.join(tmp_dir, "docs/spec/#{app_name}"))
-    File.mkdir_p!(Path.join(tmp_dir, "docs/spec/#{app_name}_web"))
+    File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/rules"))
+    File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/#{app_name}"))
+    File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/#{app_name}_web"))
 
     # Create .gitmodules file with docs submodule entry
     gitmodules_content = """
@@ -344,7 +344,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       # Create project with docs dir but incomplete structure
       create_phoenix_project_structure(tmp_dir, "my_app")
-      File.mkdir_p!(Path.join(tmp_dir, "docs"))
+      File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec"))
       # Don't create rules/ or spec/ directories
 
       status = ProjectSetup.check_status(env, session)

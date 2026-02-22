@@ -14,12 +14,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   - `evaluate/3` - Validates the topic has a decision record and index entry
   """
 
-  alias CodeMySpec.Environments
-
-  @decisions_dir "docs/architecture/decisions"
-  @decisions_index "docs/architecture/decisions.md"
-  @knowledge_dir "docs/knowledge"
-  @research_dir "docs/status/research"
+  alias CodeMySpec.{Environments, Paths}
 
   @doc """
   Generate the research prompt for a single topic.
@@ -86,7 +81,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   defp get_topic(_session), do: raise("ResearchTopic requires session.state[\"topic\"]")
 
   defp read_research_brief(env, topic) do
-    path = "#{@research_dir}/#{topic}.md"
+    path = "#{Paths.research_dir()}/#{topic}.md"
 
     case Environments.read_file(env, path) do
       {:ok, content} -> content
@@ -102,7 +97,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   end
 
   defp check_existing_knowledge(env, topic) do
-    pattern = "#{@knowledge_dir}/#{topic}/**"
+    pattern = "#{Paths.knowledge_dir()}/#{topic}/**"
 
     case Environments.glob(env, pattern) do
       files when is_list(files) and files != [] -> files
@@ -111,7 +106,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   end
 
   defp check_existing_decision(env, topic) do
-    path = "#{@decisions_dir}/#{topic}.md"
+    path = "#{Paths.decisions_dir()}/#{topic}.md"
 
     case Environments.read_file(env, path) do
       {:ok, content} -> content
@@ -181,7 +176,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
     """
     ## Existing Knowledge
 
-    There are already knowledge entries for this topic in `#{@knowledge_dir}/#{topic}/`:
+    There are already knowledge entries for this topic in `#{Paths.knowledge_dir()}/#{topic}/`:
 
     #{file_list}
 
@@ -196,7 +191,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
     """
     ## Existing Decision Record
 
-    A decision record already exists at `#{@decisions_dir}/#{topic}.md`:
+    A decision record already exists at `#{Paths.decisions_dir()}/#{topic}.md`:
 
     ```markdown
     #{content}
@@ -217,10 +212,10 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
        existing code for relevant context.
 
     2. **Write knowledge entries** (optional) — if the research produces useful reference
-       material, write it to `#{@knowledge_dir}/#{topic}/`. Use one file per sub-topic
-       (e.g., `#{@knowledge_dir}/#{topic}/getting_started.md`).
+       material, write it to `#{Paths.knowledge_dir()}/#{topic}/`. Use one file per sub-topic
+       (e.g., `#{Paths.knowledge_dir()}/#{topic}/getting_started.md`).
 
-    3. **Write the decision record** — write to `#{@decisions_dir}/#{topic}.md` with this structure:
+    3. **Write the decision record** — write to `#{Paths.decisions_dir()}/#{topic}.md` with this structure:
        - **Title**: What was decided
        - **Status**: Accepted / Proposed / Superseded
        - **Context**: Why this decision was needed
@@ -228,7 +223,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
        - **Decision**: What was chosen and why
        - **Consequences**: Trade-offs and implications
 
-    4. **Update the index** — ensure `#{@decisions_index}` exists and includes a
+    4. **Update the index** — ensure `#{Paths.decisions_index()}` exists and includes a
        reference to this topic's decision record.
 
     When complete, stop the session so validation can check your work.
@@ -240,7 +235,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   # ============================================================================
 
   defp check_decision_record(env, topic, issues) do
-    path = "#{@decisions_dir}/#{topic}.md"
+    path = "#{Paths.decisions_dir()}/#{topic}.md"
 
     case Environments.read_file(env, path) do
       {:ok, content} when is_binary(content) ->
@@ -256,7 +251,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   end
 
   defp check_decisions_index(env, topic, issues) do
-    case Environments.read_file(env, @decisions_index) do
+    case Environments.read_file(env, Paths.decisions_index()) do
       {:ok, content} ->
         if String.contains?(content, topic) do
           issues
@@ -265,14 +260,14 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
         end
 
       _ ->
-        [{:missing_index, "Decisions index not found at `#{@decisions_index}`"} | issues]
+        [{:missing_index, "Decisions index not found at `#{Paths.decisions_index()}`"} | issues]
     end
   end
 
   defp cleanup_research_prompt(_topic, nil), do: :ok
 
   defp cleanup_research_prompt(topic, working_dir) do
-    path = Path.join(working_dir, "#{@research_dir}/#{topic}.md")
+    path = Path.join(working_dir, "#{Paths.research_dir()}/#{topic}.md")
 
     if File.exists?(path) do
       File.rm(path)

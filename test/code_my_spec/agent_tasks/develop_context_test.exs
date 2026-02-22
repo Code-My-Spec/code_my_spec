@@ -154,7 +154,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       |> Enum.map(&Macro.underscore/1)
 
     {dir_parts, [dirname]} = Enum.split(parts, -1)
-    Path.join(["docs/status" | dir_parts] ++ [dirname])
+    Path.join([".code_my_spec/status" | dir_parts] ++ [dirname])
   end
 
   defp read_orchestration_file(tmp_dir, module_name) do
@@ -352,7 +352,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       assert content =~ "Subagent Usage"
       assert content =~ "spec-writer"
       assert content =~ "Prompt files to complete"
-      assert content =~ "docs/status/"
+      assert content =~ ".code_my_spec/status/"
     end
   end
 

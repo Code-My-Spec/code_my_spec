@@ -44,8 +44,8 @@ defmodule CodeMySpec.Validation.PipelineTest do
 
   describe "categorize_files/1" do
     test "categorizes .spec.md files as spec_files" do
-      result = Pipeline.categorize_files(["docs/spec/my_module.spec.md"])
-      assert "docs/spec/my_module.spec.md" in result.spec_files
+      result = Pipeline.categorize_files([".code_my_spec/spec/my_module.spec.md"])
+      assert ".code_my_spec/spec/my_module.spec.md" in result.spec_files
     end
 
     test "categorizes _test.exs files as test_files" do
@@ -181,7 +181,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
     end
 
     test "clears spec_validation-source problems for spec_files", %{scope: scope} do
-      spec_file = "docs/spec/my_module.spec.md"
+      spec_file = ".code_my_spec/spec/my_module.spec.md"
 
       problem_fixture(scope, %{
         source: "spec_validation",
@@ -665,7 +665,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
     @tag :tmp_dir
     test "determines correct document type (context_spec vs spec)", %{tmp_dir: tmp_dir} do
       # Context spec path: docs/spec/{project}/{file}.spec.md
-      context_dir = Path.join(tmp_dir, "docs/spec/my_project")
+      context_dir = Path.join(tmp_dir, ".code_my_spec/spec/my_project")
       File.mkdir_p!(context_dir)
       context_spec = Path.join(context_dir, "accounts.spec.md")
 

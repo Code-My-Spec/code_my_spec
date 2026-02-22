@@ -496,7 +496,7 @@ defmodule CodeMySpec.Validation.Pipeline do
         parts
 
       index when index > 0 ->
-        if Enum.at(parts, index - 1) == "docs" do
+        if Enum.at(parts, index - 1) in ["docs", ".code_my_spec"] do
           Enum.drop(parts, index + 1)
         else
           parts

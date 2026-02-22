@@ -38,7 +38,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     LiveViewTest
   }
 
-  @status_dir "docs/status"
+  @status_dir CodeMySpec.Paths.status_dir()
 
   # Derive an action directory from the LiveView component's module_name.
   # TestAppWeb.DashboardLive → docs/status/test_app_web/dashboard_live
@@ -116,45 +116,40 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
          {:ok, phase_status} <-
            check_lifecycle_phases(scope, session, liveview_component, children),
          :ok <- cleanup_completed_phases(phase_status, status_dir, working_dir) do
-      case phase_status do
-        %{complete: true} ->
-          Logger.info("[DevelopLiveView] All phases complete")
-          cleanup_status_directory(status_dir, working_dir)
-          {:ok, :valid}
-
-        %{incomplete_phases: incomplete} ->
-          phase_names =
-            Enum.map_join(incomplete, ", ", fn {phase, _} -> Atom.to_string(phase) end)
-
-          Logger.info("[DevelopLiveView] Incomplete phases: #{phase_names}")
-
-          {:ok, prompt_files} =
-            generate_phase_prompts(
-              scope,
-              session,
-              liveview_component,
-              children,
-              phase_status,
-              status_dir
-            )
-
-          Logger.info("[DevelopLiveView] Generated #{length(prompt_files)} prompt file(s)")
-
-          {:ok, orchestration_content} =
-            build_orchestration_prompt(liveview_component, phase_status, prompt_files, status_dir)
-
-          orchestration_path = "#{status_dir}/develop_live_view.md"
-
-          CodeMySpec.Environments.write_file(
-            scope.environment,
-            orchestration_path,
-            orchestration_content
-          )
-
-          feedback = build_feedback(liveview_component, incomplete, status_dir)
-          {:ok, :invalid, feedback}
-      end
+      handle_phase_result(phase_status, scope, session, liveview_component, children, status_dir, working_dir)
     end
+  end
+
+  defp handle_phase_result(%{complete: true}, _scope, _session, _component, _children, status_dir, working_dir) do
+    Logger.info("[DevelopLiveView] All phases complete")
+    cleanup_status_directory(status_dir, working_dir)
+    {:ok, :valid}
+  end
+
+  defp handle_phase_result(%{incomplete_phases: incomplete} = phase_status, scope, session, liveview_component, children, status_dir, _working_dir) do
+    phase_names =
+      Enum.map_join(incomplete, ", ", fn {phase, _} -> Atom.to_string(phase) end)
+
+    Logger.info("[DevelopLiveView] Incomplete phases: #{phase_names}")
+
+    {:ok, prompt_files} =
+      generate_phase_prompts(scope, session, liveview_component, children, phase_status, status_dir)
+
+    Logger.info("[DevelopLiveView] Generated #{length(prompt_files)} prompt file(s)")
+
+    {:ok, orchestration_content} =
+      build_orchestration_prompt(liveview_component, phase_status, prompt_files, status_dir)
+
+    orchestration_path = "#{status_dir}/develop_live_view.md"
+
+    CodeMySpec.Environments.write_file(
+      scope.environment,
+      orchestration_path,
+      orchestration_content
+    )
+
+    feedback = build_feedback(liveview_component, incomplete, status_dir)
+    {:ok, :invalid, feedback}
   end
 
   # Private functions - Phase checking

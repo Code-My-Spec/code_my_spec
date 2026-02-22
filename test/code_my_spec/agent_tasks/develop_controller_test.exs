@@ -74,7 +74,7 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       |> Enum.map(&Macro.underscore/1)
 
     {dir_parts, [dirname]} = Enum.split(parts, -1)
-    Path.join(["docs/status" | dir_parts] ++ [dirname])
+    Path.join([".code_my_spec/status" | dir_parts] ++ [dirname])
   end
 
   defp read_orchestration_file(tmp_dir, module_name) do
@@ -176,7 +176,7 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       session = create_session(scope, controller)
 
       # JSON stub spec should not exist yet
-      json_spec_path = Path.join(tmp_dir, "docs/spec/test_app_web/user_json.spec.md")
+      json_spec_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_json.spec.md")
       refute File.exists?(json_spec_path)
 
       assert {:ok, _message} = DevelopController.command(scope, session)
@@ -196,7 +196,7 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       session = create_session(scope, controller)
 
       # Write a custom spec first
-      json_spec_path = Path.join(tmp_dir, "docs/spec/test_app_web/user_json.spec.md")
+      json_spec_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_json.spec.md")
       json_spec_path |> Path.dirname() |> File.mkdir_p!()
       File.write!(json_spec_path, "# Custom spec\n\nCustom content")
 

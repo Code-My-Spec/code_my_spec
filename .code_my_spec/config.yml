@@ -1,4 +1,4 @@
-account_id: "0f27281c-240b-4d6d-8e52-9c5972329522"
+account_id: 0f27281c-240b-4d6d-8e52-9c5972329522
 client_api_url: "https://www.codemyspec.com/api"
 code_repo: "https://github.com/johns10/code_my_spec"
 current_user_email: "johns10@gmail.com"
@@ -6,4 +6,4 @@ description: "# CodeMySpec - AI-Assisted Phoenix Development Platform ## Core Mi
 docs_repo: "https://github.com/johns10/code_my_spec_docs"
 module_name: CodeMySpec
 name: Code My Spec
-project_id: e64f0b32-6be2-4f0f-b70a-0f60983c916a
+project_id: 708492f9-454e-482f-a2eb-be64f0356b87

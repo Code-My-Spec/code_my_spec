@@ -2,18 +2,19 @@ defmodule CodeMySpec.Utils do
   @moduledoc false
 
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Paths
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Utils.Paths
+  alias CodeMySpec.Utils.Paths, as: UtilPaths
 
-  # Delegate path-related functions to Paths module
-  defdelegate resolve_context_path(path), to: Paths
-  defdelegate module_to_path(module_name), to: Paths
+  # Delegate path-related functions to Utils.Paths module
+  defdelegate resolve_context_path(path), to: UtilPaths
+  defdelegate module_to_path(module_name), to: UtilPaths
 
   def component_files(
         %Component{module_name: module_name, type: type},
         %Project{}
       ) do
-    module_path = Paths.module_to_path(module_name)
+    module_path = UtilPaths.module_to_path(module_name)
 
     # Phoenix convention: LiveViews/LiveComponents live in `live/`, controllers in `controllers/`
     source_path =
@@ -24,16 +25,16 @@ defmodule CodeMySpec.Utils do
       end
 
     base_files = %{
-      design_file: "docs/design/#{module_path}.md",
+      design_file: Paths.design_file(module_path),
       code_file: "lib/#{source_path}.ex",
       test_file: "test/#{source_path}_test.exs",
-      spec_file: "docs/spec/#{module_path}.spec.md"
+      spec_file: Paths.spec_file(module_path)
     }
 
     # Add type-specific files
     cond do
       type in ["context", "coordination_context"] ->
-        Map.put(base_files, :review_file, "docs/spec/#{module_path}/design_review.md")
+        Map.put(base_files, :review_file, Paths.review_file(module_path))
 
       type == "controller" ->
         json_path = derive_json_path(source_path)
@@ -45,13 +46,13 @@ defmodule CodeMySpec.Utils do
   end
 
   def component_files(module_name) do
-    module_path = Paths.module_to_path(module_name)
+    module_path = UtilPaths.module_to_path(module_name)
 
     %{
-      design_file: "docs/design/#{module_path}.md",
+      design_file: Paths.design_file(module_path),
       code_file: "lib/#{module_path}.ex",
       test_file: "test/#{module_path}_test.exs",
-      spec_file: "docs/spec/#{module_path}.spec.md"
+      spec_file: Paths.spec_file(module_path)
     }
   end
 

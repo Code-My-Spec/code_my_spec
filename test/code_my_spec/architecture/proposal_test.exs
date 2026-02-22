@@ -456,7 +456,7 @@ defmodule CodeMySpec.Architecture.ProposalTest do
 
     test "skips writing spec file if it already exists", %{tmp_dir: tmp_dir, scope: scope} do
       # Create a pre-existing spec file with custom content
-      existing_spec_path = Path.join(tmp_dir, "docs/spec/test_app/dashboards.spec.md")
+      existing_spec_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app/dashboards.spec.md")
       File.mkdir_p!(Path.dirname(existing_spec_path))
       existing_content = "# Existing Spec\n\nThis content should be preserved."
       File.write!(existing_spec_path, existing_content)
@@ -482,7 +482,7 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert File.read!(existing_spec_path) == existing_content
 
       # New spec files should still be created
-      surface_spec = Path.join(tmp_dir, "docs/spec/test_app_web/dashboard_live.spec.md")
+      surface_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/dashboard_live.spec.md")
       assert File.exists?(surface_spec)
     end
 
@@ -511,9 +511,9 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert {:ok, _result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
 
       # Check spec files were created at expected paths
-      context_spec = Path.join(tmp_dir, "docs/spec/test_app/dashboards.spec.md")
-      child_spec = Path.join(tmp_dir, "docs/spec/test_app/dashboards/dashboard.spec.md")
-      surface_spec = Path.join(tmp_dir, "docs/spec/test_app_web/dashboard_live.spec.md")
+      context_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app/dashboards.spec.md")
+      child_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app/dashboards/dashboard.spec.md")
+      surface_spec = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/dashboard_live.spec.md")
 
       assert File.exists?(context_spec), "Expected #{context_spec} to exist"
       assert File.exists?(child_spec), "Expected #{child_spec} to exist"

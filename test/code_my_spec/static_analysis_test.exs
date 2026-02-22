@@ -110,7 +110,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "executes specified analyzer and returns Problems", %{scope: scope} do
       # Create spec directory for SpecAlignment analyzer
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, problems} = StaticAnalysis.run(scope, :spec_alignment)
@@ -123,7 +123,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "delegates to Runner.run/3 with options", %{scope: scope} do
       # SpecAlignment can take paths option
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       assert {:ok, _problems} = StaticAnalysis.run(scope, :spec_alignment, paths: ["lib"])
@@ -153,7 +153,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "executes all available analyzers and returns aggregated Problems", %{scope: scope} do
       # Create spec directory to make SpecAlignment available
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       use_cmd_cassette "static_analysis_run_all" do
@@ -164,7 +164,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "delegates to Runner.run_all/2 with options", %{scope: scope} do
       # Create spec directory
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       use_cmd_cassette "static_analysis_run_all" do
@@ -187,7 +187,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "logs warnings for failed analyzers", %{scope: scope} do
       # Create spec directory
-      spec_dir = Path.join(scope.cwd, "docs/spec")
+      spec_dir = Path.join(scope.cwd, ".code_my_spec/spec")
       File.mkdir_p!(spec_dir)
 
       use_cmd_cassette "static_analysis_run_all" do

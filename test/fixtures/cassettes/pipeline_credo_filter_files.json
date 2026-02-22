@@ -59,6 +59,26 @@
       },
       "output": "Unchecked dependencies for environment dev:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
       "recorded_at": "2026-02-15T21:10:31.550268Z"
+    },
+    {
+      "args": [
+        "credo",
+        "suggest",
+        "--format",
+        "json",
+        "--all",
+        "--all-priorities",
+        "--no-color",
+        "../code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_2",
+        "stderr_to_stdout": true
+      },
+      "output": "\n12:22:32.362 [error] Task #PID<0.194.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
+      "recorded_at": "2026-02-22T17:22:32.381645Z"
     }
   ],
   "ports": []

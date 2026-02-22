@@ -36,7 +36,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
   defp write_research_brief(env, topic, content \\ nil) do
     write_file!(
       env,
-      "docs/status/research/#{topic}.md",
+      ".code_my_spec/status/research/#{topic}.md",
       content || "Research Wallaby for integration testing in a Phoenix LiveView project."
     )
   end
@@ -58,7 +58,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
   defp write_decision_record(env, topic, content \\ nil) do
     write_file!(
       env,
-      "docs/architecture/decisions/#{topic}.md",
+      ".code_my_spec/architecture/decisions/#{topic}.md",
       content ||
         """
         # Use Wallaby for Integration Testing
@@ -81,7 +81,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
   defp write_decisions_index(env, content \\ nil) do
     write_file!(
       env,
-      "docs/architecture/decisions.md",
+      ".code_my_spec/architecture/decisions.md",
       content ||
         """
         # Architecture Decisions
@@ -96,7 +96,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
   defp write_knowledge(env, topic) do
     write_file!(
       env,
-      "docs/knowledge/#{topic}/getting_started.md",
+      ".code_my_spec/knowledge/#{topic}/getting_started.md",
       "# Getting Started with Wallaby\n\nInstall wallaby..."
     )
   end
@@ -149,12 +149,12 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
 
     test "instructs agent to write decision record", %{scope: scope, session: session} do
       assert {:ok, prompt} = ResearchTopic.command(scope, session)
-      assert prompt =~ "docs/architecture/decisions/wallaby.md"
+      assert prompt =~ ".code_my_spec/architecture/decisions/wallaby.md"
     end
 
     test "instructs agent to update decisions index", %{scope: scope, session: session} do
       assert {:ok, prompt} = ResearchTopic.command(scope, session)
-      assert prompt =~ "docs/architecture/decisions.md"
+      assert prompt =~ ".code_my_spec/architecture/decisions.md"
     end
   end
 
@@ -235,7 +235,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
       write_decision_record(env, "wallaby")
       write_decisions_index(env)
 
-      prompt_path = Path.join(env.cwd, "docs/status/research/wallaby.md")
+      prompt_path = Path.join(env.cwd, ".code_my_spec/status/research/wallaby.md")
       assert File.exists?(prompt_path)
 
       assert {:ok, :valid} = ResearchTopic.evaluate(scope, session)

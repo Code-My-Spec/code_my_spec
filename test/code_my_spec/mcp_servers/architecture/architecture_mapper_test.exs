@@ -22,7 +22,7 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapperTest do
         project_id: scope.active_project_id
       }
 
-      spec_path = "docs/spec/my_app/test_component.spec.md"
+      spec_path = ".code_my_spec/spec/my_app/test_component.spec.md"
 
       response = ArchitectureMapper.spec_created(component, spec_path)
 
@@ -51,7 +51,7 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapperTest do
         project_id: scope.active_project_id
       }
 
-      spec_path = "docs/spec/my_app/updated_component.spec.md"
+      spec_path = ".code_my_spec/spec/my_app/updated_component.spec.md"
 
       response = ArchitectureMapper.spec_updated(component, spec_path)
 
@@ -97,7 +97,7 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapperTest do
 
       assert length(data["specs"]) == 2
       assert Enum.at(data["specs"], 0)["module_name"] == "MyApp.Component1"
-      assert Enum.at(data["specs"], 0)["spec_path"] == "docs/spec/my_app/component1.spec.md"
+      assert Enum.at(data["specs"], 0)["spec_path"] == ".code_my_spec/spec/my_app/component1.spec.md"
     end
   end
 

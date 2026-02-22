@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   @spex_dir "test/spex"
 
-  defp session_dir(external_id), do: ".code_my_spec/internal/sessions/#{external_id}"
+  defp session_dir(external_id), do: "#{CodeMySpec.Paths.sessions_dir()}/#{external_id}"
 
   defp prompt_dir(external_id),
     do: "#{session_dir(external_id)}/subagent_prompts"

@@ -59,6 +59,26 @@
       },
       "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
       "recorded_at": "2026-02-15T21:10:23.458074Z"
+    },
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "../code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project/blog/post_repository_test.exs"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_2",
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/test_output_10467.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 36 files (.ex)\n\n== Compilation error in file lib/pipeline_test_compile_error.ex ==\n** (TokenMissingError) token missing on lib/pipeline_test_compile_error.ex:3:4:\n    error: missing terminator: )\n    │\n  2 │   def bad(do\n    │          └ unclosed delimiter\n  3 │ end\n    │    └ missing closing delimiter (expected \")\")\n    │\n    └─ lib/pipeline_test_compile_error.ex:3:4\n    (elixir 1.19.4) lib/kernel/parallel_compiler.ex:529: anonymous fn/5 in Kernel.ParallelCompiler.spawn_workers/8\n** (Protocol.UndefinedError) protocol Jason.Encoder not implemented for Tuple, Jason.Encoder protocol must always be explicitly implemented\n\nGot value:\n\n    {:error,\n     %TokenMissingError{\n       file: \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_2/lib/pipeline_test_compile_error.ex\",\n       line: 2,\n       column: 10,\n       end_line: 3,\n       end_column: 4,\n       snippet: \"  def bad(do\\nend\",\n       opening_delimiter: :\"(\",\n       expected_delimiter: :\")\",\n       description: \"missing terminator: )\"\n     }}\n\n    (jason 1.4.4) lib/jason.ex:164: Jason.encode!/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (client_utils 0.1.12) lib/client_utils/diagnostics_format.ex:14: ClientUtils.DiagnosticsFormat.to_jsonl/1\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:68: Mix.Tasks.Compile.Diagnostics.write_diagnostics/2\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:43: anonymous fn/2 in Mix.Tasks.Compile.Diagnostics.run/1\n    (elixir 1.19.4) lib/enum.ex:2520: Enum.\"-reduce/3-lists^foldl/2-0-\"/3\n    (mix 1.19.4) lib/mix/task.compiler.ex:287: Mix.Task.Compiler.run/4\n    (mix 1.19.4) lib/mix/tasks/compile.all.ex:75: Mix.Tasks.Compile.All.do_run/2\n",
+      "recorded_at": "2026-02-22T17:22:05.801277Z"
     }
   ],
   "ports": []

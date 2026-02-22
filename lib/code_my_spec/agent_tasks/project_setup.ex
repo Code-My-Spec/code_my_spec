@@ -276,32 +276,31 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   # Docs structure checks
 
   defp check_docs_structure(working_dir, app_name) do
-    docs_path = Path.join(working_dir, "docs")
+    base_path = Path.join(working_dir, CodeMySpec.Paths.base_dir())
 
-    repo_configured = File.dir?(docs_path)
-    agents_md_exists = File.exists?(Path.join(docs_path, "AGENTS.md"))
+    repo_configured = File.dir?(base_path)
 
-    {structure_complete, missing_dirs} = check_docs_directories(docs_path, app_name)
+    {structure_complete, missing_dirs} = check_docs_directories(base_path, app_name)
 
     %{
       repo_configured: repo_configured,
-      agents_md_exists: agents_md_exists,
+      agents_md_exists: true,
       structure_complete: structure_complete,
       missing_dirs: missing_dirs
     }
   end
 
-  defp check_docs_directories(docs_path, app_name) do
+  defp check_docs_directories(base_path, app_name) do
     required_dirs =
       [
-        docs_path,
-        Path.join(docs_path, "rules"),
-        Path.join(docs_path, "spec")
+        base_path,
+        Path.join(base_path, "rules"),
+        Path.join(base_path, "spec")
       ] ++
         if app_name do
           [
-            Path.join([docs_path, "spec", app_name]),
-            Path.join([docs_path, "spec", "#{app_name}_web"])
+            Path.join([base_path, "spec", app_name]),
+            Path.join([base_path, "spec", "#{app_name}_web"])
           ]
         else
           []
@@ -342,8 +341,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
       case File.read(mix_exs_path) do
         {:ok, content} ->
-          has_boundary = Regex.match?(~r/compilers:.*:boundary/, content)
-          has_spex = Regex.match?(~r/compilers:.*:spex/, content)
+          # dotall flag (s) allows matching across lines for per-env compilers pattern
+          has_boundary = Regex.match?(~r/compilers.*:boundary/s, content)
+          has_spex = Regex.match?(~r/compilers.*:spex/s, content)
           %{configured: has_boundary and has_spex}
 
         _ ->
@@ -430,7 +430,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_sexy_spex_local_dep_note(status)
     |> maybe_add_test_boundaries_instructions(status)
     |> maybe_add_docs_instructions(status)
-    |> maybe_add_agents_md_instructions(status)
     |> maybe_add_cli_config_instructions(status)
     |> maybe_add_ignored_components_instructions(status)
     |> Enum.reverse()
@@ -479,18 +478,25 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     instruction = """
     ## Configure Compilers
 
-    Add `:boundary` and `:spex` to the compilers list in `mix.exs`.
-    The `:diagnostics` compiler must be first so its `after_compiler` hooks are
-    registered before `:elixir` runs. The `:spex` compiler must come between
-    `:elixir` and `:app` so Boundary can trace cross-module calls in spex files:
+    Add a per-environment `compilers/1` function to `mix.exs` and reference it
+    in `project/0`. The `:spex` compiler comes from `client_utils` and only
+    needs to run in `:test` — it compiles BDD spec files so Boundary can trace
+    cross-module calls. The `:diagnostics` compiler must be first so its
+    `after_compiler` hooks are registered before `:elixir` runs:
 
     ```elixir
     def project do
       [
-        compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app],
+        compilers: compilers(Mix.env()),
         ...
       ]
     end
+
+    # :spex compiler only needed in test (compiles BDD spec files for Boundary)
+    defp compilers(:test),
+      do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+
+    defp compilers(_), do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :app]
     ```
     """
 
@@ -623,12 +629,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_docs_instructions(sections, _status), do: sections
 
-  defp maybe_add_agents_md_instructions(sections, %{docs_agents_md_exists: true}), do: sections
-
-  defp maybe_add_agents_md_instructions(sections, %{docs_agents_md_exists: false} = status) do
-    [build_agents_md_instructions(status.app_name) | sections]
-  end
-
   defp maybe_add_cli_config_instructions(sections, %{cli_config_has_project_id: true}),
     do: sections
 
@@ -681,9 +681,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Compilers (boundary + spex)", status.compilers_configured},
       {"Spex config", status.spex_config_complete},
       {"Test boundaries", status.test_boundaries_configured},
-      {"Docs repository", status.docs_repo_configured},
-      {"Docs AGENTS.md", status.docs_agents_md_exists},
-      {"Docs structure", status.docs_structure_complete},
+      {"Project structure", status.docs_repo_configured},
+      {"Project structure dirs", status.docs_structure_complete},
       {"CLI config", status.cli_config_has_project_id}
     ]
 
@@ -815,20 +814,26 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     mix deps.get
     ```
 
-    Also add the diagnostics compilers to your `mix.exs` project config.
-    Note: `:diagnostics` must be first so its `after_compiler` hooks are
-    registered before `:elixir` runs. `:spex` must come between `:elixir`
-    and `:app` so that Boundary can trace cross-module calls in spex files
-    before its analysis runs:
+    Also add a per-environment `compilers/1` function to your `mix.exs`.
+    The `:spex` compiler only needs to run in `:test` (it compiles BDD spec
+    files so Boundary can trace cross-module calls). The `:diagnostics`
+    compiler must be first so its `after_compiler` hooks are registered
+    before `:elixir` runs:
 
     ```elixir
     def project do
       [
-        compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app],
+        compilers: compilers(Mix.env()),
         spex: [pattern: "test/spex/**/*_spex.exs"],
         ...
       ]
     end
+
+    # :spex compiler only needed in test (compiles BDD spec files for Boundary)
+    defp compilers(:test),
+      do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+
+    defp compilers(_), do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :app]
     ```
 
     The `:spex` compiler compiles your BDD spec `.exs` files and catches boundary
@@ -839,32 +844,33 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   defp build_docs_instructions(status) do
-    missing_info = build_docs_submodule_info(status.docs_repo_configured)
-    missing_dirs_info = build_missing_dirs_info(status.missing_docs_dirs, status.app_name)
+    base_dir = CodeMySpec.Paths.base_dir()
+    missing_info = build_docs_base_info(status.docs_repo_configured, base_dir)
+    missing_dirs_info = build_missing_dirs_info(status.missing_docs_dirs, status.app_name, base_dir)
 
     """
-    ## Configure Documentation Repository
+    ## Configure Project Structure
     #{missing_info}
     #{missing_dirs_info}
     """
   end
 
-  defp build_docs_submodule_info(true), do: ""
+  defp build_docs_base_info(true, _base_dir), do: ""
 
-  defp build_docs_submodule_info(false) do
+  defp build_docs_base_info(false, base_dir) do
     """
 
-    The docs directory is not configured. Create it:
+    The `#{base_dir}/` directory is not configured. Create it:
 
     ```bash
-    mkdir -p docs
+    mkdir -p #{base_dir}
     ```
     """
   end
 
-  defp build_missing_dirs_info([], _app_name), do: ""
+  defp build_missing_dirs_info([], _app_name, _base_dir), do: ""
 
-  defp build_missing_dirs_info(missing_dirs, app_name) do
+  defp build_missing_dirs_info(missing_dirs, app_name, base_dir) do
     dirs_list = Enum.map_join(missing_dirs, "\n", &"  - #{&1}")
     app = app_name || "your_app"
 
@@ -874,21 +880,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     #{dirs_list}
 
     ```bash
-    mkdir -p docs/rules docs/spec/#{app} docs/spec/#{app}_web
-    ```
-    """
-  end
-
-  defp build_agents_md_instructions(app_name) do
-    content = agents_md_content(app_name)
-
-    """
-    ## Create docs/AGENTS.md
-
-    This file orients AI agents working on your project. Write the following to `docs/AGENTS.md`:
-
-    ```markdown
-    #{content}
+    mkdir -p #{base_dir}/rules #{base_dir}/spec/#{app} #{base_dir}/spec/#{app}_web
     ```
     """
   end
@@ -897,27 +889,30 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   Generate the generalized AGENTS.md content for a project.
 
   Takes the app name (e.g., "my_app") and returns markdown content
-  that orients agents to the project's docs structure.
+  that orients agents to the project's .code_my_spec/ structure.
   """
   def agents_md_content(app_name) do
     app = app_name || "your_app"
+    base = CodeMySpec.Paths.base_dir()
 
     """
     # Project Development Guide
 
-    This guide describes how the project's `docs/` directory works so you can locate what you need efficiently.
+    This guide describes how the project's `#{base}/` directory works so you can locate what you need efficiently.
 
     ## Project Structure
 
     ```
-    docs/
-    ├── AGENTS.md              ← You are here
+    #{base}/
     ├── architecture/          ← System component graph and dependencies
     ├── status/                ← Implementation status of every component
     ├── spec/                  ← Specifications for every module
     ├── rules/                 ← Coding standards by component type
+    ├── knowledge/             ← Project-specific operational knowledge
+    ├── plugin_knowledge/      ← Framework knowledge (symlink to plugin)
+    ├── design/                ← Design system assets
     ├── issues/                ← Known bugs and technical debt
-    └── knowledge/             ← Domain-specific operational knowledge
+    └── qa/                    ← QA test results
     ```
 
     ## Progressive Disclosure: Where to Look
@@ -928,9 +923,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     | Need | File |
     |---|---|
-    | List of all components, types, and dependencies | `architecture/overview.md` |
-    | Hierarchical tree view by Elixir namespace | `architecture/namespace_hierarchy.md` |
-    | Dependency graph (Mermaid) | `architecture/dependency_graph.mmd` |
+    | List of all components, types, and dependencies | `#{base}/architecture/overview.md` |
+    | Hierarchical tree view by Elixir namespace | `#{base}/architecture/namespace_hierarchy.md` |
+    | Dependency graph (Mermaid) | `#{base}/architecture/dependency_graph.mmd` |
 
     ### 2. Status — What's done and what's not
 
@@ -938,9 +933,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     | Need | File |
     |---|---|
-    | Top-level status of all contexts | `status/#{app}.md` |
-    | Web layer status | `status/#{app}_web.md` |
-    | Status of a specific context | `status/#{app}/<context_name>.md` |
+    | Top-level status of all contexts | `#{base}/status/#{app}.md` |
+    | Web layer status | `#{base}/status/#{app}_web.md` |
+    | Status of a specific context | `#{base}/status/#{app}/<context_name>.md` |
 
     Status files use a checklist format:
     ```
@@ -956,7 +951,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     | Need | File |
     |---|---|
-    | Spec for a module | `spec/<module_path>.spec.md` |
+    | Spec for a module | `#{base}/spec/<module_path>.spec.md` |
 
     Specs follow a standard format:
     - **Title**: Fully qualified module name with type
@@ -973,22 +968,23 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     | Component Type | Design Rules | Test Rules |
     |---|---|---|
-    | Context | `rules/context_design.md` | — |
-    | Repository | `rules/repository_design.md` | `rules/repository_test.md` |
-    | Schema | `rules/schema_design.md` | — |
-    | LiveView | `rules/liveview_design.md` | — |
-    | LiveView component | `rules/liveview_component_design.md` | — |
-    | Elixir (general) | `rules/elixir_design.md` | `rules/elixir_test.md` |
+    | Context | `#{base}/rules/context_design.md` | — |
+    | Repository | `#{base}/rules/repository_design.md` | `#{base}/rules/repository_test.md` |
+    | Schema | `#{base}/rules/schema_design.md` | — |
+    | LiveView | `#{base}/rules/liveview_design.md` | — |
+    | LiveView component | `#{base}/rules/liveview_component_design.md` | — |
+    | Elixir (general) | `#{base}/rules/elixir_design.md` | `#{base}/rules/elixir_test.md` |
 
     ### 5. Issues — Known problems and technical debt
 
     Check before working in an area to avoid known pitfalls.
 
-    Issues live in `issues/` as individual markdown files describing the problem, reproduction steps, and possible solutions.
+    Issues live in `#{base}/issues/` as individual markdown files describing the problem, reproduction steps, and possible solutions.
 
     ### 6. Knowledge — Operational knowledge
 
-    Deep dives on specific topics that don't fit elsewhere. Check `knowledge/` for available guides.
+    - `#{base}/knowledge/` — Project-specific research (data providers, auth flows, etc.)
+    - `#{base}/plugin_knowledge/` — Framework knowledge (LiveView, DaisyUI, Boundary, etc.)
 
     ## Phoenix Contexts Architecture
 
@@ -1005,13 +1001,13 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     - Database queries filter by scope foreign keys
     - Return consistent `{:ok, result}` / `{:error, reason}` tuples
 
-    ## Working with the Docs Directory
+    ## Working with #{base}/
 
     **Before implementing a component:**
-    1. Check `status/` — is it already done?
-    2. Read `spec/` — what should it do?
-    3. Read `rules/` — what conventions apply to this component type?
-    4. Check `issues/` — are there known problems in this area?
+    1. Check `#{base}/status/` — is it already done?
+    2. Read `#{base}/spec/` — what should it do?
+    3. Read `#{base}/rules/` — what conventions apply to this component type?
+    4. Check `#{base}/issues/` — are there known problems in this area?
 
     **Before modifying an existing component:**
     1. Read the spec to understand the intended behavior
@@ -1020,8 +1016,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     4. Follow the rules for that component type
 
     **When you need context on the bigger picture:**
-    1. Read `architecture/namespace_hierarchy.md` for the component tree
-    2. Read `architecture/overview.md` for dependency relationships
+    1. Read `#{base}/architecture/namespace_hierarchy.md` for the component tree
+    2. Read `#{base}/architecture/overview.md` for dependency relationships
     """
   end
 
@@ -1082,7 +1078,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     :compilers_configured,
     :spex_config_complete,
     :docs_repo_configured,
-    :docs_agents_md_exists,
     :docs_structure_complete,
     :cli_config_has_project_id
   ]
@@ -1130,15 +1125,14 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"CodeMySpec deps", status.codemyspec_deps_installed,
        "Add missing deps to mix.exs: #{inspect(status.missing_deps)}"},
       {"Compilers (boundary + spex)", status.compilers_configured,
-       "Add compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app] to project/0"},
+       "Add compilers: compilers(Mix.env()) to project/0 with per-env defp compilers(:test) including :spex and defp compilers(_) without :spex"},
       {"Spex config", status.spex_config_complete,
        "Add spex pattern, elixirc_paths(:test) with test/spex, preferred_envs spex: :test, and spex alias"},
       {"Test boundaries", status.test_boundaries_configured,
        "Create boundary namespace modules in test/spex/ and test/support/ with use Boundary"},
-      {"Docs repository", status.docs_repo_configured, "Create docs directory: mkdir -p docs"},
-      {"Docs AGENTS.md", status.docs_agents_md_exists,
-       "Create docs/AGENTS.md — see setup instructions for content"},
-      {"Docs structure", status.docs_structure_complete,
+      {"Project structure", status.docs_repo_configured,
+       "Create .code_my_spec directory: mkdir -p #{CodeMySpec.Paths.base_dir()}"},
+      {"Project structure dirs", status.docs_structure_complete,
        "Create directories: #{Enum.join(status.missing_docs_dirs, ", ")}"},
       {"CLI config", status.cli_config_has_project_id,
        "Run curl -s http://localhost:4002/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}

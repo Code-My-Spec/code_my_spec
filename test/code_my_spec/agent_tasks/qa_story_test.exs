@@ -2,6 +2,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   @moduledoc false
   use CodeMySpec.DataCase
 
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaStory
@@ -18,10 +19,26 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
+  defp create_story(context) do
+    story =
+      story_fixture(context.scope, %{
+        title: "User Authentication",
+        description: "Users can log in and out of the application",
+        criteria: [
+          %{description: "User can log in with email and password"},
+          %{description: "User sees an error for invalid credentials"}
+        ]
+      })
+
+    %{story: story}
+  end
+
   defp create_session(context) do
+    story_id = if context[:story], do: context.story.id, else: 42
+
     session = %{
       project: context.scope.active_project,
-      state: %{"topic" => "42-user-authentication"}
+      state: %{"topic" => story_id}
     }
 
     Map.put(context, :session, session)
@@ -33,41 +50,35 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     File.write!(full_path, content)
   end
 
-  defp write_qa_brief(env, story_slug, content \\ nil) do
-    write_file!(
-      env,
-      "docs/status/qa/#{story_slug}.md",
-      content ||
-        """
-        ## Story: User Authentication
-
-        Test the login page at /login. Verify:
-        - Form renders with email and password fields
-        - Successful login redirects to dashboard
-        - Invalid credentials show error message
-        """
-    )
+  defp write_mix_exs(env, app_name \\ "my_app") do
+    write_file!(env, "mix.exs", """
+    defmodule #{Macro.camelize(app_name)}.MixProject do
+      use Mix.Project
+      def project do
+        [app: :#{app_name}, version: "0.1.0"]
+      end
+    end
+    """)
   end
 
-  defp write_qa_result(env, story_slug, content \\ nil) do
+  defp write_qa_result(env, story_id, content \\ nil) do
     write_file!(
       env,
-      "docs/qa/#{story_slug}.md",
+      ".code_my_spec/qa/#{story_id}.md",
       content ||
         """
-        # QA Result: User Authentication
+        # QA: Story #{story_id}
 
-        ## Routes Tested
-        - GET /login
-        - POST /login
+        ## Status: PASS
 
-        ## Results
-        - Login form renders correctly
-        - Successful login redirects to /dashboard
-        - Invalid credentials show flash error
+        ## Scenarios Tested
+        - User logs in: PASS — login form works
 
-        ## Issues
-        None found.
+        ## Issues Found
+        None
+
+        ## Evidence
+        - Visited /login, form renders correctly
         """
     )
   end
@@ -75,9 +86,52 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   defp write_issue(env, name, content \\ nil) do
     write_file!(
       env,
-      "docs/issues/#{name}.md",
+      ".code_my_spec/issues/#{name}.md",
       content || "# #{name}\n\nDescription of the issue."
     )
+  end
+
+  defp write_spex_file(env, story_id, criterion_id, content) do
+    dir = "test/spex/#{story_id}_test_story"
+    filename = "criterion_#{criterion_id}_test_spex.exs"
+    write_file!(env, "#{dir}/#{filename}", content)
+  end
+
+  @sample_spex """
+  defmodule Test.Spex.UserAuth do
+    use Spex
+
+    spex "User authentication", story: 42, criterion: 1 do
+      scenario "User logs in" do
+        given "a registered user"
+        when_ "the user submits valid credentials"
+        then_ "the user sees the dashboard"
+      end
+    end
+  end
+  """
+
+  # ============================================================================
+  # load_specs/2 Tests
+  # ============================================================================
+
+  describe "load_specs/2" do
+    setup [:create_scope]
+
+    test "returns empty tuples when no specs exist", %{scope: scope} do
+      assert {[], []} = QaStory.load_specs(scope.environment, 42)
+    end
+
+    test "returns projections and file paths when specs exist", %{scope: scope} do
+      write_spex_file(scope.environment, 42, 1, @sample_spex)
+
+      {projections, file_paths} = QaStory.load_specs(scope.environment, 42)
+
+      assert length(projections) == 1
+      assert length(file_paths) == 1
+      assert hd(file_paths) =~ "test/spex/42_test_story/criterion_1_test_spex.exs"
+      assert hd(projections) =~ "User authentication"
+    end
   end
 
   # ============================================================================
@@ -85,26 +139,57 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   # ============================================================================
 
   describe "command/3" do
-    setup [:create_scope, :create_session]
+    setup [:create_scope, :create_story, :create_session]
 
-    test "returns ok tuple with prompt containing story slug", %{
+    test "returns ok tuple with prompt containing story ID", %{
       scope: scope,
-      session: session
+      session: session,
+      story: story
     } do
       assert {:ok, prompt} = QaStory.command(scope, session)
       assert is_binary(prompt)
-      assert prompt =~ "42-user-authentication"
+      assert prompt =~ to_string(story.id)
     end
 
-    test "includes QA brief when brief file exists", %{scope: scope, session: session} do
-      write_qa_brief(scope.environment, "42-user-authentication")
+    test "includes story title and description in prompt", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "User Authentication"
+      assert prompt =~ "Users can log in and out of the application"
+    end
+
+    test "includes acceptance criteria in prompt", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "User can log in with email and password"
+      assert prompt =~ "User sees an error for invalid credentials"
+    end
+
+    test "references web-cli knowledge article", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "web-cli"
+    end
+
+    test "includes router path reference", %{scope: scope, session: session} do
+      write_mix_exs(scope.environment)
 
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "Test the login page"
+      assert prompt =~ "router.ex"
     end
 
-    test "includes existing result when present", %{scope: scope, session: session} do
-      write_qa_result(scope.environment, "42-user-authentication")
+    test "includes BDD specs when they exist", %{scope: scope, session: session, story: story} do
+      write_spex_file(scope.environment, story.id, 1, @sample_spex)
+
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "User authentication"
+      assert prompt =~ "test/spex/#{story.id}_test_story"
+    end
+
+    test "handles missing specs gracefully", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "No BDD specs found"
+    end
+
+    test "includes existing result when present", %{scope: scope, session: session, story: story} do
+      write_qa_result(scope.environment, story.id)
 
       assert {:ok, prompt} = QaStory.command(scope, session)
       assert prompt =~ "Existing QA Result"
@@ -117,20 +202,27 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert prompt =~ "login-form-broken"
     end
 
-    test "includes web tool instructions", %{scope: scope, session: session} do
+    test "includes structured output format", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "web http://localhost:4000"
-      assert prompt =~ "--profile qa"
+      assert prompt =~ "## Status:"
+      assert prompt =~ "## Scenarios Tested"
+      assert prompt =~ "## Issues Found"
+    end
+
+    test "instructs agent to write QA result", %{scope: scope, session: session, story: story} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ ".code_my_spec/qa/#{story.id}.md"
     end
 
     test "includes issue filing instructions", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "docs/issues/"
+      assert prompt =~ ".code_my_spec/issues/"
     end
 
-    test "instructs agent to write QA result", %{scope: scope, session: session} do
+    test "accepts string story ID", %{scope: scope, story: story} do
+      session = %{project: scope.active_project, state: %{"topic" => to_string(story.id)}}
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "docs/qa/42-user-authentication.md"
+      assert prompt =~ to_string(story.id)
     end
   end
 
@@ -141,11 +233,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   describe "evaluate/3" do
     setup [:create_scope, :create_session]
 
-    test "returns {:ok, :valid} when QA result exists and is non-empty", %{
+    test "returns {:ok, :valid} when QA result exists with status line", %{
       scope: scope,
       session: session
     } do
-      write_qa_result(scope.environment, "42-user-authentication")
+      write_qa_result(scope.environment, 42)
 
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
     end
@@ -155,29 +247,27 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       session: session
     } do
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
-      assert feedback =~ "QA result"
+      assert feedback =~ "No QA result found"
     end
 
     test "returns {:ok, :invalid, feedback} when QA result is empty", %{
       scope: scope,
       session: session
     } do
-      write_qa_result(scope.environment, "42-user-authentication", "")
+      write_qa_result(scope.environment, 42, "")
 
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
       assert feedback =~ "empty"
     end
 
-    test "cleans up QA brief file on success", %{scope: scope, session: session} do
-      env = scope.environment
-      write_qa_brief(env, "42-user-authentication")
-      write_qa_result(env, "42-user-authentication")
+    test "returns {:ok, :invalid, feedback} when QA result missing status line", %{
+      scope: scope,
+      session: session
+    } do
+      write_qa_result(scope.environment, 42, "# QA Result\n\nSome content without status.")
 
-      brief_path = Path.join(env.cwd, "docs/status/qa/42-user-authentication.md")
-      assert File.exists?(brief_path)
-
-      assert {:ok, :valid} = QaStory.evaluate(scope, session)
-      refute File.exists?(brief_path)
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "Status:"
     end
   end
 end

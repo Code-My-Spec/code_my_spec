@@ -10,7 +10,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
 
   alias CodeMySpec.Environments
 
-  @design_system_path "docs/design/design_system.html"
+  @design_system_path CodeMySpec.Paths.design_system_path()
   @template_path "priv/templates/design_system.html"
   @tailwind_config_path "assets/tailwind.config.js"
   @required_sections ~w(theme colors typography layout tone)

@@ -1,0 +1,203 @@
+# Project Setup Status
+
+Progress: 7 of 12 steps complete
+
+  [x] Authenticated
+  [x] Elixir 1.18+
+  [x] Phoenix installer
+  [x] PostgreSQL
+  [x] Phoenix project
+  [ ] CodeMySpec deps
+  [ ] Compilers (boundary + spex)
+  [ ] Spex config
+  [ ] Test boundaries
+  [x] Project structure
+  [ ] Project structure dirs
+  [x] CLI config
+
+
+## Add CodeMySpec Dependencies
+
+The following dependencies are missing:
+  - :boundary
+
+Add these dependencies to your `mix.exs` file in the `deps/0` function. Look up the latest versions on hex.pm for each package:
+
+- `:credo` - static code analysis
+- `:client_utils` - CodeMySpec client utilities (includes diagnostics and spex compilers)
+- `:sobelow` - security-focused static analysis
+- `:sexy_spex` - BDD specification testing
+
+Then fetch dependencies:
+```bash
+mix deps.get
+```
+
+Also add a per-environment `compilers/1` function to your `mix.exs`.
+The `:spex` compiler only needs to run in `:test` (it compiles BDD spec
+files so Boundary can trace cross-module calls). The `:diagnostics`
+compiler must be first so its `after_compiler` hooks are registered
+before `:elixir` runs:
+
+```elixir
+def project do
+  [
+    compilers: compilers(Mix.env()),
+    spex: [pattern: "test/spex/**/*_spex.exs"],
+    ...
+  ]
+end
+
+# :spex compiler only needed in test (compiles BDD spec files for Boundary)
+defp compilers(:test),
+  do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+
+defp compilers(_), do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :app]
+```
+
+The `:spex` compiler compiles your BDD spec `.exs` files and catches boundary
+violations. The `:diagnostics` compiler registers `after_compiler` hooks that
+write all diagnostics to a `diagnostics.jsonl` file, even when compilation
+fails with syntax errors.
+
+
+## Configure Compilers
+
+Add a per-environment `compilers/1` function to `mix.exs` and reference it
+in `project/0`. The `:spex` compiler comes from `client_utils` and only
+needs to run in `:test` — it compiles BDD spec files so Boundary can trace
+cross-module calls. The `:diagnostics` compiler must be first so its
+`after_compiler` hooks are registered before `:elixir` runs:
+
+```elixir
+def project do
+  [
+    compilers: compilers(Mix.env()),
+    ...
+  ]
+end
+
+# :spex compiler only needed in test (compiles BDD spec files for Boundary)
+defp compilers(:test),
+  do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+
+defp compilers(_), do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :app]
+```
+
+
+## Configure Spex
+
+Add the following to your `mix.exs` to enable BDD spec testing:
+
+**1. Add spex pattern to `project/0`:**
+```elixir
+def project do
+  [
+    spex: [pattern: "test/spex/**/*_spex.exs"],
+    ...
+  ]
+end
+```
+
+**2. Add `"test/spex"` to `elixirc_paths(:test)`:**
+```elixir
+defp elixirc_paths(:test), do: ["lib", "test/support", "test/spex"]
+```
+
+**3. Add `spex: :test` to `preferred_envs` in `cli/0`:**
+```elixir
+def cli do
+  [
+    preferred_envs: [spex: :test]
+  ]
+end
+```
+
+**4. Add spex alias to `aliases/0`:**
+```elixir
+defp aliases do
+  [
+    spex: ["spex --quiet"],
+    ...
+  ]
+end
+```
+
+
+## Note: sexy_spex Local Dependency
+
+The published hex version of `sexy_spex` does not yet include `SexySpex.Givens`,
+which is required by the generated `shared_givens.ex`. Until a new version is
+published, use the local path dependency:
+
+```elixir
+{:sexy_spex, path: "/Users/johndavenport/Documents/github/spex"}
+```
+
+Replace the path with the location of your local spex checkout.
+
+
+## Configure Test and Spex Boundaries
+
+Create boundary namespace modules so Boundary can track cross-context calls
+in test and spex files.
+
+**1. Create `test/spex/math_test_project_spex.ex`:**
+```elixir
+defmodule MathTestProjectSpex do
+  use Boundary, top_level?: true, deps: [MathTestProject], check: [in: [:test], out: []]
+end
+```
+
+**2. Create `test/support/math_test_project_test.ex`:**
+```elixir
+defmodule MathTestProjectTest do
+  use Boundary, top_level?: true, deps: [MathTestProject], check: [in: [:test], out: []]
+end
+```
+
+These modules declare top-level boundaries for the test and spex namespaces,
+allowing Boundary to verify that test code only depends on the main application.
+
+
+## Configure Project Structure
+
+
+Create missing directories:
+  - <TMP>/math_test_project/.code_my_spec/rules
+  - <TMP>/math_test_project/.code_my_spec/spec
+  - <TMP>/math_test_project/.code_my_spec/spec/math_test_project
+  - <TMP>/math_test_project/.code_my_spec/spec/math_test_project_web
+
+```bash
+mkdir -p .code_my_spec/rules .code_my_spec/spec/math_test_project .code_my_spec/spec/math_test_project_web
+```
+
+
+
+## Configure Ignored Components (Optional)
+
+Boilerplate Phoenix modules (Repo, Endpoint, Router, etc.) clutter the component
+graph and status output without being domain components that need spec/test tracking.
+
+Add `ignored_components` to `.code_my_spec/config.yml` using **fully qualified module names**
+(replace `MyApp` with your application's base module):
+
+```yaml
+ignored_components:
+  - MyApp.Repo
+  - MyApp.Endpoint
+  - MyApp.Router
+  - MyApp.Mailer
+  - MyApp.Telemetry
+  - MyApp.Application
+  - MyApp.Gettext
+```
+
+Or via the CLI:
+```bash
+cms config set ignored_components "MyApp.Repo", "MyApp.Endpoint", "MyApp.Router", "MyApp.Mailer", "MyApp.Telemetry", "MyApp.Application", "MyApp.Gettext"
+```
+
+These components will be excluded from sync, dependency graphs, architecture views,
+and status files.

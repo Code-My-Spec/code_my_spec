@@ -146,7 +146,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       |> Enum.map(&Macro.underscore/1)
 
     {dir_parts, [dirname]} = Enum.split(parts, -1)
-    Path.join(["docs/status" | dir_parts] ++ [dirname])
+    Path.join([".code_my_spec/status" | dir_parts] ++ [dirname])
   end
 
   defp read_orchestration_file(tmp_dir, module_name) do
@@ -524,7 +524,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       assert content =~ "Subagent" or content =~ "subagent"
       assert content =~ "spec-writer"
       assert content =~ "Prompt files" or content =~ "prompt"
-      assert content =~ "docs/status/"
+      assert content =~ ".code_my_spec/status/"
     end
 
     test "includes dependency order guidance for implementation phase (children first, parent last)",

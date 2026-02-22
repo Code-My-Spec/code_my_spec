@@ -2,7 +2,7 @@ defmodule CodeMySpec.Sessions.SessionsRepository do
   @moduledoc """
   Filesystem-backed CRUD for sessions.
 
-  Each session is stored as a directory under `.code_my_spec/internal/sessions/{id}/`
+  Each session is stored as a directory under `.code_my_spec/sessions/{id}/`
   containing a `session.json` file. All file operations go through `CodeMySpec.Environments`
   to work across CLI, local, and VS Code environments.
   """
@@ -10,7 +10,7 @@ defmodule CodeMySpec.Sessions.SessionsRepository do
   alias CodeMySpec.Environments
   alias CodeMySpec.Sessions.Session
 
-  @sessions_dir ".code_my_spec/internal/sessions"
+  @sessions_dir CodeMySpec.Paths.sessions_dir()
 
   @doc """
   Create a new session directory and write session.json.
@@ -45,21 +45,12 @@ defmodule CodeMySpec.Sessions.SessionsRepository do
   def get_session(env, id) do
     session_file = Path.join([@sessions_dir, id, "session.json"])
 
-    case Environments.read_file(env, session_file) do
-      {:ok, content} ->
-        case Jason.decode(content) do
-          {:ok, json_map} ->
-            case Session.from_json(json_map) do
-              {:ok, session} -> {:ok, session}
-              {:error, _changeset} -> {:error, :not_found}
-            end
-
-          {:error, _} ->
-            {:error, :not_found}
-        end
-
-      {:error, _} ->
-        {:error, :not_found}
+    with {:ok, content} <- Environments.read_file(env, session_file),
+         {:ok, json_map} <- Jason.decode(content),
+         {:ok, session} <- Session.from_json(json_map) do
+      {:ok, session}
+    else
+      _ -> {:error, :not_found}
     end
   end
 
@@ -71,23 +62,21 @@ defmodule CodeMySpec.Sessions.SessionsRepository do
     # Get absolute path for list_directory (it doesn't use env.ref.working_dir)
     sessions_path = resolve_sessions_path(env)
 
-    case Environments.list_directory(env, sessions_path) do
-      {:ok, entries} ->
-        sessions =
-          entries
-          |> Enum.map(fn entry_name ->
-            case get_session(env, entry_name) do
-              {:ok, session} -> session
-              {:error, _} -> nil
-            end
-          end)
-          |> Enum.reject(&is_nil/1)
+    entries =
+      case Environments.list_directory(env, sessions_path) do
+        {:ok, entries} -> entries
+        {:error, _} -> []
+      end
 
-        {:ok, sessions}
+    sessions =
+      Enum.flat_map(entries, fn entry_name ->
+        case get_session(env, entry_name) do
+          {:ok, session} -> [session]
+          {:error, _} -> []
+        end
+      end)
 
-      {:error, _} ->
-        {:ok, []}
-    end
+    {:ok, sessions}
   end
 
   @doc """

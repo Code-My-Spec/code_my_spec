@@ -3,8 +3,9 @@ defmodule CodeMySpec.ProjectSyncTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.ProjectSync
   alias CodeMySpec.Projects
+  alias CodeMySpec.ProjectSync
+  alias CodeMySpec.Support.TestAdapter
 
   import CodeMySpec.UsersFixtures
 
@@ -23,13 +24,10 @@ defmodule CodeMySpec.ProjectSyncTest do
 
       # Clone from pool
       {:ok, project_dir} =
-        CodeMySpec.Support.TestAdapter.clone(
-          scope,
-          "https://github.com/johns10/test_phoenix_project.git"
-        )
+        TestAdapter.clone(scope, "https://github.com/johns10/test_phoenix_project.git")
 
       on_exit(fn ->
-        CodeMySpec.Support.TestAdapter.checkin(project_dir)
+        TestAdapter.checkin(project_dir)
       end)
 
       scope = %{scope | cwd: project_dir, environment: Environment.new(:local, project_dir)}
@@ -48,7 +46,7 @@ defmodule CodeMySpec.ProjectSyncTest do
 
       # Verify contexts were created in database
       contexts = Components.list_contexts(scope)
-      assert length(contexts) > 0
+      assert contexts != []
 
       # Verify all contexts have valid types
       Enum.each(contexts, fn context ->
@@ -88,7 +86,7 @@ defmodule CodeMySpec.ProjectSyncTest do
 
       # Verify components have requirements analyzed
       # Not all components will have requirements, but the structure should exist
-      assert length(components) > 0
+      assert components != []
 
       Enum.each(components, fn component ->
         # Each component should have the requirements association loaded
@@ -108,7 +106,7 @@ defmodule CodeMySpec.ProjectSyncTest do
       contexts_with_type = Enum.filter(result.contexts, &(not is_nil(&1.type)))
 
       # Should have at least some contexts with specs
-      assert length(contexts_with_type) > 0
+      assert contexts_with_type != []
     end
 
     test "is idempotent - multiple syncs produce same result", %{scope: scope, tmp_dir: tmp_dir} do
@@ -137,8 +135,8 @@ defmodule CodeMySpec.ProjectSyncTest do
       # Verify other scope has no contexts
       contexts2 = Components.list_contexts(other_scope)
 
-      assert length(contexts1) > 0
-      assert length(contexts2) == 0
+      assert contexts1 != []
+      assert contexts2 == []
     end
 
     test "returns errors in result when issues occur", %{scope: scope, tmp_dir: tmp_dir} do
@@ -158,7 +156,7 @@ defmodule CodeMySpec.ProjectSyncTest do
 
       # At minimum, we should find contexts from the lib directory
       # (even if there are no spec files)
-      assert length(contexts) > 0
+      assert contexts != []
 
       # Verify module names are extracted correctly
       Enum.each(contexts, fn context ->

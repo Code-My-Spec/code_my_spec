@@ -7,12 +7,12 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
   - `evaluate/3` - Re-checks all requirements, returns feedback if any unsatisfied
   """
 
-  alias CodeMySpec.{Requirements, Environments}
-  alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.AgentTasks.{ComponentSpec, ContextSpec}
+  alias CodeMySpec.Components.ComponentRepository
+  alias CodeMySpec.{Environments, Requirements}
 
   defp prompt_dir(external_id),
-    do: ".code_my_spec/internal/sessions/#{external_id}/subagent_prompts"
+    do: "#{CodeMySpec.Paths.sessions_dir()}/#{external_id}/subagent_prompts"
 
   @doc """
   Generate the orchestration prompt for designing child components.
@@ -27,7 +27,6 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
   def command(scope, session, _opts \\ []) do
     %{component: context_component, external_conversation_id: external_id} = session
     # Ensure requirements are preloaded on context component
-    IO.inspect("starting")
     context_component = ComponentRepository.get_component(scope, context_component.id)
 
     with {:ok, context_prompt_file} <-
