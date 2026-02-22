@@ -15,11 +15,13 @@ defmodule CodeMySpec.Utils do
       ) do
     module_path = Paths.module_to_path(module_name)
 
-    # Phoenix convention: LiveViews and LiveComponents live in a `live/` subdirectory
+    # Phoenix convention: LiveViews/LiveComponents live in `live/`, controllers in `controllers/`
     source_path =
-      if type in ["liveview", "liveview_component"],
-        do: inject_live_dir(module_path),
-        else: module_path
+      cond do
+        type in ["liveview", "liveview_component", "live_context"] -> inject_live_dir(module_path)
+        type in ["controller", "json"] -> inject_controllers_dir(module_path)
+        true -> module_path
+      end
 
     base_files = %{
       design_file: "docs/design/#{module_path}.md",
@@ -28,11 +30,17 @@ defmodule CodeMySpec.Utils do
       spec_file: "docs/spec/#{module_path}.spec.md"
     }
 
-    # Add review_file for context components (both :context and :coordination_context)
-    if type in ["context", "coordination_context"] do
-      Map.put(base_files, :review_file, "docs/spec/#{module_path}/design_review.md")
-    else
-      base_files
+    # Add type-specific files
+    cond do
+      type in ["context", "coordination_context"] ->
+        Map.put(base_files, :review_file, "docs/spec/#{module_path}/design_review.md")
+
+      type == "controller" ->
+        json_path = derive_json_path(source_path)
+        Map.put(base_files, :json_file, "lib/#{json_path}.ex")
+
+      true ->
+        base_files
     end
   end
 
@@ -58,6 +66,27 @@ defmodule CodeMySpec.Utils do
       _ ->
         module_path
     end
+  end
+
+  # Insert `controllers/` after the first path segment for Phoenix controller convention.
+  # e.g., "my_app_web/user_controller" → "my_app_web/controllers/user_controller"
+  # No-op if `controllers` is already in the path.
+  defp inject_controllers_dir(module_path) do
+    case Path.split(module_path) do
+      [root | rest] ->
+        if "controllers" in rest,
+          do: module_path,
+          else: Path.join([root, "controllers" | rest])
+
+      _ ->
+        module_path
+    end
+  end
+
+  # Derive the JSON view path from a controller source path.
+  # e.g., "my_app_web/controllers/user_controller" → "my_app_web/controllers/user_json"
+  defp derive_json_path(controller_source_path) do
+    String.replace_suffix(controller_source_path, "_controller", "_json")
   end
 
   def changeset_error_to_string(%Ecto.Changeset{} = changeset) do

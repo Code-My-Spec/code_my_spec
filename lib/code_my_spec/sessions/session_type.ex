@@ -21,7 +21,12 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.DevelopContext,
     AgentTasks.DevelopLiveView,
     AgentTasks.LiveViewSpec,
-    AgentTasks.DesignUi
+    AgentTasks.DesignUi,
+    AgentTasks.TechnicalStrategy,
+    AgentTasks.ResearchTopic,
+    AgentTasks.DevelopLiveContext,
+    AgentTasks.LiveContextSpec,
+    AgentTasks.QaApp
   ]
 
   @type t :: atom()

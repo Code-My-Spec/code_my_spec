@@ -114,6 +114,47 @@ defmodule CodeMySpec.Components.Registry do
       icon: "book-open",
       color: "teal"
     },
+    "controller" => %{
+      requirements: [
+        RequirementDefinitionData.spec_file(),
+        RequirementDefinitionData.spec_valid(),
+        RequirementDefinitionData.dependencies_satisfied(),
+        RequirementDefinitionData.implementation_file(),
+        RequirementDefinitionData.test_file(),
+        RequirementDefinitionData.test_spec_alignment(),
+        RequirementDefinitionData.tests_passing()
+      ],
+      document_type: "spec",
+      display_name: "Controller",
+      description: "Phoenix controller handling HTTP requests and JSON responses",
+      icon: "globe-alt",
+      color: "cyan"
+    },
+    "json" => %{
+      requirements: [
+        RequirementDefinitionData.spec_file(),
+        RequirementDefinitionData.implementation_file()
+      ],
+      document_type: "json",
+      display_name: "JSON View",
+      description: "Phoenix JSON view rendering structured responses for a controller",
+      icon: "code-bracket",
+      color: "cyan"
+    },
+    "live_context" => %{
+      requirements: [
+        RequirementDefinitionData.live_context_spec_file(),
+        RequirementDefinitionData.live_context_spec_valid(),
+        RequirementDefinitionData.children_designs(),
+        RequirementDefinitionData.children_implementations(),
+        RequirementDefinitionData.dependencies_satisfied()
+      ],
+      document_type: "live_context_spec",
+      display_name: "Live Context",
+      description: "UI grouping of related LiveViews and LiveComponents under a shared namespace",
+      icon: "rectangle-group",
+      color: "emerald"
+    },
     "liveview" => %{
       requirements: [
         RequirementDefinitionData.liveview_spec_file(),
@@ -140,7 +181,7 @@ defmodule CodeMySpec.Components.Registry do
         RequirementDefinitionData.test_spec_alignment(),
         RequirementDefinitionData.tests_passing()
       ],
-      document_type: "liveview",
+      document_type: "liveview_component",
       display_name: "LiveView Component",
       description: "Reusable Phoenix LiveView component",
       icon: "puzzle-piece",

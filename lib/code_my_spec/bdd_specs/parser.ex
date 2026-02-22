@@ -175,16 +175,13 @@ defmodule CodeMySpec.BddSpecs.Parser do
   @spec derive_story_id(String.t()) :: integer() | nil
   def derive_story_id(file_path) do
     dirname = file_path |> Path.dirname() |> Path.basename()
-    Logger.debug("[Parser] derive_story_id: file_path=#{file_path}, dirname=#{dirname}")
 
     # Try to match pattern like "test_<unique>_<story_id>_<description>"
     # or "<story_id>_<description>" by finding the last number before underscore+text
     matches = Regex.scan(~r/(\d+)_(?:[a-z]|$)/, dirname)
-    Logger.debug("[Parser] derive_story_id: regex matches=#{inspect(matches)}")
 
     case matches do
       [] ->
-        Logger.debug("[Parser] derive_story_id: no matches, returning nil")
         nil
 
       matches ->

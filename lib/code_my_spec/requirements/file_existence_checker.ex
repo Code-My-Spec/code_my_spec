@@ -30,10 +30,6 @@ defmodule CodeMySpec.Requirements.FileExistenceChecker do
     file_path = Map.get(files, file_key)
     environment = scope.environment
 
-    Logger.debug(
-      "[FileExistenceChecker] #{component.module_name} (#{component.type}) #{name} -> #{file_path}"
-    )
-
     {satisfied, details} =
       case Environments.file_exists?(environment, file_path) do
         true ->
@@ -64,4 +60,5 @@ defmodule CodeMySpec.Requirements.FileExistenceChecker do
   def file_key("implementation_file"), do: :code_file
   def file_key("test_file"), do: :test_file
   def file_key("review_file"), do: :review_file
+  def file_key("json_file"), do: :json_file
 end

@@ -279,6 +279,87 @@ defmodule CodeMySpec.Documents.Registry do
     Responsive: Stack cards vertically on mobile
   """
 
+  @spec_live_context_liveviews """
+  Format:
+  - Use H2 heading
+  - Use H3 headers for each LiveView module
+  - Include bullet list with route and description
+
+  Content:
+  - Lists routed LiveViews that belong to this live context
+  - Each LiveView has a module name, route path, and brief description
+  - Routes use colon-prefixed parameters for dynamic segments
+
+  Examples:
+  - ## LiveViews
+    ### UserLive.Index
+
+    - **Route:** `/users`
+    - **Description:** Lists all users with search and pagination
+
+    ### UserLive.Show
+
+    - **Route:** `/users/:id`
+    - **Description:** Displays a single user's profile and activity
+  """
+
+  @spec_live_context_components """
+  Format:
+  - Use H2 heading
+  - Use H3 headers for each LiveComponent module
+  - Include brief description
+
+  Content:
+  - Lists LiveComponents shared across views in this context
+  - Each component has a module name and description
+  - Components are stateful (use phx-target={@myself})
+
+  Examples:
+  - ## Components
+    ### UserLive.FormComponent
+
+    Form for creating and editing users. Handles validation and submission.
+
+    ### UserLive.FilterComponent
+
+    Reusable search and filter controls for user lists.
+  """
+
+  @spec_assigns """
+  Format:
+  - Use H2 heading
+  - Table format with columns: Assign, Type, Required, Description
+
+  Content:
+  - Lists all assigns for this LiveComponent
+  - Must include `:id` assign (required by LiveComponent)
+  - Mark required assigns clearly
+
+  Examples:
+  - ## Assigns
+    | Assign | Type | Required | Description |
+    | ------ | ---- | -------- | ----------- |
+    | id     | any  | Yes      | Component instance identifier |
+    | user   | User.t() | Yes  | User struct to display |
+    | on_save | fun/1 | No    | Callback when form is saved |
+  """
+
+  @spec_livecomponent_events """
+  Format:
+  - Use H2 heading
+  - Bold event names with descriptions
+
+  Content:
+  - handle_event callbacks scoped to this component via phx-target={@myself}
+  - Parent communication via send(self(), msg)
+  - Describe what happens and which context function is called
+
+  Examples:
+  - ## Events
+    - **phx-submit="save"**: Validate params, call Accounts.update_user/2, notify parent via send(self(), {:user_saved, user}).
+    - **phx-change="validate"**: Live-validate form inputs and update changeset in assigns.
+  """
+
   @proposal_contexts """
   Format:
   - Use H2 heading: ## Contexts
@@ -310,23 +391,41 @@ defmodule CodeMySpec.Documents.Registry do
   @proposal_surface_components """
   Format:
   - Use H2 heading: ## Surface Components
-  - Use H3 for each component module name (fully qualified, e.g., ### AppNameWeb.PageLive)
+  - Use H3 for each component module name (fully qualified, e.g., ### AppNameWeb.AccountLive.Dashboard)
   - Include bullet list with **Type:**, **Description:**, **Stories:**
+  - For live_context types, include #### Children subsection listing LiveViews and LiveComponents
 
   Content:
-  - Surface components are LiveViews, Controllers, or Plugs (the UI layer)
-  - Module names must start with AppNameWeb (e.g., MyAppWeb.DashboardLive)
+  - Surface components are LiveViews, Controllers, Live Contexts, or Plugs (the UI layer)
+  - Module names must start with AppNameWeb
   - Stories field lists story IDs that this surface handles (for dual mapping)
-  - Type should be: liveview, controller, or module
+  - Type should be: liveview, liveview_component, live_context, controller, or module
+  - Use `live_context` when a feature has multiple related LiveViews and/or shared LiveComponents
+    under a namespace (e.g., UserLive with UserLive.Index, UserLive.Show, UserLive.FormComponent)
+  - Use standalone `liveview` for single-page views with no siblings
+  - Group related LiveViews under a context namespace: `AppWeb.{Context}Live.{Action}`
+    This creates the conventional `live/{context}_live/` directory structure.
 
   Example:
   ## Surface Components
 
-  ### MyAppWeb.DashboardLive
+  ### MyAppWeb.UserLive
+
+  - **Type:** live_context
+  - **Description:** User management views and components
+  - **Stories:** 1, 2, 3
+
+  #### Children
+
+  - MyAppWeb.UserLive.Index (liveview) [Stories: 1]: List all users with search
+  - MyAppWeb.UserLive.Show (liveview) [Stories: 2]: Display user profile
+  - MyAppWeb.UserLive.FormComponent (liveview_component) [Stories: 3]: User create/edit form
+
+  ### MyAppWeb.AccountLive.Dashboard
 
   - **Type:** liveview
   - **Description:** Main dashboard showing account overview
-  - **Stories:** 1, 2
+  - **Stories:** 4, 5
   """
 
   @proposal_dependencies """
@@ -342,8 +441,8 @@ defmodule CodeMySpec.Documents.Registry do
   Example:
   ## Dependencies
 
-  - MyAppWeb.DashboardLive -> MyApp.Accounts
-  - MyAppWeb.DashboardLive -> MyApp.Reports
+  - MyAppWeb.AccountLive.Dashboard -> MyApp.Accounts
+  - MyAppWeb.AccountLive.Dashboard -> MyApp.Reports
   - MyApp.Reports -> MyApp.Accounts
   """
 
@@ -458,6 +557,55 @@ defmodule CodeMySpec.Documents.Registry do
         "user interactions" => @spec_user_interactions,
         "design" => @spec_design,
         "dependencies" => @spec_dependencies,
+        "functions" => @spec_functions
+      }
+    },
+    "live_context_spec" => %{
+      overview: """
+      Live context spec documents define a UI grouping of related LiveViews and
+      LiveComponents under a shared namespace. They list the routed child views,
+      shared components, and domain context dependencies.
+
+      On evaluation, child spec stubs are created for both listed LiveViews and
+      Components. Live contexts have no code file — they are spec-only groupings.
+      """,
+      required_sections: ["liveviews", "components", "dependencies"],
+      optional_sections: [],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "type" => @spec_type,
+        "liveviews" => @spec_live_context_liveviews,
+        "components" => @spec_live_context_components,
+        "dependencies" => @spec_dependencies
+      }
+    },
+    "liveview_component" => %{
+      overview: """
+      LiveComponent spec documents define stateful Phoenix LiveComponents that
+      receive assigns, handle their own events via phx-target={@myself}, and
+      communicate with parent views via send(self(), msg).
+      """,
+      required_sections: ["assigns", "design"],
+      optional_sections: ["events", "dependencies"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "type" => @spec_type,
+        "assigns" => @spec_assigns,
+        "events" => @spec_livecomponent_events,
+        "design" => @spec_design,
+        "dependencies" => @spec_dependencies
+      }
+    },
+    "json" => %{
+      overview: """
+      JSON view modules render structured JSON responses for Phoenix controllers.
+      They are companion files that don't require detailed specifications.
+      """,
+      required_sections: [],
+      optional_sections: ["functions"],
+      allowed_additional_sections: "*",
+      section_descriptions: %{
+        "type" => @spec_type,
         "functions" => @spec_functions
       }
     },

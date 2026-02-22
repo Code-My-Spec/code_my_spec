@@ -36,13 +36,20 @@ defmodule CodeMySpec.Documents.Parsers.SurfaceComponentParser do
     fields = extract_fields(content)
     # Try explicit **Description:** field first, then fall back to first paragraph
     description = fields["description"] || extract_leading_description(content)
+    children = extract_children(content, module_name)
 
-    %{
+    base = %{
       name: module_name,
       type: fields["type"] || "liveview",
       description: description,
       story_ids: parse_story_ids(fields["stories"])
     }
+
+    if children != [] do
+      Map.put(base, :children, children)
+    else
+      base
+    end
   end
 
   # Extract description from first plain paragraph (not a field line)
@@ -115,8 +122,98 @@ defmodule CodeMySpec.Documents.Parsers.SurfaceComponentParser do
     |> Enum.reject(&is_nil/1)
   end
 
+  defp extract_children(ast, _parent_module) do
+    # Find content after H4 "Children" or **Children:** paragraph
+    {_, after_children} =
+      Enum.reduce(ast, {:before, []}, fn
+        {"h4", _, content, _}, {:before, _} ->
+          if extract_text(content) =~ ~r/children/i do
+            {:after, []}
+          else
+            {:before, []}
+          end
+
+        {"p", _, content, _}, {:before, _} ->
+          text = extract_text(content)
+
+          if text =~ ~r/^\*\*Children:?\*\*/ do
+            {:after, []}
+          else
+            {:before, []}
+          end
+
+        element, {:after, acc} ->
+          {:after, [element | acc]}
+
+        _, acc ->
+          acc
+      end)
+
+    after_children
+    |> Enum.reverse()
+    |> Enum.flat_map(&extract_list_items/1)
+    |> Enum.map(&parse_child_line/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp parse_child_line(text) do
+    trimmed = String.trim(text)
+
+    # Format with stories: Name (type) [Stories: X, Y]: Description
+    case Regex.run(
+           ~r/^`?([^`\(]+)`?\s*\(([^\)]+)\)\s*\[Stories:\s*([^\]]+)\](?:[\s:-]+(.+))?$/,
+           trimmed
+         ) do
+      [_, name, type, stories_str, description] ->
+        %{
+          name: clean_name(name),
+          type: type,
+          description: description,
+          story_ids: parse_story_ids(stories_str)
+        }
+
+      [_, name, type, stories_str] ->
+        %{
+          name: clean_name(name),
+          type: type,
+          description: nil,
+          story_ids: parse_story_ids(stories_str)
+        }
+
+      _ ->
+        # Fallback: Name (type) - Description or Name (type): Description
+        case Regex.run(~r/^`?([^`\(]+)`?\s*\(([^\)]+)\)(?:[\s:-]+(.+))?$/, trimmed) do
+          [_, name, type, description] ->
+            %{
+              name: clean_name(name),
+              type: type,
+              description: String.trim(description || ""),
+              story_ids: []
+            }
+
+          [_, name, type] ->
+            %{
+              name: clean_name(name),
+              type: type,
+              description: nil,
+              story_ids: []
+            }
+
+          _ ->
+            nil
+        end
+    end
+  end
+
+  defp clean_name(name) do
+    name
+    |> String.trim()
+    |> String.trim("`")
+    |> String.trim()
+  end
+
   defp extract_text(nodes) when is_list(nodes) do
-    nodes |> Enum.map(&extract_text/1) |> Enum.join("") |> String.trim()
+    nodes |> Enum.map_join("", &extract_text/1) |> String.trim()
   end
 
   defp extract_text(text) when is_binary(text), do: text

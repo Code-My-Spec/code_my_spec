@@ -57,6 +57,20 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec json_file() :: RequirementDefinition.t()
+  def json_file do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "json_file",
+        checker: FileExistenceChecker,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Controller JSON view file exists"
+      })
+
+    definition
+  end
+
   @spec test_file() :: RequirementDefinition.t()
   def test_file do
     {:ok, definition} =
@@ -192,6 +206,34 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification is valid"
+      })
+
+    definition
+  end
+
+  @spec live_context_spec_file() :: RequirementDefinition.t()
+  def live_context_spec_file do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "spec_file",
+        checker: FileExistenceChecker,
+        satisfied_by: CodeMySpec.AgentTasks.LiveContextSpec,
+        artifact_type: :specification,
+        description: "Live context specification file exists"
+      })
+
+    definition
+  end
+
+  @spec live_context_spec_valid() :: RequirementDefinition.t()
+  def live_context_spec_valid do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "spec_valid",
+        checker: DocumentValidityChecker,
+        satisfied_by: CodeMySpec.AgentTasks.LiveContextSpec,
+        artifact_type: :specification,
+        description: "Live context specification is valid"
       })
 
     definition

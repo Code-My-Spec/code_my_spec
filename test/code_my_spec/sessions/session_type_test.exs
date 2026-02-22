@@ -27,7 +27,10 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.LiveViewSpec,
       AgentTasks.DesignUi,
       AgentTasks.TechnicalStrategy,
-      AgentTasks.ResearchTopic
+      AgentTasks.ResearchTopic,
+      AgentTasks.DevelopLiveContext,
+      AgentTasks.LiveContextSpec,
+      AgentTasks.QaApp
     ]
   end
 
@@ -50,7 +53,10 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "LiveViewSpec",
       "DesignUi",
       "TechnicalStrategy",
-      "ResearchTopic"
+      "ResearchTopic",
+      "DevelopLiveContext",
+      "LiveContextSpec",
+      "QaApp"
     ]
   end
 
@@ -92,6 +98,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.DesignUi} = SessionType.cast("DesignUi")
       assert {:ok, AgentTasks.TechnicalStrategy} = SessionType.cast("TechnicalStrategy")
       assert {:ok, AgentTasks.ResearchTopic} = SessionType.cast("ResearchTopic")
+      assert {:ok, AgentTasks.DevelopLiveContext} = SessionType.cast("DevelopLiveContext")
+      assert {:ok, AgentTasks.LiveContextSpec} = SessionType.cast("LiveContextSpec")
+      assert {:ok, AgentTasks.QaApp} = SessionType.cast("QaApp")
     end
 
     test "returns module atom for valid atom" do

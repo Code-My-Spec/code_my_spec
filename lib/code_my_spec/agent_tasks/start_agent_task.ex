@@ -33,6 +33,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "context_component_specs" => AgentTasks.ContextComponentSpecs,
     "context_design_review" => AgentTasks.ContextDesignReview,
     "develop_context" => AgentTasks.DevelopContext,
+    "develop_controller" => AgentTasks.DevelopController,
     "develop_live_view" => AgentTasks.DevelopLiveView,
     "implement_context" => AgentTasks.ContextImplementation,
     "component_code" => AgentTasks.ComponentCode,
@@ -43,7 +44,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "write_bdd_specs" => AgentTasks.WriteBddSpecs,
     "manage_implementation" => AgentTasks.ManageImplementation,
     "design_ui" => AgentTasks.DesignUi,
-    "liveview_spec" => AgentTasks.LiveViewSpec
+    "liveview_spec" => AgentTasks.LiveViewSpec,
+    "develop_live_context" => AgentTasks.DevelopLiveContext,
+    "live_context_spec" => AgentTasks.LiveContextSpec,
+    "technical_strategy" => AgentTasks.TechnicalStrategy,
+    "research_topic" => AgentTasks.ResearchTopic,
+    "qa_app" => AgentTasks.QaApp
   }
 
   # Tasks that run without a project or config.yml
@@ -56,8 +62,13 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "architecture_review",
     "write_bdd_specs",
     "manage_implementation",
-    "design_ui"
+    "design_ui",
+    "technical_strategy",
+    "qa_app"
   ]
+
+  # Tasks that take a topic name (passed as module_name arg) instead of a component lookup
+  @topic_tasks ["research_topic"]
 
   @valid_types ["spec" | Map.keys(@session_type_map)]
 
@@ -92,6 +103,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       session_type in @componentless_tasks ->
         run_componentless_task(scope, external_id, session_type)
 
+      session_type in @topic_tasks ->
+        run_topic_task(scope, external_id, session_type, module_name)
+
       true ->
         run_component_task(scope, external_id, session_type, module_name)
     end
@@ -114,6 +128,19 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, session} <- create_session(scope, external_id, agent_task_module, nil),
+         session <- enrich_session(session, nil, scope),
+         {:ok, prompt} <- agent_task_module.command(scope, session) do
+      {:ok, with_project_context(prompt), sync_result}
+    end
+  end
+
+  defp run_topic_task(scope, external_id, session_type, topic) do
+    with {:ok, _} <- validate_external_id(external_id),
+         {:ok, _} <- validate_environment(scope),
+         {:ok, _project} <- get_project(scope),
+         {:ok, sync_result} <- sync_project(scope),
+         {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
+         {:ok, session} <- create_topic_session(scope, external_id, agent_task_module, topic),
          session <- enrich_session(session, nil, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
       {:ok, with_project_context(prompt), sync_result}
@@ -171,6 +198,10 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   # Auto-detect context vs component vs liveview spec based on component type
+  defp resolve_session_type("spec", %{type: "live_context"}) do
+    {:ok, AgentTasks.LiveContextSpec}
+  end
+
   defp resolve_session_type("spec", %{type: type})
        when type in ["liveview", "liveview_component"] do
     {:ok, AgentTasks.LiveViewSpec}
@@ -235,6 +266,17 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       external_conversation_id: external_id,
       component_module_name: component && component.module_name,
       state: if(component, do: %{"component_id" => component.id}, else: %{})
+    }
+
+    Sessions.create_session(scope, attrs)
+  end
+
+  defp create_topic_session(scope, external_id, session_module, topic) do
+    attrs = %{
+      type: session_module,
+      external_conversation_id: external_id,
+      component_module_name: nil,
+      state: %{"topic" => topic}
     }
 
     Sessions.create_session(scope, attrs)

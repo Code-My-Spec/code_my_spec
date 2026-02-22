@@ -26,7 +26,13 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Stories
 
-  alias CodeMySpec.AgentTasks.{DevelopContext, DevelopController, DevelopLiveView, WriteBddSpecs}
+  alias CodeMySpec.AgentTasks.{
+    DevelopContext,
+    DevelopController,
+    DevelopLiveContext,
+    DevelopLiveView,
+    WriteBddSpecs
+  }
 
   require Logger
 
@@ -36,6 +42,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     "context",
     "coordination_context",
     "controller",
+    "live_context",
     "liveview",
     "liveview_component"
   ]
@@ -359,16 +366,20 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
        when type in ["context", "coordination_context"],
        do: DevelopContext
 
+  defp task_module_for(%{type: "live_context"}), do: DevelopLiveContext
+
   defp task_module_for(%{type: type})
        when type in ["liveview", "liveview_component"],
        do: DevelopLiveView
 
   defp task_key(DevelopController), do: "develop_controller"
   defp task_key(DevelopContext), do: "develop_context"
+  defp task_key(DevelopLiveContext), do: "develop_live_context"
   defp task_key(DevelopLiveView), do: "develop_live_view"
 
   defp task_module_from_key("develop_controller"), do: DevelopController
   defp task_module_from_key("develop_context"), do: DevelopContext
+  defp task_module_from_key("develop_live_context"), do: DevelopLiveContext
   defp task_module_from_key("develop_live_view"), do: DevelopLiveView
 
   # ============================================================================

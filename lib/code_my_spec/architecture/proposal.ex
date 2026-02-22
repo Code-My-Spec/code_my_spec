@@ -64,12 +64,11 @@ defmodule CodeMySpec.Architecture.Proposal do
   @spec new(map()) :: t()
   def new(attrs) when is_map(attrs) do
     %__MODULE__{
-      app_name: attrs[:app_name] || attrs["app_name"] || "App",
-      contexts: normalize_contexts(attrs[:contexts] || attrs["contexts"] || []),
-      surface_components:
-        normalize_components(attrs[:surface_components] || attrs["surface_components"] || []),
-      dependencies: normalize_dependencies(attrs[:dependencies] || attrs["dependencies"] || []),
-      unmapped_story_ids: attrs[:unmapped_story_ids] || attrs["unmapped_story_ids"] || []
+      app_name: get_attr(attrs, :app_name, "App"),
+      contexts: normalize_contexts(get_attr(attrs, :contexts, [])),
+      surface_components: normalize_components(get_attr(attrs, :surface_components, [])),
+      dependencies: normalize_dependencies(get_attr(attrs, :dependencies, [])),
+      unmapped_story_ids: get_attr(attrs, :unmapped_story_ids, [])
     }
   end
 
@@ -199,14 +198,30 @@ defmodule CodeMySpec.Architecture.Proposal do
 
     surface =
       proposal.surface_components
-      |> Enum.map(fn comp ->
-        %{
+      |> Enum.flat_map(fn comp ->
+        parent = %{
           module_name: comp.name,
           type: comp.type,
           description: comp.description,
           story_ids: comp.story_ids,
           dependencies: Map.get(deps_map, comp.name, [])
         }
+
+        children =
+          comp
+          |> Map.get(:children, [])
+          |> Enum.map(fn child ->
+            %{
+              module_name: child.name,
+              type: child.type,
+              description: child.description,
+              parent_module: comp.name,
+              story_ids: child.story_ids,
+              dependencies: Map.get(deps_map, child.name, [])
+            }
+          end)
+
+        [parent | children]
       end)
 
     context_components ++ surface
@@ -221,37 +236,53 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   # Private functions
 
+  # Lookup a key by atom or string, with a default fallback
+  defp get_attr(map, key, default \\ nil) do
+    map[key] || map[to_string(key)] || default
+  end
+
+  defp normalize_name(map) do
+    name = get_attr(map, :name) || get_attr(map, :module_name)
+    if is_binary(name), do: String.trim(name), else: name
+  end
+
   defp normalize_contexts(contexts) do
     Enum.map(contexts, fn ctx ->
-      name = ctx[:name] || ctx["name"] || ctx[:module_name] || ctx["module_name"]
-
       %{
-        name: if(is_binary(name), do: String.trim(name), else: name),
-        description: ctx[:description] || ctx["description"] || "",
-        children: normalize_components(ctx[:children] || ctx["children"] || []),
-        story_ids: ctx[:story_ids] || ctx["story_ids"] || []
+        name: normalize_name(ctx),
+        description: get_attr(ctx, :description, ""),
+        children: normalize_components(get_attr(ctx, :children, [])),
+        story_ids: get_attr(ctx, :story_ids, [])
       }
     end)
   end
 
   defp normalize_components(components) do
-    Enum.map(components, fn comp ->
-      name = comp[:name] || comp["name"] || comp[:module_name] || comp["module_name"]
+    Enum.map(components, &normalize_component/1)
+  end
 
-      %{
-        name: if(is_binary(name), do: String.trim(name), else: name),
-        type: comp[:type] || comp["type"],
-        description: comp[:description] || comp["description"] || "",
-        story_ids: comp[:story_ids] || comp["story_ids"] || []
-      }
-    end)
+  defp normalize_component(comp) do
+    base = %{
+      name: normalize_name(comp),
+      type: get_attr(comp, :type),
+      description: get_attr(comp, :description, ""),
+      story_ids: get_attr(comp, :story_ids, [])
+    }
+
+    children = get_attr(comp, :children)
+
+    if children && children != [] do
+      Map.put(base, :children, normalize_components(children))
+    else
+      base
+    end
   end
 
   defp normalize_dependencies(deps) do
     Enum.map(deps, fn dep ->
       %{
-        from: dep[:from] || dep["from"],
-        to: dep[:to] || dep["to"]
+        from: get_attr(dep, :from),
+        to: get_attr(dep, :to)
       }
     end)
   end
@@ -312,7 +343,19 @@ defmodule CodeMySpec.Architecture.Proposal do
         end)
       end)
 
-    all_invalid = invalid_contexts ++ invalid_surfaces ++ invalid_children
+    # Surface components with children (live_context) — children must start with parent name
+    invalid_surface_children =
+      proposal.surface_components
+      |> Enum.flat_map(fn comp ->
+        comp
+        |> Map.get(:children, [])
+        |> Enum.reject(fn child -> String.starts_with?(child.name, "#{comp.name}.") end)
+        |> Enum.map(fn child ->
+          "#{child.name} (should start with #{comp.name}.)"
+        end)
+      end)
+
+    all_invalid = invalid_contexts ++ invalid_surfaces ++ invalid_children ++ invalid_surface_children
 
     if all_invalid == [] do
       errors
@@ -334,6 +377,11 @@ defmodule CodeMySpec.Architecture.Proposal do
           do: ["Children must start with their parent context name" | messages],
           else: messages
 
+      messages =
+        if invalid_surface_children != [],
+          do: ["Surface component children must start with their parent name" | messages],
+          else: messages
+
       [
         %{
           type: :invalid_naming_hierarchy,
@@ -341,7 +389,8 @@ defmodule CodeMySpec.Architecture.Proposal do
           details: %{
             invalid_contexts: invalid_contexts,
             invalid_surfaces: invalid_surfaces,
-            invalid_children: invalid_children
+            invalid_children: invalid_children,
+            invalid_surface_children: invalid_surface_children
           }
         }
         | errors
@@ -354,11 +403,16 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   defp check_story_surface_mapping(errors, proposal, all_story_ids) do
-    # Stories must be mapped to surface components (LiveViews, Controllers)
+    # Stories must be mapped to surface components (LiveViews, Controllers, LiveContexts)
     # This is required for BDD spec generation - we test user behavior at the surface level
+    # For live_context components, also count stories from children
     surface_mapped =
       proposal.surface_components
-      |> Enum.flat_map(fn comp -> Map.get(comp, :story_ids, []) end)
+      |> Enum.flat_map(fn comp ->
+        own_ids = Map.get(comp, :story_ids, [])
+        child_ids = comp |> Map.get(:children, []) |> Enum.flat_map(&Map.get(&1, :story_ids, []))
+        own_ids ++ child_ids
+      end)
       |> MapSet.new()
 
     all_ids = MapSet.new(all_story_ids)
@@ -470,7 +524,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     end)
   end
 
-  @valid_types ~w(context schema module liveview controller component channel plug)
+  @valid_types ~w(context schema module liveview liveview_component live_context controller component channel plug)
 
   defp check_invalid_types(errors, proposal) do
     # Collect all types from children and surface components
@@ -627,22 +681,7 @@ defmodule CodeMySpec.Architecture.Proposal do
             "[Proposal] Component synced: #{component.module_name} -> id=#{component_id}"
           )
 
-          # Link stories to surface components (liveview, controller)
-          # Handle "(existing)" suffix in type (e.g., "liveview (existing)")
-          base_type = comp_attrs.type |> String.split(" ") |> hd()
-
-          if base_type in ["liveview", "controller"] do
-            story_ids = Map.get(comp_attrs, :story_ids, [])
-
-            Logger.info(
-              "[Proposal] Linking #{length(story_ids)} stories to #{comp_attrs.module_name}: #{inspect(story_ids)}"
-            )
-
-            link_stories_to_component(scope, story_ids, component_id)
-            linked_count + length(story_ids)
-          else
-            linked_count
-          end
+          maybe_link_stories(scope, comp_attrs, component_id, linked_count)
 
         {:error, reason} ->
           Logger.error(
@@ -661,6 +700,25 @@ defmodule CodeMySpec.Architecture.Proposal do
     end)
   end
 
+  # Link stories to surface components (liveview, live_context, controller)
+  defp maybe_link_stories(scope, comp_attrs, component_id, linked_count) do
+    # Handle "(existing)" suffix in type (e.g., "liveview (existing)")
+    base_type = comp_attrs.type |> String.split(" ") |> hd()
+
+    if base_type in ["liveview", "live_context", "controller"] do
+      story_ids = Map.get(comp_attrs, :story_ids, [])
+
+      Logger.info(
+        "[Proposal] Linking #{length(story_ids)} stories to #{comp_attrs.module_name}: #{inspect(story_ids)}"
+      )
+
+      link_stories_to_component(scope, story_ids, component_id)
+      linked_count + length(story_ids)
+    else
+      linked_count
+    end
+  end
+
   defp link_stories_to_component(scope, story_ids, component_id) do
     Enum.each(story_ids, fn story_id ->
       case Stories.get_story(scope, story_id) do
@@ -670,15 +728,19 @@ defmodule CodeMySpec.Architecture.Proposal do
           )
 
         story ->
-          case Stories.set_story_component(scope, story, component_id) do
-            {:ok, _updated} ->
-              Logger.debug("[Proposal] Linked story #{story_id} to component #{component_id}")
-
-            {:error, reason} ->
-              Logger.error("[Proposal] Failed to link story #{story_id}: #{inspect(reason)}")
-          end
+          link_story_to_component(scope, story, story_id, component_id)
       end
     end)
+  end
+
+  defp link_story_to_component(scope, story, story_id, component_id) do
+    case Stories.set_story_component(scope, story, component_id) do
+      {:ok, _updated} ->
+        Logger.debug("[Proposal] Linked story #{story_id} to component #{component_id}")
+
+      {:error, reason} ->
+        Logger.error("[Proposal] Failed to link story #{story_id}: #{inspect(reason)}")
+    end
   end
 
   defp sync_component_to_db(scope, attrs) do
@@ -749,8 +811,6 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp format_spec_dependencies([]), do: "- None"
 
   defp format_spec_dependencies(deps) do
-    deps
-    |> Enum.map(&"- #{&1}")
-    |> Enum.join("\n")
+    Enum.map_join(deps, "\n", &"- #{&1}")
   end
 end

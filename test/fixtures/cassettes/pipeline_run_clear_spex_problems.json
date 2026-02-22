@@ -877,6 +877,406 @@
       },
       "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
       "recorded_at": "2026-02-19T17:19:31.892970Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_17829.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-20T14:17:55.340712Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_15655.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 31 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-20T15:41:44.304434Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_33922.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-21T01:39:47.124609Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_18308.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-21T02:16:48.801271Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_58914.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-21T02:20:13.712768Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_29474.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-21T02:22:53.959213Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_21988.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-21T02:25:00.196878Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_19332.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-21T02:31:19.203714Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_34435.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment dev:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-21T03:04:36.074579Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_18821.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 31 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-21T03:09:04.293925Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_74754.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-22T00:27:20.360331Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_17796.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-22T00:28:53.981772Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_24516.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T00:31:09.357499Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_44899.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-22T00:32:48.791487Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_30371.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-22T00:35:53.538277Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_14982.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-22T00:41:26.920076Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_22244.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T00:44:38.752581Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_22595.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T00:46:16.415184Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_87810.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T00:49:07.987990Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_37539.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-22T00:57:25.302597Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_42114.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T00:59:12.604121Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_16454.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T01:03:52.429452Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_90946.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T01:09:41.559001Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_22915.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T01:10:43.733173Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_15750.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 7 files (.ex)\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-22T01:12:21.176098Z"
     }
   ],
   "ports": []
