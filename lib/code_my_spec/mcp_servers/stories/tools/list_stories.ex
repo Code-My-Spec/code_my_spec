@@ -8,9 +8,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
 
   use Hermes.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories
+  require Logger
+
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   @default_limit 20
   @max_limit 100
@@ -24,18 +26,25 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      limit = min(params[:limit] || @default_limit, @max_limit)
-      offset = params[:offset] || 0
+    Logger.debug("[ListStories] execute called, scope project: #{inspect(frame.assigns[:current_scope] && frame.assigns[:current_scope].active_project_id)}")
+    Logger.debug("[ListStories] stories impl: #{inspect(Application.get_env(:code_my_spec, :stories_implementation, CodeMySpec.Stories.StoriesRepository))}")
 
-      opts = [limit: limit, offset: offset]
-      opts = if params[:search], do: Keyword.put(opts, :search, params[:search]), else: opts
-      opts = if params[:tag], do: Keyword.put(opts, :tag, params[:tag]), else: opts
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        limit = min(params[:limit] || @default_limit, @max_limit)
+        offset = params[:offset] || 0
 
-      {stories, total} = Stories.list_project_stories_paginated(scope, opts)
-      {:reply, StoriesMapper.stories_list_response(stories, total, limit, offset), frame}
-    else
+        opts = [limit: limit, offset: offset]
+        opts = if params[:search], do: Keyword.put(opts, :search, params[:search]), else: opts
+        opts = if params[:tag], do: Keyword.put(opts, :tag, params[:tag]), else: opts
+
+        Logger.debug("[ListStories] calling list_project_stories_paginated with project_id: #{scope.active_project_id}")
+        {stories, total} = Stories.list_project_stories_paginated(scope, opts)
+        Logger.debug("[ListStories] got #{total} stories, page size: #{length(stories)}")
+        {:reply, StoriesMapper.stories_list_response(stories, total, limit, offset), frame}
+
       {:error, atom} ->
+        Logger.warning("[ListStories] validation failed: #{inspect(atom)}")
         {:reply, StoriesMapper.error(atom), frame}
     end
   end
