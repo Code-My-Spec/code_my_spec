@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb.Router do
   pipeline :mcp_protected do
     plug :accepts, ["json", "sse"]
     plug :require_oauth_token
+    plug CodeMySpecWeb.Plugs.ProjectScopeOverride
   end
 
   scope "/", CodeMySpecWeb do
@@ -97,7 +98,7 @@ defmodule CodeMySpecWeb.Router do
 
   # API routes
   scope "/api", CodeMySpecWeb do
-    pipe_through [:api, :require_oauth_token]
+    pipe_through [:api, :require_oauth_token, CodeMySpecWeb.Plugs.ProjectScopeOverride]
 
     get "/me", UserController, :me
     get "/projects", ProjectController, :index
