@@ -26,7 +26,8 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ResearchTopic,
     AgentTasks.DevelopLiveContext,
     AgentTasks.LiveContextSpec,
-    AgentTasks.QaApp
+    AgentTasks.QaApp,
+    AgentTasks.QaStory
   ]
 
   @type t :: atom()

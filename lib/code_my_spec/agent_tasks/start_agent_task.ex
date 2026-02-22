@@ -49,7 +49,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "live_context_spec" => AgentTasks.LiveContextSpec,
     "technical_strategy" => AgentTasks.TechnicalStrategy,
     "research_topic" => AgentTasks.ResearchTopic,
-    "qa_app" => AgentTasks.QaApp
+    "qa_app" => AgentTasks.QaApp,
+    "qa_story" => AgentTasks.QaStory
   }
 
   # Tasks that run without a project or config.yml
@@ -68,7 +69,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   ]
 
   # Tasks that take a topic name (passed as module_name arg) instead of a component lookup
-  @topic_tasks ["research_topic"]
+  @topic_tasks ["research_topic", "qa_story"]
 
   @valid_types ["spec" | Map.keys(@session_type_map)]
 

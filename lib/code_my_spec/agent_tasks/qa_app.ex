@@ -1,32 +1,40 @@
 defmodule CodeMySpec.AgentTasks.QaApp do
   @moduledoc """
-  Browser-based QA agent task for verifying the running app.
+  Orchestrator task for browser-based QA of the running app.
 
-  A componentless, project-wide task that instructs the agent to browse the
-  running application using the `web` CLI tool. The agent reads the router
-  to discover routes, visits each one, tests forms, and files issues for
-  anything broken.
+  Analyzes the project's routes and stories, then delegates per-story QA
+  testing to QaStory workers. Follows the TechnicalStrategy/ResearchTopic
+  orchestration pattern.
+
+  Lifecycle:
+  1. Start/verify Phoenix server
+  2. Smoke-test all routes (visit each, check for 500s)
+  3. Write per-story QA briefs to `docs/status/qa/{story_slug}.md`
+  4. Dispatch `@"CodeMySpec:qa-story (agent)"` subagent per story
+  5. Write summary to `docs/qa/summary.md`
 
   Two main functions:
-  - `command/3` - Gathers router, stories, BDD specs, and existing issues,
-    then builds a QA prompt
-  - `evaluate/3` - Validates the QA report exists and references stories
+  - `command/3` - Builds orchestration prompt with routes, stories, BDD coverage
+  - `evaluate/3` - Checks all story briefs via QaStory.evaluate, validates summary
   """
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.{BddSpecs, Environments, Stories}
   alias CodeMySpec.BddSpecs.SpecProjector
 
-  @qa_report "docs/qa/report.md"
+  @qa_summary "docs/qa/summary.md"
+  @briefs_dir "docs/status/qa"
   @issues_dir "docs/issues"
 
   @doc """
-  Generate the QA session prompt.
+  Generate the orchestration prompt for the QA session.
 
-  Reads the router file, loads stories with acceptance criteria, gathers BDD
-  spec coverage, reads spec files for detail, and lists existing issues.
-  Builds a prompt instructing the agent to browse the app and validate routes.
+  Reads the router file, loads stories with slugs and acceptance criteria,
+  gathers BDD spec coverage, and lists existing issues. Builds a prompt
+  instructing the agent to smoke-test routes, write per-story QA briefs,
+  and dispatch QaStory subagents.
 
   Returns {:ok, prompt_text}
   """
@@ -37,7 +45,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     app_name = derive_app_name(env)
     router_content = read_router(env, app_name)
     stories = list_stories(scope)
-    stories_text = format_stories_with_criteria(stories)
+    stories_with_slugs = build_story_slugs(stories)
     bdd_coverage = format_bdd_coverage(env, stories)
     bdd_summaries = format_bdd_summaries(env)
     existing_issues = list_existing_issues(env)
@@ -47,7 +55,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
         project,
         env,
         router_content,
-        stories_text,
+        stories_with_slugs,
         bdd_coverage,
         bdd_summaries,
         existing_issues
@@ -57,31 +65,54 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   end
 
   @doc """
-  Validate the QA session produced a report.
+  Validate all per-story QA results are complete and summary exists.
 
-  Checks:
-  1. `docs/qa/report.md` exists and is non-empty
-  2. The report references at least one story title
+  Lists brief files in `docs/status/qa/` — each filename is a story slug.
+  For each story, delegates to QaStory.evaluate. Also validates the
+  QA summary exists.
 
   Returns:
-  - {:ok, :valid} if both checks pass
-  - {:ok, :invalid, feedback} if something is missing
+  - {:ok, :valid} if all stories pass and summary exists
+  - {:ok, :invalid, feedback} if stories are incomplete or summary missing
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, session, _opts \\ []) do
     env = scope.environment
 
-    issues = []
-    issues = check_report_exists(env, issues)
-    issues = check_report_references_stories(env, scope, issues)
+    story_slugs = list_qa_briefs(env)
+    summary_exists = summary_exists?(env)
 
-    case issues do
-      [] ->
-        {:ok, :valid}
+    Logger.info(
+      "[QaApp] evaluate: #{length(story_slugs)} brief(s), summary_exists=#{summary_exists}"
+    )
 
-      issues ->
-        feedback = format_feedback(issues)
-        {:ok, :invalid, feedback}
+    if Enum.empty?(story_slugs) and summary_exists do
+      {:ok, :valid}
+    else
+      evaluate_stories(scope, session, story_slugs, summary_exists)
     end
+  end
+
+  # ============================================================================
+  # Story Slugs
+  # ============================================================================
+
+  @doc false
+  def story_slug(story) do
+    slug =
+      story.title
+      |> String.downcase()
+      |> String.replace(~r/[^\w\s-]/, "")
+      |> String.replace(~r/\s+/, "-")
+      |> String.replace(~r/-+/, "-")
+      |> String.trim("-")
+
+    "#{story.id}-#{slug}"
+  end
+
+  defp build_story_slugs(stories) do
+    Enum.map(stories, fn story ->
+      {story, story_slug(story)}
+    end)
   end
 
   # ============================================================================
@@ -116,23 +147,31 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     _ -> []
   end
 
-  defp format_stories_with_criteria([]), do: "No stories found."
+  defp list_existing_issues(env) do
+    case Environments.glob(env, "#{@issues_dir}/*.md") do
+      files when is_list(files) and files != [] ->
+        files
+        |> Enum.map(&Path.basename/1)
+        |> Enum.sort()
+        |> Enum.map_join("\n", &"- `#{&1}`")
 
-  defp format_stories_with_criteria(stories) do
-    Enum.map_join(stories, "\n\n", &format_story_with_criteria/1)
+      _ ->
+        "No existing issues."
+    end
   end
 
-  defp format_story_with_criteria(story) do
-    criteria = Map.get(story, :criteria, [])
-    criteria_text = format_criteria_list(criteria)
+  defp list_qa_briefs(env) do
+    case Environments.glob(env, "#{@briefs_dir}/*.md") do
+      files when is_list(files) ->
+        Enum.map(files, &Path.basename(&1, ".md"))
 
-    "### #{story.title}\n\n#{story.description || ""}\n\n**Acceptance Criteria:**\n#{criteria_text}"
+      _ ->
+        []
+    end
   end
 
-  defp format_criteria_list([]), do: "  _(no acceptance criteria defined)_"
-
-  defp format_criteria_list(criteria) do
-    Enum.map_join(criteria, "\n", fn c -> "  - #{c.description}" end)
+  defp summary_exists?(env) do
+    Environments.file_exists?(env, @qa_summary) == true
   end
 
   defp format_bdd_coverage(env, stories) do
@@ -150,19 +189,6 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     end
   end
 
-  defp list_existing_issues(env) do
-    case Environments.glob(env, "#{@issues_dir}/*.md") do
-      files when is_list(files) and files != [] ->
-        files
-        |> Enum.map(&Path.basename/1)
-        |> Enum.sort()
-        |> Enum.map_join("\n", &"- `#{&1}`")
-
-      _ ->
-        "No existing issues."
-    end
-  end
-
   # ============================================================================
   # Prompt Building
   # ============================================================================
@@ -171,7 +197,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
          project,
          env,
          router_content,
-         stories_text,
+         stories_with_slugs,
          bdd_coverage,
          bdd_summaries,
          existing_issues
@@ -183,11 +209,11 @@ defmodule CodeMySpec.AgentTasks.QaApp do
         build_header(project),
         build_server_section(project_cwd),
         build_router_section(router_content),
-        build_stories_section(stories_text),
+        build_stories_section(stories_with_slugs),
         build_bdd_coverage_section(bdd_coverage),
         build_bdd_details_section(bdd_summaries),
         build_existing_issues_section(existing_issues),
-        build_instructions()
+        build_instructions(stories_with_slugs)
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -198,11 +224,8 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     """
     # QA Session: Browser-Based App Verification
 
-    You are performing QA on the **#{project.name}** app by using the `web` CLI tool
-    to browse the running application and verify it works correctly.
-
-    Your job is to validate what's actually there — visit every route, try the forms,
-    check the content, and file issues for anything broken.
+    You are orchestrating QA on the **#{project.name}** app by using the `web` CLI tool
+    to smoke-test routes, then delegating per-story testing to QA subagents.
     """
   end
 
@@ -243,15 +266,35 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     """
   end
 
-  defp build_stories_section(stories_text) do
+  defp build_stories_section([]) do
     """
-    ## Stories & Acceptance Criteria
+    ## Stories
 
-    These stories describe what the app should do. Use them as context when
-    evaluating pages, but test what's actually there:
-
-    #{stories_text}
+    No stories found. Perform a general route-by-route QA instead.
     """
+  end
+
+  defp build_stories_section(stories_with_slugs) do
+    story_list =
+      Enum.map_join(stories_with_slugs, "\n", fn {story, slug} ->
+        criteria_text = format_criteria(Map.get(story, :criteria, []))
+        "### `#{slug}` — #{story.title}\n\n#{story.description || ""}\n\n#{criteria_text}"
+      end)
+
+    """
+    ## Stories & Slugs
+
+    Each story has a slug used for file naming. Write QA briefs and results
+    using these exact slugs:
+
+    #{story_list}
+    """
+  end
+
+  defp format_criteria([]), do: "  _(no acceptance criteria)_"
+
+  defp format_criteria(criteria) do
+    Enum.map_join(criteria, "\n", fn c -> "  - #{c.description}" end)
   end
 
   defp build_bdd_coverage_section(bdd_coverage) do
@@ -289,46 +332,57 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     """
   end
 
-  defp build_instructions do
+  defp build_instructions(stories_with_slugs) do
+    slug_list =
+      case stories_with_slugs do
+        [] ->
+          "  _(no stories — skip brief writing and go straight to summary)_"
+
+        slugs ->
+          Enum.map_join(slugs, "\n", fn {_story, slug} ->
+            "  - `docs/status/qa/#{slug}.md`"
+          end)
+      end
+
     """
     ## Instructions
 
-    ### Using the `web` tool
+    ### Step 1: Start/Verify Server
 
-    - **Visit a page**: `web http://localhost:4000/some-route`
-    - **Take a screenshot**: `web http://localhost:4000/some-route --screenshot docs/qa/screenshots/route-name.png`
-    - **Fill a form**: `web http://localhost:4000/page --form "form_id" --input "field[name]" --value "test" --after-submit http://localhost:4000/next`
-    - **JS interactions**: `web http://localhost:4000/page --js "document.querySelector('.btn').click()"`
-    - **Maintain session**: Use `--profile qa` on all requests to keep cookies/auth
+    Make sure the Phoenix server is running (see App Server section above).
 
-    ### For authenticated routes
+    ### Step 2: Smoke-Test All Routes
 
-    1. First log in using the app's login form with `--profile qa`
-    2. Then visit authenticated routes with `--profile qa` to reuse the session
+    Visit every route from the router using `web`. Check for 500 errors,
+    missing pages, and obviously broken UI. Use `--profile qa` to maintain session.
 
-    ### Testing approach
+    ### Step 3: Write Per-Story QA Briefs
 
-    1. Start with the root route and navigate through the app
-    2. Visit every route from the router
-    3. Try form submissions — happy path and edge cases
-    4. Check page content against story acceptance criteria
-    5. Look for: broken pages, missing content, form errors, UI glitches, 500 errors
+    For each story, write a QA brief to `docs/status/qa/{story_slug}.md`.
+    The brief should include:
+    - Story title and relevant acceptance criteria
+    - Which routes to test for this story
+    - What to look for (based on your smoke test observations)
+    - Any authentication or setup steps needed
 
-    ### Filing issues
+    Briefs to write:
 
-    For every bug or problem you find, create an issue file in `docs/issues/`:
+    #{slug_list}
 
-    - Filename: descriptive kebab-case, e.g. `docs/issues/login-form-500-error.md`
-    - Content: describe the problem, what you expected, what happened, and the route
+    ### Step 4: Dispatch Per-Story QA Agents
 
-    ### Write QA Report
+    For each brief, invoke the **qa-story** subagent
+    (`@"CodeMySpec:qa-story (agent)"`) with the story slug as the argument.
+    The subagent will read the brief, test the story, and write a result
+    to `docs/qa/{story_slug}.md`.
 
-    Write the report to `docs/qa/report.md`. Include:
+    ### Step 5: Write Summary
 
-    - What routes you visited
-    - What you tested
-    - What passed and what failed
-    - References to any issues you filed
+    After all stories are tested, write a summary to `#{@qa_summary}`. Include:
+    - Overall pass/fail status
+    - List of stories tested with their results
+    - Any cross-cutting issues found during smoke testing
+    - References to filed issues
 
     When complete, stop the session so validation can check your work.
     """
@@ -338,69 +392,67 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   # Evaluation
   # ============================================================================
 
-  defp check_report_exists(env, issues) do
-    case Environments.read_file(env, @qa_report) do
-      {:ok, content} when is_binary(content) ->
-        if String.trim(content) == "" do
-          [{:empty_report, "QA report at `#{@qa_report}` is empty"} | issues]
-        else
-          issues
+  defp evaluate_stories(scope, session, story_slugs, summary_exists) do
+    story_results =
+      Enum.map(story_slugs, fn slug ->
+        child_session = build_child_session(session, slug)
+
+        case QaStory.evaluate(scope, child_session) do
+          {:ok, :valid} -> {slug, :valid}
+          {:ok, :invalid, feedback} -> {slug, {:invalid, feedback}}
         end
-
-      _ ->
-        [{:missing_report, "QA report not found at `#{@qa_report}`"} | issues]
-    end
-  end
-
-  defp check_report_references_stories(env, scope, issues) do
-    # Only check story references if the report exists
-    case Environments.read_file(env, @qa_report) do
-      {:ok, report_content} when is_binary(report_content) and report_content != "" ->
-        story_titles = get_story_titles(scope)
-        validate_story_references(report_content, story_titles, issues)
-
-      _ ->
-        # Report doesn't exist — that's handled by check_report_exists
-        issues
-    end
-  end
-
-  defp validate_story_references(_report_content, [], issues), do: issues
-
-  defp validate_story_references(report_content, story_titles, issues) do
-    has_reference =
-      Enum.any?(story_titles, fn title ->
-        String.contains?(report_content, title)
       end)
 
-    if has_reference do
-      issues
-    else
-      [{:no_story_references,
-        "QA report does not reference any story titles. " <>
-          "Include story names in the report to show what was tested."} | issues]
+    incomplete =
+      Enum.filter(story_results, fn
+        {_slug, :valid} -> false
+        _ -> true
+      end)
+
+    cond do
+      Enum.empty?(incomplete) and summary_exists ->
+        {:ok, :valid}
+
+      not summary_exists ->
+        feedback = build_evaluate_feedback(incomplete, false)
+        {:ok, :invalid, feedback}
+
+      true ->
+        feedback = build_evaluate_feedback(incomplete, true)
+        {:ok, :invalid, feedback}
     end
   end
 
-  defp get_story_titles(scope) do
-    Stories.list_story_titles(scope)
-    |> Enum.map(& &1.title)
-  rescue
-    _ -> []
+  defp build_child_session(session, story_slug) do
+    %{
+      project: Map.get(session, :project),
+      state: %{"topic" => story_slug}
+    }
   end
 
-  defp format_feedback(issues) do
-    issue_list =
-      issues
-      |> Enum.reverse()
-      |> Enum.map_join("\n", fn {_type, message} -> "- #{message}" end)
+  defp build_evaluate_feedback(incomplete_stories, summary_exists) do
+    parts = []
+
+    parts =
+      if summary_exists do
+        parts
+      else
+        ["- QA summary not found at `#{@qa_summary}`" | parts]
+      end
+
+    parts =
+      Enum.reduce(incomplete_stories, parts, fn {slug, _status}, acc ->
+        ["- Story \"#{slug}\" is incomplete" | acc]
+      end)
+
+    issue_list = parts |> Enum.reverse() |> Enum.join("\n")
 
     """
     QA session is incomplete:
 
     #{issue_list}
 
-    Please address these issues and stop the session again.
+    Address the remaining stories and stop the session again.
     """
   end
 end

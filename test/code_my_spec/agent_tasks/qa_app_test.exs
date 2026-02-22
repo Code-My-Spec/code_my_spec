@@ -59,8 +59,28 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     """)
   end
 
-  defp write_qa_report(env, content) do
-    write_file!(env, "docs/qa/report.md", content)
+  defp write_qa_summary(env, content \\ nil) do
+    write_file!(
+      env,
+      "docs/qa/summary.md",
+      content || "# QA Summary\n\nAll stories tested. No critical issues."
+    )
+  end
+
+  defp write_qa_brief(env, story_slug, content \\ nil) do
+    write_file!(
+      env,
+      "docs/status/qa/#{story_slug}.md",
+      content || "Test story #{story_slug}."
+    )
+  end
+
+  defp write_qa_result(env, story_slug, content \\ nil) do
+    write_file!(
+      env,
+      "docs/qa/#{story_slug}.md",
+      content || "# QA: #{story_slug}\n\nAll tests passed."
+    )
   end
 
   defp write_issue(env, name, content \\ nil) do
@@ -69,6 +89,28 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       "docs/issues/#{name}.md",
       content || "# #{name}\n\nDescription of the issue."
     )
+  end
+
+  # ============================================================================
+  # story_slug/1 Tests
+  # ============================================================================
+
+  describe "story_slug/1" do
+    test "generates slug from story id and title" do
+      story = %{id: 42, title: "User Authentication"}
+      assert QaApp.story_slug(story) == "42-user-authentication"
+    end
+
+    test "handles special characters" do
+      story = %{id: 7, title: "Add OAuth2.0 (Google) Login!"}
+      slug = QaApp.story_slug(story)
+      assert slug == "7-add-oauth20-google-login"
+    end
+
+    test "collapses multiple spaces/dashes" do
+      story = %{id: 1, title: "Some   Spaced   Title"}
+      assert QaApp.story_slug(story) == "1-some-spaced-title"
+    end
   end
 
   # ============================================================================
@@ -109,20 +151,19 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert prompt =~ "mix phx.server"
     end
 
-    test "includes web tool instructions", %{scope: scope, session: session} do
+    test "instructs agent to write per-story QA briefs", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "web http://localhost:4000"
-      assert prompt =~ "--profile qa"
+      assert prompt =~ "docs/status/qa/"
     end
 
-    test "includes issue filing instructions", %{scope: scope, session: session} do
+    test "instructs agent to dispatch qa-story subagent", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "docs/issues/"
+      assert prompt =~ "qa-story"
     end
 
-    test "includes QA report instructions", %{scope: scope, session: session} do
+    test "instructs agent to write summary", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "docs/qa/report.md"
+      assert prompt =~ "docs/qa/summary.md"
     end
 
     test "lists existing issues to avoid duplicates", %{scope: scope, session: session} do
@@ -145,66 +186,69 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
   describe "evaluate/3" do
     setup [:create_scope, :create_session]
 
-    test "returns {:ok, :valid} when report exists and references a story", %{
+    test "returns {:ok, :valid} when no briefs remain and summary exists", %{
       scope: scope,
       session: session
     } do
-      # Get a real story title from the fixture
-      story_titles =
-        CodeMySpec.Stories.list_story_titles(scope)
-        |> Enum.map(& &1.title)
-
-      # Write report that references one of the fixture story titles
-      report_content =
-        if Enum.empty?(story_titles) do
-          # If no stories, any report will pass (story check is skipped)
-          "# QA Report\n\nAll routes tested."
-        else
-          "# QA Report\n\nTested: #{hd(story_titles)}\n\nAll routes passed."
-        end
-
-      write_qa_report(scope.environment, report_content)
+      write_qa_summary(scope.environment)
 
       assert {:ok, :valid} = QaApp.evaluate(scope, session)
     end
 
-    test "returns {:ok, :invalid, feedback} when report is missing", %{
+    test "returns {:ok, :invalid, feedback} when briefs exist but story is incomplete", %{
+      scope: scope,
+      session: session
+    } do
+      env = scope.environment
+      write_qa_brief(env, "42-user-auth")
+      write_qa_summary(env)
+
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert feedback =~ "42-user-auth"
+    end
+
+    test "returns {:ok, :valid} when all story briefs pass validation", %{
+      scope: scope,
+      session: session
+    } do
+      env = scope.environment
+      write_qa_brief(env, "42-user-auth")
+      write_qa_result(env, "42-user-auth")
+      write_qa_summary(env)
+
+      assert {:ok, :valid} = QaApp.evaluate(scope, session)
+    end
+
+    test "returns {:ok, :invalid, feedback} when summary is missing", %{
       scope: scope,
       session: session
     } do
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
-      assert feedback =~ "report"
+      assert feedback =~ "summary"
     end
 
-    test "returns {:ok, :invalid, feedback} when report is empty", %{
-      scope: scope,
-      session: session
-    } do
-      write_qa_report(scope.environment, "")
+    test "reports multiple incomplete stories", %{scope: scope, session: session} do
+      env = scope.environment
+      write_qa_brief(env, "42-user-auth")
+      write_qa_brief(env, "43-dashboard")
+      write_qa_summary(env)
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
-      assert feedback =~ "empty"
+      assert feedback =~ "42-user-auth"
+      assert feedback =~ "43-dashboard"
     end
 
-    test "returns {:ok, :invalid, feedback} when report does not reference any story", %{
-      scope: scope,
-      session: session
-    } do
-      # Check if there are stories to test against
-      story_titles =
-        CodeMySpec.Stories.list_story_titles(scope)
-        |> Enum.map(& &1.title)
+    test "cleans up brief files when story QA passes", %{scope: scope, session: session} do
+      env = scope.environment
+      write_qa_brief(env, "42-user-auth")
+      write_qa_result(env, "42-user-auth")
+      write_qa_summary(env)
 
-      if Enum.empty?(story_titles) do
-        # No stories — report without references is valid
-        write_qa_report(scope.environment, "# QA Report\n\nNo stories to test.")
-        assert {:ok, :valid} = QaApp.evaluate(scope, session)
-      else
-        # Stories exist — report must reference at least one
-        write_qa_report(scope.environment, "# QA Report\n\nSome completely unrelated content.")
-        assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
-        assert feedback =~ "story"
-      end
+      brief_path = Path.join(env.cwd, "docs/status/qa/42-user-auth.md")
+      assert File.exists?(brief_path)
+
+      assert {:ok, :valid} = QaApp.evaluate(scope, session)
+      refute File.exists?(brief_path)
     end
   end
 end
