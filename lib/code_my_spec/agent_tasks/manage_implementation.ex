@@ -105,7 +105,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
       {:needs_specs, story} -> dispatch_write_specs(env, scope, session, story)
       {:failing_unmapped, failures} -> dispatch_unmapped(env, failures)
       {:fix_specs, story, failures} -> dispatch_fix_specs(env, story, failures)
-      {:blocked, story, reason} -> dispatch_blocked(env, story, reason)
+      {:blocked, story, reason} -> dispatch_blocked(env, scope, story, reason)
     end
   end
 
@@ -186,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     case Map.get(component_map, story.component_id) do
       nil ->
         Logger.info("[Orchestrator] Blocked: story has no linked component")
-        {:blocked, story, "Story has no linked component"}
+        {:blocked, story, {:no_component, all_components}}
 
       target ->
         chain = build_dependency_chain(target, all_components, component_map)
@@ -248,9 +248,15 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
       external_conversation_id: get_external_id(session)
     }
 
-    {:ok, prompt} = WriteBddSpecs.command(scope, bdd_session, skip_sync: true)
-    write_status(env, %{task: "write_bdd_specs", story_id: story.id})
-    {:ok, wrap_prompt("Write BDD Specs: #{story.title}", prompt)}
+    case WriteBddSpecs.command(scope, bdd_session, skip_sync: true) do
+      {:ok, prompt} ->
+        write_status(env, %{task: "write_bdd_specs", story_id: story.id})
+        {:ok, wrap_prompt("Write BDD Specs: #{story.title}", prompt)}
+
+      {:error, reason} when reason in [:component_not_linked, :component_not_found] ->
+        all_components = Components.list_components_with_dependencies(scope)
+        dispatch_blocked(env, scope, story, {:no_component, all_components})
+    end
   end
 
   defp dispatch_fix_specs(env, story, failures) do
@@ -258,7 +264,12 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
     {:ok, wrap_prompt("Fix Failing Specs: #{story.title}", format_fix_prompt(story, failures))}
   end
 
-  defp dispatch_blocked(env, story, reason) do
+  defp dispatch_blocked(env, scope, story, {:no_component, components}) do
+    clear_status(env)
+    {:ok, wrap_prompt("Story Blocked: #{story.title}", format_no_component_prompt(scope, story, components))}
+  end
+
+  defp dispatch_blocked(env, _scope, story, reason) when is_binary(reason) do
     clear_status(env)
     {:ok, wrap_prompt("Story Blocked: #{story.title}", "Cannot develop story: #{reason}")}
   end
@@ -521,6 +532,57 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
   # ============================================================================
   # Prompt Formatting
   # ============================================================================
+
+  defp format_no_component_prompt(scope, story, components) do
+    surface_components =
+      components
+      |> Enum.filter(fn c -> c.type in @developable_types end)
+      |> Enum.sort_by(& &1.module_name)
+
+    component_table =
+      Enum.map_join(surface_components, "\n", fn c ->
+        stories = Stories.list_component_stories(scope, c.id)
+        story_count = length(stories)
+        "| #{c.module_name} | #{c.type} | #{story_count} stories |"
+      end)
+
+    """
+    Story "#{story.title}" (ID: `#{story.id}`) has no linked architecture component.
+    It must be assigned to a component before specs can be written or development can begin.
+
+    ## Available Components
+
+    | Module | Type | Linked Stories |
+    |--------|------|----------------|
+    #{component_table}
+
+    ## How to Fix
+
+    Link this story to the appropriate component by running:
+
+    ```bash
+    curl -sf -X POST "http://localhost:4002/api/stories/set-component" \
+      -H "Content-Type: application/json" \
+      -H "X-Working-Dir: $PWD" \
+      -d '{"story_id": "#{story.id}", "module_name": "<ModuleName>"}'
+    ```
+
+    For example, to link to `#{pick_example_module(surface_components)}`:
+
+    ```bash
+    curl -sf -X POST "http://localhost:4002/api/stories/set-component" \
+      -H "Content-Type: application/json" \
+      -H "X-Working-Dir: $PWD" \
+      -d '{"story_id": "#{story.id}", "module_name": "#{pick_example_module(surface_components)}"}'
+    ```
+
+    If no suitable component exists, run `/design-architecture` to revise the architecture
+    and create the needed components for this story.
+    """
+  end
+
+  defp pick_example_module([first | _]), do: first.module_name
+  defp pick_example_module([]), do: "MyApp.SomeContext"
 
   defp format_fix_prompt(story, failures) do
     relevant = filter_story_failures(failures, story.id)

@@ -255,28 +255,57 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
     end
   end
 
-  # --- Install Knowledge ---
+  # --- Install Symlinks ---
 
   @doc """
-  Symlink framework knowledge into the project's .code_my_spec/framework/.
+  Create app symlinks in the project's .code_my_spec/ directory.
 
-  Creates a symlink from .code_my_spec/framework/ to the app's priv/knowledge/.
+  Creates symlinks for framework knowledge and tools.
   Requires `X-Working-Dir` header.
 
-  Returns `{"status": "ok", "files_installed": N}`.
+  Returns `{"status": "ok", "symlinks": [...]}`.
   """
-  def install_knowledge(conn) do
+  def install_symlinks(conn) do
     working_dir = conn.assigns[:working_dir]
 
     if is_nil(working_dir) do
       json_response(conn, 400, %{error: "X-Working-Dir header is required"})
     else
-      case ProjectSetup.install_framework_knowledge(working_dir) do
+      case ProjectSetup.install_app_symlinks(working_dir) do
         :ok ->
-          json_response(conn, 200, %{status: "ok", target: ".code_my_spec/framework/"})
+          json_response(conn, 200, %{
+            status: "ok",
+            symlinks: [".code_my_spec/framework/", ".code_my_spec/tools/"]
+          })
 
         {:error, reason} ->
-          json_response(conn, 500, %{error: "Failed to install knowledge: #{inspect(reason)}"})
+          json_response(conn, 500, %{error: "Failed to install symlinks: #{inspect(reason)}"})
+      end
+    end
+  end
+
+  # --- Install AGENTS.md ---
+
+  @doc """
+  Generate and write .code_my_spec/AGENTS.md for the project.
+
+  Detects the app name and writes a project-specific agent guide.
+  Requires `X-Working-Dir` header.
+
+  Returns `{"status": "ok", "path": ".code_my_spec/AGENTS.md"}`.
+  """
+  def install_agents_md(conn) do
+    working_dir = conn.assigns[:working_dir]
+
+    if is_nil(working_dir) do
+      json_response(conn, 400, %{error: "X-Working-Dir header is required"})
+    else
+      case ProjectSetup.install_agents_md(working_dir) do
+        :ok ->
+          json_response(conn, 200, %{status: "ok", path: ".code_my_spec/AGENTS.md"})
+
+        {:error, reason} ->
+          json_response(conn, 500, %{error: "Failed to write AGENTS.md: #{inspect(reason)}"})
       end
     end
   end

@@ -8,7 +8,12 @@ defmodule CodeMySpec.LocalServer.Router do
   use Plug.Router
   require Logger
 
-  alias CodeMySpec.LocalServer.Controllers.{AgentTaskController, BootstrapController, HookController}
+  alias CodeMySpec.LocalServer.Controllers.{
+    AgentTaskController,
+    BootstrapController,
+    HookController,
+    StoryComponentController
+  }
   alias CodeMySpec.LocalServer.Plugs
 
   plug :match
@@ -60,12 +65,20 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&BootstrapController.init_project/1)
   end
 
-  # Install framework knowledge files
-  post "/api/bootstrap/install-knowledge" do
+  # Install app symlinks (framework knowledge + tools)
+  post "/api/bootstrap/install-symlinks" do
     conn
     |> Plugs.LocalOnly.call([])
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&BootstrapController.install_knowledge/1)
+    |> maybe_continue(&BootstrapController.install_symlinks/1)
+  end
+
+  # Generate .code_my_spec/AGENTS.md
+  post "/api/bootstrap/install-agents-md" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&BootstrapController.install_agents_md/1)
   end
 
   # Project setup (no config.yml needed — this is what creates it)
@@ -94,6 +107,15 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
     |> maybe_continue(&Plugs.LocalScope.call(&1, []))
     |> maybe_continue(&HookController.handle/1)
+  end
+
+  # Link a story to a component by module name
+  post "/api/stories/set-component" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&StoryComponentController.set/1)
   end
 
   # MCP routes - require localhost, working dir, and scope

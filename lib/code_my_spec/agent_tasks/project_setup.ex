@@ -92,8 +92,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     # Auth check
     auth_check = check_auth_status()
 
-    # Framework knowledge
-    knowledge_check = check_framework_knowledge(working_dir)
+    # App symlinks (framework knowledge + tools)
+    symlinks_check = check_app_symlinks(working_dir)
+
+    # AGENTS.md guide
+    agents_md_check = check_agents_md(working_dir)
 
     # Ignored components (optional)
     ignored_components_check = check_ignored_components(working_dir)
@@ -117,7 +120,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       project_structure_complete: structure_check.structure_complete,
       missing_structure_dirs: structure_check.missing_dirs,
       cli_config_exists: cli_config_check.exists,
-      framework_knowledge_installed: knowledge_check.installed,
+      app_symlinks_installed: symlinks_check.installed,
+      agents_md_installed: agents_md_check.installed,
       cli_config_has_project_id: cli_config_check.has_project_id,
       ignored_components_configured: ignored_components_check.configured
     }
@@ -312,13 +316,29 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     {Enum.empty?(missing), missing}
   end
 
-  # Framework knowledge check
+  # App symlinks check (framework knowledge + tools)
 
-  defp check_framework_knowledge(working_dir) do
-    framework_path = Path.join(working_dir, CodeMySpec.Paths.framework_dir())
+  @app_symlinks [
+    {:framework_dir, "priv/knowledge"},
+    {:tools_dir, "priv/tools"}
+  ]
 
+  defp check_app_symlinks(working_dir) do
     # File.dir? follows symlinks, so this validates both the link and its target
-    %{installed: File.dir?(framework_path)}
+    all_installed =
+      Enum.all?(@app_symlinks, fn {path_fn, _} ->
+        Path.join(working_dir, apply(CodeMySpec.Paths, path_fn, []))
+        |> File.dir?()
+      end)
+
+    %{installed: all_installed}
+  end
+
+  # AGENTS.md check
+
+  defp check_agents_md(working_dir) do
+    agents_path = Path.join([working_dir, CodeMySpec.Paths.base_dir(), "AGENTS.md"])
+    %{installed: File.exists?(agents_path)}
   end
 
   # Ignored components check (optional — not gated in all_checks_pass?)
@@ -441,7 +461,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_sexy_spex_local_dep_note(status)
     |> maybe_add_test_boundaries_instructions(status)
     |> maybe_add_structure_instructions(status)
-    |> maybe_add_knowledge_instructions(status)
+    |> maybe_add_symlinks_instructions(status)
+    |> maybe_add_agents_md_instructions(status)
     |> maybe_add_cli_config_instructions(status)
     |> maybe_add_ignored_components_instructions(status)
     |> Enum.reverse()
@@ -641,25 +662,51 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_structure_instructions(sections, _status), do: sections
 
-  defp maybe_add_knowledge_instructions(sections, %{framework_knowledge_installed: true}),
+  defp maybe_add_symlinks_instructions(sections, %{app_symlinks_installed: true}),
     do: sections
 
-  defp maybe_add_knowledge_instructions(sections, _status) do
+  defp maybe_add_symlinks_instructions(sections, _status) do
     instruction = """
-    ## Install Framework Knowledge
+    ## Install App Symlinks
 
-    Framework knowledge files provide reference documentation for LiveView, DaisyUI,
-    Boundary, and project conventions.
+    CodeMySpec provides framework knowledge and tools via symlinks into your project.
 
-    Create a symlink at `.code_my_spec/framework/`:
+    Install them:
     ```bash
-    curl -s -X POST http://localhost:4002/api/bootstrap/install-knowledge \\
+    curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks \\
       -H "Content-Type: application/json" \\
       -H "X-Working-Dir: $(pwd)"
     ```
 
-    This symlinks `.code_my_spec/framework/` to the CodeMySpec app's knowledge files.
-    The symlink stays current with the app version automatically.
+    This creates:
+    - `.code_my_spec/framework/` → framework reference (LiveView, DaisyUI, Boundary, etc.)
+    - `.code_my_spec/tools/` → helper scripts (e.g., `set-story-component`)
+
+    Both symlinks stay current with the app version automatically.
+    Add them to `.gitignore` (they're machine-specific).
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_agents_md_instructions(sections, %{agents_md_installed: true}),
+    do: sections
+
+  defp maybe_add_agents_md_instructions(sections, _status) do
+    instruction = """
+    ## Generate AGENTS.md
+
+    The project guide orients agents to the `.code_my_spec/` directory structure.
+
+    Generate it:
+    ```bash
+    curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md \\
+      -H "Content-Type: application/json" \\
+      -H "X-Working-Dir: $(pwd)"
+    ```
+
+    This creates `.code_my_spec/AGENTS.md` with app-specific paths.
+    This file should be committed to version control.
     """
 
     [instruction | sections]
@@ -719,7 +766,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Test boundaries", status.test_boundaries_configured},
       {"Project structure", status.project_dir_exists},
       {"Project structure dirs", status.project_structure_complete},
-      {"Framework knowledge", status.framework_knowledge_installed},
+      {"App symlinks", status.app_symlinks_installed},
+      {"AGENTS.md", status.agents_md_installed},
       {"CLI config", status.cli_config_has_project_id}
     ]
 
@@ -923,22 +971,35 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   @doc """
-  Create a symlink from .code_my_spec/framework/ to the app's priv/knowledge/ directory.
+  Create symlinks from .code_my_spec/ to the app's priv/ directories.
 
-  Returns `:ok` on success, `{:error, reason}` on failure.
+  Creates:
+  - `.code_my_spec/framework/` → `priv/knowledge/`
+  - `.code_my_spec/tools/` → `priv/tools/`
+
+  Returns `:ok` on success, `{:error, reason}` on first failure.
   """
-  @spec install_framework_knowledge(String.t()) :: :ok | {:error, term()}
-  def install_framework_knowledge(working_dir) do
-    source_dir = Application.app_dir(:code_my_spec, "priv/knowledge")
-    link_path = Path.join(working_dir, CodeMySpec.Paths.framework_dir())
+  @spec install_app_symlinks(String.t()) :: :ok | {:error, term()}
+  def install_app_symlinks(working_dir) do
+    Enum.reduce_while(@app_symlinks, :ok, fn {path_fn, priv_subdir}, :ok ->
+      source = Application.app_dir(:code_my_spec, priv_subdir)
+      link_path = Path.join(working_dir, apply(CodeMySpec.Paths, path_fn, []))
 
+      case create_symlink(source, link_path) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp create_symlink(source, link_path) do
     with :ok <- link_path |> Path.dirname() |> File.mkdir_p() do
       # Remove existing symlink or directory if present
       if File.exists?(link_path) or symlink?(link_path) do
         File.rm_rf(link_path)
       end
 
-      File.ln_s(source_dir, link_path)
+      File.ln_s(source, link_path)
     end
   end
 
@@ -946,6 +1007,23 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     case File.lstat(path) do
       {:ok, %{type: :symlink}} -> true
       _ -> false
+    end
+  end
+
+  @doc """
+  Generate and write .code_my_spec/AGENTS.md for the project.
+
+  Detects the app name from mix.exs and generates a project-specific guide.
+  Returns `:ok` on success, `{:error, reason}` on failure.
+  """
+  @spec install_agents_md(String.t()) :: :ok | {:error, term()}
+  def install_agents_md(working_dir) do
+    app_name = extract_app_name(Path.join(working_dir, "mix.exs"))
+    content = agents_md_content(app_name)
+    agents_path = Path.join([working_dir, CodeMySpec.Paths.base_dir(), "AGENTS.md"])
+
+    with :ok <- agents_path |> Path.dirname() |> File.mkdir_p() do
+      File.write(agents_path, content)
     end
   end
 
@@ -974,6 +1052,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ├── rules/                 ← Coding standards by component type
     ├── knowledge/             ← Project-specific operational knowledge
     ├── framework/             ← Framework reference (LiveView, DaisyUI, etc.) [symlink]
+    ├── tools/                 ← Helper scripts (set-story-component, etc.) [symlink]
     ├── design/                ← Design system assets
     ├── issues/                ← Known bugs and technical debt
     └── qa/                    ← QA test results
@@ -1134,13 +1213,14 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     .code_my_spec/status/
     .code_my_spec/qa/
     .code_my_spec/framework
+    .code_my_spec/tools
     /diagnostics.jsonl
     GITIGNORE
     ```
 
     **Note:** `.code_my_spec/spec/`, `.code_my_spec/rules/`, `.code_my_spec/knowledge/`,
     `.code_my_spec/architecture/`, and `.code_my_spec/design/` should be committed to version control.
-    `.code_my_spec/framework` is a local symlink (machine-specific) and should not be committed.
+    `.code_my_spec/framework` and `.code_my_spec/tools` are local symlinks (machine-specific) and should not be committed.
     """
   end
 
@@ -1156,7 +1236,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     :spex_config_complete,
     :project_dir_exists,
     :project_structure_complete,
-    :framework_knowledge_installed,
+    :app_symlinks_installed,
+    :agents_md_installed,
     :cli_config_has_project_id
   ]
 
@@ -1212,8 +1293,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        "Create .code_my_spec directory: mkdir -p #{CodeMySpec.Paths.base_dir()}"},
       {"Project structure dirs", status.project_structure_complete,
        "Create directories: #{Enum.join(status.missing_structure_dirs, ", ")}"},
-      {"Framework knowledge", status.framework_knowledge_installed,
-       "Install framework knowledge: curl -s -X POST http://localhost:4002/api/bootstrap/install-knowledge -H 'X-Working-Dir: <project_dir>'"},
+      {"App symlinks", status.app_symlinks_installed,
+       "Install app symlinks: curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks -H 'X-Working-Dir: <project_dir>'"},
+      {"AGENTS.md", status.agents_md_installed,
+       "Generate AGENTS.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md -H 'X-Working-Dir: <project_dir>'"},
       {"CLI config", status.cli_config_has_project_id,
        "Run curl -s http://localhost:4002/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}
     ]

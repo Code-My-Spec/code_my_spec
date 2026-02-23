@@ -455,9 +455,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       assert status.test_boundaries_configured == true
     end
 
-    test "returns framework_knowledge_installed false when knowledge dir missing", %{
-      tmp_dir: tmp_dir
-    } do
+    test "returns app_symlinks_installed false when symlinks missing", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
@@ -465,23 +463,19 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       status = ProjectSetup.check_status(env, session)
 
-      assert status.framework_knowledge_installed == false
+      assert status.app_symlinks_installed == false
     end
 
-    test "returns framework_knowledge_installed true when framework symlink exists", %{
-      tmp_dir: tmp_dir
-    } do
+    test "returns app_symlinks_installed true when all symlinks exist", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
       create_phoenix_project_structure(tmp_dir, "my_app")
-
-      # Create framework symlink (same as install_framework_knowledge does)
-      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
+      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
 
       status = ProjectSetup.check_status(env, session)
 
-      assert status.framework_knowledge_installed == true
+      assert status.app_symlinks_installed == true
     end
 
     test "returns boundary in missing_deps when not in mix.exs", %{tmp_dir: tmp_dir} do
@@ -494,34 +488,84 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       assert :boundary in status.missing_deps
     end
+
+    test "returns agents_md_installed false when AGENTS.md missing", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.agents_md_installed == false
+    end
+
+    test "returns agents_md_installed true when AGENTS.md exists", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      assert :ok = ProjectSetup.install_agents_md(tmp_dir)
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.agents_md_installed == true
+    end
   end
 
   # ============================================================================
-  # install_framework_knowledge/1 Tests
+  # install_app_symlinks/1 Tests
   # ============================================================================
 
-  describe "install_framework_knowledge/1" do
-    test "creates symlink at .code_my_spec/framework/", %{tmp_dir: tmp_dir} do
-      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
+  describe "install_app_symlinks/1" do
+    test "creates framework and tools symlinks", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
 
+      # Framework symlink
       framework_path = Path.join(tmp_dir, ".code_my_spec/framework")
       assert File.dir?(framework_path)
-
-      # Should be a symlink
       assert {:ok, %{type: :symlink}} = File.lstat(framework_path)
-
-      # Should resolve to real files
       assert File.exists?(Path.join(framework_path, "README.md"))
       assert File.exists?(Path.join(framework_path, "liveview/patterns.md"))
-      assert File.exists?(Path.join(framework_path, "ui/daisyui.md"))
+
+      # Tools symlink
+      tools_path = Path.join(tmp_dir, ".code_my_spec/tools")
+      assert {:ok, %{type: :symlink}} = File.lstat(tools_path)
+      assert File.exists?(Path.join(tools_path, "set-story-component"))
     end
 
     test "is idempotent — can be called multiple times", %{tmp_dir: tmp_dir} do
-      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
-      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
+      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
+      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
 
-      framework_path = Path.join(tmp_dir, ".code_my_spec/framework")
-      assert File.exists?(Path.join(framework_path, "README.md"))
+      assert File.exists?(Path.join(tmp_dir, ".code_my_spec/framework/README.md"))
+      assert File.exists?(Path.join(tmp_dir, ".code_my_spec/tools/set-story-component"))
+    end
+  end
+
+  # ============================================================================
+  # install_agents_md/1 Tests
+  # ============================================================================
+
+  describe "install_agents_md/1" do
+    test "writes AGENTS.md with app-specific paths", %{tmp_dir: tmp_dir} do
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      assert :ok = ProjectSetup.install_agents_md(tmp_dir)
+
+      agents_path = Path.join(tmp_dir, ".code_my_spec/AGENTS.md")
+      assert File.exists?(agents_path)
+
+      content = File.read!(agents_path)
+      assert content =~ ".code_my_spec/status/my_app.md"
+      assert content =~ "lib/my_app/"
+      assert content =~ ".code_my_spec/"
+    end
+
+    test "uses fallback when no mix.exs", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_agents_md(tmp_dir)
+
+      content = File.read!(Path.join(tmp_dir, ".code_my_spec/AGENTS.md"))
+      assert content =~ "your_app"
     end
   end
 

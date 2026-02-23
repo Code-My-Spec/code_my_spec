@@ -1,6 +1,6 @@
 # Project Setup Status
 
-Progress: 7 of 13 steps complete
+Progress: 7 of 14 steps complete
 
   [x] Authenticated
   [x] Elixir 1.18+
@@ -13,7 +13,8 @@ Progress: 7 of 13 steps complete
   [ ] Test boundaries
   [x] Project structure
   [ ] Project structure dirs
-  [ ] Framework knowledge
+  [ ] App symlinks
+  [ ] AGENTS.md
   [x] CLI config
 
 
@@ -176,20 +177,38 @@ mkdir -p .code_my_spec/rules .code_my_spec/spec/math_test_project .code_my_spec/
 
 
 
-## Install Framework Knowledge
+## Install App Symlinks
 
-Framework knowledge files provide reference documentation for LiveView, DaisyUI,
-Boundary, and project conventions.
+CodeMySpec provides framework knowledge and tools via symlinks into your project.
 
-Create a symlink at `.code_my_spec/framework/`:
+Install them:
 ```bash
-curl -s -X POST http://localhost:4002/api/bootstrap/install-knowledge \
+curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks \
   -H "Content-Type: application/json" \
   -H "X-Working-Dir: $(pwd)"
 ```
 
-This symlinks `.code_my_spec/framework/` to the CodeMySpec app's knowledge files.
-The symlink stays current with the app version automatically.
+This creates:
+- `.code_my_spec/framework/` → framework reference (LiveView, DaisyUI, Boundary, etc.)
+- `.code_my_spec/tools/` → helper scripts (e.g., `set-story-component`)
+
+Both symlinks stay current with the app version automatically.
+Add them to `.gitignore` (they're machine-specific).
+
+
+## Generate AGENTS.md
+
+The project guide orients agents to the `.code_my_spec/` directory structure.
+
+Generate it:
+```bash
+curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: $(pwd)"
+```
+
+This creates `.code_my_spec/AGENTS.md` with app-specific paths.
+This file should be committed to version control.
 
 
 ## Configure Ignored Components (Optional)
