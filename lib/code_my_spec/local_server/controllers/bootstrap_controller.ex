@@ -258,9 +258,9 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
   # --- Install Knowledge ---
 
   @doc """
-  Install framework knowledge files into the project's .code_my_spec/knowledge/framework/.
+  Symlink framework knowledge into the project's .code_my_spec/framework/.
 
-  Copies from the CodeMySpec app's priv/knowledge/ directory.
+  Creates a symlink from .code_my_spec/framework/ to the app's priv/knowledge/.
   Requires `X-Working-Dir` header.
 
   Returns `{"status": "ok", "files_installed": N}`.

@@ -932,12 +932,14 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     source_dir = Application.app_dir(:code_my_spec, "priv/knowledge")
     link_path = Path.join(working_dir, CodeMySpec.Paths.framework_dir())
 
-    # Remove existing symlink or directory if present
-    if File.exists?(link_path) or symlink?(link_path) do
-      File.rm_rf(link_path)
-    end
+    with :ok <- link_path |> Path.dirname() |> File.mkdir_p() do
+      # Remove existing symlink or directory if present
+      if File.exists?(link_path) or symlink?(link_path) do
+        File.rm_rf(link_path)
+      end
 
-    File.ln_s(source_dir, link_path)
+      File.ln_s(source_dir, link_path)
+    end
   end
 
   defp symlink?(path) do
