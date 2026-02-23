@@ -59,6 +59,9 @@ defmodule CodeMySpec.Paths do
   @doc "Sessions directory (`.code_my_spec/sessions`)."
   def sessions_dir, do: Path.join(@base_dir, "sessions")
 
+  @doc "Completed sessions directory (`.code_my_spec/sessions/completed`)."
+  def completed_sessions_dir, do: Path.join(@base_dir, "sessions/completed")
+
   # ============================================================================
   # Well-known files
   # ============================================================================

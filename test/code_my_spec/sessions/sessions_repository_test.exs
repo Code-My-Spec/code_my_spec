@@ -6,6 +6,7 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
   alias CodeMySpec.Sessions.SessionsRepository
 
   @sessions_dir ".code_my_spec/sessions"
+  @completed_sessions_dir ".code_my_spec/sessions/completed"
 
   setup do
     tmp_dir =
@@ -146,6 +147,22 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
 
       assert {:error, :not_found} = SessionsRepository.get_session(env, session_id)
     end
+
+    test "finds session in completed directory", %{env: env} do
+      {:ok, session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentSpec,
+          priority: 1
+        })
+
+      # Move to completed via update
+      SessionsRepository.update_session(env, %{session | status: :complete})
+
+      # get_session should still find it
+      assert {:ok, %Session{} = fetched} = SessionsRepository.get_session(env, session.id)
+      assert fetched.id == session.id
+      assert fetched.status == :complete
+    end
   end
 
   describe "list_sessions/1" do
@@ -191,6 +208,27 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
       assert sessions == []
     end
 
+    test "does not include completed sessions", %{env: env} do
+      {:ok, active_session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentSpec,
+          priority: 1
+        })
+
+      {:ok, completed_session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentTest,
+          priority: 2
+        })
+
+      # Complete one session
+      SessionsRepository.update_session(env, %{completed_session | status: :complete})
+
+      assert {:ok, sessions} = SessionsRepository.list_sessions(env)
+      assert length(sessions) == 1
+      assert hd(sessions).id == active_session.id
+    end
+
     test "skips directories with invalid session.json", %{env: env, tmp_dir: tmp_dir} do
       # Create one valid session
       {:ok, valid_session} =
@@ -224,7 +262,10 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
   end
 
   describe "update_session/2" do
-    test "overwrites session.json with updated data", %{env: env, tmp_dir: tmp_dir} do
+    test "overwrites session.json with updated data for active status", %{
+      env: env,
+      tmp_dir: tmp_dir
+    } do
       attrs = %{
         type: AgentTasks.ComponentSpec,
         priority: 1,
@@ -234,21 +275,82 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
 
       {:ok, session} = SessionsRepository.create_session(env, attrs)
 
-      # Update the session
-      updated_session = %{session | priority: 5, status: :complete}
+      # Update priority but keep active
+      updated_session = %{session | priority: 5}
 
       assert {:ok, %Session{} = result} = SessionsRepository.update_session(env, updated_session)
-
       assert result.priority == 5
-      assert result.status == :complete
 
-      # Verify the file was updated
+      # Verify the file remains in the active directory
       session_file = Path.join([tmp_dir, @sessions_dir, session.id, "session.json"])
       json_content = File.read!(session_file)
       {:ok, decoded} = Jason.decode(json_content)
-
       assert decoded["priority"] == 5
+    end
+
+    test "moves session to completed directory when status is :complete", %{
+      env: env,
+      tmp_dir: tmp_dir
+    } do
+      {:ok, session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentSpec,
+          priority: 1,
+          status: :active
+        })
+
+      updated_session = %{session | status: :complete}
+
+      assert {:ok, %Session{} = result} = SessionsRepository.update_session(env, updated_session)
+      assert result.status == :complete
+
+      # Verify moved out of active directory
+      active_dir = Path.join([tmp_dir, @sessions_dir, session.id])
+      refute File.dir?(active_dir)
+
+      # Verify present in completed directory
+      completed_file =
+        Path.join([tmp_dir, @completed_sessions_dir, session.id, "session.json"])
+
+      assert File.exists?(completed_file)
+      {:ok, decoded} = completed_file |> File.read!() |> Jason.decode()
       assert decoded["status"] == "complete"
+    end
+
+    test "moves session to completed directory when status is :failed", %{
+      env: env,
+      tmp_dir: tmp_dir
+    } do
+      {:ok, session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentSpec,
+          priority: 1
+        })
+
+      updated_session = %{session | status: :failed}
+      assert {:ok, _} = SessionsRepository.update_session(env, updated_session)
+
+      # Verify moved to completed
+      refute File.dir?(Path.join([tmp_dir, @sessions_dir, session.id]))
+      assert File.dir?(Path.join([tmp_dir, @completed_sessions_dir, session.id]))
+    end
+
+    test "moves session to completed directory when status is :cancelled", %{
+      env: env,
+      tmp_dir: tmp_dir
+    } do
+      {:ok, session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentSpec,
+          priority: 1
+        })
+
+      updated_session = %{session | status: :cancelled}
+      assert {:ok, _} = SessionsRepository.update_session(env, updated_session)
+
+      # Verify moved to completed
+      refute File.dir?(Path.join([tmp_dir, @sessions_dir, session.id]))
+      assert File.dir?(Path.join([tmp_dir, @completed_sessions_dir, session.id]))
     end
 
     test "returns error when session directory doesn't exist", %{env: env} do
@@ -260,6 +362,31 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
       }
 
       assert {:error, _reason} = SessionsRepository.update_session(env, non_existent_session)
+    end
+  end
+
+  describe "list_completed_sessions/1" do
+    test "returns sessions that have been completed", %{env: env} do
+      {:ok, session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentSpec,
+          priority: 1
+        })
+
+      SessionsRepository.update_session(env, %{session | status: :complete})
+
+      assert {:ok, sessions} = SessionsRepository.list_completed_sessions(env)
+      assert length(sessions) == 1
+      assert hd(sessions).id == session.id
+    end
+
+    test "returns empty list when no completed sessions", %{env: env} do
+      SessionsRepository.create_session(env, %{
+        type: AgentTasks.ComponentSpec,
+        priority: 1
+      })
+
+      assert {:ok, []} = SessionsRepository.list_completed_sessions(env)
     end
   end
 
@@ -280,6 +407,23 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
       refute File.dir?(session_dir)
     end
 
+    test "removes completed session directory", %{env: env, tmp_dir: tmp_dir} do
+      {:ok, session} =
+        SessionsRepository.create_session(env, %{
+          type: AgentTasks.ComponentSpec,
+          priority: 1
+        })
+
+      # Complete it (moves to completed dir)
+      SessionsRepository.update_session(env, %{session | status: :complete})
+
+      completed_dir = Path.join([tmp_dir, @completed_sessions_dir, session.id])
+      assert File.dir?(completed_dir)
+
+      assert :ok = SessionsRepository.delete_session(env, session.id)
+      refute File.dir?(completed_dir)
+    end
+
     test "returns :ok when directory doesn't exist", %{env: env} do
       non_existent_id = Ecto.UUID.generate()
 
@@ -288,27 +432,30 @@ defmodule CodeMySpec.Sessions.SessionsRepositoryTest do
   end
 
   describe "clear_sessions/1" do
-    test "removes all session directories", %{env: env, tmp_dir: tmp_dir} do
-      # Create multiple sessions
+    test "removes all active and completed session directories", %{env: env, tmp_dir: tmp_dir} do
+      # Create sessions
       {:ok, _session1} =
         SessionsRepository.create_session(env, %{type: AgentTasks.ComponentSpec, priority: 1})
 
-      {:ok, _session2} =
+      {:ok, session2} =
         SessionsRepository.create_session(env, %{type: AgentTasks.ComponentTest, priority: 2})
 
       {:ok, _session3} =
         SessionsRepository.create_session(env, %{type: AgentTasks.ComponentCode, priority: 3})
 
-      # Verify they exist
-      sessions_dir = Path.join(tmp_dir, @sessions_dir)
-      {:ok, entries} = File.ls(sessions_dir)
-      assert length(entries) == 3
+      # Complete one session (moves to completed dir)
+      SessionsRepository.update_session(env, %{session2 | status: :complete})
 
       assert :ok = SessionsRepository.clear_sessions(env)
 
-      # Verify all are gone
+      # Verify active sessions are gone
+      sessions_dir = Path.join(tmp_dir, @sessions_dir)
       {:ok, entries_after} = File.ls(sessions_dir)
-      assert entries_after == []
+      # Only "completed" dir may remain (empty)
+      assert entries_after -- ["completed"] == []
+
+      # Verify completed sessions are gone
+      assert {:ok, []} = SessionsRepository.list_completed_sessions(env)
     end
 
     test "returns :ok when sessions directory is empty", %{env: env, tmp_dir: tmp_dir} do

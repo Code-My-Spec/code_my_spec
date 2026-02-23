@@ -35,6 +35,10 @@ defmodule CodeMySpec.Sessions do
     SessionsRepository.clear_sessions(scope.environment)
   end
 
+  def list_completed_sessions(%Scope{} = scope) do
+    SessionsRepository.list_completed_sessions(scope.environment)
+  end
+
   def list_active_sessions(%Scope{} = scope) do
     SessionStack.list_active(scope.environment)
   end
