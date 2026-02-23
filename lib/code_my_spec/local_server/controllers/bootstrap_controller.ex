@@ -255,6 +255,32 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
     end
   end
 
+  # --- Install Knowledge ---
+
+  @doc """
+  Install framework knowledge files into the project's .code_my_spec/knowledge/framework/.
+
+  Copies from the CodeMySpec app's priv/knowledge/ directory.
+  Requires `X-Working-Dir` header.
+
+  Returns `{"status": "ok", "files_installed": N}`.
+  """
+  def install_knowledge(conn) do
+    working_dir = conn.assigns[:working_dir]
+
+    if is_nil(working_dir) do
+      json_response(conn, 400, %{error: "X-Working-Dir header is required"})
+    else
+      case ProjectSetup.install_framework_knowledge(working_dir) do
+        :ok ->
+          json_response(conn, 200, %{status: "ok", target: ".code_my_spec/framework/"})
+
+        {:error, reason} ->
+          json_response(conn, 500, %{error: "Failed to install knowledge: #{inspect(reason)}"})
+      end
+    end
+  end
+
   defp write_project_config(conn, working_dir, project) do
     app_name = detect_app_name(working_dir) || "my_app"
     module_name = Macro.camelize(app_name)

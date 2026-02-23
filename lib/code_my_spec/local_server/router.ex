@@ -60,6 +60,14 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&BootstrapController.init_project/1)
   end
 
+  # Install framework knowledge files
+  post "/api/bootstrap/install-knowledge" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&BootstrapController.install_knowledge/1)
+  end
+
   # Project setup (no config.yml needed — this is what creates it)
   post "/api/bootstrap/setup" do
     conn

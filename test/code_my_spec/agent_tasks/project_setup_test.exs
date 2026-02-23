@@ -183,7 +183,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     end
     """)
 
-    write_file!(tmp_dir, "test/support/#{app_name}_test.ex", """
+    write_file!(tmp_dir, "test/support/#{app_name}_test_boundary.ex", """
     defmodule #{module_name}Test do
       use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
     end
@@ -219,15 +219,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
     File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/rules"))
     File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/#{app_name}"))
     File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/#{app_name}_web"))
-
-    # Create .gitmodules file with docs submodule entry
-    gitmodules_content = """
-    [submodule "docs"]
-    \tpath = docs
-    \turl = https://github.com/example/docs-repo.git
-    """
-
-    write_file!(tmp_dir, ".gitmodules", gitmodules_content)
   end
 
   defp create_full_project_setup(tmp_dir, app_name) do
@@ -326,32 +317,32 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       assert status.missing_deps != []
     end
 
-    test "returns docs_repo_configured false when docs submodule missing", %{tmp_dir: tmp_dir} do
+    test "returns project_dir_exists false when .code_my_spec directory missing", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Create project without docs submodule
+      # Create project without .code_my_spec directory
       create_phoenix_project_structure(tmp_dir, "my_app")
 
       status = ProjectSetup.check_status(env, session)
 
-      assert status.docs_repo_configured == false
+      assert status.project_dir_exists == false
     end
 
-    test "returns docs_structure_complete false with missing_docs_dirs list", %{tmp_dir: tmp_dir} do
+    test "returns project_structure_complete false with missing_structure_dirs list", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Create project with docs dir but incomplete structure
+      # Create project with .code_my_spec dir but incomplete structure
       create_phoenix_project_structure(tmp_dir, "my_app")
       File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec"))
       # Don't create rules/ or spec/ directories
 
       status = ProjectSetup.check_status(env, session)
 
-      assert status.docs_structure_complete == false
-      assert is_list(status.missing_docs_dirs)
-      assert status.missing_docs_dirs != []
+      assert status.project_structure_complete == false
+      assert is_list(status.missing_structure_dirs)
+      assert status.missing_structure_dirs != []
     end
 
     test "extracts app_name from mix.exs project definition", %{tmp_dir: tmp_dir} do
@@ -464,6 +455,35 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       assert status.test_boundaries_configured == true
     end
 
+    test "returns framework_knowledge_installed false when knowledge dir missing", %{
+      tmp_dir: tmp_dir
+    } do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.framework_knowledge_installed == false
+    end
+
+    test "returns framework_knowledge_installed true when framework symlink exists", %{
+      tmp_dir: tmp_dir
+    } do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      # Create framework symlink (same as install_framework_knowledge does)
+      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
+
+      status = ProjectSetup.check_status(env, session)
+
+      assert status.framework_knowledge_installed == true
+    end
+
     test "returns boundary in missing_deps when not in mix.exs", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
@@ -473,6 +493,35 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       status = ProjectSetup.check_status(env, session)
 
       assert :boundary in status.missing_deps
+    end
+  end
+
+  # ============================================================================
+  # install_framework_knowledge/1 Tests
+  # ============================================================================
+
+  describe "install_framework_knowledge/1" do
+    test "creates symlink at .code_my_spec/framework/", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
+
+      framework_path = Path.join(tmp_dir, ".code_my_spec/framework")
+      assert File.dir?(framework_path)
+
+      # Should be a symlink
+      assert {:ok, %{type: :symlink}} = File.lstat(framework_path)
+
+      # Should resolve to real files
+      assert File.exists?(Path.join(framework_path, "README.md"))
+      assert File.exists?(Path.join(framework_path, "liveview/patterns.md"))
+      assert File.exists?(Path.join(framework_path, "ui/daisyui.md"))
+    end
+
+    test "is idempotent — can be called multiple times", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
+      assert :ok = ProjectSetup.install_framework_knowledge(tmp_dir)
+
+      framework_path = Path.join(tmp_dir, ".code_my_spec/framework")
+      assert File.exists?(Path.join(framework_path, "README.md"))
     end
   end
 
@@ -573,17 +622,17 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       assert prompt =~ "deps" or prompt =~ "mix.exs" or prompt =~ "ngrok" or prompt =~ "credo"
     end
 
-    test "includes submodule setup when docs_repo_configured is false", %{tmp_dir: tmp_dir} do
+    test "includes structure setup when project_dir_exists is false", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Create project without docs submodule
+      # Create project without .code_my_spec directory
       create_phoenix_project_structure(tmp_dir, "my_app")
 
       assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should include docs repository setup
-      assert prompt =~ "docs" or prompt =~ "submodule" or prompt =~ "git"
+      # Should include project structure setup
+      assert prompt =~ ".code_my_spec" or prompt =~ "Project Structure"
     end
 
     test "includes commit instructions between major steps", %{tmp_dir: tmp_dir} do

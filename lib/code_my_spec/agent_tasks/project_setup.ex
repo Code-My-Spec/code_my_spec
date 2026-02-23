@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   Agent task that guides developers through complete Phoenix project setup for CodeMySpec integration.
 
   Generates comprehensive setup instructions and evaluates current setup state by checking
-  prerequisites, project structure, dependencies, and documentation repository configuration.
+  prerequisites, project structure, dependencies, and .code_my_spec/ directory configuration.
   Designed to be run from a target directory that will become (or already is) a Phoenix project root.
 
   The agent approach (vs running the ScriptGenerator script directly) allows picking up setup
@@ -78,8 +78,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     # Dependencies
     deps_check = check_codemyspec_deps(working_dir, project_check.phoenix_project_exists)
 
-    # Docs repository
-    docs_check = check_docs_structure(working_dir, app_name)
+    # Project structure (.code_my_spec/ directory)
+    structure_check = check_project_structure(working_dir, app_name)
 
     # CLI config
     cli_config_check = check_cli_config(working_dir)
@@ -91,6 +91,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     # Auth check
     auth_check = check_auth_status()
+
+    # Framework knowledge
+    knowledge_check = check_framework_knowledge(working_dir)
 
     # Ignored components (optional)
     ignored_components_check = check_ignored_components(working_dir)
@@ -110,11 +113,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       compilers_configured: compilers_check.configured,
       spex_config_complete: spex_config_check.complete,
       test_boundaries_configured: test_boundaries_check.configured,
-      docs_repo_configured: docs_check.repo_configured,
-      docs_agents_md_exists: docs_check.agents_md_exists,
-      docs_structure_complete: docs_check.structure_complete,
-      missing_docs_dirs: docs_check.missing_dirs,
+      project_dir_exists: structure_check.dir_exists,
+      project_structure_complete: structure_check.structure_complete,
+      missing_structure_dirs: structure_check.missing_dirs,
       cli_config_exists: cli_config_check.exists,
+      framework_knowledge_installed: knowledge_check.installed,
       cli_config_has_project_id: cli_config_check.has_project_id,
       ignored_components_configured: ignored_components_check.configured
     }
@@ -273,24 +276,23 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Regex.match?(~r/\{:#{atom_string}[,\s]/, content)
   end
 
-  # Docs structure checks
+  # Project structure checks (.code_my_spec/ directory)
 
-  defp check_docs_structure(working_dir, app_name) do
+  defp check_project_structure(working_dir, app_name) do
     base_path = Path.join(working_dir, CodeMySpec.Paths.base_dir())
 
-    repo_configured = File.dir?(base_path)
+    dir_exists = File.dir?(base_path)
 
-    {structure_complete, missing_dirs} = check_docs_directories(base_path, app_name)
+    {structure_complete, missing_dirs} = check_required_directories(base_path, app_name)
 
     %{
-      repo_configured: repo_configured,
-      agents_md_exists: true,
+      dir_exists: dir_exists,
       structure_complete: structure_complete,
       missing_dirs: missing_dirs
     }
   end
 
-  defp check_docs_directories(base_path, app_name) do
+  defp check_required_directories(base_path, app_name) do
     required_dirs =
       [
         base_path,
@@ -308,6 +310,15 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     missing = Enum.reject(required_dirs, &File.dir?/1)
     {Enum.empty?(missing), missing}
+  end
+
+  # Framework knowledge check
+
+  defp check_framework_knowledge(working_dir) do
+    framework_path = Path.join(working_dir, CodeMySpec.Paths.framework_dir())
+
+    # File.dir? follows symlinks, so this validates both the link and its target
+    %{installed: File.dir?(framework_path)}
   end
 
   # Ignored components check (optional — not gated in all_checks_pass?)
@@ -383,7 +394,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp check_test_boundaries(working_dir, app_name) do
     spex_namespace_path = Path.join([working_dir, "test", "spex", "#{app_name}_spex.ex"])
-    test_namespace_path = Path.join([working_dir, "test", "support", "#{app_name}_test.ex"])
+    test_namespace_path = Path.join([working_dir, "test", "support", "#{app_name}_test_boundary.ex"])
 
     spex_has_boundary = file_contains_boundary?(spex_namespace_path)
     test_has_boundary = file_contains_boundary?(test_namespace_path)
@@ -429,7 +440,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_spex_config_instructions(status)
     |> maybe_add_sexy_spex_local_dep_note(status)
     |> maybe_add_test_boundaries_instructions(status)
-    |> maybe_add_docs_instructions(status)
+    |> maybe_add_structure_instructions(status)
+    |> maybe_add_knowledge_instructions(status)
     |> maybe_add_cli_config_instructions(status)
     |> maybe_add_ignored_components_instructions(status)
     |> Enum.reverse()
@@ -597,7 +609,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     end
     ```
 
-    **2. Create `test/support/#{app_name}_test.ex`:**
+    **2. Create `test/support/#{app_name}_test_boundary.ex`:**
     ```elixir
     defmodule #{module_name}Test do
       use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
@@ -613,21 +625,45 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_test_boundaries_instructions(sections, _status), do: sections
 
-  defp maybe_add_docs_instructions(
+  defp maybe_add_structure_instructions(
          sections,
-         %{docs_repo_configured: false} = status
+         %{project_dir_exists: false} = status
        ) do
-    [build_docs_instructions(status) | sections]
+    [build_structure_instructions(status) | sections]
   end
 
-  defp maybe_add_docs_instructions(
+  defp maybe_add_structure_instructions(
          sections,
-         %{docs_structure_complete: false} = status
+         %{project_structure_complete: false} = status
        ) do
-    [build_docs_instructions(status) | sections]
+    [build_structure_instructions(status) | sections]
   end
 
-  defp maybe_add_docs_instructions(sections, _status), do: sections
+  defp maybe_add_structure_instructions(sections, _status), do: sections
+
+  defp maybe_add_knowledge_instructions(sections, %{framework_knowledge_installed: true}),
+    do: sections
+
+  defp maybe_add_knowledge_instructions(sections, _status) do
+    instruction = """
+    ## Install Framework Knowledge
+
+    Framework knowledge files provide reference documentation for LiveView, DaisyUI,
+    Boundary, and project conventions.
+
+    Create a symlink at `.code_my_spec/framework/`:
+    ```bash
+    curl -s -X POST http://localhost:4002/api/bootstrap/install-knowledge \\
+      -H "Content-Type: application/json" \\
+      -H "X-Working-Dir: $(pwd)"
+    ```
+
+    This symlinks `.code_my_spec/framework/` to the CodeMySpec app's knowledge files.
+    The symlink stays current with the app version automatically.
+    """
+
+    [instruction | sections]
+  end
 
   defp maybe_add_cli_config_instructions(sections, %{cli_config_has_project_id: true}),
     do: sections
@@ -681,8 +717,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Compilers (boundary + spex)", status.compilers_configured},
       {"Spex config", status.spex_config_complete},
       {"Test boundaries", status.test_boundaries_configured},
-      {"Project structure", status.docs_repo_configured},
-      {"Project structure dirs", status.docs_structure_complete},
+      {"Project structure", status.project_dir_exists},
+      {"Project structure dirs", status.project_structure_complete},
+      {"Framework knowledge", status.framework_knowledge_installed},
       {"CLI config", status.cli_config_has_project_id}
     ]
 
@@ -843,10 +880,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     """
   end
 
-  defp build_docs_instructions(status) do
+  defp build_structure_instructions(status) do
     base_dir = CodeMySpec.Paths.base_dir()
-    missing_info = build_docs_base_info(status.docs_repo_configured, base_dir)
-    missing_dirs_info = build_missing_dirs_info(status.missing_docs_dirs, status.app_name, base_dir)
+    missing_info = build_base_dir_info(status.project_dir_exists, base_dir)
+    missing_dirs_info = build_missing_dirs_info(status.missing_structure_dirs, status.app_name, base_dir)
 
     """
     ## Configure Project Structure
@@ -855,9 +892,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     """
   end
 
-  defp build_docs_base_info(true, _base_dir), do: ""
+  defp build_base_dir_info(true, _base_dir), do: ""
 
-  defp build_docs_base_info(false, base_dir) do
+  defp build_base_dir_info(false, base_dir) do
     """
 
     The `#{base_dir}/` directory is not configured. Create it:
@@ -886,6 +923,31 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   @doc """
+  Create a symlink from .code_my_spec/framework/ to the app's priv/knowledge/ directory.
+
+  Returns `:ok` on success, `{:error, reason}` on failure.
+  """
+  @spec install_framework_knowledge(String.t()) :: :ok | {:error, term()}
+  def install_framework_knowledge(working_dir) do
+    source_dir = Application.app_dir(:code_my_spec, "priv/knowledge")
+    link_path = Path.join(working_dir, CodeMySpec.Paths.framework_dir())
+
+    # Remove existing symlink or directory if present
+    if File.exists?(link_path) or symlink?(link_path) do
+      File.rm_rf(link_path)
+    end
+
+    File.ln_s(source_dir, link_path)
+  end
+
+  defp symlink?(path) do
+    case File.lstat(path) do
+      {:ok, %{type: :symlink}} -> true
+      _ -> false
+    end
+  end
+
+  @doc """
   Generate the generalized AGENTS.md content for a project.
 
   Takes the app name (e.g., "my_app") and returns markdown content
@@ -909,7 +971,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ├── spec/                  ← Specifications for every module
     ├── rules/                 ← Coding standards by component type
     ├── knowledge/             ← Project-specific operational knowledge
-    ├── plugin_knowledge/      ← Framework knowledge (symlink to plugin)
+    ├── framework/             ← Framework reference (LiveView, DaisyUI, etc.) [symlink]
     ├── design/                ← Design system assets
     ├── issues/                ← Known bugs and technical debt
     └── qa/                    ← QA test results
@@ -984,7 +1046,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ### 6. Knowledge — Operational knowledge
 
     - `#{base}/knowledge/` — Project-specific research (data providers, auth flows, etc.)
-    - `#{base}/plugin_knowledge/` — Framework knowledge (LiveView, DaisyUI, Boundary, etc.)
+    - `#{base}/framework/` — Framework knowledge (LiveView, DaisyUI, Boundary, etc.) [symlink]
 
     ## Phoenix Contexts Architecture
 
@@ -1060,10 +1122,23 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       -d '{"project_id": "<PROJECT_ID>"}'
     ```
 
-    4. **Add `.code_my_spec/` to `.gitignore`** (the config contains project-specific IDs):
+    4. **Add ephemeral `.code_my_spec/` directories to `.gitignore`**:
     ```bash
-    echo ".code_my_spec/" >> .gitignore
+    cat >> .gitignore << 'GITIGNORE'
+
+    # CodeMySpec - ephemeral/generated (specs, rules, knowledge are committed)
+    .code_my_spec/config.yml
+    .code_my_spec/sessions/
+    .code_my_spec/status/
+    .code_my_spec/qa/
+    .code_my_spec/framework
+    /diagnostics.jsonl
+    GITIGNORE
     ```
+
+    **Note:** `.code_my_spec/spec/`, `.code_my_spec/rules/`, `.code_my_spec/knowledge/`,
+    `.code_my_spec/architecture/`, and `.code_my_spec/design/` should be committed to version control.
+    `.code_my_spec/framework` is a local symlink (machine-specific) and should not be committed.
     """
   end
 
@@ -1077,8 +1152,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     :codemyspec_deps_installed,
     :compilers_configured,
     :spex_config_complete,
-    :docs_repo_configured,
-    :docs_structure_complete,
+    :project_dir_exists,
+    :project_structure_complete,
+    :framework_knowledge_installed,
     :cli_config_has_project_id
   ]
 
@@ -1130,10 +1206,12 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        "Add spex pattern, elixirc_paths(:test) with test/spex, preferred_envs spex: :test, and spex alias"},
       {"Test boundaries", status.test_boundaries_configured,
        "Create boundary namespace modules in test/spex/ and test/support/ with use Boundary"},
-      {"Project structure", status.docs_repo_configured,
+      {"Project structure", status.project_dir_exists,
        "Create .code_my_spec directory: mkdir -p #{CodeMySpec.Paths.base_dir()}"},
-      {"Project structure dirs", status.docs_structure_complete,
-       "Create directories: #{Enum.join(status.missing_docs_dirs, ", ")}"},
+      {"Project structure dirs", status.project_structure_complete,
+       "Create directories: #{Enum.join(status.missing_structure_dirs, ", ")}"},
+      {"Framework knowledge", status.framework_knowledge_installed,
+       "Install framework knowledge: curl -s -X POST http://localhost:4002/api/bootstrap/install-knowledge -H 'X-Working-Dir: <project_dir>'"},
       {"CLI config", status.cli_config_has_project_id,
        "Run curl -s http://localhost:4002/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}
     ]

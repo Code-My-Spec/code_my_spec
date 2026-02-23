@@ -35,8 +35,8 @@ defmodule CodeMySpec.Paths do
   @doc "Knowledge directory for project-specific research (`.code_my_spec/knowledge`)."
   def knowledge_dir, do: Path.join(@base_dir, "knowledge")
 
-  @doc "Plugin knowledge symlink directory (`.code_my_spec/plugin_knowledge`)."
-  def plugin_knowledge_dir, do: Path.join(@base_dir, "plugin_knowledge")
+  @doc "Framework knowledge directory (`.code_my_spec/framework`). Symlinked to app's priv/knowledge/."
+  def framework_dir, do: Path.join(@base_dir, "framework")
 
   @doc "Rules directory (`.code_my_spec/rules`)."
   def rules_dir, do: Path.join(@base_dir, "rules")

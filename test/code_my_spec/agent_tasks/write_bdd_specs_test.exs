@@ -281,7 +281,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       # Without mix.exs, defaults to my_app
       app_spex_path = Path.join(tmp_dir, "test/spex/my_app_spex.ex")
-      shared_givens_path = Path.join(tmp_dir, "test/spex/shared_givens.ex")
+      shared_givens_path = Path.join(tmp_dir, "test/support/shared_givens.ex")
       refute File.exists?(app_spex_path)
       refute File.exists?(shared_givens_path)
 
@@ -295,7 +295,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       session = session_with_story(scope, tmp_dir)
 
       # Pre-create shared givens with custom content
-      shared_givens_path = Path.join(tmp_dir, "test/spex/shared_givens.ex")
+      shared_givens_path = Path.join(tmp_dir, "test/support/shared_givens.ex")
       File.mkdir_p!(Path.dirname(shared_givens_path))
 
       File.write!(shared_givens_path, """

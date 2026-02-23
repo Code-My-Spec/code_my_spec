@@ -1,6 +1,6 @@
 # Project Setup Status
 
-Progress: 7 of 12 steps complete
+Progress: 7 of 13 steps complete
 
   [x] Authenticated
   [x] Elixir 1.18+
@@ -13,6 +13,7 @@ Progress: 7 of 12 steps complete
   [ ] Test boundaries
   [x] Project structure
   [ ] Project structure dirs
+  [ ] Framework knowledge
   [x] CLI config
 
 
@@ -149,7 +150,7 @@ defmodule MathTestProjectSpex do
 end
 ```
 
-**2. Create `test/support/math_test_project_test.ex`:**
+**2. Create `test/support/math_test_project_test_boundary.ex`:**
 ```elixir
 defmodule MathTestProjectTest do
   use Boundary, top_level?: true, deps: [MathTestProject], check: [in: [:test], out: []]
@@ -173,6 +174,22 @@ Create missing directories:
 mkdir -p .code_my_spec/rules .code_my_spec/spec/math_test_project .code_my_spec/spec/math_test_project_web
 ```
 
+
+
+## Install Framework Knowledge
+
+Framework knowledge files provide reference documentation for LiveView, DaisyUI,
+Boundary, and project conventions.
+
+Create a symlink at `.code_my_spec/framework/`:
+```bash
+curl -s -X POST http://localhost:4002/api/bootstrap/install-knowledge \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: $(pwd)"
+```
+
+This symlinks `.code_my_spec/framework/` to the CodeMySpec app's knowledge files.
+The symlink stays current with the app version automatically.
 
 
 ## Configure Ignored Components (Optional)

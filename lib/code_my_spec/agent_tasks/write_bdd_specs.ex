@@ -215,7 +215,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp ensure_shared_givens_exists(env) do
     working_dir = get_working_dir(env)
-    full_path = Path.join([working_dir, @spex_dir, "shared_givens.ex"])
+    full_path = Path.join([working_dir, "test", "support", "shared_givens.ex"])
 
     unless File.exists?(full_path) do
       full_path |> Path.dirname() |> File.mkdir_p!()
@@ -288,7 +288,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp shared_givens_path(env) do
     working_dir = get_working_dir(env)
-    Path.join([working_dir, @spex_dir, "shared_givens.ex"])
+    Path.join([working_dir, "test", "support", "shared_givens.ex"])
   end
 
   defp read_shared_givens(env) do
@@ -342,7 +342,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     app_module = derive_app_module(working_dir)
     spex_module = "#{app_module}Spex"
     app_spex_file = "#{@spex_dir}/#{app_name}_spex.ex"
-    shared_givens_file = "#{@spex_dir}/shared_givens.ex"
+    shared_givens_file = "test/support/shared_givens.ex"
 
     criteria = story.criteria || []
     shared_givens_content = read_shared_givens(env)
