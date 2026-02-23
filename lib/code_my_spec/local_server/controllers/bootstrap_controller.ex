@@ -310,6 +310,58 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
     end
   end
 
+  # --- Install Rules ---
+
+  @doc """
+  Copy default rule files into the project's .code_my_spec/rules/ directory.
+
+  Only copies files that don't already exist (preserves user customizations).
+  Requires `X-Working-Dir` header.
+
+  Returns `{"status": "ok", "path": ".code_my_spec/rules/"}`.
+  """
+  def install_rules(conn) do
+    working_dir = conn.assigns[:working_dir]
+
+    if is_nil(working_dir) do
+      json_response(conn, 400, %{error: "X-Working-Dir header is required"})
+    else
+      case ProjectSetup.install_rules(working_dir) do
+        :ok ->
+          json_response(conn, 200, %{status: "ok", path: ".code_my_spec/rules/"})
+
+        {:error, reason} ->
+          json_response(conn, 500, %{error: "Failed to install rules: #{inspect(reason)}"})
+      end
+    end
+  end
+
+  # --- Install CLAUDE.md ---
+
+  @doc """
+  Create or update the managed section in CLAUDE.md at the project root.
+
+  Preserves existing content — only the managed section is created/updated.
+  Requires `X-Working-Dir` header.
+
+  Returns `{"status": "ok", "path": "CLAUDE.md"}`.
+  """
+  def install_claude_md(conn) do
+    working_dir = conn.assigns[:working_dir]
+
+    if is_nil(working_dir) do
+      json_response(conn, 400, %{error: "X-Working-Dir header is required"})
+    else
+      case ProjectSetup.install_claude_md(working_dir) do
+        :ok ->
+          json_response(conn, 200, %{status: "ok", path: "CLAUDE.md"})
+
+        {:error, reason} ->
+          json_response(conn, 500, %{error: "Failed to install CLAUDE.md: #{inspect(reason)}"})
+      end
+    end
+  end
+
   defp write_project_config(conn, working_dir, project) do
     app_name = detect_app_name(working_dir) || "my_app"
     module_name = Macro.camelize(app_name)

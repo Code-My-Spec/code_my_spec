@@ -81,6 +81,22 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&BootstrapController.install_agents_md/1)
   end
 
+  # Install/update CLAUDE.md managed section
+  post "/api/bootstrap/install-claude-md" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&BootstrapController.install_claude_md/1)
+  end
+
+  # Install default rules
+  post "/api/bootstrap/install-rules" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&BootstrapController.install_rules/1)
+  end
+
   # Project setup (no config.yml needed — this is what creates it)
   post "/api/bootstrap/setup" do
     conn

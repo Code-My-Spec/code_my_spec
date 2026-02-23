@@ -1,6 +1,6 @@
 # Project Setup Status
 
-Progress: 7 of 14 steps complete
+Progress: 7 of 16 steps complete
 
   [x] Authenticated
   [x] Elixir 1.18+
@@ -15,6 +15,8 @@ Progress: 7 of 14 steps complete
   [ ] Project structure dirs
   [ ] App symlinks
   [ ] AGENTS.md
+  [ ] Rules
+  [ ] CLAUDE.md
   [x] CLI config
 
 
@@ -208,6 +210,40 @@ curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md \
 ```
 
 This creates `.code_my_spec/AGENTS.md` with app-specific paths.
+This file should be committed to version control.
+
+
+## Install Default Rules
+
+CodeMySpec provides coding rules that guide agents when writing specs, code, and tests.
+
+Install them:
+```bash
+curl -s -X POST http://localhost:4002/api/bootstrap/install-rules \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: $(pwd)"
+```
+
+This copies default rule files into `.code_my_spec/rules/`.
+Rules are safe to customize — existing files are never overwritten.
+These files should be committed to version control.
+
+
+## Install CLAUDE.md
+
+Claude Code reads `CLAUDE.md` at the project root on every conversation.
+CodeMySpec manages a section in this file with project pointers.
+
+Install it:
+```bash
+curl -s -X POST http://localhost:4002/api/bootstrap/install-claude-md \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: $(pwd)"
+```
+
+This creates or appends to `CLAUDE.md` with a managed section containing
+project conventions and pointers to `.code_my_spec/` resources.
+Existing content is preserved — only the managed section is updated.
 This file should be committed to version control.
 
 

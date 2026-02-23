@@ -101,6 +101,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     # Rules installed
     rules_check = check_rules_installed(working_dir)
 
+    # CLAUDE.md installed
+    claude_md_check = check_claude_md(working_dir)
+
     # Ignored components (optional)
     ignored_components_check = check_ignored_components(working_dir)
 
@@ -126,6 +129,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       app_symlinks_installed: symlinks_check.installed,
       agents_md_installed: agents_md_check.installed,
       rules_installed: rules_check.installed,
+      claude_md_installed: claude_md_check.installed,
       cli_config_has_project_id: cli_config_check.has_project_id,
       ignored_components_configured: ignored_components_check.configured
     }
@@ -362,6 +366,23 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     %{installed: File.exists?(agents_path)}
   end
 
+  # CLAUDE.md check
+
+  @claude_md_start_marker "<!-- code_my_spec:start -->"
+  @claude_md_end_marker "<!-- code_my_spec:end -->"
+
+  defp check_claude_md(working_dir) do
+    claude_md_path = Path.join(working_dir, "CLAUDE.md")
+
+    case File.read(claude_md_path) do
+      {:ok, content} ->
+        %{installed: String.contains?(content, @claude_md_start_marker)}
+
+      {:error, _} ->
+        %{installed: false}
+    end
+  end
+
   # Ignored components check (optional — not gated in all_checks_pass?)
 
   @default_ignored_suffixes ~w(Repo Endpoint Router Mailer Telemetry Application Gettext)
@@ -485,6 +506,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_symlinks_instructions(status)
     |> maybe_add_agents_md_instructions(status)
     |> maybe_add_rules_instructions(status)
+    |> maybe_add_claude_md_instructions(status)
     |> maybe_add_cli_config_instructions(status)
     |> maybe_add_ignored_components_instructions(status)
     |> Enum.reverse()
@@ -757,6 +779,32 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     [instruction | sections]
   end
 
+  defp maybe_add_claude_md_instructions(sections, %{claude_md_installed: true}),
+    do: sections
+
+  defp maybe_add_claude_md_instructions(sections, _status) do
+    instruction = """
+    ## Install CLAUDE.md
+
+    Claude Code reads `CLAUDE.md` at the project root on every conversation.
+    CodeMySpec manages a section in this file with project pointers.
+
+    Install it:
+    ```bash
+    curl -s -X POST http://localhost:4002/api/bootstrap/install-claude-md \\
+      -H "Content-Type: application/json" \\
+      -H "X-Working-Dir: $(pwd)"
+    ```
+
+    This creates or appends to `CLAUDE.md` with a managed section containing
+    project conventions and pointers to `.code_my_spec/` resources.
+    Existing content is preserved — only the managed section is updated.
+    This file should be committed to version control.
+    """
+
+    [instruction | sections]
+  end
+
   defp maybe_add_cli_config_instructions(sections, %{cli_config_has_project_id: true}),
     do: sections
 
@@ -814,6 +862,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"App symlinks", status.app_symlinks_installed},
       {"AGENTS.md", status.agents_md_installed},
       {"Rules", status.rules_installed},
+      {"CLAUDE.md", status.claude_md_installed},
       {"CLI config", status.cli_config_has_project_id}
     ]
 
@@ -1105,6 +1154,79 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   @doc """
+  Create or update the managed section in CLAUDE.md at the project root.
+
+  Uses HTML comment markers for idempotent updates:
+  - No CLAUDE.md: creates with the managed section
+  - CLAUDE.md without markers: appends managed section
+  - CLAUDE.md with markers: replaces content between markers
+
+  Returns `:ok` on success, `{:error, reason}` on failure.
+  """
+  @spec install_claude_md(String.t()) :: :ok | {:error, term()}
+  def install_claude_md(working_dir) do
+    app_name = extract_app_name(Path.join(working_dir, "mix.exs"))
+    managed_section = claude_md_content(app_name)
+    claude_md_path = Path.join(working_dir, "CLAUDE.md")
+
+    case File.read(claude_md_path) do
+      {:ok, existing} ->
+        if String.contains?(existing, @claude_md_start_marker) do
+          # Replace between markers
+          updated = replace_managed_section(existing, managed_section)
+          File.write(claude_md_path, updated)
+        else
+          # Append managed section
+          File.write(claude_md_path, existing <> "\n" <> managed_section)
+        end
+
+      {:error, :enoent} ->
+        # Create new file
+        File.write(claude_md_path, managed_section)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp replace_managed_section(content, managed_section) do
+    pattern = ~r/#{Regex.escape(@claude_md_start_marker)}.*#{Regex.escape(@claude_md_end_marker)}/s
+    String.replace(content, pattern, String.trim_trailing(managed_section))
+  end
+
+  @doc """
+  Generate the managed CLAUDE.md section content for a project.
+
+  Returns the content wrapped in marker comments for idempotent updates.
+  """
+  def claude_md_content(app_name) do
+    app = app_name || "your_app"
+    base = CodeMySpec.Paths.base_dir()
+
+    """
+    #{@claude_md_start_marker}
+    ## CodeMySpec Project
+
+    Read `#{base}/AGENTS.md` for the full project development guide.
+
+    ### Key Conventions
+
+    - All public context functions take `%Scope{}` as the first parameter
+    - Contexts are the public API boundary — never call child modules directly
+    - Use `use Boundary` in every module to enforce dependency rules
+    - Check `#{base}/architecture/overview.md` for the component graph before adding dependencies
+
+    ### Before Writing Code
+
+    1. Check `#{base}/status/#{app}.md` for implementation status
+    2. Read the spec in `#{base}/spec/` for the module you're working on
+    3. Read the rules in `#{base}/rules/` for the component type (context, repository, schema, etc.)
+    4. Check `#{base}/issues/` for known problems in the area
+    #{@claude_md_end_marker}
+    """
+  end
+
+  @doc """
   Generate the generalized AGENTS.md content for a project.
 
   Takes the app name (e.g., "my_app") and returns markdown content
@@ -1326,6 +1448,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     :app_symlinks_installed,
     :agents_md_installed,
     :rules_installed,
+    :claude_md_installed,
     :cli_config_has_project_id
   ]
 
@@ -1387,6 +1510,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        "Generate AGENTS.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md -H 'X-Working-Dir: <project_dir>'"},
       {"Rules", status.rules_installed,
        "Install rules: curl -s -X POST http://localhost:4002/api/bootstrap/install-rules -H 'X-Working-Dir: <project_dir>'"},
+      {"CLAUDE.md", status.claude_md_installed,
+       "Install CLAUDE.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-claude-md -H 'X-Working-Dir: <project_dir>'"},
       {"CLI config", status.cli_config_has_project_id,
        "Run curl -s http://localhost:4002/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}
     ]

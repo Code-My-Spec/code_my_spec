@@ -570,6 +570,226 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   end
 
   # ============================================================================
+  # install_rules/1 Tests
+  # ============================================================================
+
+  describe "install_rules/1" do
+    test "copies rule files to .code_my_spec/rules/", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_rules(tmp_dir)
+
+      rules_path = Path.join(tmp_dir, ".code_my_spec/rules")
+      assert File.dir?(rules_path)
+
+      rule_files = File.ls!(rules_path) |> Enum.filter(&String.ends_with?(&1, ".md"))
+      assert [_ | _] = rule_files
+      assert "context_design.md" in rule_files
+      assert "elixir.md" in rule_files
+    end
+
+    test "does not overwrite existing files", %{tmp_dir: tmp_dir} do
+      rules_path = Path.join(tmp_dir, ".code_my_spec/rules")
+      File.mkdir_p!(rules_path)
+
+      # Write a customized rule
+      custom_content = "# My Custom Rule\nCustomized content"
+      File.write!(Path.join(rules_path, "context_design.md"), custom_content)
+
+      assert :ok = ProjectSetup.install_rules(tmp_dir)
+
+      # Custom file should be preserved
+      assert File.read!(Path.join(rules_path, "context_design.md")) == custom_content
+
+      # Other rule files should be installed
+      rule_files = File.ls!(rules_path) |> Enum.filter(&String.ends_with?(&1, ".md"))
+      assert "context_design.md" in rule_files
+      assert "elixir.md" in rule_files
+    end
+
+    test "is idempotent", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_rules(tmp_dir)
+      assert :ok = ProjectSetup.install_rules(tmp_dir)
+
+      rules_path = Path.join(tmp_dir, ".code_my_spec/rules")
+      rule_files = File.ls!(rules_path) |> Enum.filter(&String.ends_with?(&1, ".md"))
+      assert [_ | _] = rule_files
+    end
+  end
+
+  # ============================================================================
+  # install_claude_md/1 Tests
+  # ============================================================================
+
+  describe "install_claude_md/1" do
+    test "creates CLAUDE.md when none exists", %{tmp_dir: tmp_dir} do
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      assert :ok = ProjectSetup.install_claude_md(tmp_dir)
+
+      claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
+      assert File.exists?(claude_md_path)
+
+      content = File.read!(claude_md_path)
+      assert content =~ "<!-- code_my_spec:start -->"
+      assert content =~ "<!-- code_my_spec:end -->"
+      assert content =~ ".code_my_spec/AGENTS.md"
+      assert content =~ "my_app"
+    end
+
+    test "appends managed section to existing CLAUDE.md without markers", %{tmp_dir: tmp_dir} do
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      # Write existing content
+      claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
+      File.write!(claude_md_path, "# My Project\n\nExisting content here.\n")
+
+      assert :ok = ProjectSetup.install_claude_md(tmp_dir)
+
+      content = File.read!(claude_md_path)
+      # Original content preserved
+      assert content =~ "# My Project"
+      assert content =~ "Existing content here."
+      # Managed section appended
+      assert content =~ "<!-- code_my_spec:start -->"
+      assert content =~ "<!-- code_my_spec:end -->"
+    end
+
+    test "replaces managed section on re-run (idempotent)", %{tmp_dir: tmp_dir} do
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
+      File.write!(claude_md_path, "# My Project\n\nCustom notes.\n")
+
+      # First install
+      assert :ok = ProjectSetup.install_claude_md(tmp_dir)
+      first_content = File.read!(claude_md_path)
+
+      # Second install — should produce identical content
+      assert :ok = ProjectSetup.install_claude_md(tmp_dir)
+      second_content = File.read!(claude_md_path)
+
+      assert first_content == second_content
+    end
+
+    test "preserves content outside markers when replacing", %{tmp_dir: tmp_dir} do
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
+
+      # Simulate a file with markers and surrounding content
+      File.write!(claude_md_path, """
+      # My Project
+
+      Some notes.
+
+      <!-- code_my_spec:start -->
+      ## Old managed content
+      <!-- code_my_spec:end -->
+
+      ## My Custom Section
+
+      More notes.
+      """)
+
+      assert :ok = ProjectSetup.install_claude_md(tmp_dir)
+
+      content = File.read!(claude_md_path)
+      # Custom content preserved
+      assert content =~ "# My Project"
+      assert content =~ "Some notes."
+      assert content =~ "## My Custom Section"
+      assert content =~ "More notes."
+      # Old managed content replaced
+      refute content =~ "## Old managed content"
+      # New managed content present
+      assert content =~ ".code_my_spec/AGENTS.md"
+    end
+
+    test "uses fallback app name when no mix.exs", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_claude_md(tmp_dir)
+
+      content = File.read!(Path.join(tmp_dir, "CLAUDE.md"))
+      assert content =~ "your_app"
+    end
+  end
+
+  # ============================================================================
+  # check_status/2 - claude_md_installed Tests
+  # ============================================================================
+
+  describe "check_status/2 - claude_md_installed" do
+    test "returns claude_md_installed false when CLAUDE.md missing", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+      assert status.claude_md_installed == false
+    end
+
+    test "returns claude_md_installed false when CLAUDE.md exists without markers", %{
+      tmp_dir: tmp_dir
+    } do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      File.write!(Path.join(tmp_dir, "CLAUDE.md"), "# My Project\n")
+
+      status = ProjectSetup.check_status(env, session)
+      assert status.claude_md_installed == false
+    end
+
+    test "returns claude_md_installed true when markers present", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      assert :ok = ProjectSetup.install_claude_md(tmp_dir)
+
+      status = ProjectSetup.check_status(env, session)
+      assert status.claude_md_installed == true
+    end
+  end
+
+  # ============================================================================
+  # check_status/2 - rules_installed Tests
+  # ============================================================================
+
+  describe "check_status/2 - rules_installed" do
+    test "returns rules_installed false when rules directory empty", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/rules"))
+
+      status = ProjectSetup.check_status(env, session)
+      assert status.rules_installed == false
+    end
+
+    test "returns rules_installed false when rules directory missing", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+
+      status = ProjectSetup.check_status(env, session)
+      assert status.rules_installed == false
+    end
+
+    test "returns rules_installed true when rule files exist", %{tmp_dir: tmp_dir} do
+      env = create_environment(tmp_dir)
+      session = %{environment: env}
+
+      create_phoenix_project_structure(tmp_dir, "my_app")
+      assert :ok = ProjectSetup.install_rules(tmp_dir)
+
+      status = ProjectSetup.check_status(env, session)
+      assert status.rules_installed == true
+    end
+  end
+
+  # ============================================================================
   # command/3 Tests
   # ============================================================================
 
