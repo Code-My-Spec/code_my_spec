@@ -43,13 +43,14 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
     written_files =
       Enum.flat_map(root_components, fn root ->
         children = root.child_components || []
+        contexts = group_into_contexts(root, children)
 
         root_path = component_path(root)
-        root_content = render_root_summary(root, children)
+        root_content = render_root_summary(root, contexts)
         write_file(env, root_path, root_content)
 
         context_files =
-          children
+          contexts
           |> Enum.sort_by(& &1.name)
           |> Enum.map(fn context ->
             context_path = component_path(context)
@@ -72,6 +73,43 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
       [child | collect_descendants(child)]
     end)
     |> Enum.sort_by(& &1.name)
+  end
+
+  # Groups flat children into context-level groupings.
+  #
+  # When children sit more than one module segment below their root
+  # (e.g. MyAppWeb.AiLive.Chat under MyAppWeb), they are grouped under
+  # a virtual intermediate context node (MyAppWeb.AiLive).
+  # Direct children (one segment below root) remain as-is.
+  defp group_into_contexts(root, children) do
+    root_prefix = root.module_name <> "."
+
+    groups =
+      Enum.group_by(children, fn child ->
+        relative = String.replace_prefix(child.module_name, root_prefix, "")
+
+        case String.split(relative, ".") do
+          [_single] -> :direct
+          [context_name | _rest] -> context_name
+        end
+      end)
+
+    direct = Map.get(groups, :direct, [])
+
+    virtual_contexts =
+      groups
+      |> Map.delete(:direct)
+      |> Enum.map(fn {context_name, members} ->
+        %{
+          module_name: root_prefix <> context_name,
+          name: context_name,
+          type: "live_context",
+          child_components: Enum.sort_by(members, & &1.name),
+          requirements: []
+        }
+      end)
+
+    Enum.sort_by(direct ++ virtual_contexts, & &1.name)
   end
 
   @doc """

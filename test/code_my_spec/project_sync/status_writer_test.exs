@@ -276,6 +276,71 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
       assert result == []
     end
 
+    test "groups nested liveviews under virtual live context", %{tmp_dir: tmp_dir, env: env} do
+      chat =
+        build_component(%{
+          name: "Chat",
+          module_name: "MyAppWeb.AiLive.Chat",
+          type: "liveview",
+          requirements: [
+            build_requirement(%{name: "spec", description: "Spec", satisfied: true}),
+            build_requirement(%{name: "test", description: "Test", satisfied: false})
+          ]
+        })
+
+      insights =
+        build_component(%{
+          name: "Insights",
+          module_name: "MyAppWeb.AiLive.Insights",
+          type: "liveview",
+          requirements: [
+            build_requirement(%{name: "spec", description: "Spec", satisfied: true})
+          ]
+        })
+
+      auth =
+        build_component(%{
+          name: "UserAuth",
+          module_name: "MyAppWeb.UserAuth",
+          type: "module",
+          requirements: [
+            build_requirement(%{name: "spec", description: "Spec", satisfied: true})
+          ]
+        })
+
+      web =
+        build_component(%{
+          name: "MyAppWeb",
+          module_name: "MyAppWeb",
+          type: "module",
+          child_components: [chat, insights, auth]
+        })
+
+      result = StatusWriter.write_status_files([web], env)
+
+      # Virtual live context file created, not individual liveview files
+      assert ".code_my_spec/status/my_app_web/ai_live.md" in result
+      assert ".code_my_spec/status/my_app_web/user_auth.md" in result
+      refute Enum.any?(result, &String.contains?(&1, "chat.md"))
+      refute Enum.any?(result, &String.contains?(&1, "insights.md"))
+
+      # Root summary groups by live context with aggregated completion
+      root_content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app_web.md"))
+      assert root_content =~ "[MyAppWeb.AiLive]"
+      assert root_content =~ "(2/3)"
+      refute root_content =~ "AiLive.Chat"
+      refute root_content =~ "AiLive.Insights"
+
+      # Direct child listed normally
+      assert root_content =~ "[MyAppWeb.UserAuth]"
+      assert root_content =~ "(1/1)"
+
+      # Live context file contains both liveviews inline
+      context_content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app_web/ai_live.md"))
+      assert context_content =~ "## MyAppWeb.AiLive.Chat (liveview)"
+      assert context_content =~ "## MyAppWeb.AiLive.Insights (liveview)"
+    end
+
     test "includes type in component section header", %{tmp_dir: tmp_dir, env: env} do
       context =
         build_component(%{
