@@ -146,14 +146,14 @@ in test and spex files.
 **1. Create `test/spex/math_test_project_spex.ex`:**
 ```elixir
 defmodule MathTestProjectSpex do
-  use Boundary, top_level?: true, deps: [MathTestProject], check: [in: [:test], out: []]
+  use Boundary, top_level?: true, deps: [MathTestProject]
 end
 ```
 
 **2. Create `test/support/math_test_project_test_boundary.ex`:**
 ```elixir
 defmodule MathTestProjectTest do
-  use Boundary, top_level?: true, deps: [MathTestProject], check: [in: [:test], out: []]
+  use Boundary, top_level?: true, deps: [MathTestProject]
 end
 ```
 

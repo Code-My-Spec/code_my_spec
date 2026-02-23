@@ -179,13 +179,13 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
     write_file!(tmp_dir, "test/spex/#{app_name}_spex.ex", """
     defmodule #{module_name}Spex do
-      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+      use Boundary, top_level?: true, deps: [#{module_name}]
     end
     """)
 
     write_file!(tmp_dir, "test/support/#{app_name}_test_boundary.ex", """
     defmodule #{module_name}Test do
-      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+      use Boundary, top_level?: true, deps: [#{module_name}]
     end
     """)
   end

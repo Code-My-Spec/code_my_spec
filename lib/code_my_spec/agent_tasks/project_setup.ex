@@ -605,14 +605,14 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     **1. Create `test/spex/#{app_name}_spex.ex`:**
     ```elixir
     defmodule #{module_name}Spex do
-      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+      use Boundary, top_level?: true, deps: [#{module_name}]
     end
     ```
 
     **2. Create `test/support/#{app_name}_test_boundary.ex`:**
     ```elixir
     defmodule #{module_name}Test do
-      use Boundary, top_level?: true, deps: [#{module_name}], check: [in: [:test], out: []]
+      use Boundary, top_level?: true, deps: [#{module_name}]
     end
     ```
 
