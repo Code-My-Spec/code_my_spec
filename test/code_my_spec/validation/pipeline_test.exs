@@ -281,34 +281,36 @@ defmodule CodeMySpec.Validation.PipelineTest do
       on_exit(fn -> TestAdapter.checkin(project_dir) end)
 
       use_cmd_cassette "pipeline_compile_ok", ignore: [[:opts, :cd]] do
-        assert :ok = Pipeline.compile_project(scope)
+        assert {:ok, problems} = Pipeline.compile_project(scope)
+        assert is_list(problems)
       end
     end
 
     @tag timeout: 120_000
-    test "returns :ok on successful compilation" do
+    test "returns {:ok, problems} on successful compilation" do
       {scope, project_dir} = project_setup()
       on_exit(fn -> TestAdapter.checkin(project_dir) end)
 
       use_cmd_cassette "pipeline_compile_ok", ignore: [[:opts, :cd]] do
-        assert :ok = Pipeline.compile_project(scope)
+        assert {:ok, problems} = Pipeline.compile_project(scope)
+        assert is_list(problems)
       end
     end
 
     @tag timeout: 120_000
     @tag :tmp_dir
-    test "returns {:error, reason} when compilation fails", %{tmp_dir: tmp_dir} do
+    test "returns {:error, problems} when compilation fails", %{tmp_dir: tmp_dir} do
       # Point scope at a directory with an invalid mix project to force exit_code != 0
       File.write!(Path.join(tmp_dir, "mix.exs"), "invalid elixir")
       scope = full_scope_fixture()
       scope = %{scope | cwd: tmp_dir}
 
-      assert {:error, reason} = Pipeline.compile_project(scope)
-      assert is_binary(reason)
+      assert {:error, problems} = Pipeline.compile_project(scope)
+      assert [_ | _] = problems
     end
 
     test "skips compilation when scope is nil" do
-      assert :ok = Pipeline.compile_project(nil)
+      assert {:ok, []} = Pipeline.compile_project(nil)
     end
   end
 

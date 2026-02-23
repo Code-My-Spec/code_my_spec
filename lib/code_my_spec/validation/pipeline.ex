@@ -33,29 +33,20 @@ defmodule CodeMySpec.Validation.Pipeline do
     clear_stale_problems(scope, categorized)
 
     case compile_project(scope, opts) do
-      :ok ->
+      {:ok, compile_problems} ->
         {_, test_problems} = run_tests(categorized.test_files, scope, opts)
         {_, credo_problems} = run_credo(categorized.elixir_files, scope)
         {_, sobelow_problems} = run_sobelow(categorized.elixir_files, scope)
         {_, spex_problems} = run_spex(categorized.spex_files, scope)
         {_, spec_problems} = validate_spec_files(categorized.spec_files)
 
-        test_problems ++ credo_problems ++ sobelow_problems ++ spex_problems ++ spec_problems
+        compile_problems ++
+          test_problems ++ credo_problems ++ sobelow_problems ++ spex_problems ++ spec_problems
 
-      {:error, reason} ->
-        Logger.error("[Pipeline] Compilation failed: #{reason}")
+      {:error, compile_problems} ->
+        Logger.error("[Pipeline] Compilation failed with #{length(compile_problems)} diagnostics")
         Problems.clear_problems_for_source(scope, [source: "compiler"], :all)
-
-        [
-          %Problem{
-            severity: :error,
-            source: "compiler",
-            source_type: :static_analysis,
-            file_path: "project",
-            message: reason,
-            category: "compilation_error"
-          }
-        ]
+        compile_problems
     end
   end
 
@@ -154,12 +145,13 @@ defmodule CodeMySpec.Validation.Pipeline do
   @doc """
   Compile the project once before running validators.
   """
-  @spec compile_project(Scope.t() | nil, keyword()) :: :ok | {:error, String.t()}
+  @spec compile_project(Scope.t() | nil, keyword()) ::
+          {:ok, [Problem.t()]} | {:error, [Problem.t()]}
   def compile_project(scope, opts \\ [])
 
   def compile_project(nil, _opts) do
     Logger.info("[Pipeline] No scope, skipping compilation")
-    :ok
+    {:ok, []}
   end
 
   def compile_project(%Scope{} = scope, opts) do
@@ -175,12 +167,15 @@ defmodule CodeMySpec.Validation.Pipeline do
           do: Keyword.put(compile_opts, :output_file, f),
           else: compile_opts
 
-      case CodeMySpec.Compile.execute(compile_opts) do
-        %{status: :ok} -> :ok
-        %{status: :error, exit_code: code} -> {:error, "Compilation failed (exit code #{code})"}
+      result = CodeMySpec.Compile.execute(compile_opts)
+      problems = diagnostics_to_problems(result.data.compiler_results)
+
+      case result.status do
+        :ok -> {:ok, problems}
+        :error -> {:error, problems}
       end
     else
-      :ok
+      {:ok, []}
     end
   end
 
@@ -506,6 +501,31 @@ defmodule CodeMySpec.Validation.Pipeline do
         parts
     end
   end
+
+  defp diagnostics_to_problems(diagnostics) when is_list(diagnostics) do
+    Enum.map(diagnostics, fn diagnostic ->
+      file = Map.get(diagnostic, "file") || "project"
+      message = Map.get(diagnostic, "message") || "unknown error"
+      severity_str = Map.get(diagnostic, "severity") || "error"
+      position = Map.get(diagnostic, "position")
+      line = if position, do: Map.get(position, "line"), else: nil
+
+      severity = if severity_str == "warning", do: :warning, else: :error
+      category = if severity == :warning, do: "compiler_warning", else: "compilation_error"
+
+      %Problem{
+        severity: severity,
+        source: "compiler",
+        source_type: :static_analysis,
+        file_path: file,
+        line: line,
+        message: message,
+        category: category
+      }
+    end)
+  end
+
+  defp diagnostics_to_problems(_), do: []
 
   # Parse raw test output when execution_status is :error.
   # Extracts compiler warnings/errors and categorizes them properly
