@@ -98,6 +98,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     # AGENTS.md guide
     agents_md_check = check_agents_md(working_dir)
 
+    # Rules installed
+    rules_check = check_rules_installed(working_dir)
+
     # Ignored components (optional)
     ignored_components_check = check_ignored_components(working_dir)
 
@@ -122,6 +125,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       cli_config_exists: cli_config_check.exists,
       app_symlinks_installed: symlinks_check.installed,
       agents_md_installed: agents_md_check.installed,
+      rules_installed: rules_check.installed,
       cli_config_has_project_id: cli_config_check.has_project_id,
       ignored_components_configured: ignored_components_check.configured
     }
@@ -334,6 +338,23 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     %{installed: all_installed}
   end
 
+  # Rules installed check
+
+  defp check_rules_installed(working_dir) do
+    rules_path = Path.join(working_dir, CodeMySpec.Paths.rules_dir())
+
+    if File.dir?(rules_path) do
+      rule_files =
+        rules_path
+        |> File.ls!()
+        |> Enum.filter(&String.ends_with?(&1, ".md"))
+
+      %{installed: rule_files != []}
+    else
+      %{installed: false}
+    end
+  end
+
   # AGENTS.md check
 
   defp check_agents_md(working_dir) do
@@ -463,6 +484,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_structure_instructions(status)
     |> maybe_add_symlinks_instructions(status)
     |> maybe_add_agents_md_instructions(status)
+    |> maybe_add_rules_instructions(status)
     |> maybe_add_cli_config_instructions(status)
     |> maybe_add_ignored_components_instructions(status)
     |> Enum.reverse()
@@ -712,6 +734,29 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     [instruction | sections]
   end
 
+  defp maybe_add_rules_instructions(sections, %{rules_installed: true}), do: sections
+
+  defp maybe_add_rules_instructions(sections, _status) do
+    instruction = """
+    ## Install Default Rules
+
+    CodeMySpec provides coding rules that guide agents when writing specs, code, and tests.
+
+    Install them:
+    ```bash
+    curl -s -X POST http://localhost:4002/api/bootstrap/install-rules \\
+      -H "Content-Type: application/json" \\
+      -H "X-Working-Dir: $(pwd)"
+    ```
+
+    This copies default rule files into `.code_my_spec/rules/`.
+    Rules are safe to customize — existing files are never overwritten.
+    These files should be committed to version control.
+    """
+
+    [instruction | sections]
+  end
+
   defp maybe_add_cli_config_instructions(sections, %{cli_config_has_project_id: true}),
     do: sections
 
@@ -768,6 +813,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Project structure dirs", status.project_structure_complete},
       {"App symlinks", status.app_symlinks_installed},
       {"AGENTS.md", status.agents_md_installed},
+      {"Rules", status.rules_installed},
       {"CLI config", status.cli_config_has_project_id}
     ]
 
@@ -1028,6 +1074,37 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   @doc """
+  Copy default rule files into the project's .code_my_spec/rules/ directory.
+
+  Copies from the app's priv/rules/ to the target project. Only copies files
+  that don't already exist (preserves user customizations).
+
+  Returns `:ok` on success, `{:error, reason}` on failure.
+  """
+  @spec install_rules(String.t()) :: :ok | {:error, term()}
+  def install_rules(working_dir) do
+    source_dir = Application.app_dir(:code_my_spec, "priv/rules")
+    target_dir = Path.join(working_dir, CodeMySpec.Paths.rules_dir())
+
+    with :ok <- File.mkdir_p(target_dir) do
+      case File.ls(source_dir) do
+        {:ok, files} ->
+          files
+          |> Enum.filter(&String.ends_with?(&1, ".md"))
+          |> Enum.reject(fn file -> File.exists?(Path.join(target_dir, file)) end)
+          |> Enum.each(fn file ->
+            File.cp!(Path.join(source_dir, file), Path.join(target_dir, file))
+          end)
+
+          :ok
+
+        {:error, reason} ->
+          {:error, {:source_dir, reason}}
+      end
+    end
+  end
+
+  @doc """
   Generate the generalized AGENTS.md content for a project.
 
   Takes the app name (e.g., "my_app") and returns markdown content
@@ -1118,13 +1195,23 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     | LiveView component | `#{base}/rules/liveview_component_design.md` | — |
     | Elixir (general) | `#{base}/rules/elixir_design.md` | `#{base}/rules/elixir_test.md` |
 
-    ### 5. Issues — Known problems and technical debt
+    ### 5. Design System — Visual reference
+
+    Read before building any UI (LiveViews, components, templates).
+
+    | Need | File |
+    |---|---|
+    | Design system (colors, typography, components) | `#{base}/design/design_system.html` |
+
+    Open the HTML file in a browser to see the full visual reference. Use the DaisyUI classes and theme tokens defined there.
+
+    ### 6. Issues — Known problems and technical debt
 
     Check before working in an area to avoid known pitfalls.
 
     Issues live in `#{base}/issues/` as individual markdown files describing the problem, reproduction steps, and possible solutions.
 
-    ### 6. Knowledge — Operational knowledge
+    ### 7. Knowledge — Operational knowledge
 
     - `#{base}/knowledge/` — Project-specific research (data providers, auth flows, etc.)
     - `#{base}/framework/` — Framework knowledge (LiveView, DaisyUI, Boundary, etc.) [symlink]
@@ -1238,6 +1325,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     :project_structure_complete,
     :app_symlinks_installed,
     :agents_md_installed,
+    :rules_installed,
     :cli_config_has_project_id
   ]
 
@@ -1297,6 +1385,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        "Install app symlinks: curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks -H 'X-Working-Dir: <project_dir>'"},
       {"AGENTS.md", status.agents_md_installed,
        "Generate AGENTS.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md -H 'X-Working-Dir: <project_dir>'"},
+      {"Rules", status.rules_installed,
+       "Install rules: curl -s -X POST http://localhost:4002/api/bootstrap/install-rules -H 'X-Working-Dir: <project_dir>'"},
       {"CLI config", status.cli_config_has_project_id,
        "Run curl -s http://localhost:4002/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}
     ]

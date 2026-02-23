@@ -20,7 +20,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Paths
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
@@ -131,7 +133,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, session} <- create_session(scope, external_id, agent_task_module, nil),
          session <- enrich_session(session, nil, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
-      {:ok, with_project_context(prompt), sync_result}
+      {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
 
@@ -144,7 +146,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, session} <- create_topic_session(scope, external_id, agent_task_module, topic),
          session <- enrich_session(session, nil, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
-      {:ok, with_project_context(prompt), sync_result}
+      {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
 
@@ -158,12 +160,48 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, session} <- create_session(scope, external_id, agent_task_module, component),
          session <- enrich_session(session, component, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
-      {:ok, with_project_context(prompt), sync_result}
+      {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
 
-  defp with_project_context(prompt) do
-    "Read `.code_my_spec/` for project documentation structure.\n\n" <> prompt
+  defp with_project_context(prompt, scope) do
+    context =
+      [
+        project_context_header(),
+        decisions_context(scope),
+        architecture_reference()
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("\n\n")
+
+    context <> "\n\n" <> prompt
+  end
+
+  defp project_context_header do
+    "Read `#{Paths.base_dir()}/` for project documentation structure."
+  end
+
+  defp decisions_context(scope) do
+    case Environments.read_file(scope.environment, Paths.decisions_index()) do
+      {:ok, content} when byte_size(content) > 0 ->
+        """
+        ## Architecture Decision Records
+
+        The following technology decisions have been made for this project. \
+        Follow these decisions — do not introduce alternatives without explicit instruction.
+
+        #{String.trim(content)}
+
+        For full rationale on any decision, read the linked file in `#{Paths.decisions_dir()}/`.\
+        """
+
+      _ ->
+        nil
+    end
+  end
+
+  defp architecture_reference do
+    "For system component graph and dependencies, read `#{Paths.architecture_dir()}/overview.md`."
   end
 
   # Validation
