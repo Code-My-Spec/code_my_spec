@@ -27,6 +27,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.DevelopLiveContext,
     AgentTasks.LiveContextSpec,
     AgentTasks.QaApp,
+    AgentTasks.QaSetup,
     AgentTasks.QaStory
   ]
 

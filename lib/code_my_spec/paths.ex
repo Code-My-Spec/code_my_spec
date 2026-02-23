@@ -75,6 +75,9 @@ defmodule CodeMySpec.Paths do
   @doc "QA summary file."
   def qa_summary, do: Path.join(@base_dir, "qa/summary.md")
 
+  @doc "QA plan document."
+  def qa_plan, do: Path.join(@base_dir, "qa/plan.md")
+
   @doc "Design system HTML file."
   def design_system_path, do: Path.join(@base_dir, "design/design_system.html")
 

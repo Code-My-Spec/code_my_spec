@@ -360,6 +360,52 @@ defmodule CodeMySpec.Documents.Registry do
     - **phx-change="validate"**: Live-validate form inputs and update changeset in assigns.
   """
 
+  @qa_plan_app_overview """
+  Format:
+  - Use H2 heading
+  - Brief paragraph (3-5 sentences)
+
+  Content:
+  - Tech stack (Phoenix, LiveView, Ecto, etc.)
+  - How authentication works (session-based, token, etc.)
+  - App port and base URL
+  - Key route patterns and pipelines
+  """
+
+  @qa_plan_tools_registry """
+  Format:
+  - Use H2 heading
+  - Use H3 for each testing approach
+
+  Content:
+  - For each tool: name, when to use, example invocation
+  - Include shell scripts for controller/API testing with auth baked in
+  - Cover: web tool (LiveView pages), curl (API/controller), mix run (seeds/setup)
+  """
+
+  @qa_plan_seed_strategy """
+  Format:
+  - Use H2 heading
+  - Reference each `.exs` seed script with its `mix run` invocation
+  - Document what entities each script creates and credentials it outputs
+
+  Content:
+  - How to run seed scripts: `mix run priv/repo/qa_seeds.exs`
+  - What entities each script creates (users, accounts, domain records)
+  - Credentials and URLs printed by the scripts
+  - Which scripts to run for different testing scenarios
+  """
+
+  @qa_plan_notes """
+  Format:
+  - Use H2 heading
+  - Free-form paragraphs
+
+  Content:
+  - Additional context, caveats, known limitations
+  - Environment-specific notes
+  """
+
   @proposal_contexts """
   Format:
   - Use H2 heading: ## Contexts
@@ -607,6 +653,18 @@ defmodule CodeMySpec.Documents.Registry do
       section_descriptions: %{
         "type" => @spec_type,
         "functions" => @spec_functions
+      }
+    },
+    "qa_plan" => %{
+      overview: "Overall QA testing strategy document. Written by the QA planner after analyzing the running app's routes, authentication, and configuration. Serves as the foundation for per-story QA briefs.",
+      required_sections: ["app overview", "tools registry", "seed strategy"],
+      optional_sections: ["notes"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "app overview" => @qa_plan_app_overview,
+        "tools registry" => @qa_plan_tools_registry,
+        "seed strategy" => @qa_plan_seed_strategy,
+        "notes" => @qa_plan_notes
       }
     },
     "architecture_proposal" => %{

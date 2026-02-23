@@ -52,6 +52,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "technical_strategy" => AgentTasks.TechnicalStrategy,
     "research_topic" => AgentTasks.ResearchTopic,
     "qa_app" => AgentTasks.QaApp,
+    "qa_setup" => AgentTasks.QaSetup,
     "qa_story" => AgentTasks.QaStory
   }
 
@@ -67,7 +68,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "manage_implementation",
     "design_ui",
     "technical_strategy",
-    "qa_app"
+    "qa_app",
+    "qa_setup"
   ]
 
   # Tasks that take a topic name (passed as module_name arg) instead of a component lookup
