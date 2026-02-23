@@ -47,7 +47,7 @@ defmodule Mix.Tasks.SetStoryComponent do
     else
       nil ->
         Mix.shell().error(
-          "Not found. Verify story ID \"#{story_id}\" and module name \"#{module_name}\" exist."
+          ~s(Not found. Verify story ID "#{story_id}" and module name "#{module_name}" exist.)
         )
 
       {:error, reason} ->
