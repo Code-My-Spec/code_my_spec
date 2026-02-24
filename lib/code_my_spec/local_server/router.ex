@@ -13,7 +13,8 @@ defmodule CodeMySpec.LocalServer.Router do
     BootstrapController,
     HookController,
     NotificationController,
-    StoryComponentController
+    StoryComponentController,
+    StoryLinkageController
   }
   alias CodeMySpec.LocalServer.Plugs
 
@@ -142,6 +143,15 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
     |> maybe_continue(&Plugs.LocalScope.call(&1, []))
     |> maybe_continue(&StoryComponentController.set/1)
+  end
+
+  # Analyze story-component linkage
+  get "/api/stories/linkage" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&StoryLinkageController.analyze/1)
   end
 
   # MCP routes - require localhost, working dir, and scope
