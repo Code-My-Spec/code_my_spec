@@ -39,6 +39,18 @@ config :code_my_spec,
   oauth_base_url: env!("OAUTH_BASE_URL", :string, ""),
   deploy_key: env!("DEPLOY_KEY")
 
+# Web Push VAPID configuration
+vapid_public_key = env!("VAPID_PUBLIC_KEY", :string, nil)
+vapid_private_key = env!("VAPID_PRIVATE_KEY", :string, nil)
+vapid_subject = env!("VAPID_SUBJECT", :string, "mailto:support@codemyspec.com")
+
+if vapid_public_key && vapid_private_key do
+  config :web_push_elixir,
+    vapid_public_key: vapid_public_key,
+    vapid_private_key: vapid_private_key,
+    vapid_subject: vapid_subject
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

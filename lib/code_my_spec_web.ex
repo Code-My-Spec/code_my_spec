@@ -17,7 +17,7 @@ defmodule CodeMySpecWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt sw.js manifest.json)
 
   def router do
     quote do
@@ -88,8 +88,8 @@ defmodule CodeMySpecWeb do
       import CodeMySpecWeb.CoreComponents
 
       # Common modules used in templates
-      alias Phoenix.LiveView.JS
       alias CodeMySpecWeb.Layouts
+      alias Phoenix.LiveView.JS
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

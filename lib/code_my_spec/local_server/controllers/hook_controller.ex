@@ -6,6 +6,7 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
   require Logger
 
   alias CodeMySpec.AgentTasks.TrackEdits
+  alias CodeMySpec.LocalServer.NotificationClient
   alias CodeMySpec.Validation
 
   @doc """
@@ -51,6 +52,17 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
         session_id: session_id
       )
 
+    # Only notify when Claude truly stops (validation passed, no blocking feedback)
+    if match?({:ok, :valid}, result) do
+      Task.start(fn ->
+        NotificationClient.notify(%{
+          type: "task_complete",
+          title: "Claude has finished",
+          body: "Claude Code has completed its current task"
+        })
+      end)
+    end
+
     Validation.format_output(result)
   end
 
@@ -69,6 +81,24 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
   defp dispatch(_scope, "PostToolUse", _session_id, hook_input, _req_id) do
     TrackEdits.run(hook_input)
+  end
+
+  defp dispatch(_scope, "Notification", _session_id, hook_input, req_id) do
+    notification_type = Map.get(hook_input, "notification_type", "info")
+    title = Map.get(hook_input, "title", "Claude Code")
+    message = Map.get(hook_input, "message", "")
+
+    Logger.info("[HookController] [#{req_id}] Dispatching Notification: #{notification_type}")
+
+    Task.start(fn ->
+      NotificationClient.notify(%{
+        type: notification_type,
+        title: title,
+        body: message
+      })
+    end)
+
+    %{}
   end
 
   defp dispatch(_scope, event_name, _session_id, _hook_input, req_id) do

@@ -63,8 +63,8 @@ defmodule CodeMySpecWeb.Layouts do
               </svg>
             </label>
           </div>
-          <div class="flex-1">
-            <div class="breadcrumbs text-sm px-8">
+          <div class="flex-1 min-w-0">
+            <div class="breadcrumbs text-sm px-2 lg:px-8 overflow-hidden">
               <ul>
                 <%= if @current_scope do %>
                   <li><.account_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
@@ -72,6 +72,18 @@ defmodule CodeMySpecWeb.Layouts do
                 <% end %>
               </ul>
             </div>
+          </div>
+          <div class="flex-none shrink-0">
+            <button
+              id="enable-notifications-btn"
+              phx-click={JS.dispatch("phx:toggle-push-notifications")}
+              class="btn btn-ghost btn-sm tooltip tooltip-bottom"
+              data-tip="Enable notifications"
+              data-subscribed="false"
+            >
+              <span data-notif-icon-off><.icon name="hero-bell" class="size-5" /></span>
+              <span data-notif-icon-on class="hidden"><.icon name="hero-bell-alert-solid" class="size-5 text-primary" /></span>
+            </button>
           </div>
         </div>
 

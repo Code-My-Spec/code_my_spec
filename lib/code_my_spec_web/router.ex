@@ -122,6 +122,23 @@ defmodule CodeMySpecWeb.Router do
 
     get "/stories-list/unsatisfied", StoriesController, :list_unsatisfied_stories
     get "/stories-list/component/:component_id", StoriesController, :list_component_stories
+
+    post "/notifications/push", NotificationController, :push
+  end
+
+  # VAPID public key (no auth needed — it's a public key)
+  scope "/api/browser", CodeMySpecWeb do
+    pipe_through :api
+
+    get "/push-subscriptions/vapid-key", PushSubscriptionController, :vapid_key
+  end
+
+  # Browser push subscription management (browser session auth)
+  scope "/api/browser", CodeMySpecWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    post "/push-subscriptions", PushSubscriptionController, :create
+    delete "/push-subscriptions", PushSubscriptionController, :delete
   end
 
   # Content sync endpoint (authenticated via deployment key, not OAuth)

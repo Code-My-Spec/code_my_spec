@@ -12,6 +12,7 @@ defmodule CodeMySpec.LocalServer.Router do
     AgentTaskController,
     BootstrapController,
     HookController,
+    NotificationController,
     StoryComponentController
   }
   alias CodeMySpec.LocalServer.Plugs
@@ -123,6 +124,15 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
     |> maybe_continue(&Plugs.LocalScope.call(&1, []))
     |> maybe_continue(&HookController.handle/1)
+  end
+
+  # Send a push notification with arbitrary text
+  post "/api/notifications/send" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&NotificationController.send_notification/1)
   end
 
   # Link a story to a component by module name

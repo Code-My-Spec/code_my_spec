@@ -1,0 +1,16 @@
+{
+  "name": "CodeMySpec",
+  "short_name": "CodeMySpec",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#1d232a",
+  "theme_color": "#1d232a",
+  "icons": [
+    {
+      "src": "/images/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

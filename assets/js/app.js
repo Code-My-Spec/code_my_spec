@@ -58,6 +58,163 @@ liveSocket.connect()
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket
 
+// --- Web Push Notifications ---
+
+let pushBusy = false
+
+function getNotifBtn() {
+  return document.getElementById("enable-notifications-btn")
+}
+
+// Update bell icon to reflect current subscription state
+async function updateNotificationButton() {
+  const btn = getNotifBtn()
+  if (!btn) return
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    btn.style.display = "none"
+    return
+  }
+
+  const reg = await navigator.serviceWorker.ready
+  const sub = await reg.pushManager.getSubscription()
+  const iconOff = btn.querySelector("[data-notif-icon-off]")
+  const iconOn = btn.querySelector("[data-notif-icon-on]")
+
+  btn.disabled = false
+  const spinner = btn.querySelector("#notif-spinner")
+  if (spinner) spinner.remove()
+
+  if (sub) {
+    btn.dataset.subscribed = "true"
+    btn.dataset.tip = "Disable notifications"
+    if (iconOff) iconOff.classList.add("hidden")
+    if (iconOn) iconOn.classList.remove("hidden")
+  } else {
+    btn.dataset.subscribed = "false"
+    btn.dataset.tip = "Enable notifications"
+    if (iconOff) iconOff.classList.remove("hidden")
+    if (iconOn) iconOn.classList.add("hidden")
+  }
+}
+
+function setButtonLoading() {
+  const btn = getNotifBtn()
+  if (!btn) return
+  btn.disabled = true
+  const iconOff = btn.querySelector("[data-notif-icon-off]")
+  const iconOn = btn.querySelector("[data-notif-icon-on]")
+  if (iconOff) iconOff.classList.add("hidden")
+  if (iconOn) iconOn.classList.add("hidden")
+  const spinner = document.createElement("span")
+  spinner.id = "notif-spinner"
+  spinner.className = "loading loading-spinner loading-sm text-base-content"
+  btn.appendChild(spinner)
+}
+
+// Register service worker
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").then(function (reg) {
+    console.log("[Push] Service worker registered", reg.scope)
+    updateNotificationButton()
+  }).catch(function (err) {
+    console.warn("[Push] Service worker registration failed", err)
+  })
+}
+
+// Hydrate button state on LiveView navigations
+window.addEventListener("phx:page-loading-stop", function () {
+  updateNotificationButton()
+})
+
+// Listen for notification toggle from LiveView
+window.addEventListener("phx:toggle-push-notifications", async function () {
+  if (pushBusy) return
+  pushBusy = true
+  setButtonLoading()
+
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const existingSub = await reg.pushManager.getSubscription()
+
+    // If already subscribed, unsubscribe
+    if (existingSub) {
+      await fetch("/api/browser/push-subscriptions", {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+          "x-csrf-token": csrfToken
+        },
+        body: JSON.stringify({ endpoint: existingSub.endpoint })
+      })
+      await existingSub.unsubscribe()
+      console.log("[Push] Unsubscribed")
+      updateNotificationButton()
+      return
+    }
+
+    // Otherwise, subscribe
+    const permission = await Notification.requestPermission()
+    if (permission !== "granted") {
+      console.log("[Push] Permission denied")
+      updateNotificationButton()
+      return
+    }
+
+    // Fetch VAPID public key from server
+    const vapidResp = await fetch("/api/browser/push-subscriptions/vapid-key")
+    if (!vapidResp.ok) {
+      const text = await vapidResp.text()
+      console.error("[Push] Failed to fetch VAPID key:", vapidResp.status, text)
+      updateNotificationButton()
+      return
+    }
+    const { vapid_public_key } = await vapidResp.json()
+
+    // Convert VAPID key from base64url to Uint8Array
+    const applicationServerKey = urlBase64ToUint8Array(vapid_public_key)
+
+    // Subscribe via PushManager
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey
+    })
+
+    // Send subscription to server
+    const resp = await fetch("/api/browser/push-subscriptions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-csrf-token": csrfToken
+      },
+      body: JSON.stringify({ subscription: subscription.toJSON() })
+    })
+
+    if (resp.ok) {
+      console.log("[Push] Subscribed successfully")
+    } else {
+      console.error("[Push] Subscription save failed:", resp.status, await resp.text())
+    }
+
+    updateNotificationButton()
+  } catch (err) {
+    console.error("[Push] Error:", err)
+    updateNotificationButton()
+  } finally {
+    pushBusy = false
+  }
+})
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
 // The lines below enable quality of life phoenix_live_reload
 // development features:
 //
