@@ -23,11 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     story =
       story_fixture(context.scope, %{
         title: "User Authentication",
-        description: "Users can log in and out of the application",
-        criteria: [
-          %{description: "User can log in with email and password"},
-          %{description: "User sees an error for invalid credentials"}
-        ]
+        description: "Users can log in and out of the application"
       })
 
     %{story: story}
@@ -50,88 +46,132 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     File.write!(full_path, content)
   end
 
-  defp write_mix_exs(env, app_name \\ "my_app") do
-    write_file!(env, "mix.exs", """
-    defmodule #{Macro.camelize(app_name)}.MixProject do
-      use Mix.Project
-      def project do
-        [app: :#{app_name}, version: "0.1.0"]
-      end
-    end
+  defp write_qa_plan(env) do
+    write_file!(env, ".code_my_spec/qa/plan.md", """
+    # QA Plan
+
+    ## App Overview
+
+    Phoenix app with session-based auth on port 4000.
+
+    ## Tools Registry
+
+    ### web tool
+    Use for LiveView pages.
+
+    ## Seed Strategy
+
+    - `mix run priv/repo/qa_seeds.exs`
     """)
   end
 
-  defp write_qa_result(env, story_id, content \\ nil) do
+  defp write_story_brief(env, story_id, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/qa/#{story_id}.md",
+      ".code_my_spec/qa/#{story_id}/brief.md",
       content ||
         """
-        # QA: Story #{story_id}
+        # QA Brief: Story #{story_id}
 
-        ## Status: PASS
+        ## Tool
 
-        ## Scenarios Tested
-        - User logs in: PASS — login form works
+        web
 
-        ## Issues Found
-        None
+        ## Auth
 
-        ## Evidence
-        - Visited /login, form renders correctly
+        Login as admin@example.com / password123
+
+        ## Seeds
+
+        mix run priv/repo/qa_seeds.exs
+
+        ## What To Test
+
+        - Visit /users/log_in
+        - Enter credentials
+        - Verify redirect to dashboard
+
+        ## Result Path
+
+        .code_my_spec/qa/#{story_id}/result.md
         """
     )
   end
 
-  defp write_issue(env, name, content \\ nil) do
+  defp write_story_result(env, story_id, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/issues/#{name}.md",
-      content || "# #{name}\n\nDescription of the issue."
+      ".code_my_spec/qa/#{story_id}/result.md",
+      content ||
+        """
+        # QA Result: Story #{story_id}
+
+        ## Status
+
+        pass
+
+        ## Scenarios
+
+        ### Login flow
+        - Visited /users/log_in
+        - Entered credentials
+        - Redirected to dashboard
+        - **Pass**
+
+        ## Evidence
+
+        - `.code_my_spec/qa/#{story_id}/screenshots/login.png` — login page
+        - `.code_my_spec/qa/#{story_id}/screenshots/dashboard.png` — after login
+
+        ## Issues
+
+        None
+        """
     )
   end
 
-  defp write_spex_file(env, story_id, criterion_id, content) do
-    dir = "test/spex/#{story_id}_test_story"
-    filename = "criterion_#{criterion_id}_test_spex.exs"
-    write_file!(env, "#{dir}/#{filename}", content)
+  defp write_result_with_issues(env, story_id) do
+    write_file!(
+      env,
+      ".code_my_spec/qa/#{story_id}/result.md",
+      """
+      # QA Result: Story #{story_id}
+
+      ## Status
+
+      fail
+
+      ## Scenarios
+
+      ### Login flow
+      - Visited /users/log_in
+      - **Fail** — redirect broken for invited users
+
+      ## Issues
+
+      ### Login redirect fails for invited users (HIGH)
+
+      Invited users who click the email link are redirected to /login instead of /accept-invite.
+      Reproduced with user test+invite@example.com.
+
+      ### Missing validation on empty name (MEDIUM)
+
+      Submitting the profile form with an empty name field succeeds instead of showing an error.
+
+      ### Minor typo in footer (LOW)
+
+      The word "recieve" is misspelled in the footer text.
+      """
+    )
   end
 
-  @sample_spex """
-  defmodule Test.Spex.UserAuth do
-    use Spex
-
-    spex "User authentication", story: 42, criterion: 1 do
-      scenario "User logs in" do
-        given "a registered user"
-        when_ "the user submits valid credentials"
-        then_ "the user sees the dashboard"
-      end
-    end
+  defp read_prompt_file(env, story_id) do
+    path = Path.join(env.cwd, ".code_my_spec/qa/#{story_id}/prompt.md")
+    File.read!(path)
   end
-  """
 
-  # ============================================================================
-  # load_specs/2 Tests
-  # ============================================================================
-
-  describe "load_specs/2" do
-    setup [:create_scope]
-
-    test "returns empty tuples when no specs exist", %{scope: scope} do
-      assert {[], []} = QaStory.load_specs(scope.environment, 42)
-    end
-
-    test "returns projections and file paths when specs exist", %{scope: scope} do
-      write_spex_file(scope.environment, 42, 1, @sample_spex)
-
-      {projections, file_paths} = QaStory.load_specs(scope.environment, 42)
-
-      assert length(projections) == 1
-      assert length(file_paths) == 1
-      assert hd(file_paths) =~ "test/spex/42_test_story/criterion_1_test_spex.exs"
-      assert hd(projections) =~ "User authentication"
-    end
+  defp issues_dir(env) do
+    Path.join(env.cwd, ".code_my_spec/issues")
   end
 
   # ============================================================================
@@ -141,133 +181,333 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   describe "command/3" do
     setup [:create_scope, :create_story, :create_session]
 
-    test "returns ok tuple with prompt containing story ID", %{
-      scope: scope,
-      session: session,
-      story: story
-    } do
+    test "returns ok tuple with non-empty prompt", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
       assert is_binary(prompt)
-      assert prompt =~ to_string(story.id)
+      assert String.length(prompt) > 0
     end
 
-    test "includes story title and description in prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "User Authentication"
-      assert prompt =~ "Users can log in and out of the application"
+    test "writes prompt.md to disk", %{scope: scope, session: session, story: story} do
+      assert {:ok, _prompt} = QaStory.command(scope, session)
+
+      content = read_prompt_file(scope.environment, story.id)
+      assert content =~ "User Authentication"
+      assert content =~ "Users can log in and out"
     end
 
-    test "includes acceptance criteria in prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "User can log in with email and password"
-      assert prompt =~ "User sees an error for invalid credentials"
+    test "prompt.md includes acceptance criteria", %{scope: scope, story: story} do
+      session = %{project: scope.active_project, state: %{"topic" => story.id}}
+
+      assert {:ok, _prompt} = QaStory.command(scope, session)
+      content = read_prompt_file(scope.environment, story.id)
+      assert content =~ "Acceptance Criteria"
     end
 
-    test "references web-cli knowledge article", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "web-cli"
+    test "prompt.md includes testing approach", %{scope: scope, session: session, story: story} do
+      assert {:ok, _prompt} = QaStory.command(scope, session)
+
+      content = read_prompt_file(scope.environment, story.id)
+      assert content =~ "Testing Approach"
+      assert content =~ "screenshot"
     end
 
-    test "includes router path reference", %{scope: scope, session: session} do
-      write_mix_exs(scope.environment)
+    test "prompt.md does not include agent-specific instructions", %{scope: scope, session: session, story: story} do
+      assert {:ok, _prompt} = QaStory.command(scope, session)
 
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "router.ex"
+      content = read_prompt_file(scope.environment, story.id)
+      refute content =~ "Write the brief"
+      refute content =~ "Output"
     end
 
-    test "includes BDD specs when they exist", %{scope: scope, session: session, story: story} do
-      write_spex_file(scope.environment, story.id, 1, @sample_spex)
-
+    test "agent prompt includes brief format spec but not result format spec", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "User authentication"
-      assert prompt =~ "test/spex/#{story.id}_test_story"
+      assert prompt =~ "Brief Format"
+      refute prompt =~ "Result Format"
     end
 
-    test "handles missing specs gracefully", %{scope: scope, session: session} do
+    test "agent prompt references prompt.md path", %{scope: scope, session: session, story: story} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "No BDD specs found"
+      assert prompt =~ ".code_my_spec/qa/#{story.id}/prompt.md"
     end
 
-    test "includes existing result when present", %{scope: scope, session: session, story: story} do
-      write_qa_result(scope.environment, story.id)
+    test "agent prompt references plan.md when it exists", %{scope: scope, session: session} do
+      write_qa_plan(scope.environment)
 
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "Existing QA Result"
+      assert prompt =~ ".code_my_spec/qa/plan.md"
+      refute prompt =~ "Warning"
     end
 
-    test "references existing issues when present", %{scope: scope, session: session} do
-      write_issue(scope.environment, "login-form-broken")
-
+    test "agent prompt warns when plan.md is missing", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "login-form-broken"
+      assert prompt =~ "Warning"
+      assert prompt =~ "qa_setup"
     end
 
-    test "includes structured output format", %{scope: scope, session: session} do
+    test "agent prompt references brief output path", %{scope: scope, session: session, story: story} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "## Status:"
-      assert prompt =~ "## Scenarios Tested"
-      assert prompt =~ "## Issues Found"
+      assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
     end
 
-    test "instructs agent to write QA result", %{scope: scope, session: session, story: story} do
+    test "agent prompt tells agent to stop after brief", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ ".code_my_spec/qa/#{story.id}.md"
+      assert prompt =~ "Stop after writing the brief"
     end
 
-    test "includes issue filing instructions", %{scope: scope, session: session} do
+    test "agent prompt does not include phase 2/3 instructions", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ ".code_my_spec/issues/"
+      refute prompt =~ "Phase 2"
+      refute prompt =~ "Phase 3"
     end
 
     test "accepts string story ID", %{scope: scope, story: story} do
       session = %{project: scope.active_project, state: %{"topic" => to_string(story.id)}}
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ to_string(story.id)
+      assert {:ok, _prompt} = QaStory.command(scope, session)
+    end
+
+    test "returns error when story ID is missing", %{scope: scope} do
+      session = %{project: scope.active_project, state: %{"topic" => nil}}
+      assert {:error, message} = QaStory.command(scope, session)
+      assert message =~ "story ID"
+    end
+
+    test "returns error when session has no topic", %{scope: scope} do
+      session = %{project: scope.active_project, state: %{}}
+      assert {:error, message} = QaStory.command(scope, session)
+      assert message =~ "story ID"
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/3 — Brief Phase
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/3 brief phase" do
+    setup [:create_scope, :create_story, :create_session]
 
-    test "returns {:ok, :valid} when QA result exists with status line", %{
+    test "returns invalid when brief doesn't exist", %{scope: scope, session: session} do
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "Brief not found"
+    end
+
+    test "returns invalid when brief is missing required sections", %{
       scope: scope,
-      session: session
+      session: session,
+      story: story
     } do
-      write_qa_result(scope.environment, 42)
+      write_story_brief(scope.environment, story.id, """
+      # QA Brief
+
+      ## Tool
+
+      web
+      """)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "invalid"
+    end
+
+    test "feedback mentions brief on brief phase", %{scope: scope, session: session} do
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "brief" or feedback =~ "Brief"
+    end
+  end
+
+  # ============================================================================
+  # evaluate/3 — Test Phase
+  # ============================================================================
+
+  describe "evaluate/3 test phase" do
+    setup [:create_scope, :create_story, :create_session]
+
+    test "returns invalid when brief is valid but result doesn't exist", %{
+      scope: scope,
+      session: session,
+      story: story
+    } do
+      write_story_brief(scope.environment, story.id)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "Brief validated"
+      assert feedback =~ "result"
+    end
+
+    test "returns invalid when result is missing required sections", %{
+      scope: scope,
+      session: session,
+      story: story
+    } do
+      write_story_brief(scope.environment, story.id)
+
+      write_story_result(scope.environment, story.id, """
+      # QA Result
+
+      ## Status
+
+      pass
+      """)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "Brief validated"
+      assert feedback =~ "invalid"
+    end
+
+    test "feedback includes result format spec", %{
+      scope: scope,
+      session: session,
+      story: story
+    } do
+      write_story_brief(scope.environment, story.id)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "Required Sections"
+      assert feedback =~ "Status"
+      assert feedback =~ "Scenarios"
+    end
+
+    test "feedback on invalid result also includes result format spec", %{
+      scope: scope,
+      session: session,
+      story: story
+    } do
+      write_story_brief(scope.environment, story.id)
+
+      write_story_result(scope.environment, story.id, """
+      # QA Result
+
+      ## Status
+
+      pass
+      """)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "Required Sections"
+    end
+  end
+
+  # ============================================================================
+  # evaluate/3 — Done Phase (Issue Filing)
+  # ============================================================================
+
+  describe "evaluate/3 done phase" do
+    setup [:create_scope, :create_story, :create_session]
+
+    test "returns valid when brief and result both valid, no issues", %{
+      scope: scope,
+      session: session,
+      story: story
+    } do
+      write_story_brief(scope.environment, story.id)
+      write_story_result(scope.environment, story.id)
 
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
     end
 
-    test "returns {:ok, :invalid, feedback} when QA result is missing", %{
+    test "returns valid when result has low/info issues only (no files created)", %{
       scope: scope,
-      session: session
+      session: session,
+      story: story
     } do
-      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
-      assert feedback =~ "No QA result found"
+      write_story_brief(scope.environment, story.id)
+
+      write_story_result(scope.environment, story.id, """
+      # QA Result: Story #{story.id}
+
+      ## Status
+
+      pass
+
+      ## Scenarios
+
+      ### Login flow
+      - **Pass**
+
+      ## Issues
+
+      ### Minor typo in footer (LOW)
+
+      The word "recieve" is misspelled in the footer text.
+
+      ### FYI: Button color slightly off (INFO)
+
+      The submit button is #007bff instead of the design system's #0066cc.
+      """)
+
+      assert {:ok, :valid} = QaStory.evaluate(scope, session)
+
+      # No issue files should be created for low/info
+      dir = issues_dir(scope.environment)
+      refute File.exists?(dir) and File.ls!(dir) != []
     end
 
-    test "returns {:ok, :invalid, feedback} when QA result is empty", %{
+    test "returns valid and creates files for medium+ issues", %{
       scope: scope,
-      session: session
+      session: session,
+      story: story
     } do
-      write_qa_result(scope.environment, 42, "")
+      write_story_brief(scope.environment, story.id)
+      write_result_with_issues(scope.environment, story.id)
 
-      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
-      assert feedback =~ "empty"
+      assert {:ok, :valid} = QaStory.evaluate(scope, session)
+
+      # Should create files for HIGH and MEDIUM, but not LOW
+      dir = issues_dir(scope.environment)
+      assert File.exists?(dir)
+      files = File.ls!(dir)
+
+      assert Enum.any?(files, &String.contains?(&1, "login_redirect"))
+      assert Enum.any?(files, &String.contains?(&1, "missing_validation"))
+      refute Enum.any?(files, &String.contains?(&1, "typo"))
     end
 
-    test "returns {:ok, :invalid, feedback} when QA result missing status line", %{
+    test "issue file content has severity, description, source sections", %{
       scope: scope,
-      session: session
+      session: session,
+      story: story
     } do
-      write_qa_result(scope.environment, 42, "# QA Result\n\nSome content without status.")
+      write_story_brief(scope.environment, story.id)
+      write_result_with_issues(scope.environment, story.id)
 
-      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
-      assert feedback =~ "Status:"
+      assert {:ok, :valid} = QaStory.evaluate(scope, session)
+
+      dir = issues_dir(scope.environment)
+      files = File.ls!(dir)
+      login_file = Enum.find(files, &String.contains?(&1, "login_redirect"))
+
+      content = File.read!(Path.join(dir, login_file))
+      assert content =~ "## Severity"
+      assert content =~ "high"
+      assert content =~ "## Description"
+      assert content =~ "invited users"
+      assert content =~ "## Source"
+      assert content =~ "QA Story #{story.id}"
+    end
+
+    test "doesn't overwrite existing issue files", %{
+      scope: scope,
+      session: session,
+      story: story
+    } do
+      write_story_brief(scope.environment, story.id)
+      write_result_with_issues(scope.environment, story.id)
+
+      # Run evaluate to create files
+      assert {:ok, :valid} = QaStory.evaluate(scope, session)
+
+      dir = issues_dir(scope.environment)
+      files = File.ls!(dir)
+      login_file = Enum.find(files, &String.contains?(&1, "login_redirect"))
+      original_content = File.read!(Path.join(dir, login_file))
+
+      # Modify the file
+      File.write!(Path.join(dir, login_file), "MODIFIED")
+
+      # Run evaluate again
+      assert {:ok, :valid} = QaStory.evaluate(scope, session)
+
+      # File should NOT be overwritten
+      assert File.read!(Path.join(dir, login_file)) == "MODIFIED"
+      refute File.read!(Path.join(dir, login_file)) == original_content
     end
   end
 end

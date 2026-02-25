@@ -360,6 +360,123 @@ defmodule CodeMySpec.Documents.Registry do
     - **phx-change="validate"**: Live-validate form inputs and update changeset in assigns.
   """
 
+  @qa_brief_tool """
+  Format:
+  - Use H2 heading
+  - Single line: tool name (web, curl, or script path)
+
+  Content:
+  - Which tool to use for this story's testing
+  - `web` for LiveView pages, `curl` or script path for controller/API routes
+  """
+
+  @qa_brief_auth """
+  Format:
+  - Use H2 heading
+  - Exact commands or instructions the tester copies verbatim
+
+  Content:
+  - Login URL, credentials, headers — whatever the tool needs
+  - Reference auth scripts from the QA plan if applicable
+  - Tester should not need to figure out auth on their own
+  """
+
+  @qa_brief_seeds """
+  Format:
+  - Use H2 heading
+  - Exact commands to run
+
+  Content:
+  - Seed script references (`mix run priv/repo/qa_seeds.exs`)
+  - Any story-specific seed commands beyond the base seeds
+  - Entity IDs or values the tester will need
+  """
+
+  @qa_brief_what_to_test """
+  Format:
+  - Use H2 heading
+  - Bullet list of specific test scenarios
+
+  Content:
+  - Specific URLs to visit
+  - Interactions to perform (click, fill form, submit)
+  - Expected outcomes (what the tester should see)
+  - Map to acceptance criteria from the story
+  """
+
+  @qa_brief_result_path """
+  Format:
+  - Use H2 heading
+  - Single line: file path
+
+  Content:
+  - Where the tester writes the result document
+  """
+
+  @qa_brief_setup_notes """
+  Format:
+  - Use H2 heading
+  - Free-form paragraphs
+
+  Content:
+  - Additional context, prerequisites, known issues
+  """
+
+  @qa_result_status """
+  Format:
+  - Use H2 heading
+  - Single line: pass, fail, or partial
+
+  Content:
+  - Overall test result for this story
+  - `pass` — all scenarios passed
+  - `fail` — one or more scenarios failed
+  - `partial` — some scenarios could not be tested (e.g. camera hardware required)
+  """
+
+  @qa_result_scenarios """
+  Format:
+  - Use H2 heading
+  - Use H3 for each scenario tested
+  - Include pass/fail status, steps taken, and observations
+
+  Content:
+  - Each scenario from the brief's "what to test" section
+  - What you did, what you saw, whether it matched expectations
+  - Reference screenshot paths as evidence
+  """
+
+  @qa_result_evidence """
+  Format:
+  - Use H2 heading
+  - Bullet list of screenshot/file paths
+
+  Content:
+  - Paths to screenshots captured during testing
+  - Each entry should note what state it captures
+  """
+
+  @qa_result_issues """
+  Format:
+  - Use H2 heading
+  - Use H3 for each issue with severity in parentheses: `### Issue title (SEVERITY)`
+  - Severity must be one of: CRITICAL, HIGH, MEDIUM, LOW, INFO
+  - If no issues found, write "None" as plain text
+
+  Content:
+  - Each issue gets an H3 heading with title and severity
+  - Body paragraphs describe what's wrong, with enough detail to understand and reproduce
+  - Include specific URLs, inputs, or conditions that trigger the issue
+
+  Examples:
+  - ## Issues
+    ### Login redirect fails for invited users (HIGH)
+    Invited users who click the email link are redirected to /login instead of /accept-invite.
+    Reproduced with user test+invite@example.com.
+    ### Missing validation on empty name (MEDIUM)
+    Submitting the profile form with an empty name field succeeds instead of showing an error.
+  """
+
   @qa_plan_app_overview """
   Format:
   - Use H2 heading
@@ -404,6 +521,43 @@ defmodule CodeMySpec.Documents.Registry do
   Content:
   - Additional context, caveats, known limitations
   - Environment-specific notes
+  """
+
+  @qa_issue_severity """
+  Format:
+  - Use H2 heading
+  - Single line: one of `critical`, `high`, `medium`
+
+  Content:
+  - critical — app crashes, data loss, security vulnerability
+  - high — feature broken, wrong behavior
+  - medium — UX problem, missing validation, edge case failure
+  """
+
+  @qa_issue_description """
+  Format:
+  - Use H2 heading
+  - Paragraphs describing the issue
+
+  Content:
+  - What's wrong, with enough detail to understand and reproduce
+  - Include specific URLs, inputs, or conditions that trigger it
+  """
+
+  @qa_issue_source """
+  Format:
+  - Use H2 heading
+  - Single line: reference to source (e.g., "QA Story 376")
+
+  Content:
+  - Which QA story discovered this issue
+  - Path to the result file for traceability
+  """
+
+  @qa_issue_reproduction """
+  Format:
+  - Use H2 heading
+  - Numbered steps to reproduce
   """
 
   @proposal_contexts """
@@ -655,6 +809,32 @@ defmodule CodeMySpec.Documents.Registry do
         "functions" => @spec_functions
       }
     },
+    "qa_story_brief" => %{
+      overview: "Per-story QA testing brief. Written by the QA planner after reading the story's prompt file and the QA plan. Gives the tester exact instructions — tool, auth, seeds, what to test.",
+      required_sections: ["tool", "auth", "seeds", "what to test", "result path"],
+      optional_sections: ["setup notes"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "tool" => @qa_brief_tool,
+        "auth" => @qa_brief_auth,
+        "seeds" => @qa_brief_seeds,
+        "what to test" => @qa_brief_what_to_test,
+        "result path" => @qa_brief_result_path,
+        "setup notes" => @qa_brief_setup_notes
+      }
+    },
+    "qa_result" => %{
+      overview: "Per-story QA test result. Written by the QA agent after executing the test scenarios from the brief. Records status, scenario outcomes, evidence, and issues found.",
+      required_sections: ["status", "scenarios"],
+      optional_sections: ["evidence", "issues"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "status" => @qa_result_status,
+        "scenarios" => @qa_result_scenarios,
+        "evidence" => @qa_result_evidence,
+        "issues" => @qa_result_issues
+      }
+    },
     "qa_plan" => %{
       overview: "Overall QA testing strategy document. Written by the QA planner after analyzing the running app's routes, authentication, and configuration. Serves as the foundation for per-story QA briefs.",
       required_sections: ["app overview", "tools registry", "seed strategy"],
@@ -665,6 +845,18 @@ defmodule CodeMySpec.Documents.Registry do
         "tools registry" => @qa_plan_tools_registry,
         "seed strategy" => @qa_plan_seed_strategy,
         "notes" => @qa_plan_notes
+      }
+    },
+    "qa_issue" => %{
+      overview: "QA-discovered issue. Only medium+ severity issues get standalone files in .code_my_spec/issues/.",
+      required_sections: ["severity", "description"],
+      optional_sections: ["source", "reproduction"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "severity" => @qa_issue_severity,
+        "description" => @qa_issue_description,
+        "source" => @qa_issue_source,
+        "reproduction" => @qa_issue_reproduction
       }
     },
     "architecture_proposal" => %{
