@@ -158,8 +158,11 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         end
 
       _ ->
+        screenshot_dir = Path.join([Paths.qa_dir(), to_string(story_id), "screenshots"])
+
         {:missing,
          "Brief validated. Now execute the test plan from the brief and write the result to `#{path}`. " <>
+           "Save screenshots to `#{screenshot_dir}/`. " <>
            "Stop the session when done.\n\n## Result Format\n\n" <>
            result_spec}
     end
@@ -263,7 +266,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     - Navigate the feature and capture a screenshot at each key state (initial load, after interactions, success/error states)
     - After the scripted scenarios, explore freely: try unexpected inputs, edge cases, empty states, and anything that feels off
-    - Screenshots are evidence — save them alongside the result
+    - Save all screenshots to `.code_my_spec/qa/#{story.id}/screenshots/` — they are evidence and must be committed
     """
   end
 

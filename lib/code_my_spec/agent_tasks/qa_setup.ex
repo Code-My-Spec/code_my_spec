@@ -238,15 +238,22 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     2. Check for seed files (`priv/repo/seeds.exs`)
     3. Identify context functions for creating users, accounts, and domain entities
 
-    ### Step 3: Create Scripts
+    ### Step 3: Write Seed Scripts (`.exs` only — no bash)
 
-    1. Write `.exs` seed scripts in `#{@seeds_dir}/` (prefixed with `qa_`) for test data
-    2. Create `#{@scripts_dir}/` directory for shell scripts
-    3. Write `authenticated_curl.sh` — wraps curl with login/cookie/token handling
-    4. Make `.sh` scripts `chmod +x`
-    5. Test that scripts work against the running app
+    1. Write `.exs` seed scripts in `#{@seeds_dir}/` (prefixed with `qa_`)
+    2. Seeds MUST be `.exs` files run via `mix run` — NEVER bash scripts
+       A bash script that calls `mix run` multiple times boots the BEAM each time,
+       is extremely slow, and can crash the running server
+    3. Test that `mix run #{@seeds_dir}/qa_seeds.exs` works against the running app
 
-    ### Step 4: Write the QA Plan
+    ### Step 4: Write Auth Scripts (`.sh`)
+
+    1. Create `#{@scripts_dir}/` directory for shell scripts
+    2. Write `authenticated_curl.sh` — wraps curl with login/cookie/token handling
+    3. Make `.sh` scripts `chmod +x`
+    4. Shell scripts are ONLY for HTTP auth helpers (curl wrappers), never for seeding data
+
+    ### Step 5: Write the QA Plan
 
     Write `#{Paths.qa_plan()}` following the document specification above. Include:
     - **App Overview**: tech stack, auth mechanism, port/URL, key routes
