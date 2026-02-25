@@ -40,6 +40,18 @@ defmodule CodeMySpec.Transcripts.TaskIdentifier do
           :none -> nil
         end
 
+      %{"type" => "tool_result", "content" => content} when is_binary(content) ->
+        case TaskMarker.extract(content) do
+          {:ok, _} = result -> result
+          :none -> nil
+        end
+
+      %{"type" => "tool_result", "content" => content} when is_list(content) ->
+        case extract_from_blocks(content) do
+          :none -> nil
+          result -> result
+        end
+
       _ ->
         nil
     end)
