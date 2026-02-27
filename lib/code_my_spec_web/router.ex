@@ -103,12 +103,6 @@ defmodule CodeMySpecWeb.Router do
     get "/me", UserController, :me
     get "/projects", ProjectController, :index
 
-    post "/project-coordinator/sync-requirements",
-         ProjectCoordinatorController,
-         :sync_requirements
-
-    get "/project-coordinator/next-actions", ProjectCoordinatorController, :next_actions
-
     resources "/stories", StoriesController, except: [:new, :edit] do
       post "/set-component", StoriesController, :set_component
       post "/clear-component", StoriesController, :clear_component
