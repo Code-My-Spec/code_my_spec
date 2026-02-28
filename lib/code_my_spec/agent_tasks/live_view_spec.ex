@@ -21,6 +21,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -30,7 +31,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
   def command(scope, session, _opts \\ []) do
     %{component: component} = session
 
-    with {:ok, rules} <- get_design_rules(component),
+    with {:ok, rules} <- get_design_rules(scope, component),
          {:ok, prompt} <- build_spec_prompt(scope, session, rules) do
       {:ok, TaskMarker.build("LiveViewSpec", component.module_name) <> "\n\n" <> prompt}
     end
@@ -64,13 +65,17 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
   # Private functions
 
-  defp get_design_rules(%{type: nil}), do: {:error, :invalid_component_type}
-  defp get_design_rules(%{type: ""}), do: {:error, :invalid_component_type}
+  defp get_design_rules(_scope, %{type: nil}), do: {:error, :invalid_component_type}
+  defp get_design_rules(_scope, %{type: ""}), do: {:error, :invalid_component_type}
 
-  defp get_design_rules(component) do
-    Rules.find_matching_rules(component.type, "design")
+  defp get_design_rules(scope, component) do
+    Rules.find_matching_rules(component.type, "design", scope.environment.cwd)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

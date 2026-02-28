@@ -11,6 +11,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -73,12 +74,16 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
   # Private functions - command
 
-  defp get_test_rules(_scope, component) do
+  defp get_test_rules(scope, component) do
     component_type = component.type
 
-    Rules.find_matching_rules(component_type, "test")
+    Rules.find_matching_rules(component_type, "test", scope.environment.cwd)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

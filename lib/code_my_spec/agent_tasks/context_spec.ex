@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -98,10 +99,14 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
   # Private functions
 
-  defp get_design_rules(_scope) do
-    rules = Rules.find_matching_rules("context", "design")
+  defp get_design_rules(scope) do
+    rules = Rules.find_matching_rules("context", "design", scope.environment.cwd)
     {:ok, rules}
   end
 

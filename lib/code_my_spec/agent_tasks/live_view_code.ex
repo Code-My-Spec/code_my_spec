@@ -17,6 +17,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.{Rules, Stories, Utils}
@@ -36,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
   def command(scope, session, _opts \\ []) do
     %{component: component, project: project} = session
 
-    with {:ok, rules} <- get_implementation_rules(component) do
+    with {:ok, rules} <- get_implementation_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
       bdd_spec_files = get_bdd_spec_files(scope, component)
 
@@ -84,6 +85,10 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
     end
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
   # Private functions - BDD specs
 
   defp get_bdd_spec_files(scope, component) do
@@ -129,8 +134,8 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
 
   # Private functions - Rules and prompt building
 
-  defp get_implementation_rules(component) do
-    Rules.find_matching_rules(component.type, "code")
+  defp get_implementation_rules(scope, component) do
+    Rules.find_matching_rules(component.type, "code", scope.environment.cwd)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

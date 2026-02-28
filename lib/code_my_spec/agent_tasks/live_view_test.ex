@@ -15,6 +15,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -23,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   def command(scope, session, _opts \\ []) do
     %{component: component} = session
 
-    with {:ok, test_rules} <- get_test_rules(component) do
+    with {:ok, test_rules} <- get_test_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
       {:ok, prompt} = build_test_prompt(scope, session, test_rules, similar_components)
       {:ok, TaskMarker.build("LiveViewTest", component.module_name) <> "\n\n" <> prompt}
@@ -51,10 +52,14 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
   # Private functions
 
-  defp get_test_rules(component) do
-    Rules.find_matching_rules(component.type, "test")
+  defp get_test_rules(scope, component) do
+    Rules.find_matching_rules(component.type, "test", scope.environment.cwd)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

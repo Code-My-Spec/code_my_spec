@@ -21,6 +21,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -34,7 +35,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
   def command(scope, session, _opts \\ []) do
     %{component: component} = session
 
-    with {:ok, rules} <- get_design_rules(),
+    with {:ok, rules} <- get_design_rules(scope),
          similar <- Components.list_similar_components(scope, component),
          {:ok, prompt} <- build_spec_prompt(session, rules, similar) do
       {:ok, TaskMarker.build("LiveContextSpec", component.module_name) <> "\n\n" <> prompt}
@@ -89,10 +90,14 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     end
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
   # Private functions
 
-  defp get_design_rules do
-    rules = Rules.find_matching_rules("live_context", "design")
+  defp get_design_rules(scope) do
+    rules = Rules.find_matching_rules("live_context", "design", scope.environment.cwd)
     {:ok, rules}
   end
 

@@ -13,6 +13,7 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Stories
@@ -87,6 +88,10 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
 
       {:ok, :invalid, feedback}
     end
+  end
+
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
   end
 
   # Private functions - Data extraction

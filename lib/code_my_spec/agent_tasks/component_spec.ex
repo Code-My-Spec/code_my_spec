@@ -15,6 +15,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
+  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -64,6 +65,10 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     end
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
   defp evaluate_component(scope, component, project) do
     component = ComponentRepository.get_component(scope, component.id)
 
@@ -91,10 +96,10 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
 
   # Private functions
 
-  defp get_design_rules(_scope, component) do
+  defp get_design_rules(scope, component) do
     component_type = component.type
 
-    Rules.find_matching_rules(component_type, "design")
+    Rules.find_matching_rules(component_type, "design", scope.environment.cwd)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

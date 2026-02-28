@@ -3,9 +3,18 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
   Finds the next actionable requirement for a project by recursively
   descending: project → stories → components → dependencies.
 
-  Returns the leaf `%Requirement{}` that has a `satisfied_by` task module,
-  or `:complete` when all requirements are satisfied (or nothing is dispatchable).
+  Uses the `scope` field on requirements to control descent:
+  - `:local` — return this requirement immediately
+  - `:children` — descend into child entities in parallel (context → child components)
+  - `:dependencies` — descend into serial dependency chain (project → stories, story → component tree, component → deps)
+
+  Both `:children` and `:dependencies` return an error when descent finds nothing actionable.
+
+  Expects all requirements to already be synced to the database. Does not
+  fabricate virtual requirements from definitions.
   """
+
+  require Logger
 
   alias CodeMySpec.Components
   alias CodeMySpec.ProjectCoordinator
@@ -16,81 +25,140 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Find the next actionable requirement for a project.
+  Find the next actionable requirement for an entity.
 
-  Recursively descends: project → stories → components → dependencies.
-  Returns `{:ok, %Requirement{}}` with a `satisfied_by` task module, or `:complete`.
+  Recursively descends based on requirement scope:
+  - `:local` requirements are returned immediately
+  - `:children` requirements descend into child entities (parallel — agent decides order)
+  - `:dependencies` requirements descend into serial dependency chains (one at a time)
+
+  Returns `{:ok, %Requirement{}}`, `:complete`, or `{:error, reason}`.
   """
-  @spec call(Scope.t(), struct()) :: {:ok, Requirement.t()} | :complete
+  @spec call(Scope.t(), struct()) :: {:ok, Requirement.t()} | :complete | {:error, String.t()}
   def call(%Scope{} = scope, entity) do
     entity = ensure_requirements_loaded(entity)
+    entity_label = entity_label(entity)
 
-    entity.requirements
-    |> find_stuck(entity)
-    |> resolve(scope)
+    case entity.requirements |> find_stuck(entity) |> resolve(scope) do
+      {:ok, req} = result ->
+        Logger.info("[NextActionable] #{entity_label} → stuck on #{req.name} (scope: #{req.scope}, task: #{inspect(req.satisfied_by)})")
+        result
+
+      :complete ->
+        Logger.info("[NextActionable] #{entity_label} → complete")
+        :complete
+
+      {:error, reason} = error ->
+        Logger.info("[NextActionable] #{entity_label} → error: #{reason}")
+        error
+    end
   end
+
+  # ----------------------------------------------------------------
+  # Resolve: dispatch on requirement scope
+  # ----------------------------------------------------------------
 
   # Nothing stuck → complete
   defp resolve(nil, _scope), do: :complete
 
-  # Has satisfied_by → actionable, return it
-  defp resolve(%Requirement{satisfied_by: sb} = req, _scope) when not is_nil(sb) do
+  # :local — return immediately regardless of satisfied_by
+  defp resolve(%Requirement{scope: :local} = req, _scope) do
     {:ok, req}
   end
 
-  # Project requirement, no satisfied_by → descend into stories
-  defp resolve(%Requirement{project_id: pid} = _req, scope) when not is_nil(pid) do
-    stories = load_stories(scope)
+  # :children — validate children have work, return PARENT requirement
+  # The execution layer (Dispatch) orchestrates children via ProjectCoordinator
+  defp resolve(%Requirement{scope: :children} = req, scope) do
+    case descend_children(req, scope) do
+      {:ok, _} ->
+        {:ok, req}
 
-    Enum.find_value(stories, :complete, fn story ->
-      case call(scope, story) do
-        {:ok, _req} = found -> found
+      {:error, _} = error ->
+        error
+
+      :complete ->
+        {:error,
+         "requirement #{req.name} unsatisfied but all children are satisfied"}
+    end
+  end
+
+  # :dependencies — descend into serial dependency chain, error if nothing found
+  defp resolve(%Requirement{scope: :dependencies} = req, scope) do
+    case descend_dependencies(req, scope) do
+      {:ok, _} = found ->
+        found
+
+      {:error, _} = error ->
+        error
+
+      :complete ->
+        {:error,
+         "requirement #{req.name} unsatisfied but all dependencies are satisfied"}
+    end
+  end
+
+  # ----------------------------------------------------------------
+  # Descent: children (parallel — context → child components)
+  # ----------------------------------------------------------------
+
+  # Component → iterate child components (via parent_component_id)
+  defp descend_children(%Requirement{component_id: cid}, scope) when not is_nil(cid) do
+    children = Components.list_child_components(scope, cid)
+
+    Enum.find_value(children, :complete, fn child ->
+      child = ensure_requirements_loaded(child)
+
+      case call(scope, child) do
+        {:ok, _} = found -> found
+        {:error, _} = error -> error
         :complete -> nil
       end
     end)
   end
 
-  # Story requirement, no satisfied_by → descend into components
-  defp resolve(%Requirement{story_id: sid} = _req, scope) when not is_nil(sid) do
+  # ----------------------------------------------------------------
+  # Descent: dependencies (serial — one at a time)
+  # ----------------------------------------------------------------
+
+  # Project → iterate stories in priority order
+  defp descend_dependencies(%Requirement{project_id: pid}, scope) when not is_nil(pid) do
+    stories = load_stories(scope)
+
+    Enum.find_value(stories, :complete, fn story ->
+      case call(scope, story) do
+        {:ok, _} = found -> found
+        {:error, _} = error -> error
+        :complete -> nil
+      end
+    end)
+  end
+
+  # Story → get linked component, walk its dependency tree
+  defp descend_dependencies(%Requirement{story_id: sid}, scope) when not is_nil(sid) do
     story = Stories.get_story!(scope, sid)
-    descend_into_components(scope, story)
-  end
-
-  # Component requirement, no satisfied_by → descend into dependencies
-  defp resolve(%Requirement{component_id: cid} = _req, scope) when not is_nil(cid) do
-    all_components = Components.list_components_with_dependencies(scope)
-    component = Enum.find(all_components, &(&1.id == cid))
-    descend_into_dependencies(scope, component, all_components)
-  end
-
-  # ----------------------------------------------------------------
-  # Descent helpers
-  # ----------------------------------------------------------------
-
-  defp descend_into_components(scope, story) do
     all_components = Components.list_components_with_dependencies(scope)
     component = Enum.find(all_components, &(&1.id == story.component_id))
 
     if is_nil(component) do
       :complete
     else
-      case ProjectCoordinator.find_next_in_chain(component, all_components) do
-        {:ready, focused} ->
-          focused.requirements
-          |> find_stuck(focused)
-          |> resolve(scope)
-
-        {:blocked, _} -> :complete
-        :complete -> :complete
-      end
+      walk_dependency_chain(component, all_components, scope)
     end
   end
 
-  defp descend_into_dependencies(scope, component, all_components) do
+  # Component → walk its own dependency tree
+  defp descend_dependencies(%Requirement{component_id: cid}, scope) when not is_nil(cid) do
+    all_components = Components.list_components_with_dependencies(scope)
+    component = Enum.find(all_components, &(&1.id == cid))
+    walk_dependency_chain(component, all_components, scope)
+  end
+
+  defp walk_dependency_chain(component, all_components, scope) do
     case ProjectCoordinator.find_next_in_chain(component, all_components) do
       {:ready, focused} ->
-        focused.requirements
-        |> find_stuck(focused)
+        focused
+        |> ensure_requirements_loaded()
+        |> then(fn c -> find_stuck(c.requirements, c) end)
         |> resolve(scope)
 
       {:blocked, _} -> :complete
@@ -116,10 +184,7 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
         nil
 
       defn ->
-        # Return the actual Requirement record (not the definition).
-        # If no DB record exists yet, build a virtual one from the definition.
-        Enum.find(requirements, &(&1.name == defn.name)) ||
-          virtual_requirement(defn, entity)
+        Enum.find(requirements, &(&1.name == defn.name))
     end
   end
 
@@ -128,23 +193,6 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
       not MapSet.member?(definition_names, prereq) or
         Map.get(satisfaction_map, prereq, false)
     end)
-  end
-
-  # Build a virtual requirement from a definition when no DB record exists yet.
-  defp virtual_requirement(defn, entity) do
-    base = %Requirement{
-      name: defn.name,
-      artifact_type: defn.artifact_type,
-      description: defn.description,
-      satisfied_by: defn.satisfied_by,
-      satisfied: false
-    }
-
-    case entity do
-      %{__struct__: CodeMySpec.Projects.Project, id: id} -> %{base | project_id: id}
-      %{__struct__: CodeMySpec.Stories.Story, id: id} -> %{base | story_id: id}
-      %{__struct__: CodeMySpec.Components.Component, id: id} -> %{base | component_id: id}
-    end
   end
 
   # ----------------------------------------------------------------
@@ -162,4 +210,9 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
 
   defp ensure_requirements_loaded(%{requirements: reqs} = entity) when is_list(reqs), do: entity
   defp ensure_requirements_loaded(entity), do: Repo.preload(entity, :requirements)
+
+  defp entity_label(%{module_name: name}), do: "component:#{name}"
+  defp entity_label(%{title: title, id: id}), do: "story:##{id} \"#{title}\""
+  defp entity_label(%{name: name}), do: "project:#{name}"
+  defp entity_label(other), do: inspect(other.__struct__)
 end
