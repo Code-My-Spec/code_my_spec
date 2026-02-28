@@ -92,6 +92,9 @@
 ### McpServers
 **module**
 
+### Notifications
+**module**
+
 ### OAuthClient
 **module**
 
@@ -272,6 +275,9 @@
 ### Navigation
 **module**
 
+### NotificationController
+**module**
+
 ### OAuthController
 **module**
 
@@ -305,16 +311,13 @@
 ### ProjectController
 **module**
 
-### ProjectCoordinatorController
-**module**
-
-### ProjectCoordinatorJSON
-**module**
-
 ### ProjectScopeOverride
 **module**
 
 ### Public
+**module**
+
+### PushSubscriptionController
 **module**
 
 ### Registration
@@ -381,6 +384,12 @@
 ## Root Components
 
 ### GetJohns10Token
+**module**
+
+
+## Root Components
+
+### SetStoryComponent
 **module**
 
 

@@ -1,0 +1,37 @@
+# CodeMySpecWeb.ComponentLive
+
+
+## CodeMySpecWeb.ComponentLive (live_context)
+
+_No requirements defined_
+
+
+
+## CodeMySpecWeb.ComponentLive.Form (module)
+
+- [ ] spec_file - Component specification file exists
+- [ ] spec_valid - Component specification is valid
+- [ ] implementation_file - Component implementation file exists
+- [ ] test_file - Component test file exists
+- [ ] test_spec_alignment - Test file implements all spec test assertions
+- [x] tests_passing - Component tests are passing
+
+
+## CodeMySpecWeb.ComponentLive.Index (module)
+
+- [ ] spec_file - Component specification file exists
+- [ ] spec_valid - Component specification is valid
+- [ ] implementation_file - Component implementation file exists
+- [ ] test_file - Component test file exists
+- [ ] test_spec_alignment - Test file implements all spec test assertions
+- [x] tests_passing - Component tests are passing
+
+
+## CodeMySpecWeb.ComponentLive.SimilarComponentsSelector (module)
+
+- [ ] spec_file - Component specification file exists
+- [ ] spec_valid - Component specification is valid
+- [ ] implementation_file - Component implementation file exists
+- [ ] test_file - Component test file exists
+- [ ] test_spec_alignment - Test file implements all spec test assertions
+- [x] tests_passing - Component tests are passing
