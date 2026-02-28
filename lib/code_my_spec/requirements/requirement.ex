@@ -9,10 +9,12 @@ defmodule CodeMySpec.Requirements.Requirement do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias CodeMySpec.Requirements.RequirementDefinition
-  alias CodeMySpec.Requirements.CheckerType
-  alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Requirements.CheckerType
+  alias CodeMySpec.Requirements.RequirementDefinition
+  alias CodeMySpec.Sessions.SessionType
+  alias CodeMySpec.Stories.Story
 
   @type artifact_type ::
           :specification
@@ -22,12 +24,15 @@ defmodule CodeMySpec.Requirements.Requirement do
           | :dependencies
           | :hierarchy
 
+  @type scope :: :local | :children | :dependencies
+
   @type requirement_attrs :: %{
           name: String.t(),
           artifact_type: artifact_type(),
           description: String.t(),
           checker_module: String.t(),
           satisfied_by: String.t() | nil,
+          scope: scope(),
           satisfied: boolean(),
           score: float() | nil,
           checked_at: DateTime.t(),
@@ -41,12 +46,17 @@ defmodule CodeMySpec.Requirements.Requirement do
           description: String.t() | nil,
           checker_module: CheckerType.t() | nil,
           satisfied_by: SessionType.t() | nil,
+          scope: scope(),
           satisfied: boolean(),
           score: float() | nil,
           checked_at: DateTime.t() | nil,
           details: map(),
           component_id: Ecto.UUID.t() | nil,
           component: Component.t() | Ecto.Association.NotLoaded.t(),
+          story_id: integer() | nil,
+          story: Story.t() | Ecto.Association.NotLoaded.t(),
+          project_id: Ecto.UUID.t() | nil,
+          project: Project.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -59,11 +69,14 @@ defmodule CodeMySpec.Requirements.Requirement do
     field :description, :string
     field :checker_module, CheckerType
     field :satisfied_by, SessionType
+    field :scope, Ecto.Enum, values: [:local, :children, :dependencies], default: :local
     field :satisfied, :boolean, default: false
     field :score, :float
     field :checked_at, :utc_datetime
     field :details, :map, default: %{}
     belongs_to :component, Component, type: :binary_id
+    belongs_to :story, Story
+    belongs_to :project, Project, type: :binary_id
 
     timestamps(type: :utc_datetime)
   end
@@ -150,10 +163,10 @@ defmodule CodeMySpec.Requirements.Requirement do
       %Requirement{satisfied: true, score: 1.0, ...}
 
   """
-  @spec from_spec(RequirementDefinition.t(), Component.t()) :: t()
-  def from_spec(%RequirementDefinition{} = requirement_definition, %Component{} = component) do
+  @spec from_spec(RequirementDefinition.t(), Component.t() | Story.t() | Project.t()) :: t()
+  def from_spec(%RequirementDefinition{} = requirement_definition, entity) do
     checker = requirement_definition.checker
-    check_result = checker.check(requirement_definition, component, [])
+    check_result = checker.check(requirement_definition, entity, [])
 
     # Extract score from check result or default based on satisfied
     score =
@@ -166,18 +179,24 @@ defmodule CodeMySpec.Requirements.Requirement do
     threshold = requirement_definition.threshold
     satisfied = score >= threshold
 
-    %__MODULE__{
+    base = %__MODULE__{
       name: requirement_definition.name,
       artifact_type: requirement_definition.artifact_type,
       description: requirement_definition.description,
       checker_module: requirement_definition.checker,
       satisfied_by: requirement_definition.satisfied_by,
+      scope: requirement_definition.scope,
       satisfied: satisfied,
       score: score,
       checked_at: DateTime.utc_now(),
-      details: check_result.details,
-      component_id: component.id
+      details: check_result.details
     }
+
+    case entity do
+      %Component{id: id} -> %{base | component_id: id}
+      %Story{id: id} -> %{base | story_id: id}
+      %Project{id: id} -> %{base | project_id: id}
+    end
   end
 
   @doc """
@@ -194,11 +213,14 @@ defmodule CodeMySpec.Requirements.Requirement do
       :description,
       :checker_module,
       :satisfied_by,
+      :scope,
       :satisfied,
       :score,
       :checked_at,
       :details,
-      :component_id
+      :component_id,
+      :story_id,
+      :project_id
     ])
     |> validate_required([:name, :artifact_type, :description, :checker_module, :satisfied])
     |> validate_score()

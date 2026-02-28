@@ -1,10 +1,16 @@
 defmodule CodeMySpec.Requirements.RequirementsRepository do
+  @moduledoc """
+  Database operations for requirements across components, stories, and projects.
+  """
+
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Requirement
+  alias CodeMySpec.Stories.Story
+  alias CodeMySpec.Users.Scope
 
   @doc """
   Clears all requirements for the entire project.
@@ -16,8 +22,24 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
       |> where([c], c.project_id == ^project_id)
       |> select([c], c.id)
 
+    # Clear component requirements
     Requirement
     |> where([r], r.component_id in subquery(component_ids))
+    |> Repo.delete_all()
+
+    # Clear story requirements for stories in this project
+    story_ids =
+      Story
+      |> where([s], s.project_id == ^project_id)
+      |> select([s], s.id)
+
+    Requirement
+    |> where([r], r.story_id in subquery(story_ids))
+    |> Repo.delete_all()
+
+    # Clear project-level requirements
+    Requirement
+    |> where([r], r.project_id == ^project_id)
     |> Repo.delete_all()
   end
 
@@ -29,11 +51,35 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
       |> Requirement.changeset(attrs)
       |> Ecto.Changeset.put_assoc(:component, component)
 
-    if Keyword.get(opts, :persist, true) do
-      Repo.insert(changeset)
-    else
-      Ecto.Changeset.apply_action(changeset, :insert)
-    end
+    persist_or_apply(changeset, opts)
+  end
+
+  @spec create_story_requirement(
+          Scope.t(),
+          Story.t(),
+          Requirement.requirement_attrs(),
+          keyword()
+        ) :: {:ok, Requirement.t()} | {:error, Ecto.Changeset.t()}
+  def create_story_requirement(%Scope{}, %Story{} = story, attrs, opts \\ []) do
+    changeset =
+      %Requirement{}
+      |> Requirement.changeset(Map.put(attrs, :story_id, story.id))
+
+    persist_or_apply(changeset, opts)
+  end
+
+  @spec create_project_requirement(
+          Scope.t(),
+          Project.t(),
+          Requirement.requirement_attrs(),
+          keyword()
+        ) :: {:ok, Requirement.t()} | {:error, Ecto.Changeset.t()}
+  def create_project_requirement(%Scope{}, %Project{} = project, attrs, opts \\ []) do
+    changeset =
+      %Requirement{}
+      |> Requirement.changeset(Map.put(attrs, :project_id, project.id))
+
+    persist_or_apply(changeset, opts)
   end
 
   @spec update_requirement(Scope.t(), Requirement.t(), Requirement.requirement_attrs()) ::
@@ -55,5 +101,35 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
     component
     |> Map.put(:outgoing_dependencies, [])
     |> Map.put(:incoming_dependencies, [])
+  end
+
+  @spec clear_story_requirements(Scope.t(), Story.t(), keyword()) :: Story.t()
+  def clear_story_requirements(%Scope{}, %Story{} = story, opts) do
+    if Keyword.get(opts, :persist, false) do
+      Requirement
+      |> where([r], r.story_id == ^story.id)
+      |> Repo.delete_all()
+    end
+
+    story
+  end
+
+  @spec clear_project_requirements(Scope.t(), Project.t(), keyword()) :: Project.t()
+  def clear_project_requirements(%Scope{}, %Project{} = project, opts) do
+    if Keyword.get(opts, :persist, false) do
+      Requirement
+      |> where([r], r.project_id == ^project.id)
+      |> Repo.delete_all()
+    end
+
+    project
+  end
+
+  defp persist_or_apply(changeset, opts) do
+    if Keyword.get(opts, :persist, true) do
+      Repo.insert(changeset)
+    else
+      Ecto.Changeset.apply_action(changeset, :insert)
+    end
   end
 end

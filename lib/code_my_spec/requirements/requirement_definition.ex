@@ -20,6 +20,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           | :dependencies
           | :hierarchy
 
+  @type scope :: :local | :children | :dependencies
+
   @type t :: %__MODULE__{
           name: String.t(),
           checker: module(),
@@ -27,7 +29,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           artifact_type: artifact_type(),
           description: String.t(),
           threshold: float(),
-          config: map()
+          config: map(),
+          prerequisites: [String.t()],
+          scope: scope()
         }
 
   @artifact_types [
@@ -48,6 +52,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     field :description, :string
     field :threshold, :float, default: 1.0
     field :config, :map, default: %{}
+    field :prerequisites, {:array, :string}, default: []
+    field :scope, Ecto.Enum, values: [:local, :children, :dependencies], default: :local
   end
 
   @doc """
@@ -100,7 +106,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :artifact_type,
       :description,
       :threshold,
-      :config
+      :config,
+      :prerequisites,
+      :scope
     ])
     |> validate_required([
       :name,

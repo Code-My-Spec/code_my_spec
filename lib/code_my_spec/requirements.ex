@@ -5,13 +5,20 @@ defmodule CodeMySpec.Requirements do
   Provides two modes of checking requirements:
   - From definitions: Runs checkers to compute satisfaction status
   - From persisted requirements: Filters based on already-computed satisfaction
+
+  Supports requirements at three levels:
+  - Component: spec → tests → code → tests passing
+  - Story: component linked → BDD specs → BDD specs passing → QA
+  - Project: technical strategy → architecture → all stories → project QA
   """
 
   require Logger
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Components.Registry
+  alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.{Requirement, RequirementDefinition, RequirementsRepository}
+  alias CodeMySpec.Stories.Story
 
   @doc """
   Check artifact requirements with Registry fallback.
@@ -28,7 +35,7 @@ defmodule CodeMySpec.Requirements do
          ) do
       [] ->
         fallback =
-          Registry.get_requirements_for_type(component.type)
+          RequirementsRegistry.get_requirements_for_type(component.type)
           |> Enum.filter(&(&1.artifact_type == artifact_type))
           |> then(&check_requirements(scope, component, &1, []))
 
@@ -49,6 +56,60 @@ defmodule CodeMySpec.Requirements do
   defdelegate clear_all_project_requirements(scope), to: RequirementsRepository
   defdelegate clear_requirements(scope, component, opts \\ []), to: RequirementsRepository
   defdelegate create_requirement(scope, component, attrs, opts \\ []), to: RequirementsRepository
+
+  defdelegate create_story_requirement(scope, story, attrs, opts \\ []),
+    to: RequirementsRepository
+
+  defdelegate create_project_requirement(scope, project, attrs, opts \\ []),
+    to: RequirementsRepository
+
+  defdelegate clear_story_requirements(scope, story, opts), to: RequirementsRepository
+  defdelegate clear_project_requirements(scope, project, opts), to: RequirementsRepository
+
+  @doc """
+  Returns actionable requirement definitions for an entity, grouped by `satisfied_by` module.
+
+  Works for any entity recognized by `RequirementsRegistry.get_requirements/1`:
+  - `%Component{}` — component-level requirements
+  - `%Story{}` — story-level requirements
+  - `%Project{}` — project-level requirements
+
+  A definition is actionable when:
+  - Its corresponding requirement is not yet satisfied (or doesn't exist yet)
+  - It has a non-nil `satisfied_by` (meta requirements like `dependencies_satisfied` are excluded)
+  - All prerequisites are met (satisfied or vacuously met — i.e., not a requirement for this type)
+
+  Returns a map of `%{task_module => [RequirementDefinition.t()]}`.
+  """
+  @spec next_actionable(any(), Component.t() | Story.t() | Project.t()) :: %{
+          module() => [RequirementDefinition.t()]
+        }
+  def next_actionable(_scope, entity) do
+    definitions = RequirementsRegistry.get_requirements(entity)
+    definition_names = MapSet.new(definitions, & &1.name)
+    requirements = entity.requirements || []
+    satisfaction_map = Map.new(requirements, &{&1.name, &1.satisfied})
+
+    definitions
+    |> Enum.filter(fn defn ->
+      not Map.get(satisfaction_map, defn.name, false) and
+        defn.satisfied_by != nil and
+        prerequisites_met?(defn.prerequisites, satisfaction_map, definition_names)
+    end)
+    |> Enum.group_by(& &1.satisfied_by)
+  end
+
+  defp prerequisites_met?(prerequisites, satisfaction_map, definition_names) do
+    Enum.all?(prerequisites, fn prereq ->
+      if MapSet.member?(definition_names, prereq) do
+        # This type has this requirement — must be satisfied
+        Map.get(satisfaction_map, prereq, false)
+      else
+        # Not a requirement for this entity type → vacuously met
+        true
+      end
+    end)
+  end
 
   @doc """
   Checks requirements by either running checkers or filtering persisted records.
@@ -84,24 +145,24 @@ defmodule CodeMySpec.Requirements do
     * `:artifact_types` - list of artifact types to filter by (if empty, includes all)
 
   """
-  @spec check_requirements(any(), Component.t(), [RequirementDefinition.t()], keyword()) :: [
+  @spec check_requirements(any(), term(), [RequirementDefinition.t()], keyword()) :: [
           map()
         ]
-  @spec check_requirements(any(), Component.t(), [Requirement.t()], keyword()) :: [
+  @spec check_requirements(any(), term(), [Requirement.t()], keyword()) :: [
           Requirement.t()
         ]
-  def check_requirements(scope, component, requirements_or_definitions, opts)
+  def check_requirements(scope, entity, requirements_or_definitions, opts)
 
-  def check_requirements(scope, component, [%RequirementDefinition{} | _] = definitions, opts) do
+  def check_requirements(scope, entity, [%RequirementDefinition{} | _] = definitions, opts) do
     Enum.map(definitions, fn requirement_definition ->
       checker = requirement_definition.checker
-      checker.check(scope, requirement_definition, component, opts)
+      checker.check(scope, requirement_definition, entity, opts)
     end)
   end
 
-  def check_requirements(_scope, _component, [] = _empty, _opts), do: []
+  def check_requirements(_scope, _entity, [] = _empty, _opts), do: []
 
-  def check_requirements(_scope, _component, [%Requirement{} | _] = requirements, opts) do
+  def check_requirements(_scope, _entity, [%Requirement{} | _] = requirements, opts) do
     include_types = Keyword.get(opts, :include, [])
     exclude_types = Keyword.get(opts, :exclude, [])
     artifact_types = Keyword.get(opts, :artifact_types, [])

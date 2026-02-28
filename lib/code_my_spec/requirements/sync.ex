@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Requirements.Sync do
   @moduledoc """
-  Synchronizes requirements for components.
+  Synchronizes requirements for components, stories, and projects.
 
   Always performs a full recalculation of all requirements on every sync.
   File existence checks are cheap, and dependency/hierarchy checks are
@@ -15,12 +15,14 @@ defmodule CodeMySpec.Requirements.Sync do
     Component,
     ComponentStatus,
     DependencyTree,
-    HierarchicalTree,
-    Registry
+    HierarchicalTree
   }
 
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.{Requirements, Utils}
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Tests.TestResult
   alias CodeMySpec.Users.Scope
 
@@ -99,6 +101,9 @@ defmodule CodeMySpec.Requirements.Sync do
     |> DependencyTree.build()
     |> HierarchicalTree.enrich()
     |> Enum.map(&check_dependency_requirements(&1, scope, opts))
+    # Re-enrich so nested child_components reflect the full requirement set
+    # (the first enrich() captures children before dependency requirements are added)
+    |> HierarchicalTree.enrich()
     |> Enum.sort_by(& &1.name)
   end
 
@@ -189,11 +194,55 @@ defmodule CodeMySpec.Requirements.Sync do
   end
 
   @doc """
+  Synchronizes requirements for all stories in the project.
+
+  Clears and recalculates all story-level requirements.
+  """
+  @spec sync_story_requirements([Story.t()], Scope.t(), keyword()) :: [Story.t()]
+  def sync_story_requirements(stories, scope, opts \\ []) do
+    opts = Keyword.put(opts, :persist, true)
+    definitions = RequirementsRegistry.get_story_requirements()
+
+    stories
+    |> Enum.map(fn story ->
+      Requirements.clear_story_requirements(scope, story, opts)
+
+      requirements =
+        Requirements.check_requirements(scope, story, definitions, opts)
+        |> Enum.map(&create_story_requirement(scope, story, &1, opts))
+        |> Enum.reject(&is_nil/1)
+
+      %{story | requirements: requirements}
+    end)
+  end
+
+  @doc """
+  Synchronizes requirements for the project itself.
+
+  Clears and recalculates all project-level requirements.
+  """
+  @spec sync_project_requirements(Scope.t(), keyword()) :: Project.t()
+  def sync_project_requirements(scope, opts \\ []) do
+    opts = Keyword.put(opts, :persist, true)
+    project = scope.active_project
+    definitions = RequirementsRegistry.get_project_requirements()
+
+    Requirements.clear_project_requirements(scope, project, opts)
+
+    requirements =
+      Requirements.check_requirements(scope, project, definitions, opts)
+      |> Enum.map(&create_project_requirement(scope, project, &1, opts))
+      |> Enum.reject(&is_nil/1)
+
+    %{project | requirements: requirements}
+  end
+
+  @doc """
   Sorts requirements according to their order in the registry type definition.
   """
   @spec sort_requirements_by_registry_order([Requirement.t()], String.t()) :: [Requirement.t()]
   def sort_requirements_by_registry_order(requirements, component_type) do
-    registry_requirements = Registry.get_requirements_for_type(component_type)
+    registry_requirements = RequirementsRegistry.get_requirements_for_type(component_type)
 
     requirement_order =
       registry_requirements
@@ -203,5 +252,35 @@ defmodule CodeMySpec.Requirements.Sync do
     Enum.sort_by(requirements, fn requirement ->
       Map.get(requirement_order, requirement.name, 999)
     end)
+  end
+
+  # --- Private: Story/Project requirement creation ---
+
+  defp create_story_requirement(scope, story, requirement_attrs, opts) do
+    case Requirements.create_story_requirement(scope, story, requirement_attrs, opts) do
+      {:ok, requirement} ->
+        requirement
+
+      {:error, changeset} ->
+        Logger.error(
+          "[RequirementsSync] Failed to create story requirement: #{inspect(changeset.errors)}"
+        )
+
+        nil
+    end
+  end
+
+  defp create_project_requirement(scope, project, requirement_attrs, opts) do
+    case Requirements.create_project_requirement(scope, project, requirement_attrs, opts) do
+      {:ok, requirement} ->
+        requirement
+
+      {:error, changeset} ->
+        Logger.error(
+          "[RequirementsSync] Failed to create project requirement: #{inspect(changeset.errors)}"
+        )
+
+        nil
+    end
   end
 end
