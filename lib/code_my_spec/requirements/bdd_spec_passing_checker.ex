@@ -1,11 +1,16 @@
 defmodule CodeMySpec.Requirements.BddSpecPassingChecker do
   @moduledoc """
   Checks whether BDD specs pass for a story.
+
+  Reads cached spex problems from the Problems table instead of running specs
+  inline. Specs are run in batches at start/stop of implementation and results
+  are persisted as Problems.
   """
 
   @behaviour CodeMySpec.Requirements.CheckerBehaviour
 
   alias CodeMySpec.BddSpecs
+  alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -29,22 +34,22 @@ defmodule CodeMySpec.Requirements.BddSpecPassingChecker do
       if specs == [] do
         {false, %{reason: "No BDD spec files to run for story #{story.id}"}}
       else
-        file_paths = Enum.map(specs, & &1.file_path)
+        spec_file_paths = Enum.map(specs, & &1.file_path) |> MapSet.new()
 
-        case BddSpecs.run_specs(file_paths, project_root: scope.cwd) do
-          {:ok, [], 0} ->
-            {true, %{spec_count: length(specs), all_passing: true}}
+        spex_problems =
+          scope
+          |> Problems.list_project_problems(source: "spex")
+          |> Enum.filter(&MapSet.member?(spec_file_paths, &1.file_path))
 
-          {:ok, failures, _exit_code} ->
-            {false,
-             %{
-               spec_count: length(specs),
-               failure_count: length(failures),
-               failures: Enum.map(failures, &deep_to_map/1)
-             }}
-
-          {:error, reason} ->
-            {false, %{reason: "Failed to run specs: #{inspect(reason)}"}}
+        if spex_problems == [] do
+          {true, %{spec_count: length(specs), all_passing: true}}
+        else
+          {false,
+           %{
+             spec_count: length(specs),
+             failure_count: length(spex_problems),
+             failures: Enum.map(spex_problems, &problem_to_map/1)
+           }}
         end
       end
 
@@ -61,9 +66,12 @@ defmodule CodeMySpec.Requirements.BddSpecPassingChecker do
     }
   end
 
-  # Recursively converts structs to plain maps so Ecto can dump the :map field.
-  defp deep_to_map(%_{} = struct), do: struct |> Map.from_struct() |> deep_to_map()
-  defp deep_to_map(%{} = map), do: Map.new(map, fn {k, v} -> {k, deep_to_map(v)} end)
-  defp deep_to_map(list) when is_list(list), do: Enum.map(list, &deep_to_map/1)
-  defp deep_to_map(other), do: other
+  defp problem_to_map(%{} = problem) do
+    %{
+      file_path: problem.file_path,
+      message: problem.message,
+      severity: problem.severity,
+      line: problem.line
+    }
+  end
 end

@@ -288,6 +288,34 @@ defmodule CodeMySpec.Validation.Pipeline do
   end
 
   @doc """
+  Run ALL project spex in one batch.
+
+  Finds all spex files under `test/spex/`, clears stale spex problems,
+  runs them, and returns the resulting problems. Used at start and stop
+  of implementation to populate the Problems cache.
+  """
+  @spec run_all_spex(Scope.t()) :: {:ok, [Problem.t()]}
+  def run_all_spex(%Scope{} = scope) do
+    project_root = get_project_root(scope)
+
+    if is_nil(project_root) do
+      {:ok, []}
+    else
+      spex_files = Path.wildcard(Path.join(project_root, "test/spex/**/*_spex.exs"))
+
+      if spex_files == [] do
+        Logger.info("[Pipeline] No spex files found, skipping batch run")
+        {:ok, []}
+      else
+        Logger.info("[Pipeline] Batch running #{length(spex_files)} spex files")
+        Problems.clear_problems_for_source(scope, [source: "spex"], :all)
+        {_, problems} = run_spex(spex_files, scope)
+        {:ok, problems}
+      end
+    end
+  end
+
+  @doc """
   Run BDD specs for modified spex files.
   """
   @spec run_spex([Path.t()], Scope.t() | nil) :: {:ok, [Problem.t()]}

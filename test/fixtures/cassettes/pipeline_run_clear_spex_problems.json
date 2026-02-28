@@ -2673,6 +2673,54 @@
       },
       "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
       "recorded_at": "2026-02-27T22:51:33.727669Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_55491.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-28T15:39:30.296450Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_8834.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-02-28T15:57:30.770905Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_85346.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-02-28T15:59:46.933359Z"
     }
   ],
   "ports": []

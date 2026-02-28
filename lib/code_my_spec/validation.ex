@@ -11,10 +11,12 @@ defmodule CodeMySpec.Validation do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Problems.ProblemRenderer
   alias CodeMySpec.ProjectSync.Sync
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Transcripts
   alias CodeMySpec.Transcripts.ClaudeCode.FileExtractor
   alias CodeMySpec.Users.Scope
@@ -90,6 +92,21 @@ defmodule CodeMySpec.Validation do
           else
             pipeline_opts = Keyword.take(opts, [:test_output_file, :compile_output_file])
             Pipeline.run(scope, edited_files, pipeline_opts)
+          end
+
+        # For implementation sessions, batch-run all spex and merge problems
+        {pipeline_problems, edited_files} =
+          if implementation_session?(scope, session_id) do
+            case Pipeline.run_all_spex(scope) do
+              {:ok, spex_problems} ->
+                spex_file_paths = Enum.map(spex_problems, & &1.file_path) |> Enum.uniq()
+                {pipeline_problems ++ spex_problems, Enum.uniq(edited_files ++ spex_file_paths)}
+
+              _ ->
+                {pipeline_problems, edited_files}
+            end
+          else
+            {pipeline_problems, edited_files}
           end
 
         pipeline_ms = System.monotonic_time(:millisecond) - pipeline_start
@@ -185,6 +202,19 @@ defmodule CodeMySpec.Validation do
     end
 
     :ok
+  end
+
+  defp implementation_session?(scope, session_id) do
+    case Sessions.list_sessions(scope) do
+      sessions when is_list(sessions) ->
+        Enum.any?(sessions, fn session ->
+          session.external_conversation_id == session_id and
+            session.type == AgentTasks.StartImplementation
+        end)
+
+      _ ->
+        false
+    end
   end
 
   defp combine_results(pipeline_problems, task_result) do

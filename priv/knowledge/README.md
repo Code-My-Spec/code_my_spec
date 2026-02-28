@@ -18,6 +18,10 @@ Extracted from official documentation — each file lists source URLs at the top
 | BDD specs (Given/When/Then)        | `bdd/spex.md`                             |
 | Bounded context isolation, dep rules | `boundary.md`                             |
 | Browser QA with `web` CLI           | `web-cli.md`                              |
+| AWS S3 buckets, IAM users          | `devops/aws-s3-iam.md`                    |
+| Cloudflare DNS, tunnels, SSL       | `devops/cloudflare-dns-tunnels.md`        |
+| Hetzner server, Docker, Caddy      | `devops/hetzner-docker-deploy.md`         |
+| Deployment scripts, secrets, envs  | `devops/hetzner-docker-deploy.md`         |
 
 ## Target stack
 
@@ -45,5 +49,9 @@ knowledge/
 │   └── syntax.md             # ~H sigil, :for/:if/:let, phx- bindings, change tracking
 ├── bdd/
 │   └── spex.md               # SexySpex DSL, Given/When/Then, context flow, shared givens, mix spex
-└── web-cli.md                # chrismccord/web CLI — shell browser for LLM agents, flags, LiveView support
+├── web-cli.md                # chrismccord/web CLI — shell browser for LLM agents, flags, LiveView support
+└── devops/
+    ├── aws-s3-iam.md          # S3 buckets, IAM users/policies, ExAws config, CLI commands
+    ├── cloudflare-dns-tunnels.md # DNS records, tunnels, SSL/TLS, multi-env routing, Caddy integration
+    └── hetzner-docker-deploy.md # Hetzner provisioning, Docker Compose, Caddy, db backups, secrets, hardening
 ```
