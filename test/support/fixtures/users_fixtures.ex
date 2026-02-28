@@ -68,11 +68,11 @@ defmodule CodeMySpec.UsersFixtures do
     |> Map.put(:active_project, project)
   end
 
-  def full_scope_fixture() do
+  def full_scope_fixture(project_attrs \\ %{}) do
     user = user_fixture()
     account = account_fixture()
     member_fixture(user, account)
-    project = user_scope_fixture(user, account) |> project_fixture()
+    project = user_scope_fixture(user, account) |> project_fixture(project_attrs)
 
     user_scope_fixture(user, account, project)
     |> Map.put(:environment, Environment.new(:local, nil))

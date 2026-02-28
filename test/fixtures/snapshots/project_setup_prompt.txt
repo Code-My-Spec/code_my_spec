@@ -1,28 +1,60 @@
 # Project Setup Status
 
-Progress: 7 of 16 steps complete
+Progress: 6 of 18 steps complete
 
   [x] Authenticated
   [x] Elixir 1.18+
   [x] Phoenix installer
   [x] PostgreSQL
   [x] Phoenix project
+  [ ] Application in web namespace
   [ ] CodeMySpec deps
   [ ] Compilers (boundary + spex)
   [ ] Spex config
   [ ] Test boundaries
+  [ ] Test support namespace
   [x] Project structure
   [ ] Project structure dirs
   [ ] App symlinks
   [ ] AGENTS.md
   [ ] Rules
   [ ] CLAUDE.md
-  [x] CLI config
+  [ ] CLI config
+
+
+## Move Application Module to Web Namespace
+
+The `MathTestProject.Application` module supervises both `MathTestProject.Repo` and
+`MathTestProjectWeb.Endpoint`, creating a boundary violation (MathTestProject depends on
+MathTestProjectWeb). Move it to the web namespace to keep boundaries clean:
+
+1. **Move the file:**
+```bash
+mv lib/math_test_project/application.ex lib/math_test_project_web/application.ex
+```
+
+2. **Rename the module** from `MathTestProject.Application` to `MathTestProjectWeb.Application`
+
+3. **Update `mix.exs`** — change `mod:` in `application/0`:
+```elixir
+def application do
+  [
+    mod: {MathTestProjectWeb.Application, []},
+    ...
+  ]
+end
+```
+
+This prevents MathTestProject from depending on MathTestProjectWeb through the supervision tree.
 
 
 ## Add CodeMySpec Dependencies
 
 The following dependencies are missing:
+  - :credo
+  - :client_utils
+  - :sobelow
+  - :sexy_spex
   - :boundary
 
 Add these dependencies to your `mix.exs` file in the `deps/0` function. Look up the latest versions on hex.pm for each package:
@@ -47,7 +79,6 @@ before `:elixir` runs:
 def project do
   [
     compilers: compilers(Mix.env()),
-    spex: [pattern: "test/spex/**/*_spex.exs"],
     ...
   ]
 end
@@ -93,22 +124,7 @@ defp compilers(_), do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :e
 
 Add the following to your `mix.exs` to enable BDD spec testing:
 
-**1. Add spex pattern to `project/0`:**
-```elixir
-def project do
-  [
-    spex: [pattern: "test/spex/**/*_spex.exs"],
-    ...
-  ]
-end
-```
-
-**2. Add `"test/spex"` to `elixirc_paths(:test)`:**
-```elixir
-defp elixirc_paths(:test), do: ["lib", "test/support", "test/spex"]
-```
-
-**3. Add `spex: :test` to `preferred_envs` in `cli/0`:**
+**1. Add `spex: :test` to `preferred_envs` in `cli/0`:**
 ```elixir
 def cli do
   [
@@ -117,7 +133,7 @@ def cli do
 end
 ```
 
-**4. Add spex alias to `aliases/0`:**
+**2. Add spex alias to `aliases/0`:**
 ```elixir
 defp aliases do
   [
@@ -146,10 +162,10 @@ Replace the path with the location of your local spex checkout.
 Create boundary namespace modules so Boundary can track cross-context calls
 in test and spex files.
 
-**1. Create `test/spex/math_test_project_spex.ex`:**
+**1. Create `test/support/math_test_project_spex.ex`:**
 ```elixir
 defmodule MathTestProjectSpex do
-  use Boundary, top_level?: true, deps: [MathTestProject]
+  use Boundary, top_level?: true, deps: [MathTestProjectTest, MathTestProjectWeb]
 end
 ```
 
@@ -162,6 +178,43 @@ end
 
 These modules declare top-level boundaries for the test and spex namespaces,
 allowing Boundary to verify that test code only depends on the main application.
+
+
+## Move Test Support Modules to MathTestProjectTest Namespace
+
+Phoenix generates `ConnCase`, `DataCase`, etc. under `MathTestProjectWeb` / `MathTestProject`
+namespaces. These must be moved into the `MathTestProjectTest` boundary namespace so
+Boundary can track test dependencies correctly.
+
+**1. Rename `MathTestProjectWeb.ConnCase` → `MathTestProjectTest.ConnCase`** in `test/support/conn_case.ex`:
+```elixir
+defmodule MathTestProjectTest.ConnCase do
+  use ExUnit.CaseTemplate
+  # ... rest of module unchanged
+end
+```
+
+**2. Rename `MathTestProject.DataCase` → `MathTestProjectTest.DataCase`** in `test/support/data_case.ex`:
+```elixir
+defmodule MathTestProjectTest.DataCase do
+  use ExUnit.CaseTemplate
+  # ... rest of module unchanged
+end
+```
+
+**3. Update all test files** that `use` these modules:
+```elixir
+# Before
+use MathTestProjectWeb.ConnCase
+use MathTestProject.DataCase
+
+# After
+use MathTestProjectTest.ConnCase
+use MathTestProjectTest.DataCase
+```
+
+This ensures all test support code lives under the `MathTestProjectTest` boundary
+declared in `test/support/math_test_project_test_boundary.ex`.
 
 
 ## Configure Project Structure
@@ -195,7 +248,7 @@ This creates:
 - `.code_my_spec/tools/` → helper scripts (e.g., `set-story-component`)
 
 Both symlinks stay current with the app version automatically.
-Add them to `.gitignore` (they're machine-specific).
+Commit them to version control — git stores symlink targets portably.
 
 
 ## Generate AGENTS.md
@@ -245,6 +298,41 @@ This creates or appends to `CLAUDE.md` with a managed section containing
 project conventions and pointers to `.code_my_spec/` resources.
 Existing content is preserved — only the managed section is updated.
 This file should be committed to version control.
+
+
+## Initialize CodeMySpec Project Config
+
+The `.code_my_spec/config.yml` file does not exist.
+
+Use the bootstrap API to initialize the project config. The local server
+runs on port 4002 and handles auth and init without interactive CLI commands.
+
+1. **Check auth status** (should already be authenticated from earlier step):
+```bash
+curl -s http://localhost:4002/api/bootstrap/auth/status
+```
+
+2. **List available projects**:
+```bash
+curl -s http://localhost:4002/api/bootstrap/projects
+```
+
+3. **Initialize with a project ID** (ask the user which project to select):
+```bash
+curl -s -X POST http://localhost:4002/api/bootstrap/init   -H "Content-Type: application/json"   -H "X-Working-Dir: $(pwd)"   -d '{"project_id": "<PROJECT_ID>"}'
+```
+
+4. **Add ephemeral files to `.gitignore`**:
+```bash
+cat >> .gitignore << 'GITIGNORE'
+
+# CodeMySpec - ephemeral
+.code_my_spec/internal/
+/diagnostics.jsonl
+GITIGNORE
+```
+
+**Note:** Everything in `.code_my_spec/` except `internal/` should be committed to version control.
 
 
 ## Configure Ignored Components (Optional)

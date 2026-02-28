@@ -2,12 +2,9 @@ defmodule CodeMySpec.Scenarios.TechnicalStrategyTest do
   @moduledoc """
   Scenario replay test for Phase 2: Technical Strategy.
 
-  Replays project setup transcript, then calls TechnicalStrategy.command/3
-  (which writes pre-made decision ADRs server-side), replays the technical
-  strategy transcript, and verifies evaluate passes.
-
-  The command/3 call is important because it writes pre-made decision files
-  to disk before the agent starts — these are NOT in the Claude transcript.
+  Checks out the math_test_project at the post-setup state, then calls
+  TechnicalStrategy.command/3 (which writes pre-made decision ADRs server-side),
+  replays the technical strategy transcript, and verifies evaluate passes.
   """
   use CodeMySpec.DataCase, async: false
 
@@ -18,7 +15,6 @@ defmodule CodeMySpec.Scenarios.TechnicalStrategyTest do
 
   alias CodeMySpec.AgentTasks.TechnicalStrategy
 
-  @prerequisites ["01_project_setup"]
   @phase "02_technical_strategy"
 
   setup do
@@ -26,13 +22,11 @@ defmodule CodeMySpec.Scenarios.TechnicalStrategyTest do
     File.mkdir_p!(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
 
-    project_dir = checkout_scenario_project(tmp_dir)
+    # Checkout at post-setup state (already has project setup applied)
+    project_dir = checkout_scenario_project(tmp_dir, post_setup_ref())
     %{scope: scope, stories: stories} = scenario_base_fixture()
     scope = put_scenario_environment(scope, project_dir)
     session = scenario_session_fixture(scope, TechnicalStrategy)
-
-    # Apply phase 1 filesystem state
-    replay_phases(project_dir, @prerequisites)
 
     # command/3 writes pre-made decision ADRs server-side before the agent runs
     {:ok, _prompt} = TechnicalStrategy.command(scope, session, [])

@@ -3,8 +3,11 @@ defmodule CodeMySpec.Scenarios.ProjectSetupTest do
   Scenario replay test for Phase 1: Project Setup.
 
   Replays a recorded transcript of Claude setting up a Phoenix project
-  with CodeMySpec deps, docs structure, and configuration. Verifies
-  the expected filesystem state after replay.
+  with CodeMySpec deps, .code_my_spec/ structure, and configuration.
+
+  Server-side operations (symlinks, agents.md, rules, claude.md) are
+  triggered via bootstrap API curl calls in the real flow. Since there's
+  no server in tests, we call the install functions directly after replay.
   """
   use CodeMySpec.DataCase, async: false
 
@@ -27,6 +30,9 @@ defmodule CodeMySpec.Scenarios.ProjectSetupTest do
     scope = put_scenario_environment(scope, project_dir)
     session = scenario_session_fixture(scope, ProjectSetup)
 
+    # Simulate bootstrap init API creating config.yml before the agent runs
+    install_cli_config(project_dir)
+
     %{scope: scope, stories: stories, project_dir: project_dir, session: session}
   end
 
@@ -41,7 +47,7 @@ defmodule CodeMySpec.Scenarios.ProjectSetupTest do
     assert mix_content =~ "sobelow"
   end
 
-  test "docs directories created after replay", ctx do
+  test "project structure created after replay", ctx do
     replay_phase(ctx.project_dir, @phase)
 
     assert File.dir?(Path.join(ctx.project_dir, ".code_my_spec"))
@@ -60,12 +66,24 @@ defmodule CodeMySpec.Scenarios.ProjectSetupTest do
   test "test boundary files created after replay", ctx do
     replay_phase(ctx.project_dir, @phase)
 
-    assert File.exists?(Path.join(ctx.project_dir, "test/spex/math_test_project_spex.ex"))
-    assert File.exists?(Path.join(ctx.project_dir, "test/support/test_boundary.ex"))
+    assert File.exists?(Path.join(ctx.project_dir, "test/support/math_test_project_spex.ex"))
+    assert File.exists?(Path.join(ctx.project_dir, "test/support/math_test_project_test_boundary.ex"))
   end
 
-  test "evaluate returns valid after replay", ctx do
+  test "application module moved to web namespace after replay", ctx do
     replay_phase(ctx.project_dir, @phase)
+
+    assert File.exists?(Path.join(ctx.project_dir, "lib/math_test_project_web/application.ex"))
+  end
+
+  test "evaluate returns valid after replay + server-side installs", ctx do
+    replay_phase(ctx.project_dir, @phase)
+
+    # Server-side operations that would be triggered via bootstrap API curls
+    :ok = ProjectSetup.install_app_symlinks(ctx.project_dir)
+    :ok = ProjectSetup.install_agents_md(ctx.project_dir)
+    :ok = ProjectSetup.install_rules(ctx.project_dir)
+    :ok = ProjectSetup.install_claude_md(ctx.project_dir)
 
     assert {:ok, :valid} = ProjectSetup.evaluate(ctx.scope, ctx.session, [])
   end

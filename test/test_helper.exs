@@ -1,4 +1,4 @@
-ExUnit.start(exclude: [:scenario, :e2e])
+ExUnit.start(exclude: [:scenario, :e2e, :pending])
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 
 case System.get_env("LOG_LEVEL") do

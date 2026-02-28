@@ -2,8 +2,11 @@ defmodule CodeMySpec.Scenarios.ArchitectureDesignTest do
   @moduledoc """
   Scenario replay test for Phase 3: Architecture Design.
 
-  Replays prerequisite phases + architecture design transcript, then
-  verifies the proposal file exists with expected structure.
+  Checks out post-setup state, applies tech strategy (command + transcript),
+  then replays architecture design transcript and verifies evaluate passes.
+
+  Requires `03_architecture_design.jsonl` transcript — tests are tagged
+  :pending until it's recorded.
   """
   use CodeMySpec.DataCase, async: false
 
@@ -12,9 +15,8 @@ defmodule CodeMySpec.Scenarios.ArchitectureDesignTest do
   import CodeMySpec.ScenarioFixtures
   import CodeMySpec.Support.ScenarioHelpers
 
-  alias CodeMySpec.AgentTasks.ArchitectureDesign
+  alias CodeMySpec.AgentTasks.{ArchitectureDesign, TechnicalStrategy}
 
-  @prerequisites ["01_project_setup", "02_technical_strategy"]
   @phase "03_architecture_design"
 
   setup do
@@ -22,26 +24,31 @@ defmodule CodeMySpec.Scenarios.ArchitectureDesignTest do
     File.mkdir_p!(tmp_dir)
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
 
-    project_dir = checkout_scenario_project(tmp_dir)
+    # Start from post-setup, apply tech strategy
+    project_dir = checkout_scenario_project(tmp_dir, post_setup_ref())
     %{scope: scope, stories: stories} = scenario_base_fixture()
     scope = put_scenario_environment(scope, project_dir)
+
+    ts_session = scenario_session_fixture(scope, TechnicalStrategy)
+    {:ok, _} = TechnicalStrategy.command(scope, ts_session, [])
+    replay_phase(project_dir, "02_technical_strategy")
+
     session = scenario_session_fixture(scope, ArchitectureDesign)
 
     %{scope: scope, stories: stories, project_dir: project_dir, session: session}
   end
 
-  test "proposal file exists after replay", ctx do
-    replay_phases(ctx.project_dir, @prerequisites)
+  test "architecture files exist after replay", ctx do
     replay_phase(ctx.project_dir, @phase)
 
-    assert File.exists?(Path.join(ctx.project_dir, ".code_my_spec/architecture/proposal.md"))
+    assert File.exists?(Path.join(ctx.project_dir, ".code_my_spec/architecture/overview.md"))
+    assert File.exists?(Path.join(ctx.project_dir, ".code_my_spec/architecture/namespace_hierarchy.md"))
   end
 
-  test "proposal contains component definitions", ctx do
-    replay_phases(ctx.project_dir, @prerequisites)
+  test "evaluate returns valid after replay", ctx do
     replay_phase(ctx.project_dir, @phase)
+    rewrite_proposal_story_ids(ctx.project_dir, ctx.stories)
 
-    proposal = File.read!(Path.join(ctx.project_dir, ".code_my_spec/architecture/proposal.md"))
-    assert proposal =~ "MathTestProject"
+    assert {:ok, :valid} = ArchitectureDesign.evaluate(ctx.scope, ctx.session, [])
   end
 end

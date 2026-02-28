@@ -26,7 +26,9 @@ defmodule CodeMySpec.ScenarioFixtures do
                        "../math_test_project",
                        Path.dirname(Path.dirname(Path.dirname(__DIR__)))
                      )
-  @baseline_ref "f20ac60"
+  # Git refs for each phase boundary in math_test_project
+  @bootstrap_ref "b558f8c"
+  @post_setup_ref "af632ed"
 
   # ============================================================================
   # Story Definitions
@@ -88,23 +90,79 @@ defmodule CodeMySpec.ScenarioFixtures do
   # ============================================================================
 
   @doc """
-  Exports the math_test_project at its pre-setup baseline into target_dir.
+  Exports the math_test_project at the bootstrap (pre-setup) state into target_dir.
 
   Uses `git archive` to get a clean copy without .git metadata.
   Returns the project directory path.
   """
   def checkout_scenario_project(target_dir) do
+    checkout_scenario_project(target_dir, @bootstrap_ref)
+  end
+
+  @doc """
+  Exports the math_test_project at a specific git ref into target_dir.
+
+  Use `checkout_scenario_project/1` for the bootstrap state, or pass a ref
+  like `post_setup_ref()` to start from a later phase.
+  """
+  def checkout_scenario_project(target_dir, ref) do
     project_dir = Path.join(target_dir, "math_test_project")
     File.mkdir_p!(project_dir)
 
     {_, 0} =
       System.cmd(
         "sh",
-        ["-c", "git archive #{@baseline_ref} | tar -x -C #{project_dir}"],
+        ["-c", "git archive #{ref} | tar -x -C #{project_dir}"],
         cd: @math_project_repo
       )
 
     project_dir
+  end
+
+  @doc "Returns the git ref for the post-setup state."
+  def post_setup_ref, do: @post_setup_ref
+
+  # Story IDs recorded in the transcripts — mapped by priority order (1=Addition, 2=Subtraction, 3=History, 4=Clear)
+  @recorded_story_ids [457, 458, 472, 474]
+
+  @doc """
+  Rewrites hard-coded story IDs in proposal.md to match the fixture story IDs.
+
+  The recorded transcript contains story IDs from the original DB. This replaces
+  them with the fixture story IDs, matched by priority order.
+  """
+  def rewrite_proposal_story_ids(project_dir, stories) do
+    proposal_path = Path.join(project_dir, CodeMySpec.Paths.proposal_path())
+
+    if File.exists?(proposal_path) do
+      fixture_ids =
+        [stories.addition, stories.subtraction, stories.history, stories.clear_history]
+        |> Enum.map(& &1.story.id)
+
+      id_map = Enum.zip(@recorded_story_ids, fixture_ids) |> Map.new()
+
+      content = File.read!(proposal_path)
+
+      updated =
+        Enum.reduce(id_map, content, fn {old_id, new_id}, acc ->
+          String.replace(acc, to_string(old_id), to_string(new_id))
+        end)
+
+      File.write!(proposal_path, updated)
+    end
+  end
+
+  @doc """
+  Simulates the bootstrap `init` API creating the initial config.yml.
+
+  In the real flow, `curl POST /api/bootstrap/init` creates this file
+  before the agent edits it. The project_id matches the transcript's
+  hard-coded value so the Edit old_string can find it.
+  """
+  def install_cli_config(project_dir) do
+    config_dir = Path.join(project_dir, ".code_my_spec")
+    File.mkdir_p!(config_dir)
+    File.write!(Path.join(config_dir, "config.yml"), "project_id: d7f466a1-591e-4f36-8319-42633f59411e\n")
   end
 
   # ============================================================================
@@ -119,7 +177,7 @@ defmodule CodeMySpec.ScenarioFixtures do
   Does NOT set cwd/environment — call `put_scenario_environment/2` with a project dir.
   """
   def scenario_base_fixture do
-    scope = full_scope_fixture()
+    scope = full_scope_fixture(%{name: "Math Test Project", module_name: "MathTestProject"})
     stories = create_scenario_stories(scope)
     ensure_authenticated_client_user()
 
@@ -150,7 +208,9 @@ defmodule CodeMySpec.ScenarioFixtures do
   def scenario_session_fixture(scope, task_module, attrs \\ %{}) do
     import CodeMySpec.SessionsFixtures
 
-    session_fixture(scope, Map.merge(%{type: task_module, status: :active}, attrs))
+    session = session_fixture(scope, Map.merge(%{type: task_module, status: :active}, attrs))
+    # Set virtual project field — used by evaluate for app_name resolution
+    %{session | project: scope.active_project}
   end
 
   # ============================================================================
