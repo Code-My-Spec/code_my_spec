@@ -17,7 +17,6 @@ defmodule CodeMySpec.AcceptanceCriteria.Criterion do
           verified_at: DateTime.t() | nil,
           story_id: integer() | nil,
           project_id: Ecto.UUID.t() | nil,
-          account_id: Ecto.UUID.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -27,7 +26,6 @@ defmodule CodeMySpec.AcceptanceCriteria.Criterion do
     field :verified, :boolean, default: false
     field :verified_at, :utc_datetime
     field :project_id, :binary_id
-    field :account_id, :binary_id
 
     belongs_to :story, CodeMySpec.Stories.Story
 
@@ -42,21 +40,19 @@ defmodule CodeMySpec.AcceptanceCriteria.Criterion do
       :verified,
       :verified_at,
       :story_id,
-      :project_id,
-      :account_id
+      :project_id
     ])
     |> validate_required([
       :description,
       :story_id,
-      :project_id,
-      :account_id
+      :project_id
     ])
   end
 
   @doc """
   Changeset for nested forms via cast_assoc.
   story_id is set automatically via the association.
-  project_id and account_id are injected by the story's repository.
+  project_id is injected by the story's repository.
   """
   def nested_changeset(criterion, attrs) do
     criterion
@@ -64,8 +60,7 @@ defmodule CodeMySpec.AcceptanceCriteria.Criterion do
       :description,
       :verified,
       :verified_at,
-      :project_id,
-      :account_id
+      :project_id
     ])
     |> validate_required([:description])
   end

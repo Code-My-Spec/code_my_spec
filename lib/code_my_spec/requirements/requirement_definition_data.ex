@@ -454,7 +454,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Technical strategy decisions file exists",
         prerequisites: [],
-        config: %{path: ".code_my_spec/decisions/"}
+        config: %{path: ".code_my_spec/architecture/decisions.md"}
       })
 
     definition

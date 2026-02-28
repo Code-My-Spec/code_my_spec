@@ -70,7 +70,6 @@ defmodule CodeMySpecWeb.StoriesJSON do
         verified_at: criterion.verified_at,
         story_id: criterion.story_id,
         project_id: criterion.project_id,
-        account_id: criterion.account_id,
         inserted_at: criterion.inserted_at,
         updated_at: criterion.updated_at
       }

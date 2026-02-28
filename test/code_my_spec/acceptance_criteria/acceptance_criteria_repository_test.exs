@@ -126,7 +126,6 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
       assert criterion.description == attrs.description
       assert criterion.story_id == story.id
       assert criterion.project_id == scope.active_project.id
-      assert criterion.account_id == scope.active_account.id
     end
 
     test "returns changeset error for invalid attributes" do
@@ -144,8 +143,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
       assert %{
                description: ["can't be blank"],
                story_id: ["can't be blank"],
-               project_id: ["can't be blank"],
-               account_id: ["can't be blank"]
+               project_id: ["can't be blank"]
              } = errors_on(changeset)
     end
   end
@@ -207,7 +205,6 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
       description: "Test criterion description",
       story_id: story.id,
       project_id: scope.active_project.id,
-      account_id: scope.active_account.id,
       verified: false
     })
   end

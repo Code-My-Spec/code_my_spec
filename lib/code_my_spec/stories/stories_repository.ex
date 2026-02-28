@@ -145,7 +145,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
           scope,
         attrs
       ) do
-    attrs_with_ownership = inject_criteria_ownership(attrs, project_id, account_id)
+    attrs_with_ownership = inject_criteria_ownership(attrs, project_id)
 
     %Story{}
     |> Story.changeset(attrs_with_ownership)
@@ -169,7 +169,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   def update_story(%Scope{} = scope, %Story{} = story, attrs) do
-    attrs_with_ownership = inject_criteria_ownership(attrs, story.project_id, story.account_id)
+    attrs_with_ownership = inject_criteria_ownership(attrs, story.project_id)
 
     story
     |> Story.changeset(attrs_with_ownership)
@@ -311,8 +311,8 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Repo.update()
   end
 
-  # Injects project_id and account_id into criteria attrs before changeset processing
-  defp inject_criteria_ownership(attrs, project_id, account_id) do
+  # Injects project_id into criteria attrs before changeset processing
+  defp inject_criteria_ownership(attrs, project_id) do
     criteria_key =
       if is_map(attrs) && Map.has_key?(attrs, :criteria), do: :criteria, else: "criteria"
 
@@ -323,9 +323,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       criteria when is_list(criteria) ->
         updated_criteria =
           Enum.map(criteria, fn criterion ->
-            criterion
-            |> put_flexible(:project_id, project_id)
-            |> put_flexible(:account_id, account_id)
+            put_flexible(criterion, :project_id, project_id)
           end)
 
         put_flexible(attrs, criteria_key, updated_criteria)
@@ -334,12 +332,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
         # Handle map format from form params like %{"0" => %{...}, "1" => %{...}}
         updated_criteria =
           Enum.into(criteria, %{}, fn {key, criterion} ->
-            updated =
-              criterion
-              |> put_flexible(:project_id, project_id)
-              |> put_flexible(:account_id, account_id)
-
-            {key, updated}
+            {key, put_flexible(criterion, :project_id, project_id)}
           end)
 
         put_flexible(attrs, criteria_key, updated_criteria)

@@ -13,7 +13,6 @@ defmodule CodeMySpec.AcceptanceCriteria.CriterionTest do
       assert changeset.changes.description == "User can log in with email and password"
       assert changeset.changes.story_id == attrs.story_id
       assert changeset.changes.project_id == attrs.project_id
-      assert changeset.changes.account_id == attrs.account_id
     end
 
     test "accepts criterion with verified status" do
@@ -97,15 +96,6 @@ defmodule CodeMySpec.AcceptanceCriteria.CriterionTest do
       assert "can't be blank" in errors_on(changeset).project_id
     end
 
-    test "requires account_id" do
-      attrs = valid_attrs() |> Map.delete(:account_id)
-
-      changeset = Criterion.changeset(%Criterion{}, attrs)
-
-      refute changeset.valid?
-      assert "can't be blank" in errors_on(changeset).account_id
-    end
-
     test "rejects nil description" do
       attrs = valid_attrs(%{description: nil})
 
@@ -142,29 +132,19 @@ defmodule CodeMySpec.AcceptanceCriteria.CriterionTest do
       assert "can't be blank" in errors_on(changeset).project_id
     end
 
-    test "rejects nil account_id" do
-      attrs = valid_attrs(%{account_id: nil})
-
-      changeset = Criterion.changeset(%Criterion{}, attrs)
-
-      refute changeset.valid?
-      assert "can't be blank" in errors_on(changeset).account_id
-    end
   end
 
   # Fixture functions
 
   defp valid_attrs(overrides \\ %{}) do
     story_id = System.unique_integer([:positive])
-    account_id = Ecto.UUID.generate()
     project_id = Ecto.UUID.generate()
 
     Map.merge(
       %{
         description: "User can log in with email and password",
         story_id: story_id,
-        project_id: project_id,
-        account_id: account_id
+        project_id: project_id
       },
       overrides
     )

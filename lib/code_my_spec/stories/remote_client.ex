@@ -117,7 +117,6 @@ defmodule CodeMySpec.Stories.RemoteClient do
         verified_at: parse_datetime(criterion_data["verified_at"]),
         story_id: criterion_data["story_id"],
         project_id: criterion_data["project_id"],
-        account_id: criterion_data["account_id"],
         inserted_at: parse_datetime(criterion_data["inserted_at"]),
         updated_at: parse_datetime(criterion_data["updated_at"])
       }

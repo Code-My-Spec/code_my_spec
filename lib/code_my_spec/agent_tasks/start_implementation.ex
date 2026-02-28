@@ -8,16 +8,17 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   ### command/3
   1. `get_next_actions` → walks project → stories → components → dependencies
   2. `Dispatch.command` → generates prompt (handles :local and :children scope)
-  3. Write status (the dispatched requirement ID), return prompt
+  3. Write status file for tracking, return prompt
 
   Caller (`StartAgentTask`) is responsible for syncing before calling command.
 
   ### evaluate/3
-  1. Read status → reload requirement
-  2. Sync project (requirements may have changed after agent work)
-  3. `Dispatch.evaluate` → check if the dispatched work is complete
-  4. If valid → clear status → sync again → re-dispatch (next requirement)
-  5. If invalid → return feedback
+  1. Sync project (requirements refreshed after agent work)
+  2. Re-walk the graph via `dispatch_or_complete`
+  3. If unsatisfied requirement found → return prompt as feedback
+  4. If all complete → return :valid
+
+  The status file is for observability only — evaluate does not depend on it.
   """
 
   require Logger
@@ -26,7 +27,6 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.ProjectCoordinator.Dispatch
   alias CodeMySpec.ProjectSync.Sync
-  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Requirement
 
   @status_path CodeMySpec.Paths.implementation_status_path()
@@ -45,23 +45,8 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   def evaluate(scope, _session, _opts \\ []) do
     env = scope.environment
 
-    with {:ok, req} <- load_dispatched_requirement(env),
-         {:ok, _} <- sync_project(scope),
-         {:ok, :valid} <- evaluate_requirement(req, scope),
-         :ok <- clear_status(env),
-         {:ok, _} <- sync_project(scope) do
-      # Current task valid — re-sync and dispatch next
+    with {:ok, _} <- sync_project(scope) do
       dispatch_or_complete(env, scope)
-    else
-      {:ok, :invalid, feedback} ->
-        {:ok, :invalid, feedback}
-
-      {:error, :not_found} ->
-        Logger.info("[StartImplementation] Evaluate: no active task")
-        {:ok, :valid}
-
-      {:error, reason} ->
-        {:error, reason}
     end
   rescue
     exception ->
@@ -123,32 +108,20 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   end
 
   # ============================================================================
-  # Evaluate the dispatched requirement
-  # ============================================================================
-
-  defp evaluate_requirement(req, scope) do
-    Dispatch.evaluate(req, scope, %{})
-  end
-
-  # ============================================================================
-  # Status File I/O
+  # Status File I/O (tracking/observability only)
   # ============================================================================
 
   defp write_status(env, %Requirement{} = req) do
-    data = %{requirement_id: req.id}
+    data = %{
+      requirement: req.name,
+      scope: req.scope,
+      component_id: req.component_id,
+      story_id: req.story_id,
+      project_id: req.project_id,
+      dispatched_at: DateTime.utc_now() |> DateTime.to_iso8601()
+    }
+
     :ok = Environments.write_file(env, @status_path, Jason.encode!(data))
-  end
-
-  defp load_dispatched_requirement(env) do
-    case Environments.read_file(env, @status_path) do
-      {:ok, content} ->
-        %{"requirement_id" => req_id} = Jason.decode!(content)
-        req = Repo.get!(Requirement, req_id)
-        {:ok, req}
-
-      {:error, _reason} ->
-        {:error, :not_found}
-    end
   end
 
   defp clear_status(env) do

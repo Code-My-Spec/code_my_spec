@@ -156,7 +156,10 @@ defmodule CodeMySpec.Requirements do
   def check_requirements(scope, entity, [%RequirementDefinition{} | _] = definitions, opts) do
     Enum.map(definitions, fn requirement_definition ->
       checker = requirement_definition.checker
+
       checker.check(scope, requirement_definition, entity, opts)
+      |> Map.put(:scope, requirement_definition.scope)
+      |> Map.put(:satisfied_by, requirement_definition.satisfied_by)
     end)
   end
 

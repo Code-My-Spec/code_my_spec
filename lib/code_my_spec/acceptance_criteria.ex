@@ -55,13 +55,12 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Creates an acceptance criterion for a story.
   """
   def create_criterion(%Scope{} = scope, %Story{} = story, attrs) do
-    true = story.account_id == scope.active_account.id
+    true = story.project_id == scope.active_project.id
 
     attrs =
       attrs
       |> Map.put(:story_id, story.id)
       |> Map.put(:project_id, scope.active_project.id)
-      |> Map.put(:account_id, scope.active_account.id)
 
     with {:ok, criterion = %Criterion{}} <- AcceptanceCriteriaRepository.create_criterion(attrs) do
       broadcast(scope, {:created, criterion})
@@ -73,7 +72,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Updates an acceptance criterion.
   """
   def update_criterion(%Scope{} = scope, %Criterion{} = criterion, attrs) do
-    true = criterion.account_id == scope.active_account.id
+    true = criterion.project_id == scope.active_project.id
 
     with {:ok, criterion = %Criterion{}} <-
            AcceptanceCriteriaRepository.update_criterion(criterion, attrs) do
@@ -86,7 +85,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Deletes an acceptance criterion.
   """
   def delete_criterion(%Scope{} = scope, %Criterion{} = criterion) do
-    true = criterion.account_id == scope.active_account.id
+    true = criterion.project_id == scope.active_project.id
 
     with {:ok, criterion = %Criterion{}} <-
            AcceptanceCriteriaRepository.delete_criterion(criterion) do
@@ -99,7 +98,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Returns an `%Ecto.Changeset{}` for tracking criterion changes.
   """
   def change_criterion(%Scope{} = scope, %Criterion{} = criterion, attrs \\ %{}) do
-    true = criterion.account_id == scope.active_account.id
+    true = criterion.project_id == scope.active_project.id
 
     Criterion.changeset(criterion, attrs)
   end
@@ -108,7 +107,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Marks an acceptance criterion as verified.
   """
   def mark_verified(%Scope{} = scope, %Criterion{} = criterion) do
-    true = criterion.account_id == scope.active_account.id
+    true = criterion.project_id == scope.active_project.id
 
     attrs = %{
       verified: true,
@@ -126,7 +125,7 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Marks an acceptance criterion as not verified.
   """
   def mark_unverified(%Scope{} = scope, %Criterion{} = criterion) do
-    true = criterion.account_id == scope.active_account.id
+    true = criterion.project_id == scope.active_project.id
 
     attrs = %{
       verified: false,
@@ -144,15 +143,14 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Imports acceptance criteria from a list of strings, creating criterion records for each.
   """
   def import_from_strings(%Scope{} = scope, %Story{} = story, strings) when is_list(strings) do
-    true = story.account_id == scope.active_account.id
+    true = story.project_id == scope.active_project.id
 
     criteria =
       Enum.map(strings, fn description ->
         attrs = %{
           description: description,
           story_id: story.id,
-          project_id: scope.active_project.id,
-          account_id: scope.active_account.id
+          project_id: scope.active_project.id
         }
 
         {:ok, criterion} = AcceptanceCriteriaRepository.create_criterion(attrs)

@@ -68,7 +68,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       assert criterion.story_id == story.id
     end
 
-    test "sets project_id and account_id from scope" do
+    test "sets project_id from scope" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
 
@@ -76,7 +76,6 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
       assert {:ok, criterion} = AcceptanceCriteria.create_criterion(scope, story, attrs)
       assert criterion.project_id == scope.active_project.id
-      assert criterion.account_id == scope.active_account.id
     end
 
     test "broadcasts created event on success" do
@@ -127,7 +126,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       assert updated.id == criterion.id
     end
 
-    test "verifies ownership via account_id" do
+    test "verifies ownership via project_id" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
       story = story_fixture(scope)
@@ -179,7 +178,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       assert is_nil(AcceptanceCriteria.get_criterion(scope, criterion.id))
     end
 
-    test "verifies ownership via account_id" do
+    test "verifies ownership via project_id" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
       story = story_fixture(scope)
@@ -370,7 +369,6 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       Enum.each(criteria, fn criterion ->
         assert criterion.story_id == story.id
         assert criterion.project_id == scope.active_project.id
-        assert criterion.account_id == scope.active_account.id
       end)
     end
 

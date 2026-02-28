@@ -113,23 +113,25 @@ end
 
 ## Context Flow
 
-Context is an explicit map that threads state between steps. Each step that takes a `context` parameter receives the current context and must return an updated map.
+Context is an explicit map that threads state between steps. Each step that takes a `context` parameter receives the current context and must return `:ok` or `{:ok, updated_context}`.
 
 ### How Context Flows
 
 1. ExUnit's `setup` or `setup_all` provides the initial context (e.g., `%{conn: conn}`)
 2. `scenario "name", context do` initializes the scenario context from ExUnit
-3. Each step receives context, modifies it with `Map.put/3`, returns the new map
+3. Each step receives context, returns `:ok` (keep unchanged) or `{:ok, new_context}` (update)
 4. The next step receives the updated context
 
 ### Context Rules
 
-| Rule                                    | Example                                     |
-|-----------------------------------------|---------------------------------------------|
-| Return a map to update context          | `Map.put(context, :view, view)`             |
-| Return non-map to keep context unchanged| `:ok` (common in `then_` steps)             |
-| Use `_context` when unused              | `given_ "desc", _context do`                |
-| Omit context when not needed            | `then_ "desc" do assert true end`           |
+| Rule                                    | Example                                            |
+|-----------------------------------------|----------------------------------------------------|
+| Return `{:ok, context}` to update       | `{:ok, Map.put(context, :view, view)}`             |
+| Return `:ok` to keep context unchanged  | `:ok` (common in `then_` steps)                    |
+| Use `_context` when unused              | `given_ "desc", _context do`                       |
+| Omit context when not needed            | `then_ "desc" do assert true end`                  |
+
+**Important:** Returning a bare map will raise `ArgumentError`. Always wrap in `{:ok, map}`.
 
 ### Pattern
 
@@ -137,7 +139,7 @@ Context is an explicit map that threads state between steps. Each step that take
 scenario "user registers successfully", context do
   given_ "the registration page is loaded", context do
     {:ok, view, _html} = live(context.conn, "/users/register")
-    Map.put(context, :view, view)             # returns updated context map
+    {:ok, Map.put(context, :view, view)}      # returns {:ok, updated_context}
   end
 
   when_ "user submits valid credentials", context do
@@ -147,12 +149,12 @@ scenario "user registers successfully", context do
         password: "SecurePass123!"
       })
       |> render_submit()
-    Map.put(context, :result_html, html)      # returns updated context map
+    {:ok, Map.put(context, :result_html, html)} # returns {:ok, updated_context}
   end
 
   then_ "user sees welcome message", context do
     assert render(context.view) =~ "Welcome"
-    :ok                                       # non-map — context unchanged
+    :ok                                       # context unchanged
   end
 end
 ```
@@ -180,7 +182,7 @@ defmodule MyAppSpex.UserRegistrationSpex do
     scenario "user registers with valid data", context do
       given_ "the registration page is loaded", context do
         {:ok, view, _html} = live(context.conn, "/users/register")
-        Map.put(context, :view, view)
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "user fills in and submits the form", context do
@@ -190,7 +192,7 @@ defmodule MyAppSpex.UserRegistrationSpex do
             password: "ValidPassword123!"
           })
           |> render_submit()
-        Map.put(context, :result_html, html)
+        {:ok, Map.put(context, :result_html, html)}
       end
 
       then_ "user sees success confirmation", context do
@@ -202,7 +204,7 @@ defmodule MyAppSpex.UserRegistrationSpex do
     scenario "user sees validation errors for invalid input", context do
       given_ "the registration page is loaded", context do
         {:ok, view, _html} = live(context.conn, "/users/register")
-        Map.put(context, :view, view)
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "user submits invalid data", context do
@@ -212,7 +214,7 @@ defmodule MyAppSpex.UserRegistrationSpex do
             password: "short"
           })
           |> render_submit()
-        Map.put(context, :result_html, html)
+        {:ok, Map.put(context, :result_html, html)}
       end
 
       then_ "user sees error messages", context do
@@ -256,7 +258,7 @@ defmodule MyAppSpex.ResourceApiSpex do
         conn = post(context.conn, "/api/resources", %{
           resource: %{name: "Test Resource"}
         })
-        Map.put(context, :response_conn, conn)
+        {:ok, Map.put(context, :response_conn, conn)}
       end
 
       then_ "API returns created resource", context do
@@ -310,7 +312,7 @@ defmodule MyAppSpex.SharedGivens do
   #     password: "ValidPassword123!"
   #   })
   #   |> Phoenix.LiveViewTest.render_submit()
-  #   {:ok, %{}}
+  #   :ok
   # end
 end
 ```
@@ -330,7 +332,7 @@ defmodule MyAppSpex.DashboardSpex do
       given_ :user_registered          # atom syntax — references shared given
       given_ "user navigates to dashboard", context do
         {:ok, view, _html} = live(context.conn, "/dashboard")
-        Map.put(context, :view, view)
+        {:ok, Map.put(context, :view, view)}
       end
 
       then_ "dashboard content is visible", context do
@@ -459,14 +461,14 @@ given_ "data is set up", context do
   assert result != nil                    # basic assertion
   assert %{id: _} = result               # pattern match assertion
   refute result.archived?                 # negative assertion
-  Map.put(context, :result, result)
+  {:ok, Map.put(context, :result, result)}
 end
 
-when_ "invalid action attempted", context do
+when_ "invalid action attempted", _context do
   assert_raise ArgumentError, ~r/required/, fn ->
     invalid_operation()
   end
-  context
+  :ok
 end
 ```
 
@@ -527,14 +529,14 @@ defmodule MyAppSpex.ThingManagementSpex do
     scenario "user creates a new thing", context do
       given_ "user navigates to the new thing page", context do
         {:ok, view, _html} = live(context.conn, "/things/new")
-        Map.put(context, :view, view)
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "user submits a valid thing", context do
         html = context.view
           |> form("#thing-form", thing: %{name: "My Thing"})
           |> render_submit()
-        Map.put(context, :result_html, html)
+        {:ok, Map.put(context, :result_html, html)}
       end
 
       then_ "user sees the thing was created", context do
@@ -546,14 +548,14 @@ defmodule MyAppSpex.ThingManagementSpex do
     scenario "user sees validation errors", context do
       given_ "user navigates to the new thing page", context do
         {:ok, view, _html} = live(context.conn, "/things/new")
-        Map.put(context, :view, view)
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "user submits without a name", context do
         html = context.view
           |> form("#thing-form", thing: %{name: ""})
           |> render_submit()
-        Map.put(context, :result_html, html)
+        {:ok, Map.put(context, :result_html, html)}
       end
 
       then_ "user sees a validation error", context do
@@ -565,9 +567,7 @@ defmodule MyAppSpex.ThingManagementSpex do
     scenario "user lists existing things", context do
       given_ "user navigates to the things index", context do
         {:ok, view, html} = live(context.conn, "/things")
-        context
-        |> Map.put(:view, view)
-        |> Map.put(:html, html)
+        {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
 
       then_ "user sees the listing page", context do
@@ -585,14 +585,14 @@ defmodule MyAppSpex.ThingManagementSpex do
         |> render_submit()
 
         {:ok, view, _html} = live(context.conn, "/things")
-        Map.put(context, :view, view)
+        {:ok, Map.put(context, :view, view)}
       end
 
       when_ "user clicks delete and confirms", context do
         context.view
         |> element("a", "Delete")
         |> render_click()
-        context
+        :ok
       end
 
       then_ "the thing is removed from the list", context do

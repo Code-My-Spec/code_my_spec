@@ -24,5 +24,4 @@ defmodule CodeMySpec.McpServers.ArchitectureServer do
   # Architecture analysis
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
-  component(CodeMySpec.McpServers.Stories.Tools.ListStories)
 end
