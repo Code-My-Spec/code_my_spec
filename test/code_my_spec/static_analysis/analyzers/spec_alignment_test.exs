@@ -27,7 +27,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
-      # Clean up docs/spec files we created (it's a submodule, pool reset won't clean it)
+      # Clean up .code_my_spec/spec files we created (it's a submodule, pool reset won't clean it)
       docs_spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       if File.exists?(docs_spec_dir), do: File.rm_rf!(docs_spec_dir)
 
@@ -745,7 +745,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     end
 
     test "returns error when spec directory doesn't exist", %{project_dir: project_dir} do
-      # Create a scope with cwd pointing to a directory without docs/spec
+      # Create a scope with cwd pointing to a directory without .code_my_spec/spec
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
@@ -776,7 +776,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     end
 
     test "returns false when spec directory doesn't exist", %{project_dir: project_dir} do
-      # Create a scope with cwd pointing to a directory without docs/spec
+      # Create a scope with cwd pointing to a directory without .code_my_spec/spec
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)

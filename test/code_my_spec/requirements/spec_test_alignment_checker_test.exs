@@ -225,7 +225,7 @@ defmodule CodeMySpec.Requirements.SpecTestAlignmentCheckerTest do
     end
 
     test "returns unsatisfied when spec dir does not exist", %{scope: scope, tmp_dir: tmp_dir} do
-      # tmp_dir exists but has no docs/spec directory
+      # tmp_dir exists but has no .code_my_spec/spec directory
       module_name = "TestApp.NoSpecDir"
       component = %Component{module_name: module_name, type: "module"}
 

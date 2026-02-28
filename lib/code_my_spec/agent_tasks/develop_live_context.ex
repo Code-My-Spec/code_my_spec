@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContext do
 
   The parent live_context is NOT included in the implementation phase since it has no code.
 
-  Writes prompt files to `docs/status/{root}/{live_context}/`.
+  Writes prompt files to `.code_my_spec/status/{root}/{live_context}/`.
   """
 
   require Logger

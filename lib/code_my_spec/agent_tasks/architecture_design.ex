@@ -74,7 +74,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       IO.puts("\n✓ Proposal validated and executed successfully!")
       IO.puts("  Created #{result.created_contexts} contexts, #{result.created_components} components")
       IO.puts("  Linked #{result.linked_stories} stories")
-      IO.puts("  Spec files written to docs/spec/")
+      IO.puts("  Spec files written to .code_my_spec/spec/")
       {:ok, :valid}
     else
       {:error, :proposal_not_found} ->
@@ -155,7 +155,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         - **Namespace Hierarchy:** #{Path.join(output_dir, "namespace_hierarchy.md")}
 
         Browse existing specs directly:
-        - Run `tree docs/spec/` or `ls -R docs/spec/` to see all component specs
+        - Run `tree .code_my_spec/spec/` or `ls -R .code_my_spec/spec/` to see all component specs
         - Read any spec file directly to review its contents
         - Use `validate_dependency_graph` tool to check for circular dependencies
         """

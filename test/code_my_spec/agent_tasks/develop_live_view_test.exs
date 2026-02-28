@@ -502,7 +502,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
       assert {:ok, _prompt} = DevelopLiveView.command(scope, session)
 
-      # Verify directory structure under docs/status/
+      # Verify directory structure under .code_my_spec/status/
       expected_dir = Path.join(tmp_dir, liveview_status_dir(liveview.module_name))
       assert File.exists?(expected_dir)
       assert File.dir?(expected_dir)

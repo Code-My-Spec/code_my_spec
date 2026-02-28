@@ -147,7 +147,7 @@ defmodule CodeMySpec.ProjectSyncTest do
       assert is_list(result.errors)
     end
 
-    test "syncs from both docs/spec and lib directories", %{scope: scope, tmp_dir: tmp_dir} do
+    test "syncs from both .code_my_spec/spec and lib directories", %{scope: scope, tmp_dir: tmp_dir} do
       # Perform initial sync
       assert {:ok, result} = ProjectSync.sync_all(scope, base_dir: tmp_dir)
 

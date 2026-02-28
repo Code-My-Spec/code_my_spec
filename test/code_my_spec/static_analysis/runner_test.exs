@@ -282,7 +282,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     @tag timeout: 120_000
     test "filters out analyzers that aren't available", %{project_dir: project_dir} do
       use_cmd_cassette "static_analysis_runner_filter", ignore: [[:opts, :cd]] do
-        # Create a scope with cwd pointing to a directory without docs/spec
+        # Create a scope with cwd pointing to a directory without .code_my_spec/spec
         # so SpecAlignment won't be available, but Credo should still run
         user = user_fixture()
         account = account_with_owner_fixture(user)

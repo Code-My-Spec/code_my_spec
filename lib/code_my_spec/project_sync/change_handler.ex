@@ -67,7 +67,7 @@ defmodule CodeMySpec.ProjectSync.ChangeHandler do
     - `path` - The file path to classify
 
   ## Returns
-    - `:spec` - Spec file in docs/spec directory
+    - `:spec` - Spec file in .code_my_spec/spec directory
     - `:implementation` - Elixir implementation file in lib directory
     - `:other` - Any other file type
 

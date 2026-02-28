@@ -31,7 +31,7 @@ defmodule CodeMySpec.MixProject do
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support", "docs/content"]
+  defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
   defp elixirc_paths(_), do: ["lib"]
 
   # Specifies your project dependencies.

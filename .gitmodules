@@ -1,6 +1,3 @@
-[submodule "docs"]
-	path = docs
+[submodule ".code_my_spec"]
+	path = .code_my_spec
 	url = https://github.com/johns10/code_my_spec_docs.git
-[submodule "test_phoenix_project"]
-	path = test_phoenix_project
-	url = https://github.com/johns10/test_phoenix_project.git

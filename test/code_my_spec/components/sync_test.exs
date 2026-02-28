@@ -143,7 +143,7 @@ defmodule CodeMySpec.Components.SyncTest do
       assert "MyApp.UserAccounts" in module_names
     end
 
-    test "finds all spec files recursively in docs/spec/", %{scope: scope, tmp_dir: tmp_dir} do
+    test "finds all spec files recursively in .code_my_spec/spec/", %{scope: scope, tmp_dir: tmp_dir} do
       for module <- [
             "MyApp.Accounts",
             "MyApp.Accounts.User",

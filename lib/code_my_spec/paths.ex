@@ -3,7 +3,7 @@ defmodule CodeMySpec.Paths do
   Central path resolution for all project resource directories.
 
   All paths are relative to the project root directory. Every module that needs
-  to reference a docs/spec/status/architecture/knowledge path should use this
+  to reference a .code_my_spec/spec/status/architecture/knowledge path should use this
   module instead of hardcoding strings.
   """
 

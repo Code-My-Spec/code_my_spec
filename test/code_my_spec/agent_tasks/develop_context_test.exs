@@ -323,14 +323,14 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       assert content =~ "Repositories"
     end
 
-    test "writes prompt files to docs/status/ directory structure", %{tmp_dir: tmp_dir} do
+    test "writes prompt files to .code_my_spec/status/ directory structure", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       {context, _children} = create_context_with_children(scope)
       session = create_session(scope, context)
 
       assert {:ok, _prompt} = DevelopContext.command(scope, session)
 
-      # Verify directory structure under docs/status/
+      # Verify directory structure under .code_my_spec/status/
       expected_dir = Path.join(tmp_dir, context_status_dir(context.module_name))
       assert File.exists?(expected_dir)
       assert File.dir?(expected_dir)

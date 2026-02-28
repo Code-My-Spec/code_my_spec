@@ -1,11 +1,11 @@
 defmodule CodeMySpec.ProjectSync.StatusWriter do
   @moduledoc """
-  Writes markdown status files to docs/status/ as flat root-level files.
+  Writes markdown status files to .code_my_spec/status/ as flat root-level files.
 
-  Every component gets a single file at the root of docs/status/ with dots
+  Every component gets a single file at the root of .code_my_spec/status/ with dots
   separating module parts in the filename:
 
-      docs/status/
+      .code_my_spec/status/
         metric_flow.md                  # root summary: lists all contexts
         metric_flow.accounts.md         # Accounts context + all descendants inline
         metric_flow.integrations.md     # Integrations + providers inline
@@ -154,9 +154,9 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
     {satisfied, total}
   end
 
-  # Hierarchical path under docs/status/.
-  # MetricFlow → docs/status/metric_flow.md
-  # MetricFlow.Accounts → docs/status/metric_flow/accounts.md
+  # Hierarchical path under .code_my_spec/status/.
+  # MetricFlow → .code_my_spec/status/metric_flow.md
+  # MetricFlow.Accounts → .code_my_spec/status/metric_flow/accounts.md
   def component_path(component) do
     parts =
       component.module_name

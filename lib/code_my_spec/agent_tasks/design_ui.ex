@@ -2,7 +2,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   @moduledoc """
   Agent task that interviews the user to establish the project's design system.
 
-  Produces a self-contained HTML file (`docs/design/design_system.html`) that serves as
+  Produces a self-contained HTML file (`.code_my_spec/design/design_system.html`) that serves as
   both documentation and live preview using DaisyUI CDN with a theme switcher. The agent
   walks the user through theme selection, color palette, typography scale, layout patterns,
   and tone, modifying an HTML template as they go.
@@ -106,7 +106,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
     Project: #{project.name}#{description}
 
     You are helping the user establish a design system for their project. The output is a
-    self-contained HTML file at `docs/design/design_system.html` that uses the DaisyUI CDN
+    self-contained HTML file at `.code_my_spec/design/design_system.html` that uses the DaisyUI CDN
     with a theme switcher so colors, typography, and components render in the actual theme.
     """
   end
@@ -200,7 +200,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
     - Overall feel: professional, playful, technical
 
     After each section, update the HTML template file with the user's choices. Write the file
-    to `docs/design/design_system.html`.
+    to `.code_my_spec/design/design_system.html`.
     """
   end
 

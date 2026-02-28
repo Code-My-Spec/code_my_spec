@@ -68,7 +68,7 @@ defmodule CodeMySpec.Utils.Paths do
     base_name = Path.basename(path, ".spec.md")
 
     # Check if the spec file name matches the directory name
-    # e.g., docs/spec/code_my_spec/accounts/accounts.spec.md -> accounts
+    # e.g., .code_my_spec/spec/code_my_spec/accounts/accounts.spec.md -> accounts
     dir_name = Path.basename(dir)
 
     context_path =
@@ -160,7 +160,7 @@ defmodule CodeMySpec.Utils.Paths do
 
     # Check if this directory represents a valid context
     # A valid context directory should have either:
-    # 1. A matching spec file (e.g., docs/spec/.../accounts with accounts.spec.md inside)
+    # 1. A matching spec file (e.g., .code_my_spec/spec/.../accounts with accounts.spec.md inside)
     # 2. A matching implementation file (e.g., lib/.../accounts with accounts.ex inside)
 
     base_name = Path.basename(normalized_path)

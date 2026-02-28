@@ -3,9 +3,9 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   Per-topic agent task for researching a technology decision.
 
   Handles researching a single topic and producing its artifacts:
-  - A decision record at `docs/architecture/decisions/{topic}.md`
-  - An index entry in `docs/architecture/decisions.md`
-  - Optionally, knowledge entries in `docs/knowledge/{topic}/`
+  - A decision record at `.code_my_spec/architecture/decisions/{topic}.md`
+  - An index entry in `.code_my_spec/architecture/decisions.md`
+  - Optionally, knowledge entries in `.code_my_spec/knowledge/{topic}/`
 
   Can be invoked standalone or delegated to by TechnicalStrategy.
 
@@ -44,7 +44,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   Validate the topic's artifacts are complete.
 
   Checks:
-  1. Decision record exists at `docs/architecture/decisions/{topic}.md` and is non-empty
+  1. Decision record exists at `.code_my_spec/architecture/decisions/{topic}.md` and is non-empty
   2. Decisions index exists and references the topic
   3. On success, cleans up the research prompt file
 

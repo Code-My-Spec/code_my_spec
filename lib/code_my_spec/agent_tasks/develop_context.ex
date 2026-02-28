@@ -2,10 +2,10 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   @moduledoc """
   Orchestrates the full lifecycle of a context from specification through implementation.
 
-  Writes prompt files to `docs/status/{root}/{context}/` — the same directory tree
+  Writes prompt files to `.code_my_spec/status/{root}/{context}/` — the same directory tree
   that StatusWriter uses for status markdown. StatusWriter owns the `.md` status file
-  (e.g. `docs/status/metric_flow/accounts.md`); this module owns the action directory
-  (e.g. `docs/status/metric_flow/accounts/develop_context.md` + prompt files).
+  (e.g. `.code_my_spec/status/metric_flow/accounts.md`); this module owns the action directory
+  (e.g. `.code_my_spec/status/metric_flow/accounts/develop_context.md` + prompt files).
 
   Paths are derived from the context component's module_name, making the whole
   thing idempotent — same context always produces the same file paths regardless
@@ -37,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   @status_dir CodeMySpec.Paths.status_dir()
 
   # Derive an action directory from the context component's module_name.
-  # MetricFlow.Accounts → docs/status/metric_flow/accounts
+  # MetricFlow.Accounts → .code_my_spec/status/metric_flow/accounts
   # Sits alongside the StatusWriter file (metric_flow/accounts.md).
   defp context_status_dir(context_component) do
     parts =
@@ -53,7 +53,7 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
   Generate prompt files and orchestration instructions for the full context lifecycle.
 
   Checks each phase (spec, design review, implementation) and generates prompt files
-  for incomplete phases. Files are written to `docs/status/{root}/{context}/`.
+  for incomplete phases. Files are written to `.code_my_spec/status/{root}/{context}/`.
 
   Returns {:ok, prompt_text}
   """

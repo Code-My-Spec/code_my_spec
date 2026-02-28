@@ -10,7 +10,7 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
   The controller produces two implementation files: `*_controller.ex` and `*_json.ex`.
   A single sub-agent invocation handles both files together since the spec describes both.
 
-  Writes prompt files to `docs/status/{root}/{controller}/` following the same
+  Writes prompt files to `.code_my_spec/status/{root}/{controller}/` following the same
   conventions as DevelopContext and DevelopLiveView.
   """
 

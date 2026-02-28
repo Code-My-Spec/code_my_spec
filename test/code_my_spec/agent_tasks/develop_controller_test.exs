@@ -206,7 +206,7 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       assert File.read!(json_spec_path) =~ "Custom content"
     end
 
-    test "writes prompt files to docs/status/ directory structure", %{tmp_dir: tmp_dir} do
+    test "writes prompt files to .code_my_spec/status/ directory structure", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       controller = create_controller_component(scope)
       session = create_session(scope, controller)

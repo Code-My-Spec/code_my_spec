@@ -125,7 +125,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
     - Creating spec files for any missing components identified in the review
 
     Use the filesystem and architecture tools to investigate and make changes:
-    - Run `tree docs/spec/` or `ls -R docs/spec/` to browse existing component specs
+    - Run `tree .code_my_spec/spec/` or `ls -R .code_my_spec/spec/` to browse existing component specs
     - Read spec files directly to review their contents
     - `validate_dependency_graph` - Check for circular dependencies
     """

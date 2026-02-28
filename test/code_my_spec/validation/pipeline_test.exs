@@ -667,7 +667,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
 
     @tag :tmp_dir
     test "determines correct document type (context_spec vs spec)", %{tmp_dir: tmp_dir} do
-      # Context spec path: docs/spec/{project}/{file}.spec.md
+      # Context spec path: .code_my_spec/spec/{project}/{file}.spec.md
       context_dir = Path.join(tmp_dir, ".code_my_spec/spec/my_project")
       File.mkdir_p!(context_dir)
       context_spec = Path.join(context_dir, "accounts.spec.md")

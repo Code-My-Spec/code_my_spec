@@ -141,9 +141,9 @@ defmodule CodeMySpec.ProjectSetupWizard.ScriptGenerator do
   defp build_docs_submodule(docs_repo) do
     """
     # Add docs repository submodule (if not already added)
-    if [ ! -d "docs/.git" ]; then
+    if [ ! -d ".code_my_spec/.git" ] && [ ! -f ".code_my_spec/.git" ]; then
       echo "Adding docs repository submodule..."
-      git submodule add #{docs_repo} docs
+      git submodule add #{docs_repo} .code_my_spec
       echo "✓ Docs submodule added"
     else
       echo "✓ Docs submodule already exists"

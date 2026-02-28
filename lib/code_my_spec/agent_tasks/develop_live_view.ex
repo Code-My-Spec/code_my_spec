@@ -10,7 +10,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   Uses LiveViewSpec/LiveViewTest/LiveViewCode for the parent LiveView and
   ComponentSpec/ComponentTest/ComponentCode for child components.
 
-  Writes prompt files to `docs/status/{root}/{live_view}/` — the same directory
+  Writes prompt files to `.code_my_spec/status/{root}/{live_view}/` — the same directory
   tree that StatusWriter uses for status markdown. Paths are derived from the
   component's module_name, making the whole thing idempotent.
 
@@ -41,7 +41,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   @status_dir CodeMySpec.Paths.status_dir()
 
   # Derive an action directory from the LiveView component's module_name.
-  # TestAppWeb.DashboardLive → docs/status/test_app_web/dashboard_live
+  # TestAppWeb.DashboardLive → .code_my_spec/status/test_app_web/dashboard_live
   defp liveview_status_dir(liveview_component) do
     parts =
       liveview_component.module_name
@@ -56,7 +56,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
   Generate prompt files and orchestration instructions for the full LiveView lifecycle.
 
   Checks each phase (spec, implementation) and generates prompt files
-  for incomplete phases. Files are written to `docs/status/{root}/{live_view}/`.
+  for incomplete phases. Files are written to `.code_my_spec/status/{root}/{live_view}/`.
 
   Returns {:ok, prompt_text}
   """
