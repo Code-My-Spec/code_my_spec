@@ -37,6 +37,7 @@ config :code_my_spec,
   google_client_id: env!("GOOGLE_CLIENT_ID"),
   google_client_secret: env!("GOOGLE_CLIENT_SECRET"),
   oauth_base_url: env!("OAUTH_BASE_URL", :string, ""),
+  api_base_url: env!("API_BASE_URL", :string, ""),
   deploy_key: env!("DEPLOY_KEY")
 
 # Web Push VAPID configuration

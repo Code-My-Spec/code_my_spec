@@ -6,9 +6,12 @@ defmodule CodeMySpec.LocalServer.Controllers.AgentTaskController do
   eliminating the BEAM cold start penalty of CLI invocation.
   """
 
+  require Logger
+
   import Plug.Conn
 
   alias CodeMySpec.AgentTasks.StartAgentTask
+  alias CodeMySpec.Stories.RemoteSync
 
   @doc """
   Start an agent task session and return the prompt.
@@ -27,6 +30,12 @@ defmodule CodeMySpec.LocalServer.Controllers.AgentTaskController do
   def start(conn) do
     scope = conn.assigns[:current_scope]
     body = conn.body_params
+
+    # Sync stories from remote API before starting the task
+    case RemoteSync.sync(scope) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[AgentTask] Remote story sync failed: #{inspect(reason)}")
+    end
 
     args = %{
       external_id: body["external_id"],

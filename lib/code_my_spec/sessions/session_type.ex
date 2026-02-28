@@ -30,7 +30,8 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.QaSetup,
     AgentTasks.QaStory,
     AgentTasks.StartImplementation,
-    AgentTasks.LinkStoryComponent
+    AgentTasks.LinkStoryComponent,
+    AgentTasks.RefactorModule
   ]
 
   @type t :: atom()

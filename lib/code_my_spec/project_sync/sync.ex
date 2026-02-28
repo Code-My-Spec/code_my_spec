@@ -9,7 +9,9 @@ defmodule CodeMySpec.ProjectSync.Sync do
   alias CodeMySpec.Architecture
   alias CodeMySpec.Components
   alias CodeMySpec.ProjectSync.StatusWriter
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Sync, as: RequirementsSync
+  alias CodeMySpec.Stories
   alias CodeMySpec.Tests.TestRun
   alias CodeMySpec.Users.Scope
 
@@ -95,6 +97,15 @@ defmodule CodeMySpec.ProjectSync.Sync do
           opts
         )
 
+      # Phase 3b: Sync story requirements
+      stories = load_stories_with_requirements(scope)
+
+      stories_with_requirements =
+        RequirementsSync.sync_story_requirements(stories, scope, opts)
+
+      # Phase 3c: Sync project requirements
+      project_with_requirements = RequirementsSync.sync_project_requirements(scope, opts)
+
       requirements_sync_ms = System.monotonic_time(:millisecond) - requirements_start
 
       # Phase 4: Generate architecture views
@@ -116,7 +127,12 @@ defmodule CodeMySpec.ProjectSync.Sync do
       root_components = Enum.filter(components_with_requirements, &is_nil(&1.parent_component_id))
 
       status_files =
-        StatusWriter.write_status_files(root_components, scope.environment)
+        StatusWriter.write_status_files(
+          root_components,
+          stories_with_requirements,
+          project_with_requirements,
+          scope.environment
+        )
 
       total_ms = System.monotonic_time(:millisecond) - total_start
 
@@ -169,6 +185,13 @@ defmodule CodeMySpec.ProjectSync.Sync do
 
       {:error, _} ->
         []
+    end
+  end
+
+  defp load_stories_with_requirements(scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} -> Repo.preload(stories, :requirements)
+      _other -> []
     end
   end
 

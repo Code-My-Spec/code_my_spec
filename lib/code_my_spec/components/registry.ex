@@ -35,8 +35,8 @@ defmodule CodeMySpec.Components.Registry do
         RequirementDefinitionData.review_valid(),
         RequirementDefinitionData.children_implementations(),
         RequirementDefinitionData.dependencies_satisfied(),
-        RequirementDefinitionData.implementation_file(),
-        RequirementDefinitionData.test_file(),
+        RequirementDefinitionData.context_implementation_file(),
+        RequirementDefinitionData.context_test_file(),
         RequirementDefinitionData.test_spec_alignment(),
         RequirementDefinitionData.tests_passing()
       ],
@@ -55,8 +55,8 @@ defmodule CodeMySpec.Components.Registry do
         RequirementDefinitionData.review_valid(),
         RequirementDefinitionData.children_implementations(),
         RequirementDefinitionData.dependencies_satisfied(),
-        RequirementDefinitionData.implementation_file(),
-        RequirementDefinitionData.test_file(),
+        RequirementDefinitionData.context_implementation_file(),
+        RequirementDefinitionData.context_test_file(),
         RequirementDefinitionData.test_spec_alignment(),
         RequirementDefinitionData.tests_passing()
       ],

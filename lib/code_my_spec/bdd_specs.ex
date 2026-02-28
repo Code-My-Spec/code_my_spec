@@ -29,21 +29,14 @@ defmodule CodeMySpec.BddSpecs do
   """
   @spec list_specs(Environment.t()) :: [Spec.t()]
   def list_specs(%Environment{} = env) do
-    Logger.debug("[BddSpecs] list_specs: cwd=#{inspect(env.cwd)}")
-
     pattern = "test/spex/**/*_spex.exs"
-    Logger.debug("[BddSpecs] list_specs: pattern=#{inspect(pattern)}")
-
     files = Environments.glob(env, pattern)
-    Logger.debug("[BddSpecs] list_specs: found #{length(files)} spec files")
-    Logger.debug("[BddSpecs] list_specs: file paths: #{inspect(files)}")
 
     specs =
       files
       |> Enum.map(&parse_spec_file/1)
       |> Enum.reject(&is_nil/1)
 
-    Logger.debug("[BddSpecs] list_specs: successfully parsed #{length(specs)} specs")
     specs
   end
 
@@ -58,16 +51,9 @@ defmodule CodeMySpec.BddSpecs do
   """
   @spec list_specs_for_story(Environment.t(), integer()) :: [Spec.t()]
   def list_specs_for_story(%Environment{} = env, story_id) when is_integer(story_id) do
-    specs = list_specs(env)
-
-    # Debug: log what story_ids we found in the spec files
-    found_story_ids = specs |> Enum.map(& &1.story_id) |> Enum.uniq()
-
-    Logger.debug(
-      "[BddSpecs] list_specs_for_story: looking for story_id=#{story_id}, found story_ids in files: #{inspect(found_story_ids)}"
-    )
-
-    Enum.filter(specs, &(&1.story_id == story_id))
+    env
+    |> list_specs()
+    |> Enum.filter(&(&1.story_id == story_id))
   end
 
   @doc """
@@ -116,21 +102,10 @@ defmodule CodeMySpec.BddSpecs do
           missing: [integer()]
         }
   def check_story_coverage(%Environment{} = env, %Story{} = story) do
-    Logger.debug("[BddSpecs] check_story_coverage for story #{story.id}")
-
-    # Use criteria embedded in story (loaded via stories API)
     criteria = story.criteria || []
-
-    Logger.debug(
-      "[BddSpecs] story.criteria is_list: #{is_list(criteria)}, length: #{if is_list(criteria), do: length(criteria), else: "N/A"}"
-    )
-
     all_criterion_ids = Enum.map(criteria, & &1.id)
-    Logger.debug("[BddSpecs] all_criterion_ids: #{inspect(all_criterion_ids)}")
 
-    # Get specs for this story
     specs = list_specs_for_story(env, story.id)
-    Logger.debug("[BddSpecs] Found #{length(specs)} specs for story #{story.id}")
 
     covered_criterion_ids =
       specs
@@ -139,10 +114,6 @@ defmodule CodeMySpec.BddSpecs do
       |> Enum.uniq()
 
     missing_criterion_ids = all_criterion_ids -- covered_criterion_ids
-
-    Logger.debug(
-      "[BddSpecs] check_story_coverage result: covered=#{length(covered_criterion_ids)}, missing=#{length(missing_criterion_ids)}"
-    )
 
     %{
       covered: covered_criterion_ids,
@@ -246,10 +217,6 @@ defmodule CodeMySpec.BddSpecs do
   defp parse_spec_file(file_path) do
     case Parser.parse_file(file_path) do
       {:ok, spec} ->
-        Logger.debug(
-          "[BddSpecs] parse_spec_file: SUCCESS for #{file_path}, story_id=#{inspect(spec.story_id)}, criterion_id=#{inspect(spec.criterion_id)}"
-        )
-
         spec
 
       {:error, reason} ->

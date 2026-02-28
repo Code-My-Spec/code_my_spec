@@ -39,9 +39,11 @@ defmodule CodeMySpec.Validation.Pipeline do
         {_, sobelow_problems} = run_sobelow(categorized.elixir_files, scope)
         {_, spex_problems} = run_spex(categorized.spex_files, scope)
         {_, spec_problems} = validate_spec_files(categorized.spec_files)
+        {_, qa_problems} = validate_qa_files(categorized.qa_files)
 
         compile_problems ++
-          test_problems ++ credo_problems ++ sobelow_problems ++ spex_problems ++ spec_problems
+          test_problems ++
+          credo_problems ++ sobelow_problems ++ spex_problems ++ spec_problems ++ qa_problems
 
       {:error, compile_problems} ->
         Logger.error("[Pipeline] Compilation failed with #{length(compile_problems)} diagnostics")
@@ -58,13 +60,15 @@ defmodule CodeMySpec.Validation.Pipeline do
           test_files: [Path.t()],
           spex_files: [Path.t()],
           code_files: [Path.t()],
-          elixir_files: [Path.t()]
+          elixir_files: [Path.t()],
+          qa_files: [Path.t()]
         }
   def categorize_files(files) do
     spec_files = Enum.filter(files, &spec_file?/1)
     test_files = Enum.filter(files, &test_file?/1)
     spex_files = Enum.filter(files, &spex_file?/1)
     code_files = Enum.filter(files, &code_file?/1)
+    qa_files = Enum.filter(files, &qa_file?/1)
 
     elixir_files = code_files ++ test_files ++ spex_files
 
@@ -72,7 +76,7 @@ defmodule CodeMySpec.Validation.Pipeline do
     all_test_files = Enum.uniq(test_files ++ mapped_test_files)
 
     Logger.info(
-      "[Pipeline] Categorized - spec: #{length(spec_files)}, test: #{length(all_test_files)}, spex: #{length(spex_files)}, code: #{length(code_files)}, elixir: #{length(elixir_files)}"
+      "[Pipeline] Categorized - spec: #{length(spec_files)}, test: #{length(all_test_files)}, spex: #{length(spex_files)}, code: #{length(code_files)}, qa: #{length(qa_files)}, elixir: #{length(elixir_files)}"
     )
 
     %{
@@ -80,7 +84,8 @@ defmodule CodeMySpec.Validation.Pipeline do
       test_files: all_test_files,
       spex_files: spex_files,
       code_files: code_files,
-      elixir_files: elixir_files
+      elixir_files: elixir_files,
+      qa_files: qa_files
     }
   end
 
@@ -133,6 +138,15 @@ defmodule CodeMySpec.Validation.Pipeline do
         scope,
         [source: "spec_validation"],
         rel.(categorized.spec_files)
+      )
+    end
+
+    # QA validation: clear source: "qa_validation" for qa_files
+    if categorized.qa_files != [] do
+      Problems.clear_problems_for_source(
+        scope,
+        [source: "qa_validation"],
+        rel.(categorized.qa_files)
       )
     end
 
@@ -328,6 +342,21 @@ defmodule CodeMySpec.Validation.Pipeline do
     {:ok, problems}
   end
 
+  @doc """
+  Validate QA brief and result files against their document schemas.
+
+  Files under `.code_my_spec/qa/{story_id}/brief.md` are validated as `qa_story_brief`,
+  and `result.md` files as `qa_result`.
+  """
+  @spec validate_qa_files([Path.t()]) :: {:ok, [Problem.t()]}
+  def validate_qa_files([]), do: {:ok, []}
+
+  def validate_qa_files(qa_files) do
+    Logger.info("[Pipeline] Validating #{length(qa_files)} QA files")
+    problems = Enum.flat_map(qa_files, &validate_single_qa_file/1)
+    {:ok, problems}
+  end
+
   # ============================================================================
   # Private Helpers
   # ============================================================================
@@ -335,6 +364,13 @@ defmodule CodeMySpec.Validation.Pipeline do
   defp spec_file?(path), do: String.ends_with?(path, ".spec.md")
   defp test_file?(path), do: String.ends_with?(path, "_test.exs")
   defp spex_file?(path), do: String.ends_with?(path, "_spex.exs")
+
+  @qa_dir CodeMySpec.Paths.qa_dir()
+
+  defp qa_file?(path) do
+    String.contains?(path, @qa_dir) and
+      (String.ends_with?(path, "/brief.md") or String.ends_with?(path, "/result.md"))
+  end
 
   defp code_file?(path) do
     (String.ends_with?(path, ".ex") or String.ends_with?(path, ".exs")) and
@@ -458,6 +494,40 @@ defmodule CodeMySpec.Validation.Pipeline do
     }
   end
 
+  defp validate_single_qa_file(path) do
+    doc_type = qa_document_type(path)
+
+    with {:ok, content} <- File.read(path),
+         :ok <- validate_not_empty(content),
+         {:ok, _doc} <- Documents.create_dynamic_document(content, doc_type) do
+      []
+    else
+      {:error, :enoent} ->
+        [qa_problem(path, "File not found", "file_error")]
+
+      {:error, reason} when is_binary(reason) ->
+        [qa_problem(path, reason, "validation_error")]
+
+      {:error, reason} ->
+        [qa_problem(path, inspect(reason), "validation_error")]
+    end
+  end
+
+  defp qa_document_type(path) do
+    if String.ends_with?(path, "/brief.md"), do: "qa_story_brief", else: "qa_result"
+  end
+
+  defp qa_problem(path, message, category) do
+    %Problem{
+      severity: :error,
+      source: "qa_validation",
+      source_type: :document,
+      file_path: path,
+      message: message,
+      category: category
+    }
+  end
+
   defp document_type_from_content(content, path) do
     case extract_type_section(content) do
       nil -> document_type_from_path(path)
@@ -508,7 +578,13 @@ defmodule CodeMySpec.Validation.Pipeline do
       message = Map.get(diagnostic, "message") || "unknown error"
       severity_str = Map.get(diagnostic, "severity") || "error"
       position = Map.get(diagnostic, "position")
-      line = if position, do: Map.get(position, "line"), else: nil
+
+      line =
+        case position do
+          %{"line" => l} -> l
+          n when is_integer(n) -> n
+          _ -> nil
+        end
 
       severity = if severity_str == "warning", do: :warning, else: :error
       category = if severity == :warning, do: "compiler_warning", else: "compilation_error"

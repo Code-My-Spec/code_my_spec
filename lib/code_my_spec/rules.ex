@@ -1,37 +1,43 @@
 defmodule CodeMySpec.Rules do
   @moduledoc """
   Simple local file-based rules system.
-  Reads rules from markdown files with YAML frontmatter in docs/rules/.
+  Reads rules from markdown files with YAML frontmatter in .code_my_spec/rules/.
   """
 
   defstruct [:name, :content, :component_type, :session_type]
-
-  @rules_directory CodeMySpec.Paths.rules_dir()
 
   @doc """
   Finds matching rules based on component type and session type.
   Supports wildcard matching with "*".
 
+  When `working_dir` is provided, reads rules from `<working_dir>/.code_my_spec/rules/`.
+  When omitted, reads from the relative `.code_my_spec/rules/` path (process cwd).
+
   ## Examples
 
-      iex> find_matching_rules("context", "coding")
+      iex> find_matching_rules("context", "coding", "/path/to/project")
       [%Rules{}, ...]
 
   """
-  def find_matching_rules(component_type, session_type) do
-    load_all_rules()
+  def find_matching_rules(component_type, session_type, working_dir \\ nil) do
+    rules_dir = resolve_rules_dir(working_dir)
+
+    load_all_rules(rules_dir)
     |> filter_matching(component_type, session_type)
   end
 
+  defp resolve_rules_dir(nil), do: CodeMySpec.Paths.rules_dir()
+  defp resolve_rules_dir(working_dir), do: Path.join(working_dir, CodeMySpec.Paths.rules_dir())
+
   # Private functions
 
-  defp load_all_rules do
-    case File.exists?(@rules_directory) do
+  defp load_all_rules(rules_directory) do
+    case File.exists?(rules_directory) do
       true ->
-        @rules_directory
+        rules_directory
         |> File.ls!()
         |> Enum.filter(&String.ends_with?(&1, ".md"))
-        |> Enum.map(&Path.join(@rules_directory, &1))
+        |> Enum.map(&Path.join(rules_directory, &1))
         |> Enum.map(&parse_rule_file/1)
         |> Enum.filter(&match?({:ok, _}, &1))
         |> Enum.map(fn {:ok, rule} -> rule end)

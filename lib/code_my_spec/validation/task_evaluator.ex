@@ -33,14 +33,19 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     transcript_path = Keyword.fetch!(opts, :transcript_path)
 
     case TaskIdentifier.identify(transcript_path) do
-      {:ok, %{type: type_name, component: module_name}} ->
+      {:ok, %{type: type_name, component: subject}} ->
         module = SessionType.mapper() |> Map.get(type_name)
 
-        if module do
-          evaluate_component_task(scope, module, module_name)
-        else
-          Logger.info("[TaskEvaluator] Unrecognized task type: #{type_name}")
-          :none
+        cond do
+          is_nil(module) ->
+            Logger.info("[TaskEvaluator] Unrecognized task type: #{type_name}")
+            :none
+
+          topic_based_task?(module) ->
+            evaluate_topic_task(scope, module, subject)
+
+          true ->
+            evaluate_component_task(scope, module, subject)
         end
 
       :none ->
@@ -74,6 +79,19 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   # ============================================================================
   # Component evaluation (SubagentStop)
   # ============================================================================
+
+  @topic_based_tasks [CodeMySpec.AgentTasks.QaStory]
+
+  defp topic_based_task?(module), do: module in @topic_based_tasks
+
+  defp evaluate_topic_task(scope, module, subject) do
+    session_map = %{
+      project: scope.active_project,
+      state: %{"topic" => subject}
+    }
+
+    call_evaluate(module, scope, session_map, [])
+  end
 
   defp evaluate_component_task(scope, module, component_module_name) do
     case Components.get_component_by_module_name(scope, component_module_name) do

@@ -186,14 +186,10 @@ defmodule CodeMySpec.BddSpecs.Parser do
 
       matches ->
         # Get the last match (which would be the story_id in test_<unique>_<story_id>_ pattern)
-        result =
-          matches
-          |> List.last()
-          |> Enum.at(1)
-          |> String.to_integer()
-
-        Logger.debug("[Parser] derive_story_id: extracted story_id=#{result}")
-        result
+        matches
+        |> List.last()
+        |> Enum.at(1)
+        |> String.to_integer()
     end
   end
 

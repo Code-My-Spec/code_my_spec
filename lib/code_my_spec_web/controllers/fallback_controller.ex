@@ -21,4 +21,11 @@ defmodule CodeMySpecWeb.FallbackController do
     |> put_view(html: CodeMySpecWeb.ErrorHTML, json: CodeMySpecWeb.ErrorJSON)
     |> render(:"404")
   end
+
+  def call(conn, {:error, :unauthorized}) do
+    conn
+    |> put_status(:forbidden)
+    |> put_view(json: CodeMySpecWeb.ErrorJSON)
+    |> render(:"403")
+  end
 end

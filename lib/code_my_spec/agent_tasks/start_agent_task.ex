@@ -53,7 +53,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "research_topic" => AgentTasks.ResearchTopic,
     "qa_app" => AgentTasks.QaApp,
     "qa_setup" => AgentTasks.QaSetup,
-    "qa_story" => AgentTasks.QaStory
+    "qa_story" => AgentTasks.QaStory,
+    "start_implementation" => AgentTasks.StartImplementation
   }
 
   # Tasks that run without a project or config.yml
@@ -66,6 +67,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "architecture_review",
     "write_bdd_specs",
     "manage_implementation",
+    "start_implementation",
     "design_ui",
     "technical_strategy",
     "qa_app",

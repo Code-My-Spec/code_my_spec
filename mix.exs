@@ -73,6 +73,7 @@ defmodule CodeMySpec.MixProject do
       {:ngrok, git: "https://github.com/johns10/ex_ngrok", branch: "main", only: [:dev]},
       {:mix_machine, git: "https://github.com/johns10/mix_machine", branch: "master"},
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
+      {:sexy_spex, git: "https://github.com/Code-My-Spec/spex"},
       {:client_utils, "~> 0.1.12"},
       {:credo, "~> 1.7.13"},
 
@@ -101,7 +102,6 @@ defmodule CodeMySpec.MixProject do
       {:httpoison, "~> 2.0"},
       {:uuid, "~> 1.1.8"},
       {:inflex, "~> 2.1.0"},
-      {:sexy_spex, "~> 0.1.0"},
       {:oauth2, "~> 2.0"},
       {:web_push_elixir, "~> 0.5"}
     ]

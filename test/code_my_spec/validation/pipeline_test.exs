@@ -19,7 +19,8 @@ defmodule CodeMySpec.Validation.PipelineTest do
       test_files: [],
       spex_files: [],
       code_files: [],
-      elixir_files: []
+      elixir_files: [],
+      qa_files: []
     }
   end
 

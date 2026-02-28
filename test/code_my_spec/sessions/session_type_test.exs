@@ -34,7 +34,8 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.QaSetup,
       AgentTasks.QaStory,
       AgentTasks.StartImplementation,
-      AgentTasks.LinkStoryComponent
+      AgentTasks.LinkStoryComponent,
+      AgentTasks.RefactorModule
     ]
   end
 

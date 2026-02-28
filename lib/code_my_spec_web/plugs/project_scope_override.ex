@@ -49,10 +49,13 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
 
       %Project{} = project ->
         if Accounts.user_has_account_access?(scope, project.account_id) do
+          account = Repo.get(CodeMySpec.Accounts.Account, project.account_id)
+
           updated_scope = %{
             scope
             | active_project: project,
               active_project_id: project.id,
+              active_account: account,
               active_account_id: project.account_id
           }
 

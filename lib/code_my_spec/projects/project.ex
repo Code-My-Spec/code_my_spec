@@ -45,6 +45,8 @@ defmodule CodeMySpec.Projects.Project do
     field :setup_error, :string
     field :account_id, :binary_id
 
+    has_many :requirements, CodeMySpec.Requirements.Requirement
+
     field :status, Ecto.Enum,
       values: [
         :created,
