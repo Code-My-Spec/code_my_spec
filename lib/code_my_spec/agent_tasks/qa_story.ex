@@ -23,6 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.{BddSpecs, Environments, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.{DocumentSpecProjector, QaIssue}
@@ -39,6 +40,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   def command(scope, session, _opts \\ []) do
     with {:ok, story_id} <- get_story_id(session) do
       env = scope.environment
+      app_url = get_app_url(scope)
 
       story = Stories.get_story!(scope, story_id)
       spec_paths = collect_spec_file_paths(env, story_id)
@@ -46,7 +48,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       brief_path = brief_path(story_id)
 
       # Write the prompt file to disk as shared context
-      prompt_content = build_prompt_file(story, spec_paths)
+      prompt_content = build_prompt_file(story, spec_paths, app_url)
       Environments.write_file(env, prompt_path, prompt_content)
 
       # Return agent prompt pointing to the files
@@ -61,10 +63,11 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           brief_path,
           plan_exists,
           existing_scripts,
-          brief_spec
+          brief_spec,
+          app_url
         )
 
-      {:ok, agent_prompt}
+      {:ok, TaskMarker.build("QaStory", to_string(story_id)) <> "\n\n" <> agent_prompt}
     end
   end
 
@@ -221,6 +224,22 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Data Loading
   # ============================================================================
 
+  defp get_app_url(scope) do
+    case scope.active_project do
+      %{module_name: module_name} when is_binary(module_name) and module_name != "" ->
+        endpoint = Module.concat([:"#{module_name}Web", :Endpoint])
+
+        if Code.ensure_loaded?(endpoint) and function_exported?(endpoint, :url, 0) do
+          endpoint.url()
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
   defp plan_exists?(env) do
     Environments.file_exists?(env, Paths.qa_plan())
   end
@@ -243,12 +262,17 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Prompt File (written to disk)
   # ============================================================================
 
-  defp build_prompt_file(story, spec_paths) do
+  defp build_prompt_file(story, spec_paths, app_url) do
     criteria_text = format_criteria(Map.get(story, :criteria, []))
     specs_text = format_spec_paths(spec_paths)
+    url_text = if app_url, do: app_url, else: "http://localhost:4000"
 
     """
     # Story #{story.id}: #{story.title}
+
+    ## App URL
+
+    #{url_text}
 
     ## Description
 
@@ -274,10 +298,18 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Agent Prompt (returned to caller)
   # ============================================================================
 
-  defp build_agent_prompt(story_id, prompt_path, brief_path, plan_exists, existing_scripts, brief_spec) do
+  defp build_agent_prompt(
+         story_id,
+         prompt_path,
+         brief_path,
+         plan_exists,
+         existing_scripts,
+         brief_spec,
+         app_url
+       ) do
     sections =
       [
-        build_header(story_id),
+        build_header(story_id, app_url),
         build_brief_spec_section(brief_spec),
         build_plan_reference(plan_exists),
         build_scripts_section(existing_scripts),
@@ -289,18 +321,31 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     Enum.join(sections, "\n\n")
   end
 
-  defp build_header(story_id) do
+  defp build_header(story_id, app_url) do
+    url_text = if app_url, do: app_url, else: "http://localhost:4000"
+
     """
     # QA Story: Plan and Test Story #{story_id}
+
+    **App URL:** `#{url_text}`
 
     You are the QA agent for story #{story_id}. Your first task is to plan the
     testing approach by writing a brief. Stop after writing the brief so it can
     be validated before you test.
 
     Read `#{Paths.framework_dir()}/qa-tooling.md` for the available testing tools and patterns.
-    You are a CLI agent — use the `web` tool to browse pages and shell scripts
-    in `#{Paths.qa_dir()}/scripts/` for authenticated requests. You do NOT open a browser manually.
-    Reference existing scripts by path rather than inlining raw curl commands.\
+    You are a CLI agent — use `vibium` for browser automation (navigate, click, type,
+    screenshot) and shell scripts in `#{Paths.qa_dir()}/scripts/` for authenticated requests.
+    You do NOT open a browser manually.
+    Reference existing scripts by path rather than inlining raw curl commands.
+    Use `#{url_text}` as the base URL for all requests.
+
+    **Tool rules:**
+    - **Browser testing:** Use `vibium` commands (`vibium navigate`, `vibium click`, `vibium type`,
+      `vibium screenshot`, etc.).
+    - **API testing:** Use `curl` but ALWAYS write single-line commands. Multi-line curl commands
+      (with backslash continuations) require individual approval and block the session.
+      Example: `curl -s -b /tmp/cookies.txt -X POST #{url_text}/api/endpoint -H "Content-Type: application/json" -d '{"key":"value"}'`\
     """
   end
 
@@ -367,8 +412,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     4. Read the BDD spec files listed in the prompt (they contain exact selectors, test data, and assertions)
     5. Write the brief to `#{brief_path}` with all required sections: tool, auth, seeds, what to test, result path
 
-    The brief's "tool" section must specify a CLI tool (`web` for pages, `curl` for APIs,
+    The brief's "tool" section must specify a CLI tool (`vibium` for browser testing, `curl` for APIs,
     or a script path). You are an automated agent, not a human with a browser.
+    NEVER use the `web` tool — use `vibium` instead. All curl commands MUST be single-line.
 
     Stop after writing the brief so it can be validated before you test.\
     """
@@ -397,7 +443,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     Enum.map_join(criteria, "\n", fn c -> "- #{c.description}" end)
   end
 
-  defp format_spec_paths([]), do: "_No BDD specs found. Read the router and app code to understand this story's scope._"
+  defp format_spec_paths([]),
+    do: "_No BDD specs found. Read the router and app code to understand this story's scope._"
 
   defp format_spec_paths(paths) do
     Enum.map_join(paths, "\n", &"- `#{&1}`")

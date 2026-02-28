@@ -88,6 +88,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     compilers_check = check_compilers(working_dir, project_check.phoenix_project_exists)
     spex_config_check = check_spex_config(working_dir, project_check.phoenix_project_exists)
     test_boundaries_check = check_test_boundaries(working_dir, app_name)
+    test_support_namespace_check = check_test_support_namespace(working_dir, app_name)
+
+    # Application module location
+    application_check = check_application_module(working_dir, app_name)
 
     # Auth check
     auth_check = check_auth_status()
@@ -122,6 +126,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       compilers_configured: compilers_check.configured,
       spex_config_complete: spex_config_check.complete,
       test_boundaries_configured: test_boundaries_check.configured,
+      test_support_namespace_correct: test_support_namespace_check.correct,
       project_dir_exists: structure_check.dir_exists,
       project_structure_complete: structure_check.structure_complete,
       missing_structure_dirs: structure_check.missing_dirs,
@@ -131,8 +136,18 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       rules_installed: rules_check.installed,
       claude_md_installed: claude_md_check.installed,
       cli_config_has_project_id: cli_config_check.has_project_id,
+      application_in_web: application_check.in_web,
       ignored_components_configured: ignored_components_check.configured
     }
+  end
+
+  # Application module check — should live in the web namespace to avoid boundary issues
+
+  defp check_application_module(_working_dir, nil), do: %{in_web: false}
+
+  defp check_application_module(working_dir, app_name) do
+    web_app_path = Path.join([working_dir, "lib", "#{app_name}_web", "application.ex"])
+    %{in_web: File.exists?(web_app_path)}
   end
 
   # Auth check
@@ -435,12 +450,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
       case File.read(mix_exs_path) do
         {:ok, content} ->
-          has_pattern = Regex.match?(~r/spex:\s*\[pattern:/, content)
-          has_elixirc_paths = Regex.match?(~r/elixirc_paths.*test\/spex/, content)
           has_preferred_env = Regex.match?(~r/spex:\s*:test/, content)
           has_alias = Regex.match?(~r/spex:\s*\["spex/, content)
 
-          %{complete: has_pattern and has_elixirc_paths and has_preferred_env and has_alias}
+          %{complete: has_preferred_env and has_alias}
 
         _ ->
           %{complete: false}
@@ -455,13 +468,38 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   defp check_test_boundaries(_working_dir, nil), do: %{configured: false}
 
   defp check_test_boundaries(working_dir, app_name) do
-    spex_namespace_path = Path.join([working_dir, "test", "spex", "#{app_name}_spex.ex"])
+    spex_namespace_path = Path.join([working_dir, "test", "support", "#{app_name}_spex.ex"])
     test_namespace_path = Path.join([working_dir, "test", "support", "#{app_name}_test_boundary.ex"])
 
     spex_has_boundary = file_contains_boundary?(spex_namespace_path)
     test_has_boundary = file_contains_boundary?(test_namespace_path)
 
     %{configured: spex_has_boundary and test_has_boundary}
+  end
+
+  # Test support namespace check — ConnCase, DataCase etc. should be under AppTest namespace
+
+  @test_support_files ["conn_case.ex", "data_case.ex"]
+
+  defp check_test_support_namespace(_working_dir, nil), do: %{correct: false}
+
+  defp check_test_support_namespace(working_dir, app_name) do
+    module_name = Macro.camelize(app_name)
+    test_namespace = "#{module_name}Test"
+
+    all_correct =
+      @test_support_files
+      |> Enum.all?(fn file ->
+        path = Path.join([working_dir, "test", "support", file])
+
+        case File.read(path) do
+          {:ok, content} -> String.contains?(content, "defmodule #{test_namespace}.")
+          {:error, :enoent} -> true
+          _ -> false
+        end
+      end)
+
+    %{correct: all_correct}
   end
 
   defp file_contains_boundary?(path) do
@@ -497,11 +535,13 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_elixir_instructions(status)
     |> maybe_add_phoenix_installer_instructions(status)
     |> maybe_add_project_creation_instructions(status)
+    |> maybe_add_application_migration_instructions(status)
     |> maybe_add_deps_instructions(status)
     |> maybe_add_compiler_instructions(status)
     |> maybe_add_spex_config_instructions(status)
     |> maybe_add_sexy_spex_local_dep_note(status)
     |> maybe_add_test_boundaries_instructions(status)
+    |> maybe_add_test_support_namespace_instructions(status)
     |> maybe_add_structure_instructions(status)
     |> maybe_add_symlinks_instructions(status)
     |> maybe_add_agents_md_instructions(status)
@@ -538,6 +578,45 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   defp maybe_add_project_creation_instructions(sections, %{phoenix_project_exists: false}) do
     [build_project_creation_instructions() | sections]
   end
+
+  defp maybe_add_application_migration_instructions(sections, %{application_in_web: true}),
+    do: sections
+
+  defp maybe_add_application_migration_instructions(sections, %{phoenix_project_exists: true} = status) do
+    app_name = status.app_name || "your_app"
+    module_name = Macro.camelize(app_name)
+
+    instruction = """
+    ## Move Application Module to Web Namespace
+
+    The `#{module_name}.Application` module supervises both `#{module_name}.Repo` and
+    `#{module_name}Web.Endpoint`, creating a boundary violation (#{module_name} depends on
+    #{module_name}Web). Move it to the web namespace to keep boundaries clean:
+
+    1. **Move the file:**
+    ```bash
+    mv lib/#{app_name}/application.ex lib/#{app_name}_web/application.ex
+    ```
+
+    2. **Rename the module** from `#{module_name}.Application` to `#{module_name}Web.Application`
+
+    3. **Update `mix.exs`** — change `mod:` in `application/0`:
+    ```elixir
+    def application do
+      [
+        mod: {#{module_name}Web.Application, []},
+        ...
+      ]
+    end
+    ```
+
+    This prevents #{module_name} from depending on #{module_name}Web through the supervision tree.
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_application_migration_instructions(sections, _status), do: sections
 
   defp maybe_add_deps_instructions(
          sections,
@@ -591,22 +670,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
     Add the following to your `mix.exs` to enable BDD spec testing:
 
-    **1. Add spex pattern to `project/0`:**
-    ```elixir
-    def project do
-      [
-        spex: [pattern: "test/spex/**/*_spex.exs"],
-        ...
-      ]
-    end
-    ```
-
-    **2. Add `"test/spex"` to `elixirc_paths(:test)`:**
-    ```elixir
-    defp elixirc_paths(:test), do: ["lib", "test/support", "test/spex"]
-    ```
-
-    **3. Add `spex: :test` to `preferred_envs` in `cli/0`:**
+    **1. Add `spex: :test` to `preferred_envs` in `cli/0`:**
     ```elixir
     def cli do
       [
@@ -615,7 +679,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     end
     ```
 
-    **4. Add spex alias to `aliases/0`:**
+    **2. Add spex alias to `aliases/0`:**
     ```elixir
     defp aliases do
       [
@@ -667,10 +731,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Create boundary namespace modules so Boundary can track cross-context calls
     in test and spex files.
 
-    **1. Create `test/spex/#{app_name}_spex.ex`:**
+    **1. Create `test/support/#{app_name}_spex.ex`:**
     ```elixir
     defmodule #{module_name}Spex do
-      use Boundary, top_level?: true, deps: [#{module_name}]
+      use Boundary, top_level?: true, deps: [#{module_name}Test, #{module_name}Web]
     end
     ```
 
@@ -689,6 +753,62 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   defp maybe_add_test_boundaries_instructions(sections, _status), do: sections
+
+  defp maybe_add_test_support_namespace_instructions(
+         sections,
+         %{test_support_namespace_correct: true}
+       ),
+       do: sections
+
+  defp maybe_add_test_support_namespace_instructions(
+         sections,
+         %{phoenix_project_exists: true} = status
+       ) do
+    app_name = status.app_name || "your_app"
+    module_name = Macro.camelize(app_name)
+
+    instruction = """
+    ## Move Test Support Modules to #{module_name}Test Namespace
+
+    Phoenix generates `ConnCase`, `DataCase`, etc. under `#{module_name}Web` / `#{module_name}`
+    namespaces. These must be moved into the `#{module_name}Test` boundary namespace so
+    Boundary can track test dependencies correctly.
+
+    **1. Rename `#{module_name}Web.ConnCase` → `#{module_name}Test.ConnCase`** in `test/support/conn_case.ex`:
+    ```elixir
+    defmodule #{module_name}Test.ConnCase do
+      use ExUnit.CaseTemplate
+      # ... rest of module unchanged
+    end
+    ```
+
+    **2. Rename `#{module_name}.DataCase` → `#{module_name}Test.DataCase`** in `test/support/data_case.ex`:
+    ```elixir
+    defmodule #{module_name}Test.DataCase do
+      use ExUnit.CaseTemplate
+      # ... rest of module unchanged
+    end
+    ```
+
+    **3. Update all test files** that `use` these modules:
+    ```elixir
+    # Before
+    use #{module_name}Web.ConnCase
+    use #{module_name}.DataCase
+
+    # After
+    use #{module_name}Test.ConnCase
+    use #{module_name}Test.DataCase
+    ```
+
+    This ensures all test support code lives under the `#{module_name}Test` boundary
+    declared in `test/support/#{app_name}_test_boundary.ex`.
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_test_support_namespace_instructions(sections, _status), do: sections
 
   defp maybe_add_structure_instructions(
          sections,
@@ -727,7 +847,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     - `.code_my_spec/tools/` → helper scripts (e.g., `set-story-component`)
 
     Both symlinks stay current with the app version automatically.
-    Add them to `.gitignore` (they're machine-specific).
+    Commit them to version control — git stores symlink targets portably.
     """
 
     [instruction | sections]
@@ -853,10 +973,12 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Phoenix installer", status.phoenix_installer_available},
       {"PostgreSQL", status.postgresql_available},
       {"Phoenix project", status.phoenix_project_exists},
+      {"Application in web namespace", status.application_in_web},
       {"CodeMySpec deps", status.codemyspec_deps_installed},
       {"Compilers (boundary + spex)", status.compilers_configured},
       {"Spex config", status.spex_config_complete},
       {"Test boundaries", status.test_boundaries_configured},
+      {"Test support namespace", status.test_support_namespace_correct},
       {"Project structure", status.project_dir_exists},
       {"Project structure dirs", status.project_structure_complete},
       {"App symlinks", status.app_symlinks_installed},
@@ -1004,7 +1126,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     def project do
       [
         compilers: compilers(Mix.env()),
-        spex: [pattern: "test/spex/**/*_spex.exs"],
         ...
       ]
     end
@@ -1412,24 +1533,17 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       -d '{"project_id": "<PROJECT_ID>"}'
     ```
 
-    4. **Add ephemeral `.code_my_spec/` directories to `.gitignore`**:
+    4. **Add ephemeral files to `.gitignore`**:
     ```bash
     cat >> .gitignore << 'GITIGNORE'
 
-    # CodeMySpec - ephemeral/generated (specs, rules, knowledge are committed)
-    .code_my_spec/config.yml
-    .code_my_spec/sessions/
-    .code_my_spec/status/
-    .code_my_spec/qa/
-    .code_my_spec/framework
-    .code_my_spec/tools
+    # CodeMySpec - ephemeral
+    .code_my_spec/internal/
     /diagnostics.jsonl
     GITIGNORE
     ```
 
-    **Note:** `.code_my_spec/spec/`, `.code_my_spec/rules/`, `.code_my_spec/knowledge/`,
-    `.code_my_spec/architecture/`, and `.code_my_spec/design/` should be committed to version control.
-    `.code_my_spec/framework` and `.code_my_spec/tools` are local symlinks (machine-specific) and should not be committed.
+    **Note:** Everything in `.code_my_spec/` except `internal/` should be committed to version control.
     """
   end
 
@@ -1440,9 +1554,12 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     :elixir_installed,
     :phoenix_installer_available,
     :phoenix_project_exists,
+    :application_in_web,
     :codemyspec_deps_installed,
     :compilers_configured,
     :spex_config_complete,
+    :test_boundaries_configured,
+    :test_support_namespace_correct,
     :project_dir_exists,
     :project_structure_complete,
     :app_symlinks_installed,
@@ -1492,14 +1609,18 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        "Run: mix phx.new . --app your_app_name"},
       {"Project compiles", status.project_compiles,
        "Fix compilation errors: #{status.compilation_errors}"},
+      {"Application in web namespace", status.application_in_web,
+       "Move lib/app_name/application.ex to lib/app_name_web/application.ex, rename module to AppWeb.Application, update mod: in mix.exs application/0"},
       {"CodeMySpec deps", status.codemyspec_deps_installed,
        "Add missing deps to mix.exs: #{inspect(status.missing_deps)}"},
       {"Compilers (boundary + spex)", status.compilers_configured,
        "Add compilers: compilers(Mix.env()) to project/0 with per-env defp compilers(:test) including :spex and defp compilers(_) without :spex"},
       {"Spex config", status.spex_config_complete,
-       "Add spex pattern, elixirc_paths(:test) with test/spex, preferred_envs spex: :test, and spex alias"},
+       "Add preferred_envs spex: :test to cli/0 and spex: [\"spex --quiet\"] alias"},
       {"Test boundaries", status.test_boundaries_configured,
-       "Create boundary namespace modules in test/spex/ and test/support/ with use Boundary"},
+       "Create boundary namespace modules in test/support/ with use Boundary"},
+      {"Test support namespace", status.test_support_namespace_correct,
+       "Rename ConnCase, DataCase etc. from AppWeb/App namespace to AppTest namespace in test/support/, then update all use references in test files"},
       {"Project structure", status.project_dir_exists,
        "Create .code_my_spec directory: mkdir -p #{CodeMySpec.Paths.base_dir()}"},
       {"Project structure dirs", status.project_structure_complete,

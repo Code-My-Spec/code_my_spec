@@ -2,6 +2,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
   @moduledoc false
   use CodeMySpec.DataCase
 
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaApp
@@ -21,6 +22,16 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
   defp create_session(context) do
     session = %{project: context.scope.active_project}
     Map.put(context, :session, session)
+  end
+
+  defp create_story(context) do
+    story =
+      story_fixture(context.scope, %{
+        title: "User Authentication",
+        description: "Users can log in and out of the application"
+      })
+
+    %{story: story}
   end
 
   defp write_file!(env, relative_path, content) do
@@ -75,6 +86,70 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     )
   end
 
+  defp write_story_brief(env, story_id, content \\ nil) do
+    write_file!(
+      env,
+      ".code_my_spec/qa/#{story_id}/brief.md",
+      content ||
+        """
+        # QA Brief: Story #{story_id}
+
+        ## Tool
+
+        web
+
+        ## Auth
+
+        Login as admin@example.com / password123
+
+        ## Seeds
+
+        mix run priv/repo/qa_seeds.exs
+
+        ## What To Test
+
+        - Visit /users/log_in
+        - Enter credentials
+        - Verify redirect to dashboard
+
+        ## Result Path
+
+        .code_my_spec/qa/#{story_id}/result.md
+        """
+    )
+  end
+
+  defp write_story_result(env, story_id, content \\ nil) do
+    write_file!(
+      env,
+      ".code_my_spec/qa/#{story_id}/result.md",
+      content ||
+        """
+        # QA Result: Story #{story_id}
+
+        ## Status
+
+        pass
+
+        ## Scenarios
+
+        ### Login flow
+        - Visited /users/log_in
+        - Entered credentials
+        - Redirected to dashboard
+        - **Pass**
+
+        ## Evidence
+
+        - `.code_my_spec/qa/#{story_id}/screenshots/login.png` — login page
+
+        ## Issues
+
+        None
+        """
+    )
+  end
+
   # ============================================================================
   # command/3 Tests
   # ============================================================================
@@ -91,11 +166,6 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     test "includes project name", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaApp.command(scope, session)
       assert prompt =~ scope.active_project.name
-    end
-
-    test "references web-cli knowledge article", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "web-cli"
     end
 
     test "includes router content when router exists", %{scope: scope, session: session} do
@@ -117,14 +187,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert prompt =~ "mix phx.server"
     end
 
-    test "instructs agent to dispatch qa-story subagent", %{scope: scope, session: session} do
+    test "instructs agent to dispatch qa-tester subagent", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "qa-story"
-    end
-
-    test "dispatches with story ID not slug", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "story ID"
+      assert prompt =~ "qa-tester"
     end
 
     test "instructs agent to write summary", %{scope: scope, session: session} do
@@ -142,6 +207,29 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     test "includes BDD coverage section", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaApp.command(scope, session)
       assert prompt =~ "BDD Spec Coverage"
+    end
+
+    test "generates per-story prompt files", %{scope: scope} do
+      %{story: story} = create_story(%{scope: scope})
+      session = %{project: scope.active_project}
+
+      assert {:ok, _prompt} = QaApp.command(scope, session)
+
+      # Prompt file should be written for the story
+      prompt_path = Path.join(scope.environment.cwd, ".code_my_spec/qa/#{story.id}/prompt.md")
+      assert File.exists?(prompt_path)
+
+      content = File.read!(prompt_path)
+      assert content =~ "User Authentication"
+    end
+
+    test "includes prompt file paths in orchestration prompt", %{scope: scope} do
+      %{story: story} = create_story(%{scope: scope})
+      session = %{project: scope.active_project}
+
+      assert {:ok, prompt} = QaApp.command(scope, session)
+
+      assert prompt =~ ".code_my_spec/qa/#{story.id}/prompt.md"
     end
   end
 
@@ -165,6 +253,49 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       scope: scope,
       session: session
     } do
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert feedback =~ "summary"
+    end
+
+    test "delegates story validation to QaStory.evaluate", %{scope: scope} do
+      %{story: story} = create_story(%{scope: scope})
+      session = %{project: scope.active_project}
+
+      # No brief or result — QaStory.evaluate should report brief missing
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert feedback =~ "Story #{story.id}"
+      assert feedback =~ "Brief"
+    end
+
+    test "returns valid when all stories have brief + result and summary exists", %{scope: scope} do
+      %{story: story} = create_story(%{scope: scope})
+      session = %{project: scope.active_project}
+
+      write_story_brief(scope.environment, story.id)
+      write_story_result(scope.environment, story.id)
+      write_qa_summary(scope.environment)
+
+      assert {:ok, :valid} = QaApp.evaluate(scope, session)
+    end
+
+    test "returns invalid when story has brief but no result", %{scope: scope} do
+      %{story: story} = create_story(%{scope: scope})
+      session = %{project: scope.active_project}
+
+      write_story_brief(scope.environment, story.id)
+      write_qa_summary(scope.environment)
+
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert feedback =~ "Story #{story.id}"
+    end
+
+    test "returns invalid when stories pass but summary missing", %{scope: scope} do
+      %{story: story} = create_story(%{scope: scope})
+      session = %{project: scope.active_project}
+
+      write_story_brief(scope.environment, story.id)
+      write_story_result(scope.environment, story.id)
+
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
       assert feedback =~ "summary"
     end

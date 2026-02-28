@@ -51,7 +51,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
     code_content = read_file_or_note(environment, code_file)
     test_content = read_file_or_note(environment, test_file)
 
-    rules = Rules.find_matching_rules(component.type, "design")
+    rules = Rules.find_matching_rules(component.type, "design", scope.environment.cwd)
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
 
     prompt = """
@@ -132,7 +132,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
           end)
       end
 
-    rules = Rules.find_matching_rules("context", "design")
+    rules = Rules.find_matching_rules("context", "design", scope.environment.cwd)
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
 
     prompt = """

@@ -177,7 +177,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   defp create_test_boundary_files(tmp_dir, app_name) do
     module_name = Macro.camelize(app_name)
 
-    write_file!(tmp_dir, "test/spex/#{app_name}_spex.ex", """
+    write_file!(tmp_dir, "test/support/#{app_name}_spex.ex", """
     defmodule #{module_name}Spex do
       use Boundary, top_level?: true, deps: [#{module_name}]
     end

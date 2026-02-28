@@ -57,7 +57,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
 
     with {:ok, _} <- maybe_sync_project(scope, env, opts) do
       case dispatch(env, scope, session) do
-        :complete -> {:ok, all_complete_message(env)}
+        :complete -> {:ok, all_complete_message(env, scope)}
         {:ok, prompt} -> {:ok, prompt}
       end
     end
@@ -147,7 +147,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
         {:needs_specs, story}
 
       nil ->
-        Logger.info("[Orchestrator] All stories complete")
+        log_completion_summary(env, scope)
         :complete
     end
   end
@@ -291,9 +291,162 @@ defmodule CodeMySpec.AgentTasks.ManageImplementation do
      )}
   end
 
-  defp all_complete_message(env) do
+  defp all_complete_message(env, scope) do
     clear_status(env)
-    "All stories are complete and all components are implemented. No further action needed."
+    summary = build_completion_summary(env, scope)
+
+    """
+    All stories are complete and all components are implemented. No further action needed.
+
+    #{summary}
+    """
+  end
+
+  # ============================================================================
+  # Completion Summary & Diagnostics
+  # ============================================================================
+
+  defp log_completion_summary(env, scope) do
+    stories = Stories.list_project_stories_by_priority(scope)
+    all_components = Components.list_components_with_dependencies(scope)
+    component_map = Map.new(all_components, fn c -> {c.id, c} end)
+
+    Logger.info("[Orchestrator] ========== COMPLETION SUMMARY ==========")
+    Logger.info("[Orchestrator] Total stories: #{length(stories)}")
+    Logger.info("[Orchestrator] Total components: #{length(all_components)}")
+
+    warnings =
+      Enum.flat_map(stories, fn story ->
+        coverage = BddSpecs.check_story_coverage(env, story)
+        criteria = story.criteria || []
+        component = Map.get(component_map, story.component_id)
+
+        status_parts = []
+
+        status_parts =
+          if criteria == [] do
+            Logger.warning(
+              "[Orchestrator]   WARNING: Story ##{story.id} \"#{story.title}\" has 0 acceptance criteria"
+            )
+
+            ["no_criteria" | status_parts]
+          else
+            status_parts
+          end
+
+        status_parts =
+          if is_nil(story.component_id) do
+            Logger.warning(
+              "[Orchestrator]   WARNING: Story ##{story.id} \"#{story.title}\" has no linked component"
+            )
+
+            ["no_component" | status_parts]
+          else
+            status_parts
+          end
+
+        status_parts =
+          if component && has_unsatisfied_requirements?(component) do
+            unsatisfied = unsatisfied_requirement_names(component)
+
+            Logger.warning(
+              "[Orchestrator]   WARNING: Story ##{story.id} \"#{story.title}\" -> #{component.module_name} has unsatisfied requirements: #{Enum.join(unsatisfied, ", ")}"
+            )
+
+            ["unsatisfied_reqs" | status_parts]
+          else
+            status_parts
+          end
+
+        spec_status =
+          cond do
+            criteria == [] -> "no criteria"
+            coverage.missing == [] -> "#{length(coverage.covered)}/#{length(criteria)} covered"
+            true -> "#{length(coverage.covered)}/#{length(criteria)} covered (#{length(coverage.missing)} missing)"
+          end
+
+        component_name = if component, do: component.module_name, else: "NONE"
+
+        Logger.info(
+          "[Orchestrator]   Story ##{story.id} \"#{story.title}\" | component=#{component_name} | specs=#{spec_status}"
+        )
+
+        if status_parts != [], do: [{story, status_parts}], else: []
+      end)
+
+    if warnings != [] do
+      Logger.warning(
+        "[Orchestrator] #{length(warnings)} stories have warnings — may not be truly complete"
+      )
+    end
+
+    Logger.info("[Orchestrator] ========================================")
+  end
+
+  defp build_completion_summary(env, scope) do
+    stories = Stories.list_project_stories_by_priority(scope)
+    all_components = Components.list_components_with_dependencies(scope)
+    component_map = Map.new(all_components, fn c -> {c.id, c} end)
+
+    story_lines =
+      Enum.map(stories, fn story ->
+        coverage = BddSpecs.check_story_coverage(env, story)
+        criteria = story.criteria || []
+        component = Map.get(component_map, story.component_id)
+
+        warnings = story_warnings(story, criteria, component, coverage)
+        component_name = if component, do: component.module_name, else: "UNLINKED"
+
+        spec_status =
+          cond do
+            criteria == [] -> "no criteria"
+            coverage.missing == [] -> "#{length(criteria)}/#{length(criteria)} specs"
+            true -> "#{length(coverage.covered)}/#{length(criteria)} specs"
+          end
+
+        warning_str = if warnings != [], do: " ⚠ #{Enum.join(warnings, ", ")}", else: ""
+        "- Story ##{story.id} \"#{story.title}\" → #{component_name} (#{spec_status})#{warning_str}"
+      end)
+
+    warnings =
+      Enum.flat_map(stories, fn story ->
+        criteria = story.criteria || []
+        component = Map.get(component_map, story.component_id)
+        coverage = BddSpecs.check_story_coverage(env, story)
+        story_warnings(story, criteria, component, coverage)
+      end)
+
+    header =
+      if warnings != [] do
+        "## Completion Summary (#{length(warnings)} warnings)\n"
+      else
+        "## Completion Summary\n"
+      end
+
+    header <> "\n" <> Enum.join(story_lines, "\n")
+  end
+
+  defp story_warnings(story, criteria, component, coverage) do
+    warnings = []
+    warnings = if criteria == [], do: ["no acceptance criteria" | warnings], else: warnings
+    warnings = if is_nil(story.component_id), do: ["no linked component" | warnings], else: warnings
+
+    warnings =
+      if component && has_unsatisfied_requirements?(component) do
+        unsatisfied = unsatisfied_requirement_names(component)
+        ["unsatisfied: #{Enum.join(unsatisfied, ", ")}" | warnings]
+      else
+        warnings
+      end
+
+    warnings =
+      if criteria != [] && coverage.missing != [] do
+        ["#{length(coverage.missing)} missing specs" | warnings]
+      else
+        warnings
+      end
+
+    Enum.reverse(warnings)
   end
 
   # ============================================================================
