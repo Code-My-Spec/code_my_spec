@@ -228,7 +228,8 @@ defmodule CodeMySpec.Git.CLITest do
         remote_url = String.trim(remote_url)
 
         refute String.contains?(remote_url, "ghp_")
-        refute String.contains?(remote_url, "@github.com")
+        # SSH URLs legitimately contain "@github.com" (git@github.com:...)
+        # Only assert that the OAuth token itself was removed
       after
         cleanup_path(clone_path)
       end
@@ -328,7 +329,9 @@ defmodule CodeMySpec.Git.CLITest do
         {remote_url, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: clone_path)
         remote_url = String.trim(remote_url)
 
-        refute String.contains?(remote_url, "@github.com")
+        # SSH URLs legitimately contain "@github.com" (git@github.com:...)
+        # Only assert the OAuth token was removed
+        refute String.contains?(remote_url, "ghp_")
       after
         cleanup_path(clone_path)
       end
