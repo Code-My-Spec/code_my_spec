@@ -32,12 +32,14 @@ defmodule CodeMySpec.Application do
   end
 
   def children(children, :dev) do
-    dev_children = [
-      {Ngrok,
-       port: 4000,
-       name: CodeMySpec.Ngrok,
-       additional_arguments: ["--url", "special-mutually-falcon.ngrok-free.app"]}
-    ]
+    tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
+
+    dev_children =
+      if tunnel_config[:enabled] do
+        [{ClientUtils.CloudflareTunnel, tunnel_config}]
+      else
+        []
+      end
 
     # Add FileWatcher to dev_children if watch_content is enabled
     dev_children =

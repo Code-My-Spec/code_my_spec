@@ -5,6 +5,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   and categorization for consistent requirement checking.
   """
 
+  alias CodeMySpec.Requirements.AcceptedIssuesChecker
   alias CodeMySpec.Requirements.AllStoriesCompleteChecker
   alias CodeMySpec.Requirements.ArtifactExistenceChecker
   alias CodeMySpec.Requirements.BddSpecExistenceChecker
@@ -17,6 +18,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   alias CodeMySpec.Requirements.DocumentValidityChecker
   alias CodeMySpec.Requirements.FileExistenceChecker
   alias CodeMySpec.Requirements.HierarchicalChecker
+  alias CodeMySpec.Requirements.IncomingIssuesChecker
   alias CodeMySpec.Requirements.ProjectQaChecker
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Requirements.SpecTestAlignmentChecker
@@ -491,7 +493,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: nil,
         artifact_type: :dependencies,
         description: "All story requirements satisfied",
-        prerequisites: ["architecture_designed"],
+        prerequisites: ["issues_resolved"],
         scope: :dependencies
       })
 
@@ -513,11 +515,43 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec issues_triaged() :: RequirementDefinition.t()
+  def issues_triaged do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "issues_triaged",
+        checker: IncomingIssuesChecker,
+        satisfied_by: CodeMySpec.AgentTasks.TriageIssues,
+        artifact_type: :review,
+        description: "All incoming QA issues have been triaged",
+        prerequisites: ["architecture_designed"]
+      })
+
+    definition
+  end
+
+  @spec issues_resolved() :: RequirementDefinition.t()
+  def issues_resolved do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "issues_resolved",
+        checker: AcceptedIssuesChecker,
+        satisfied_by: CodeMySpec.AgentTasks.FixIssues,
+        artifact_type: :review,
+        description: "All medium+ accepted issues have been resolved",
+        prerequisites: ["issues_triaged"]
+      })
+
+    definition
+  end
+
   @spec project_requirements() :: [RequirementDefinition.t()]
   def project_requirements do
     [
       technical_strategy(),
       architecture_designed(),
+      issues_triaged(),
+      issues_resolved(),
       all_stories_complete(),
       project_qa()
     ]

@@ -7,18 +7,23 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   then returns a prompt telling the agent to write a brief and stop.
 
   Evaluate is a state machine — phase is derived from artifact existence:
-  1. **brief** — brief.md missing or invalid → feedback to write the brief
-  2. **test** — brief valid, result.md missing or invalid → feedback to test
-  3. **done** — both valid → parse issues from result, create issue files for medium+
+  1. **plan** — plan.md missing/invalid or plan_updates.md pending → feedback
+  2. **brief** — brief.md missing or invalid → feedback to write the brief
+  3. **test** — brief valid, result.md missing or invalid → feedback to test
+  4. **done** — all valid → file issues, write plan_updates.md, return :valid
 
   Three artifacts for inspectability:
   - `prompt.md` — story context (written by this code)
   - `brief.md` — agent's plan of attack (written by the agent)
   - `result.md` — test outcomes with evidence (written by the agent)
 
+  Plan lifecycle:
+  - `plan.md` — shared QA plan (written by agent, validated by evaluate)
+  - `plan_updates.md` — accumulated findings from testing (written by evaluate, incorporated by next agent)
+
   Two main functions:
   - `command/3` — Writes prompt.md to disk, returns agent prompt (phase 1 only)
-  - `evaluate/3` — State machine: validates brief → result → files issues
+  - `evaluate/3` — State machine: validates plan → brief → result → files issues → writes updates
   """
 
   require Logger
@@ -27,6 +32,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   alias CodeMySpec.{BddSpecs, Environments, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.{DocumentSpecProjector, QaIssue}
+
+  @required_plan_sections ["app overview", "tools registry", "seed strategy"]
 
   @doc """
   Write the story's prompt.md and return the agent prompt.
@@ -40,7 +47,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   def command(scope, session, _opts \\ []) do
     with {:ok, story_id} <- get_story_id(session) do
       env = scope.environment
-      app_url = get_app_url(scope)
+      endpoint_module = endpoint_module_name(scope)
 
       story = Stories.get_story!(scope, story_id)
       spec_paths = collect_spec_file_paths(env, story_id)
@@ -48,11 +55,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       brief_path = brief_path(story_id)
 
       # Write the prompt file to disk as shared context
-      prompt_content = build_prompt_file(story, spec_paths, app_url)
+      prompt_content = build_prompt_file(story, spec_paths, endpoint_module)
       Environments.write_file(env, prompt_path, prompt_content)
 
       # Return agent prompt pointing to the files
-      plan_exists = plan_exists?(env)
       existing_scripts = list_scripts(env)
       brief_spec = DocumentSpecProjector.project_spec("qa_story_brief")
 
@@ -61,10 +67,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           story_id,
           prompt_path,
           brief_path,
-          plan_exists,
+          env,
           existing_scripts,
           brief_spec,
-          app_url
+          endpoint_module
         )
 
       {:ok, TaskMarker.build("QaStory", to_string(story_id)) <> "\n\n" <> agent_prompt}
@@ -75,31 +81,25 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   State machine evaluate — phase is derived from artifact existence.
 
   Phase flow:
-  1. brief.md missing/invalid → feedback to write the brief
-  2. brief valid, result.md missing/invalid → feedback to execute tests
-  3. both valid → parse issues, create files for medium+, return valid
+  1. plan.md missing/invalid or plan_updates.md pending → feedback
+  2. brief.md missing/invalid → feedback to write the brief
+  3. brief valid, result.md missing/invalid → feedback to execute tests
+  4. all valid → file issues, write plan_updates.md, return :valid
 
   Returns:
-  - `{:ok, :valid}` when both brief and result pass validation (issues filed inline)
+  - `{:ok, :valid}` when all phases pass (issues filed, plan updates written)
   - `{:ok, :invalid, feedback}` when the current phase artifact is missing or invalid
   """
   def evaluate(scope, session, _opts \\ []) do
     with {:ok, story_id} <- get_story_id(session) do
       env = scope.environment
 
-      case check_brief(env, story_id) do
-        {:missing, feedback} ->
-          {:ok, :invalid, feedback}
-
-        :valid ->
-          case check_result(env, story_id) do
-            {:missing, feedback} ->
-              {:ok, :invalid, feedback}
-
-            {:valid, document} ->
-              create_issue_files(env, story_id, document)
-              {:ok, :valid}
-          end
+      with :ok <- check_plan(env),
+           :ok <- check_brief(env, story_id),
+           {:ok, document} <- check_result(env, story_id) do
+        create_issue_files(env, story_id, document)
+        write_plan_updates(env, story_id, document)
+        {:ok, :valid}
       end
     end
   end
@@ -123,6 +123,60 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Phase Checks
   # ============================================================================
 
+  defp check_plan(env) do
+    case Environments.read_file(env, Paths.qa_plan()) do
+      {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
+        with :ok <- validate_plan_sections(content) do
+          check_plan_updates(env)
+        end
+
+      _ ->
+        doc_spec = DocumentSpecProjector.project_spec("qa_plan")
+
+        {:ok, :invalid,
+         "QA plan not found at `#{Paths.qa_plan()}`. " <>
+           "Write the QA plan before continuing with the story brief.\n\n" <>
+           "## QA Plan Format\n\n#{doc_spec}"}
+    end
+  end
+
+  defp validate_plan_sections(content) do
+    content_lower = String.downcase(content)
+
+    missing =
+      Enum.reject(@required_plan_sections, fn section ->
+        String.contains?(content_lower, "## #{section}")
+      end)
+
+    case missing do
+      [] ->
+        :ok
+
+      sections ->
+        section_list = Enum.map_join(sections, ", ", &"`## #{title_case(&1)}`")
+        doc_spec = DocumentSpecProjector.project_spec("qa_plan")
+
+        {:ok, :invalid,
+         "QA plan at `#{Paths.qa_plan()}` is missing required section(s): #{section_list}. " <>
+           "Update the plan and stop the session again.\n\n## QA Plan Format\n\n#{doc_spec}"}
+    end
+  end
+
+  defp check_plan_updates(env) do
+    path = plan_updates_path()
+
+    case Environments.read_file(env, path) do
+      {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
+        {:ok, :invalid,
+         "Plan updates are pending at `#{path}`. Incorporate these findings " <>
+           "into `#{Paths.qa_plan()}` and delete `#{path}` when done. " <>
+           "Stop the session after updating.\n\n#{content}"}
+
+      _ ->
+        :ok
+    end
+  end
+
   defp check_brief(env, story_id) do
     path = brief_path(story_id)
 
@@ -130,15 +184,15 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
         case Documents.create_dynamic_document(content, "qa_story_brief") do
           {:ok, _document} ->
-            :valid
+            :ok
 
           {:error, reason} ->
-            {:missing,
+            {:ok, :invalid,
              "Brief at `#{path}` is invalid: #{reason}. Fix the brief and stop the session again."}
         end
 
       _ ->
-        {:missing,
+        {:ok, :invalid,
          "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
     end
   end
@@ -151,10 +205,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
         case Documents.create_dynamic_document(content, "qa_result") do
           {:ok, document} ->
-            {:valid, document}
+            {:ok, document}
 
           {:error, reason} ->
-            {:missing,
+            {:ok, :invalid,
              "Brief validated. Result at `#{path}` is invalid: #{reason}. " <>
                "Fix the result to match this specification and stop the session.\n\n" <>
                result_spec}
@@ -163,12 +217,37 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       _ ->
         screenshot_dir = Path.join([Paths.qa_dir(), to_string(story_id), "screenshots"])
 
-        {:missing,
+        {:ok, :invalid,
          "Brief validated. Now execute the test plan from the brief and write the result to `#{path}`. " <>
            "Save screenshots to `#{screenshot_dir}/`. " <>
            "Stop the session when done.\n\n## Result Format\n\n" <>
            result_spec}
     end
+  end
+
+  defp write_plan_updates(env, story_id, document) do
+    issues = Map.get(document.sections, "issues", [])
+    fileable = if is_list(issues), do: Enum.filter(issues, &QaIssue.fileable?/1), else: []
+
+    path = plan_updates_path()
+
+    existing =
+      case Environments.read_file(env, path) do
+        {:ok, content} when is_binary(content) and byte_size(content) > 0 -> content
+        _ -> "# QA Plan Updates\n\nFindings from per-story QA testing to incorporate into the plan.\n"
+      end
+
+    entry = build_plan_update_entry(story_id, fileable)
+    Environments.write_file(env, path, existing <> "\n" <> entry)
+  end
+
+  defp build_plan_update_entry(story_id, []) do
+    "## Story #{story_id}\n\nNo issues found.\n"
+  end
+
+  defp build_plan_update_entry(story_id, issues) do
+    issue_list = Enum.map_join(issues, "\n", &"- **#{&1.severity}**: #{&1.title}")
+    "## Story #{story_id}\n\n#{issue_list}\n"
   end
 
   # ============================================================================
@@ -194,7 +273,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       |> String.trim_trailing("_")
       |> String.slice(0..40)
 
-    path = Path.join(Paths.issues_dir(), "qa-#{story_id}-#{slug}.md")
+    path = Path.join(Paths.issues_incoming_dir(), "qa-#{story_id}-#{slug}.md")
 
     unless Environments.file_exists?(env, path) do
       content = build_issue_file(story_id, issue)
@@ -224,19 +303,35 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Data Loading
   # ============================================================================
 
-  defp get_app_url(scope) do
+  defp endpoint_module_name(scope) do
     case scope.active_project do
-      %{module_name: module_name} when is_binary(module_name) and module_name != "" ->
-        endpoint = Module.concat([:"#{module_name}Web", :Endpoint])
+      %{module_name: name} when is_binary(name) and name != "" ->
+        "#{name}Web.Endpoint"
 
-        if Code.ensure_loaded?(endpoint) and function_exported?(endpoint, :url, 0) do
-          endpoint.url()
-        else
-          nil
+      _ ->
+        "MyAppWeb.Endpoint"
+    end
+  end
+
+  defp derive_app_name(env) do
+    case Environments.read_file(env, "mix.exs") do
+      {:ok, content} ->
+        case Regex.run(~r/app:\s*:(\w+)/, content) do
+          [_, app_name] -> app_name
+          _ -> "my_app"
         end
 
       _ ->
-        nil
+        "my_app"
+    end
+  end
+
+  defp read_router(env, app_name) do
+    path = "lib/#{app_name}_web/router.ex"
+
+    case Environments.read_file(env, path) do
+      {:ok, content} -> content
+      _ -> nil
     end
   end
 
@@ -262,17 +357,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Prompt File (written to disk)
   # ============================================================================
 
-  defp build_prompt_file(story, spec_paths, app_url) do
+  defp build_prompt_file(story, spec_paths, endpoint_module) do
     criteria_text = format_criteria(Map.get(story, :criteria, []))
     specs_text = format_spec_paths(spec_paths)
-    url_text = if app_url, do: app_url, else: "http://localhost:4000"
 
     """
     # Story #{story.id}: #{story.title}
 
     ## App URL
 
-    #{url_text}
+    Run `mix run -e 'IO.puts(#{endpoint_module}.url())'` to get the app URL.
 
     ## Description
 
@@ -302,16 +396,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
          story_id,
          prompt_path,
          brief_path,
-         plan_exists,
+         env,
          existing_scripts,
          brief_spec,
-         app_url
+         endpoint_module
        ) do
     sections =
       [
-        build_header(story_id, app_url),
+        build_header(story_id, endpoint_module),
         build_brief_spec_section(brief_spec),
-        build_plan_reference(plan_exists),
+        build_plan_reference(env),
         build_scripts_section(existing_scripts),
         build_prompt_reference(prompt_path),
         build_instructions(story_id, prompt_path, brief_path)
@@ -321,13 +415,11 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     Enum.join(sections, "\n\n")
   end
 
-  defp build_header(story_id, app_url) do
-    url_text = if app_url, do: app_url, else: "http://localhost:4000"
-
+  defp build_header(story_id, endpoint_module) do
     """
     # QA Story: Plan and Test Story #{story_id}
 
-    **App URL:** `#{url_text}`
+    **App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'` to get the app URL.
 
     You are the QA agent for story #{story_id}. Your first task is to plan the
     testing approach by writing a brief. Stop after writing the brief so it can
@@ -338,14 +430,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     screenshot) and shell scripts in `#{Paths.qa_dir()}/scripts/` for authenticated requests.
     You do NOT open a browser manually.
     Reference existing scripts by path rather than inlining raw curl commands.
-    Use `#{url_text}` as the base URL for all requests.
 
     **Tool rules:**
     - **Browser testing:** Use `vibium` commands (`vibium navigate`, `vibium click`, `vibium type`,
       `vibium screenshot`, etc.).
     - **API testing:** Use `curl` but ALWAYS write single-line commands. Multi-line curl commands
-      (with backslash continuations) require individual approval and block the session.
-      Example: `curl -s -b /tmp/cookies.txt -X POST #{url_text}/api/endpoint -H "Content-Type: application/json" -d '{"key":"value"}'`\
+      (with backslash continuations) require individual approval and block the session.\
     """
   end
 
@@ -359,21 +449,69 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp build_plan_reference(true) do
-    """
-    ## QA Plan
+  defp build_plan_reference(env) do
+    if plan_exists?(env) do
+      updates_path = plan_updates_path()
 
-    Read `#{Paths.qa_plan()}` for the app overview, tools registry, authentication
-    strategy, and seed commands. Use this as your primary reference.\
-    """
+      if Environments.file_exists?(env, updates_path) do
+        """
+        ## QA Plan
+
+        Read `#{Paths.qa_plan()}` for the app overview, tools registry, authentication
+        strategy, and seed commands.
+
+        **Plan updates pending at `#{updates_path}`.** Read the updates from previous
+        story testing and incorporate relevant findings into the plan. Delete
+        `#{updates_path}` when done.\
+        """
+      else
+        """
+        ## QA Plan
+
+        Read `#{Paths.qa_plan()}` for the app overview, tools registry, authentication
+        strategy, and seed commands. Use this as your primary reference.\
+        """
+      end
+    else
+      doc_spec = DocumentSpecProjector.project_spec("qa_plan")
+      app_name = derive_app_name(env)
+      router_content = read_router(env, app_name)
+      router_section = build_setup_router_section(router_content)
+      scripts_dir = Path.join(Paths.qa_dir(), "scripts")
+
+      """
+      ## QA Plan
+
+      **No QA plan found at `#{Paths.qa_plan()}`.**
+
+      Before writing the brief, set up QA infrastructure:
+
+      #{router_section}
+
+      ### Setup Steps
+
+      1. Read `#{Paths.framework_dir()}/qa-tooling.md` for testing tool patterns
+      2. Analyze the router for routes, auth pipelines, and live sessions
+      3. Write seed scripts to `priv/repo/qa_seeds.exs` (`.exs` files run via `mix run`)
+      4. Write auth scripts to `#{scripts_dir}/` (`.sh` for curl wrappers, `chmod +x`)
+      5. Write `#{Paths.qa_plan()}` following this specification:
+
+      #{doc_spec}\
+      """
+    end
   end
 
-  defp build_plan_reference(false) do
-    """
-    ## QA Plan
+  defp build_setup_router_section(nil) do
+    "Run `mix phx.routes` to discover available routes."
+  end
 
-    **Warning:** No QA plan found at `#{Paths.qa_plan()}`. Run `qa_setup` first to
-    generate the plan. Without it, you'll need to discover app details yourself.\
+  defp build_setup_router_section(router_content) do
+    """
+    ### Router
+
+    ```elixir
+    #{router_content}
+    ```\
     """
   end
 
@@ -436,6 +574,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     Path.join([Paths.qa_dir(), to_string(story_id), "result.md"])
   end
 
+  defp plan_updates_path do
+    Path.join(Paths.qa_dir(), "plan_updates.md")
+  end
+
   defp format_criteria(nil), do: "_None defined._"
   defp format_criteria([]), do: "_None defined._"
 
@@ -448,5 +590,11 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp format_spec_paths(paths) do
     Enum.map_join(paths, "\n", &"- `#{&1}`")
+  end
+
+  defp title_case(string) do
+    string
+    |> String.split(" ")
+    |> Enum.map_join(" ", &String.capitalize/1)
   end
 end

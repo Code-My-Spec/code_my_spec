@@ -50,6 +50,15 @@ defmodule CodeMySpec.Paths do
   @doc "Issues directory (`.code_my_spec/issues`)."
   def issues_dir, do: Path.join(@base_dir, "issues")
 
+  @doc "Incoming (untriaged) issues directory (`.code_my_spec/issues/incoming`)."
+  def issues_incoming_dir, do: Path.join(issues_dir(), "incoming")
+
+  @doc "Accepted issues directory (`.code_my_spec/issues/accepted`)."
+  def issues_accepted_dir, do: Path.join(issues_dir(), "accepted")
+
+  @doc "Dismissed issues directory (`.code_my_spec/issues/dismissed`)."
+  def issues_dismissed_dir, do: Path.join(issues_dir(), "dismissed")
+
   @doc "QA results directory (`.code_my_spec/qa`)."
   def qa_dir, do: Path.join(@base_dir, "qa")
 

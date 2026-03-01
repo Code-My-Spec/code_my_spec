@@ -70,6 +70,25 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     """)
   end
 
+  defp write_qa_plan(env) do
+    write_file!(env, ".code_my_spec/qa/plan.md", """
+    # QA Plan
+
+    ## App Overview
+
+    Phoenix app with session-based auth on port 4000.
+
+    ## Tools Registry
+
+    ### web tool
+    Use for LiveView pages.
+
+    ## Seed Strategy
+
+    - `mix run priv/repo/qa_seeds.exs`
+    """)
+  end
+
   defp write_qa_summary(env, content \\ nil) do
     write_file!(
       env,
@@ -81,7 +100,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
   defp write_issue(env, name, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/issues/#{name}.md",
+      ".code_my_spec/issues/incoming/#{name}.md",
       content || "# #{name}\n\nDescription of the issue."
     )
   end
@@ -260,6 +279,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     test "delegates story validation to QaStory.evaluate", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       session = %{project: scope.active_project}
+      write_qa_plan(scope.environment)
 
       # No brief or result — QaStory.evaluate should report brief missing
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
@@ -271,6 +291,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       session = %{project: scope.active_project}
 
+      write_qa_plan(scope.environment)
       write_story_brief(scope.environment, story.id)
       write_story_result(scope.environment, story.id)
       write_qa_summary(scope.environment)
@@ -282,6 +303,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       session = %{project: scope.active_project}
 
+      write_qa_plan(scope.environment)
       write_story_brief(scope.environment, story.id)
       write_qa_summary(scope.environment)
 
@@ -293,6 +315,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       session = %{project: scope.active_project}
 
+      write_qa_plan(scope.environment)
       write_story_brief(scope.environment, story.id)
       write_story_result(scope.environment, story.id)
 

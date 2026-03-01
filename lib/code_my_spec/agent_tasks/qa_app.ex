@@ -148,15 +148,22 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   end
 
   defp list_existing_issues(env) do
-    case Environments.glob(env, "#{Paths.issues_dir()}/*.md") do
-      files when is_list(files) and files != [] ->
-        files
-        |> Enum.map(&Path.basename/1)
-        |> Enum.sort()
-        |> Enum.map_join("\n", &"- `#{&1}`")
+    incoming = Environments.glob(env, "#{Paths.issues_incoming_dir()}/*.md") || []
+    accepted = Environments.glob(env, "#{Paths.issues_accepted_dir()}/*.md") || []
+    files = incoming ++ accepted
 
-      _ ->
+    case files do
+      [] ->
         "No existing issues."
+
+      files ->
+        files
+        |> Enum.map(fn path ->
+          subdir = path |> Path.dirname() |> Path.basename()
+          "- `#{subdir}/#{Path.basename(path)}`"
+        end)
+        |> Enum.sort()
+        |> Enum.join("\n")
     end
   end
 

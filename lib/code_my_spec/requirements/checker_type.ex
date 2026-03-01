@@ -3,21 +3,23 @@ defmodule CodeMySpec.Requirements.CheckerType do
 
   use CodeMySpec.Utils.ModuleType,
     valid_types: [
-      CodeMySpec.Requirements.FileExistenceChecker,
-      CodeMySpec.Requirements.DocumentValidityChecker,
-      CodeMySpec.Requirements.TestStatusChecker,
-      CodeMySpec.Requirements.DependencyChecker,
-      CodeMySpec.Requirements.HierarchicalChecker,
-      CodeMySpec.Requirements.ContextReviewFileChecker,
-      CodeMySpec.Requirements.ContextReviewValidityChecker,
-      CodeMySpec.Requirements.SpecTestAlignmentChecker,
-      CodeMySpec.Requirements.ComponentLinkedChecker,
+      CodeMySpec.Requirements.AcceptedIssuesChecker,
+      CodeMySpec.Requirements.AllStoriesCompleteChecker,
+      CodeMySpec.Requirements.ArtifactExistenceChecker,
       CodeMySpec.Requirements.BddSpecExistenceChecker,
       CodeMySpec.Requirements.BddSpecPassingChecker,
-      CodeMySpec.Requirements.StoryQaChecker,
-      CodeMySpec.Requirements.ArtifactExistenceChecker,
-      CodeMySpec.Requirements.AllStoriesCompleteChecker,
       CodeMySpec.Requirements.ComponentCompleteChecker,
-      CodeMySpec.Requirements.ProjectQaChecker
+      CodeMySpec.Requirements.ComponentLinkedChecker,
+      CodeMySpec.Requirements.ContextReviewFileChecker,
+      CodeMySpec.Requirements.ContextReviewValidityChecker,
+      CodeMySpec.Requirements.DependencyChecker,
+      CodeMySpec.Requirements.DocumentValidityChecker,
+      CodeMySpec.Requirements.FileExistenceChecker,
+      CodeMySpec.Requirements.HierarchicalChecker,
+      CodeMySpec.Requirements.IncomingIssuesChecker,
+      CodeMySpec.Requirements.ProjectQaChecker,
+      CodeMySpec.Requirements.SpecTestAlignmentChecker,
+      CodeMySpec.Requirements.StoryQaChecker,
+      CodeMySpec.Requirements.TestStatusChecker
     ]
 end

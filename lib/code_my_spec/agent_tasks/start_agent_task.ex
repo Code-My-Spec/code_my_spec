@@ -336,7 +336,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   defp find_or_create_session(scope, external_id, session_module) do
     {:ok, sessions} = Sessions.list_sessions(scope)
 
-    case Enum.find(sessions, &(&1.type == session_module && &1.status == :active)) do
+    case Enum.find(sessions, &(&1.type == session_module && &1.status == :active && &1.external_conversation_id == external_id)) do
       %Session{} = existing -> {:ok, existing}
       nil -> create_session(scope, external_id, session_module, nil)
     end

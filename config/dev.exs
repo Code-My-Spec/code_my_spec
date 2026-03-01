@@ -29,6 +29,7 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
     certfile: "priv/cert/selfsigned.pem",
     keyfile: "priv/cert/selfsigned_key.pem"
   ],
+  url: [host: "dev.codemyspec.com", scheme: "https", port: 443],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
@@ -104,3 +105,11 @@ config :code_my_spec,
     account_id: "0f27281c-240b-4d6d-8e52-9c5972329522",
     project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
   }
+
+# Cloudflare Tunnel — exposes localhost via dev.codemyspec.com
+config :code_my_spec, :cloudflare_tunnel,
+  enabled: true,
+  hostname: "dev.codemyspec.com",
+  tunnel_id: "12a798a4-81a3-4242-8b59-ac171c0a01a1",
+  account_tag: "6477547f586ec90db2c2a0081dcd98bd",
+  origin_url: "http://127.0.0.1:4000"

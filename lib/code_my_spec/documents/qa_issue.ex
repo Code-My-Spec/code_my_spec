@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Documents.QaIssue do
   @moduledoc """
   Embedded schema representing a QA-discovered issue parsed from a result's ## Issues section.
-  Contains title, severity, and description. Only medium+ severity issues get standalone files.
+  Contains title, severity, and description. All severity levels get standalone issue files.
   """
 
   use Ecto.Schema
@@ -25,6 +25,6 @@ defmodule CodeMySpec.Documents.QaIssue do
     |> validate_inclusion(:severity, @severities)
   end
 
-  def fileable?(%__MODULE__{severity: s}) when s in ~w(critical high medium), do: true
+  def fileable?(%__MODULE__{severity: s}) when s in @severities, do: true
   def fileable?(_), do: false
 end

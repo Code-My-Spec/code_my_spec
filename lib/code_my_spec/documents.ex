@@ -134,7 +134,8 @@ defmodule CodeMySpec.Documents do
              doc_def.required_sections,
              doc_def.optional_sections,
              doc_def.allowed_additional_sections
-           ) do
+           ),
+         :ok <- validate_parsed_issues(sections) do
       {:ok, %{sections: sections, type: document_type}}
     end
   end
@@ -218,4 +219,27 @@ defmodule CodeMySpec.Documents do
       {:error, "Disallowed sections found: #{Enum.join(disallowed_list, ", ")}"}
     end
   end
+
+  @valid_severities ~w(critical high medium low info)
+
+  defp validate_parsed_issues(%{"issues" => issues}) when is_list(issues) do
+    bad =
+      Enum.filter(issues, fn
+        %{severity: s} -> s not in @valid_severities
+        _ -> true
+      end)
+
+    if bad == [] do
+      :ok
+    else
+      titles = Enum.map_join(bad, ", ", &Map.get(&1, :title, "unknown"))
+
+      {:error,
+       "Issues section has entries with missing/invalid severity. " <>
+         "Each issue needs an `#### Severity` subsection with one of: " <>
+         "CRITICAL, HIGH, MEDIUM, LOW, INFO. Bad entries: #{titles}"}
+    end
+  end
+
+  defp validate_parsed_issues(_sections), do: :ok
 end

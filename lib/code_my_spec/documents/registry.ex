@@ -459,21 +459,30 @@ defmodule CodeMySpec.Documents.Registry do
   @qa_result_issues """
   Format:
   - Use H2 heading
-  - Use H3 for each issue with severity in parentheses: `### Issue title (SEVERITY)`
+  - Use H3 for each issue title
+  - Use H4 subsections for structured fields: Severity, Description
   - Severity must be one of: CRITICAL, HIGH, MEDIUM, LOW, INFO
   - If no issues found, write "None" as plain text
 
   Content:
-  - Each issue gets an H3 heading with title and severity
-  - Body paragraphs describe what's wrong, with enough detail to understand and reproduce
+  - Each issue gets an H3 heading with a descriptive title
+  - H4 `#### Severity` with the severity level on the next line
+  - H4 `#### Description` with paragraphs describing what's wrong
   - Include specific URLs, inputs, or conditions that trigger the issue
 
   Examples:
   - ## Issues
-    ### Login redirect fails for invited users (HIGH)
+    ### Login redirect fails for invited users
+    #### Severity
+    HIGH
+    #### Description
     Invited users who click the email link are redirected to /login instead of /accept-invite.
     Reproduced with user test+invite@example.com.
-    ### Missing validation on empty name (MEDIUM)
+
+    ### Missing validation on empty name
+    #### Severity
+    MEDIUM
+    #### Description
     Submitting the profile form with an empty name field succeeds instead of showing an error.
   """
 
@@ -513,6 +522,20 @@ defmodule CodeMySpec.Documents.Registry do
   - Which scripts to run for different testing scenarios
   """
 
+  @qa_plan_system_issues """
+  Format:
+  - Use H2 heading
+  - Use H3 for each issue
+  - Each issue: what went wrong, workaround (if any), status (open/resolved)
+
+  Content:
+  - Infrastructure problems (server won't start, port conflicts, missing deps)
+  - Auth or seed failures (script errors, credential issues)
+  - Tool problems (browser automation flaky, curl auth not working)
+  - Environment issues (database state, config mismatches)
+  - Any blocker or friction the QA agent hit that should be fixed or noted
+  """
+
   @qa_plan_notes """
   Format:
   - Use H2 heading
@@ -526,12 +549,14 @@ defmodule CodeMySpec.Documents.Registry do
   @qa_issue_severity """
   Format:
   - Use H2 heading
-  - Single line: one of `critical`, `high`, `medium`
+  - Single line: one of `critical`, `high`, `medium`, `low`, `info`
 
   Content:
   - critical — app crashes, data loss, security vulnerability
   - high — feature broken, wrong behavior
   - medium — UX problem, missing validation, edge case failure
+  - low — minor cosmetic issue, non-blocking
+  - info — observation, suggestion, or note
   """
 
   @qa_issue_description """
@@ -558,6 +583,27 @@ defmodule CodeMySpec.Documents.Registry do
   Format:
   - Use H2 heading
   - Numbered steps to reproduce
+  """
+
+  @qa_issue_requirements_impact """
+  Format:
+  - Use H2 heading
+  - Bullet list of affected requirements or stories
+
+  Content:
+  - Which user stories or requirements this issue impacts
+  - Severity of impact on each
+  """
+
+  @qa_issue_resolution """
+  Format:
+  - Use H2 heading
+  - Paragraphs describing what was done to resolve the issue
+
+  Content:
+  - Summary of the fix applied
+  - Files changed
+  - Verification steps taken
   """
 
   @proposal_contexts """
@@ -838,25 +884,28 @@ defmodule CodeMySpec.Documents.Registry do
     "qa_plan" => %{
       overview: "Overall QA testing strategy document. Written by the QA planner after analyzing the running app's routes, authentication, and configuration. Serves as the foundation for per-story QA briefs.",
       required_sections: ["app overview", "tools registry", "seed strategy"],
-      optional_sections: ["notes"],
+      optional_sections: ["system issues", "notes"],
       allowed_additional_sections: [],
       section_descriptions: %{
         "app overview" => @qa_plan_app_overview,
         "tools registry" => @qa_plan_tools_registry,
         "seed strategy" => @qa_plan_seed_strategy,
+        "system issues" => @qa_plan_system_issues,
         "notes" => @qa_plan_notes
       }
     },
     "qa_issue" => %{
-      overview: "QA-discovered issue. Only medium+ severity issues get standalone files in .code_my_spec/issues/.",
+      overview: "QA-discovered issue filed to .code_my_spec/issues/incoming/ for triage.",
       required_sections: ["severity", "description"],
-      optional_sections: ["source", "reproduction"],
+      optional_sections: ["source", "reproduction", "requirements impact", "resolution"],
       allowed_additional_sections: [],
       section_descriptions: %{
         "severity" => @qa_issue_severity,
         "description" => @qa_issue_description,
         "source" => @qa_issue_source,
-        "reproduction" => @qa_issue_reproduction
+        "reproduction" => @qa_issue_reproduction,
+        "requirements impact" => @qa_issue_requirements_impact,
+        "resolution" => @qa_issue_resolution
       }
     },
     "architecture_proposal" => %{

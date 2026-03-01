@@ -51,6 +51,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test "all_stories_complete with no stories returns error", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -72,6 +74,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test "descends into story when all_stories_complete is stuck", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -91,6 +95,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test "skips completed stories and finds first incomplete", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -113,6 +119,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test "all stories complete returns project_qa", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, true)
       create_project_requirement(scope, "project_qa", :review, false,
         satisfied_by: CodeMySpec.AgentTasks.QaApp
@@ -128,6 +136,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
       for {name, artifact_type} <- [
             {"technical_strategy", :specification},
             {"architecture_designed", :specification},
+            {"issues_triaged", :review},
+            {"issues_resolved", :review},
             {"all_stories_complete", :dependencies},
             {"project_qa", :review}
           ] do
@@ -147,6 +157,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test "story with component_complete stuck descends into component tree", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -174,6 +186,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test "story with component_complete satisfied returns bdd_specs_passing", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -203,6 +217,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     } do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -261,6 +277,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     } do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -282,6 +300,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test ":children scope descends into child components", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -352,6 +372,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test ":children scope returns error when no children have work", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -397,6 +419,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     test ":dependencies scope descends through component dependency chain", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
+      create_project_requirement(scope, "issues_triaged", :review, true)
+      create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, false,
         scope: :dependencies
       )
@@ -464,6 +488,8 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
       for {name, artifact_type} <- [
             {"technical_strategy", :specification},
             {"architecture_designed", :specification},
+            {"issues_triaged", :review},
+            {"issues_resolved", :review},
             {"all_stories_complete", :dependencies},
             {"project_qa", :review}
           ] do

@@ -10,62 +10,67 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
 
   defp valid_module_atoms do
     [
-      AgentTasks.ComponentSpec,
-      AgentTasks.ComponentCode,
-      AgentTasks.ComponentTest,
-      AgentTasks.ContextSpec,
-      AgentTasks.ContextComponentSpecs,
-      AgentTasks.ContextImplementation,
-      AgentTasks.ContextDesignReview,
       AgentTasks.ArchitectureDesign,
       AgentTasks.ArchitectureReview,
-      AgentTasks.ProjectSetup,
-      AgentTasks.WriteBddSpecs,
-      AgentTasks.ManageImplementation,
-      AgentTasks.DevelopContext,
-      AgentTasks.DevelopLiveView,
-      AgentTasks.LiveViewSpec,
+      AgentTasks.ComponentCode,
+      AgentTasks.ComponentSpec,
+      AgentTasks.ComponentTest,
+      AgentTasks.ContextComponentSpecs,
+      AgentTasks.ContextDesignReview,
+      AgentTasks.ContextImplementation,
+      AgentTasks.ContextSpec,
       AgentTasks.DesignUi,
-      AgentTasks.TechnicalStrategy,
-      AgentTasks.ResearchTopic,
+      AgentTasks.DevelopContext,
       AgentTasks.DevelopLiveContext,
+      AgentTasks.DevelopLiveView,
+      AgentTasks.FixIssues,
+      AgentTasks.LinkStoryComponent,
       AgentTasks.LiveContextSpec,
+      AgentTasks.LiveViewSpec,
+      AgentTasks.ManageImplementation,
+      AgentTasks.ProjectSetup,
       AgentTasks.QaApp,
       AgentTasks.QaSetup,
       AgentTasks.QaStory,
+      AgentTasks.RefactorModule,
+      AgentTasks.ResearchTopic,
       AgentTasks.StartImplementation,
-      AgentTasks.LinkStoryComponent,
-      AgentTasks.RefactorModule
+      AgentTasks.TechnicalStrategy,
+      AgentTasks.TriageIssues,
+      AgentTasks.WriteBddSpecs
     ]
   end
 
   defp valid_string_names do
     [
-      "ComponentSpec",
-      "ComponentCode",
-      "ComponentTest",
-      "ContextSpec",
-      "ContextComponentSpecs",
-      "ContextImplementation",
-      "ContextDesignReview",
       "ArchitectureDesign",
       "ArchitectureReview",
-      "ProjectSetup",
-      "WriteBddSpecs",
-      "ManageImplementation",
-      "DevelopContext",
-      "DevelopLiveView",
-      "LiveViewSpec",
+      "ComponentCode",
+      "ComponentSpec",
+      "ComponentTest",
+      "ContextComponentSpecs",
+      "ContextDesignReview",
+      "ContextImplementation",
+      "ContextSpec",
       "DesignUi",
-      "TechnicalStrategy",
-      "ResearchTopic",
+      "DevelopContext",
       "DevelopLiveContext",
+      "DevelopLiveView",
+      "FixIssues",
+      "LinkStoryComponent",
       "LiveContextSpec",
+      "LiveViewSpec",
+      "ManageImplementation",
+      "ProjectSetup",
       "QaApp",
       "QaSetup",
       "QaStory",
+      "RefactorModule",
+      "ResearchTopic",
       "StartImplementation",
-      "LinkStoryComponent"
+      "TechnicalStrategy",
+      "TriageIssues",
+      "WriteBddSpecs"
     ]
   end
 
@@ -113,6 +118,8 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.QaSetup} = SessionType.cast("QaSetup")
       assert {:ok, AgentTasks.QaStory} = SessionType.cast("QaStory")
       assert {:ok, AgentTasks.StartImplementation} = SessionType.cast("StartImplementation")
+      assert {:ok, AgentTasks.TriageIssues} = SessionType.cast("TriageIssues")
+      assert {:ok, AgentTasks.FixIssues} = SessionType.cast("FixIssues")
     end
 
     test "returns module atom for valid atom" do
