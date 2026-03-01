@@ -70,7 +70,6 @@ defmodule CodeMySpec.MixProject do
       {:bandit, "~> 1.5"},
 
       # Added by codemyspec
-      {:ngrok, git: "https://github.com/johns10/ex_ngrok", branch: "main", only: [:dev]},
       {:mix_machine, git: "https://github.com/johns10/mix_machine", branch: "master"},
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
       {:sexy_spex, git: "https://github.com/Code-My-Spec/spex"},

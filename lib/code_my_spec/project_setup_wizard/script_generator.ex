@@ -195,7 +195,6 @@ defmodule CodeMySpec.ProjectSetupWizard.ScriptGenerator do
     echo ""
     echo "📦 Add these custom dependencies to your mix.exs file:"
     echo ""
-    echo '  {:ngrok, git: "https://github.com/johns10/ex_ngrok", branch: "main", only: [:dev]},'
     echo '  {:exunit_json_formatter, git: "https://github.com/johns10/exunit_json_formatter", branch: "master"},'
     echo '  {:credo, "~> 1.7.13"},'
     echo ""

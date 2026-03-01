@@ -32,19 +32,11 @@ defmodule CodeMySpec.Application do
   end
 
   def children(children, :dev) do
-    dev_children = [
-      {Ngrok,
-       port: 4000,
-       name: CodeMySpec.Ngrok,
-       additional_arguments: ["--url", "special-mutually-falcon.ngrok-free.app"]}
-    ]
-
-    # Add FileWatcher to dev_children if watch_content is enabled
     dev_children =
       if Application.get_env(:code_my_spec, :watch_content, false) do
-        [CodeMySpec.ContentSync.FileWatcher | dev_children]
+        [CodeMySpec.ContentSync.FileWatcher]
       else
-        dev_children
+        []
       end
 
     children ++ dev_children
