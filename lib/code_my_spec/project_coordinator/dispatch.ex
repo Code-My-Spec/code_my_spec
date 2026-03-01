@@ -35,6 +35,10 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
     command_children(req, scope, parent_session)
   end
 
+  def command(%Requirement{scope: :orchestrate} = req, scope, parent_session) do
+    command_orchestrate(req, scope, parent_session)
+  end
+
   def command(%Requirement{} = req, scope, parent_session) do
     command_local(req, scope, parent_session)
   end
@@ -66,6 +70,37 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
     Logger.info("[Dispatch] command :local #{req.name} → #{inspect(req.satisfied_by)}")
     session = build_session(req, scope, parent_session)
     req.satisfied_by.command(scope, session, skip_sync: true)
+  end
+
+  # ----------------------------------------------------------------
+  # Command: :orchestrate
+  #
+  # Like :local but writes a prompt file via default_orchestrate and
+  # returns an orchestration prompt telling the main agent to invoke
+  # a subagent.
+  # ----------------------------------------------------------------
+
+  defp command_orchestrate(req, scope, parent_session) do
+    Logger.info("[Dispatch] command :orchestrate #{req.name} → #{inspect(req.satisfied_by)}")
+    session = build_session(req, scope, parent_session)
+    component = session.component
+    status_dir = ProjectCoordinator.component_status_dir(component)
+
+    {:ok, result} =
+      ProjectCoordinator.default_orchestrate(req.satisfied_by, scope, session, status_dir: status_dir)
+
+    orchestration = """
+    # Orchestrate: #{component.module_name}
+
+    ## Task Status
+    #{result.orchestration_prompt}
+
+    ## Instructions
+    Read the prompt file at `#{result.prompt_path}` and invoke the appropriate subagent.
+    When the task is complete, **stop the session** so the hook can validate.
+    """
+
+    {:ok, orchestration}
   end
 
   # ----------------------------------------------------------------
@@ -177,6 +212,7 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
     Map.merge(parent_session, %{
       story_id: story.id,
+      state: %{"topic" => story.id},
       component: component,
       project: scope.active_project
     })

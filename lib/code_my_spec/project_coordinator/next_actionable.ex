@@ -66,6 +66,11 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
     {:ok, req}
   end
 
+  # :orchestrate — same as :local, return immediately; Dispatch handles orchestration
+  defp resolve(%Requirement{scope: :orchestrate} = req, _scope) do
+    {:ok, req}
+  end
+
   # :children — validate children have work, return PARENT requirement
   # The execution layer (Dispatch) orchestrates children via ProjectCoordinator
   defp resolve(%Requirement{scope: :children} = req, scope) do

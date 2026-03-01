@@ -143,7 +143,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, spex_problems} <- Pipeline.run_all_spex(scope),
          :ok <- persist_spex_problems(scope, spex_problems),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, session} <- create_session(scope, external_id, agent_task_module, nil),
+         {:ok, session} <- find_or_create_session(scope, external_id, agent_task_module),
          session <- enrich_session(session, nil, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
       {:ok, with_project_context(prompt, scope), sync_result}
@@ -332,6 +332,15 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   # Session creation
+
+  defp find_or_create_session(scope, external_id, session_module) do
+    {:ok, sessions} = Sessions.list_sessions(scope)
+
+    case Enum.find(sessions, &(&1.type == session_module && &1.status == :active)) do
+      %Session{} = existing -> {:ok, existing}
+      nil -> create_session(scope, external_id, session_module, nil)
+    end
+  end
 
   defp create_session(scope, external_id, session_module, component) do
     attrs = %{

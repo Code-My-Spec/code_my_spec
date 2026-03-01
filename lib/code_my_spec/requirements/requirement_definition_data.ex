@@ -215,7 +215,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification file exists",
-        prerequisites: []
+        prerequisites: [],
+        scope: :orchestrate
       })
 
     definition
@@ -230,7 +231,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification is valid",
-        prerequisites: ["spec_file"]
+        prerequisites: ["spec_file"],
+        scope: :orchestrate
       })
 
     definition
@@ -245,7 +247,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Context implementation file exists",
-        prerequisites: ["children_implementations", "dependencies_satisfied"]
+        prerequisites: ["children_implementations", "dependencies_satisfied"],
+        scope: :orchestrate
       })
 
     definition
@@ -260,7 +263,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Context test file exists",
-        prerequisites: ["children_implementations"]
+        prerequisites: ["children_implementations"],
+        scope: :orchestrate
       })
 
     definition
@@ -290,7 +294,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.LiveContextSpec,
         artifact_type: :specification,
         description: "Live context specification is valid",
-        prerequisites: ["spec_file"]
+        prerequisites: ["spec_file"],
+        scope: :orchestrate
       })
 
     definition
@@ -425,7 +430,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA brief and result artifacts valid",
-        prerequisites: ["bdd_specs_passing"]
+        prerequisites: ["bdd_specs_passing"],
+        scope: :orchestrate
       })
 
     definition
