@@ -255,10 +255,6 @@ defmodule CodeMySpecWeb.OAuthController do
   end
 
   defp get_base_url do
-    case Elixir.Application.get_env(:code_my_spec, :oauth_base_url) do
-      "" -> CodeMySpecWeb.Endpoint.url()
-      nil -> CodeMySpecWeb.Endpoint.url()
-      url -> url
-    end
+    CodeMySpecWeb.Endpoint.url()
   end
 end

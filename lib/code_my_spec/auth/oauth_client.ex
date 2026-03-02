@@ -195,7 +195,7 @@ defmodule CodeMySpec.Auth.OAuthClient do
   Get the configured server URL.
   """
   def get_server_url do
-    Application.get_env(:code_my_spec, :oauth_base_url, "http://localhost:4000")
+    CodeMySpecWeb.Endpoint.url()
   end
 
   # --- Token Exchange (for callback flows) ---

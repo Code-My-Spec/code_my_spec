@@ -11,7 +11,7 @@ defmodule CodeMySpec.Integrations.Providers.GitHub do
   Requires the following application config:
   - `:github_client_id` - OAuth client ID from GitHub
   - `:github_client_secret` - OAuth client secret from GitHub
-  - `:oauth_base_url` - Base URL for OAuth callbacks
+  - Callback URL derived from `CodeMySpecWeb.Endpoint.url()`
 
   ## OAuth Flow
 
@@ -68,7 +68,6 @@ defmodule CodeMySpec.Integrations.Providers.GitHub do
   end
 
   defp build_redirect_uri do
-    base_url = Application.fetch_env!(:code_my_spec, :oauth_base_url)
-    "#{base_url}/auth/github/callback"
+    "#{CodeMySpecWeb.Endpoint.url()}/auth/github/callback"
   end
 end

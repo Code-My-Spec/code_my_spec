@@ -42,6 +42,5 @@ config :phoenix_live_view,
 config :code_my_spec,
   github_client_id: "test_github_client_id",
   github_client_secret: "test_github_client_secret",
-  oauth_base_url: "http://localhost:4002",
   git_impl_module: CodeMySpec.Support.TestAdapter,
   environment: CodeMySpec.Support.RecordingEnvironment

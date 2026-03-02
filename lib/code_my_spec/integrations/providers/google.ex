@@ -11,7 +11,7 @@ defmodule CodeMySpec.Integrations.Providers.Google do
   Requires the following application config:
   - `:google_client_id` - OAuth client ID from Google Cloud Console
   - `:google_client_secret` - OAuth client secret from Google Cloud Console
-  - `:oauth_base_url` - Base URL for OAuth callbacks
+  - Callback URL derived from `CodeMySpecWeb.Endpoint.url()`
 
   ## OAuth Flow
 
@@ -82,7 +82,6 @@ defmodule CodeMySpec.Integrations.Providers.Google do
   end
 
   defp build_redirect_uri do
-    base_url = Application.fetch_env!(:code_my_spec, :oauth_base_url)
-    "#{base_url}/auth/google/callback"
+    "#{CodeMySpecWeb.Endpoint.url()}/auth/google/callback"
   end
 end
