@@ -1,5 +1,5 @@
 defmodule CodeMySpec.BddSpecs.SpecTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.BddSpecs.Spec
   alias CodeMySpec.BddSpecs.Scenario

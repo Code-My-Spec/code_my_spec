@@ -57,7 +57,7 @@ defmodule CodeMySpec.ProjectSetupWizard.GithubIntegrationTest do
   - Right now, when we get the token, we don't put this in the claims, which is right, good and safe
   """
 
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
   use ExVCR.Mock, adapter: ExVCR.Adapter.Hackney
 
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures, IntegrationsFixtures}

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.BddSpecs

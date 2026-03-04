@@ -11,7 +11,7 @@ defmodule CodeMySpec.Support.TestAdapter do
 
   @code_repo_fixture_path "../code_my_spec_test_repos/test_phoenix_project"
   @content_repo_fixture_path "../code_my_spec_test_repos/test_content_repo"
-  @code_fixture_url "https://github.com/johns10/test_phoenix_project.git"
+  @code_fixture_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
   @content_fixture_url "https://github.com/johns10/test_content_repo.git"
   @test_results_cache "../code_my_spec_test_repos/test_results_cache.json"
   @test_results_failing_cache "../code_my_spec_test_repos/test_results_failing_cache.json"

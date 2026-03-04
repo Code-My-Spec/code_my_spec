@@ -9,7 +9,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
   This test file verifies that the context module exists, delegates correctly, and provides
   a thin wrapper around the Runner module for executing static analysis tools.
   """
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   use ExCliVcr
   import ExUnit.CaptureLog
@@ -20,7 +20,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Problems.Problem
 
-  @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
+  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
   # ============================================================================
   # Module Verification

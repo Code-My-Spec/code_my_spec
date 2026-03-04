@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ProjectCoordinator.DispatchTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures

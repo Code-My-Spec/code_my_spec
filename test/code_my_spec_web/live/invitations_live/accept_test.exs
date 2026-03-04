@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.InvitationsLive.AcceptTest do
-  use CodeMySpecWeb.ConnCase, async: true
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import CodeMySpec.UsersFixtures

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.StoriesTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   alias CodeMySpec.Stories
 

@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.StoriesControllerTest do
-  use CodeMySpecWeb.ConnCase
+  use CodeMySpecTest.ConnCase
 
   import CodeMySpec.{UsersFixtures, StoriesFixtures, ComponentsFixtures}
 

@@ -10,7 +10,7 @@ defmodule CodeMySpec.ProblemsTest do
 
   This test file verifies that the context module exists and delegates correctly.
   """
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Problems
 

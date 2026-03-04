@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.StoryLive.ImportTest do
-  use CodeMySpecWeb.ConnCase
+  use CodeMySpecTest.ConnCase
 
   import Phoenix.LiveViewTest
 

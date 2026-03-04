@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
   @moduledoc false
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.LiveViewSpec
   alias CodeMySpec.Components

@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.StoryLive.SchedulerTest do
-  use CodeMySpecWeb.ConnCase
+  use CodeMySpecTest.ConnCase
 
   import Phoenix.LiveViewTest
   import CodeMySpec.StoriesFixtures

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ContentSync.GitSyncTest do
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures, IntegrationsFixtures}
   import Mox
@@ -26,7 +26,7 @@ defmodule CodeMySpec.ContentSync.GitSyncTest do
 
     default_attrs = %{
       name: "Test Project",
-      docs_repo: "https://github.com/johns10/test_phoenix_project.git"
+      docs_repo: "https://github.com/Code-My-Spec/test_phoenix_project.git"
     }
 
     project = project_fixture(scope, Map.merge(default_attrs, project_attrs))
@@ -82,7 +82,7 @@ defmodule CodeMySpec.ContentSync.GitSyncTest do
     test "trims whitespace from docs_repo URL" do
       scope =
         scope_with_project(%{
-          docs_repo: "  https://github.com/johns10/test_phoenix_project.git  "
+          docs_repo: "  https://github.com/Code-My-Spec/test_phoenix_project.git  "
         })
 
       assert {:ok, temp_path} = GitSync.clone_to_temp(scope)
@@ -247,7 +247,7 @@ defmodule CodeMySpec.ContentSync.GitSyncTest do
       project =
         project_fixture(scope, %{
           name: "Test Project",
-          docs_repo: "https://github.com/johns10/test_phoenix_project.git"
+          docs_repo: "https://github.com/Code-My-Spec/test_phoenix_project.git"
         })
 
       scope = %{scope | active_project: project, active_project_id: project.id}

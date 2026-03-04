@@ -1,4 +1,4 @@
-defmodule CodeMySpec.DataCase do
+defmodule CodeMySpecTest.DataCase do
   @moduledoc """
   This module defines the setup for tests requiring
   access to the application's data layer.
@@ -16,6 +16,8 @@ defmodule CodeMySpec.DataCase do
 
   use ExUnit.CaseTemplate
 
+  alias Ecto.Adapters.SQL
+
   using do
     quote do
       alias CodeMySpec.Repo
@@ -23,12 +25,12 @@ defmodule CodeMySpec.DataCase do
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
-      import CodeMySpec.DataCase
+      import CodeMySpecTest.DataCase
     end
   end
 
   setup tags do
-    CodeMySpec.DataCase.setup_sandbox(tags)
+    CodeMySpecTest.DataCase.setup_sandbox(tags)
     :ok
   end
 
@@ -36,8 +38,8 @@ defmodule CodeMySpec.DataCase do
   Sets up the sandbox based on the test tags.
   """
   def setup_sandbox(tags) do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(CodeMySpec.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+    pid = SQL.Sandbox.start_owner!(CodeMySpec.Repo, shared: not tags[:async])
+    on_exit(fn -> SQL.Sandbox.stop_owner(pid) end)
   end
 
   @doc """

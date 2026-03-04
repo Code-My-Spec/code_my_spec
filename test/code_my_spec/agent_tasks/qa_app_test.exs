@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaAppTest do
   @moduledoc false
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -206,9 +206,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert prompt =~ "mix phx.server"
     end
 
-    test "instructs agent to dispatch qa-tester subagent", %{scope: scope, session: session} do
+    test "instructs agent to dispatch qa subagent", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "qa-tester"
+      assert prompt =~ "qa (agent)"
     end
 
     test "instructs agent to write summary", %{scope: scope, session: session} do

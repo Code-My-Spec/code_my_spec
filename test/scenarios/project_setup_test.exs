@@ -9,7 +9,7 @@ defmodule CodeMySpec.Scenarios.ProjectSetupTest do
   triggered via bootstrap API curl calls in the real flow. Since there's
   no server in tests, we call the install functions directly after replay.
   """
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   @moduletag :scenario
 

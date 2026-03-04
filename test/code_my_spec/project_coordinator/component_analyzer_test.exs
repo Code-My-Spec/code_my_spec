@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ProjectCoordinator.ComponentAnalyzerTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
   doctest CodeMySpec.ProjectCoordinator.ComponentAnalyzer
 
   alias CodeMySpec.ProjectCoordinator.ComponentAnalyzer

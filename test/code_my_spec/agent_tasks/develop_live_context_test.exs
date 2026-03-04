@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.DevelopLiveContext
   alias CodeMySpec.Components

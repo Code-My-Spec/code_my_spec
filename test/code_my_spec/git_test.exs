@@ -1,5 +1,5 @@
 defmodule CodeMySpec.GitTest do
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.{UsersFixtures, IntegrationsFixtures}
   import Mox
@@ -122,7 +122,7 @@ defmodule CodeMySpec.GitTest do
       clone_path = Path.join(System.tmp_dir!(), "git_cli_test_#{:rand.uniform(999_999)}")
 
       # Test clone
-      test_repo = "https://github.com/johns10/test_phoenix_project.git"
+      test_repo = "https://github.com/Code-My-Spec/test_phoenix_project.git"
       assert {:ok, ^clone_path} = Git.clone(scope, test_repo, clone_path)
       assert File.exists?(clone_path)
       assert File.exists?(Path.join(clone_path, "mix.exs"))

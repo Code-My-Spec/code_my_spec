@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaSetupTest do
   @moduledoc false
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.UsersFixtures
 

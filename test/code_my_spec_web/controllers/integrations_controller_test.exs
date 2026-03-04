@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.IntegrationsControllerTest do
-  use CodeMySpecWeb.ConnCase, async: true
+  use CodeMySpecTest.ConnCase, async: true
 
   alias CodeMySpec.Integrations
 

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Integrations.IntegrationRepositoryTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.IntegrationsFixtures

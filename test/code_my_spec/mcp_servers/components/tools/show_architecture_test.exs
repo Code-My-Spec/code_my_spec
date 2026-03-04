@@ -1,5 +1,5 @@
 defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitectureTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.DependencyFixtures

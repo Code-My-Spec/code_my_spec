@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.ComponentLive.FormTest do
-  use CodeMySpecWeb.ConnCase
+  use CodeMySpecTest.ConnCase
 
   import Phoenix.LiveViewTest
   import CodeMySpec.ComponentsFixtures

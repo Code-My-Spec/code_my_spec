@@ -1,4 +1,4 @@
-defmodule CodeMySpecWeb.ConnCase do
+defmodule CodeMySpecTest.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -17,6 +17,8 @@ defmodule CodeMySpecWeb.ConnCase do
 
   use ExUnit.CaseTemplate
 
+  alias CodeMySpec.Users
+
   using do
     quote do
       # The default endpoint for testing
@@ -27,12 +29,12 @@ defmodule CodeMySpecWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
-      import CodeMySpecWeb.ConnCase
+      import CodeMySpecTest.ConnCase
     end
   end
 
   setup tags do
-    CodeMySpec.DataCase.setup_sandbox(tags)
+    CodeMySpecTest.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 
@@ -46,7 +48,7 @@ defmodule CodeMySpecWeb.ConnCase do
   """
   def register_and_log_in_user(%{conn: conn} = context) do
     user = CodeMySpec.UsersFixtures.user_fixture()
-    scope = CodeMySpec.Users.Scope.for_user(user)
+    scope = Users.Scope.for_user(user)
 
     opts =
       context

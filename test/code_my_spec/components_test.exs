@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ComponentsTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   alias CodeMySpec.Components
 

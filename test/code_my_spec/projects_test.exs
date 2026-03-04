@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ProjectsTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
   use ExVCR.Mock, adapter: ExVCR.Adapter.Hackney
 
   alias CodeMySpec.Projects

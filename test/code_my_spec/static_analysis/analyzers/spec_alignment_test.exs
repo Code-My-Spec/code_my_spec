@@ -1,5 +1,5 @@
 defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
@@ -7,7 +7,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
 
-  @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
+  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
   setup do
     user = user_fixture()
@@ -510,7 +510,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       File.write!(impl_file, impl_content)
 
       # Scope to just our created spec file
-      assert {:ok, problems} = SpecAlignment.run(scope, paths: [".code_my_spec/spec/my_module.spec.md"])
+      assert {:ok, problems} =
+               SpecAlignment.run(scope, paths: [".code_my_spec/spec/my_module.spec.md"])
 
       assert problems == []
     end

@@ -8,7 +8,7 @@ defmodule CodeMySpec.Scenarios.PromptSnapshotsTest do
   Run: mix test test/scenarios/prompt_snapshots_test.exs --include scenario
   Update: UPDATE_SNAPSHOTS=true mix test test/scenarios/prompt_snapshots_test.exs --include scenario
   """
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   @moduletag :scenario
 

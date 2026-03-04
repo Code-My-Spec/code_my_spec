@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

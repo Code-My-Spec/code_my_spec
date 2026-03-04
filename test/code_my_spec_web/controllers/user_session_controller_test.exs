@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.UserSessionControllerTest do
-  use CodeMySpecWeb.ConnCase, async: true
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.UsersFixtures
   alias CodeMySpec.Users

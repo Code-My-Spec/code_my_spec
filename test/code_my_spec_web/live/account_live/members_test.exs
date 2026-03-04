@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.AccountLive.MembersTest do
-  use CodeMySpecWeb.ConnCase
+  use CodeMySpecTest.ConnCase
 
   import Phoenix.LiveViewTest
   import CodeMySpec.AccountsFixtures

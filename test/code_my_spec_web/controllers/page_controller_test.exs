@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.PageControllerTest do
-  use CodeMySpecWeb.ConnCase
+  use CodeMySpecTest.ConnCase
 
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")

@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaStoryTest do
   @moduledoc false
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -49,15 +49,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   defp create_qa_plan(context) do
     write_qa_plan(context.scope.environment)
     context
-  end
-
-  defp delete_plan_updates(env) do
-    path = Path.join(env.cwd, ".code_my_spec/qa/plan_updates.md")
-    File.rm(path)
-  end
-
-  defp plan_updates_path(env) do
-    Path.join(env.cwd, ".code_my_spec/qa/plan_updates.md")
   end
 
   defp write_qa_plan(env) do
@@ -197,11 +188,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     )
   end
 
-  defp read_prompt_file(env, story_id) do
-    path = Path.join(env.cwd, ".code_my_spec/qa/#{story_id}/prompt.md")
-    File.read!(path)
-  end
-
   defp issues_dir(env) do
     Path.join(env.cwd, ".code_my_spec/issues/incoming")
   end
@@ -210,94 +196,124 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   # command/3 Tests
   # ============================================================================
 
-  describe "command/3" do
+  describe "command/3 — plan phase (no plan.md)" do
     setup [:create_scope, :create_story, :create_session]
 
-    test "returns ok tuple with non-empty prompt", %{scope: scope, session: session} do
+    test "returns plan-phase prompt when no plan exists", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert is_binary(prompt)
-      assert String.length(prompt) > 0
+      assert prompt =~ "Write the QA Plan"
+      assert prompt =~ "qa_seeds"
     end
 
-    test "writes prompt.md to disk", %{scope: scope, session: session, story: story} do
-      assert {:ok, _prompt} = QaStory.command(scope, session)
-
-      content = read_prompt_file(scope.environment, story.id)
-      assert content =~ "User Authentication"
-      assert content =~ "Users can log in and out"
+    test "plan prompt includes story context", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "User Authentication"
+      assert prompt =~ "Acceptance Criteria"
     end
 
-    test "prompt.md includes acceptance criteria", %{scope: scope, story: story} do
-      session = %{project: scope.active_project, state: %{"topic" => story.id}}
-
-      assert {:ok, _prompt} = QaStory.command(scope, session)
-      content = read_prompt_file(scope.environment, story.id)
-      assert content =~ "Acceptance Criteria"
+    test "plan prompt includes plan format spec", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "QA Plan Format"
+      assert prompt =~ "App Overview"
+      assert prompt =~ "Tools Registry"
     end
 
-    test "prompt.md includes testing approach", %{scope: scope, session: session, story: story} do
-      assert {:ok, _prompt} = QaStory.command(scope, session)
-
-      content = read_prompt_file(scope.environment, story.id)
-      assert content =~ "Testing Approach"
-      assert content =~ "screenshot"
+    test "plan prompt does not include brief or test content", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      refute prompt =~ "Brief Format"
+      refute prompt =~ "Result Format"
+      refute prompt =~ "Testing Approach"
     end
 
-    test "prompt.md does not include agent-specific instructions", %{scope: scope, session: session, story: story} do
-      assert {:ok, _prompt} = QaStory.command(scope, session)
+    test "plan prompt does not include task marker", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      refute prompt =~ "<!-- cms:task"
+    end
+  end
 
-      content = read_prompt_file(scope.environment, story.id)
-      refute content =~ "Write the brief"
-      refute content =~ "Output"
+  describe "command/3 — brief phase (plan exists)" do
+    setup [:create_scope, :create_story, :create_session, :create_qa_plan]
+
+    test "returns brief-phase prompt when plan exists", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "Write the Brief"
     end
 
-    test "agent prompt includes brief format spec but not result format spec", %{scope: scope, session: session} do
+    test "brief prompt includes story context", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "User Authentication"
+      assert prompt =~ "Users can log in and out"
+      assert prompt =~ "Acceptance Criteria"
+    end
+
+    test "brief prompt lists available tools", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "vibium"
+      assert prompt =~ "curl"
+    end
+
+    test "brief prompt includes brief format spec", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
       assert prompt =~ "Brief Format"
       refute prompt =~ "Result Format"
     end
 
-    test "agent prompt references prompt.md path", %{scope: scope, session: session, story: story} do
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ ".code_my_spec/qa/#{story.id}/prompt.md"
-    end
-
-    test "agent prompt references plan.md when it exists", %{scope: scope, session: session} do
-      write_qa_plan(scope.environment)
-
+    test "brief prompt references plan.md", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
       assert prompt =~ ".code_my_spec/qa/plan.md"
-      refute prompt =~ "Warning"
     end
 
-    test "agent prompt includes setup instructions when plan.md is missing", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "No QA plan found"
-      assert prompt =~ "Setup Steps"
-      assert prompt =~ "qa_seeds"
-    end
-
-    test "agent prompt includes plan doc spec when plan.md is missing", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "Required Sections"
-      assert prompt =~ "App Overview"
-    end
-
-    test "agent prompt references brief output path", %{scope: scope, session: session, story: story} do
+    test "brief prompt references brief output path", %{scope: scope, session: session, story: story} do
       assert {:ok, prompt} = QaStory.command(scope, session)
       assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
     end
 
-    test "agent prompt tells agent to stop after brief", %{scope: scope, session: session} do
+    test "brief prompt tells agent to stop after brief", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "Stop after writing the brief"
+      assert prompt =~ "Stop the session after writing the brief"
     end
 
-    test "agent prompt does not include phase 2/3 instructions", %{scope: scope, session: session} do
+    test "brief prompt does not include test-phase content", %{scope: scope, session: session} do
       assert {:ok, prompt} = QaStory.command(scope, session)
-      refute prompt =~ "Phase 2"
-      refute prompt =~ "Phase 3"
+      refute prompt =~ "Testing Approach"
+      refute prompt =~ "Result Format"
     end
+  end
+
+  describe "command/3 — test phase (plan + brief exist)" do
+    setup [:create_scope, :create_story, :create_session, :create_qa_plan]
+
+    setup %{scope: scope, story: story} do
+      write_story_brief(scope.environment, story.id)
+      :ok
+    end
+
+    test "returns test-phase prompt when brief exists", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "Execute Tests"
+    end
+
+    test "test prompt includes tool rules and testing approach", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "vibium"
+      assert prompt =~ "Testing Approach"
+      assert prompt =~ "screenshot"
+    end
+
+    test "test prompt includes result format spec", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "Result Format"
+      refute prompt =~ "Brief Format"
+    end
+
+    test "test prompt references brief path", %{scope: scope, session: session, story: story} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
+    end
+  end
+
+  describe "command/3 — shared" do
+    setup [:create_scope, :create_story, :create_session]
 
     test "accepts string story ID", %{scope: scope, story: story} do
       session = %{project: scope.active_project, state: %{"topic" => to_string(story.id)}}
@@ -491,7 +507,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_story_result(scope.environment, story.id)
 
-
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
     end
 
@@ -501,7 +516,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       story: story
     } do
       write_story_brief(scope.environment, story.id)
-
 
       write_story_result(scope.environment, story.id, """
       # QA Result: Story #{story.id}
@@ -556,7 +570,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
       # Should create files for all severities
@@ -576,7 +589,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     } do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
-
 
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
@@ -601,7 +613,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-
       # Run evaluate to create files
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
@@ -613,9 +624,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # Modify the file
       File.write!(Path.join(dir, login_file), "MODIFIED")
 
-      # Delete plan_updates.md so the plan check passes on re-evaluate
-      delete_plan_updates(scope.environment)
-
       # Run evaluate again
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
@@ -626,40 +634,13 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   end
 
   # ============================================================================
-  # evaluate/3 — Plan Updates
+  # evaluate/3 — Scope in Issue Files
   # ============================================================================
 
-  describe "evaluate/3 plan updates" do
+  describe "evaluate/3 scope in issue files" do
     setup [:create_scope, :create_story, :create_session, :create_qa_plan]
 
-    test "writes plan_updates.md after successful evaluate", %{
-      scope: scope,
-      session: session,
-      story: story
-    } do
-      write_story_brief(scope.environment, story.id)
-      write_story_result(scope.environment, story.id)
-
-      assert {:ok, :valid} = QaStory.evaluate(scope, session)
-      assert File.exists?(plan_updates_path(scope.environment))
-    end
-
-    test "plan_updates.md contains story section with no issues", %{
-      scope: scope,
-      session: session,
-      story: story
-    } do
-      write_story_brief(scope.environment, story.id)
-      write_story_result(scope.environment, story.id)
-
-      assert {:ok, :valid} = QaStory.evaluate(scope, session)
-
-      content = File.read!(plan_updates_path(scope.environment))
-      assert content =~ "## Story #{story.id}"
-      assert content =~ "No issues found"
-    end
-
-    test "plan_updates.md contains issue summaries when issues exist", %{
+    test "issue files include default scope of app", %{
       scope: scope,
       session: session,
       story: story
@@ -669,46 +650,58 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
-      content = File.read!(plan_updates_path(scope.environment))
-      assert content =~ "## Story #{story.id}"
-      assert content =~ "Login redirect fails for invited users"
-      assert content =~ "high"
+      dir = issues_dir(scope.environment)
+      files = File.ls!(dir)
+      login_file = Enum.find(files, &String.contains?(&1, "login_redirect"))
+
+      content = File.read!(Path.join(dir, login_file))
+      assert content =~ "## Scope\n\napp"
     end
 
-    test "pending plan_updates.md gates the plan check", %{
+    test "issue files preserve explicit scope from result", %{
       scope: scope,
       session: session,
       story: story
     } do
       write_story_brief(scope.environment, story.id)
-      write_story_result(scope.environment, story.id)
 
-      # First evaluate writes plan_updates.md
+      write_story_result(scope.environment, story.id, """
+      # QA Result: Story #{story.id}
+
+      ## Status
+
+      fail
+
+      ## Scenarios
+
+      ### Seed script check
+      - **Fail** — seeds crash on fresh db
+
+      ## Issues
+
+      ### Seed script fails on fresh database
+
+      #### Severity
+
+      MEDIUM
+
+      #### Scope
+
+      QA
+
+      #### Description
+
+      Running qa_seeds.exs on a freshly migrated database fails.
+      """)
+
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
-      # Second evaluate is gated by pending updates
-      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
-      assert feedback =~ "Plan updates are pending"
-      assert feedback =~ "plan_updates.md"
-      assert feedback =~ "Incorporate"
-    end
+      dir = issues_dir(scope.environment)
+      files = File.ls!(dir)
+      seed_file = Enum.find(files, &String.contains?(&1, "seed_script"))
 
-    test "evaluate proceeds after plan_updates.md is deleted", %{
-      scope: scope,
-      session: session,
-      story: story
-    } do
-      write_story_brief(scope.environment, story.id)
-      write_story_result(scope.environment, story.id)
-
-      # First evaluate writes plan_updates.md
-      assert {:ok, :valid} = QaStory.evaluate(scope, session)
-
-      # Simulate agent incorporating and deleting
-      delete_plan_updates(scope.environment)
-
-      # Next evaluate proceeds
-      assert {:ok, :valid} = QaStory.evaluate(scope, session)
+      content = File.read!(Path.join(dir, seed_file))
+      assert content =~ "## Scope\n\nqa"
     end
   end
 end

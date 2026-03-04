@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Problems.ProblemRepositoryTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures

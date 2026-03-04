@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
   alias CodeMySpec.AcceptanceCriteria.Criterion

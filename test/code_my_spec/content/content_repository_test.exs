@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Content.ContentRepositoryTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ContentFixtures

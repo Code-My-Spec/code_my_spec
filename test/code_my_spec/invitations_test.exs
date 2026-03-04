@@ -1,5 +1,5 @@
 defmodule CodeMySpec.InvitationsTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   alias CodeMySpec.Invitations
   alias CodeMySpec.Invitations.Invitation

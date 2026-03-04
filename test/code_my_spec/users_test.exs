@@ -1,5 +1,5 @@
 defmodule CodeMySpec.UsersTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   alias CodeMySpec.Users
 

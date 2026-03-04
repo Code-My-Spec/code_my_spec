@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.ProjectLiveTest do
-  use CodeMySpecWeb.ConnCase
+  use CodeMySpecTest.ConnCase
 
   import Phoenix.LiveViewTest
   import CodeMySpec.ProjectsFixtures

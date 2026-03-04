@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ProjectCoordinatorTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.DependencyFixtures
@@ -11,7 +11,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
   alias CodeMySpec.Support.TestAdapter
   alias CodeMySpec.Tests.TestRun
 
-  @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
+  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
   # ============================================================================
   # Dependency Chain Tests
@@ -80,7 +80,10 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
       requirement_fixture(scope, comp, %{name: "spec_file", satisfied: false})
 
       all = reload_all(scope)
-      assert {:ready, ready} = ProjectCoordinator.find_next_in_chain(find_by_id(all, comp.id), all)
+
+      assert {:ready, ready} =
+               ProjectCoordinator.find_next_in_chain(find_by_id(all, comp.id), all)
+
       assert ready.id == comp.id
     end
 

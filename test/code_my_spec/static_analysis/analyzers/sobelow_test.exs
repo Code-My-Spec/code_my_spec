@@ -1,5 +1,5 @@
 defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   use ExCliVcr
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
@@ -8,7 +8,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
   alias CodeMySpec.StaticAnalysis.Analyzers.Sobelow
   alias CodeMySpec.Problems.Problem
 
-  @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
+  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
   setup do
     user = user_fixture()

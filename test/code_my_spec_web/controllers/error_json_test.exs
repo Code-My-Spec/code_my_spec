@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.ErrorJSONTest do
-  use CodeMySpecWeb.ConnCase, async: true
+  use CodeMySpecTest.ConnCase, async: true
 
   test "renders 404" do
     assert CodeMySpecWeb.ErrorJSON.render("404.json", %{}) == %{errors: %{detail: "Not Found"}}

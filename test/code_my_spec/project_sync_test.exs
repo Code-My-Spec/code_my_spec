@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ProjectSyncTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
@@ -24,7 +24,7 @@ defmodule CodeMySpec.ProjectSyncTest do
 
       # Clone from pool
       {:ok, project_dir} =
-        TestAdapter.clone(scope, "https://github.com/johns10/test_phoenix_project.git")
+        TestAdapter.clone(scope, "https://github.com/Code-My-Spec/test_phoenix_project.git")
 
       on_exit(fn ->
         TestAdapter.checkin(project_dir)
@@ -147,7 +147,10 @@ defmodule CodeMySpec.ProjectSyncTest do
       assert is_list(result.errors)
     end
 
-    test "syncs from both .code_my_spec/spec and lib directories", %{scope: scope, tmp_dir: tmp_dir} do
+    test "syncs from both .code_my_spec/spec and lib directories", %{
+      scope: scope,
+      tmp_dir: tmp_dir
+    } do
       # Perform initial sync
       assert {:ok, result} = ProjectSync.sync_all(scope, base_dir: tmp_dir)
 

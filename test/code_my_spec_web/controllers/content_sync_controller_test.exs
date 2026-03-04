@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.ContentSyncControllerTest do
-  use CodeMySpecWeb.ConnCase, async: true
+  use CodeMySpecTest.ConnCase, async: true
 
   import ExUnit.CaptureLog
 

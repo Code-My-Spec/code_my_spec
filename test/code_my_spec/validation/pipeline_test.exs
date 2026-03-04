@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Validation.PipelineTest do
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
   alias CodeMySpec.Environments.Environment
@@ -11,7 +11,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
 
-  @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
+  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
   defp empty_categorized do
     %{
@@ -219,24 +219,21 @@ defmodule CodeMySpec.Validation.PipelineTest do
       assert [] == Problems.list_project_problems(scope, source: "compiler")
     end
 
-    test "does not clear problems for files not in the categorized set", %{scope: scope} do
+    test "clears problems for all files, not just those in the categorized set", %{scope: scope} do
       other_file = "lib/other_module.ex"
       problem_fixture(scope, %{source: "credo", file_path: other_file})
 
       categorized = %{empty_categorized() | elixir_files: ["lib/different_module.ex"]}
       Pipeline.clear_stale_problems(scope, categorized)
 
-      assert [_] = Problems.list_project_problems(scope, source: "credo", file_path: other_file)
+      assert [] == Problems.list_project_problems(scope, source: "credo", file_path: other_file)
     end
 
-    test "does not clear problems from other sources (e.g. clearing tests does not remove credo)",
-         %{scope: scope} do
+    test "clears all source types in a single pass", %{scope: scope} do
       file = "lib/my_module.ex"
 
-      # Seed a credo problem
       problem_fixture(scope, %{source: "credo", file_path: file})
 
-      # Seed a test problem for the same file
       problem_fixture(scope, %{
         source_type: :test,
         source: "ex_unit",
@@ -244,14 +241,9 @@ defmodule CodeMySpec.Validation.PipelineTest do
         category: "test_failure"
       })
 
-      # Only clear test problems (test_files includes the file)
-      categorized = %{empty_categorized() | test_files: [file]}
-      Pipeline.clear_stale_problems(scope, categorized)
+      Pipeline.clear_stale_problems(scope, empty_categorized())
 
-      # Credo problem should remain
-      assert [_] = Problems.list_project_problems(scope, source: "credo", file_path: file)
-
-      # Test problem should be cleared
+      assert [] == Problems.list_project_problems(scope, source: "credo", file_path: file)
       assert [] == Problems.list_project_problems(scope, source_type: :test, file_path: file)
     end
 
@@ -260,14 +252,12 @@ defmodule CodeMySpec.Validation.PipelineTest do
       assert :ok = Pipeline.clear_stale_problems(nil, categorized)
     end
 
-    test "handles empty file lists (no-op per category)", %{scope: scope} do
+    test "clears all problems even with empty file lists", %{scope: scope} do
       problem_fixture(scope, %{source: "credo", file_path: "lib/foo.ex"})
 
-      # All file lists empty - compiler problems cleared project-wide, others are no-op
       Pipeline.clear_stale_problems(scope, empty_categorized())
 
-      # Credo problem should remain (no elixir_files to clear)
-      assert [_] = Problems.list_project_problems(scope, source: "credo")
+      assert [] == Problems.list_project_problems(scope, source: "credo")
     end
   end
 

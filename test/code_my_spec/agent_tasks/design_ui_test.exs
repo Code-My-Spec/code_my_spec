@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.DesignUiTest do
   @moduledoc false
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.UsersFixtures
 

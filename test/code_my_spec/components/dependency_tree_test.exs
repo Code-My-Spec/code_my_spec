@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Components.DependencyTreeTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
   import ExUnit.CaptureLog
 
   import CodeMySpec.ComponentsFixtures

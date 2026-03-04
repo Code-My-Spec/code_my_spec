@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Accounts.AccountsRepositoryTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures

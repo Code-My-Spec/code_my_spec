@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Architecture.StoryAnalyzer
   alias CodeMySpec.Stories.Story

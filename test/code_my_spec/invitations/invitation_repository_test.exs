@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Invitations.InvitationRepositoryTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Invitations.{Invitation, InvitationRepository}
   alias CodeMySpec.Users.Scope

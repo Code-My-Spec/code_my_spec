@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ValidationTest do
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
   alias CodeMySpec.Environments.Environment
@@ -10,7 +10,7 @@ defmodule CodeMySpec.ValidationTest do
 
   import CodeMySpec.UsersFixtures
 
-  @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
+  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
   @transcripts_dir "test/fixtures/transcripts"
 
   setup do

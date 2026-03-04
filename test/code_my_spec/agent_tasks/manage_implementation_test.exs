@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.ManageImplementation
   alias CodeMySpec.Environments.Environment

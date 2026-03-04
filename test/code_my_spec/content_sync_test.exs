@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ContentSyncTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures, ContentAdminFixtures}
   import Mox

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.DevelopController
   alias CodeMySpec.Components

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.UserPreferencesTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   alias CodeMySpec.UserPreferences
 

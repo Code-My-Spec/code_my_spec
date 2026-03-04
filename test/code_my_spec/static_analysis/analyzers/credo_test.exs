@@ -1,5 +1,5 @@
 defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   use ExCliVcr
   import ExUnit.CaptureLog
@@ -9,7 +9,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
   alias CodeMySpec.StaticAnalysis.Analyzers.Credo
   alias CodeMySpec.Support.TestAdapter
 
-  @test_repo_url "https://github.com/johns10/test_phoenix_project.git"
+  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
   setup do
     user = user_fixture()

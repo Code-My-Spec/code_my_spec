@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Components.SyncTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Sync

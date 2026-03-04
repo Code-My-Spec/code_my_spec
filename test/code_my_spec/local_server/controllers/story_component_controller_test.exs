@@ -1,5 +1,5 @@
 defmodule CodeMySpec.LocalServer.Controllers.StoryComponentControllerTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.{UsersFixtures, StoriesFixtures, ComponentsFixtures}
   import Plug.Conn
@@ -17,7 +17,32 @@ defmodule CodeMySpec.LocalServer.Controllers.StoryComponentControllerTest do
       story = story_fixture(scope)
       component = component_fixture(scope, %{module_name: "MyApp.Accounts"})
 
-      conn = build_conn(scope, %{"story_id" => story.id, "module_name" => "MyApp.Accounts"})
+      remote_plug = fn conn ->
+        assert conn.method == "POST"
+        assert String.contains?(conn.request_path, "/set-component")
+
+        body =
+          Jason.encode!(%{
+            data: %{
+              id: story.id,
+              title: story.title,
+              component_id: component.id,
+              status: "#{story.status}",
+              priority: story.priority,
+              project_id: story.project_id,
+              account_id: story.account_id
+            }
+          })
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, body)
+      end
+
+      conn =
+        build_conn(scope, %{"story_id" => story.id, "module_name" => "MyApp.Accounts"})
+        |> assign(:remote_client_opts, plug: remote_plug, token: "test-token")
+
       conn = StoryComponentController.set(conn)
 
       assert conn.status == 200

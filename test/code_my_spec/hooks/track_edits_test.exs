@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.TrackEditsTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.TrackEdits
   alias CodeMySpec.FileEdits

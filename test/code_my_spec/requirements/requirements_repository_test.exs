@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Requirements.RequirementsRepositoryTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.ProjectsFixtures

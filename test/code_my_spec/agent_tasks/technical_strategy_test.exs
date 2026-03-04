@@ -1,7 +1,8 @@
 defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   @moduledoc false
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
+  import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.TechnicalStrategy
@@ -75,22 +76,6 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
     )
   end
 
-  defp write_research_prompt(env, topic, content \\ nil) do
-    write_file!(
-      env,
-      ".code_my_spec/status/research/#{topic}.md",
-      content || "Research #{topic} for the project."
-    )
-  end
-
-  defp write_knowledge(env, topic) do
-    write_file!(
-      env,
-      ".code_my_spec/knowledge/#{topic}/overview.md",
-      "# #{topic}\n\nKnowledge about #{topic}."
-    )
-  end
-
   defp write_all_premade_decisions(env) do
     for d <- TechnicalStrategy.premade_decisions() do
       write_existing_decision(env, d.topic)
@@ -106,7 +91,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   # ============================================================================
 
   describe "premade_decisions/0" do
-    test "returns a list of decisions" do
+    test "returns a non-empty list of decisions" do
       assert [_ | _] = TechnicalStrategy.premade_decisions()
     end
 
@@ -130,7 +115,15 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       assert "exvcr" in topics
       assert "bdd-testing" in topics
       assert "dotenvy" in topics
-      assert "ngrok" in topics
+    end
+
+    test "does not include ngrok as a pre-made decision" do
+      topics = premade_topics()
+      refute "ngrok" in topics
+    end
+
+    test "returns exactly 10 decisions" do
+      assert length(TechnicalStrategy.premade_decisions()) == 10
     end
   end
 
@@ -141,13 +134,13 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   describe "command/3" do
     setup [:create_scope, :create_session]
 
-    test "returns ok tuple with orchestration prompt", %{scope: scope, session: session} do
+    test "returns ok tuple with non-empty prompt string", %{scope: scope, session: session} do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes project name", %{scope: scope, session: session} do
+    test "includes project name in prompt", %{scope: scope, session: session} do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
       assert prompt =~ scope.active_project.name
     end
@@ -156,25 +149,23 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       write_mix_exs(scope.environment)
 
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "phoenix" or prompt =~ "mix.exs"
+      assert prompt =~ "Current Dependencies"
     end
 
-    test "lists existing decisions", %{scope: scope, session: session} do
+    test "lists existing decisions in prompt", %{scope: scope, session: session} do
       env = scope.environment
-      write_existing_decision(env, "tailwind")
+      write_existing_decision(env, "wallaby")
 
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "tailwind"
+      assert prompt =~ "wallaby"
     end
 
-    test "instructs agent to write research prompts", %{scope: scope, session: session} do
+    test "instructs to research and write ADRs for identified topics", %{
+      scope: scope,
+      session: session
+    } do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ ".code_my_spec/status/research/"
-    end
-
-    test "instructs agent to use researcher subagent", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "researcher"
+      assert prompt =~ ".code_my_spec/architecture/decisions/"
     end
 
     test "writes missing pre-made decision ADR files to the environment", %{
@@ -182,24 +173,30 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       session: session
     } do
       env = scope.environment
-      # Pre-write two so they're already present
       write_existing_decision(env, "elixir")
       write_existing_decision(env, "phoenix")
 
       assert {:ok, _prompt} = TechnicalStrategy.command(scope, session)
 
-      # All pre-made decisions should now have files
       for d <- TechnicalStrategy.premade_decisions() do
         path = Path.join(env.cwd, ".code_my_spec/architecture/decisions/#{d.topic}.md")
         assert File.exists?(path), "Expected ADR file for #{d.topic}"
       end
+    end
 
-      # Pre-existing files should not be overwritten (still have original content)
-      elixir_content = File.read!(Path.join(env.cwd, ".code_my_spec/architecture/decisions/elixir.md"))
+    test "does not overwrite pre-existing decision files", %{scope: scope, session: session} do
+      env = scope.environment
+      write_existing_decision(env, "elixir")
+
+      assert {:ok, _prompt} = TechnicalStrategy.command(scope, session)
+
+      elixir_content =
+        File.read!(Path.join(env.cwd, ".code_my_spec/architecture/decisions/elixir.md"))
+
       assert elixir_content =~ "We decided to use elixir"
     end
 
-    test "does not include pre-made decisions section in prompt", %{
+    test "does not include a Pre-made Decisions to Write section in prompt", %{
       scope: scope,
       session: session
     } do
@@ -218,24 +215,47 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       assert prompt =~ "daisyui"
     end
 
-    test "includes knowledge base building step", %{scope: scope, session: session} do
+    test "does NOT include knowledge base building steps (handled by ResearchTopics)", %{scope: scope, session: session} do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "Build Knowledge Base"
-      assert prompt =~ "knowledge"
+      refute prompt =~ "Build Knowledge Base"
     end
 
-    test "includes bootstrap step", %{scope: scope, session: session} do
+    test "does NOT include bootstrap/library installation steps (handled by ProjectBootstrap)", %{
+      scope: scope,
+      session: session
+    } do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "Bootstrap"
-      assert prompt =~ "Add libraries"
-      assert prompt =~ "Configure"
-      assert prompt =~ "Smoke test"
+      refute prompt =~ "Bootstrap"
+      refute prompt =~ "Add libraries"
+      refute prompt =~ "Smoke test"
     end
 
-    test "instructs to skip knowledge for pre-made decisions", %{scope: scope, session: session} do
+    test "does NOT reference a specific subagent by name", %{scope: scope, session: session} do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
-      assert prompt =~ "not" or prompt =~ "Do **not**"
-      assert prompt =~ "pre-made"
+      refute prompt =~ ~r/@"CodeMySpec:/
+    end
+
+    test "instructs to update the decisions index", %{scope: scope, session: session} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert prompt =~ ".code_my_spec/architecture/decisions.md"
+    end
+
+    test "instructs to stop after completing the work", %{scope: scope, session: session} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert prompt =~ "Stop"
+    end
+
+    test "omits architecture section when project has no components", %{
+      scope: scope,
+      session: session
+    } do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      refute prompt =~ "Architecture Overview"
+    end
+
+    test "omits deps section when mix.exs is absent", %{scope: scope, session: session} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      refute prompt =~ "Current Dependencies"
     end
   end
 
@@ -246,7 +266,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   describe "evaluate/3" do
     setup [:create_scope, :create_session]
 
-    test "returns {:ok, :valid} when all checks pass", %{
+    test "returns {:ok, :valid} when all pre-made decisions and index exist", %{
       scope: scope,
       session: session
     } do
@@ -254,7 +274,9 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       write_all_premade_decisions(env)
       write_decisions_index(env)
 
-      assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+      capture_log(fn ->
+        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+      end)
     end
 
     test "returns {:ok, :invalid, feedback} when pre-made decisions are missing", %{
@@ -263,134 +285,87 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
     } do
       env = scope.environment
       write_decisions_index(env)
-      # Don't write pre-made decisions
 
-      assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
-      assert feedback =~ "pre-made" or feedback =~ "Pre-made"
+      capture_log(fn ->
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert feedback =~ "Pre-made decision"
+      end)
     end
 
-    test "returns {:ok, :invalid, feedback} when research prompts exist but topic is incomplete",
-         %{
-           scope: scope,
-           session: session
-         } do
+    test "feedback names the missing pre-made topic", %{scope: scope, session: session} do
       env = scope.environment
-      write_all_premade_decisions(env)
-      write_research_prompt(env, "wallaby")
       write_decisions_index(env)
 
-      assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
-      assert feedback =~ "wallaby"
-    end
+      for d <- TechnicalStrategy.premade_decisions(), d.topic != "elixir" do
+        write_existing_decision(env, d.topic)
+      end
 
-    test "returns {:ok, :valid} when all research topics pass validation", %{
-      scope: scope,
-      session: session
-    } do
-      env = scope.environment
-      write_all_premade_decisions(env)
-      write_research_prompt(env, "wallaby")
-
-      write_existing_decision(env, "wallaby", """
-      # Use Wallaby
-
-      ## Status
-      Accepted
-
-      ## Decision
-      Use Wallaby for integration testing.
-      """)
-
-      write_knowledge(env, "wallaby")
-
-      index_content =
-        """
-        # Architecture Decisions
-
-        | Topic | Decision | Status |
-        |---|---|---|
-        | wallaby | Use Wallaby for integration testing | Accepted |
-        """ <>
-          Enum.map_join(premade_topics(), "\n", fn t ->
-            "| #{t} | Pre-made | Accepted |"
-          end)
-
-      write_decisions_index(env, index_content)
-
-      assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+      capture_log(fn ->
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert feedback =~ "elixir"
+      end)
     end
 
     test "returns {:ok, :invalid, feedback} when decisions index is missing", %{
       scope: scope,
       session: session
     } do
-      write_all_premade_decisions(scope.environment)
-
-      assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
-      assert feedback =~ "index"
-    end
-
-    test "reports multiple incomplete topics", %{scope: scope, session: session} do
       env = scope.environment
       write_all_premade_decisions(env)
-      write_research_prompt(env, "wallaby")
-      write_research_prompt(env, "pwa")
+
+      capture_log(fn ->
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert feedback =~ "index"
+      end)
+    end
+
+    test "feedback references the expected index path when index is missing", %{
+      scope: scope,
+      session: session
+    } do
+      env = scope.environment
+      write_all_premade_decisions(env)
+
+      capture_log(fn ->
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert feedback =~ ".code_my_spec/architecture/decisions.md"
+      end)
+    end
+
+    test "returns {:ok, :invalid, feedback} when both index and pre-made decisions are missing",
+         %{scope: scope, session: session} do
+      capture_log(fn ->
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert feedback =~ "index"
+        assert feedback =~ "Pre-made decision"
+      end)
+    end
+
+    test "does NOT check for knowledge entries (handled by ResearchTopics)", %{scope: scope, session: session} do
+      env = scope.environment
+      write_all_premade_decisions(env)
+      write_existing_decision(env, "wallaby")
       write_decisions_index(env)
 
-      assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
-      assert feedback =~ "wallaby"
-      assert feedback =~ "pwa"
+      capture_log(fn ->
+        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+      end)
     end
 
-    test "returns {:ok, :invalid, feedback} when non-pre-made topics lack knowledge entries", %{
-      scope: scope,
-      session: session
-    } do
+    test "does NOT check for research prompt files", %{scope: scope, session: session} do
       env = scope.environment
       write_all_premade_decisions(env)
-      # A researched topic with decision but no knowledge
-      write_existing_decision(env, "wallaby")
+      write_decisions_index(env)
 
-      index_content =
-        """
-        # Architecture Decisions
+      write_file!(
+        env,
+        ".code_my_spec/status/research/wallaby.md",
+        "Research wallaby for the project."
+      )
 
-        | Topic | Decision | Status |
-        |---|---|---|
-        | wallaby | Use Wallaby | Accepted |
-        """ <>
-          Enum.map_join(premade_topics(), "\n", fn t ->
-            "| #{t} | Pre-made | Accepted |"
-          end)
-
-      write_decisions_index(env, index_content)
-
-      assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
-      assert feedback =~ "wallaby"
-      assert feedback =~ "knowledge"
-    end
-
-    test "does not require knowledge entries for pre-made decisions", %{
-      scope: scope,
-      session: session
-    } do
-      env = scope.environment
-      write_all_premade_decisions(env)
-
-      index_content =
-        """
-        # Architecture Decisions
-
-        | Topic | Decision | Status |
-        |---|---|---|
-        """ <>
-          Enum.map_join(premade_topics(), "\n", fn t ->
-            "| #{t} | Pre-made | Accepted |"
-          end)
-
-      write_decisions_index(env, index_content)
-
-      assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+      capture_log(fn ->
+        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+      end)
     end
   end
 end

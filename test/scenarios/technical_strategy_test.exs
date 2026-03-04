@@ -6,7 +6,7 @@ defmodule CodeMySpec.Scenarios.TechnicalStrategyTest do
   TechnicalStrategy.command/3 (which writes pre-made decision ADRs server-side),
   replays the technical strategy transcript, and verifies evaluate passes.
   """
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   @moduletag :scenario
 

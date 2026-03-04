@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Requirements.DocumentValidityCheckerTest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
   doctest CodeMySpec.Requirements.DocumentValidityChecker
 
   import CodeMySpec.UsersFixtures

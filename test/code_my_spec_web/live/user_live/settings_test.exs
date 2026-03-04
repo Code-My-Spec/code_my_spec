@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.UserLive.SettingsTest do
-  use CodeMySpecWeb.ConnCase, async: true
+  use CodeMySpecTest.ConnCase, async: true
 
   alias CodeMySpec.Users
   import Phoenix.LiveViewTest

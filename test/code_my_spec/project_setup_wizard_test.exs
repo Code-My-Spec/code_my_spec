@@ -8,7 +8,7 @@ defmodule CodeMySpec.ProjectSetupWizardTest do
   - Setup status aggregation
   """
 
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures, IntegrationsFixtures}
 

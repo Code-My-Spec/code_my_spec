@@ -1,5 +1,5 @@
 defmodule CodeMySpec.ContentSync.FileWatcher.ServerTest do
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
   import ExUnit.CaptureLog

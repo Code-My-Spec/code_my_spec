@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Content.TagRepositoryTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Content.{TagRepository, Tag}
   alias CodeMySpec.Repo

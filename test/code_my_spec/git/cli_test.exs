@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Git.CLITest do
-  use CodeMySpec.DataCase
+  use CodeMySpecTest.DataCase
 
   import CodeMySpec.{UsersFixtures, IntegrationsFixtures}
 
@@ -10,7 +10,7 @@ defmodule CodeMySpec.Git.CLITest do
   # Fixtures
   # ============================================================================
 
-  defp test_repo_url, do: "https://github.com/johns10/test_phoenix_project.git"
+  defp test_repo_url, do: "https://github.com/Code-My-Spec/test_phoenix_project.git"
   defp github_repo_url, do: "https://github.com/test-owner/test-repo.git"
   defp gitlab_repo_url, do: "https://gitlab.com/test-owner/test-repo.git"
   defp bitbucket_repo_url, do: "https://bitbucket.org/test-owner/test-repo.git"

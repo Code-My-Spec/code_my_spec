@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
-  use CodeMySpec.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.LiveContextSpec
   alias CodeMySpec.Environments.Environment

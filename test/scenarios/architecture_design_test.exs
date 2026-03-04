@@ -8,7 +8,7 @@ defmodule CodeMySpec.Scenarios.ArchitectureDesignTest do
   Requires `03_architecture_design.jsonl` transcript — tests are tagged
   :pending until it's recorded.
   """
-  use CodeMySpec.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: false
 
   @moduletag :scenario
 
