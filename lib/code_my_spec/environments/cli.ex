@@ -35,7 +35,7 @@ defmodule CodeMySpec.Environments.Cli do
   """
   @spec create(opts :: keyword()) :: {:ok, Environment.t()} | {:error, term()}
   def create(opts \\ []) do
-    session_id = Keyword.get(opts, :session_id, :rand.uniform(10000))
+    session_id = Keyword.get(opts, :session_id, :rand.uniform(10_000))
     window_name = "session-#{session_id}"
     working_dir = Keyword.get(opts, :working_dir)
     metadata = Keyword.get(opts, :metadata, %{})

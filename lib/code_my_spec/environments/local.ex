@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Environments.Local do
+  @moduledoc "Local filesystem environment implementation."
   @behaviour CodeMySpec.Environments.EnvironmentsBehaviour
 
   alias CodeMySpec.Environments.Environment

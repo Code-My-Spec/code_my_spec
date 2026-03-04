@@ -4,8 +4,8 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   Used with stub_with to provide automatic recording without explicit expectations.
   """
 
-  alias CodeMySpec.Support.CLIRecorder
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Support.CLIRecorder
 
   @behaviour CodeMySpec.Environments.EnvironmentsBehaviour
 

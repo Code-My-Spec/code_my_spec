@@ -119,3 +119,9 @@ CI.System: Command Injection via `System` function,lib/code_my_spec/environments
 Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/local.ex:57,244182A
 Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/cli.ex:149,75D4C3F
 Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/cli.ex:173,997F6A
+Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/environments/local.ex:33,2BF39A4
+CI.System: Command Injection via `System` function,lib/code_my_spec/environments/local.ex:120,4098027
+Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/environments/local.ex:19,4261097
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/local.ex:32,46B5D9D
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/local.ex:58,48E1B37
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/environments/local.ex:41,73C4FFC
