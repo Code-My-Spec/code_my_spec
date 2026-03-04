@@ -73,6 +73,12 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   end
 
   @impl true
+  def ensure_dir(env, path) do
+    resolved_path = resolve_path(path, env.cwd)
+    File.mkdir_p(resolved_path)
+  end
+
+  @impl true
   def environment_setup_command(_env, %{branch_name: branch_name, working_dir: working_dir}) do
     "git -C #{working_dir} switch -C #{branch_name}"
   end

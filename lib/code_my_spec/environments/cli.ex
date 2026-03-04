@@ -144,6 +144,11 @@ defmodule CodeMySpec.Environments.Cli do
     Path.wildcard(resolved_pattern)
   end
 
+  def ensure_dir(env, path) do
+    resolved_path = resolve_path(path, env.cwd)
+    File.mkdir_p(resolved_path)
+  end
+
   def environment_setup_command(_, _) do
     "pass"
   end

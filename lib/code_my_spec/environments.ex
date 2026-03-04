@@ -124,6 +124,14 @@ defmodule CodeMySpec.Environments do
   end
 
   @doc """
+  Ensure a directory exists, creating it and any parents if needed.
+  """
+  @spec ensure_dir(env :: Environment.t(), path :: String.t()) :: :ok | {:error, term()}
+  def ensure_dir(%Environment{type: type} = env, path) do
+    impl(type).ensure_dir(env, path)
+  end
+
+  @doc """
   Find files matching a glob pattern relative to the environment's working directory.
   """
   @spec glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]

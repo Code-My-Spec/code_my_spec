@@ -70,6 +70,13 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   """
   @callback glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]
 
+  @doc """
+  Ensure a directory exists, creating it and any parents if needed.
+
+  Should be idempotent - returns :ok if directory already exists.
+  """
+  @callback ensure_dir(env :: Environment.t(), path :: String.t()) :: :ok | {:error, term()}
+
   # Remove later, or reconsider:
 
   @callback environment_setup_command(env :: Environment.t(), attrs :: map()) :: String.t()

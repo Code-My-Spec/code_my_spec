@@ -52,6 +52,12 @@ defmodule CodeMySpec.Environments.Local do
   end
 
   @impl true
+  def ensure_dir(env, path) do
+    resolved_path = resolve_path(path, env.cwd)
+    File.mkdir_p(resolved_path)
+  end
+
+  @impl true
   def glob(env, pattern) do
     resolved_pattern = resolve_path(pattern, env.cwd)
     Path.wildcard(resolved_pattern)

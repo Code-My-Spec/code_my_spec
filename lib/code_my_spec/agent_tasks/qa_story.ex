@@ -2,106 +2,309 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @moduledoc """
   Per-story QA agent that plans and tests a single user story.
 
-  Takes a story ID from `session.state["topic"]`, writes
-  `.code_my_spec/qa/{story_id}/prompt.md` with story metadata and BDD spec paths,
-  then returns a prompt telling the agent to write a brief and stop.
+  Takes a story ID from `session.state["topic"]`.
 
   Evaluate is a state machine — phase is derived from artifact existence:
-  1. **plan** — plan.md missing/invalid or plan_updates.md pending → feedback
+  1. **plan** — plan.md missing/invalid → feedback
   2. **brief** — brief.md missing or invalid → feedback to write the brief
   3. **test** — brief valid, result.md missing or invalid → feedback to test
-  4. **done** — all valid → file issues, write plan_updates.md, return :valid
+  4. **done** — all valid → file issues, return :valid
 
   Three artifacts for inspectability:
-  - `prompt.md` — story context (written by this code)
   - `brief.md` — agent's plan of attack (written by the agent)
   - `result.md` — test outcomes with evidence (written by the agent)
 
-  Plan lifecycle:
-  - `plan.md` — shared QA plan (written by agent, validated by evaluate)
-  - `plan_updates.md` — accumulated findings from testing (written by evaluate, incorporated by next agent)
-
-  Two main functions:
-  - `command/3` — Writes prompt.md to disk, returns agent prompt (phase 1 only)
-  - `evaluate/3` — State machine: validates plan → brief → result → files issues → writes updates
+  Three main functions:
+  - `command/3` — Returns the full prompt (no marker, no file writes)
+  - `orchestrate/3` — Wraps command output with TaskMarker, writes prompt file,
+    returns QA-specific orchestration for the main agent
+  - `evaluate/3` — State machine: validates plan → brief → result → files issues
   """
 
   require Logger
 
   alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{BddSpecs, Environments, Paths, Stories}
+  alias CodeMySpec.{BddSpecs, Components, Environments, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.{DocumentSpecProjector, QaIssue}
+  alias CodeMySpec.Utils
 
   @required_plan_sections ["app overview", "tools registry", "seed strategy"]
 
-  @doc """
-  Write the story's prompt.md and return the agent prompt.
+  # ============================================================================
+  # Command — returns the full prompt, no marker, no file writes
+  # ============================================================================
 
-  1. Loads the story and its BDD spec file paths
-  2. Writes `.code_my_spec/qa/{story_id}/prompt.md` with story context
-  3. Returns a prompt for phase 1 only — write the brief and stop
+  @doc """
+  Build the phase-appropriate QA prompt for a story.
+
+  Phase-aware: checks current state and returns a self-contained prompt
+  for the current step only. Does not write any files or include a TaskMarker.
+
+  - No plan → plan-phase prompt (write the QA plan)
+  - No brief → brief-phase prompt (write the brief)
+  - Brief exists → test-phase prompt (execute tests, write result)
 
   Returns `{:ok, prompt_text}`
   """
   def command(scope, session, _opts \\ []) do
     with {:ok, story_id} <- get_story_id(session) do
       env = scope.environment
-      endpoint_module = endpoint_module_name(scope)
-
       story = Stories.get_story!(scope, story_id)
-      spec_paths = collect_spec_file_paths(env, story_id)
-      prompt_path = prompt_path(story_id)
-      brief_path = brief_path(story_id)
+      ensure_qa_dirs(env, story_id)
 
-      # Write the prompt file to disk as shared context
-      prompt_content = build_prompt_file(story, spec_paths, endpoint_module)
-      Environments.write_file(env, prompt_path, prompt_content)
+      prompt =
+        with :ok <- plan_or_prompt(env, scope, story),
+             :ok <- brief_or_prompt(env, scope, story) do
+          build_test_phase_prompt(scope, story_id)
+        end
 
-      # Return agent prompt pointing to the files
-      existing_scripts = list_scripts(env)
-      brief_spec = DocumentSpecProjector.project_spec("qa_story_brief")
-
-      agent_prompt =
-        build_agent_prompt(
-          story_id,
-          prompt_path,
-          brief_path,
-          env,
-          existing_scripts,
-          brief_spec,
-          endpoint_module
-        )
-
-      {:ok, TaskMarker.build("QaStory", to_string(story_id)) <> "\n\n" <> agent_prompt}
+      {:ok, prompt}
     end
   end
+
+  # ============================================================================
+  # Evaluate — state machine
+  # ============================================================================
 
   @doc """
   State machine evaluate — phase is derived from artifact existence.
 
   Phase flow:
-  1. plan.md missing/invalid or plan_updates.md pending → feedback
+  1. plan.md missing/invalid → feedback
   2. brief.md missing/invalid → feedback to write the brief
   3. brief valid, result.md missing/invalid → feedback to execute tests
-  4. all valid → file issues, write plan_updates.md, return :valid
+  4. all valid → file issues, return :valid
 
   Returns:
-  - `{:ok, :valid}` when all phases pass (issues filed, plan updates written)
+  - `{:ok, :valid}` when all phases pass (issues filed)
   - `{:ok, :invalid, feedback}` when the current phase artifact is missing or invalid
   """
   def evaluate(scope, session, _opts \\ []) do
     with {:ok, story_id} <- get_story_id(session) do
       env = scope.environment
+      Logger.info("[QaStory] evaluate: story_id=#{story_id}")
 
       with :ok <- check_plan(env),
            :ok <- check_brief(env, story_id),
            {:ok, document} <- check_result(env, story_id) do
+        Logger.info("[QaStory] evaluate: all phases valid, filing issues")
         create_issue_files(env, story_id, document)
-        write_plan_updates(env, story_id, document)
         {:ok, :valid}
+      else
+        {:ok, :invalid, feedback} = result ->
+          Logger.info("[QaStory] evaluate: invalid — #{String.slice(feedback, 0..120)}")
+          result
       end
     end
+  end
+
+  # ============================================================================
+  # Orchestrate (used by Dispatch :orchestrate scope)
+  # ============================================================================
+
+  @status_dir Path.join(Paths.status_dir(), "qa")
+
+  @doc """
+  Orchestrate a QA story for the main agent.
+
+  1. Checks the current phase via `run_phases/2`
+  2. Writes the phase-appropriate prompt (brief or test) to the status file
+  3. Routes validation problems to a separate problems file
+  4. Returns result map with QA-specific `orchestration` text
+
+  The prompt file always reflects the current phase — when the story advances
+  from brief to test phase, the prompt is rewritten with test-phase instructions.
+  The problems file only contains actual validation errors.
+  """
+  def orchestrate(scope, session, opts \\ []) do
+    with {:ok, story_id} <- get_story_id(session) do
+      env = scope.environment
+      status_dir = Keyword.get(opts, :status_dir, @status_dir)
+      prompt_path = prompt_file_path(status_dir, story_id)
+      problem_path = problem_file_path(status_dir, story_id)
+      marker = TaskMarker.build("QaStory", to_string(story_id))
+
+      {complete, has_problems} =
+        case run_phases(env, story_id) do
+          {:complete, document} ->
+            create_issue_files(env, story_id, document)
+            Environments.delete_file(env, prompt_path)
+            cleanup_problem_file(env, problem_path)
+            {true, false}
+
+          {:advance, _phase} ->
+            {:ok, prompt} = command(scope, session)
+            :ok = Environments.write_file(env, prompt_path, marker <> "\n\n" <> prompt)
+            cleanup_problem_file(env, problem_path)
+            {false, false}
+
+          {:problem, feedback} ->
+            {:ok, prompt} = command(scope, session)
+            :ok = Environments.write_file(env, prompt_path, marker <> "\n\n" <> prompt)
+            :ok = Environments.write_file(env, problem_path, feedback)
+            {false, true}
+        end
+
+      orchestration_prompt =
+        build_orchestration_prompt(story_id, problem_path, complete, has_problems)
+
+      orchestration =
+        build_orchestration(story_id, prompt_path, problem_path, complete, has_problems)
+
+      {:ok,
+       %{
+         prompt_path: prompt_path,
+         complete: complete,
+         problem_path: problem_path,
+         orchestration_prompt: orchestration_prompt,
+         orchestration: orchestration
+       }}
+    end
+  end
+
+  @doc """
+  Evaluate-only counterpart to `orchestrate/3`.
+
+  Checks completeness via `run_phases/2` and routes results:
+  - **advance** — updates the prompt file with next-phase instructions, cleans problems
+  - **problem** — writes validation errors to the problems file
+  - **complete** — files issues, cleans up
+  """
+  def orchestrate_evaluate(scope, session, opts \\ []) do
+    with {:ok, story_id} <- get_story_id(session) do
+      env = scope.environment
+      status_dir = Keyword.get(opts, :status_dir, @status_dir)
+      prompt_path = prompt_file_path(status_dir, story_id)
+      problem_path = problem_file_path(status_dir, story_id)
+      marker = TaskMarker.build("QaStory", to_string(story_id))
+
+      Logger.info("[QaStory] orchestrate_evaluate: story_id=#{story_id}")
+
+      {complete, has_problems} =
+        case run_phases(env, story_id) do
+          {:complete, document} ->
+            Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): complete, filing issues")
+            create_issue_files(env, story_id, document)
+            Environments.delete_file(env, prompt_path)
+            cleanup_problem_file(env, problem_path)
+            {true, false}
+
+          {:advance, phase} ->
+            Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): advancing to #{phase}")
+            {:ok, prompt} = command(scope, session)
+            :ok = Environments.write_file(env, prompt_path, marker <> "\n\n" <> prompt)
+            cleanup_problem_file(env, problem_path)
+            {false, false}
+
+          {:problem, feedback} ->
+            Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): problem")
+            :ok = Environments.write_file(env, problem_path, feedback)
+            {false, true}
+        end
+
+      orchestration_prompt =
+        build_orchestration_prompt(story_id, problem_path, complete, has_problems)
+
+      orchestration =
+        build_orchestration(story_id, prompt_path, problem_path, complete, has_problems)
+
+      {:ok,
+       %{
+         complete: complete,
+         problem_path: problem_path,
+         orchestration_prompt: orchestration_prompt,
+         orchestration: orchestration
+       }}
+    end
+  end
+
+  defp prompt_file_path(status_dir, story_id) do
+    "#{status_dir}/story_#{story_id}_qa_story.md"
+  end
+
+  defp problem_file_path(status_dir, story_id) do
+    "#{status_dir}/story_#{story_id}_qa_story_problems.md"
+  end
+
+  # Determine the current phase: complete, advancing, or has problems.
+  #
+  # Returns:
+  # - `{:complete, document}` — all phases pass, document ready for issue filing
+  # - `{:advance, phase}` — file missing for next phase → update prompt
+  # - `{:problem, feedback}` — validation error in existing artifact
+  defp run_phases(env, story_id) do
+    result =
+      with :ok <- check_plan(env),
+           :ok <- require_file(:brief, env, brief_path(story_id)),
+           :ok <- check_brief(env, story_id),
+           :ok <- require_file(:test, env, result_path(story_id)),
+           {:ok, document} <- check_result(env, story_id) do
+        {:complete, document}
+      else
+        {:advance, _phase} = advance -> advance
+        {:ok, :invalid, feedback} -> {:problem, feedback}
+      end
+
+    case result do
+      {:complete, _} -> Logger.info("[QaStory] run_phases(#{story_id}): complete")
+      {:advance, phase} -> Logger.info("[QaStory] run_phases(#{story_id}): advance to #{phase}")
+      {:problem, feedback} -> Logger.info("[QaStory] run_phases(#{story_id}): problem — #{String.slice(feedback, 0..120)}")
+    end
+
+    result
+  end
+
+  defp require_file(phase, env, path) do
+    if Environments.file_exists?(env, path), do: :ok, else: {:advance, phase}
+  end
+
+  defp build_orchestration_prompt(story_id, problem_path, complete, has_problems) do
+    if complete do
+      "[x] QA for story #{story_id} complete."
+    else
+      base = "[ ] QA for story #{story_id} is not complete."
+      if has_problems, do: base <> " Fix the problems at `#{problem_path}`.", else: base
+    end
+  end
+
+  defp build_orchestration(story_id, prompt_path, problem_path, complete, has_problems) do
+    if complete do
+      """
+      # QA Story #{story_id}: Complete
+
+      All QA phases passed. Issues (if any) have been filed.
+      """
+    else
+      problems_section =
+        if has_problems do
+          """
+
+          ## Problems
+
+          If the subagent was blocked by the validation hook, review the feedback
+          at `#{problem_path}` and relay it to the subagent on its next invocation.
+          """
+        else
+          ""
+        end
+
+      """
+      # QA Story #{story_id}
+
+      ## Prompt
+
+      Start a `codemyspec:qa-tester` subagent with the prompt at `#{prompt_path}`.
+      #{problems_section}
+      When the subagent completes all QA phases, **stop the session** so the
+      hook can validate and advance to the next task.
+      """
+    end
+  end
+
+  defp cleanup_problem_file(env, problem_path) do
+    Environments.delete_file(env, problem_path)
+    :ok
   end
 
   # ============================================================================
@@ -126,9 +329,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp check_plan(env) do
     case Environments.read_file(env, Paths.qa_plan()) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
-        with :ok <- validate_plan_sections(content) do
-          check_plan_updates(env)
-        end
+        validate_plan_sections(content)
 
       _ ->
         doc_spec = DocumentSpecProjector.project_spec("qa_plan")
@@ -159,21 +360,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         {:ok, :invalid,
          "QA plan at `#{Paths.qa_plan()}` is missing required section(s): #{section_list}. " <>
            "Update the plan and stop the session again.\n\n## QA Plan Format\n\n#{doc_spec}"}
-    end
-  end
-
-  defp check_plan_updates(env) do
-    path = plan_updates_path()
-
-    case Environments.read_file(env, path) do
-      {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
-        {:ok, :invalid,
-         "Plan updates are pending at `#{path}`. Incorporate these findings " <>
-           "into `#{Paths.qa_plan()}` and delete `#{path}` when done. " <>
-           "Stop the session after updating.\n\n#{content}"}
-
-      _ ->
-        :ok
     end
   end
 
@@ -215,7 +401,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         end
 
       _ ->
-        screenshot_dir = Path.join([Paths.qa_dir(), to_string(story_id), "screenshots"])
+        screenshot_dir = screenshot_dir(story_id)
 
         {:ok, :invalid,
          "Brief validated. Now execute the test plan from the brief and write the result to `#{path}`. " <>
@@ -225,31 +411,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp write_plan_updates(env, story_id, document) do
-    issues = Map.get(document.sections, "issues", [])
-    fileable = if is_list(issues), do: Enum.filter(issues, &QaIssue.fileable?/1), else: []
-
-    path = plan_updates_path()
-
-    existing =
-      case Environments.read_file(env, path) do
-        {:ok, content} when is_binary(content) and byte_size(content) > 0 -> content
-        _ -> "# QA Plan Updates\n\nFindings from per-story QA testing to incorporate into the plan.\n"
-      end
-
-    entry = build_plan_update_entry(story_id, fileable)
-    Environments.write_file(env, path, existing <> "\n" <> entry)
-  end
-
-  defp build_plan_update_entry(story_id, []) do
-    "## Story #{story_id}\n\nNo issues found.\n"
-  end
-
-  defp build_plan_update_entry(story_id, issues) do
-    issue_list = Enum.map_join(issues, "\n", &"- **#{&1.severity}**: #{&1.title}")
-    "## Story #{story_id}\n\n#{issue_list}\n"
-  end
-
   # ============================================================================
   # Issue Filing
   # ============================================================================
@@ -257,10 +418,20 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp create_issue_files(env, story_id, document) do
     issues = Map.get(document.sections, "issues", [])
 
+    Logger.info(
+      "[QaStory] create_issue_files(#{story_id}): " <>
+        "sections=#{inspect(Map.keys(document.sections))}, " <>
+        "issues_type=#{if is_list(issues), do: "list(#{length(issues)})", else: inspect(issues)}"
+    )
+
     if is_list(issues) do
-      issues
-      |> Enum.filter(&QaIssue.fileable?/1)
-      |> Enum.each(&maybe_write_issue_file(env, story_id, &1))
+      fileable = Enum.filter(issues, &QaIssue.fileable?/1)
+      Logger.info("[QaStory] create_issue_files(#{story_id}): #{length(fileable)} fileable issue(s)")
+
+      Enum.each(fileable, fn issue ->
+        Logger.info("[QaStory] filing issue: #{issue.title} (#{issue.severity})")
+        maybe_write_issue_file(env, story_id, issue)
+      end)
     end
   end
 
@@ -275,9 +446,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     path = Path.join(Paths.issues_incoming_dir(), "qa-#{story_id}-#{slug}.md")
 
-    unless Environments.file_exists?(env, path) do
+    if Environments.file_exists?(env, path) do
+      Logger.info("[QaStory] issue file already exists: #{path}")
+    else
       content = build_issue_file(story_id, issue)
-      Environments.write_file(env, path, content)
+      result = Environments.write_file(env, path, content)
+      Logger.info("[QaStory] wrote issue file: #{path} (result=#{inspect(result)})")
     end
   end
 
@@ -289,6 +463,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     #{issue.severity}
 
+    ## Scope
+
+    #{issue.scope || "app"}
+
     ## Description
 
     #{issue.description}
@@ -297,6 +475,239 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     QA Story #{story_id} — `.code_my_spec/qa/#{story_id}/result.md`
     """
+  end
+
+  # ============================================================================
+  # Phase Prompts — each phase is a self-contained prompt
+  # ============================================================================
+
+  # -- Plan Phase: write the QA plan -------------------------------------------
+
+  defp build_plan_phase_prompt(scope, env, story) do
+    endpoint_module = endpoint_module_name(scope)
+    doc_spec = DocumentSpecProjector.project_spec("qa_plan")
+    app_name = derive_app_name(env)
+    router_path = "lib/#{app_name}_web/router.ex"
+    scripts_dir = Path.join(Paths.qa_dir(), "scripts")
+    criteria_text = format_criteria(Map.get(story, :criteria, []))
+
+    """
+    # QA Story #{story.id}: Write the QA Plan
+
+    **App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'` to get the app URL.
+
+    No QA plan exists yet. Analyze the app and write the plan before proceeding
+    to per-story testing.
+
+    ## Story Context
+
+    **#{story.title}** — #{story.description || "_No description._"}
+
+    ### Acceptance Criteria
+
+    #{criteria_text}
+
+    ## Instructions
+
+    1. Read `#{Paths.framework_dir()}/qa-tooling.md` for testing tool patterns
+    2. Read `#{router_path}` and analyze routes, auth pipelines, and live sessions
+    3. Write a standard seed script to `priv/repo/qa_seeds.exs` (`.exs` files run via `mix run`)
+    4. Write additional seed scripts to `priv/repo/qa_seeds.exs` if other scenarios warrant it
+    5. Write useful scripts to `#{scripts_dir}/` (`.sh` for curl wrappers, `chmod +x`)
+    6. Write `#{Paths.qa_plan()}` following the format below
+
+    Stop the session after writing the plan.
+
+    ## QA Plan Format
+
+    #{doc_spec}\
+    """
+  end
+
+  # -- Brief Phase: write the testing brief ------------------------------------
+
+  defp build_brief_phase_prompt(scope, env, story) do
+    endpoint_module = endpoint_module_name(scope)
+    spec_paths = collect_spec_file_paths(env, story.id)
+    brief_spec = DocumentSpecProjector.project_spec("qa_story_brief")
+    existing_scripts = list_scripts(env)
+    criteria_text = format_criteria(Map.get(story, :criteria, []))
+    specs_text = format_spec_paths(spec_paths)
+    scripts_section = build_scripts_section(existing_scripts)
+    component_section = build_component_section(scope, story)
+    scripts_dir = Path.join(Paths.qa_dir(), "scripts")
+
+    sections =
+      [
+        """
+        # QA Story #{story.id}: Write the Brief
+
+        **App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'` to get the app URL.
+
+        Write a testing brief for story #{story.id}. The brief tells the tester exactly
+        what to do — which tools, how to authenticate, what seeds to run, and what to test.
+
+        **Available tools:** `vibium` (browser automation), `curl` (API testing), and shell
+        scripts in `#{scripts_dir}/`.
+
+        ## Story: #{story.title}
+
+        #{story.description || "_No description._"}
+
+        ### Acceptance Criteria
+
+        #{criteria_text}
+
+        ### BDD Spec Files
+
+        #{specs_text}\
+        """,
+        component_section,
+        scripts_section,
+        """
+        ## Instructions
+
+        1. Read `#{Paths.qa_plan()}` for app overview, tools, auth, and seed strategy
+        2. Verify the tools and scripts work for this story — run seed scripts, test auth scripts
+        3. If this story needs additional seeds, scripts, or plan updates, make them now
+        4. Read the BDD spec files listed above (they contain selectors, test data, and assertions)
+        5. If a linked component is listed above, read its source and spec to understand the feature
+        6. Write the brief to `#{brief_path(story.id)}` following the format below
+
+        Stop the session after writing the brief.
+
+        ## Brief Format
+
+        #{brief_spec}\
+        """
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    Enum.join(sections, "\n\n")
+  end
+
+  # -- Test Phase: execute tests and write result ------------------------------
+
+  defp build_test_phase_prompt(scope, story_id) do
+    env = scope.environment
+    story = Stories.get_story!(scope, story_id)
+    result_spec = DocumentSpecProjector.project_spec("qa_result")
+    endpoint_module = endpoint_module_name(scope)
+    existing_scripts = list_scripts(env)
+    screenshot_dir = screenshot_dir(story_id)
+    scripts_section = build_scripts_section(existing_scripts)
+    component_section = build_component_section(scope, story)
+
+    sections =
+      [
+        """
+        # QA Story #{story.id}: Execute Tests
+
+        **App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'` to get the app URL.
+
+        The brief has been validated. Execute the test plan and write the result.
+
+        Read `#{Paths.framework_dir()}/qa-tooling.md` for the available testing tools and patterns.
+        You are a CLI agent — use `vibium` for browser automation (navigate, click, type,
+        screenshot) and shell scripts in `#{Paths.qa_dir()}/scripts/` for authenticated requests.
+        You do NOT open a browser manually.
+        Reference existing scripts by path rather than inlining raw curl commands.
+
+        **Tool rules:**
+        - **Browser testing:** Use `vibium` commands (`vibium navigate`, `vibium click`, `vibium type`,
+          `vibium screenshot`, etc.).
+        - **API testing:** Use `curl` but ALWAYS write single-line commands. Multi-line curl commands
+          (with backslash continuations) require individual approval and block the session.
+
+        ## Story: #{story.title}
+
+        #{story.description || "_No description._"}
+
+        ### Testing Approach
+
+        - Navigate the feature and capture a screenshot at each key state (initial load, after interactions, success/error states)
+        - After the scripted scenarios, explore freely: try unexpected inputs, edge cases, empty states, and anything that feels off
+        - Save all screenshots to `#{screenshot_dir}/` — they are evidence and must be committed\
+        """,
+        component_section,
+        scripts_section,
+        """
+        ## Instructions
+
+        1. Read the brief at `#{brief_path(story_id)}` for the complete testing plan
+        2. Read `#{Paths.qa_plan()}` for auth strategy and seed commands
+        3. Read `#{Paths.framework_dir()}/qa-tooling.md` for tool usage patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
+        4. If a linked component is listed above, read its source to understand the feature's implementation
+        5. Execute each test scenario from the brief
+        6. Capture a screenshot at each key state — save to `#{screenshot_dir}/`
+        7. Attempt to resolve any issues with the plan or the QA scripts before finishing
+        8. Write the result to `#{result_path(story_id)}` following the format below
+
+        Stop the session after writing the result.
+
+        ## Result Format
+
+        #{result_spec}\
+        """
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    Enum.join(sections, "\n\n")
+  end
+
+  # -- Shared prompt helpers ---------------------------------------------------
+
+  defp build_scripts_section([]), do: nil
+
+  defp build_scripts_section(scripts) do
+    script_list = Enum.map_join(scripts, "\n", &"- `#{&1}`")
+
+    """
+    ## Available Scripts
+
+    These scripts handle auth and seeds — reference them in the brief instead
+    of writing inline commands:
+
+    #{script_list}\
+    """
+  end
+
+  defp build_component_section(scope, story) do
+    case story.component_id do
+      nil ->
+        nil
+
+      component_id ->
+        try do
+          component = Components.get_component!(scope, component_id)
+          files = Utils.component_files(component, scope.active_project)
+          file_list = format_component_files(files)
+
+          """
+          ## Linked Component: #{component.name}
+
+          This story is implemented by `#{component.module_name}` (#{component.type}).
+          Reading the source code and spec will help you understand what to test
+          and how the feature works.
+
+          #{file_list}\
+          """
+        rescue
+          _ -> nil
+        end
+    end
+  end
+
+  defp format_component_files(files) do
+    files
+    |> Enum.map(fn
+      {:spec_file, path} -> "- Spec: `#{path}`"
+      {:code_file, path} -> "- Source: `#{path}`"
+      {:test_file, path} -> "- Tests: `#{path}`"
+      _ -> nil
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
   end
 
   # ============================================================================
@@ -326,17 +737,20 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp read_router(env, app_name) do
-    path = "lib/#{app_name}_web/router.ex"
-
-    case Environments.read_file(env, path) do
-      {:ok, content} -> content
-      _ -> nil
-    end
-  end
-
   defp plan_exists?(env) do
     Environments.file_exists?(env, Paths.qa_plan())
+  end
+
+  defp brief_exists?(env, story_id) do
+    Environments.file_exists?(env, brief_path(story_id))
+  end
+
+  defp plan_or_prompt(env, scope, story) do
+    if plan_exists?(env), do: :ok, else: build_plan_phase_prompt(scope, env, story)
+  end
+
+  defp brief_or_prompt(env, scope, story) do
+    if brief_exists?(env, story.id), do: :ok, else: build_brief_phase_prompt(scope, env, story)
   end
 
   @scripts_dir Path.join(Paths.qa_dir(), "scripts")
@@ -354,217 +768,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   # ============================================================================
-  # Prompt File (written to disk)
+  # Path Helpers
   # ============================================================================
-
-  defp build_prompt_file(story, spec_paths, endpoint_module) do
-    criteria_text = format_criteria(Map.get(story, :criteria, []))
-    specs_text = format_spec_paths(spec_paths)
-
-    """
-    # Story #{story.id}: #{story.title}
-
-    ## App URL
-
-    Run `mix run -e 'IO.puts(#{endpoint_module}.url())'` to get the app URL.
-
-    ## Description
-
-    #{story.description || "_No description._"}
-
-    ## Acceptance Criteria
-
-    #{criteria_text}
-
-    ## BDD Spec Files
-
-    #{specs_text}
-
-    ## Testing Approach
-
-    - Navigate the feature and capture a screenshot at each key state (initial load, after interactions, success/error states)
-    - After the scripted scenarios, explore freely: try unexpected inputs, edge cases, empty states, and anything that feels off
-    - Save all screenshots to `.code_my_spec/qa/#{story.id}/screenshots/` — they are evidence and must be committed
-    """
-  end
-
-  # ============================================================================
-  # Agent Prompt (returned to caller)
-  # ============================================================================
-
-  defp build_agent_prompt(
-         story_id,
-         prompt_path,
-         brief_path,
-         env,
-         existing_scripts,
-         brief_spec,
-         endpoint_module
-       ) do
-    sections =
-      [
-        build_header(story_id, endpoint_module),
-        build_brief_spec_section(brief_spec),
-        build_plan_reference(env),
-        build_scripts_section(existing_scripts),
-        build_prompt_reference(prompt_path),
-        build_instructions(story_id, prompt_path, brief_path)
-      ]
-      |> Enum.reject(&is_nil/1)
-
-    Enum.join(sections, "\n\n")
-  end
-
-  defp build_header(story_id, endpoint_module) do
-    """
-    # QA Story: Plan and Test Story #{story_id}
-
-    **App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'` to get the app URL.
-
-    You are the QA agent for story #{story_id}. Your first task is to plan the
-    testing approach by writing a brief. Stop after writing the brief so it can
-    be validated before you test.
-
-    Read `#{Paths.framework_dir()}/qa-tooling.md` for the available testing tools and patterns.
-    You are a CLI agent — use `vibium` for browser automation (navigate, click, type,
-    screenshot) and shell scripts in `#{Paths.qa_dir()}/scripts/` for authenticated requests.
-    You do NOT open a browser manually.
-    Reference existing scripts by path rather than inlining raw curl commands.
-
-    **Tool rules:**
-    - **Browser testing:** Use `vibium` commands (`vibium navigate`, `vibium click`, `vibium type`,
-      `vibium screenshot`, etc.).
-    - **API testing:** Use `curl` but ALWAYS write single-line commands. Multi-line curl commands
-      (with backslash continuations) require individual approval and block the session.\
-    """
-  end
-
-  defp build_brief_spec_section(brief_spec) do
-    """
-    ## Brief Format
-
-    The brief must follow this specification:
-
-    #{brief_spec}\
-    """
-  end
-
-  defp build_plan_reference(env) do
-    if plan_exists?(env) do
-      updates_path = plan_updates_path()
-
-      if Environments.file_exists?(env, updates_path) do
-        """
-        ## QA Plan
-
-        Read `#{Paths.qa_plan()}` for the app overview, tools registry, authentication
-        strategy, and seed commands.
-
-        **Plan updates pending at `#{updates_path}`.** Read the updates from previous
-        story testing and incorporate relevant findings into the plan. Delete
-        `#{updates_path}` when done.\
-        """
-      else
-        """
-        ## QA Plan
-
-        Read `#{Paths.qa_plan()}` for the app overview, tools registry, authentication
-        strategy, and seed commands. Use this as your primary reference.\
-        """
-      end
-    else
-      doc_spec = DocumentSpecProjector.project_spec("qa_plan")
-      app_name = derive_app_name(env)
-      router_content = read_router(env, app_name)
-      router_section = build_setup_router_section(router_content)
-      scripts_dir = Path.join(Paths.qa_dir(), "scripts")
-
-      """
-      ## QA Plan
-
-      **No QA plan found at `#{Paths.qa_plan()}`.**
-
-      Before writing the brief, set up QA infrastructure:
-
-      #{router_section}
-
-      ### Setup Steps
-
-      1. Read `#{Paths.framework_dir()}/qa-tooling.md` for testing tool patterns
-      2. Analyze the router for routes, auth pipelines, and live sessions
-      3. Write seed scripts to `priv/repo/qa_seeds.exs` (`.exs` files run via `mix run`)
-      4. Write auth scripts to `#{scripts_dir}/` (`.sh` for curl wrappers, `chmod +x`)
-      5. Write `#{Paths.qa_plan()}` following this specification:
-
-      #{doc_spec}\
-      """
-    end
-  end
-
-  defp build_setup_router_section(nil) do
-    "Run `mix phx.routes` to discover available routes."
-  end
-
-  defp build_setup_router_section(router_content) do
-    """
-    ### Router
-
-    ```elixir
-    #{router_content}
-    ```\
-    """
-  end
-
-  defp build_scripts_section([]), do: nil
-
-  defp build_scripts_section(scripts) do
-    script_list = Enum.map_join(scripts, "\n", &"- `#{&1}`")
-
-    """
-    ## Available Scripts
-
-    QaSetup created these scripts — read them and reference them in the brief's auth
-    and seeds sections instead of writing inline commands:
-
-    #{script_list}
-
-    Run these scripts by path.\
-    """
-  end
-
-  defp build_prompt_reference(prompt_path) do
-    """
-    ## Story Prompt
-
-    Read `#{prompt_path}` for the story details, acceptance criteria, and BDD spec file paths.\
-    """
-  end
-
-  defp build_instructions(story_id, prompt_path, brief_path) do
-    """
-    ## Instructions
-
-    1. Read `#{Paths.framework_dir()}/qa-tooling.md` to understand available testing tools
-    2. Read `#{prompt_path}` for story #{story_id}'s details and BDD spec file paths
-    3. Read `#{Paths.qa_plan()}` for app overview, tools, auth, and seed strategy
-    4. Read the BDD spec files listed in the prompt (they contain exact selectors, test data, and assertions)
-    5. Write the brief to `#{brief_path}` with all required sections: tool, auth, seeds, what to test, result path
-
-    The brief's "tool" section must specify a CLI tool (`vibium` for browser testing, `curl` for APIs,
-    or a script path). You are an automated agent, not a human with a browser.
-    NEVER use the `web` tool — use `vibium` instead. All curl commands MUST be single-line.
-
-    Stop after writing the brief so it can be validated before you test.\
-    """
-  end
-
-  # ============================================================================
-  # Helpers
-  # ============================================================================
-
-  defp prompt_path(story_id) do
-    Path.join([Paths.qa_dir(), to_string(story_id), "prompt.md"])
-  end
 
   defp brief_path(story_id) do
     Path.join([Paths.qa_dir(), to_string(story_id), "brief.md"])
@@ -574,9 +779,18 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     Path.join([Paths.qa_dir(), to_string(story_id), "result.md"])
   end
 
-  defp plan_updates_path do
-    Path.join(Paths.qa_dir(), "plan_updates.md")
+  defp screenshot_dir(story_id) do
+    Path.join([Paths.qa_dir(), to_string(story_id), "screenshots"])
   end
+
+  defp ensure_qa_dirs(env, story_id) do
+    Environments.ensure_dir(env, screenshot_dir(story_id))
+    :ok
+  end
+
+  # ============================================================================
+  # Formatting Helpers
+  # ============================================================================
 
   defp format_criteria(nil), do: "_None defined._"
   defp format_criteria([]), do: "_None defined._"
