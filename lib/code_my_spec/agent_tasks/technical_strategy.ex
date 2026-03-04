@@ -2,25 +2,26 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   @moduledoc """
   Orchestrator task for identifying and resolving technology decisions.
 
-  Analyzes the project's architecture and stories to identify topics that
-  need technology decisions (e.g., which testing library, which deployment
-  approach), then delegates per-topic validation to ResearchTopic.
+  Analyzes the project's architecture, stories, and dependencies to identify
+  topics needing technology decisions, then auto-writes pre-made ADRs for
+  standard stack choices and guides the agent through cursory research and
+  ADR creation for remaining topics.
 
-  Handles three phases:
+  Focused purely on decisions — deep research is handled by ResearchTopics,
+  bootstrap/implementation by ProjectBootstrap.
+
+  Two phases:
   1. **Pre-made decisions** — auto-writes ADRs for standard stack choices before prompting
-  2. **Research** — identifies and researches new technology topics
-  3. **Knowledge & Bootstrap** — builds knowledge base and configures libraries
+  2. **Decision-making** — identifies new topics, does cursory research, writes ADRs,
+     updates the decisions index
 
   Artifacts produced:
   - `.code_my_spec/architecture/decisions.md` — index of all decisions
   - `.code_my_spec/architecture/decisions/{topic}.md` — individual decision records
-  - `.code_my_spec/knowledge/{topic}/` — research findings (required for non-pre-made topics)
-  - `.code_my_spec/status/research/{topic}.md` — transient research prompts (cleaned up)
   """
 
   require Logger
 
-  alias CodeMySpec.AgentTasks.ResearchTopic
   alias CodeMySpec.{Components, Environments, Paths, Stories}
 
   # Pre-made technology decisions that are part of the standard CodeMySpec stack.
@@ -83,12 +84,20 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         "Use ExVCR to record and replay all external HTTP interactions. Record all external calls regardless of the HTTP client used. This ensures deterministic tests and documents the exact API interactions the system depends on."
     },
     %{
-      topic: "bdd-testing",
-      title: "Use BDD specs with SexySpex for end-to-end testing",
+      topic: "wallaby",
+      title: "Use Wallaby for browser-based integration testing",
       context:
-        "We need a testing approach that validates user-facing behavior and bridges the gap between stories and code.",
+        "We need a way to drive a real browser for end-to-end testing that handles LiveView's async rendering and integrates with Ecto's sandbox for database isolation.",
       decision:
-        "Use BDD specifications with SexySpex (`sexy_spex`) for end-to-end tests. Write specs that test real user workflows through LiveView, combining recorded external interactions (ExVCR) with browser-level assertions."
+        "Use Wallaby (`wallaby`) with ChromeDriver for all browser-based integration tests. It provides concurrent test execution, automatic retry/wait for async content (critical for LiveView), Ecto sandbox integration via user_agent metadata, and a clean DSL for interacting with pages (visit, fill_in, click, assert_has)."
+    },
+    %{
+      topic: "bdd-testing",
+      title: "Use BDD specs with SexySpex and Wallaby for end-to-end testing",
+      context:
+        "We need a testing approach that validates user-facing behavior through a real browser and bridges the gap between stories and code.",
+      decision:
+        "Use BDD specifications with SexySpex (`sexy_spex`) for the Given-When-Then DSL and Wallaby (`wallaby`) for browser-driven interactions. Write specs that test real user workflows through a real browser via ChromeDriver, interacting with LiveView the way a user would — clicking, filling forms, and asserting on visible content."
     },
     %{
       topic: "dotenvy",
@@ -97,18 +106,13 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         "We need a way to manage environment variables across development, test, and production.",
       decision:
         "Use Dotenvy for environment variable management. It loads `.env` files in development and integrates cleanly with Elixir's config system via runtime configuration."
-    },
-    %{
-      topic: "ngrok",
-      title: "Use ngrok for local OAuth development",
-      context:
-        "OAuth providers require publicly accessible callback URLs, which localhost cannot provide during development.",
-      decision:
-        "Use ngrok to expose the local development server to the internet for OAuth callback handling. This allows testing OAuth flows end-to-end in development without deploying to a staging environment."
     }
   ]
 
   @doc "Returns the list of pre-made technology decisions."
+  @spec premade_decisions() :: [
+          %{topic: String.t(), title: String.t(), context: String.t(), decision: String.t()}
+        ]
   def premade_decisions, do: @premade_decisions
 
   @doc """
@@ -116,11 +120,11 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   Writes any missing pre-made decision ADRs directly to the environment,
   then reads architecture overview, project deps, existing decisions, and
-  story titles to build a prompt for the remaining work (research, knowledge,
-  bootstrap).
+  story titles to build a prompt for decision-making.
 
-  Returns {:ok, prompt_text}
+  Returns `{:ok, prompt_text}`.
   """
+  @spec command(CodeMySpec.Users.Scope.t(), map(), keyword()) :: {:ok, String.t()}
   def command(scope, _session, _opts \\ []) do
     env = scope.environment
     project = scope.active_project
@@ -145,40 +149,35 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   end
 
   @doc """
-  Validate all research topics and pre-made decisions are complete.
+  Validate all pre-made decisions exist and the decisions index is complete.
 
   Checks:
-  1. All pre-made decisions have ADR files
-  2. All research prompt files have completed ResearchTopic validation
-  3. The decisions index exists and references all topics
-  4. Non-pre-made decided topics have knowledge entries
+  1. Decisions index file exists
+  2. All pre-made decisions have ADR files
 
   Returns:
-  - {:ok, :valid} if all checks pass
-  - {:ok, :invalid, feedback} if anything is incomplete
+  - `{:ok, :valid}` if all checks pass
+  - `{:ok, :invalid, feedback}` if anything is incomplete
   """
-  def evaluate(scope, session, _opts \\ []) do
+  @spec evaluate(CodeMySpec.Users.Scope.t(), map(), keyword()) ::
+          {:ok, :valid} | {:ok, :invalid, String.t()}
+  def evaluate(scope, _session, _opts \\ []) do
     env = scope.environment
 
-    topics = list_research_topics(env)
     index_exists = decisions_index_exists?(env)
     existing_decisions = list_existing_decisions(env)
     missing_premade = missing_premade_decisions(existing_decisions)
-    missing_knowledge = missing_knowledge_entries(env, existing_decisions)
 
     Logger.info(
-      "[TechnicalStrategy] evaluate: #{length(topics)} topic(s), " <>
-        "#{length(missing_premade)} missing pre-made, index_exists=#{index_exists}"
+      "[TechnicalStrategy] evaluate: #{length(missing_premade)} missing pre-made, " <>
+        "index_exists=#{index_exists}"
     )
 
-    all_clear =
-      Enum.empty?(topics) and index_exists and
-        Enum.empty?(missing_premade) and Enum.empty?(missing_knowledge)
-
-    if all_clear do
+    if index_exists and Enum.empty?(missing_premade) do
       {:ok, :valid}
     else
-      evaluate_all(scope, session, topics, index_exists, missing_premade, missing_knowledge)
+      feedback = build_evaluate_feedback(index_exists, missing_premade)
+      {:ok, :invalid, feedback}
     end
   end
 
@@ -187,6 +186,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   Returns the count of decisions written.
   """
+  @spec ensure_premade_decisions(Environments.Environment.t()) :: non_neg_integer()
   def ensure_premade_decisions(env) do
     existing = list_existing_decisions(env)
     missing = missing_premade_decisions(existing)
@@ -248,39 +248,12 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     _ -> []
   end
 
-  defp list_research_topics(env) do
-    case Environments.glob(env, "#{Paths.research_dir()}/*.md") do
-      files when is_list(files) ->
-        Enum.map(files, &Path.basename(&1, ".md"))
-
-      _ ->
-        []
-    end
-  end
-
   defp decisions_index_exists?(env) do
     Environments.file_exists?(env, Paths.decisions_index()) == true
   end
 
-  defp premade_topics do
-    Enum.map(@premade_decisions, & &1.topic)
-  end
-
   defp missing_premade_decisions(existing_decisions) do
     Enum.reject(@premade_decisions, fn d -> d.topic in existing_decisions end)
-  end
-
-  defp missing_knowledge_entries(env, existing_decisions) do
-    premade = premade_topics()
-
-    existing_decisions
-    |> Enum.reject(&(&1 in premade))
-    |> Enum.filter(fn topic ->
-      case Environments.glob(env, "#{Paths.knowledge_dir()}/#{topic}/**") do
-        files when is_list(files) and files != [] -> false
-        _ -> true
-      end
-    end)
   end
 
   # ============================================================================
@@ -309,7 +282,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     You are conducting a technical strategy session for the **#{project.name}** project.
 
     Your goal is to identify technology decisions that need to be made, research the
-    options, and produce decision records with supporting knowledge.
+    options, and produce decision records.
     """
   end
 
@@ -384,57 +357,28 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     - **Infrastructure:** Caching, background jobs, file storage
     - **Integrations:** Third-party APIs, payment processing, auth providers
 
-    ### Step 2: Write Research Prompts
+    ### Step 2: Research and Decide Each Topic
 
-    For each topic you identify, write a freeform research prompt to
-    `#{Paths.status_dir()}/research/{topic}.md`. The filename becomes the topic name.
+    For each identified topic, do cursory research (search hex.pm, check docs), evaluate
+    against project needs, and write a decision record to
+    `#{Paths.decisions_dir()}/{topic}.md` with sections:
 
-    Example: `#{Paths.status_dir()}/research/wallaby.md` might contain:
-    ```
-    Research Wallaby for browser-based integration testing of Phoenix LiveView.
-    Compare with alternatives like Hound. Consider CI setup requirements.
-    ```
+    - **Title** — a concise statement of the decision
+    - **Status** — Accepted, Proposed, or Superseded
+    - **Context** — why this decision is needed
+    - **Options Considered** — alternatives evaluated with pros and cons
+    - **Decision** — what was chosen and why
+    - **Consequences** — tradeoffs and follow-on work
 
-    ### Step 3: Research Each Topic
+    ### Step 3: Update the Index
 
-    For each research prompt file, invoke the **researcher** subagent
-    (`@"CodeMySpec:researcher (agent)"`) to:
-    - Search documentation and community resources
-    - Evaluate options against project requirements
-    - Write a decision record to `#{Paths.decisions_dir()}/{topic}.md`
+    Ensure `#{Paths.decisions_index()}` exists and lists all decision records
+    (pre-made and new) with their status.
 
-    ### Step 4: Build Knowledge Base
+    ### Step 4: Stop
 
-    For each **researched** (non-pre-made) topic that now has a decision record,
-    invoke the **researcher** subagent to build knowledge entries in
-    `#{Paths.knowledge_dir()}/{topic}/`. Each topic should have at least one knowledge
-    file covering setup, configuration, and usage patterns relevant to this project.
-
-    Do **not** build knowledge entries for pre-made decisions — those are
-    well-known technologies that don't need project-specific documentation.
-
-    ### Step 5: Update the Index
-
-    Ensure `#{Paths.decisions_index()}` exists and lists **all** decision records
-    (both pre-made and researched) with their status.
-
-    ### Step 6: Bootstrap
-
-    Now that all decisions are made, configure the project:
-
-    1. **Add libraries** — add any newly decided dependencies to `mix.exs` and
-       run `mix deps.get`
-    2. **Configure** — add necessary configuration to `config/config.exs`,
-       `config/dev.exs`, `config/test.exs`, and `config/runtime.exs` as needed
-    3. **Wire up** — update `application.ex` if new supervision trees or
-       workers are needed, create any required initialization modules
-    4. **Smoke test** — write a small test (e.g., in `test/smoke_test.exs`)
-       that verifies the newly added libraries load and basic functionality works
-
-    ### Step 7: Stop
-
-    When all topics have been researched, knowledge built, and the project
-    bootstrapped, stop the session so validation can check your work.
+    When all topics have been researched and decision records written, stop the session
+    so validation can check your work.
     """
   end
 
@@ -442,43 +386,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   # Evaluation
   # ============================================================================
 
-  defp evaluate_all(scope, session, topics, index_exists, missing_premade, missing_knowledge) do
-    topic_results =
-      Enum.map(topics, fn topic ->
-        child_session = build_child_session(session, topic)
-
-        case ResearchTopic.evaluate(scope, child_session) do
-          {:ok, :valid} -> {topic, :valid}
-          {:ok, :invalid, feedback} -> {topic, {:invalid, feedback}}
-        end
-      end)
-
-    incomplete =
-      Enum.filter(topic_results, fn
-        {_topic, :valid} -> false
-        _ -> true
-      end)
-
-    all_clear = Enum.empty?(incomplete) and index_exists and Enum.empty?(missing_premade) and Enum.empty?(missing_knowledge)
-
-    if all_clear do
-      {:ok, :valid}
-    else
-      feedback =
-        build_evaluate_feedback(incomplete, index_exists, missing_premade, missing_knowledge)
-
-      {:ok, :invalid, feedback}
-    end
-  end
-
-  defp build_child_session(session, topic) do
-    %{
-      project: Map.get(session, :project),
-      state: %{"topic" => topic}
-    }
-  end
-
-  defp build_evaluate_feedback(incomplete_topics, index_exists, missing_premade, missing_knowledge) do
+  defp build_evaluate_feedback(index_exists, missing_premade) do
     parts = []
 
     parts =
@@ -491,16 +399,6 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     parts =
       Enum.reduce(missing_premade, parts, fn d, acc ->
         ["- Pre-made decision \"#{d.topic}\" has no decision record" | acc]
-      end)
-
-    parts =
-      Enum.reduce(incomplete_topics, parts, fn {topic, _status}, acc ->
-        ["- Topic \"#{topic}\" is incomplete" | acc]
-      end)
-
-    parts =
-      Enum.reduce(missing_knowledge, parts, fn topic, acc ->
-        ["- Topic \"#{topic}\" has no knowledge entries in `#{Paths.knowledge_dir()}/#{topic}/`" | acc]
       end)
 
     issue_list = parts |> Enum.reverse() |> Enum.join("\n")

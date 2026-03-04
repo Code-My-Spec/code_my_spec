@@ -339,17 +339,16 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     {Enum.empty?(missing), missing}
   end
 
-  # App symlinks check (framework knowledge + tools)
+  # App resource dirs check (framework knowledge + tools, copied by CLI on startup)
 
-  @app_symlinks [
-    {:framework_dir, "priv/knowledge"},
-    {:tools_dir, "priv/tools"}
+  @app_resource_dirs [
+    :framework_dir,
+    :tools_dir
   ]
 
   defp check_app_symlinks(working_dir) do
-    # File.dir? follows symlinks, so this validates both the link and its target
     all_installed =
-      Enum.all?(@app_symlinks, fn {path_fn, _} ->
+      Enum.all?(@app_resource_dirs, fn path_fn ->
         Path.join(working_dir, apply(CodeMySpec.Paths, path_fn, []))
         |> File.dir?()
       end)
@@ -831,23 +830,20 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_symlinks_instructions(sections, _status) do
     instruction = """
-    ## Install App Symlinks
+    ## Install Framework Knowledge & Tools
 
-    CodeMySpec provides framework knowledge and tools via symlinks into your project.
+    CodeMySpec copies framework knowledge and tools into your project on CLI startup.
 
-    Install them:
-    ```bash
-    curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks \\
-      -H "Content-Type: application/json" \\
-      -H "X-Working-Dir: $(pwd)"
-    ```
+    These directories are created automatically when the CLI starts from a project
+    that has a `.code_my_spec/` directory:
 
-    This creates:
-    - `.code_my_spec/framework/` → framework reference (LiveView, DaisyUI, Boundary, etc.)
-    - `.code_my_spec/tools/` → helper scripts (e.g., `set-story-component`)
+    - `.code_my_spec/framework/` — framework reference (LiveView, DaisyUI, Boundary, etc.)
+    - `.code_my_spec/tools/` — helper scripts (e.g., `set-story-component`)
 
-    Both symlinks stay current with the app version automatically.
-    Commit them to version control — git stores symlink targets portably.
+    If they're missing, restart the CLI (`cms`) from the project root directory.
+
+    These files are kept in sync with the CLI version automatically on each startup.
+    Add them to `.gitignore` — they're regenerated from the CLI.
     """
 
     [instruction | sections]
@@ -981,7 +977,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Test support namespace", status.test_support_namespace_correct},
       {"Project structure", status.project_dir_exists},
       {"Project structure dirs", status.project_structure_complete},
-      {"App symlinks", status.app_symlinks_installed},
+      {"App resources (framework + tools)", status.app_symlinks_installed},
       {"AGENTS.md", status.agents_md_installed},
       {"Rules", status.rules_installed},
       {"CLAUDE.md", status.claude_md_installed},
@@ -1186,36 +1182,44 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     """
   end
 
+  @app_copy_dirs [
+    {"priv/knowledge", :framework_dir},
+    {"priv/tools", :tools_dir}
+  ]
+
   @doc """
-  Create symlinks from .code_my_spec/ to the app's priv/ directories.
+  Copy framework knowledge and tools from priv/ into the project's .code_my_spec/.
 
   Creates:
-  - `.code_my_spec/framework/` → `priv/knowledge/`
-  - `.code_my_spec/tools/` → `priv/tools/`
+  - `.code_my_spec/framework/` from `priv/knowledge/`
+  - `.code_my_spec/tools/` from `priv/tools/`
 
   Returns `:ok` on success, `{:error, reason}` on first failure.
   """
-  @spec install_app_symlinks(String.t()) :: :ok | {:error, term()}
-  def install_app_symlinks(working_dir) do
-    Enum.reduce_while(@app_symlinks, :ok, fn {path_fn, priv_subdir}, :ok ->
+  @spec install_app_resources(String.t()) :: :ok | {:error, term()}
+  def install_app_resources(working_dir) do
+    Enum.reduce_while(@app_copy_dirs, :ok, fn {priv_subdir, path_fn}, :ok ->
       source = Application.app_dir(:code_my_spec, priv_subdir)
-      link_path = Path.join(working_dir, apply(CodeMySpec.Paths, path_fn, []))
+      target = Path.join(working_dir, apply(CodeMySpec.Paths, path_fn, []))
 
-      case create_symlink(source, link_path) do
+      case copy_dir(source, target) do
         :ok -> {:cont, :ok}
         error -> {:halt, error}
       end
     end)
   end
 
-  defp create_symlink(source, link_path) do
-    with :ok <- link_path |> Path.dirname() |> File.mkdir_p() do
-      # Remove existing symlink or directory if present
-      if File.exists?(link_path) or symlink?(link_path) do
-        File.rm_rf(link_path)
+  defp copy_dir(source, target) do
+    with :ok <- target |> Path.dirname() |> File.mkdir_p() do
+      # Remove existing directory or symlink
+      if File.exists?(target) or symlink?(target) do
+        File.rm_rf(target)
       end
 
-      File.ln_s(source, link_path)
+      case File.cp_r(source, target) do
+        {:ok, _} -> :ok
+        {:error, reason, _} -> {:error, reason}
+      end
     end
   end
 
@@ -1371,8 +1375,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ├── spec/                  ← Specifications for every module
     ├── rules/                 ← Coding standards by component type
     ├── knowledge/             ← Project-specific operational knowledge
-    ├── framework/             ← Framework reference (LiveView, DaisyUI, etc.) [symlink]
-    ├── tools/                 ← Helper scripts (set-story-component, etc.) [symlink]
+    ├── framework/             ← Framework reference (LiveView, DaisyUI, etc.)
+    ├── tools/                 ← Helper scripts (set-story-component, etc.)
     ├── design/                ← Design system assets
     ├── issues/                ← Known bugs and technical debt
     └── qa/                    ← QA test results
@@ -1457,7 +1461,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     ### 7. Knowledge — Operational knowledge
 
     - `#{base}/knowledge/` — Project-specific research (data providers, auth flows, etc.)
-    - `#{base}/framework/` — Framework knowledge (LiveView, DaisyUI, Boundary, etc.) [symlink]
+    - `#{base}/framework/` — Framework knowledge (LiveView, DaisyUI, Boundary, etc.)
 
     ## Phoenix Contexts Architecture
 
@@ -1625,8 +1629,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        "Create .code_my_spec directory: mkdir -p #{CodeMySpec.Paths.base_dir()}"},
       {"Project structure dirs", status.project_structure_complete,
        "Create directories: #{Enum.join(status.missing_structure_dirs, ", ")}"},
-      {"App symlinks", status.app_symlinks_installed,
-       "Install app symlinks: curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks -H 'X-Working-Dir: <project_dir>'"},
+      {"App resources (framework + tools)", status.app_symlinks_installed,
+       "Restart the CLI from the project root, or run: curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks -H 'X-Working-Dir: <project_dir>'"},
       {"AGENTS.md", status.agents_md_installed,
        "Generate AGENTS.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md -H 'X-Working-Dir: <project_dir>'"},
       {"Rules", status.rules_installed,

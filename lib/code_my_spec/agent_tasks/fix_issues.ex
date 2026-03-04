@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.ProjectCoordinator
 
   @severity_order ~w(critical high medium low info)
   @blocking_severities ~w(critical high medium)
@@ -93,6 +94,14 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     end
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
+  def orchestrate_evaluate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  end
+
   # ============================================================================
   # Prompt Building
   # ============================================================================
@@ -106,20 +115,19 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   end
 
   defp build_prompt(unresolved, min_severity) do
-    issues_text =
+    grouped_by_scope =
       unresolved
-      |> Enum.sort_by(fn {_path, content} -> severity_index(parse_severity(content)) end)
-      |> Enum.map_join("\n\n", fn {path, content} ->
-        source_ref = extract_source(content)
+      |> Enum.group_by(fn {_path, content} -> parse_scope(content) end)
+      |> Enum.sort_by(fn {scope, _} -> scope end)
 
-        """
-        ### `#{Path.basename(path)}`
+    issues_text =
+      Enum.map_join(grouped_by_scope, "\n\n", fn {scope, group} ->
+        sorted =
+          Enum.sort_by(group, fn {_path, content} -> severity_index(parse_severity(content)) end)
 
-        #{if source_ref, do: "**Source:** #{source_ref}\n", else: ""}
-        ```markdown
-        #{content}
-        ```
-        """
+        items = format_issue_items(sorted)
+
+        "## Scope: #{scope} (#{length(group)})\n\n#{items}"
       end)
 
     """
@@ -143,6 +151,15 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
        - How the fix was verified
     4. **Run tests** after all fixes to verify nothing is broken: `mix test`
 
+    ## Scope-Aware Fixing
+
+    Issues have a `## Scope` section indicating what to fix:
+    - **app** — Fix application code (controllers, live views, schemas, etc.)
+    - **qa** — Fix QA infrastructure (seed scripts, auth scripts, QA plan, test tooling)
+    - **docs** — Fix documentation (specs, README, user stories)
+
+    Read the scope before fixing — a `qa` issue means the seeds or scripts need updating, not the app code.
+
     ## QA Results
 
     Issue source references point to QA result files in `#{Paths.qa_dir()}/`. Read those
@@ -160,6 +177,21 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     """
   end
 
+  defp format_issue_items(issues) do
+    Enum.map_join(issues, "\n\n", fn {path, content} ->
+      source_ref = extract_source(content)
+
+      """
+      ### `#{Path.basename(path)}`
+
+      #{if source_ref, do: "**Source:** #{source_ref}\n", else: ""}
+      ```markdown
+      #{content}
+      ```
+      """
+    end)
+  end
+
   # ============================================================================
   # Helpers
   # ============================================================================
@@ -175,6 +207,13 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     case Regex.run(~r/^## Severity\s*\n\s*(\w+)/m, content) do
       [_, sev] -> String.downcase(sev)
       _ -> "unknown"
+    end
+  end
+
+  defp parse_scope(content) do
+    case Regex.run(~r/^## Scope\s*\n\s*(\w+)/m, content) do
+      [_, scope] -> String.downcase(scope)
+      _ -> "app"
     end
   end
 

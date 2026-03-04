@@ -128,6 +128,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
     - Run `tree .code_my_spec/spec/` or `ls -R .code_my_spec/spec/` to browse existing component specs
     - Read spec files directly to review their contents
     - `validate_dependency_graph` - Check for circular dependencies
+    - `.code_my_spec/tools/set-story-component <story_id> <module_name>` - Link a story to a surface component
     """
   end
 

@@ -1,75 +1,73 @@
 defmodule CodeMySpec.AgentTasks.ResearchTopic do
   @moduledoc """
-  Per-topic agent task for researching a technology decision.
+  Per-topic agent task for deep research on a technology decision.
 
-  Handles researching a single topic and producing its artifacts:
-  - A decision record at `.code_my_spec/architecture/decisions/{topic}.md`
-  - An index entry in `.code_my_spec/architecture/decisions.md`
-  - Optionally, knowledge entries in `.code_my_spec/knowledge/{topic}/`
+  Generates a self-contained research prompt that includes the full research
+  methodology, evaluation criteria, and output format. The prompt file is written
+  to a status directory and picked up by whatever subagent the orchestrator
+  dispatches — no specific subagent is required.
 
-  Can be invoked standalone or delegated to by TechnicalStrategy.
+  In the requirement flow, this task runs AFTER TechnicalStrategy has created the
+  ADR. Its job is deep research: searching Hex.pm, reading official docs, evaluating
+  community health, and producing knowledge entries. The ADR already exists and
+  provides context for the research.
 
-  Two main functions:
-  - `command/3` - Generates the research prompt for a single topic
-  - `evaluate/3` - Validates the topic has a decision record and index entry
+  Produces:
+  - `.code_my_spec/knowledge/{topic}/` — knowledge entries (getting_started.md, etc.)
+
+  Cleans up `.code_my_spec/status/research/{topic}.md` on successful validation.
   """
 
   alias CodeMySpec.{Environments, Paths}
 
   @doc """
-  Generate the research prompt for a single topic.
+  Generate the self-contained research prompt for a single topic.
 
-  Reads the freeform research brief (if one exists), checks for existing
-  artifacts, and builds a prompt instructing the agent to produce a
-  decision record and optionally knowledge entries.
+  The prompt includes all research methodology, evaluation criteria, and output
+  templates so the executing agent needs no external instructions.
 
   The topic is taken from `session.state["topic"]`.
 
-  Returns {:ok, prompt_text}
+  Returns `{:ok, prompt_text}`.
   """
+  @spec command(CodeMySpec.Users.Scope.t(), map(), keyword()) :: {:ok, String.t()}
   def command(scope, session, _opts \\ []) do
     topic = get_topic(session)
     env = scope.environment
 
     research_brief = read_research_brief(env, topic)
     mix_exs = read_mix_exs(env)
+    adr_content = read_adr(env, topic)
     existing_knowledge = check_existing_knowledge(env, topic)
-    existing_decision = check_existing_decision(env, topic)
 
-    prompt = build_prompt(topic, research_brief, mix_exs, existing_knowledge, existing_decision)
+    prompt = build_prompt(topic, research_brief, mix_exs, adr_content, existing_knowledge)
     {:ok, prompt}
   end
 
   @doc """
-  Validate the topic's artifacts are complete.
+  Validate the topic has knowledge entries.
 
-  Checks:
-  1. Decision record exists at `.code_my_spec/architecture/decisions/{topic}.md` and is non-empty
-  2. Decisions index exists and references the topic
-  3. On success, cleans up the research prompt file
+  Checks that at least one knowledge file exists in `.code_my_spec/knowledge/{topic}/`.
+  On success, cleans up the research prompt file.
 
   Returns:
-  - {:ok, :valid} if all checks pass
-  - {:ok, :invalid, feedback} if something is missing
+  - `{:ok, :valid}` when knowledge entries exist
+  - `{:ok, :invalid, feedback}` when no knowledge entries exist
   """
+  @spec evaluate(CodeMySpec.Users.Scope.t(), map(), keyword()) ::
+          {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, session, _opts \\ []) do
     topic = get_topic(session)
     env = scope.environment
-    working_dir = env && env.cwd
 
-    issues = []
+    knowledge_files = check_existing_knowledge(env, topic)
 
-    issues = check_decision_record(env, topic, issues)
-    issues = check_decisions_index(env, topic, issues)
-
-    case issues do
-      [] ->
-        cleanup_research_prompt(topic, working_dir)
-        {:ok, :valid}
-
-      issues ->
-        feedback = format_feedback(topic, issues)
-        {:ok, :invalid, feedback}
+    if knowledge_files != [] do
+      cleanup_research_prompt(env, topic)
+      {:ok, :valid}
+    else
+      feedback = build_invalid_feedback(topic)
+      {:ok, :invalid, feedback}
     end
   end
 
@@ -96,16 +94,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
     end
   end
 
-  defp check_existing_knowledge(env, topic) do
-    pattern = "#{Paths.knowledge_dir()}/#{topic}/**"
-
-    case Environments.glob(env, pattern) do
-      files when is_list(files) and files != [] -> files
-      _ -> []
-    end
-  end
-
-  defp check_existing_decision(env, topic) do
+  defp read_adr(env, topic) do
     path = "#{Paths.decisions_dir()}/#{topic}.md"
 
     case Environments.read_file(env, path) do
@@ -114,19 +103,37 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
     end
   end
 
+  defp check_existing_knowledge(env, topic) do
+    pattern = Paths.knowledge_topic_glob(topic)
+
+    case Environments.glob(env, pattern) do
+      files when is_list(files) and files != [] -> files
+      _ -> []
+    end
+  end
+
+  defp cleanup_research_prompt(env, topic) do
+    path = "#{Paths.research_dir()}/#{topic}.md"
+    Environments.delete_file(env, path)
+    :ok
+  end
+
   # ============================================================================
   # Prompt Building
   # ============================================================================
 
-  defp build_prompt(topic, research_brief, mix_exs, existing_knowledge, existing_decision) do
+  defp build_prompt(topic, research_brief, mix_exs, adr_content, existing_knowledge) do
     sections =
       [
         build_header(topic),
+        build_decision_context_section(topic, adr_content),
         build_research_brief_section(research_brief),
         build_deps_section(mix_exs),
         build_existing_knowledge_section(topic, existing_knowledge),
-        build_existing_decision_section(topic, existing_decision),
-        build_instructions(topic)
+        build_methodology_section(),
+        build_evaluation_criteria_section(),
+        build_output_instructions_section(topic),
+        build_stop_instruction()
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -137,8 +144,23 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
     """
     # Research Topic: #{topic}
 
-    You are researching the technology topic **#{topic}** to produce a decision record
-    and optionally supporting knowledge entries.
+    You are conducting deep research on **#{topic}** to produce knowledge entries
+    that support the project's technology decision.
+    """
+  end
+
+  defp build_decision_context_section(_topic, nil), do: nil
+
+  defp build_decision_context_section(topic, content) do
+    """
+    ## Decision Context
+
+    The following decision record for **#{topic}** was created during technical strategy.
+    Use it to understand what was decided and why, and let it guide your research focus:
+
+    ```markdown
+    #{content}
+    ```
     """
   end
 
@@ -171,123 +193,101 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   defp build_existing_knowledge_section(_topic, []), do: nil
 
   defp build_existing_knowledge_section(topic, files) do
-    file_list = Enum.map_join(files, "\n", &"- `#{&1}`")
+    file_list = Enum.map_join(files, "\n", &"- `#{Path.basename(&1)}`")
 
     """
     ## Existing Knowledge
 
-    There are already knowledge entries for this topic in `#{Paths.knowledge_dir()}/#{topic}/`:
+    There are already knowledge entries for **#{topic}** in
+    `#{Paths.knowledge_dir()}/#{topic}/`:
 
     #{file_list}
 
-    Review these before producing new content. Update or extend as needed rather than
-    duplicating existing material.
+    Review these before producing new content. Update or extend existing files
+    rather than duplicating material.
     """
   end
 
-  defp build_existing_decision_section(_topic, nil), do: nil
-
-  defp build_existing_decision_section(topic, content) do
+  defp build_methodology_section do
     """
-    ## Existing Decision Record
+    ## Research Methodology
 
-    A decision record already exists at `#{Paths.decisions_dir()}/#{topic}.md`:
+    Follow these steps in order:
 
-    ```markdown
-    #{content}
-    ```
+    1. **Search Hex.pm** — find the package on hex.pm, check download count, last release
+       date, maintenance status, and open issues count. Use `mix hex.info {package}` or
+       fetch `https://hex.pm/packages/{package}` directly.
 
-    Review and update this rather than starting from scratch.
+    2. **Read official documentation** — fetch the package's HexDocs
+       (`https://hexdocs.pm/{package}`) or GitHub README for setup guides, configuration
+       options, and API surface.
+
+    3. **Inspect project context** — read `mix.exs` for current deps and Elixir/OTP
+       versions, check `config/` for existing patterns, scan `lib/` and `test/` for
+       relevant usage.
+
+    4. **Compare alternatives** — if the topic is a category (e.g., "HTTP client") rather
+       than a specific library, search for and compare the top 2-3 options.
+
+    5. **Check community health** — search Elixir Forum (elixirforum.com), GitHub
+       issues/discussions for known problems, migration guides, or community endorsements.
     """
   end
 
-  defp build_instructions(topic) do
+  defp build_evaluation_criteria_section do
     """
-    ## Instructions
+    ## Evaluation Criteria
 
-    Use the **researcher** subagent (`@"CodeMySpec:researcher (agent)"`) to:
+    When assessing options, apply these criteria:
 
-    1. **Research the topic** — search for documentation, best practices, comparisons,
-       and community recommendations. Inspect the project's `mix.exs`, `config/`, and
-       existing code for relevant context.
+    - **Compatibility** — works with current stack (Phoenix 1.8, LiveView 1.1, OTP version)?
+    - **Maintenance** — actively maintained? Releases in last 6 months?
+    - **Community** — good docs? Responsive maintainer? Adoption level?
+    - **Complexity** — setup burden? Ongoing maintenance cost?
+    - **Testing** — how does it affect the test suite? ExVCR compatible?
+    """
+  end
 
-    2. **Write knowledge entries** (optional) — if the research produces useful reference
-       material, write it to `#{Paths.knowledge_dir()}/#{topic}/`. Use one file per sub-topic
-       (e.g., `#{Paths.knowledge_dir()}/#{topic}/getting_started.md`).
+  defp build_output_instructions_section(topic) do
+    knowledge_dir = "#{Paths.knowledge_dir()}/#{topic}"
+    decisions_dir = "#{Paths.decisions_dir()}/#{topic}.md"
 
-    3. **Write the decision record** — write to `#{Paths.decisions_dir()}/#{topic}.md` with this structure:
-       - **Title**: What was decided
-       - **Status**: Accepted / Proposed / Superseded
-       - **Context**: Why this decision was needed
-       - **Options Considered**: Alternatives evaluated with pros/cons
-       - **Decision**: What was chosen and why
-       - **Consequences**: Trade-offs and implications
+    """
+    ## Output Instructions
 
-    4. **Update the index** — ensure `#{Paths.decisions_index()}` exists and includes a
-       reference to this topic's decision record.
+    1. **Write knowledge entries** — write to `#{knowledge_dir}/` with one file per
+       sub-topic (e.g., `getting_started.md`, `configuration.md`, `patterns.md`).
+       Include code examples relevant to the project. Focus on practical, actionable
+       information.
 
-    When complete, stop the session so validation can check your work.
+    2. **Update the ADR if needed** — if research reveals new information that changes
+       or clarifies the decision, update the existing decision record at `#{decisions_dir}`.
+    """
+  end
+
+  defp build_stop_instruction do
+    """
+    ## Stop
+
+    When you have written at least one knowledge entry, stop the session so validation
+    can check your work.
     """
   end
 
   # ============================================================================
-  # Evaluation
+  # Evaluation Feedback
   # ============================================================================
 
-  defp check_decision_record(env, topic, issues) do
-    path = "#{Paths.decisions_dir()}/#{topic}.md"
-
-    case Environments.read_file(env, path) do
-      {:ok, content} when is_binary(content) ->
-        if String.trim(content) == "" do
-          [{:empty_decision, "Decision record at `#{path}` is empty"} | issues]
-        else
-          issues
-        end
-
-      _ ->
-        [{:missing_decision, "No decision record found at `#{path}`"} | issues]
-    end
-  end
-
-  defp check_decisions_index(env, topic, issues) do
-    case Environments.read_file(env, Paths.decisions_index()) do
-      {:ok, content} ->
-        if String.contains?(content, topic) do
-          issues
-        else
-          [{:not_in_index, "Decisions index does not reference topic \"#{topic}\""} | issues]
-        end
-
-      _ ->
-        [{:missing_index, "Decisions index not found at `#{Paths.decisions_index()}`"} | issues]
-    end
-  end
-
-  defp cleanup_research_prompt(_topic, nil), do: :ok
-
-  defp cleanup_research_prompt(topic, working_dir) do
-    path = Path.join(working_dir, "#{Paths.research_dir()}/#{topic}.md")
-
-    if File.exists?(path) do
-      File.rm(path)
-    end
-
-    :ok
-  end
-
-  defp format_feedback(topic, issues) do
-    issue_list =
-      issues
-      |> Enum.reverse()
-      |> Enum.map_join("\n", fn {_type, message} -> "- #{message}" end)
+  defp build_invalid_feedback(topic) do
+    knowledge_dir = "#{Paths.knowledge_dir()}/#{topic}"
 
     """
-    Research topic "#{topic}" is incomplete:
+    Research topic "#{topic}" is incomplete.
 
-    #{issue_list}
+    No knowledge entries were found in `#{knowledge_dir}/`.
 
-    Please address these issues and stop the session again.
+    Write at least one knowledge file (e.g., `getting_started.md`) and stop the
+    session again.
     """
   end
 end

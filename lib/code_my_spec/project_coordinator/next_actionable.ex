@@ -106,6 +106,26 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
   # Descent: children (parallel — context → child components)
   # ----------------------------------------------------------------
 
+  # Story → resolve linked component, check it has actionable children
+  defp descend_children(%Requirement{story_id: sid}, scope) when not is_nil(sid) do
+    story = Stories.get_story!(scope, sid)
+
+    if is_nil(story.component_id) do
+      :complete
+    else
+      component = Components.get_component!(scope, story.component_id)
+      components = ProjectCoordinator.collect_components(scope, component)
+      actionable = ProjectCoordinator.find_actionable(scope, components)
+
+      if Enum.empty?(actionable) do
+        # Surface component has no actionable work — check dependency contexts
+        check_dependency_contexts(scope, component)
+      else
+        {:ok, :has_work}
+      end
+    end
+  end
+
   # Component → iterate child components (via parent_component_id)
   defp descend_children(%Requirement{component_id: cid}, scope) when not is_nil(cid) do
     children = Components.list_child_components(scope, cid)
@@ -169,6 +189,33 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
       {:blocked, _} -> :complete
       :complete -> :complete
     end
+  end
+
+  # ----------------------------------------------------------------
+  # Dependency context traversal (for story-level :children)
+  # ----------------------------------------------------------------
+
+  @container_types ["context", "coordination_context", "live_context"]
+
+  # When the surface component has no actionable work, check its dependency
+  # contexts for actionable work. Returns {:ok, :has_work} if any dependency
+  # context needs work, :complete otherwise.
+  defp check_dependency_contexts(scope, component) do
+    all_components = Components.list_components_with_dependencies(scope)
+
+    dep_contexts =
+      all_components
+      |> Enum.filter(fn c ->
+        c.type in @container_types and
+          Enum.any?(component.dependencies || [], fn dep -> dep.id == c.id end)
+      end)
+
+    Enum.find_value(dep_contexts, :complete, fn dep_context ->
+      components = ProjectCoordinator.collect_components(scope, dep_context)
+      actionable = ProjectCoordinator.find_actionable(scope, components)
+
+      if Enum.empty?(actionable), do: nil, else: {:ok, :has_work}
+    end)
   end
 
   # ----------------------------------------------------------------

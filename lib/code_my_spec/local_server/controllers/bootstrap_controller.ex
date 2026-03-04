@@ -255,15 +255,15 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
     end
   end
 
-  # --- Install Symlinks ---
+  # --- Install Resources (Framework + Tools) ---
 
   @doc """
-  Create app symlinks in the project's .code_my_spec/ directory.
+  Copy framework knowledge and tools into the project's .code_my_spec/ directory.
 
-  Creates symlinks for framework knowledge and tools.
+  Copies files from priv/knowledge and priv/tools.
   Requires `X-Working-Dir` header.
 
-  Returns `{"status": "ok", "symlinks": [...]}`.
+  Returns `{"status": "ok", "dirs": [...]}`.
   """
   def install_symlinks(conn) do
     working_dir = conn.assigns[:working_dir]
@@ -271,15 +271,15 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
     if is_nil(working_dir) do
       json_response(conn, 400, %{error: "X-Working-Dir header is required"})
     else
-      case ProjectSetup.install_app_symlinks(working_dir) do
+      case ProjectSetup.install_app_resources(working_dir) do
         :ok ->
           json_response(conn, 200, %{
             status: "ok",
-            symlinks: [".code_my_spec/framework/", ".code_my_spec/tools/"]
+            dirs: [".code_my_spec/framework/", ".code_my_spec/tools/"]
           })
 
         {:error, reason} ->
-          json_response(conn, 500, %{error: "Failed to install symlinks: #{inspect(reason)}"})
+          json_response(conn, 500, %{error: "Failed to install resources: #{inspect(reason)}"})
       end
     end
   end

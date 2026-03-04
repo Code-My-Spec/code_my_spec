@@ -94,6 +94,10 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
   end
 
+  def orchestrate_evaluate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  end
+
   # Private functions - Data extraction
 
   defp get_context_spec_path(context_component, project) do

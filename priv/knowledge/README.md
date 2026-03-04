@@ -22,6 +22,9 @@ Extracted from official documentation — each file lists source URLs at the top
 | Cloudflare DNS, tunnels, SSL       | `devops/cloudflare-dns-tunnels.md`        |
 | Hetzner server, Docker, Caddy      | `devops/hetzner-docker-deploy.md`         |
 | Deployment scripts, secrets, envs  | `devops/hetzner-docker-deploy.md`         |
+| HTTP client for an API integration | `req/clients.md`                          |
+| Recording HTTP calls in tests      | `req/cassettes.md`                        |
+| Env vars, secrets, .env files      | `dotenvy.md`                              |
 
 ## Target stack
 
@@ -37,6 +40,7 @@ knowledge/
 ├── README.md                 ← you are here
 ├── boundary.md              # Boundary library, context isolation, dep/export rules
 ├── conventions.md            # Layered architecture, naming, scope, contexts, schemas, tests
+├── dotenvy.md               # Dotenvy env vars, .env files, type casting, source!/1, env!/2
 ├── liveview/
 │   ├── patterns.md           # mount, handle_event, handle_params, streams, assign_async, JS commands
 │   ├── core_components.md    # attr/slot macros, function components, render_slot, :global
@@ -49,6 +53,9 @@ knowledge/
 │   └── syntax.md             # ~H sigil, :for/:if/:let, phx- bindings, change tracking
 ├── bdd/
 │   └── spex.md               # SexySpex DSL, Given/When/Then, context flow, shared givens, mix spex
+├── req/
+│   ├── clients.md             # Minimal Req client modules, new/1 pattern, plug injection for tests
+│   └── cassettes.md           # ReqCassette record/replay, with_cassette, filtering, CI modes
 ├── web-cli.md                # chrismccord/web CLI — shell browser for LLM agents, flags, LiveView support
 └── devops/
     ├── aws-s3-iam.md          # S3 buckets, IAM users/policies, ExAws config, CLI commands

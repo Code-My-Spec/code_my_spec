@@ -69,6 +69,10 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
   end
 
+  def orchestrate_evaluate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  end
+
   defp evaluate_component(scope, component, project) do
     component = ComponentRepository.get_component(scope, component.id)
 

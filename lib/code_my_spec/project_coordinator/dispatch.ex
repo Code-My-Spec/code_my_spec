@@ -320,6 +320,46 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   end
 
   # ----------------------------------------------------------------
+  # Component resolution for :children scope
+  # ----------------------------------------------------------------
+
+  defp resolve_children_component(%Requirement{component_id: cid}, scope) when not is_nil(cid) do
+    Components.get_component!(scope, cid)
+  end
+
+  defp resolve_children_component(%Requirement{story_id: sid}, scope) when not is_nil(sid) do
+    story = Stories.get_story!(scope, sid)
+    Components.get_component!(scope, story.component_id)
+  end
+
+  # Find the first dependency context with actionable work.
+  # Filters dependencies to container types only (context, coordination_context, live_context).
+  defp find_actionable_dependency_context(scope, component) do
+    all_components = Components.list_components_with_dependencies(scope)
+    component_with_deps = Enum.find(all_components, &(&1.id == component.id))
+
+    deps =
+      case component_with_deps do
+        %{dependencies: %Ecto.Association.NotLoaded{}} -> []
+        %{dependencies: deps} -> deps
+        _ -> []
+      end
+
+    dep_contexts =
+      deps
+      |> Enum.map(fn dep -> Enum.find(all_components, &(&1.id == dep.id)) end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.filter(&(&1.type in @container_types))
+
+    Enum.find_value(dep_contexts, :complete, fn dep_context ->
+      components = ProjectCoordinator.collect_components(scope, dep_context)
+      actionable = ProjectCoordinator.find_actionable(scope, components)
+
+      if Enum.empty?(actionable), do: nil, else: {:ok, dep_context, actionable}
+    end)
+  end
+
+  # ----------------------------------------------------------------
   # Session building — minimal, just load the entity
   # ----------------------------------------------------------------
 

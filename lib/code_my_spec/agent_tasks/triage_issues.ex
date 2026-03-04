@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.ProjectCoordinator
 
   @severity_order ~w(critical high medium low info)
 
@@ -90,6 +91,14 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     end
   end
 
+  def orchestrate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
+  end
+
+  def orchestrate_evaluate(scope, session, opts \\ []) do
+    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  end
+
   # ============================================================================
   # Prompt Building
   # ============================================================================
@@ -134,6 +143,9 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
        - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), move to `#{Paths.issues_dismissed_dir()}/`
        - **Merge** — consolidate evidence from duplicates into one accepted issue, dismiss the others
     4. **Execute** — move files using `Write` to the target directory and delete from `incoming/`
+
+    Each issue may have a `## Scope` section (`app`, `qa`, or `docs`). Preserve the scope
+    when moving files. If an issue is missing a scope section, default to `app`.
 
     When merging duplicates: pick the best title, consolidate description and evidence into
     one accepted issue file, and dismiss the rest with a note about which issue they merged into.

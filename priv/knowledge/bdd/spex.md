@@ -1,8 +1,10 @@
-# BDD Specifications with Spex
+# BDD Specifications with Spex + Wallaby
 
 ## Sources
 - SexySpex hex package: https://hex.pm/packages/sexy_spex
 - SexySpex docs: https://hexdocs.pm/sexy_spex
+- Wallaby hex package: https://hex.pm/packages/wallaby
+- Wallaby docs: https://hexdocs.pm/wallaby/Wallaby.html
 
 ---
 
@@ -10,9 +12,14 @@
 
 Spex is a BDD framework for Elixir built on ExUnit. It provides a Given-When-Then DSL for writing executable specifications that serve as both acceptance tests and living documentation. Spex files run exclusively via `mix spex`, never `mix test`.
 
+BDD specs use **Wallaby** for all browser interactions — driving a real browser via ChromeDriver to click, fill forms, and assert on visible page content. This replaces `Phoenix.LiveViewTest` for BDD specs.
+
+> For the full Wallaby API reference, see `./wallaby.md`.
+
 | Concept             | Detail                                          |
 |---------------------|-------------------------------------------------|
 | Framework           | `SexySpex` (hex: `sexy_spex`)                   |
+| Browser driver      | `Wallaby` (hex: `wallaby`, `~> 0.30`)           |
 | Foundation          | ExUnit with `async: false`                      |
 | DSL macros          | `spex`, `scenario`, `given_`, `when_`, `then_`, `and_` |
 | File pattern        | `test/spex/**/*_spex.exs`                       |
@@ -60,9 +67,9 @@ end
 ```elixir
 defmodule MyAppSpex.UserRegistrationSpex do
   use SexySpex                    # ExUnit.Case (async: false) + DSL import
-  use MyAppWeb.ConnCase           # Conn/endpoint setup for Phoenix testing
-  import Phoenix.LiveViewTest     # LiveView test helpers (for LiveView specs)
+  use Wallaby.DSL                 # Imports Wallaby.Browser, aliases Query + Element
 
+  import Wallaby.Query            # Query helpers: css, button, text_field, link, etc.
   import_givens MyAppSpex.SharedGivens  # Shared step definitions
 end
 ```
@@ -74,6 +81,8 @@ use ExUnit.Case, async: false
 import SexySpex.DSL
 require Logger
 ```
+
+`use Wallaby.DSL` imports all `Wallaby.Browser` functions (`visit`, `fill_in`, `click`, `assert_has`, etc.) and aliases `Wallaby.Query` and `Wallaby.Element`.
 
 All standard ExUnit features remain available: `setup_all`, `setup`, `on_exit`, `assert`, `refute`, `assert_raise`.
 
@@ -117,7 +126,7 @@ Context is an explicit map that threads state between steps. Each step that take
 
 ### How Context Flows
 
-1. ExUnit's `setup` or `setup_all` provides the initial context (e.g., `%{conn: conn}`)
+1. ExUnit's `setup` or `setup_all` provides the initial context (e.g., `%{session: session}`)
 2. `scenario "name", context do` initializes the scenario context from ExUnit
 3. Each step receives context, returns `:ok` (keep unchanged) or `{:ok, new_context}` (update)
 4. The next step receives the updated context
@@ -126,7 +135,7 @@ Context is an explicit map that threads state between steps. Each step that take
 
 | Rule                                    | Example                                            |
 |-----------------------------------------|----------------------------------------------------|
-| Return `{:ok, context}` to update       | `{:ok, Map.put(context, :view, view)}`             |
+| Return `{:ok, context}` to update       | `{:ok, Map.put(context, :email, email)}`           |
 | Return `:ok` to keep context unchanged  | `:ok` (common in `then_` steps)                    |
 | Use `_context` when unused              | `given_ "desc", _context do`                       |
 | Omit context when not needed            | `then_ "desc" do assert true end`                  |
@@ -138,26 +147,60 @@ Context is an explicit map that threads state between steps. Each step that take
 ```elixir
 scenario "user registers successfully", context do
   given_ "the registration page is loaded", context do
-    {:ok, view, _html} = live(context.conn, "/users/register")
-    {:ok, Map.put(context, :view, view)}      # returns {:ok, updated_context}
+    context.session
+    |> visit("/users/register")
+
+    :ok
   end
 
   when_ "user submits valid credentials", context do
-    html = context.view
-      |> form("#registration-form", user: %{
-        email: "test@example.com",
-        password: "SecurePass123!"
-      })
-      |> render_submit()
-    {:ok, Map.put(context, :result_html, html)} # returns {:ok, updated_context}
+    context.session
+    |> fill_in(text_field("Email"), with: "test@example.com")
+    |> fill_in(text_field("Password"), with: "SecurePass123!")
+    |> click(button("Create account"))
+
+    :ok
   end
 
   then_ "user sees welcome message", context do
-    assert render(context.view) =~ "Welcome"
-    :ok                                       # context unchanged
+    context.session
+    |> assert_has(css(".alert", text: "Welcome"))
+
+    :ok
   end
 end
 ```
+
+---
+
+## Setup: Wallaby Session in Spex
+
+BDD specs need a Wallaby browser session. Set this up in `setup`:
+
+```elixir
+defmodule MyAppSpex.UserRegistrationSpex do
+  use SexySpex
+  use Wallaby.DSL
+
+  import Wallaby.Query
+  import_givens MyAppSpex.SharedGivens
+
+  setup do
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(MyApp.Repo, shared: true)
+    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(MyApp.Repo, pid)
+    {:ok, session} = Wallaby.start_session(metadata: metadata)
+
+    on_exit(fn ->
+      Wallaby.end_session(session)
+      Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+    end)
+
+    {:ok, session: session}
+  end
+end
+```
+
+> **Note:** Spex files use `async: false`, so the sandbox must use `shared: true` mode.
 
 ---
 
@@ -165,15 +208,28 @@ end
 
 ### LiveView Specs (Surface Layer)
 
-Test what users **see and do** through `Phoenix.LiveViewTest`. Do not call context functions directly.
+Test what users **see and do** through a real browser via Wallaby. Do not call context functions directly.
 
 ```elixir
 defmodule MyAppSpex.UserRegistrationSpex do
   use SexySpex
-  use MyAppWeb.ConnCase
-  import Phoenix.LiveViewTest
+  use Wallaby.DSL
 
+  import Wallaby.Query
   import_givens MyAppSpex.SharedGivens
+
+  setup do
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(MyApp.Repo, shared: true)
+    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(MyApp.Repo, pid)
+    {:ok, session} = Wallaby.start_session(metadata: metadata)
+
+    on_exit(fn ->
+      Wallaby.end_session(session)
+      Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+    end)
+
+    {:ok, session: session}
+  end
 
   spex "User registration",
     description: "Users can register through the registration form",
@@ -181,46 +237,47 @@ defmodule MyAppSpex.UserRegistrationSpex do
 
     scenario "user registers with valid data", context do
       given_ "the registration page is loaded", context do
-        {:ok, view, _html} = live(context.conn, "/users/register")
-        {:ok, Map.put(context, :view, view)}
+        context.session |> visit("/users/register")
+        :ok
       end
 
       when_ "user fills in and submits the form", context do
-        html = context.view
-          |> form("#registration-form", user: %{
-            email: "newuser@example.com",
-            password: "ValidPassword123!"
-          })
-          |> render_submit()
-        {:ok, Map.put(context, :result_html, html)}
+        context.session
+        |> fill_in(text_field("Email"), with: "newuser@example.com")
+        |> fill_in(text_field("Password"), with: "ValidPassword123!")
+        |> click(button("Create account"))
+
+        :ok
       end
 
       then_ "user sees success confirmation", context do
-        assert render(context.view) =~ "registered successfully"
+        context.session
+        |> assert_has(css(".alert", text: "registered successfully"))
+
         :ok
       end
     end
 
     scenario "user sees validation errors for invalid input", context do
       given_ "the registration page is loaded", context do
-        {:ok, view, _html} = live(context.conn, "/users/register")
-        {:ok, Map.put(context, :view, view)}
+        context.session |> visit("/users/register")
+        :ok
       end
 
       when_ "user submits invalid data", context do
-        html = context.view
-          |> form("#registration-form", user: %{
-            email: "not-an-email",
-            password: "short"
-          })
-          |> render_submit()
-        {:ok, Map.put(context, :result_html, html)}
+        context.session
+        |> fill_in(text_field("Email"), with: "not-an-email")
+        |> fill_in(text_field("Password"), with: "short")
+        |> click(button("Create account"))
+
+        :ok
       end
 
       then_ "user sees error messages", context do
-        html = render(context.view)
-        assert html =~ "must have the @ sign"
-        assert html =~ "should be at least"
+        context.session
+        |> assert_has(css(".error", text: "must have the @ sign"))
+        |> assert_has(css(".error", text: "should be at least"))
+
         :ok
       end
     end
@@ -228,22 +285,28 @@ defmodule MyAppSpex.UserRegistrationSpex do
 end
 ```
 
-#### LiveView Testing Helpers
+#### Wallaby Testing Helpers
 
-| Action                     | Code                                              |
-|----------------------------|----------------------------------------------------|
-| Mount LiveView             | `{:ok, view, html} = live(conn, "/path")`          |
-| Submit form                | `view \|> form("#id", data: %{}) \|> render_submit()` |
-| Click element              | `view \|> element("button", "Text") \|> render_click()` |
-| Assert visible text        | `assert render(view) =~ "expected text"`           |
-| Assert element exists      | `assert has_element?(view, "#element-id")`         |
-| Assert redirect            | `assert_redirect(view, "/target")`                 |
-| Assert flash (via redirect)| `{:error, {:live_redirect, %{to: path, flash: flash}}} = ...` |
-| Navigate                   | `{:ok, view, html} = live(conn, "/new-path")`      |
+| Action                     | Code                                                      |
+|----------------------------|------------------------------------------------------------|
+| Navigate to page           | `session \|> visit("/path")`                               |
+| Fill text field             | `session \|> fill_in(text_field("Label"), with: "value")`  |
+| Click button               | `session \|> click(button("Text"))`                        |
+| Click link                 | `session \|> click(link("Text"))`                          |
+| Assert visible text        | `session \|> assert_has(css(".class", text: "expected"))`  |
+| Assert element exists      | `session \|> assert_has(css("#element-id"))`               |
+| Assert element gone        | `session \|> refute_has(css(".error"))`                    |
+| Assert current path        | `assert current_path(session) == "/target"`                |
+| Get element text           | `session \|> find(css(".title")) \|> Element.text()`       |
+| Check checkbox             | `session \|> set_value(checkbox("Label"), :selected)`      |
+| Select dropdown option     | `session \|> click(option("Value"))`                       |
+| Accept confirmation dialog | `accept_confirm(session, fn s -> s \|> click(button("Delete")) end)` |
+| Take screenshot            | `take_screenshot(session, name: "debug")`                  |
 
 ### Controller Specs (Surface Layer)
 
-Test HTTP requests and responses through `Phoenix.ConnTest`.
+Controller specs that test JSON APIs or form POST endpoints don't need a browser.
+These still use `Phoenix.ConnTest` directly:
 
 ```elixir
 defmodule MyAppSpex.ResourceApiSpex do
@@ -271,18 +334,6 @@ defmodule MyAppSpex.ResourceApiSpex do
 end
 ```
 
-#### Controller Testing Helpers
-
-| Action                | Code                                            |
-|-----------------------|-------------------------------------------------|
-| GET request           | `get(conn, "/path")`                            |
-| POST request          | `post(conn, "/path", %{data: "value"})`         |
-| PUT request           | `put(conn, "/path", %{data: "value"})`          |
-| DELETE request        | `delete(conn, "/path")`                         |
-| Assert HTML response  | `assert html_response(conn, 200) =~ "text"`    |
-| Assert JSON response  | `assert %{"key" => val} = json_response(conn, 200)` |
-| Assert redirect       | `assert redirected_to(conn) == "/path"`         |
-
 ---
 
 ## Shared Givens
@@ -302,16 +353,16 @@ defmodule MyAppSpex.SharedGivens do
 
   use SexySpex.Givens
 
-  # Each shared given sets up state through the UI, not fixtures
+  # Each shared given sets up state through the UI via Wallaby, not fixtures
   # given_ :user_registered do
-  #   conn = Phoenix.ConnTest.build_conn()
-  #   {:ok, view, _html} = Phoenix.LiveViewTest.live(conn, "/users/register")
-  #   view
-  #   |> Phoenix.LiveViewTest.form("#registration-form", user: %{
-  #     email: "test#{System.unique_integer()}@example.com",
-  #     password: "ValidPassword123!"
-  #   })
-  #   |> Phoenix.LiveViewTest.render_submit()
+  #   {:ok, session} = Wallaby.start_session()
+  #   session
+  #   |> Wallaby.Browser.visit("/users/register")
+  #   |> Wallaby.Browser.fill_in(Wallaby.Query.text_field("Email"),
+  #        with: "test#{System.unique_integer()}@example.com")
+  #   |> Wallaby.Browser.fill_in(Wallaby.Query.text_field("Password"),
+  #        with: "ValidPassword123!")
+  #   |> Wallaby.Browser.click(Wallaby.Query.button("Create account"))
   #   :ok
   # end
 end
@@ -322,21 +373,36 @@ end
 ```elixir
 defmodule MyAppSpex.DashboardSpex do
   use SexySpex
-  use MyAppWeb.ConnCase
-  import Phoenix.LiveViewTest
+  use Wallaby.DSL
 
+  import Wallaby.Query
   import_givens MyAppSpex.SharedGivens
 
+  setup do
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(MyApp.Repo, shared: true)
+    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(MyApp.Repo, pid)
+    {:ok, session} = Wallaby.start_session(metadata: metadata)
+
+    on_exit(fn ->
+      Wallaby.end_session(session)
+      Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+    end)
+
+    {:ok, session: session}
+  end
+
   spex "Dashboard" do
-    scenario "authenticated user sees dashboard" do
+    scenario "authenticated user sees dashboard", context do
       given_ :user_registered          # atom syntax — references shared given
       given_ "user navigates to dashboard", context do
-        {:ok, view, _html} = live(context.conn, "/dashboard")
-        {:ok, Map.put(context, :view, view)}
+        context.session |> visit("/dashboard")
+        :ok
       end
 
       then_ "dashboard content is visible", context do
-        assert render(context.view) =~ "Welcome"
+        context.session
+        |> assert_has(css("h1", text: "Welcome"))
+
         :ok
       end
     end
@@ -352,33 +418,33 @@ end
 | Generic state (user registered, logged in)     | Criterion-specific test data              |
 | Commonly needed preconditions                  | Complex context that varies per scenario  |
 
-Shared givens must set up state through the UI (LiveViewTest/ConnTest), not by calling context functions or fixtures directly.
+Shared givens must set up state through the UI (Wallaby browser interactions), not by calling context functions or fixtures directly.
 
 ---
 
 ## Surface Layer Testing Principles
 
-BDD specs test **user-facing behavior**, not internal implementation. This enforces a strict boundary: specs interact with the application the same way a real user would.
+BDD specs test **user-facing behavior**, not internal implementation. This enforces a strict boundary: specs interact with the application the same way a real user would — through a real browser.
 
-| Principle                              | Correct                                         | Incorrect                               |
-|----------------------------------------|-------------------------------------------------|-----------------------------------------|
-| Test what users see                    | `assert render(view) =~ "Welcome"`              | `assert Users.get!(id).active?`         |
-| Set up state through UI               | Submit registration form via LiveViewTest        | `Users.create_user(scope, attrs)`       |
-| Assert on user feedback                | `assert html =~ "saved successfully"`           | `assert {:ok, _} = Things.create(...)` |
-| Use web layer dependencies only        | `use MyAppWeb.ConnCase`                          | `alias MyApp.Users`                     |
+| Principle                              | Correct                                             | Incorrect                               |
+|----------------------------------------|-----------------------------------------------------|-----------------------------------------|
+| Test what users see                    | `session \|> assert_has(css("h1", text: "Welcome"))` | `assert Users.get!(id).active?`         |
+| Set up state through UI               | Fill registration form via Wallaby                  | `Users.create_user(scope, attrs)`       |
+| Assert on user feedback                | `session \|> assert_has(css(".alert", text: "saved"))` | `assert {:ok, _} = Things.create(...)` |
+| Use web layer dependencies only        | `use Wallaby.DSL`                                   | `alias MyApp.Users`                     |
 
 > The `boundary` library enforces this surface-layer constraint at compile time. See `../boundary.md`.
 
 ### Path Conventions
 
-Use plain string paths, not the `~p` sigil:
+Use plain string paths with Wallaby's `visit`:
 
 ```elixir
 # Correct
-{:ok, view, _html} = live(context.conn, "/users/register")
+session |> visit("/users/register")
 
-# Avoid — adds Phoenix.VerifiedRoutes dependency
-{:ok, view, _html} = live(context.conn, ~p"/users/register")
+# Avoid — Wallaby doesn't use Phoenix verified routes
+session |> visit(~p"/users/register")
 ```
 
 ---
@@ -431,43 +497,44 @@ Since Spex is built on ExUnit, all standard callbacks and assertions are availab
 ```elixir
 defmodule MyAppSpex.FeatureSpex do
   use SexySpex
-  use MyAppWeb.ConnCase
+  use Wallaby.DSL
 
-  # Runs once before all spex in this module
-  setup_all do
-    {:ok, %{app_config: load_config()}}
-  end
+  import Wallaby.Query
 
-  # Runs before each spex — ConnCase already provides :conn
-  setup %{conn: conn} do
-    {:ok, conn: put_req_header(conn, "accept", "text/html")}
-  end
-
-  # Cleanup after each spex
+  # Setup: create Wallaby session with Ecto sandbox
   setup do
-    on_exit(fn -> cleanup_temp_files() end)
-    :ok
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(MyApp.Repo, shared: true)
+    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(MyApp.Repo, pid)
+    {:ok, session} = Wallaby.start_session(metadata: metadata)
+
+    on_exit(fn ->
+      Wallaby.end_session(session)
+      Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+    end)
+
+    {:ok, session: session}
   end
 end
 ```
 
 ### Assertions
 
-All ExUnit assertions work in any step:
+All ExUnit assertions work in any step, alongside Wallaby's `assert_has`/`refute_has`:
 
 ```elixir
 given_ "data is set up", context do
-  result = some_setup()
-  assert result != nil                    # basic assertion
-  assert %{id: _} = result               # pattern match assertion
-  refute result.archived?                 # negative assertion
-  {:ok, Map.put(context, :result, result)}
+  context.session |> visit("/things/new")
+  :ok
 end
 
-when_ "invalid action attempted", _context do
-  assert_raise ArgumentError, ~r/required/, fn ->
-    invalid_operation()
-  end
+then_ "page has expected content", context do
+  # Wallaby assertions (auto-retry, handles async)
+  context.session
+  |> assert_has(css("h1", text: "New Thing"))
+  |> assert_has(css("#thing-form"))
+
+  # ExUnit assertions still work
+  assert current_path(context.session) == "/things/new"
   :ok
 end
 ```
@@ -480,6 +547,7 @@ When an assertion fails in any step:
 3. The spex catches it and reports via `SexySpex.Reporter.spex_failed/2`
 4. The error re-raises with full stacktrace
 5. ExUnit marks the test as failed
+6. If `screenshot_on_failure: true`, Wallaby captures a screenshot
 
 ---
 
@@ -515,10 +583,23 @@ Spex produces structured output with visual markers:
 ```elixir
 defmodule MyAppSpex.ThingManagementSpex do
   use SexySpex
-  use MyAppWeb.ConnCase
-  import Phoenix.LiveViewTest
+  use Wallaby.DSL
 
+  import Wallaby.Query
   import_givens MyAppSpex.SharedGivens
+
+  setup do
+    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(MyApp.Repo, shared: true)
+    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(MyApp.Repo, pid)
+    {:ok, session} = Wallaby.start_session(metadata: metadata)
+
+    on_exit(fn ->
+      Wallaby.end_session(session)
+      Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+    end)
+
+    {:ok, session: session}
+  end
 
   # ConnCase setup provides :conn with authenticated user
 
@@ -528,50 +609,58 @@ defmodule MyAppSpex.ThingManagementSpex do
 
     scenario "user creates a new thing", context do
       given_ "user navigates to the new thing page", context do
-        {:ok, view, _html} = live(context.conn, "/things/new")
-        {:ok, Map.put(context, :view, view)}
+        context.session |> visit("/things/new")
+        :ok
       end
 
       when_ "user submits a valid thing", context do
-        html = context.view
-          |> form("#thing-form", thing: %{name: "My Thing"})
-          |> render_submit()
-        {:ok, Map.put(context, :result_html, html)}
+        context.session
+        |> fill_in(text_field("Name"), with: "My Thing")
+        |> click(button("Save"))
+
+        :ok
       end
 
       then_ "user sees the thing was created", context do
-        assert render(context.view) =~ "Thing created successfully"
+        context.session
+        |> assert_has(css(".alert", text: "Thing created successfully"))
+
         :ok
       end
     end
 
     scenario "user sees validation errors", context do
       given_ "user navigates to the new thing page", context do
-        {:ok, view, _html} = live(context.conn, "/things/new")
-        {:ok, Map.put(context, :view, view)}
+        context.session |> visit("/things/new")
+        :ok
       end
 
       when_ "user submits without a name", context do
-        html = context.view
-          |> form("#thing-form", thing: %{name: ""})
-          |> render_submit()
-        {:ok, Map.put(context, :result_html, html)}
+        context.session
+        |> fill_in(text_field("Name"), with: "")
+        |> click(button("Save"))
+
+        :ok
       end
 
       then_ "user sees a validation error", context do
-        assert render(context.view) =~ "can't be blank"
+        context.session
+        |> assert_has(css(".error", text: "can't be blank"))
+
         :ok
       end
     end
 
     scenario "user lists existing things", context do
       given_ "user navigates to the things index", context do
-        {:ok, view, html} = live(context.conn, "/things")
-        {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
+        context.session |> visit("/things")
+        :ok
       end
 
       then_ "user sees the listing page", context do
-        assert context.html =~ "Listing Things"
+        context.session
+        |> assert_has(css("h1", text: "Listing Things"))
+
         :ok
       end
     end
@@ -579,24 +668,28 @@ defmodule MyAppSpex.ThingManagementSpex do
     scenario "user deletes a thing", context do
       given_ "a thing exists and user is on the index page", context do
         # Create via UI first (surface layer only)
-        {:ok, form_view, _html} = live(context.conn, "/things/new")
-        form_view
-        |> form("#thing-form", thing: %{name: "To Delete"})
-        |> render_submit()
+        context.session
+        |> visit("/things/new")
+        |> fill_in(text_field("Name"), with: "To Delete")
+        |> click(button("Save"))
+        |> visit("/things")
+        |> assert_has(css("td", text: "To Delete"))
 
-        {:ok, view, _html} = live(context.conn, "/things")
-        {:ok, Map.put(context, :view, view)}
+        :ok
       end
 
       when_ "user clicks delete and confirms", context do
-        context.view
-        |> element("a", "Delete")
-        |> render_click()
+        accept_confirm(context.session, fn session ->
+          session |> click(link("Delete"))
+        end)
+
         :ok
       end
 
       then_ "the thing is removed from the list", context do
-        refute render(context.view) =~ "To Delete"
+        context.session
+        |> refute_has(css("td", text: "To Delete"))
+
         :ok
       end
     end
@@ -615,4 +708,11 @@ Application-level config for SexySpex behavior:
 config :sexy_spex,
   manual_mode: false,    # Enable interactive step-by-step execution
   step_delay: 0          # Milliseconds to pause between steps (useful for visual testing)
+
+# Wallaby config (for BDD browser tests)
+config :wallaby,
+  driver: Wallaby.Chrome,
+  otp_app: :my_app,
+  screenshot_on_failure: true,
+  max_wait_time: 5_000   # ms to wait for elements (default: 3000)
 ```

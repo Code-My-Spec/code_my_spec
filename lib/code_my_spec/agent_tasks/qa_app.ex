@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   Lifecycle:
   1. Start/verify Phoenix server
   2. Smoke-test all routes (visit each, check for 500s)
-  3. Dispatch `@"CodeMySpec:qa-tester (agent)"` subagent per story
+  3. Dispatch `@"CodeMySpec:qa (agent)"` subagent per story
   4. Write summary to `.code_my_spec/qa/summary.md`
 
   Two main functions:
@@ -27,11 +27,11 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   Generate prompt files and orchestration instructions for the QA session.
 
   For each story:
-  1. Calls QaStory.command to write `.code_my_spec/qa/{story_id}/prompt.md`
+  1. Calls QaStory.command to build the prompt, writes to `.code_my_spec/qa/{story_id}/prompt.md`
   2. Collects the prompt file paths
 
   Then writes an orchestration prompt instructing the agent to smoke-test
-  routes and dispatch qa-tester subagents per story.
+  routes and dispatch qa subagents per story.
 
   Returns {:ok, prompt_text}
   """
@@ -96,6 +96,8 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   # ============================================================================
 
   defp generate_story_prompts(scope, stories) do
+    env = scope.environment
+
     Enum.map(stories, fn story ->
       child_session = %{
         project: scope.active_project,
@@ -103,8 +105,9 @@ defmodule CodeMySpec.AgentTasks.QaApp do
       }
 
       case QaStory.command(scope, child_session) do
-        {:ok, _prompt} ->
+        {:ok, prompt} ->
           prompt_path = Path.join([Paths.qa_dir(), to_string(story.id), "prompt.md"])
+          :ok = Environments.write_file(env, prompt_path, prompt)
           %{story_id: story.id, story_title: story.title, prompt_path: prompt_path}
 
         {:error, reason} ->
@@ -356,8 +359,8 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
     ### Step 3: Dispatch Per-Story QA Agents
 
-    For each story, invoke the **qa-tester** subagent
-    (`@"CodeMySpec:qa-tester (agent)"`) with the prompt file path as the argument.
+    For each story, invoke the **qa** subagent
+    (`@"CodeMySpec:qa (agent)"`) with the prompt file path as the argument.
     The subagent will read the prompt, write a brief, execute tests, and write
     a result to `.code_my_spec/qa/{story_id}/result.md`.
 
