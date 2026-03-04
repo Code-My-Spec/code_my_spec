@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Application do
+defmodule CodeMySpecWeb.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
   @moduledoc false
@@ -34,12 +34,14 @@ defmodule CodeMySpec.Application do
   def children(children, :dev) do
     tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
 
-    dev_children =
-      if tunnel_config[:enabled] do
-        [{ClientUtils.CloudflareTunnel, tunnel_config}]
-      else
-        []
-      end
+    tunnel_opts =
+      Keyword.merge(tunnel_config,
+        endpoint: CodeMySpecWeb.Endpoint,
+        otp_app: :code_my_spec,
+        origin_url: tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}"
+      )
+
+    dev_children = [{ClientUtils.CloudflareTunnel, tunnel_opts}]
 
     # Add FileWatcher to dev_children if watch_content is enabled
     dev_children =

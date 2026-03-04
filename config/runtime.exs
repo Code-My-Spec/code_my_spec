@@ -30,13 +30,21 @@ if System.get_env("PHX_SERVER") do
   config :code_my_spec, CodeMySpecWeb.Endpoint, server: true
 end
 
+# Cloudflare Tunnel — merge secret from env var (dev only)
+tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
+
+if tunnel_config[:mode] == :named do
+  config :code_my_spec, :cloudflare_tunnel,
+    Keyword.put(tunnel_config, :tunnel_secret, env!("CLOUDFLARE_TUNNEL_SECRET", :string, ""))
+end
+
 # Web app mode
 config :code_my_spec,
   github_client_id: env!("GITHUB_CLIENT_ID"),
   github_client_secret: env!("GITHUB_CLIENT_SECRET"),
   google_client_id: env!("GOOGLE_CLIENT_ID"),
   google_client_secret: env!("GOOGLE_CLIENT_SECRET"),
-  api_base_url: env!("API_BASE_URL", :string, ""),
+  base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
   deploy_key: env!("DEPLOY_KEY")
 
 # Web Push VAPID configuration

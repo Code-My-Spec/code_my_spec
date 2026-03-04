@@ -96,6 +96,14 @@ config :phoenix_live_view,
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
+# Cloudflare Tunnel — named tunnel to dev.codemyspec.com
+config :code_my_spec, :cloudflare_tunnel,
+  mode: :named,
+  hostname: "dev.codemyspec.com",
+  tunnel_id: "12a798a4-81a3-4242-8b59-ac171c0a01a1",
+  account_tag: "6477547f586ec90db2c2a0081dcd98bd",
+  origin_url: "http://127.0.0.1:4000"
+
 # File watcher for content sync
 config :code_my_spec,
   watch_content: true,
@@ -106,10 +114,3 @@ config :code_my_spec,
     project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
   }
 
-# Cloudflare Tunnel — exposes localhost via dev.codemyspec.com
-config :code_my_spec, :cloudflare_tunnel,
-  enabled: true,
-  hostname: "dev.codemyspec.com",
-  tunnel_id: "12a798a4-81a3-4242-8b59-ac171c0a01a1",
-  account_tag: "6477547f586ec90db2c2a0081dcd98bd",
-  origin_url: "http://127.0.0.1:4000"

@@ -10,7 +10,7 @@ defmodule CodeMySpec.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app],
+      compilers: compilers(Mix.env()),
       listeners: [Phoenix.CodeReloader],
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
@@ -25,7 +25,7 @@ defmodule CodeMySpec.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {CodeMySpec.Application, []},
+      mod: {CodeMySpecWeb.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -33,6 +33,12 @@ defmodule CodeMySpec.MixProject do
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
   defp elixirc_paths(_), do: ["lib"]
+
+  # :spex compiler only needed in test (compiles BDD spec files for Boundary)
+  defp compilers(:test),
+    do: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+
+  defp compilers(_), do: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
 
   # Specifies your project dependencies.
   # mix archive.install hex phx_new 1.8.0-rc.4
@@ -70,12 +76,12 @@ defmodule CodeMySpec.MixProject do
       {:bandit, "~> 1.5"},
 
       # Added by codemyspec
-      {:ngrok, git: "https://github.com/johns10/ex_ngrok", branch: "main", only: [:dev]},
-      {:mix_machine, git: "https://github.com/johns10/mix_machine", branch: "master"},
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
       {:sexy_spex, git: "https://github.com/Code-My-Spec/spex"},
-      {:client_utils, "~> 0.1.12"},
+      {:client_utils, path: "../client_utils"},
       {:credo, "~> 1.7.13"},
+      {:sobelow, "~> 0.14.1"},
+      {:boundary, "~> 0.10.4"},
 
       # Normal deps
       {:file_system, "~> 1.0"},
@@ -113,8 +119,15 @@ defmodule CodeMySpec.MixProject do
   #     $ mix setup
   #
   # See the documentation for `Mix` for more info on aliases.
+  def cli do
+    [
+      preferred_envs: [spex: :test]
+    ]
+  end
+
   defp aliases do
     [
+      spex: ["spex --quiet"],
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
@@ -125,7 +138,7 @@ defmodule CodeMySpec.MixProject do
         "esbuild code_my_spec --minify",
         "phx.digest"
       ],
-      tui: ["run --no-halt"]
+      sobelow: ["sobelow --skip"]
     ]
   end
 end
