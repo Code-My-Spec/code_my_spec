@@ -192,10 +192,10 @@ defmodule CodeMySpec.Auth.OAuthClient do
   # --- Server URL ---
 
   @doc """
-  Get the configured server URL.
+  Get the server URL for OAuth flows.
   """
   def get_server_url do
-    CodeMySpecWeb.Endpoint.url()
+    Application.get_env(:code_my_spec, :base_url, "https://dev.codemyspec.com")
   end
 
   # --- Token Exchange (for callback flows) ---

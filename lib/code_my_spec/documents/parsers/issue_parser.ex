@@ -59,7 +59,13 @@ defmodule CodeMySpec.Documents.Parsers.IssueParser do
         text -> text
       end
 
-    %{title: heading, severity: severity, description: description}
+    scope =
+      case Map.get(fields, "scope") do
+        nil -> "app"
+        text -> text |> String.trim() |> String.downcase()
+      end
+
+    %{title: heading, severity: severity, description: description, scope: scope}
     |> then(&Ecto.embedded_load(QaIssue, &1, :json))
   end
 

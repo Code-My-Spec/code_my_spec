@@ -44,10 +44,21 @@ defmodule CodeMySpec.Requirements.IncomingIssuesChecker do
           {true, %{status: "No untriaged issues at medium+ severity"}}
 
         files ->
+          scope_counts =
+            files
+            |> Enum.map(fn path ->
+              case Environments.read_file(env, path) do
+                {:ok, content} -> parse_scope(content)
+                _ -> "app"
+              end
+            end)
+            |> Enum.frequencies()
+
           {false,
            %{
              reason: "#{length(files)} untriaged issue(s) at medium+ severity in incoming/",
-             files: Enum.map(files, &Path.basename/1)
+             files: Enum.map(files, &Path.basename/1),
+             scopes: scope_counts
            }}
       end
 
@@ -68,6 +79,13 @@ defmodule CodeMySpec.Requirements.IncomingIssuesChecker do
     case Regex.run(~r/^## Severity\s*\n\s*(\w+)/m, content) do
       [_, sev] -> String.downcase(sev)
       _ -> "unknown"
+    end
+  end
+
+  defp parse_scope(content) do
+    case Regex.run(~r/^## Scope\s*\n\s*(\w+)/m, content) do
+      [_, scope] -> String.downcase(scope)
+      _ -> "app"
     end
   end
 end

@@ -27,7 +27,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
   @impl true
   def execute(params, frame) do
     Logger.debug("[ListStories] execute called, scope project: #{inspect(frame.assigns[:current_scope] && frame.assigns[:current_scope].active_project_id)}")
-    Logger.debug("[ListStories] stories impl: #{inspect(Application.get_env(:code_my_spec, :stories_implementation, CodeMySpec.Stories.StoriesRepository))}")
+
 
     case Validators.validate_scope(frame) do
       {:ok, scope} ->

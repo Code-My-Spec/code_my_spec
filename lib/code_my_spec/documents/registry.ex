@@ -460,13 +460,18 @@ defmodule CodeMySpec.Documents.Registry do
   Format:
   - Use H2 heading
   - Use H3 for each issue title
-  - Use H4 subsections for structured fields: Severity, Description
+  - Use H4 subsections for structured fields: Severity, Description, and optionally Scope
   - Severity must be one of: CRITICAL, HIGH, MEDIUM, LOW, INFO
+  - Scope is optional, one of: APP, QA, DOCS (defaults to APP if omitted)
   - If no issues found, write "None" as plain text
 
   Content:
   - Each issue gets an H3 heading with a descriptive title
   - H4 `#### Severity` with the severity level on the next line
+  - H4 `#### Scope` (optional) with the scope on the next line:
+    - APP — bug in application code
+    - QA — problem with QA infrastructure (seeds, auth scripts, test tooling)
+    - DOCS — documentation gap or error
   - H4 `#### Description` with paragraphs describing what's wrong
   - Include specific URLs, inputs, or conditions that trigger the issue
 
@@ -479,11 +484,14 @@ defmodule CodeMySpec.Documents.Registry do
     Invited users who click the email link are redirected to /login instead of /accept-invite.
     Reproduced with user test+invite@example.com.
 
-    ### Missing validation on empty name
+    ### Seed script fails on fresh database
     #### Severity
     MEDIUM
+    #### Scope
+    QA
     #### Description
-    Submitting the profile form with an empty name field succeeds instead of showing an error.
+    Running `mix run priv/repo/qa_seeds.exs` on a freshly migrated database fails because it
+    references a user that doesn't exist yet.
   """
 
   @qa_plan_app_overview """
@@ -546,6 +554,17 @@ defmodule CodeMySpec.Documents.Registry do
   - Environment-specific notes
   """
 
+  @qa_issue_scope """
+  Format:
+  - Use H2 heading
+  - Single line: one of `app`, `qa`, `docs`
+
+  Content:
+  - app — bug in application code (controllers, live views, schemas, etc.)
+  - qa — problem with QA infrastructure (seed scripts, auth scripts, test tooling)
+  - docs — documentation gap or error (specs, README, user stories)
+  """
+
   @qa_issue_severity """
   Format:
   - Use H2 heading
@@ -604,6 +623,93 @@ defmodule CodeMySpec.Documents.Registry do
   - Summary of the fix applied
   - Files changed
   - Verification steps taken
+  """
+
+  @adr_status """
+  Format:
+  - Use H2 heading
+  - Single line with status value
+
+  Content:
+  - The current status of this decision
+  - One of: Accepted, Accepted (pre-made), Proposed, Superseded
+  - May include parenthetical qualifier (e.g., "Accepted (supersedes exvcr)")
+
+  Examples:
+  - ## Status
+    Accepted
+  - ## Status
+    Accepted (pre-made)
+  - ## Status
+    Accepted (supersedes exvcr)
+  """
+
+  @adr_context """
+  Format:
+  - Use H2 heading
+  - One or more paragraphs
+
+  Content:
+  - Why this decision was needed
+  - What problem or requirement drove the decision
+  - Relevant constraints or project requirements
+
+  Examples:
+  - ## Context
+    We need a performant, productive web framework for building our application.
+  """
+
+  @adr_options_considered """
+  Format:
+  - Use H2 heading
+  - Use H3 for each option name
+  - Include **Pros:** and **Cons:** bullet lists
+
+  Content:
+  - Alternatives evaluated before making the decision
+  - Each option with trade-off analysis
+  - Not required for pre-made decisions where the choice is predetermined
+
+  Examples:
+  - ## Options Considered
+    ### Option A: Wallaby
+    - **Pros:** Real browser testing, JavaScript support
+    - **Cons:** Requires ChromeDriver, slower tests
+    ### Option B: Hound
+    - **Pros:** Lightweight, fast
+    - **Cons:** Less maintained, fewer features
+  """
+
+  @adr_decision """
+  Format:
+  - Use H2 heading
+  - One or more paragraphs
+
+  Content:
+  - What was chosen and why
+  - Reference specific project requirements or constraints
+  - Include package names and versions where applicable
+
+  Examples:
+  - ## Decision
+    Use Wallaby for browser-based integration testing. It provides real browser
+    interaction via ChromeDriver and integrates well with Phoenix test infrastructure.
+  """
+
+  @adr_consequences """
+  Format:
+  - Use H2 heading
+  - Bullet list or paragraphs
+
+  Content:
+  - Trade-offs accepted
+  - Follow-up actions needed
+  - Impact on development workflow or testing
+
+  Examples:
+  - ## Consequences
+    - Req-based HTTP calls enable ReqCassette recording for deterministic tests
+    - Each service can be independently mocked or recorded
   """
 
   @proposal_contexts """
@@ -897,15 +1003,34 @@ defmodule CodeMySpec.Documents.Registry do
     "qa_issue" => %{
       overview: "QA-discovered issue filed to .code_my_spec/issues/incoming/ for triage.",
       required_sections: ["severity", "description"],
-      optional_sections: ["source", "reproduction", "requirements impact", "resolution"],
+      optional_sections: ["scope", "source", "reproduction", "requirements impact", "resolution"],
       allowed_additional_sections: [],
       section_descriptions: %{
         "severity" => @qa_issue_severity,
+        "scope" => @qa_issue_scope,
         "description" => @qa_issue_description,
         "source" => @qa_issue_source,
         "reproduction" => @qa_issue_reproduction,
         "requirements impact" => @qa_issue_requirements_impact,
         "resolution" => @qa_issue_resolution
+      }
+    },
+    "adr" => %{
+      overview: """
+      Architecture Decision Records (ADRs) document technology choices for the project.
+      Each ADR captures what was decided, why, what alternatives were considered, and
+      the consequences of the decision. Pre-made decisions for the standard stack use
+      a simplified format; researched decisions include detailed options analysis.
+      """,
+      required_sections: ["status", "context", "decision", "consequences"],
+      optional_sections: ["options considered"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "status" => @adr_status,
+        "context" => @adr_context,
+        "options considered" => @adr_options_considered,
+        "decision" => @adr_decision,
+        "consequences" => @adr_consequences
       }
     },
     "architecture_proposal" => %{

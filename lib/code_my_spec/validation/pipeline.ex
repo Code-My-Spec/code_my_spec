@@ -90,67 +90,21 @@ defmodule CodeMySpec.Validation.Pipeline do
   end
 
   @doc """
-  Clear stale problems for all categorized file groups, scoped by source.
+  Clear all problems project-wide before re-running validators.
 
-  Each validator only clears problems matching its own source identifier
-  for the files it checks. This prevents one validator from accidentally
-  wiping another validator's results.
+  Clears every source type so stale problems from previous sessions
+  don't persist when the underlying code has changed.
   """
   @spec clear_stale_problems(Scope.t() | nil, map()) :: :ok
   def clear_stale_problems(nil, _categorized), do: :ok
 
-  def clear_stale_problems(%Scope{} = scope, categorized) do
-    project_root = get_project_root(scope)
-
-    rel = fn files -> relativize_paths(files, project_root) end
-
-    # Tests: clear source_type: :test (excluding source: "spex") for test_files
-    if categorized.test_files != [] do
-      Problems.clear_problems_for_source(
-        scope,
-        [source_type: :test, exclude_source: "spex"],
-        rel.(categorized.test_files)
-      )
-    end
-
-    # Credo: clear source: "credo" for elixir_files
-    if categorized.elixir_files != [] do
-      Problems.clear_problems_for_source(scope, [source: "credo"], rel.(categorized.elixir_files))
-    end
-
-    # Sobelow: clear source: "sobelow" for elixir_files
-    if categorized.elixir_files != [] do
-      Problems.clear_problems_for_source(
-        scope,
-        [source: "sobelow"],
-        rel.(categorized.elixir_files)
-      )
-    end
-
-    # Spex: clear source: "spex" for spex_files
-    if categorized.spex_files != [] do
-      Problems.clear_problems_for_source(scope, [source: "spex"], rel.(categorized.spex_files))
-    end
-
-    # Spec validation: clear source: "spec_validation" for spec_files
-    if categorized.spec_files != [] do
-      Problems.clear_problems_for_source(
-        scope,
-        [source: "spec_validation"],
-        rel.(categorized.spec_files)
-      )
-    end
-
-    # QA validation: clear source: "qa_validation" for qa_files
-    if categorized.qa_files != [] do
-      Problems.clear_problems_for_source(
-        scope,
-        [source: "qa_validation"],
-        rel.(categorized.qa_files)
-      )
-    end
-
-    # Compiler: always clear project-wide (compilation is project-wide)
+  def clear_stale_problems(%Scope{} = scope, _categorized) do
+    Problems.clear_problems_for_source(scope, [source_type: :test, exclude_source: "spex"], :all)
+    Problems.clear_problems_for_source(scope, [source: "credo"], :all)
+    Problems.clear_problems_for_source(scope, [source: "sobelow"], :all)
+    Problems.clear_problems_for_source(scope, [source: "spex"], :all)
+    Problems.clear_problems_for_source(scope, [source: "spec_validation"], :all)
+    Problems.clear_problems_for_source(scope, [source: "qa_validation"], :all)
     Problems.clear_problems_for_source(scope, [source: "compiler"], :all)
 
     :ok
@@ -429,18 +383,6 @@ defmodule CodeMySpec.Validation.Pipeline do
   defp get_project_root(nil), do: nil
   defp get_project_root(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "", do: cwd
   defp get_project_root(_scope), do: nil
-
-  defp relativize_paths(paths, nil), do: paths
-
-  defp relativize_paths(paths, project_root) do
-    paths
-    |> Enum.flat_map(fn path ->
-      relative = Path.relative_to(path, project_root)
-      # Include both forms so we match however the problem was stored
-      if relative == path, do: [path], else: Enum.uniq([path, relative])
-    end)
-    |> Enum.uniq()
-  end
 
   defp filter_problems_by_files(problems, files) do
     file_set = MapSet.new(files)

@@ -42,13 +42,18 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
             :none
 
           topic_based_task?(module) ->
-            evaluate_topic_task(scope, module, subject)
+            Logger.info("[TaskEvaluator] Evaluating topic task: #{type_name}/#{subject}")
+            result = evaluate_topic_task(scope, module, subject)
+            Logger.info("[TaskEvaluator] Topic task result: #{inspect(result)}")
+            result
 
           true ->
+            Logger.info("[TaskEvaluator] Evaluating component task: #{type_name}/#{subject}")
             evaluate_component_task(scope, module, subject)
         end
 
       :none ->
+        Logger.info("[TaskEvaluator] No marker found, skipping task evaluation")
         :none
     end
   end

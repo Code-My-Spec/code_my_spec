@@ -221,10 +221,12 @@ defmodule CodeMySpec.Documents do
   end
 
   @valid_severities ~w(critical high medium low info)
+  @valid_scopes ~w(app qa docs)
 
   defp validate_parsed_issues(%{"issues" => issues}) when is_list(issues) do
     bad =
       Enum.filter(issues, fn
+        %{severity: s, scope: sc} -> s not in @valid_severities or sc not in @valid_scopes
         %{severity: s} -> s not in @valid_severities
         _ -> true
       end)
@@ -235,9 +237,10 @@ defmodule CodeMySpec.Documents do
       titles = Enum.map_join(bad, ", ", &Map.get(&1, :title, "unknown"))
 
       {:error,
-       "Issues section has entries with missing/invalid severity. " <>
+       "Issues section has entries with missing/invalid severity or scope. " <>
          "Each issue needs an `#### Severity` subsection with one of: " <>
-         "CRITICAL, HIGH, MEDIUM, LOW, INFO. Bad entries: #{titles}"}
+         "CRITICAL, HIGH, MEDIUM, LOW, INFO. " <>
+         "Optional `#### Scope` must be one of: app, qa, docs. Bad entries: #{titles}"}
     end
   end
 

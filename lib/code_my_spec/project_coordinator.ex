@@ -292,6 +292,7 @@ defmodule CodeMySpec.ProjectCoordinator do
   @doc """
   Remove the entire status directory for a component.
   """
+  # sobelow_skip ["Traversal.FileModule"]
   @spec cleanup_status_directory(String.t(), String.t() | nil) :: :ok
   def cleanup_status_directory(status_dir, working_dir) do
     dir = resolve_dir(status_dir, working_dir)
@@ -325,43 +326,96 @@ defmodule CodeMySpec.ProjectCoordinator do
 
     Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: generating prompt")
 
-    # Always write the prompt file
-    {:ok, prompt_content} = task_module.command(scope, session)
     prompt_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
-    :ok = Environments.write_file(scope.environment, prompt_path, prompt_content)
-
-    # Check completeness and write problems if needed
     problem_path = "#{status_dir}/#{safe_name}_#{suffix}_problems.md"
 
-    {complete, problems} =
+    # Check completeness — write prompt + problems only if incomplete
+    {complete, _problems} =
       case task_module.evaluate(scope, session) do
         {:ok, :valid} ->
           Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: complete")
+          cwd = scope.environment && scope.environment.cwd
+          cleanup_file(prompt_path, cwd)
+          cleanup_file(problem_path, cwd)
           {true, nil}
 
         {:ok, :invalid, feedback} ->
-          Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: incomplete, writing problems")
+          Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: incomplete, writing prompt")
+          {:ok, prompt_content} = task_module.command(scope, session)
+          :ok = Environments.write_file(scope.environment, prompt_path, prompt_content)
           :ok = Environments.write_file(scope.environment, problem_path, feedback)
           {false, feedback}
       end
 
-    # Build orchestration checklist line
+    # Build orchestration checklist line — this is the initial command pass,
+    # so point to the prompt file (the work to do), not the problems file.
     orchestration_prompt =
       if complete do
         "[x] #{suffix} for #{module_name} complete."
       else
-        base = "[ ] #{suffix} for #{module_name} is not complete."
-
-        if problems do
-          base <> " Fix the problems at #{problem_path}"
-        else
-          base
-        end
+        "[ ] #{suffix} for #{module_name}: read prompt at `#{prompt_path}`"
       end
 
     {:ok,
      %{
        prompt_path: prompt_path,
+       complete: complete,
+       problem_path: problem_path,
+       orchestration_prompt: orchestration_prompt
+     }}
+  end
+
+  @doc """
+  Evaluate-side counterpart to `default_orchestrate/4`.
+
+  Only calls `evaluate/3` (not `command/3`). If incomplete, writes the feedback
+  to a problems file. If complete, cleans up the problems file.
+
+  Returns `{:ok, %{complete, problem_path, orchestration_prompt}}`.
+
+  ## Options
+
+  - `:status_dir` — override status directory (defaults to component-derived path)
+  """
+  @spec default_orchestrate_evaluate(module(), any(), map(), keyword()) :: {:ok, map()}
+  def default_orchestrate_evaluate(task_module, scope, session, opts) do
+    component = session.component
+    module_name = component.module_name
+    status_dir = Keyword.get_lazy(opts, :status_dir, fn -> component_status_dir(component) end)
+    safe_name = safe_filename(module_name)
+    suffix = task_module_suffix(task_module)
+
+    prompt_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
+    problem_path = "#{status_dir}/#{safe_name}_#{suffix}_problems.md"
+
+    {complete, _problems} =
+      case task_module.evaluate(scope, session) do
+        {:ok, :valid} ->
+          Logger.info("[ProjectCoordinator] #{suffix} evaluate for #{module_name}: complete")
+          # Clean up prompt and problems files
+          cwd = scope.environment && scope.environment.cwd
+          cleanup_file(prompt_path, cwd)
+          cleanup_file(problem_path, cwd)
+          {true, nil}
+
+        {:ok, :invalid, feedback} ->
+          Logger.info(
+            "[ProjectCoordinator] #{suffix} evaluate for #{module_name}: incomplete, writing problems"
+          )
+
+          :ok = Environments.write_file(scope.environment, problem_path, feedback)
+          {false, feedback}
+      end
+
+    orchestration_prompt =
+      if complete do
+        "[x] #{suffix} for #{module_name} complete."
+      else
+        "[ ] #{suffix} for #{module_name} is not complete. Fix the problems at #{problem_path}"
+      end
+
+    {:ok,
+     %{
        complete: complete,
        problem_path: problem_path,
        orchestration_prompt: orchestration_prompt
@@ -476,6 +530,18 @@ defmodule CodeMySpec.ProjectCoordinator do
 
   defp resolve_dir(status_dir, nil), do: status_dir
   defp resolve_dir(status_dir, working_dir), do: Path.join(working_dir, status_dir)
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp cleanup_file(relative_path, nil) do
+    File.rm(relative_path)
+    :ok
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp cleanup_file(relative_path, working_dir) do
+    File.rm(Path.join(working_dir, relative_path))
+    :ok
+  end
 
   defp agent_for_suffix(suffix) do
     cond do

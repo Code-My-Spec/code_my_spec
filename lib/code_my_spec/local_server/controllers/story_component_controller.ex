@@ -7,6 +7,7 @@ defmodule CodeMySpec.LocalServer.Controllers.StoryComponentController do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.RemoteClient
 
   @doc """
   Links a story to a component by module name.
@@ -29,7 +30,11 @@ defmodule CodeMySpec.LocalServer.Controllers.StoryComponentController do
     with {:story, story} when not is_nil(story) <- {:story, Stories.get_story(scope, story_id)},
          {:component, component} when not is_nil(component) <-
            {:component, Components.get_component_by_module_name(scope, module_name)},
-         {:ok, updated} <- Stories.set_story_component(scope, story, component.id) do
+         client = RemoteClient.new(scope, conn.assigns[:remote_client_opts] || []),
+         {:ok, %{status: 200, body: %{"data" => story_data}}} <-
+           RemoteClient.set_story_component(client, story.id, component.id) do
+      updated = RemoteClient.deserialize_story(story_data)
+
       json_response(conn, 200, %{
         story_id: updated.id,
         story_title: updated.title,
@@ -42,6 +47,9 @@ defmodule CodeMySpec.LocalServer.Controllers.StoryComponentController do
 
       {:component, nil} ->
         json_response(conn, 404, %{error: "Component not found: #{module_name}"})
+
+      {:ok, %{status: status, body: body}} ->
+        json_response(conn, 502, %{error: "Remote API error: #{status} #{inspect(body)}"})
 
       {:error, reason} ->
         json_response(conn, 400, %{error: "Failed to link: #{inspect(reason)}"})

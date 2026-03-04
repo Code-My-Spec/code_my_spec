@@ -1,6 +1,8 @@
 defmodule CodeMySpec.Transcripts.TaskIdentifier do
   @moduledoc "Extract task identity from a subagent transcript."
 
+  require Logger
+
   alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Transcripts
   alias CodeMySpec.Transcripts.ClaudeCode.Entry
@@ -8,10 +10,18 @@ defmodule CodeMySpec.Transcripts.TaskIdentifier do
   @spec identify(String.t()) :: {:ok, %{type: String.t(), component: String.t()}} | :none
   def identify(transcript_path) do
     with {:ok, transcript} <- Transcripts.parse(transcript_path),
+         _ = Logger.info("[TaskIdentifier] Parsed transcript with #{length(transcript.entries)} entries from #{transcript_path}"),
          {:ok, marker} <- find_marker_in_entries(transcript.entries) do
+      Logger.info("[TaskIdentifier] Found marker: type=#{marker.type}, component=#{marker.component}")
       {:ok, marker}
     else
-      _ -> :none
+      {:error, reason} ->
+        Logger.warning("[TaskIdentifier] Failed to parse transcript #{transcript_path}: #{inspect(reason)}")
+        :none
+
+      :none ->
+        Logger.info("[TaskIdentifier] No task marker found in transcript #{transcript_path}")
+        :none
     end
   end
 

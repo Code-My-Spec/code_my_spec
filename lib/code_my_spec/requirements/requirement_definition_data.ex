@@ -94,7 +94,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Component test file exists",
-        prerequisites: ["spec_valid"]
+        prerequisites: ["spec_valid"],
+        scope: :orchestrate
       })
 
     definition
@@ -281,7 +282,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.LiveContextSpec,
         artifact_type: :specification,
         description: "Live context specification file exists",
-        prerequisites: []
+        prerequisites: [],
+        scope: :orchestrate
       })
 
     definition
@@ -368,7 +370,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "component_linked",
         checker: ComponentLinkedChecker,
-        satisfied_by: CodeMySpec.AgentTasks.LinkStoryComponent,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureReview,
         artifact_type: :dependencies,
         description: "Story has a linked surface component",
         prerequisites: []
@@ -413,11 +415,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "component_complete",
         checker: ComponentCompleteChecker,
-        satisfied_by: CodeMySpec.AgentTasks.ManageImplementation,
+        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent,
         artifact_type: :dependencies,
         description: "Linked component tree is fully implemented",
         prerequisites: ["bdd_specs_exist"],
-        scope: :dependencies
+        scope: :children
       })
 
     definition
@@ -524,7 +526,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.TriageIssues,
         artifact_type: :review,
         description: "All incoming QA issues have been triaged",
-        prerequisites: ["architecture_designed"]
+        prerequisites: ["architecture_designed"],
+        scope: :orchestrate
       })
 
     definition
@@ -539,7 +542,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.FixIssues,
         artifact_type: :review,
         description: "All medium+ accepted issues have been resolved",
-        prerequisites: ["issues_triaged"]
+        prerequisites: ["issues_triaged"],
+        scope: :orchestrate
       })
 
     definition

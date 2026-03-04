@@ -1,73 +1,41 @@
 defmodule CodeMySpec.Stories.RemoteClient do
   @moduledoc """
   HTTP client for the remote Stories API.
-
-  Fetches stories from the CodeMySpec web app so the local server
-  can sync them into the local database before running agent tasks.
   """
-
-  require Logger
 
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @doc """
-  Lists all stories for the active project from the remote API.
-  """
-  @spec list_project_stories(Scope.t()) :: {:ok, [Story.t()]} | {:error, term()}
-  def list_project_stories(%Scope{} = scope) do
-    case get_request(scope, "/api/stories-list/project") do
-      {:ok, %{status: 200, body: %{"data" => stories}}} ->
-        {:ok, Enum.map(stories, &deserialize_story/1)}
+  def new(%Scope{} = scope, opts \\ []) do
+    token = opts[:token] || get_token!()
 
-      {:ok, %{status: status, body: body}} ->
-        Logger.warning("[RemoteClient] list_project_stories unexpected status: #{status}, body: #{inspect(body)}")
-        {:error, {:unexpected_status, status}}
-
-      {:error, reason} ->
-        Logger.warning("[RemoteClient] list_project_stories error: #{inspect(reason)}")
-        {:error, reason}
-    end
+    Req.new(
+      base_url: get_base_url(),
+      headers: build_headers(token, scope),
+      decode_json: [keys: :strings],
+      retry: :transient,
+      max_retries: 3
+    )
+    |> maybe_plug(opts)
   end
 
-  # HTTP helpers
-
-  defp get_request(scope, path) do
-    base_url = get_base_url()
-
-    case OAuthClient.get_token() do
-      {:ok, token} ->
-        Req.get(
-          url: "#{base_url}#{path}",
-          headers: build_headers(token, scope),
-          decode_json: [keys: :strings]
-        )
-
-      {:error, _reason} = error ->
-        error
-    end
+  defp get_token! do
+    {:ok, token} = OAuthClient.get_token()
+    token
   end
 
-  defp build_headers(token, %Scope{active_project_id: project_id})
-       when is_binary(project_id) do
-    [
-      {"authorization", "Bearer #{token}"},
-      {"x-project-id", project_id}
-    ]
+  def list_project_stories(client) do
+    Req.get(client, url: "/api/stories-list/project")
   end
 
-  defp build_headers(token, _scope) do
-    [{"authorization", "Bearer #{token}"}]
+  def set_story_component(client, story_id, component_id) do
+    Req.post(client, url: "/api/stories/#{story_id}/set-component", json: %{component_id: component_id})
   end
 
-  defp get_base_url do
-    Application.get_env(:code_my_spec, :api_base_url) || ""
-  end
+  # Deserialization — public so callers can convert response bodies to structs
 
-  # Deserialization
-
-  defp deserialize_story(data) do
+  def deserialize_story(data) do
     %Story{
       id: data["id"],
       title: data["title"],
@@ -86,6 +54,27 @@ defmodule CodeMySpec.Stories.RemoteClient do
       inserted_at: parse_datetime(data["inserted_at"]),
       updated_at: parse_datetime(data["updated_at"])
     }
+  end
+
+  # Private
+
+  defp build_headers(token, %Scope{active_project_id: pid}) when is_binary(pid) do
+    [authorization: "Bearer #{token}", "x-project-id": pid]
+  end
+
+  defp build_headers(token, _scope) do
+    [authorization: "Bearer #{token}"]
+  end
+
+  defp get_base_url do
+    Application.get_env(:code_my_spec, :base_url, "https://dev.codemyspec.com")
+  end
+
+  defp maybe_plug(req, opts) do
+    case Keyword.get(opts, :plug) do
+      nil -> req
+      plug -> Req.merge(req, plug: plug)
+    end
   end
 
   defp parse_status(nil), do: nil
