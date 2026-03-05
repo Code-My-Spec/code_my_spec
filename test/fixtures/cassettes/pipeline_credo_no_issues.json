@@ -9,76 +9,16 @@
         "--all",
         "--all-priorities",
         "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_1/lib/test_phoenix_project/application.ex"
+        "lib/test_phoenix_project/application.ex"
       ],
       "command": "mix",
-      "exit_code": 1,
+      "exit_code": 0,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "stderr_to_stdout": true
       },
-      "output": "\n22:39:47.589 [error] Task #PID<0.194.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_1/lib/test_phoenix_project/application.ex\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_1/lib/test_phoenix_project/application.ex\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_1/lib/test_phoenix_project/application.ex\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
-      "recorded_at": "2026-02-13T03:39:47.635761Z"
-    },
-    {
-      "args": [
-        "credo",
-        "suggest",
-        "--format",
-        "json",
-        "--all",
-        "--all-priorities",
-        "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_7/lib/test_phoenix_project/application.ex"
-      ],
-      "command": "mix",
-      "exit_code": 1,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
-        "stderr_to_stdout": true
-      },
-      "output": "\n10:55:11.924 [error] Task #PID<0.194.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_7/lib/test_phoenix_project/application.ex\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.15) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_7/lib/test_phoenix_project/application.ex\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_7/lib/test_phoenix_project/application.ex\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.15) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
-      "recorded_at": "2026-02-14T15:55:11.949976Z"
-    },
-    {
-      "args": [
-        "credo",
-        "suggest",
-        "--format",
-        "json",
-        "--all",
-        "--all-priorities",
-        "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_9/lib/test_phoenix_project/application.ex"
-      ],
-      "command": "mix",
-      "exit_code": 1,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
-        "stderr_to_stdout": true
-      },
-      "output": "Unchecked dependencies for environment dev:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
-      "recorded_at": "2026-02-15T21:10:53.342711Z"
-    },
-    {
-      "args": [
-        "credo",
-        "suggest",
-        "--format",
-        "json",
-        "--all",
-        "--all-priorities",
-        "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex"
-      ],
-      "command": "mix",
-      "exit_code": 1,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_2",
-        "stderr_to_stdout": true
-      },
-      "output": "\n12:22:30.186 [error] Task #PID<0.194.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/lib/test_phoenix_project/application.ex\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
-      "recorded_at": "2026-02-22T17:22:30.204822Z"
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n{\n  \"issues\": []\n}\n",
+      "recorded_at": "2026-03-05T03:35:58.130900Z"
     }
   ],
   "ports": []

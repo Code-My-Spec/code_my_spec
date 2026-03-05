@@ -169,8 +169,9 @@ defmodule CodeMySpec.ProjectSetupWizard.GithubIntegrationTest do
 
       assert {:ok, %{url: url}} = GithubIntegration.authorize(scope, redirect_uri)
 
-      # URL should contain encoded redirect_uri parameter
-      assert String.contains?(url, URI.encode_www_form(redirect_uri))
+      # authorize/2 builds redirect_uri from the endpoint config, not the parameter
+      expected_redirect = "#{CodeMySpecWeb.Endpoint.url()}/auth/github/callback"
+      assert String.contains?(url, URI.encode_www_form(expected_redirect))
     end
 
     test "delegates to Integrations context", %{scope: scope} do

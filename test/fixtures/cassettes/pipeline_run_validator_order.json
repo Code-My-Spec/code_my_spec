@@ -15,8 +15,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\n",
-      "recorded_at": "2026-02-13T03:55:28.418558Z"
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-05T03:40:43.237585Z"
     },
     {
       "args": [
@@ -35,8 +35,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Paths given to \"mix test\" did not match any directory/file: ../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs\n",
-      "recorded_at": "2026-02-13T03:55:30.176575Z"
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n==> test_phoenix_project\nPaths given to \"mix test\" did not match any directory/file: ../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs\n",
+      "recorded_at": "2026-03-05T03:40:47.132992Z"
     },
     {
       "args": [
@@ -47,16 +47,16 @@
         "--all",
         "--all-priorities",
         "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs"
+        "test/test_phoenix_project/blog/post_repository_test.exs"
       ],
       "command": "mix",
-      "exit_code": 1,
+      "exit_code": 0,
       "opts": {
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "stderr_to_stdout": true
       },
-      "output": "==> file_system\nCompiling 7 files (.ex)\nGenerated file_system app\n==> mime\nCompiling 1 file (.ex)\nGenerated mime app\n==> nimble_options\nCompiling 3 files (.ex)\nGenerated nimble_options app\n==> bunt\nCompiling 2 files (.ex)\nGenerated bunt app\n==> comeonin\nCompiling 3 files (.ex)\nGenerated comeonin app\n==> plug_crypto\nCompiling 5 files (.ex)\nGenerated plug_crypto app\n==> hpax\nCompiling 4 files (.ex)\nGenerated hpax app\n==> mint\nCompiling 1 file (.erl)\nCompiling 20 files (.ex)\nGenerated mint app\n==> erlex\nCompiling 2 files (.erl)\nCompiling 1 file (.ex)\nGenerated erlex app\n==> elixir_make\nCompiling 8 files (.ex)\nGenerated elixir_make app\n==> bcrypt_elixir\nmkdir -p \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/dev/lib/bcrypt_elixir/priv\"\ncc -g -O3 -Wall -Wno-format-truncation -I\"/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/include\" -Ic_src -fPIC -shared -dynamiclib -undefined dynamic_lookup c_src/bcrypt_nif.c c_src/blowfish.c -o \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/dev/lib/bcrypt_elixir/priv/bcrypt_nif.so\"\nCompiling 3 files (.ex)\nGenerated bcrypt_elixir app\n==> logger_file_backend\nCompiling 1 file (.ex)\nGenerated logger_file_backend app\n==> decimal\nCompiling 4 files (.ex)\nGenerated decimal app\n==> jason\nCompiling 10 files (.ex)\nGenerated jason app\n==> esbuild\nCompiling 4 files (.ex)\nGenerated esbuild app\n==> client_utils\nCompiling 4 files (.ex)\nGenerated client_utils app\n==> mix_machine\nCompiling 6 files (.ex)\nGenerated mix_machine app\n==> sobelow\nCompiling 51 files (.ex)\nGenerated sobelow app\n==> sexy_spex\nCompiling 8 files (.ex)\nGenerated sexy_spex app\n==> telemetry_metrics\nCompiling 7 files (.ex)\nGenerated telemetry_metrics app\n==> thousand_island\nCompiling 18 files (.ex)\nGenerated thousand_island app\n==> db_connection\nCompiling 18 files (.ex)\nGenerated db_connection app\n==> ecto\nCompiling 56 files (.ex)\nGenerated ecto app\n==> phoenix_html\nCompiling 6 files (.ex)\nGenerated phoenix_html app\n==> phoenix_template\nCompiling 4 files (.ex)\nGenerated phoenix_template app\n==> expo\nCompiling 2 files (.erl)\nCompiling 22 files (.ex)\nGenerated expo app\n==> gettext\nCompiling 18 files (.ex)\nGenerated gettext app\n==> phoenix_pubsub\nCompiling 12 files (.ex)\nGenerated phoenix_pubsub app\n==> dns_cluster\nCompiling 1 file (.ex)\nGenerated dns_cluster app\n==> dialyxir\nCompiling 67 files (.ex)\nGenerated dialyxir app\n==> credo\nCompiling 254 files (.ex)\nGenerated credo app\n==> plug\nCompiling 1 file (.erl)\nCompiling 42 files (.ex)\nGenerated plug app\n==> postgrex\nCompiling 69 files (.ex)\nCompiling lib/postgrex/default_types.ex (it's taking more than 10s)\nGenerated postgrex app\n==> phoenix_ecto\nCompiling 7 files (.ex)\nGenerated phoenix_ecto app\n==> ecto_sql\nCompiling 25 files (.ex)\nGenerated ecto_sql app\n==> nimble_pool\nCompiling 2 files (.ex)\nGenerated nimble_pool app\n==> finch\nCompiling 14 files (.ex)\nGenerated finch app\n==> req\nCompiling 19 files (.ex)\nGenerated req app\n==> tailwind\nCompiling 3 files (.ex)\nGenerated tailwind app\n==> websock\nCompiling 1 file (.ex)\nGenerated websock app\n==> bandit\nCompiling 54 files (.ex)\nGenerated bandit app\n==> swoosh\nCompiling 55 files (.ex)\nGenerated swoosh app\n==> websock_adapter\nCompiling 4 files (.ex)\nGenerated websock_adapter app\n==> phoenix\nCompiling 74 files (.ex)\nGenerated phoenix app\n==> phoenix_live_reload\nCompiling 5 files (.ex)\nGenerated phoenix_live_reload app\n==> phoenix_live_view\nCompiling 49 files (.ex)\nGenerated phoenix_live_view app\n==> phoenix_live_dashboard\nCompiling 36 files (.ex)\nGenerated phoenix_live_dashboard app\n\n22:56:21.522 [error] Task #PID<0.7809.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/blog/post_repository_test.exs\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
-      "recorded_at": "2026-02-13T03:56:21.541490Z"
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n{\n  \"issues\": []\n}\n",
+      "recorded_at": "2026-03-05T03:40:49.772465Z"
     },
     {
       "args": [
@@ -71,48 +71,8 @@
         "cd": "../code_my_spec_test_repos/pool_code_repo_1",
         "stderr_to_stdout": true
       },
-      "output": "{\n  \"findings\": {\n    \"high_confidence\": [\n      {\n        \"line\": 0,\n        \"type\": \"Config.HTTPS: HTTPS Not Enabled\",\n        \"file\": \"config/prod.exs\"\n      },\n      {\n        \"line\": 12,\n        \"type\": \"Config.CSP: Missing Content-Security-Policy\",\n        \"file\": \"lib/test_phoenix_project_web/router.ex\",\n        \"pipeline\": \"browser\"\n      }\n    ],\n    \"low_confidence\": [],\n    \"medium_confidence\": []\n  },\n  \"sobelow_version\": \"0.14.1\",\n  \"total_findings\": 2\n}\n",
-      "recorded_at": "2026-02-13T03:56:22.874609Z"
-    },
-    {
-      "args": [
-        "test",
-        "--formatter",
-        "ClientUtils.TestFormatter",
-        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs"
-      ],
-      "command": "mix",
-      "exit_code": 1,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
-        "env": {
-          "EXUNIT_JSON_OUTPUT_FILE": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/test_results_failing_cache.json",
-          "MIX_ENV": "test"
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nPaths given to \"mix test\" did not match any directory/file: ../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs\n",
-      "recorded_at": "2026-02-14T15:55:05.062492Z"
-    },
-    {
-      "args": [
-        "credo",
-        "suggest",
-        "--format",
-        "json",
-        "--all",
-        "--all-priorities",
-        "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs"
-      ],
-      "command": "mix",
-      "exit_code": 1,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
-        "stderr_to_stdout": true
-      },
-      "output": "\n10:55:05.954 [error] Task #PID<0.194.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.15) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.15) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
-      "recorded_at": "2026-02-14T15:55:05.973693Z"
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n{\n  \"findings\": {\n    \"high_confidence\": [\n      {\n        \"line\": 0,\n        \"type\": \"Config.HTTPS: HTTPS Not Enabled\",\n        \"file\": \"config/prod.exs\"\n      },\n      {\n        \"line\": 12,\n        \"type\": \"Config.CSP: Missing Content-Security-Policy\",\n        \"file\": \"lib/test_phoenix_project_web/router.ex\",\n        \"pipeline\": \"browser\"\n      }\n    ],\n    \"low_confidence\": [],\n    \"medium_confidence\": []\n  },\n  \"sobelow_version\": \"0.14.1\",\n  \"total_findings\": 2\n}\n",
+      "recorded_at": "2026-03-05T03:40:52.038184Z"
     },
     {
       "args": [
@@ -131,68 +91,28 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
-      "recorded_at": "2026-02-15T21:10:28.019180Z"
-    },
-    {
-      "args": [
-        "credo",
-        "suggest",
-        "--format",
-        "json",
-        "--all",
-        "--all-priorities",
-        "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/blog/post_repository_test.exs"
-      ],
-      "command": "mix",
-      "exit_code": 1,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
-        "stderr_to_stdout": true
-      },
-      "output": "Unchecked dependencies for environment dev:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
-      "recorded_at": "2026-02-15T21:10:29.615904Z"
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-05T03:49:01.584102Z"
     },
     {
       "args": [
         "test",
         "--formatter",
         "ClientUtils.TestFormatter",
-        "../code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project/blog/post_repository_test.exs"
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs"
       ],
       "command": "mix",
       "exit_code": 1,
       "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_2",
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
         "env": {
           "EXUNIT_JSON_OUTPUT_FILE": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/test_results_failing_cache.json",
           "MIX_ENV": "test"
         },
         "stderr_to_stdout": true
       },
-      "output": "Paths given to \"mix test\" did not match any directory/file: ../code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project/blog/post_repository_test.exs\n",
-      "recorded_at": "2026-02-22T17:22:13.703587Z"
-    },
-    {
-      "args": [
-        "credo",
-        "suggest",
-        "--format",
-        "json",
-        "--all",
-        "--all-priorities",
-        "--no-color",
-        "../code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project/blog/post_repository_test.exs"
-      ],
-      "command": "mix",
-      "exit_code": 1,
-      "opts": {
-        "cd": "../code_my_spec_test_repos/pool_code_repo_2",
-        "stderr_to_stdout": true
-      },
-      "output": "\n12:22:14.921 [error] Task #PID<0.194.0> started from #PID<0.94.0> terminating\n** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project/blog/post_repository_test.exs\": no such file or directory\n    (elixir 1.19.4) lib/file.ex:435: File.read!/1\n    (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n    (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n    (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\nFunction: &:erlang.apply/2\n    Args: [#Function<4.130355175/1 in Credo.Sources.to_source_file>, [\"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project/blog/post_repository_test.exs\"]]\n** (EXIT from #PID<0.94.0>) an exception was raised:\n    ** (File.Error) could not read file \"/Users/johndavenport/Documents/github/code_my_spec_test_repos/code_my_spec_test_repos/pool_code_repo_2/test/test_phoenix_project/blog/post_repository_test.exs\": no such file or directory\n        (elixir 1.19.4) lib/file.ex:435: File.read!/1\n        (credo 1.7.16) lib/credo/sources.ex:229: Credo.Sources.to_source_file/1\n        (elixir 1.19.4) lib/task/supervised.ex:105: Task.Supervised.invoke_mfa/2\n        (elixir 1.19.4) lib/task/supervised.ex:40: Task.Supervised.reply/4\n\n",
-      "recorded_at": "2026-02-22T17:22:14.947911Z"
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nPaths given to \"mix test\" did not match any directory/file: ../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/blog/post_repository_test.exs\n",
+      "recorded_at": "2026-03-05T03:56:18.462508Z"
     }
   ],
   "ports": []

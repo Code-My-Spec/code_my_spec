@@ -2,8 +2,6 @@ defmodule CodeMySpec.Validation.PipelineTest do
   use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
-  @moduletag :capture_log
-
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
@@ -292,6 +290,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
 
     @tag timeout: 120_000
     @tag :tmp_dir
+    @tag :capture_log
     test "returns {:error, problems} when compilation fails", %{tmp_dir: tmp_dir} do
       # Point scope at a directory with an invalid mix project to force exit_code != 0
       File.write!(Path.join(tmp_dir, "mix.exs"), "invalid elixir")
@@ -374,6 +373,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
     end
 
     @tag timeout: 120_000
+    @tag :capture_log
     test "tags compiler errors from test execution as source_type: :static_analysis" do
       {scope, project_dir} = project_setup()
       on_exit(fn -> TestAdapter.checkin(project_dir) end)
@@ -460,7 +460,9 @@ defmodule CodeMySpec.Validation.PipelineTest do
   # run_sobelow/2
   # ============================================================================
 
+  # Sobelow availability can be intermittent in full suite runs due to pool slot ordering
   describe "run_sobelow/2" do
+    @describetag :capture_log
     test "returns {:ok, []} when no files" do
       assert {:ok, []} = Pipeline.run_sobelow([], nil)
     end
@@ -694,7 +696,9 @@ defmodule CodeMySpec.Validation.PipelineTest do
   # run/3
   # ============================================================================
 
+  # run/3 calls all validators; Sobelow availability varies by pool slot in full suite
   describe "run/3" do
+    @describetag :capture_log
     test "returns [] when no files provided" do
       scope = full_scope_fixture()
       assert [] = Pipeline.run(scope, [])
@@ -803,6 +807,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
     end
 
     @tag :tmp_dir
+    @tag :capture_log
     test "short-circuits on compilation failure", %{tmp_dir: tmp_dir} do
       File.write!(Path.join(tmp_dir, "mix.exs"), "invalid elixir")
       scope = full_scope_fixture()
@@ -815,6 +820,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
       assert hd(problems).category == "compilation_error"
     end
 
+    @tag :capture_log
     test "handles individual validator failures gracefully (continues with others)" do
       {scope, project_dir} = project_setup()
       on_exit(fn -> TestAdapter.checkin(project_dir) end)
@@ -911,6 +917,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
     end
 
     @tag timeout: 300_000
+    @tag :capture_log
     test "clears stale spex problems for spex_files before running spex" do
       {scope, project_dir} = project_setup()
       on_exit(fn -> TestAdapter.checkin(project_dir) end)
@@ -941,6 +948,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
     end
 
     @tag :tmp_dir
+    @tag :capture_log
     test "clears stale spec_validation problems for spec_files before validating specs",
          %{tmp_dir: tmp_dir} do
       scope = full_scope_fixture()
@@ -980,6 +988,7 @@ defmodule CodeMySpec.Validation.PipelineTest do
     end
 
     @tag :tmp_dir
+    @tag :capture_log
     test "clears stale compiler problems on compilation failure", %{tmp_dir: tmp_dir} do
       File.write!(Path.join(tmp_dir, "mix.exs"), "invalid elixir")
       scope = full_scope_fixture()

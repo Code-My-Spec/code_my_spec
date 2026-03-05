@@ -79,24 +79,13 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   end
 
   defp execute_credo(code_repo, temp_file, opts) do
-    args = build_credo_args(opts)
+    args = build_credo_args(opts, code_repo)
 
     case System.cmd("mix", args, cd: code_repo, stderr_to_stdout: true) do
       {output, exit_code} when exit_code in 0..127 ->
-        # Credo exit codes 0-7: success (0 = no issues, 1-7 = issues based on priority)
-        # Exit codes 8-127: reserved but not errors
-        # However, if output is empty and exit_code > 1, likely an error (e.g., missing project)
-        if exit_code > 1 and String.trim(output) == "" do
-          {:error, "Credo failed with exit code #{exit_code} and no output"}
-        else
-          case File.write(temp_file, output) do
-            :ok -> {:ok, output}
-            {:error, reason} -> {:error, "Failed to write output: #{inspect(reason)}"}
-          end
-        end
+        handle_credo_output(output, exit_code, temp_file)
 
       {output, exit_code} ->
-        # Exit code 128+ indicates signal/crash
         {:error, "Credo failed with exit code #{exit_code}: #{output}"}
     end
   rescue
@@ -104,7 +93,27 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
       {:error, "Failed to execute Credo: #{Exception.message(exception)}"}
   end
 
-  defp build_credo_args(opts) do
+  defp handle_credo_output(output, exit_code, temp_file) when exit_code > 1 do
+    if String.trim(output) == "" do
+      {:error, "Credo failed with exit code #{exit_code} and no output"}
+    else
+      write_and_return(temp_file, output)
+    end
+  end
+
+  defp handle_credo_output(output, _exit_code, temp_file) do
+    write_and_return(temp_file, output)
+  end
+
+  # sobelow_skip ["Traversal.FileModule"]
+  defp write_and_return(temp_file, output) do
+    case File.write(temp_file, output) do
+      :ok -> {:ok, output}
+      {:error, reason} -> {:error, "Failed to write output: #{inspect(reason)}"}
+    end
+  end
+
+  defp build_credo_args(opts, cwd) do
     base_args = [
       "credo",
       "suggest",
@@ -121,12 +130,25 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
         config_file -> base_args ++ ["--config-file", config_file]
       end
 
-    # Add specific files if provided
+    # Add specific files if provided, made relative to cwd so Credo resolves them correctly
     case Keyword.get(opts, :files) do
       nil -> args
       [] -> args
-      files when is_list(files) -> args ++ files
+      files when is_list(files) -> args ++ make_relative(files, cwd)
     end
+  end
+
+  defp make_relative(files, cwd) do
+    abs_cwd = Path.expand(cwd)
+
+    Enum.map(files, fn file ->
+      abs_file = Path.expand(file)
+
+      case Path.relative_to(abs_file, abs_cwd) do
+        ^abs_file -> file
+        relative -> relative
+      end
+    end)
   end
 
   defp parse_json_output(output) do
@@ -167,8 +189,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     end)
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp cleanup_temp_file(temp_file) do
-    if File.exists?(temp_file) do
+    tmp_dir = System.tmp_dir!()
+
+    if String.starts_with?(Path.expand(temp_file), tmp_dir) and File.exists?(temp_file) do
       File.rm(temp_file)
     end
   rescue

@@ -322,13 +322,12 @@ defmodule CodeMySpec.ContentSync.FileWatcher.ServerTest do
            [
              directory: dir,
              scope: scope,
-             debounce_ms: 10,
+             debounce_ms: 500,
              enabled: true
            ]}
         )
 
       send(pid, {:file_event, self(), {Path.join(dir, "test.md"), [:modified]}})
-      :timer.sleep(5)
 
       state = :sys.get_state(pid)
       assert state.debounce_timer != nil
@@ -341,13 +340,12 @@ defmodule CodeMySpec.ContentSync.FileWatcher.ServerTest do
            [
              directory: dir,
              scope: scope,
-             debounce_ms: 10,
+             debounce_ms: 500,
              enabled: true
            ]}
         )
 
       send(pid, {:file_event, self(), {Path.join(dir, "new.md"), [:created]}})
-      :timer.sleep(5)
 
       state = :sys.get_state(pid)
       assert state.debounce_timer != nil
@@ -360,13 +358,12 @@ defmodule CodeMySpec.ContentSync.FileWatcher.ServerTest do
            [
              directory: dir,
              scope: scope,
-             debounce_ms: 10,
+             debounce_ms: 500,
              enabled: true
            ]}
         )
 
       send(pid, {:file_event, self(), {Path.join(dir, "deleted.md"), [:removed]}})
-      :timer.sleep(5)
 
       state = :sys.get_state(pid)
       assert state.debounce_timer != nil
@@ -379,13 +376,12 @@ defmodule CodeMySpec.ContentSync.FileWatcher.ServerTest do
            [
              directory: dir,
              scope: scope,
-             debounce_ms: 10,
+             debounce_ms: 500,
              enabled: true
            ]}
         )
 
       send(pid, {:file_event, self(), {Path.join(dir, "test.md"), [:other]}})
-      :timer.sleep(5)
 
       state = :sys.get_state(pid)
       assert state.debounce_timer == nil
