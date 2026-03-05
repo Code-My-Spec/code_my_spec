@@ -471,7 +471,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       session = %{environment: env}
 
       create_phoenix_project_structure(tmp_dir, "my_app")
-      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
+      assert :ok = ProjectSetup.install_app_resources(tmp_dir)
 
       status = ProjectSetup.check_status(env, session)
 
@@ -514,29 +514,28 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   end
 
   # ============================================================================
-  # install_app_symlinks/1 Tests
+  # install_app_resources/1 Tests
   # ============================================================================
 
-  describe "install_app_symlinks/1" do
-    test "creates framework and tools symlinks", %{tmp_dir: tmp_dir} do
-      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
+  describe "install_app_resources/1" do
+    test "creates framework and tools directories", %{tmp_dir: tmp_dir} do
+      assert :ok = ProjectSetup.install_app_resources(tmp_dir)
 
-      # Framework symlink
+      # Framework directory (copied, not symlinked)
       framework_path = Path.join(tmp_dir, ".code_my_spec/framework")
       assert File.dir?(framework_path)
-      assert {:ok, %{type: :symlink}} = File.lstat(framework_path)
       assert File.exists?(Path.join(framework_path, "README.md"))
       assert File.exists?(Path.join(framework_path, "liveview/patterns.md"))
 
-      # Tools symlink
+      # Tools directory (copied, not symlinked)
       tools_path = Path.join(tmp_dir, ".code_my_spec/tools")
-      assert {:ok, %{type: :symlink}} = File.lstat(tools_path)
+      assert File.dir?(tools_path)
       assert File.exists?(Path.join(tools_path, "set-story-component"))
     end
 
     test "is idempotent — can be called multiple times", %{tmp_dir: tmp_dir} do
-      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
-      assert :ok = ProjectSetup.install_app_symlinks(tmp_dir)
+      assert :ok = ProjectSetup.install_app_resources(tmp_dir)
+      assert :ok = ProjectSetup.install_app_resources(tmp_dir)
 
       assert File.exists?(Path.join(tmp_dir, ".code_my_spec/framework/README.md"))
       assert File.exists?(Path.join(tmp_dir, ".code_my_spec/tools/set-story-component"))

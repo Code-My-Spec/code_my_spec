@@ -225,9 +225,6 @@ Vibium is a standalone browser automation CLI by Jason Huggins (creator of Selen
 ```bash
 # As CLI
 npm install -g vibium
-
-# As MCP server for Claude Code
-claude mcp add vibium -- npx -y vibium mcp
 ```
 
 ### Core workflow

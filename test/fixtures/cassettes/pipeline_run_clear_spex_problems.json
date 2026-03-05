@@ -3345,6 +3345,118 @@
       },
       "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
       "recorded_at": "2026-03-05T01:43:33.739576Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_22916.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-05T01:49:21.016801Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_52035.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-05T01:52:09.918249Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_23748.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-05T01:58:30.466687Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_92514.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_9/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-03-05T02:05:16.243483Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_7/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_16933.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-05T02:11:54.157822Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_9/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_19332.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_9/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-03-05T02:15:11.710636Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_11042.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-03-05T02:18:03.623082Z"
     }
   ],
   "ports": []

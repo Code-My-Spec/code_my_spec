@@ -237,7 +237,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert file_content =~ "then_"
     end
 
-    test "prompt file includes LiveView testing guide for liveview components", %{
+    test "prompt file includes Wallaby testing guide for liveview components", %{
       tmp_dir: tmp_dir
     } do
       scope = scope_with_env(tmp_dir)
@@ -247,7 +247,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       file_content = File.read!(prompt_file_path(tmp_dir, session.story))
       assert file_content =~ "LiveView Testing Guide"
-      assert file_content =~ "Phoenix.LiveViewTest"
+      assert file_content =~ "Wallaby"
+      refute file_content =~ "Phoenix.LiveViewTest"
     end
 
     test "prompt file includes Controller testing guide for controller components", %{
@@ -314,6 +315,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert file_content =~ "user_exists"
     end
 
+    @tag :capture_log
     test "returns error if component is not linked", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_unlinked_story(scope, tmp_dir)
@@ -435,6 +437,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   # ============================================================================
 
   describe "evaluate/3" do
+    @tag :capture_log
     test "returns {:ok, :valid} or compile error when all specs exist and are valid", %{
       tmp_dir: tmp_dir
     } do
@@ -541,6 +544,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert {:error, :story_not_found} = WriteBddSpecs.evaluate(scope, session, [])
     end
 
+    @tag :capture_log
     test "cleans up prompt file on valid result", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       session = session_with_story(scope, tmp_dir)

@@ -49,6 +49,7 @@ defmodule CodeMySpec.Transcripts.TaskIdentifierTest do
       assert :none = TaskIdentifier.identify(path)
     end
 
+    @tag :capture_log
     test "returns :none for non-existent file" do
       assert :none = TaskIdentifier.identify("/nonexistent/path.jsonl")
     end

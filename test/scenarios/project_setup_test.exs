@@ -80,7 +80,7 @@ defmodule CodeMySpec.Scenarios.ProjectSetupTest do
     replay_phase(ctx.project_dir, @phase)
 
     # Server-side operations that would be triggered via bootstrap API curls
-    :ok = ProjectSetup.install_app_symlinks(ctx.project_dir)
+    :ok = ProjectSetup.install_app_resources(ctx.project_dir)
     :ok = ProjectSetup.install_agents_md(ctx.project_dir)
     :ok = ProjectSetup.install_rules(ctx.project_dir)
     :ok = ProjectSetup.install_claude_md(ctx.project_dir)

@@ -2,6 +2,8 @@ defmodule CodeMySpec.Validation.PipelineTest do
   use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
+  @moduletag :capture_log
+
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem

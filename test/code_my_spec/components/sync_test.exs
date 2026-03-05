@@ -107,6 +107,7 @@ defmodule CodeMySpec.Components.SyncTest do
       assert hd(components).module_name == "MyApp.Accounts"
     end
 
+    @tag :capture_log
     test "falls back to path-derived name when neither declares module", %{
       scope: scope,
       tmp_dir: tmp_dir

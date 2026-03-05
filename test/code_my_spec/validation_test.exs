@@ -2,6 +2,8 @@ defmodule CodeMySpec.ValidationTest do
   use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
+  @moduletag :capture_log
+
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Sessions.SessionsRepository

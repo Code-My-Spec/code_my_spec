@@ -325,6 +325,7 @@ defmodule CodeMySpec.AgentTasks.ManageImplementationTest do
                match?({:error, _}, result)
     end
 
+    @tag :capture_log
     test "handles errors gracefully", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
