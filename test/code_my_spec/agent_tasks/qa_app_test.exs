@@ -87,6 +87,12 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
     - `mix run priv/repo/qa_seeds.exs`
     """)
+
+    write_file!(env, ".code_my_spec/qa/scripts/start-qa.sh", """
+    #!/bin/bash
+    mix run priv/repo/qa_seeds.exs
+    echo "QA setup complete"
+    """)
   end
 
   defp write_qa_summary(env, content \\ nil) do

@@ -329,7 +329,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp check_plan(env) do
     case Environments.read_file(env, Paths.qa_plan()) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
-        validate_plan_sections(content)
+        with :ok <- validate_plan_sections(content) do
+          validate_start_script(env)
+        end
 
       _ ->
         doc_spec = DocumentSpecProjector.project_spec("qa_plan")
@@ -338,6 +340,19 @@ defmodule CodeMySpec.AgentTasks.QaStory do
          "QA plan not found at `#{Paths.qa_plan()}`. " <>
            "Write the QA plan before continuing with the story brief.\n\n" <>
            "## QA Plan Format\n\n#{doc_spec}"}
+    end
+  end
+
+  defp validate_start_script(env) do
+    script_path = Paths.qa_start_script()
+
+    if Environments.file_exists?(env, script_path) do
+      :ok
+    else
+      {:ok, :invalid,
+       "`start-qa.sh` not found at `#{script_path}`. " <>
+         "Write the start script (seeds + auth) before continuing. " <>
+         "See the plan-phase instructions for patterns."}
     end
   end
 
@@ -514,7 +529,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     3. Write a standard seed script to `priv/repo/qa_seeds.exs` (`.exs` files run via `mix run`)
     4. Write additional seed scripts to `priv/repo/qa_seeds.exs` if other scenarios warrant it
     5. Write useful scripts to `#{scripts_dir}/` (`.sh` for curl wrappers, `chmod +x`)
-    6. Write `#{Paths.qa_plan()}` following the format below
+    6. Write `#{Paths.qa_start_script()}` — the single entry point that runs seeds and handles auth (must be `chmod +x`)
+    7. Write `#{Paths.qa_plan()}` following the format below
 
     Stop the session after writing the plan.
 
@@ -568,11 +584,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         ## Instructions
 
         1. Read `#{Paths.qa_plan()}` for app overview, tools, auth, and seed strategy
-        2. Verify the tools and scripts work for this story — run seed scripts, test auth scripts
-        3. If this story needs additional seeds, scripts, or plan updates, make them now
-        4. Read the BDD spec files listed above (they contain selectors, test data, and assertions)
-        5. If a linked component is listed above, read its source and spec to understand the feature
-        6. Write the brief to `#{brief_path(story.id)}` following the format below
+        2. Run `#{Paths.qa_start_script()}` to verify setup works for this story
+        3. Verify the tools and scripts work for this story — run seed scripts, test auth scripts
+        4. If this story needs additional seeds, scripts, or plan updates, make them now
+        5. Read the BDD spec files listed above (they contain selectors, test data, and assertions)
+        6. If a linked component is listed above, read its source and spec to understand the feature
+        7. Write the brief to `#{brief_path(story.id)}` following the format below
 
         Stop the session after writing the brief.
 
@@ -634,14 +651,15 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         """
         ## Instructions
 
-        1. Read the brief at `#{brief_path(story_id)}` for the complete testing plan
-        2. Read `#{Paths.qa_plan()}` for auth strategy and seed commands
-        3. Read `#{Paths.framework_dir()}/qa-tooling.md` for tool usage patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
-        4. If a linked component is listed above, read its source to understand the feature's implementation
-        5. Execute each test scenario from the brief
-        6. Capture a screenshot at each key state — save to `#{screenshot_dir}/`
-        7. Attempt to resolve any issues with the plan or the QA scripts before finishing
-        8. Write the result to `#{result_path(story_id)}` following the format below
+        1. Run `#{Paths.qa_start_script()}` to set up seeds and auth before testing
+        2. Read the brief at `#{brief_path(story_id)}` for the complete testing plan
+        3. Read `#{Paths.qa_plan()}` for auth strategy and seed commands
+        4. Read `#{Paths.framework_dir()}/qa-tooling.md` for tool usage patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
+        5. If a linked component is listed above, read its source to understand the feature's implementation
+        6. Execute each test scenario from the brief
+        7. Capture a screenshot at each key state — save to `#{screenshot_dir}/`
+        8. Attempt to resolve any issues with the plan or the QA scripts before finishing
+        9. Write the result to `#{result_path(story_id)}` following the format below
 
         Stop the session after writing the result.
 

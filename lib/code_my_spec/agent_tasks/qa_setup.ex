@@ -53,7 +53,9 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
 
     case Environments.read_file(env, plan_path) do
       {:ok, content} ->
-        validate_sections(content)
+        with {:ok, :valid} <- validate_sections(content) do
+          validate_start_script(env)
+        end
 
       _ ->
         {:ok, :invalid, "QA plan not found at `#{plan_path}`. Write the plan and stop the session again."}
@@ -253,7 +255,22 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     3. Make `.sh` scripts `chmod +x`
     4. Shell scripts are ONLY for HTTP auth helpers (curl wrappers), never for seeding data
 
-    ### Step 5: Write the QA Plan
+    ### Step 5: Write `start-qa.sh`
+
+    Create `#{Paths.qa_start_script()}` as the single entry point that handles seeds, auth,
+    and any tool startup. QA agents run this script before every test session.
+
+    The script should:
+    - Run seed scripts (e.g., `mix run priv/repo/qa_seeds.exs`)
+    - Handle authentication — common patterns:
+      - **Vibium (Phoenix LiveView):** `vibium navigate` to the login URL, `vibium type` credentials, `vibium click` submit
+      - **curl:** POST to the login endpoint and capture the session cookie/token
+      - **mix run:** Create a token directly via context functions (e.g., `mix run -e 'MyApp.Accounts.create_user_api_token(...)'`)
+    - Print credentials, URLs, and tokens at the end
+    - Be idempotent — safe to run multiple times
+    - Be `chmod +x`
+
+    ### Step 6: Write the QA Plan
 
     Write `#{Paths.qa_plan()}` following the document specification above. Include:
     - **App Overview**: tech stack, auth mechanism, port/URL, key routes
@@ -267,6 +284,18 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   # ============================================================================
   # Validation
   # ============================================================================
+
+  defp validate_start_script(env) do
+    script_path = Paths.qa_start_script()
+
+    if Environments.file_exists?(env, script_path) do
+      {:ok, :valid}
+    else
+      {:ok, :invalid,
+       "`start-qa.sh` not found at `#{script_path}`. " <>
+         "Write the start script and stop the session again."}
+    end
+  end
 
   defp validate_sections(content) do
     content_lower = String.downcase(content)

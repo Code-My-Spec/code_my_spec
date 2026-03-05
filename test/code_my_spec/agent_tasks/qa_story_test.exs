@@ -68,6 +68,16 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
     - `mix run priv/repo/qa_seeds.exs`
     """)
+
+    write_start_qa_script(env)
+  end
+
+  defp write_start_qa_script(env) do
+    write_file!(env, ".code_my_spec/qa/scripts/start-qa.sh", """
+    #!/bin/bash
+    mix run priv/repo/qa_seeds.exs
+    echo "QA setup complete"
+    """)
   end
 
   defp write_story_brief(env, story_id, content \\ nil) do
@@ -229,6 +239,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert {:ok, prompt} = QaStory.command(scope, session)
       refute prompt =~ "<!-- cms:task"
     end
+
+    test "plan prompt mentions start-qa.sh", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "start-qa.sh"
+    end
   end
 
   describe "command/3 — brief phase (plan exists)" do
@@ -278,6 +293,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       refute prompt =~ "Testing Approach"
       refute prompt =~ "Result Format"
     end
+
+    test "brief prompt references start-qa.sh", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "start-qa.sh"
+    end
   end
 
   describe "command/3 — test phase (plan + brief exist)" do
@@ -309,6 +329,12 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     test "test prompt references brief path", %{scope: scope, session: session, story: story} do
       assert {:ok, prompt} = QaStory.command(scope, session)
       assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
+    end
+
+    test "test prompt references start-qa.sh as step 1", %{scope: scope, session: session} do
+      assert {:ok, prompt} = QaStory.command(scope, session)
+      assert prompt =~ "start-qa.sh"
+      assert prompt =~ "set up seeds and auth before testing"
     end
   end
 
@@ -382,6 +408,33 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
       assert feedback =~ "Brief not found"
       assert feedback =~ ".code_my_spec/qa/#{story.id}/brief.md"
+    end
+
+    test "returns invalid when plan valid but start-qa.sh missing", %{
+      scope: scope,
+      session: session
+    } do
+      # Write plan without start-qa.sh
+      write_file!(scope.environment, ".code_my_spec/qa/plan.md", """
+      # QA Plan
+
+      ## App Overview
+
+      Phoenix app with session-based auth on port 4000.
+
+      ## Tools Registry
+
+      ### web tool
+      Use for LiveView pages.
+
+      ## Seed Strategy
+
+      - `mix run priv/repo/qa_seeds.exs`
+      """)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, session)
+      assert feedback =~ "start-qa.sh"
+      assert feedback =~ ".code_my_spec/qa/scripts/start-qa.sh"
     end
   end
 
