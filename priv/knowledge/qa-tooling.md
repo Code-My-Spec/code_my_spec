@@ -217,227 +217,202 @@ exit $FAIL
 - Check for 500s specifically — a 404 or 302 might be expected
 - Use `mix phx.routes` output to build the route list
 
-## Browser-based QA tools
+## Browser-based QA with Vibium
 
-Two browser tools cover the full QA spectrum for Phoenix apps. Use **`web`** for all standard Phoenix LiveView interactions. Use **Vibium** when you need capabilities beyond what `web` provides.
-
-### `web` — Phoenix LiveView QA (primary tool)
-
-Go-based headless browser CLI by Chris McCord. Uses Firefox + geckodriver, converts pages to markdown, has native LiveView support. Self-contained binary — auto-downloads Firefox to `~/.web-firefox/` on first run (~102MB).
-
-**All options:**
-```
-web <url> [options]
-
-  --raw                      Output raw HTML instead of markdown
-  --truncate-after <number>  Truncate output after N chars (default: 100000)
-  --screenshot <filepath>    Save full-page screenshot as PNG
-  --form <id>                Target form by its HTML id attribute
-  --input <name>             Form input name attribute (pair with --value)
-  --value <value>            Value for the preceding --input
-  --after-submit <url>       Navigate to this URL after form submission
-  --js <code>                Execute JavaScript after page loads
-  --profile <name>           Named session profile for cookie/state persistence (default: "default")
-```
-
-#### QA workflow: authenticate first, then test
-
-The `--profile` flag persists a real Firefox profile (cookies, localStorage, sessionStorage) to `~/.web-firefox/profiles/<name>/`. Once you log in with a profile, all subsequent calls with that profile name are already authenticated.
-
-**Step 1: Log in once at the start of the QA session**
-```bash
-web http://localhost:4000/users/log-in \
-    --profile "qa" \
-    --form "login_form_password" \
-    --input "user[email]" --value "qa@example.com" \
-    --input "user[password]" --value "hello world!" \
-    --truncate-after 100
-```
-`phx.gen.auth` generates predictable form IDs: `login_form_password` for password login, `login_form_magic` for passwordless/magic-link login, `registration_form` for registration. The password form uses `phx-trigger-action` — the `web` tool handles this automatically via Enter key submission.
-
-**Step 2: Browse authenticated pages freely**
-```bash
-# Read page content as markdown
-web http://localhost:4000/dashboard --profile "qa"
-
-# Take a screenshot for evidence
-web http://localhost:4000/settings --profile "qa" --screenshot settings.png
-
-# Get raw HTML when you need to inspect DOM structure
-web http://localhost:4000/items --profile "qa" --raw
-```
-
-**Single-command login + navigate (for one-off checks):**
-```bash
-web http://localhost:4000/users/log-in \
-    --profile "qa" \
-    --form "login_form_password" \
-    --input "user[email]" --value "qa@example.com" \
-    --input "user[password]" --value "hello world!" \
-    --after-submit "http://localhost:4000/dashboard"
-```
-`--after-submit` does a hard navigation after login, so the output is the protected page's content.
-
-#### Verifying page content
-
-The tool outputs markdown by default. Check the stdout for expected content:
-```bash
-# Verify an element exists on the page
-web http://localhost:4000/dashboard --profile "qa" --truncate-after 5000
-# → look for expected headings, text, links in the markdown output
-```
-
-Use `--js` with `console.log()` for programmatic assertions — console output appears in a `CONSOLE OUTPUT:` section of stdout:
-```bash
-# Check specific element content
-web http://localhost:4000/dashboard --profile "qa" \
-    --js "console.log('TITLE:', document.querySelector('h1')?.textContent)"
-# → stdout includes: [LOG] TITLE: Dashboard
-
-# Count items in a list
-web http://localhost:4000/items --profile "qa" \
-    --js "console.log('COUNT:', document.querySelectorAll('.item').length)"
-# → stdout includes: [LOG] COUNT: 5
-
-# Check for error states
-web http://localhost:4000/form --profile "qa" \
-    --js "console.log('ERRORS:', document.querySelectorAll('.invalid-feedback').length)"
-```
-
-Console messages are tagged by level: `[LOG]`, `[WARNING]`, `[ERROR]`. Browser-level JS errors and network errors also appear automatically.
-
-#### Interacting with LiveView pages
-
-The tool auto-detects LiveView pages (`[data-phx-session]` attribute) and handles them correctly:
-
-- **Waits for connection**: blocks until `.phx-connected` appears before reading content
-- **Form submission**: on LiveView forms, uses Enter key (not click) and waits for `phx:page-loading-stop`
-- **Navigation tracking**: after `--js` execution, monitors Phoenix events for LiveView pages vs. `document.readyState` for regular pages
-
-**Click buttons and interact via `--js`:**
-```bash
-# Click a phx-click button
-web http://localhost:4000/items --profile "qa" \
-    --js "document.querySelector('button[phx-click=\"delete\"]').click()"
-
-# Submit a LiveView form
-web http://localhost:4000/items/new --profile "qa" \
-    --js "
-        document.querySelector('#item_name').value = 'Test Item';
-        document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true}));
-    "
-
-# Trigger a phx-change event (e.g., select dropdown)
-web http://localhost:4000/items --profile "qa" \
-    --js "
-        const select = document.querySelector('select[name=\"filter\"]');
-        select.value = 'active';
-        select.dispatchEvent(new Event('change', {bubbles: true}));
-    "
-```
-
-After JS-triggered navigation, the tool waits for the page to settle before capturing output, so the markdown reflects the post-interaction state.
-
-#### Filling and submitting forms
-
-Use `--form` + `--input`/`--value` pairs for structured form interaction (preferred over `--js` for simple forms):
-```bash
-# Create a new item via form
-web http://localhost:4000/items/new --profile "qa" \
-    --form "item_form" \
-    --input "item[name]" --value "Test Item" \
-    --input "item[description]" --value "Created by QA" \
-    --after-submit "http://localhost:4000/items"
-```
-
-The `--form` flag targets a form by its HTML `id`. On LiveView pages, submission uses Enter key and waits for Phoenix navigation events. On regular pages, it clicks the submit button.
-
-#### Screenshots as evidence
-
-Always take screenshots for QA evidence, especially for visual checks:
-```bash
-web http://localhost:4000/dashboard --profile "qa" --screenshot qa_dashboard.png
-web http://localhost:4000/items --profile "qa" --screenshot qa_items_list.png
-```
-
-#### Troubleshooting
-
-- **Profile stale?** Delete `~/.web-firefox/profiles/<name>/` to start fresh
-- **Geckodriver port conflict?** The tool uses port 4444 — make sure nothing else is bound there
-- **Long pages?** Use `--truncate-after` to limit output size. Default is 100,000 chars
-- **Need DOM structure?** Use `--raw` to get full HTML instead of markdown
-
-### Vibium — full browser automation (when `web` isn't enough)
-
-Vibium is a standalone browser automation binary by Jason Huggins (creator of Selenium). It drives a real Chrome instance via WebDriver BiDi. Single ~10MB binary, zero runtime dependencies.
-
-**When to use**: Anything that "colors outside the lines" of standard LiveView — file uploads via native dialogs, drag-and-drop, multi-tab workflows, complex mouse interactions (hover chains, right-click menus), testing OAuth redirect flows through third-party providers, screenshot-based visual regression, or any interaction that requires a real browser viewport.
+Vibium is a standalone browser automation CLI by Jason Huggins (creator of Selenium). It drives a real Chrome instance via WebDriver BiDi. Single ~10MB binary, zero runtime dependencies. Covers the full QA spectrum for Phoenix apps — navigating pages, verifying content, filling forms, clicking buttons, file uploads, multi-tab flows, screenshots, and more.
 
 **Installation:**
 ```bash
-# As MCP server for Claude Code
-claude mcp add vibium -- npx -y vibium mcp
-
 # As CLI
 npm install -g vibium
 
-# Python SDK
-pip install vibium
+# As MCP server for Claude Code
+claude mcp add vibium -- npx -y vibium mcp
 ```
 
-**CLI usage:**
-```bash
-# Navigate and interact
-vibium navigate http://localhost:4000
-vibium click "button.submit"
-vibium type "#email-input" "qa@example.com"
-vibium screenshot -o page.png
+### Core workflow
 
-# Wait for elements
-vibium wait ".flash-message" --state visible --timeout 5000
+Every browser automation follows this pattern:
+
+1. **Navigate**: `vibium go <url>`
+2. **Map**: `vibium map` (get element refs like `@e1`, `@e2`)
+3. **Interact**: Use refs to click, fill, select — e.g. `vibium click @e1`
+4. **Re-map**: After navigation or DOM changes, get fresh refs with `vibium map`
+
+```bash
+vibium go http://localhost:4000 && vibium map && vibium click @e1 && vibium diff map
+```
+
+### QA workflow: authenticate first, then test
+
+Use `vibium storage-state` to persist auth across commands. Once you log in and save state, restore it in later sessions to skip login.
+
+**Step 1: Log in once at the start of the QA session**
+```bash
+vibium go http://localhost:4000/users/log-in
+vibium map
+# Identify the email field, password field, and submit button from map output
+vibium fill @e1 "qa@example.com"
+vibium fill @e2 "hello world!"
+vibium click @e3
+vibium wait-for-url "/dashboard"
+vibium storage-state -o qa_auth.json
+```
+
+`phx.gen.auth` generates predictable form IDs: `login_form_password` for password login, `login_form_magic` for passwordless/magic-link login, `registration_form` for registration.
+
+**Step 2: Restore auth and browse freely**
+```bash
+# Restore saved session
+vibium restore-storage qa_auth.json
+
+# Read page content as text
+vibium go http://localhost:4000/dashboard && vibium text
+
+# Take a screenshot for evidence
+vibium go http://localhost:4000/settings && vibium screenshot -o settings.png
+
+# Get raw HTML when you need to inspect DOM structure
+vibium go http://localhost:4000/items && vibium html
+```
+
+### Verifying page content
+
+```bash
+# Read all page text
+vibium go http://localhost:4000/dashboard && vibium text
+
+# Read text within a specific element
+vibium text "h1"
+vibium text ".flash-message"
+
+# Count elements
+vibium count ".item"
+
+# Check element state
+vibium is-visible ".modal"
+vibium is-enabled "button[type=submit]"
+vibium value "input[name=email]"
+vibium attr "a" "href"
+
+# Programmatic checks via JS
+vibium eval 'document.querySelector("h1")?.textContent'
+vibium eval 'document.querySelectorAll(".item").length'
+```
+
+### Interacting with LiveView pages
+
+LiveView pages work like any other page with Vibium. After interactions that trigger server-side changes, use explicit waits:
+
+```bash
+# Click a phx-click button
+vibium click "button[phx-click='delete']"
+vibium wait-for-text "deleted"
+
+# Submit a LiveView form
+vibium fill "#item_name" "Test Item"
+vibium click "button[type=submit]"
+vibium wait-for-url "/items"
+
+# Trigger a phx-change event (e.g., select dropdown)
+vibium select "select[name='filter']" "active"
+
+# Wait for LiveView to reconnect after navigation
+vibium wait "[data-phx-session]" --state attached
+```
+
+### Filling and submitting forms
+
+Use `vibium map` to discover form fields, then `vibium fill` to set values:
+
+```bash
+# Create a new item via form
+vibium go http://localhost:4000/items/new
+vibium map --selector "form"
+# Map output shows: @e1 [input] name="item[name]", @e2 [textarea] name="item[description]", @e3 [button] "Save"
+vibium fill @e1 "Test Item"
+vibium fill @e2 "Created by QA"
+vibium click @e3
+vibium wait-for-url "/items"
+```
+
+Use `vibium fill` to replace a field's value (clears first), `vibium type` to append to existing value.
+
+### Semantic element discovery
+
+Find elements without CSS selectors:
+```bash
+vibium find --text "Sign In"            # by visible text
+vibium find --label "Email"             # by form label
+vibium find --placeholder "Search..."   # by placeholder
+vibium find --testid "submit-btn"       # by data-testid
+vibium find --role "button"             # by ARIA role
+vibium find --alt "Logo"                # by alt attribute
+vibium click @e1                        # click whatever was found
+```
+
+### Screenshots as evidence
+
+Always take screenshots for QA evidence, especially for visual checks:
+```bash
+vibium go http://localhost:4000/dashboard && vibium screenshot -o qa_dashboard.png
+vibium go http://localhost:4000/items && vibium screenshot -o qa_items_list.png
+
+# Annotated screenshot (labels interactive elements)
+vibium screenshot -o annotated.png --annotate
+
+# Full-page screenshot
+vibium screenshot -o full.png --full-page
+```
+
+### Advanced interactions
+
+```bash
+# File upload
+vibium upload "input[type=file]" ./document.pdf
 
 # Multi-tab workflows (OAuth redirects, popups)
-vibium tabs
-vibium tab-switch 1
+vibium tab-new http://external-provider.com/authorize
 vibium click "#authorize-button"
 vibium tab-switch 0
 
-# Keyboard shortcuts, drag-and-drop
+# Drag-and-drop
+vibium drag ".draggable" ".drop-target"
+
+# Keyboard shortcuts
 vibium keys "Control+a"
-vibium hover ".draggable"
+vibium press "Enter" "#search-input"
+
+# Hover interactions
+vibium hover ".menu-trigger"
+
+# Viewport testing
+vibium set-viewport 375 812  # iPhone viewport
+vibium screenshot -o mobile.png
 ```
 
-**Key commands:**
+### Key commands
 
 | Category | Commands |
 |----------|----------|
-| Navigate | `navigate <url>`, `url`, `title` |
-| Read | `text [selector]`, `html`, `find <selector>`, `find-all <selector>`, `screenshot` |
-| Interact | `click`, `type`, `hover`, `scroll`, `keys`, `select` |
-| Wait | `wait <selector>` (`--state visible\|hidden\|attached`, `--timeout ms`) |
+| Navigate | `go <url>`, `back`, `forward`, `reload`, `url`, `title` |
+| Discover | `map`, `map --selector`, `diff map`, `find`, `find-all`, `count` |
+| Read | `text [selector]`, `html`, `screenshot`, `a11y-tree`, `eval` |
+| Interact | `click`, `dblclick`, `fill`, `type`, `press`, `hover`, `scroll`, `keys`, `select`, `check`, `uncheck` |
+| Forms | `fill` (clear+type), `type` (append), `select`, `upload`, `value` |
+| State | `is-visible`, `is-enabled`, `is-checked`, `attr`, `value` |
+| Wait | `wait`, `wait-for-url`, `wait-for-text`, `wait-for-load`, `wait-for-fn` |
 | Tabs | `tabs`, `tab-new`, `tab-switch`, `tab-close` |
-| Eval | `eval "<js>"` |
-| Daemon | `daemon start\|status\|stop` |
+| Auth | `storage-state -o`, `restore-storage`, `cookies`, `cookies set`, `cookies clear` |
+| Capture | `screenshot -o` (`--full-page`, `--annotate`), `pdf -o` |
+| Session | `daemon start\|status\|stop`, `quit` |
 
 **Global flags:** `--headless`, `--json`, `--oneshot` (fresh browser per command, good for CI)
 
 **Daemon mode** keeps the browser alive between commands for fast chaining. Use `--oneshot` in CI for clean isolation.
 
-**MCP tools** (when running as MCP server): `browser_launch`, `browser_navigate`, `browser_click`, `browser_type`, `browser_screenshot`, `browser_find`, `browser_quit`.
+### Troubleshooting
 
-### When to use which
-
-| Scenario | Tool |
-|----------|------|
-| Navigate LiveView pages, verify content | `web` |
-| Click phx-click buttons, submit phx-submit forms | `web` |
-| Test live_patch / live_redirect navigation | `web` |
-| Verify PubSub-pushed updates | `web` |
-| Run JS against live DOM (phx-hook, JS commands) | `web` |
-| File upload via native file picker | Vibium |
-| Drag-and-drop (e.g. Sortable, reordering) | Vibium |
-| Multi-tab flows (OAuth popups, third-party redirects) | Vibium |
-| Screenshot capture / visual regression | Vibium |
-| Complex hover/right-click/context menus | Vibium |
-| Testing across browser viewport sizes | Vibium |
-| Keyboard shortcut testing | Vibium |
+- **Stale refs?** Always re-map after navigation or DOM changes — refs are invalidated on page change
+- **Element not actionable?** All interaction commands auto-wait, but use explicit `vibium wait` for dynamically loaded content
+- **Need full CLI reference?** See `priv/knowledge/qa-tooling/vibium_reference.md`
