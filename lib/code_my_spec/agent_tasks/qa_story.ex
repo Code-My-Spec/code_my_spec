@@ -15,9 +15,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   - `result.md` — test outcomes with evidence (written by the agent)
 
   Three main functions:
-  - `command/3` — Returns the full prompt (no marker, no file writes)
-  - `orchestrate/3` — Wraps command output with TaskMarker, writes prompt file,
-    returns QA-specific orchestration for the main agent
+  - `command/3` — Returns the full prompt with TaskMarker embedded (no file writes)
+  - `orchestrate/3` — Writes prompt to file, returns QA-specific orchestration for the main agent
   - `evaluate/3` — State machine: validates plan → brief → result → files issues
   """
 
@@ -39,7 +38,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   Build the phase-appropriate QA prompt for a story.
 
   Phase-aware: checks current state and returns a self-contained prompt
-  for the current step only. Does not write any files or include a TaskMarker.
+  for the current step only. Includes the TaskMarker so the validation hook
+  can identify the task from the subagent transcript. Does not write any files.
 
   - No plan → plan-phase prompt (write the QA plan)
   - No brief → brief-phase prompt (write the brief)
@@ -53,13 +53,15 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       story = Stories.get_story!(scope, story_id)
       ensure_qa_dirs(env, story_id)
 
+      marker = TaskMarker.build("QaStory", to_string(story_id))
+
       prompt =
         with :ok <- plan_or_prompt(env, scope, story),
              :ok <- brief_or_prompt(env, scope, story) do
           build_test_phase_prompt(scope, story_id)
         end
 
-      {:ok, prompt}
+      {:ok, marker <> "\n\n" <> prompt}
     end
   end
 
@@ -123,7 +125,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       status_dir = Keyword.get(opts, :status_dir, @status_dir)
       prompt_path = prompt_file_path(status_dir, story_id)
       problem_path = problem_file_path(status_dir, story_id)
-      marker = TaskMarker.build("QaStory", to_string(story_id))
 
       {complete, has_problems} =
         case run_phases(env, story_id) do
@@ -135,13 +136,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
           {:advance, _phase} ->
             {:ok, prompt} = command(scope, session)
-            :ok = Environments.write_file(env, prompt_path, marker <> "\n\n" <> prompt)
+            :ok = Environments.write_file(env, prompt_path, prompt)
             cleanup_problem_file(env, problem_path)
             {false, false}
 
           {:problem, feedback} ->
             {:ok, prompt} = command(scope, session)
-            :ok = Environments.write_file(env, prompt_path, marker <> "\n\n" <> prompt)
+            :ok = Environments.write_file(env, prompt_path, prompt)
             :ok = Environments.write_file(env, problem_path, feedback)
             {false, true}
         end
@@ -177,7 +178,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       status_dir = Keyword.get(opts, :status_dir, @status_dir)
       prompt_path = prompt_file_path(status_dir, story_id)
       problem_path = problem_file_path(status_dir, story_id)
-      marker = TaskMarker.build("QaStory", to_string(story_id))
 
       Logger.info("[QaStory] orchestrate_evaluate: story_id=#{story_id}")
 
@@ -193,7 +193,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           {:advance, phase} ->
             Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): advancing to #{phase}")
             {:ok, prompt} = command(scope, session)
-            :ok = Environments.write_file(env, prompt_path, marker <> "\n\n" <> prompt)
+            :ok = Environments.write_file(env, prompt_path, prompt)
             cleanup_problem_file(env, problem_path)
             {false, false}
 
@@ -294,7 +294,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
       ## Prompt
 
-      Start a `codemyspec:qa-tester` subagent with the prompt at `#{prompt_path}`.
+      Start a `codemyspec:qa-tester` subagent. Set the prompt parameter to the file path
+      itself: `#{prompt_path}`
+
+      Do NOT read the file or write instructions around it — pass the path string as-is.
+      The file contains a `<!-- cms:task -->` marker that must appear in the subagent's
+      transcript for the validation hook to work.
       #{problems_section}
       When the subagent completes all QA phases, **stop the session** so the
       hook can validate and advance to the next task.
