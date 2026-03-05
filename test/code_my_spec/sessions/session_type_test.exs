@@ -20,9 +20,12 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ContextImplementation,
       AgentTasks.ContextSpec,
       AgentTasks.DesignUi,
+      AgentTasks.DevelopComponent,
       AgentTasks.DevelopContext,
+      AgentTasks.DevelopController,
       AgentTasks.DevelopLiveContext,
       AgentTasks.DevelopLiveView,
+      AgentTasks.FixBddSpecs,
       AgentTasks.FixIssues,
       AgentTasks.LinkStoryComponent,
       AgentTasks.LiveContextSpec,
@@ -53,9 +56,12 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ContextImplementation",
       "ContextSpec",
       "DesignUi",
+      "DevelopComponent",
       "DevelopContext",
+      "DevelopController",
       "DevelopLiveContext",
       "DevelopLiveView",
+      "FixBddSpecs",
       "FixIssues",
       "LinkStoryComponent",
       "LiveContextSpec",
@@ -119,6 +125,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.QaStory} = SessionType.cast("QaStory")
       assert {:ok, AgentTasks.StartImplementation} = SessionType.cast("StartImplementation")
       assert {:ok, AgentTasks.TriageIssues} = SessionType.cast("TriageIssues")
+      assert {:ok, AgentTasks.FixBddSpecs} = SessionType.cast("FixBddSpecs")
       assert {:ok, AgentTasks.FixIssues} = SessionType.cast("FixIssues")
     end
 

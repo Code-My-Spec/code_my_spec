@@ -318,9 +318,7 @@ defmodule CodeMySpec.ProjectCoordinator do
   """
   @spec default_orchestrate(module(), any(), map(), keyword()) :: {:ok, map()}
   def default_orchestrate(task_module, scope, session, opts) do
-    component = session.component
-    module_name = component.module_name
-    status_dir = Keyword.get_lazy(opts, :status_dir, fn -> component_status_dir(component) end)
+    {module_name, status_dir} = resolve_session_identity(session, opts)
     safe_name = safe_filename(module_name)
     suffix = task_module_suffix(task_module)
 
@@ -379,9 +377,7 @@ defmodule CodeMySpec.ProjectCoordinator do
   """
   @spec default_orchestrate_evaluate(module(), any(), map(), keyword()) :: {:ok, map()}
   def default_orchestrate_evaluate(task_module, scope, session, opts) do
-    component = session.component
-    module_name = component.module_name
-    status_dir = Keyword.get_lazy(opts, :status_dir, fn -> component_status_dir(component) end)
+    {module_name, status_dir} = resolve_session_identity(session, opts)
     safe_name = safe_filename(module_name)
     suffix = task_module_suffix(task_module)
 
@@ -463,6 +459,25 @@ defmodule CodeMySpec.ProjectCoordinator do
     |> Module.split()
     |> List.last()
     |> Macro.underscore()
+  end
+
+  # Extracts module_name and status_dir from a session map.
+  # Handles both component-scoped sessions (has :component) and
+  # project-scoped sessions (only :project).
+  defp resolve_session_identity(session, opts) do
+    case Map.get(session, :component) do
+      %{module_name: module_name} = component ->
+        status_dir =
+          Keyword.get_lazy(opts, :status_dir, fn -> component_status_dir(component) end)
+
+        {module_name, status_dir}
+
+      _ ->
+        project = session.project
+        module_name = project.name
+        status_dir = Keyword.get(opts, :status_dir, @status_dir)
+        {module_name, status_dir}
+    end
   end
 
   @doc """

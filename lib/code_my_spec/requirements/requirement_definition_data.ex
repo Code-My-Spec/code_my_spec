@@ -400,7 +400,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       RequirementDefinition.new(%{
         name: "bdd_specs_passing",
         checker: BddSpecPassingChecker,
-        satisfied_by: CodeMySpec.AgentTasks.RefactorModule,
+        satisfied_by: CodeMySpec.AgentTasks.FixBddSpecs,
         artifact_type: :tests,
         description: "BDD specs pass",
         prerequisites: ["component_complete"]

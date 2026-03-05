@@ -16,9 +16,12 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ContextImplementation,
     AgentTasks.ContextSpec,
     AgentTasks.DesignUi,
+    AgentTasks.DevelopComponent,
     AgentTasks.DevelopContext,
+    AgentTasks.DevelopController,
     AgentTasks.DevelopLiveContext,
     AgentTasks.DevelopLiveView,
+    AgentTasks.FixBddSpecs,
     AgentTasks.FixIssues,
     AgentTasks.LinkStoryComponent,
     AgentTasks.LiveContextSpec,
@@ -55,7 +58,7 @@ defmodule CodeMySpec.Sessions.SessionType do
   def cast(_module), do: :error
 
   @spec load(binary()) :: {:ok, t()} | :error
-  def load(data) when is_binary(data), do: {:ok, String.to_atom(data)}
+  def load(data) when is_binary(data), do: {:ok, String.to_existing_atom(data)}
 
   @spec dump(atom()) :: {:ok, binary()} | :error
   def dump(module) when is_atom(module), do: {:ok, Atom.to_string(module)}

@@ -16,7 +16,6 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories
@@ -98,9 +97,8 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
       if has_function?(task_module, :orchestrate, 3) do
         task_module.orchestrate(scope, session, [])
       else
-        component = session.component
-        status_dir = ProjectCoordinator.component_status_dir(component)
-        ProjectCoordinator.default_orchestrate(task_module, scope, session, status_dir: status_dir)
+        # default_orchestrate handles both component and project-scoped sessions
+        ProjectCoordinator.default_orchestrate(task_module, scope, session, [])
       end
 
     # Task module can provide full orchestration text via :orchestration key;
@@ -143,18 +141,16 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
         {:ok, r} = task_module.orchestrate_evaluate(scope, session, [])
         {:ok, r, nil}
       else
-        component = session.component
-        status_dir = ProjectCoordinator.component_status_dir(component)
-
+        # default_orchestrate_evaluate handles both component and project-scoped sessions
         {:ok, r} =
           ProjectCoordinator.default_orchestrate_evaluate(
             task_module,
             scope,
             session,
-            status_dir: status_dir
+            []
           )
 
-        {:ok, r, status_dir}
+        {:ok, r, nil}
       end
 
     if result.complete do

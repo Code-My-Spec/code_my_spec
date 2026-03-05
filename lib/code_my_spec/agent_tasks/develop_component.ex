@@ -39,6 +39,7 @@ defmodule CodeMySpec.AgentTasks.DevelopComponent do
 
   def evaluate(scope, session, _opts \\ []) do
     %{component: root} = session
+    root = ComponentRepository.get_component(scope, root.id)
 
     descendants = ComponentRepository.list_all_descendants(scope, root.id)
     all_components = [root | descendants]

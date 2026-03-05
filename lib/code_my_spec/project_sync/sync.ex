@@ -190,7 +190,7 @@ defmodule CodeMySpec.ProjectSync.Sync do
 
   defp load_stories_with_requirements(scope) do
     case Stories.list_project_stories(scope) do
-      {:ok, stories} -> Repo.preload(stories, :requirements)
+      {:ok, stories} -> Repo.preload(stories, [:requirements, :component])
       _other -> []
     end
   end
