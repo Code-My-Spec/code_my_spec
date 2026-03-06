@@ -26,7 +26,13 @@ defmodule CodeMySpec.LocalServer.PermissionSocket do
 
   @impl Slipstream
   def init(state) do
-    {:ok, connect!(state, uri: state.uri)}
+    socket =
+      new_socket()
+      |> assign(:caller, state.caller)
+      |> assign(:topic, state.topic)
+      |> connect!(uri: state.uri)
+
+    {:ok, socket}
   end
 
   @impl Slipstream
