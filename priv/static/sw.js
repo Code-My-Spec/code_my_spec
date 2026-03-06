@@ -1,4 +1,7 @@
 // Service Worker for Web Push Notifications
+self.addEventListener("install", function () { self.skipWaiting(); });
+self.addEventListener("activate", function (event) { event.waitUntil(clients.claim()); });
+
 self.addEventListener("push", function (event) {
   if (!event.data) return;
 
@@ -10,12 +13,15 @@ self.addEventListener("push", function (event) {
   }
 
   const title = payload.title || "CodeMySpec";
+  const url = payload.url || "/app";
+
   const options = {
     body: payload.body || "",
     icon: "/images/logo.svg",
     badge: "/images/logo.svg",
     tag: payload.type || "default",
-    data: { type: payload.type, url: "/app" },
+    data: { url: url },
+    requireInteraction: payload.type === "permission_request",
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -26,16 +32,7 @@ self.addEventListener("notificationclick", function (event) {
 
   const url = (event.notification.data && event.notification.data.url) || "/app";
 
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
-      // Focus existing tab if found
-      for (const client of clientList) {
-        if (client.url.includes("/app") && "focus" in client) {
-          return client.focus();
-        }
-      }
-      // Otherwise open a new tab
-      return clients.openWindow(url);
-    })
-  );
+  // Always open a new window/tab to the target URL.
+  // LiveView navigation doesn't work reliably with client.navigate().
+  event.waitUntil(clients.openWindow(url));
 });

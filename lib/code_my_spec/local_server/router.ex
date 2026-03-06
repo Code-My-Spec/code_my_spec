@@ -13,6 +13,7 @@ defmodule CodeMySpec.LocalServer.Router do
     BootstrapController,
     HookController,
     NotificationController,
+    PermissionController,
     StoryComponentController,
     StoryLinkageController
   }
@@ -134,6 +135,29 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
     |> maybe_continue(&Plugs.LocalScope.call(&1, []))
     |> maybe_continue(&NotificationController.send_notification/1)
+  end
+
+  # Create a permission request (from hook script)
+  post "/api/permissions/request" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&PermissionController.create/1)
+  end
+
+  # SSE stream — hook script waits here for approval/denial
+  get "/api/permissions/:id/stream" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&PermissionController.stream/1)
+  end
+
+  # Respond to a permission request (from Web UI / push notification action)
+  post "/api/permissions/:id/respond" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&PermissionController.respond/1)
   end
 
   # Link a story to a component by module name

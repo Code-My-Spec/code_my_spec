@@ -90,19 +90,50 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
     Logger.info("[HookController] [#{req_id}] Dispatching Notification: #{notification_type}")
 
-    Task.start(fn ->
-      NotificationClient.notify(%{
-        type: notification_type,
-        title: title,
-        body: message
-      })
-    end)
+    # Don't push generic notifications about permissions — the PermissionRequest
+    # hook already sends a push with a link to the approval LiveView.
+    if permission_notification?(title, message) do
+      Logger.info("[HookController] [#{req_id}] Suppressing permission notification (handled by approve hook)")
+    else
+      Task.start(fn ->
+        NotificationClient.notify(%{
+          type: notification_type,
+          title: title,
+          body: message
+        })
+      end)
+    end
 
     %{}
+  end
+
+  defp dispatch(_scope, "PreToolUse", _session_id, hook_input, req_id) do
+    command = get_in(hook_input, ["tool_input", "command"]) || ""
+    Logger.info("[HookController] [#{req_id}] Bash: #{command}")
+
+    if String.match?(command, ~r/mix test( |$)/) and not String.contains?(command, "mix agent_test") do
+      replacement = String.replace(command, "mix test", "MIX_ENV=test mix agent_test")
+
+      %{
+        "hookSpecificOutput" => %{
+          "hookEventName" => "PreToolUse",
+          "permissionDecision" => "allow",
+          "permissionDecisionReason" => "Redirected mix test to mix agent_test",
+          "updatedInput" => %{"command" => replacement}
+        }
+      }
+    else
+      %{}
+    end
   end
 
   defp dispatch(_scope, event_name, _session_id, _hook_input, req_id) do
     Logger.warning("[HookController] [#{req_id}] Unhandled hook event: #{event_name}")
     %{}
+  end
+
+  defp permission_notification?(title, message) do
+    text = String.downcase("#{title} #{message}")
+    String.contains?(text, "permission") or String.contains?(text, "approval")
   end
 end

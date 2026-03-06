@@ -109,7 +109,8 @@ defmodule CodeMySpec.MixProject do
       {:uuid, "~> 1.1.8"},
       {:inflex, "~> 2.1.0"},
       {:oauth2, "~> 2.0"},
-      {:web_push_elixir, "~> 0.5"}
+      {:web_push_elixir, "~> 0.5"},
+      {:slipstream, "~> 1.1"}
     ]
   end
 

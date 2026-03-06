@@ -7,6 +7,7 @@ defmodule CodeMySpec.Notifications do
 
   import Ecto.Query
 
+  alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Repo
 
@@ -66,6 +67,87 @@ defmodule CodeMySpec.Notifications do
       :ok
     end
   end
+
+  # --- Permission Requests ---
+
+  @doc """
+  Create a permission request and notify the user via Web Push.
+
+  Returns `{:ok, permission_request}` on success.
+  The caller should then subscribe to PubSub topic
+  `"permission_request:<id>"` to await the decision.
+  """
+  def create_permission_request(user_id, %{} = attrs) do
+    attrs = Map.merge(attrs, %{"user_id" => user_id, "status" => "pending"})
+
+    result =
+      %PermissionRequest{}
+      |> PermissionRequest.changeset(attrs)
+      |> Repo.insert()
+
+    case result do
+      {:ok, request} ->
+        # Send Web Push notification to the user
+        notify_user(user_id, %{
+          type: "permission_request",
+          title: "Claude Code: #{request.tool_name}",
+          body: format_tool_summary(request.tool_name, request.tool_input),
+          url: "/app/permissions/#{request.id}"
+        })
+
+        {:ok, request}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Resolve a permission request with a decision (allow/deny).
+
+  Broadcasts the decision on PubSub so the waiting SSE connection receives it.
+  """
+  def resolve_permission_request(id, decision) when decision in ~w(allow deny) do
+    case Repo.get(PermissionRequest, id) do
+      nil ->
+        {:error, :not_found}
+
+      %{status: "pending"} = request ->
+        request
+        |> PermissionRequest.changeset(%{status: decision_to_status(decision), decision: decision})
+        |> Repo.update()
+        |> case do
+          {:ok, updated} ->
+            Phoenix.PubSub.broadcast(
+              CodeMySpec.PubSub,
+              "permission_request:#{id}",
+              {:permission_decided, %{id: id, decision: decision}}
+            )
+
+            {:ok, updated}
+
+          error ->
+            error
+        end
+
+      %{status: status} ->
+        {:error, {:already_resolved, status}}
+    end
+  end
+
+  @doc """
+  Get a permission request by ID.
+  """
+  def get_permission_request(id), do: Repo.get(PermissionRequest, id)
+
+  defp decision_to_status("allow"), do: "approved"
+  defp decision_to_status("deny"), do: "denied"
+
+  defp format_tool_summary("Bash", %{"command" => cmd}), do: cmd
+  defp format_tool_summary("Read", %{"file_path" => path}), do: path
+  defp format_tool_summary("Write", %{"file_path" => path}), do: path
+  defp format_tool_summary("Edit", %{"file_path" => path}), do: path
+  defp format_tool_summary(_tool, input), do: Jason.encode!(input)
 
   defp send_push(subscription, message) do
     push_subscription =
