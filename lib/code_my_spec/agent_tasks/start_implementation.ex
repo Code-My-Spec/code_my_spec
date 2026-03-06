@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.{Environments, FrameworkSync}
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.ProjectCoordinator.Dispatch
   alias CodeMySpec.ProjectSync.Sync
@@ -37,6 +37,7 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def command(scope, _session, _opts \\ []) do
+    sync_framework(scope.environment)
     dispatch(scope.environment, scope)
   end
 
@@ -132,6 +133,11 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   # ============================================================================
   # Sync
   # ============================================================================
+
+  defp sync_framework(env) do
+    cwd = get_working_dir(env)
+    FrameworkSync.sync(cwd)
+  end
 
   defp sync_project(scope) do
     working_dir = get_working_dir(scope.environment)

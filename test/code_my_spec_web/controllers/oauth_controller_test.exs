@@ -107,7 +107,6 @@ defmodule CodeMySpecWeb.OAuthControllerTest do
   end
 
   describe "POST /oauth/revoke" do
-    @tag :capture_log
     test "revokes valid access token", %{conn: conn} do
       client = oauth_application_fixture()
 

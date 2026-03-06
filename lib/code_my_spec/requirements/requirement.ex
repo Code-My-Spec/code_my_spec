@@ -224,6 +224,9 @@ defmodule CodeMySpec.Requirements.Requirement do
     ])
     |> validate_required([:name, :artifact_type, :description, :checker_module, :satisfied])
     |> validate_score()
+    |> unique_constraint([:component_id, :name], name: :requirements_component_id_name_index)
+    |> unique_constraint([:story_id, :name], name: :requirements_story_id_name_index)
+    |> unique_constraint([:project_id, :name], name: :requirements_project_id_name_index)
   end
 
   @doc """

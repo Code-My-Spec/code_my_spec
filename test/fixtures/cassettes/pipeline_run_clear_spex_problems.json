@@ -245,6 +245,22 @@
       },
       "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
       "recorded_at": "2026-03-05T04:07:41.538528Z"
+    },
+    {
+      "args": [
+        "spex",
+        "../code_my_spec_test_repos/pool_code_repo_1/test/test_phoenix_project/posts/post_repository_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_3011.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\nNo spex files found matching pattern: test/spex/**/*_spex.exs\nTry: mix spex --help\n",
+      "recorded_at": "2026-03-05T04:12:10.968348Z"
     }
   ],
   "ports": []
