@@ -247,9 +247,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       end
 
     case result do
-      {:complete, _} -> Logger.info("[QaStory] run_phases(#{story_id}): complete")
-      {:advance, phase} -> Logger.info("[QaStory] run_phases(#{story_id}): advance to #{phase}")
-      {:problem, feedback} -> Logger.info("[QaStory] run_phases(#{story_id}): problem — #{String.slice(feedback, 0..120)}")
+      {:complete, _} ->
+        Logger.info("[QaStory] run_phases(#{story_id}): complete")
+
+      {:advance, phase} ->
+        Logger.info("[QaStory] run_phases(#{story_id}): advance to #{phase}")
+
+      {:problem, feedback} ->
+        Logger.info(
+          "[QaStory] run_phases(#{story_id}): problem — #{String.slice(feedback, 0..120)}"
+        )
     end
 
     result
@@ -294,7 +301,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
       ## Prompt
 
-      Start a `codemyspec:qa-tester` subagent. Set the prompt parameter to the file path
+      Start a `codemyspec:qa` subagent. Set the prompt parameter to the file path
       itself: `#{prompt_path}`
 
       Do NOT read the file or write instructions around it — pass the path string as-is.
@@ -334,9 +341,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp check_plan(env) do
     case Environments.read_file(env, Paths.qa_plan()) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
-        with :ok <- validate_plan_sections(content) do
-          validate_start_script(env)
-        end
+        validate_plan_sections(content)
 
       _ ->
         doc_spec = DocumentSpecProjector.project_spec("qa_plan")
@@ -345,19 +350,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
          "QA plan not found at `#{Paths.qa_plan()}`. " <>
            "Write the QA plan before continuing with the story brief.\n\n" <>
            "## QA Plan Format\n\n#{doc_spec}"}
-    end
-  end
-
-  defp validate_start_script(env) do
-    script_path = Paths.qa_start_script()
-
-    if Environments.file_exists?(env, script_path) do
-      :ok
-    else
-      {:ok, :invalid,
-       "`start-qa.sh` not found at `#{script_path}`. " <>
-         "Write the start script (seeds + auth) before continuing. " <>
-         "See the plan-phase instructions for patterns."}
     end
   end
 
@@ -446,7 +438,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     if is_list(issues) do
       fileable = Enum.filter(issues, &QaIssue.fileable?/1)
-      Logger.info("[QaStory] create_issue_files(#{story_id}): #{length(fileable)} fileable issue(s)")
+
+      Logger.info(
+        "[QaStory] create_issue_files(#{story_id}): #{length(fileable)} fileable issue(s)"
+      )
 
       Enum.each(fileable, fn issue ->
         Logger.info("[QaStory] filing issue: #{issue.title} (#{issue.severity})")
@@ -529,13 +524,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     ## Instructions
 
-    1. Read `#{Paths.framework_dir()}/qa-tooling.md` for testing tool patterns
+    1. Read `#{Paths.framework_dir()}/qa-tooling.md` for testing tool patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
     2. Read `#{router_path}` and analyze routes, auth pipelines, and live sessions
     3. Write a standard seed script to `priv/repo/qa_seeds.exs` (`.exs` files run via `mix run`)
     4. Write additional seed scripts to `priv/repo/qa_seeds.exs` if other scenarios warrant it
     5. Write useful scripts to `#{scripts_dir}/` (`.sh` for curl wrappers, `chmod +x`)
-    6. Write `#{Paths.qa_start_script()}` — the single entry point that runs seeds and handles auth (must be `chmod +x`)
-    7. Write `#{Paths.qa_plan()}` following the format below
+    6. Write `#{Paths.qa_plan()}` following the format below
 
     Stop the session after writing the plan.
 
@@ -568,8 +562,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         Write a testing brief for story #{story.id}. The brief tells the tester exactly
         what to do — which tools, how to authenticate, what seeds to run, and what to test.
 
-        **Available tools:** `vibium` (browser automation), `curl` (API testing), and shell
-        scripts in `#{scripts_dir}/`.
+        **Available tools:** MCP browser tools (browser automation for UI/LiveView pages), `curl` (API
+        endpoint testing with API key auth), and shell scripts in `#{scripts_dir}/`.
+        See `#{Paths.framework_dir()}/qa-tooling.md` for when to use each tool.
 
         ## Story: #{story.title}
 
@@ -588,9 +583,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         """
         ## Instructions
 
-        1. Read `#{Paths.qa_plan()}` for app overview, tools, auth, and seed strategy
-        2. Run `#{Paths.qa_start_script()}` to verify setup works for this story
-        3. Verify the tools and scripts work for this story — run seed scripts, test auth scripts
+        1. Read `#{Paths.framework_dir()}/qa-tooling.md` for testing tool patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
+        2. Read `#{Paths.qa_plan()}` for app overview, tools, auth, and seed strategy
+        3. Run seed scripts to verify setup works for this story
         4. If this story needs additional seeds, scripts, or plan updates, make them now
         5. Read the BDD spec files listed above (they contain selectors, test data, and assertions)
         6. If a linked component is listed above, read its source and spec to understand the feature
@@ -630,16 +625,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         The brief has been validated. Execute the test plan and write the result.
 
         Read `#{Paths.framework_dir()}/qa-tooling.md` for the available testing tools and patterns.
-        You are a CLI agent — use `vibium` for browser automation (navigate, click, type,
-        screenshot) and shell scripts in `#{Paths.qa_dir()}/scripts/` for authenticated requests.
-        You do NOT open a browser manually.
+        You are a CLI agent — you do NOT open a browser manually.
         Reference existing scripts by path rather than inlining raw curl commands.
 
-        **Tool rules:**
-        - **Browser testing:** Use `vibium` commands (`vibium navigate`, `vibium click`, `vibium type`,
-          `vibium screenshot`, etc.).
-        - **API testing:** Use `curl` but ALWAYS write single-line commands. Multi-line curl commands
-          (with backslash continuations) require individual approval and block the session.
+        **Tool rules — use the right tool for the right layer:**
+        - **UI pages / LiveViews (`:browser` pipeline):** Use MCP browser tools for all interaction — navigate,
+          click, type, screenshot. Log in via the browser (see the QA plan for credentials and login steps).
+        - **API endpoints (`:api` pipeline):** Use `curl` with API key headers. ALWAYS single-line commands.
+          Use `#{Paths.qa_dir()}/scripts/authenticated_curl.sh` for API-key-authenticated requests.
+        - **NEVER** use curl with session cookies or CSRF tokens for browser-authenticated routes.
+          If a route is behind `:require_authenticated_user`, test it with MCP browser tools, not curl.
 
         ## Story: #{story.title}
 
@@ -656,10 +651,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         """
         ## Instructions
 
-        1. Run `#{Paths.qa_start_script()}` to set up seeds and auth before testing
-        2. Read the brief at `#{brief_path(story_id)}` for the complete testing plan
-        3. Read `#{Paths.qa_plan()}` for auth strategy and seed commands
-        4. Read `#{Paths.framework_dir()}/qa-tooling.md` for tool usage patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
+        1. Read the brief at `#{brief_path(story_id)}` for the complete testing plan
+        2. Read `#{Paths.qa_plan()}` for auth strategy, seed commands, and login steps
+        3. Read `#{Paths.framework_dir()}/qa-tooling.md` for tool usage patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
+        4. Run seed scripts to set up test data before testing
         5. If a linked component is listed above, read its source to understand the feature's implementation
         6. Execute each test scenario from the brief
         7. Capture a screenshot at each key state — save to `#{screenshot_dir}/`

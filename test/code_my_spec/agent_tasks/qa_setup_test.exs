@@ -96,14 +96,6 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
     )
   end
 
-  defp write_start_qa_script(env) do
-    write_file!(env, ".code_my_spec/qa/scripts/start-qa.sh", """
-    #!/bin/bash
-    mix run priv/repo/qa_seeds.exs
-    echo "QA setup complete"
-    """)
-  end
-
   # ============================================================================
   # command/3 Tests
   # ============================================================================
@@ -172,11 +164,6 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       assert prompt =~ ".code_my_spec/qa/plan.md"
     end
 
-    test "includes start-qa.sh instructions", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaSetup.command(scope, session)
-      assert prompt =~ "start-qa.sh"
-      assert prompt =~ "single entry point"
-    end
   end
 
   # ============================================================================
@@ -186,12 +173,11 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
   describe "evaluate/3" do
     setup [:create_scope, :create_session]
 
-    test "returns {:ok, :valid} when plan has all required sections and start-qa.sh exists", %{
+    test "returns {:ok, :valid} when plan has all required sections", %{
       scope: scope,
       session: session
     } do
       write_qa_plan(scope.environment)
-      write_start_qa_script(scope.environment)
 
       assert {:ok, :valid} = QaSetup.evaluate(scope, session)
     end
@@ -243,15 +229,5 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       assert feedback =~ "Seed Strategy"
     end
 
-    test "returns {:ok, :invalid, feedback} when plan valid but start-qa.sh missing", %{
-      scope: scope,
-      session: session
-    } do
-      write_qa_plan(scope.environment)
-
-      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, session)
-      assert feedback =~ "start-qa.sh"
-      assert feedback =~ ".code_my_spec/qa/scripts/start-qa.sh"
-    end
   end
 end

@@ -65,9 +65,6 @@ defmodule CodeMySpec.Paths do
   @doc "QA scripts directory (`.code_my_spec/qa/scripts`)."
   def qa_scripts_dir, do: Path.join(@base_dir, "qa/scripts")
 
-  @doc "QA start script (`.code_my_spec/qa/scripts/start-qa.sh`)."
-  def qa_start_script, do: Path.join(@base_dir, "qa/scripts/start-qa.sh")
-
   @doc "Transient research prompts directory (`.code_my_spec/status/research`)."
   def research_dir, do: Path.join(@base_dir, "status/research")
 

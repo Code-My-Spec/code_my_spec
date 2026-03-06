@@ -53,9 +53,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
 
     case Environments.read_file(env, plan_path) do
       {:ok, content} ->
-        with {:ok, :valid} <- validate_sections(content) do
-          validate_start_script(env)
-        end
+        validate_sections(content)
 
       _ ->
         {:ok, :invalid, "QA plan not found at `#{plan_path}`. Write the plan and stop the session again."}
@@ -122,8 +120,8 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     application — its routes, authentication mechanism, configuration — and produce a QA plan
     document and executable shell scripts that future QA agents can use.
 
-    Read `.code_my_spec/framework/qa-tooling.md` for reference patterns on writing
-    authenticated curl scripts, `.exs` seed scripts, and smoke tests.\
+    Read `.code_my_spec/framework/qa-tooling.md` for reference patterns. Key topics:
+    tool selection (MCP browser tools for UI, curl for API), `.exs` seed scripts, and smoke tests.\
     """
   end
 
@@ -218,8 +216,13 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
 
     ### Auth scripts: `.sh` files in `#{@scripts_dir}/`
 
-    For HTTP auth helpers (e.g., `authenticated_curl.sh`), shell scripts are appropriate because
-    they wrap curl with cookie/token handling. Make them `chmod +x`.#{existing_scripts}\
+    Shell scripts wrap curl with the app's API authentication (e.g., API key headers, bearer tokens).
+    These are for API endpoints only — NOT for session-authenticated browser routes (use MCP browser tools for those).
+
+    For example, `authenticated_curl.sh` should add the `X-Api-Key` header for API routes, not
+    scrape login forms for session cookies. Read the router to find API auth patterns.
+
+    Make `.sh` scripts `chmod +x`.#{existing_scripts}\
     """
   end
 
@@ -251,26 +254,13 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     ### Step 4: Write Auth Scripts (`.sh`)
 
     1. Create `#{@scripts_dir}/` directory for shell scripts
-    2. Write `authenticated_curl.sh` — wraps curl with login/cookie/token handling
+    2. Write `authenticated_curl.sh` — wraps curl with the app's API key header for API endpoint testing.
+       NEVER scrape login forms or session cookies — that's fragile and wrong.
+       Read the router to find how API endpoints authenticate (X-Api-Key header, bearer token, etc.)
     3. Make `.sh` scripts `chmod +x`
-    4. Shell scripts are ONLY for HTTP auth helpers (curl wrappers), never for seeding data
+    4. Shell scripts are ONLY for API auth helpers (curl wrappers), never for seeding data or browser session auth
 
-    ### Step 5: Write `start-qa.sh`
-
-    Create `#{Paths.qa_start_script()}` as the single entry point that handles seeds, auth,
-    and any tool startup. QA agents run this script before every test session.
-
-    The script should:
-    - Run seed scripts (e.g., `mix run priv/repo/qa_seeds.exs`)
-    - Handle authentication — common patterns:
-      - **Vibium (Phoenix LiveView):** `vibium navigate` to the login URL, `vibium type` credentials, `vibium click` submit
-      - **curl:** POST to the login endpoint and capture the session cookie/token
-      - **mix run:** Create a token directly via context functions (e.g., `mix run -e 'MyApp.Accounts.create_user_api_token(...)'`)
-    - Print credentials, URLs, and tokens at the end
-    - Be idempotent — safe to run multiple times
-    - Be `chmod +x`
-
-    ### Step 6: Write the QA Plan
+    ### Step 5: Write the QA Plan
 
     Write `#{Paths.qa_plan()}` following the document specification above. Include:
     - **App Overview**: tech stack, auth mechanism, port/URL, key routes
@@ -284,18 +274,6 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   # ============================================================================
   # Validation
   # ============================================================================
-
-  defp validate_start_script(env) do
-    script_path = Paths.qa_start_script()
-
-    if Environments.file_exists?(env, script_path) do
-      {:ok, :valid}
-    else
-      {:ok, :invalid,
-       "`start-qa.sh` not found at `#{script_path}`. " <>
-         "Write the start script and stop the session again."}
-    end
-  end
 
   defp validate_sections(content) do
     content_lower = String.downcase(content)
