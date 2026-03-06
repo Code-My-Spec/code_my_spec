@@ -51,7 +51,7 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
       |> Requirement.changeset(attrs)
       |> Ecto.Changeset.put_assoc(:component, component)
 
-    persist_or_apply(changeset, opts)
+    persist_or_apply(changeset, opts, :requirements_component_id_name_index)
   end
 
   @spec create_story_requirement(
@@ -65,7 +65,7 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
       %Requirement{}
       |> Requirement.changeset(Map.put(attrs, :story_id, story.id))
 
-    persist_or_apply(changeset, opts)
+    persist_or_apply(changeset, opts, :requirements_story_id_name_index)
   end
 
   @spec create_project_requirement(
@@ -79,7 +79,7 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
       %Requirement{}
       |> Requirement.changeset(Map.put(attrs, :project_id, project.id))
 
-    persist_or_apply(changeset, opts)
+    persist_or_apply(changeset, opts, :requirements_project_id_name_index)
   end
 
   @spec update_requirement(Scope.t(), Requirement.t(), Requirement.requirement_attrs()) ::
@@ -125,9 +125,37 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
     project
   end
 
-  defp persist_or_apply(changeset, opts) do
+  @upsert_fields [
+    :artifact_type,
+    :description,
+    :checker_module,
+    :satisfied_by,
+    :scope,
+    :satisfied,
+    :score,
+    :checked_at,
+    :details
+  ]
+
+  # Partial unique indexes require the WHERE clause for SQLite to match them.
+  @conflict_fragments %{
+    requirements_component_id_name_index:
+      ~s|("component_id","name") WHERE "component_id" IS NOT NULL|,
+    requirements_story_id_name_index:
+      ~s|("story_id","name") WHERE "story_id" IS NOT NULL|,
+    requirements_project_id_name_index:
+      ~s|("project_id","name") WHERE "project_id" IS NOT NULL|
+  }
+
+  defp persist_or_apply(changeset, opts, conflict_target) do
     if Keyword.get(opts, :persist, true) do
-      Repo.insert(changeset)
+      fragment = Map.fetch!(@conflict_fragments, conflict_target)
+
+      Repo.insert(changeset,
+        on_conflict: {:replace, @upsert_fields},
+        conflict_target: {:unsafe_fragment, fragment},
+        returning: true
+      )
     else
       Ecto.Changeset.apply_action(changeset, :insert)
     end

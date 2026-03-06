@@ -108,11 +108,16 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
   end
 
   defp dispatch(_scope, "PreToolUse", _session_id, hook_input, req_id) do
+    tool_name = Map.get(hook_input, "tool_name", "unknown")
     command = get_in(hook_input, ["tool_input", "command"]) || ""
-    Logger.info("[HookController] [#{req_id}] Bash: #{command}")
 
-    if String.match?(command, ~r/mix test( |$)/) and not String.contains?(command, "mix agent_test") do
+    Logger.info("[HookController] [#{req_id}] PreToolUse #{tool_name}: #{String.slice(command, 0, 200)}")
+
+    if tool_name == "Bash" and String.match?(command, ~r/mix test( |$)/) and
+         not String.contains?(command, "mix agent_test") do
       replacement = String.replace(command, "mix test", "MIX_ENV=test mix agent_test")
+
+      Logger.info("[HookController] [#{req_id}] Rewriting: #{String.slice(replacement, 0, 200)}")
 
       %{
         "hookSpecificOutput" => %{
@@ -123,6 +128,7 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
         }
       }
     else
+      Logger.info("[HookController] [#{req_id}] PreToolUse #{tool_name}: passthrough")
       %{}
     end
   end

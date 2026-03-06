@@ -2,18 +2,17 @@ defmodule CodeMySpec.Requirements.IncomingIssuesChecker do
   @moduledoc """
   Checks whether incoming QA issues at medium+ severity have been triaged.
 
-  Satisfied when `.code_my_spec/issues/incoming/` contains no `.md` files
-  with severity of medium, high, or critical. Low and info issues are
+  Queries the Issues context for incoming issues. Satisfied when none at
+  medium, high, or critical severity remain. Low and info issues are
   ignored — they don't block the workflow.
   """
 
   @behaviour CodeMySpec.Requirements.CheckerBehaviour
 
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Users.Scope
-
-  @triage_severities ~w(critical high medium)
 
   def check(
         %Scope{} = scope,
@@ -27,37 +26,25 @@ defmodule CodeMySpec.Requirements.IncomingIssuesChecker do
         _entity,
         _opts \\ []
       ) do
-    env = scope.environment
-    all_files = Environments.glob(env, "#{Paths.issues_incoming_dir()}/*.md") || []
-
     triageable =
-      Enum.filter(all_files, fn path ->
-        case Environments.read_file(env, path) do
-          {:ok, content} -> parse_severity(content) in @triage_severities
-          _ -> false
-        end
-      end)
+      Issues.list_by_status(scope, :incoming)
+      |> Enum.filter(&(Issue.severity_index(&1.severity) <= Issue.severity_index(:medium)))
 
     {satisfied, details} =
       case triageable do
         [] ->
           {true, %{status: "No untriaged issues at medium+ severity"}}
 
-        files ->
+        issues ->
           scope_counts =
-            files
-            |> Enum.map(fn path ->
-              case Environments.read_file(env, path) do
-                {:ok, content} -> parse_scope(content)
-                _ -> "app"
-              end
-            end)
+            issues
+            |> Enum.map(& &1.scope)
             |> Enum.frequencies()
 
           {false,
            %{
-             reason: "#{length(files)} untriaged issue(s) at medium+ severity in incoming/",
-             files: Enum.map(files, &Path.basename/1),
+             reason: "#{length(issues)} untriaged issue(s) at medium+ severity",
+             issues: Enum.map(issues, &%{title: &1.title, severity: &1.severity}),
              scopes: scope_counts
            }}
       end
@@ -73,19 +60,5 @@ defmodule CodeMySpec.Requirements.IncomingIssuesChecker do
       checked_at: DateTime.utc_now(),
       details: details
     }
-  end
-
-  defp parse_severity(content) do
-    case Regex.run(~r/^## Severity\s*\n\s*(\w+)/m, content) do
-      [_, sev] -> String.downcase(sev)
-      _ -> "unknown"
-    end
-  end
-
-  defp parse_scope(content) do
-    case Regex.run(~r/^## Scope\s*\n\s*(\w+)/m, content) do
-      [_, scope] -> String.downcase(scope)
-      _ -> "app"
-    end
   end
 end

@@ -80,7 +80,7 @@ defmodule CodeMySpec.Documents do
 
   defp module_name_from_path(path) do
     path
-    |> String.replace(~r{^.*/#{Regex.escape(CodeMySpec.Paths.spec_dir())}/}, "")
+    |> String.replace(~r{^(.*/)?#{Regex.escape(CodeMySpec.Paths.spec_dir())}/}, "")
     |> String.replace_suffix(".spec.md", "")
     |> String.split("/")
     |> Enum.map_join(".", fn part ->

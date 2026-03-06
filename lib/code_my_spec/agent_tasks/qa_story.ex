@@ -23,9 +23,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   require Logger
 
   alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{BddSpecs, Components, Environments, Paths, Stories}
+  alias CodeMySpec.{BddSpecs, Components, Environments, Issues, Paths, Stories}
   alias CodeMySpec.Documents
-  alias CodeMySpec.Documents.{DocumentSpecProjector, QaIssue}
+  alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Utils
 
   @required_plan_sections ["app overview", "tools registry", "seed strategy"]
@@ -91,7 +91,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
            :ok <- check_brief(env, story_id),
            {:ok, document} <- check_result(env, story_id) do
         Logger.info("[QaStory] evaluate: all phases valid, filing issues")
-        create_issue_files(env, story_id, document)
+        Issues.create_from_qa_result(scope, story_id, document)
         {:ok, :valid}
       else
         {:ok, :invalid, feedback} = result ->
@@ -129,7 +129,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       {complete, has_problems} =
         case run_phases(env, story_id) do
           {:complete, document} ->
-            create_issue_files(env, story_id, document)
+            Issues.create_from_qa_result(scope, story_id, document)
             Environments.delete_file(env, prompt_path)
             cleanup_problem_file(env, problem_path)
             {true, false}
@@ -185,7 +185,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         case run_phases(env, story_id) do
           {:complete, document} ->
             Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): complete, filing issues")
-            create_issue_files(env, story_id, document)
+            Issues.create_from_qa_result(scope, story_id, document)
             Environments.delete_file(env, prompt_path)
             cleanup_problem_file(env, problem_path)
             {true, false}
@@ -421,75 +421,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
            "Stop the session when done.\n\n## Result Format\n\n" <>
            result_spec}
     end
-  end
-
-  # ============================================================================
-  # Issue Filing
-  # ============================================================================
-
-  defp create_issue_files(env, story_id, document) do
-    issues = Map.get(document.sections, "issues", [])
-
-    Logger.info(
-      "[QaStory] create_issue_files(#{story_id}): " <>
-        "sections=#{inspect(Map.keys(document.sections))}, " <>
-        "issues_type=#{if is_list(issues), do: "list(#{length(issues)})", else: inspect(issues)}"
-    )
-
-    if is_list(issues) do
-      fileable = Enum.filter(issues, &QaIssue.fileable?/1)
-
-      Logger.info(
-        "[QaStory] create_issue_files(#{story_id}): #{length(fileable)} fileable issue(s)"
-      )
-
-      Enum.each(fileable, fn issue ->
-        Logger.info("[QaStory] filing issue: #{issue.title} (#{issue.severity})")
-        maybe_write_issue_file(env, story_id, issue)
-      end)
-    end
-  end
-
-  defp maybe_write_issue_file(env, story_id, issue) do
-    slug =
-      issue.title
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9]+/, "_")
-      |> String.trim_leading("_")
-      |> String.trim_trailing("_")
-      |> String.slice(0..40)
-
-    path = Path.join(Paths.issues_incoming_dir(), "qa-#{story_id}-#{slug}.md")
-
-    if Environments.file_exists?(env, path) do
-      Logger.info("[QaStory] issue file already exists: #{path}")
-    else
-      content = build_issue_file(story_id, issue)
-      result = Environments.write_file(env, path, content)
-      Logger.info("[QaStory] wrote issue file: #{path} (result=#{inspect(result)})")
-    end
-  end
-
-  defp build_issue_file(story_id, issue) do
-    """
-    # #{issue.title}
-
-    ## Severity
-
-    #{issue.severity}
-
-    ## Scope
-
-    #{issue.scope || "app"}
-
-    ## Description
-
-    #{issue.description}
-
-    ## Source
-
-    QA Story #{story_id} — `.code_my_spec/qa/#{story_id}/result.md`
-    """
   end
 
   # ============================================================================

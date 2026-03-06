@@ -2,92 +2,67 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   @moduledoc """
   Agent task for triaging incoming QA issues.
 
-  Reviews all issues in `.code_my_spec/issues/incoming/`, decides dispositions
-  (accept, dismiss, merge), and moves files to `accepted/` or `dismissed/`.
+  Reviews all incoming issues from the database, decides dispositions
+  (accept, dismiss, merge), and moves projected files to `accepted/` or `dismissed/`.
 
-  Accepts an optional minimum severity argument (default: "medium") from
+  Accepts an optional minimum severity argument (default: :medium) from
   `session.state["topic"]`. Only issues at or above the specified severity
   are included in the triage.
 
   Two main functions:
-  - `command/3` — Reads incoming issues, builds triage prompt
-  - `evaluate/3` — Checks that no incoming issues at or above min severity remain
+  - `command/3` — Reads incoming issues from DB, builds triage prompt
+  - `evaluate/3` — Reconciles filesystem changes to DB, checks that no incoming issues remain
   """
 
   alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{Issues, Paths}
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.ProjectCoordinator
-
-  @severity_order ~w(critical high medium low info)
 
   @doc """
   Read incoming issues and build a triage prompt.
 
-  Globs `incoming/`, reads each issue at or above the minimum severity,
+  Queries the database for incoming issues at or above the minimum severity
   and builds a prompt instructing the agent to review, deduplicate, and
-  execute dispositions.
+  execute dispositions by moving projected files.
 
   Returns `{:ok, prompt_text}`
   """
   def command(scope, session, _opts \\ []) do
     min_severity = get_min_severity(session)
-    env = scope.environment
-
-    files = Environments.glob(env, "#{Paths.issues_incoming_dir()}/*.md") || []
-
-    issues =
-      files
-      |> Enum.map(fn path ->
-        case Environments.read_file(env, path) do
-          {:ok, content} -> {path, content}
-          _ -> nil
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.filter(fn {_path, content} ->
-        severity = parse_severity(content)
-        at_or_above_severity?(severity, min_severity)
-      end)
+    issues = list_incoming_at_severity(scope, min_severity)
 
     prompt = build_prompt(issues, min_severity)
-    {:ok, TaskMarker.build("TriageIssues", min_severity) <> "\n\n" <> prompt}
+    {:ok, TaskMarker.build("TriageIssues", to_string(min_severity)) <> "\n\n" <> prompt}
   end
 
   @doc """
-  Check that no incoming issues at or above the minimum severity remain.
+  Reconcile filesystem triage and check that no incoming issues remain.
+
+  First reconciles the agent's file moves back to the database (files moved
+  to accepted/ get accepted, files removed get dismissed), then checks
+  whether untriaged issues remain.
 
   Returns:
-  - `{:ok, :valid}` when incoming/ has no matching issues
+  - `{:ok, :valid}` when no incoming issues at min severity remain
   - `{:ok, :invalid, feedback}` when untriaged issues remain
   """
   def evaluate(scope, session, _opts \\ []) do
     min_severity = get_min_severity(session)
-    env = scope.environment
 
-    files = Environments.glob(env, "#{Paths.issues_incoming_dir()}/*.md") || []
+    Issues.reconcile_triage(scope)
 
-    remaining =
-      files
-      |> Enum.filter(fn path ->
-        case Environments.read_file(env, path) do
-          {:ok, content} ->
-            severity = parse_severity(content)
-            at_or_above_severity?(severity, min_severity)
-
-          _ ->
-            false
-        end
-      end)
+    remaining = list_incoming_at_severity(scope, min_severity)
 
     case remaining do
       [] ->
         {:ok, :valid}
 
-      files ->
-        names = Enum.map_join(files, "\n", &"- `#{Path.basename(&1)}`")
+      issues ->
+        names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
 
         {:ok, :invalid,
-         "#{length(files)} untriaged issue(s) remain in incoming/ at #{min_severity}+ severity:\n\n#{names}\n\nReview each issue and move to accepted/ or dismissed/."}
+         "#{length(issues)} untriaged issue(s) remain at #{min_severity}+ severity:\n\n#{names}\n\nReview each issue and move to accepted/ or dismissed/."}
     end
   end
 
@@ -114,17 +89,28 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   defp build_prompt(issues, min_severity) do
     grouped =
       issues
-      |> Enum.group_by(fn {_path, content} -> parse_severity(content) end)
-      |> Enum.sort_by(fn {sev, _} -> severity_index(sev) end)
+      |> Enum.group_by(& &1.severity)
+      |> Enum.sort_by(fn {sev, _} -> Issue.severity_index(sev) end)
 
     issues_text =
       Enum.map_join(grouped, "\n\n", fn {severity, group} ->
         items =
-          Enum.map_join(group, "\n\n", fn {path, content} ->
-            "### `#{Path.basename(path)}`\n\n```markdown\n#{content}\n```"
+          Enum.map_join(group, "\n\n", fn issue ->
+            filename = Issues.projected_filename(issue)
+
+            """
+            ### `#{filename}`
+
+            - **Title:** #{issue.title}
+            - **Severity:** #{issue.severity}
+            - **Scope:** #{issue.scope || :app}
+            - **Story:** #{issue.story_id || "N/A"}
+
+            #{issue.description}\
+            """
           end)
 
-        "## #{String.capitalize(severity)} (#{length(group)})\n\n#{items}"
+        "## #{String.capitalize(to_string(severity))} (#{length(group)})\n\n#{items}"
       end)
 
     """
@@ -171,27 +157,22 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   # ============================================================================
 
   defp get_min_severity(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "" do
-    severity = String.downcase(String.trim(topic))
-    if severity in @severity_order, do: severity, else: "medium"
-  end
-
-  defp get_min_severity(_session), do: "medium"
-
-  defp parse_severity(content) do
-    case Regex.run(~r/^## Severity\s*\n\s*(\w+)/m, content) do
-      [_, sev] -> String.downcase(sev)
-      _ -> "unknown"
+    case String.downcase(String.trim(topic)) do
+      "critical" -> :critical
+      "high" -> :high
+      "medium" -> :medium
+      "low" -> :low
+      "info" -> :info
+      _ -> :medium
     end
   end
 
-  defp severity_index(severity) do
-    case Enum.find_index(@severity_order, &(&1 == severity)) do
-      nil -> 999
-      idx -> idx
-    end
-  end
+  defp get_min_severity(_session), do: :medium
 
-  defp at_or_above_severity?(severity, min_severity) do
-    severity_index(severity) <= severity_index(min_severity)
+  defp list_incoming_at_severity(scope, min_severity) do
+    Issues.list_by_status(scope, :incoming)
+    |> Enum.filter(fn issue ->
+      Issue.severity_index(issue.severity) <= Issue.severity_index(min_severity)
+    end)
   end
 end

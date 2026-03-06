@@ -368,14 +368,23 @@ defmodule CodeMySpec.Components.Sync do
   end
 
   defp extract_type_section(content) do
-    content
-    |> String.split("\n")
-    |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
-    |> Enum.drop(1)
-    |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> List.first()
+    # Try ## Type section first (canonical format)
+    section_type =
+      content
+      |> String.split("\n")
+      |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
+      |> Enum.drop(1)
+      |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> List.first()
+
+    # Fall back to **Type**: value (legacy inline format)
+    section_type ||
+      case Regex.run(~r/^\*\*Type\*\*:\s*(.+)$/m, content) do
+        [_, type] -> String.trim(type) |> String.downcase()
+        nil -> nil
+      end
   end
 
   defp extract_dependencies(content) do

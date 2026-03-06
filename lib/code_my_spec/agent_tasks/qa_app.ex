@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   require Logger
 
   alias CodeMySpec.AgentTasks.QaStory
-  alias CodeMySpec.{BddSpecs, Environments, Paths, Stories}
+  alias CodeMySpec.{BddSpecs, Environments, Issues, Paths, Stories}
   alias CodeMySpec.BddSpecs.SpecProjector
 
   @doc """
@@ -44,7 +44,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     stories = list_stories(scope)
     bdd_coverage = format_bdd_coverage(env, stories)
     bdd_summaries = format_bdd_summaries(env)
-    existing_issues = list_existing_issues(env)
+    existing_issues = list_existing_issues(scope)
 
     # Generate per-story prompt files via QaStory.command
     story_prompts = generate_story_prompts(scope, stories)
@@ -150,24 +150,25 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     _ -> []
   end
 
-  defp list_existing_issues(env) do
-    incoming = Environments.glob(env, "#{Paths.issues_incoming_dir()}/*.md") || []
-    accepted = Environments.glob(env, "#{Paths.issues_accepted_dir()}/*.md") || []
-    files = incoming ++ accepted
+  defp list_existing_issues(scope) do
+    issues =
+      Issues.list_by_status(scope, :incoming) ++ Issues.list_by_status(scope, :accepted)
 
-    case files do
+    case issues do
       [] ->
         "No existing issues."
 
-      files ->
-        files
-        |> Enum.map(fn path ->
-          subdir = path |> Path.dirname() |> Path.basename()
-          "- `#{subdir}/#{Path.basename(path)}`"
-        end)
+      issues ->
+        issues
+        |> Enum.map(&format_issue_line/1)
         |> Enum.sort()
         |> Enum.join("\n")
     end
+  end
+
+  defp format_issue_line(issue) do
+    status = if issue.status == :incoming, do: "incoming", else: "accepted"
+    "- `#{status}/#{Issues.projected_filename(issue)}`"
   end
 
   defp summary_exists?(env) do

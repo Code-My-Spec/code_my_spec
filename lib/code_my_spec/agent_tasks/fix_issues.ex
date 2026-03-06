@@ -2,95 +2,65 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   @moduledoc """
   Agent task for fixing accepted QA issues.
 
-  Reads accepted issues from `.code_my_spec/issues/accepted/`, filters to those
-  at or above the specified severity that lack a `## Resolution` section, and
-  builds a prompt instructing the agent to fix each issue and document the resolution.
+  Reads accepted issues from the database, filters to those at or above the
+  specified severity that haven't been resolved, and builds a prompt instructing
+  the agent to fix each issue and document the resolution.
 
-  Accepts an optional minimum severity argument (default: "medium") from
+  Accepts an optional minimum severity argument (default: :medium) from
   `session.state["topic"]`.
 
   Two main functions:
-  - `command/3` — Reads accepted issues, builds fix prompt
-  - `evaluate/3` — Checks that all medium+ accepted issues have resolution sections
+  - `command/3` — Reads accepted issues from DB, builds fix prompt
+  - `evaluate/3` — Reconciles resolutions from files to DB, checks that all medium+ issues are resolved
   """
 
   alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{Issues, Paths}
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.ProjectCoordinator
 
-  @severity_order ~w(critical high medium low info)
-  @blocking_severities ~w(critical high medium)
-
   @doc """
-  Read accepted issues without resolutions and build a fix prompt.
+  Read accepted unresolved issues and build a fix prompt.
 
-  Globs `accepted/`, filters to issues at or above the minimum severity that
-  lack a `## Resolution` section, and builds a prompt with fix instructions.
+  Queries the database for accepted issues at or above the minimum severity
+  that lack a resolution, and builds a prompt with fix instructions.
 
   Returns `{:ok, prompt_text}`
   """
   def command(scope, session, _opts \\ []) do
     min_severity = get_min_severity(session)
-    env = scope.environment
-
-    files = Environments.glob(env, "#{Paths.issues_accepted_dir()}/*.md") || []
-
-    unresolved =
-      files
-      |> Enum.map(fn path ->
-        case Environments.read_file(env, path) do
-          {:ok, content} -> {path, content}
-          _ -> nil
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.filter(fn {_path, content} ->
-        severity = parse_severity(content)
-        has_resolution = has_resolution?(content)
-        at_or_above_severity?(severity, min_severity) and not has_resolution
-      end)
+    unresolved = list_unresolved_at_severity(scope, min_severity)
 
     prompt = build_prompt(unresolved, min_severity)
-    {:ok, TaskMarker.build("FixIssues", min_severity) <> "\n\n" <> prompt}
+    {:ok, TaskMarker.build("FixIssues", to_string(min_severity)) <> "\n\n" <> prompt}
   end
 
   @doc """
-  Check that all medium+ accepted issues have resolution sections.
+  Reconcile resolutions and check that all medium+ accepted issues are resolved.
 
-  Uses `@blocking_severities` (critical, high, medium) regardless of the
-  session's min_severity argument — the gate is always medium+.
+  First reconciles agent-written `## Resolution` sections from projected files
+  back to the database, then checks whether unresolved blocking issues remain.
+
+  Uses :medium as the blocking threshold regardless of the session's min_severity.
 
   Returns:
   - `{:ok, :valid}` when no blocking unresolved issues remain
   - `{:ok, :invalid, feedback}` when unresolved blocking issues exist
   """
   def evaluate(scope, _session, _opts \\ []) do
-    env = scope.environment
+    Issues.reconcile_resolutions(scope)
 
-    files = Environments.glob(env, "#{Paths.issues_accepted_dir()}/*.md") || []
+    remaining = list_unresolved_at_severity(scope, :medium)
 
-    blocking =
-      files
-      |> Enum.filter(fn path ->
-        case Environments.read_file(env, path) do
-          {:ok, content} ->
-            severity = parse_severity(content)
-            severity in @blocking_severities and not has_resolution?(content)
-
-          _ ->
-            false
-        end
-      end)
-
-    case blocking do
+    case remaining do
       [] ->
         {:ok, :valid}
 
-      files ->
-        names = Enum.map_join(files, "\n", &"- `#{Path.basename(&1)}`")
+      issues ->
+        names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
 
         {:ok, :invalid,
-         "#{length(files)} unresolved medium+ issue(s) in accepted/:\n\n#{names}\n\nFix each issue and add a ## Resolution section describing what was done."}
+         "#{length(issues)} unresolved medium+ issue(s):\n\n#{names}\n\nFix each issue and add a ## Resolution section describing what was done."}
     end
   end
 
@@ -117,14 +87,12 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   defp build_prompt(unresolved, min_severity) do
     grouped_by_scope =
       unresolved
-      |> Enum.group_by(fn {_path, content} -> parse_scope(content) end)
-      |> Enum.sort_by(fn {scope, _} -> scope end)
+      |> Enum.group_by(& &1.scope)
+      |> Enum.sort_by(fn {scope, _} -> to_string(scope) end)
 
     issues_text =
       Enum.map_join(grouped_by_scope, "\n\n", fn {scope, group} ->
-        sorted =
-          Enum.sort_by(group, fn {_path, content} -> severity_index(parse_severity(content)) end)
-
+        sorted = Enum.sort_by(group, &Issue.severity_index(&1.severity))
         items = format_issue_items(sorted)
 
         "## Scope: #{scope} (#{length(group)})\n\n#{items}"
@@ -153,7 +121,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     ## Scope-Aware Fixing
 
-    Issues have a `## Scope` section indicating what to fix:
+    Issues have a scope indicating what to fix:
     - **app** — Fix application code (controllers, live views, schemas, etc.)
     - **qa** — Fix QA infrastructure (seed scripts, auth scripts, QA plan, test tooling)
     - **docs** — Fix documentation (specs, README, user stories)
@@ -178,16 +146,20 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   end
 
   defp format_issue_items(issues) do
-    Enum.map_join(issues, "\n\n", fn {path, content} ->
-      source_ref = extract_source(content)
+    Enum.map_join(issues, "\n\n", fn issue ->
+      filename = Issues.projected_filename(issue)
+      source_ref = if issue.source_path, do: "`#{issue.source_path}`", else: nil
 
       """
-      ### `#{Path.basename(path)}`
+      ### `#{filename}`
 
       #{if source_ref, do: "**Source:** #{source_ref}\n", else: ""}
-      ```markdown
-      #{content}
-      ```
+      - **Title:** #{issue.title}
+      - **Severity:** #{issue.severity}
+      - **Scope:** #{issue.scope || :app}
+      - **Story:** #{issue.story_id || "N/A"}
+
+      #{issue.description}\
       """
     end)
   end
@@ -197,45 +169,22 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   # ============================================================================
 
   defp get_min_severity(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "" do
-    severity = String.downcase(String.trim(topic))
-    if severity in @severity_order, do: severity, else: "medium"
-  end
-
-  defp get_min_severity(_session), do: "medium"
-
-  defp parse_severity(content) do
-    case Regex.run(~r/^## Severity\s*\n\s*(\w+)/m, content) do
-      [_, sev] -> String.downcase(sev)
-      _ -> "unknown"
+    case String.downcase(String.trim(topic)) do
+      "critical" -> :critical
+      "high" -> :high
+      "medium" -> :medium
+      "low" -> :low
+      "info" -> :info
+      _ -> :medium
     end
   end
 
-  defp parse_scope(content) do
-    case Regex.run(~r/^## Scope\s*\n\s*(\w+)/m, content) do
-      [_, scope] -> String.downcase(scope)
-      _ -> "app"
-    end
-  end
+  defp get_min_severity(_session), do: :medium
 
-  defp has_resolution?(content) do
-    Regex.match?(~r/^## Resolution/m, content)
-  end
-
-  defp extract_source(content) do
-    case Regex.run(~r/^## Source\s*\n\s*(.+)/m, content) do
-      [_, source] -> String.trim(source)
-      _ -> nil
-    end
-  end
-
-  defp severity_index(severity) do
-    case Enum.find_index(@severity_order, &(&1 == severity)) do
-      nil -> 999
-      idx -> idx
-    end
-  end
-
-  defp at_or_above_severity?(severity, min_severity) do
-    severity_index(severity) <= severity_index(min_severity)
+  defp list_unresolved_at_severity(scope, min_severity) do
+    Issues.list_by_status(scope, :accepted)
+    |> Enum.filter(fn issue ->
+      Issue.severity_index(issue.severity) <= Issue.severity_index(min_severity)
+    end)
   end
 end

@@ -106,6 +106,14 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         "We need a way to manage environment variables across development, test, and production.",
       decision:
         "Use Dotenvy for environment variable management. It loads `.env` files in development and integrates cleanly with Elixir's config system via runtime configuration."
+    },
+    %{
+      topic: "resend",
+      title: "Use Resend for transactional email",
+      context:
+        "We need a reliable service for sending transactional emails (account confirmation, password reset, notifications).",
+      decision:
+        "Use Resend for transactional email delivery. It provides a clean API, good deliverability, and an Elixir-friendly HTTP interface. Pair with Swoosh (`swoosh`) as the Elixir mailer abstraction for testability and local development with Swoosh's built-in mailbox preview."
     }
   ]
 
