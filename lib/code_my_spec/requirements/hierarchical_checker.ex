@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Requirements.HierarchicalChecker do
+  @moduledoc false
   @behaviour CodeMySpec.Requirements.CheckerBehaviour
   require Logger
 
@@ -54,8 +55,8 @@ defmodule CodeMySpec.Requirements.HierarchicalChecker do
          %Component{child_components: %Ecto.Association.NotLoaded{}} = component,
          _requirement_name
        ) do
-    Logger.error("#{__MODULE__} was passed a component with child components not loaded.",
-      component: component
+    Logger.error(
+      "#{__MODULE__} was passed a component with child components not loaded: #{inspect(component.id)}"
     )
 
     {false, %{reason: "Child components not loaded"}}
@@ -122,6 +123,15 @@ defmodule CodeMySpec.Requirements.HierarchicalChecker do
     Enum.any?(requirements, fn req ->
       req.name == requirement_name and req.satisfied
     end)
+  end
+
+  defp has_requirement?(entity, requirement_name) do
+    Logger.error(
+      "#{__MODULE__}.has_requirement?/2 called with unexpected args: " <>
+        "entity=#{inspect(entity, limit: 3)}, requirement_name=#{inspect(requirement_name)}"
+    )
+
+    false
   end
 
   defp fully_complete?(%Component{requirements: %Ecto.Association.NotLoaded{}}), do: false

@@ -194,6 +194,54 @@ defmodule CodeMySpec.Requirements.Sync do
   end
 
   @doc """
+  Recalculates requirements for a single component and its ancestors.
+
+  Walks up the parent chain, clearing and rechecking requirements at each level.
+  Used by the file watcher to keep requirements current on every file change.
+  """
+  @spec recalculate_component_requirements(Scope.t(), Component.t()) :: :ok
+  def recalculate_component_requirements(scope, %Component{} = component) do
+    opts = [persist: true]
+    start = System.monotonic_time(:millisecond)
+
+    component_with_reqs =
+      component
+      |> preload_for_requirements(scope)
+      |> then(&Requirements.clear_requirements(scope, &1, opts))
+      |> then(&check_local_requirements(&1, scope, opts))
+      |> then(&check_dependency_requirements(&1, scope, opts))
+
+    ms = System.monotonic_time(:millisecond) - start
+
+    Logger.info(
+      "[RequirementsSync] Recalculated #{length(component_with_reqs.requirements)} requirements for #{component.module_name} in #{ms}ms"
+    )
+
+    # Walk up to parent and recalculate
+    case component.parent_component_id do
+      nil ->
+        :ok
+
+      parent_id ->
+        case Components.get_component(scope, parent_id) do
+          nil -> :ok
+          parent -> recalculate_component_requirements(scope, parent)
+        end
+    end
+  end
+
+  defp preload_for_requirements(component, scope) do
+    component
+    |> CodeMySpec.Repo.preload([
+      :requirements,
+      :project,
+      :dependencies,
+      child_components: :requirements
+    ])
+    |> Map.put(:project, scope.active_project)
+  end
+
+  @doc """
   Synchronizes requirements for all stories in the project.
 
   Clears and recalculates all story-level requirements.
