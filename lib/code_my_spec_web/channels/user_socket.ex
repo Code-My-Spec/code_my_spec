@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.UserSocket do
   channel "vscode:*", CodeMySpecWeb.VSCodeChannel
   channel "session:*", CodeMySpecWeb.SessionChannel
   channel "permission:*", CodeMySpecWeb.PermissionChannel
+  channel "stories:*", CodeMySpecWeb.StoriesChannel
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
