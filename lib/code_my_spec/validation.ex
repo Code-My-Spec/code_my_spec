@@ -11,14 +11,12 @@ defmodule CodeMySpec.Validation do
 
   require Logger
 
-  alias CodeMySpec.AgentTasks
+  alias CodeMySpec.Components
+  alias CodeMySpec.Components.DirtyTracker
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Problems.ProblemAssigner
   alias CodeMySpec.Problems.ProblemRenderer
-  alias CodeMySpec.ProjectSync.Sync
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Transcripts
-  alias CodeMySpec.Transcripts.ClaudeCode.FileExtractor
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.Pipeline
   alias CodeMySpec.Validation.TaskEvaluator
@@ -35,37 +33,52 @@ defmodule CodeMySpec.Validation do
     total_start = System.monotonic_time(:millisecond)
     transcript_path = Keyword.fetch!(opts, :transcript_path)
 
-    with {:ok, edited_files} <- extract_edited_files(transcript_path),
-         false <- edited_files == [] do
-      pipeline_start = System.monotonic_time(:millisecond)
-      pipeline_opts = Keyword.take(opts, [:test_output_file, :compile_output_file])
-      pipeline_problems = Pipeline.run(scope, edited_files, pipeline_opts)
-      pipeline_ms = System.monotonic_time(:millisecond) - pipeline_start
+    # Query dirty components from the file watcher
+    dirty_components = DirtyTracker.dirty_components(scope, :compiler)
 
-      sync_start = System.monotonic_time(:millisecond)
-      persist_and_sync(scope, edited_files, pipeline_problems)
-      sync_ms = System.monotonic_time(:millisecond) - sync_start
+    pipeline_start = System.monotonic_time(:millisecond)
 
-      eval_start = System.monotonic_time(:millisecond)
-      task_result = TaskEvaluator.evaluate_component(scope, transcript_path: transcript_path)
-      eval_ms = System.monotonic_time(:millisecond) - eval_start
+    all_problems =
+      if dirty_components == [] do
+        Logger.info("[Validation] No dirty components, skipping pipeline")
+        []
+      else
+        pipeline_opts = Keyword.take(opts, [:test_output_file, :compile_output_file])
+        results_by_source = Pipeline.run_scoped(scope, dirty_components, pipeline_opts)
 
-      total_ms = System.monotonic_time(:millisecond) - total_start
+        components = Components.list_components(scope)
+        {path_index, _} = DirtyTracker.build_path_index(components, scope.active_project)
+        component_ids = Enum.map(dirty_components, & &1.id)
 
-      Logger.info(
-        "[Validation] validate_subagent completed in #{total_ms}ms: " <>
-          "pipeline=#{pipeline_ms}ms, sync=#{sync_ms}ms, eval=#{eval_ms}ms"
-      )
+        Enum.flat_map(results_by_source, fn {source, problems} ->
+          assigned = ProblemAssigner.assign(problems, path_index)
+          Problems.replace_problems_for_components(scope, component_ids, source, assigned)
+          assigned
+        end)
+        |> tap(fn _problems ->
+          DirtyTracker.record_analysis(scope, dirty_components, :compiler)
+          DirtyTracker.record_analysis(scope, dirty_components, :credo)
+          DirtyTracker.record_analysis(scope, dirty_components, :sobelow)
+          DirtyTracker.record_analysis(scope, dirty_components, :exunit)
+        end)
+      end
 
-      combine_results(pipeline_problems, task_result)
-    else
-      true ->
-        {:ok, :valid}
+    pipeline_ms = System.monotonic_time(:millisecond) - pipeline_start
 
-      {:error, reason} ->
-        Logger.error("[Validation] Failed to parse transcript: #{inspect(reason)}")
-        {:ok, :valid}
-    end
+    # Task evaluation still uses transcript for task identification
+    eval_start = System.monotonic_time(:millisecond)
+    task_result = TaskEvaluator.evaluate_component(scope, transcript_path: transcript_path)
+    eval_ms = System.monotonic_time(:millisecond) - eval_start
+
+    total_ms = System.monotonic_time(:millisecond) - total_start
+
+    Logger.info(
+      "[Validation] validate_subagent completed in #{total_ms}ms: " <>
+        "pipeline=#{pipeline_ms}ms, eval=#{eval_ms}ms, " <>
+        "dirty_components=#{length(dirty_components)}"
+    )
+
+    combine_results(all_problems, task_result)
   end
 
   @doc """
@@ -79,63 +92,55 @@ defmodule CodeMySpec.Validation do
           {:ok, :valid} | {:error, [Problem.t()] | String.t()}
   def validate_stop(%Scope{} = scope, opts) do
     total_start = System.monotonic_time(:millisecond)
-    transcript_path = Keyword.fetch!(opts, :transcript_path)
     session_id = Keyword.fetch!(opts, :session_id)
 
-    case extract_edited_files(transcript_path) do
-      {:ok, edited_files} ->
-        pipeline_start = System.monotonic_time(:millisecond)
+    # Query dirty components from the file watcher
+    dirty_components = DirtyTracker.dirty_components(scope, :compiler)
 
-        pipeline_problems =
-          if edited_files == [] do
-            []
-          else
-            pipeline_opts = Keyword.take(opts, [:test_output_file, :compile_output_file])
-            Pipeline.run(scope, edited_files, pipeline_opts)
-          end
+    pipeline_start = System.monotonic_time(:millisecond)
 
-        # For implementation sessions, batch-run all spex and merge problems
-        {pipeline_problems, edited_files} =
-          if implementation_session?(scope, session_id) do
-            case Pipeline.run_all_spex(scope) do
-              {:ok, spex_problems} ->
-                spex_file_paths = Enum.map(spex_problems, & &1.file_path) |> Enum.uniq()
-                {pipeline_problems ++ spex_problems, Enum.uniq(edited_files ++ spex_file_paths)}
+    all_problems =
+      if dirty_components == [] do
+        Logger.info("[Validation] No dirty components, skipping pipeline")
+        []
+      else
+        pipeline_opts = Keyword.take(opts, [:test_output_file, :compile_output_file])
+        results_by_source = Pipeline.run_scoped(scope, dirty_components, pipeline_opts)
 
-              _ ->
-                {pipeline_problems, edited_files}
-            end
-          else
-            {pipeline_problems, edited_files}
-          end
+        # Build path index for assigning problems to components
+        components = Components.list_components(scope)
+        {path_index, _} = DirtyTracker.build_path_index(components, scope.active_project)
+        component_ids = Enum.map(dirty_components, & &1.id)
 
-        pipeline_ms = System.monotonic_time(:millisecond) - pipeline_start
+        # Assign and persist per source, then record analysis
+        Enum.flat_map(results_by_source, fn {source, problems} ->
+          assigned = ProblemAssigner.assign(problems, path_index)
+          Problems.replace_problems_for_components(scope, component_ids, source, assigned)
+          assigned
+        end)
+        |> tap(fn _problems ->
+          DirtyTracker.record_analysis(scope, dirty_components, :compiler)
+          DirtyTracker.record_analysis(scope, dirty_components, :credo)
+          DirtyTracker.record_analysis(scope, dirty_components, :sobelow)
+          DirtyTracker.record_analysis(scope, dirty_components, :exunit)
+        end)
+      end
 
-        # persist + sync BEFORE evaluate so requirements are fresh
-        # Always sync — subagents may have edited files that don't appear
-        # in the main session's transcript.
-        sync_start = System.monotonic_time(:millisecond)
-        persist_and_sync(scope, edited_files, pipeline_problems)
-        sync_ms = System.monotonic_time(:millisecond) - sync_start
+    pipeline_ms = System.monotonic_time(:millisecond) - pipeline_start
 
-        eval_start = System.monotonic_time(:millisecond)
-        session_result = TaskEvaluator.evaluate_sessions(scope, session_id)
-        eval_ms = System.monotonic_time(:millisecond) - eval_start
+    eval_start = System.monotonic_time(:millisecond)
+    session_result = TaskEvaluator.evaluate_sessions(scope, session_id)
+    eval_ms = System.monotonic_time(:millisecond) - eval_start
 
-        total_ms = System.monotonic_time(:millisecond) - total_start
+    total_ms = System.monotonic_time(:millisecond) - total_start
 
-        Logger.info(
-          "[Validation] validate_stop completed in #{total_ms}ms: " <>
-            "pipeline=#{pipeline_ms}ms, sync=#{sync_ms}ms, eval=#{eval_ms}ms, " <>
-            "edited_files=#{length(edited_files)}"
-        )
+    Logger.info(
+      "[Validation] validate_stop completed in #{total_ms}ms: " <>
+        "pipeline=#{pipeline_ms}ms, eval=#{eval_ms}ms, " <>
+        "dirty_components=#{length(dirty_components)}"
+    )
 
-        combine_results(pipeline_problems, session_result)
-
-      {:error, reason} ->
-        Logger.error("[Validation] Failed to parse transcript: #{inspect(reason)}")
-        {:ok, :valid}
-    end
+    combine_results(all_problems, session_result)
   end
 
   @doc """
@@ -162,64 +167,8 @@ defmodule CodeMySpec.Validation do
   # Private Helpers
   # ============================================================================
 
-  defp extract_edited_files(nil), do: {:ok, []}
-
-  defp extract_edited_files(transcript_path) do
-    case Transcripts.parse(transcript_path) do
-      {:ok, transcript} ->
-        files = FileExtractor.extract_edited_files(transcript)
-        {:ok, files}
-
-      {:error, _} = error ->
-        error
-    end
-  end
-
-  defp persist_and_sync(scope, edited_files, problems) do
-    persist_start = System.monotonic_time(:millisecond)
-    Problems.replace_problems_for_files(scope, edited_files, problems)
-    persist_ms = System.monotonic_time(:millisecond) - persist_start
-
-    sync_opts = if scope.cwd, do: [base_dir: scope.cwd], else: []
-
-    case Sync.sync_all(scope, sync_opts) do
-      {:ok, result} ->
-        timings = result.timings
-
-        Logger.info(
-          "[Validation] persist_and_sync completed: " <>
-            "persist=#{persist_ms}ms, " <>
-            "sync_total=#{timings.total_ms}ms " <>
-            "(components=#{timings.contexts_sync_ms}ms, " <>
-            "requirements=#{timings.requirements_sync_ms}ms, " <>
-            "architecture=#{timings.architecture_ms}ms), " <>
-            "edited_files=#{length(edited_files)}, " <>
-            "requirements_updated=#{result.requirements_updated}"
-        )
-
-      {:error, reason} ->
-        Logger.warning("[Validation] Sync failed after #{persist_ms}ms: #{inspect(reason)}")
-    end
-
-    :ok
-  end
-
-  defp implementation_session?(scope, session_id) do
-    case Sessions.list_sessions(scope) do
-      sessions when is_list(sessions) ->
-        Enum.any?(sessions, fn session ->
-          session.external_conversation_id == session_id and
-            session.type == AgentTasks.StartImplementation
-        end)
-
-      _ ->
-        false
-    end
-  end
-
   defp combine_results(pipeline_problems, task_result) do
     # Test failures are expected in TDD mode — don't block on them.
-    # They're persisted via persist_and_sync so the task evaluator can see them.
     blocking_problems = Enum.reject(pipeline_problems, &(&1.source_type == :test))
 
     cond do
