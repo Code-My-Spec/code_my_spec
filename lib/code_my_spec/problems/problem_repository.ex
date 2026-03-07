@@ -213,6 +213,54 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     {:ok, count}
   end
 
+  @doc """
+  Atomically replaces problems for specific components and source.
+
+  Deletes existing problems matching `component_id IN component_ids AND source = source`,
+  then inserts the new problems. Problems for other components or sources are untouched.
+  """
+  @spec replace_problems_for_components(Scope.t(), [binary()], String.t(), [Problem.t() | map()]) ::
+          {:ok, [Problem.t()]} | {:error, term()}
+  def replace_problems_for_components(_scope, [], _source, _problems), do: {:ok, []}
+
+  def replace_problems_for_components(
+        %Scope{active_project_id: project_id},
+        component_ids,
+        source,
+        problems
+      )
+      when is_list(component_ids) and is_binary(source) do
+    Repo.transaction(fn ->
+      Problem
+      |> where([p], p.project_id == ^project_id)
+      |> where([p], p.component_id in ^component_ids)
+      |> where([p], p.source == ^source)
+      |> Repo.delete_all()
+
+      case insert_all_problems(problems, project_id) do
+        {:error, changeset} -> Repo.rollback(changeset)
+        {:ok, inserted_problems} -> inserted_problems
+      end
+    end)
+  end
+
+  @doc """
+  Deletes all problems for the given component IDs.
+  """
+  @spec delete_problems_for_components(Scope.t(), [binary()]) :: {:ok, integer()}
+  def delete_problems_for_components(_scope, []), do: {:ok, 0}
+
+  def delete_problems_for_components(%Scope{active_project_id: project_id}, component_ids)
+      when is_list(component_ids) do
+    {count, _} =
+      Problem
+      |> where([p], p.project_id == ^project_id)
+      |> where([p], p.component_id in ^component_ids)
+      |> Repo.delete_all()
+
+    {:ok, count}
+  end
+
   # Private helpers
 
   defp apply_source_filter(query, []), do: query
@@ -271,7 +319,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   defp to_attrs_map(%Problem{} = problem) do
     problem
     |> Map.from_struct()
-    |> Map.drop([:__meta__, :project])
+    |> Map.drop([:__meta__, :project, :component])
   end
 
   defp to_attrs_map(attrs) when is_map(attrs), do: attrs

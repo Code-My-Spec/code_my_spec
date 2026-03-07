@@ -11,12 +11,12 @@ defmodule CodeMySpec.Components.Component do
   # Namespace UUID for components (randomly generated, should remain constant)
   @component_namespace_uuid "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 
+  alias CodeMySpec.Accounts.Account
+  alias CodeMySpec.Components.ComponentStatus
   alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Components.SimilarComponent
+  alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Requirements.Requirement
-  alias CodeMySpec.Components.ComponentStatus
-  alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories.Story
 
@@ -27,6 +27,8 @@ defmodule CodeMySpec.Components.Component do
           module_name: String.t(),
           description: String.t() | nil,
           synced_at: DateTime.t() | nil,
+          files_changed_at: DateTime.t() | nil,
+          last_analyzed_at: map(),
           account_id: Ecto.UUID.t(),
           project_id: Ecto.UUID.t(),
           parent_component_id: Ecto.UUID.t() | nil,
@@ -56,6 +58,8 @@ defmodule CodeMySpec.Components.Component do
     field :module_name, :string
     field :description, :string
     field :synced_at, :utc_datetime
+    field :files_changed_at, :utc_datetime
+    field :last_analyzed_at, :map, default: %{}
 
     belongs_to :account, Account, type: :binary_id
     belongs_to :project, Project, type: :binary_id
@@ -73,6 +77,7 @@ defmodule CodeMySpec.Components.Component do
     has_many :similar_components, through: [:outgoing_similar_components, :similar_component]
     has_many :referenced_by_components, through: [:incoming_similar_components, :component]
 
+    has_many :problems, Problem
     has_many :stories, Story
     has_many :requirements, Requirement
 
@@ -89,7 +94,9 @@ defmodule CodeMySpec.Components.Component do
       :module_name,
       :description,
       :parent_component_id,
-      :synced_at
+      :synced_at,
+      :files_changed_at,
+      :last_analyzed_at
     ])
     |> validate_required([:name, :module_name])
     |> put_default_type()

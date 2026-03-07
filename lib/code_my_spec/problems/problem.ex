@@ -8,6 +8,7 @@ defmodule CodeMySpec.Problems.Problem do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Components.Component
   alias CodeMySpec.Projects.Project
 
   @type t :: %__MODULE__{
@@ -21,6 +22,8 @@ defmodule CodeMySpec.Problems.Problem do
           category: String.t(),
           rule: String.t() | nil,
           metadata: map() | nil,
+          component_id: Ecto.UUID.t() | nil,
+          component: Component.t() | Ecto.Association.NotLoaded.t(),
           project_id: Ecto.UUID.t(),
           project: Project.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -38,6 +41,7 @@ defmodule CodeMySpec.Problems.Problem do
     field :rule, :string
     field :metadata, :map
 
+    belongs_to :component, Component, type: :binary_id
     belongs_to :project, Project, type: :binary_id
 
     timestamps(type: :utc_datetime)
@@ -59,6 +63,7 @@ defmodule CodeMySpec.Problems.Problem do
       :category,
       :rule,
       :metadata,
+      :component_id,
       :project_id
     ])
     |> put_default_source_type()
@@ -76,6 +81,7 @@ defmodule CodeMySpec.Problems.Problem do
     |> validate_length(:category, min: 1, max: 255)
     |> validate_number(:line, greater_than: 0)
     |> foreign_key_constraint(:project_id)
+    |> foreign_key_constraint(:component_id)
   end
 
   defp put_default_source_type(changeset) do

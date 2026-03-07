@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Problems.ProblemRepositoryTest do
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.ComponentsFixtures
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
@@ -449,6 +450,102 @@ defmodule CodeMySpec.Problems.ProblemRepositoryTest do
       assert {:ok, 0} = ProblemRepository.clear_project_problems(scope)
 
       assert Repo.all(Problem) == []
+    end
+  end
+
+  describe "replace_problems_for_components/4" do
+    test "replaces problems for specific components and source", %{scope: scope} do
+      component = component_fixture(scope)
+
+      _old =
+        problem_fixture(scope, %{
+          source: "credo",
+          component_id: component.id,
+          message: "Old credo"
+        })
+
+      keep =
+        problem_fixture(scope, %{
+          source: "sobelow",
+          component_id: component.id,
+          message: "Keep sobelow"
+        })
+
+      new_problems = [
+        valid_problem_attrs(%{
+          source: "credo",
+          component_id: component.id,
+          message: "New credo"
+        })
+      ]
+
+      assert {:ok, [inserted]} =
+               ProblemRepository.replace_problems_for_components(
+                 scope,
+                 [component.id],
+                 "credo",
+                 new_problems
+               )
+
+      assert inserted.message == "New credo"
+
+      all = Repo.all(Problem)
+      assert length(all) == 2
+      messages = Enum.map(all, & &1.message)
+      assert "New credo" in messages
+      assert "Keep sobelow" in messages
+      assert Repo.get(Problem, keep.id) != nil
+    end
+
+    test "empty component_ids is a no-op", %{scope: scope} do
+      _existing = problem_fixture(scope)
+
+      assert {:ok, []} =
+               ProblemRepository.replace_problems_for_components(scope, [], "credo", [])
+
+      assert length(Repo.all(Problem)) == 1
+    end
+
+    test "clears problems when new list is empty", %{scope: scope} do
+      component = component_fixture(scope)
+
+      _old =
+        problem_fixture(scope, %{source: "credo", component_id: component.id})
+
+      assert {:ok, []} =
+               ProblemRepository.replace_problems_for_components(
+                 scope,
+                 [component.id],
+                 "credo",
+                 []
+               )
+
+      assert Repo.all(Problem) == []
+    end
+  end
+
+  describe "delete_problems_for_components/2" do
+    test "deletes all problems for given component IDs", %{scope: scope} do
+      comp_a = component_fixture(scope)
+      comp_b = component_fixture(scope)
+
+      _pa = problem_fixture(scope, %{component_id: comp_a.id, message: "A"})
+      _pb = problem_fixture(scope, %{component_id: comp_b.id, message: "B"})
+      keep = problem_fixture(scope, %{message: "No component"})
+
+      assert {:ok, 2} =
+               ProblemRepository.delete_problems_for_components(scope, [comp_a.id, comp_b.id])
+
+      all = Repo.all(Problem)
+      assert length(all) == 1
+      assert hd(all).id == keep.id
+    end
+
+    test "empty list is a no-op", %{scope: scope} do
+      _existing = problem_fixture(scope)
+
+      assert {:ok, 0} = ProblemRepository.delete_problems_for_components(scope, [])
+      assert length(Repo.all(Problem)) == 1
     end
   end
 end

@@ -11,6 +11,7 @@ defmodule CodeMySpec.Validation.Pipeline do
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.Component
   alias CodeMySpec.Documents
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
@@ -18,6 +19,7 @@ defmodule CodeMySpec.Validation.Pipeline do
   alias CodeMySpec.Tests
   alias CodeMySpec.Tests.TestRun
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
 
   @doc """
   Run the full validation pipeline on a set of files.
@@ -50,6 +52,72 @@ defmodule CodeMySpec.Validation.Pipeline do
         Problems.clear_problems_for_source(scope, [source: "compiler"], :all)
         compile_problems
     end
+  end
+
+  @doc """
+  Run scoped analysis on dirty components only.
+
+  Collects files for each dirty component via `Utils.component_files/2`,
+  compiles once, then runs each tool on the relevant file subset.
+  Returns a map of `%{source => [Problem.t()]}` keyed by tool name.
+  """
+  @spec run_scoped(Scope.t(), [Component.t()], keyword()) :: %{String.t() => [Problem.t()]}
+  def run_scoped(scope, dirty_components, opts \\ [])
+  def run_scoped(_scope, [], _opts), do: %{}
+
+  def run_scoped(%Scope{} = scope, dirty_components, opts) do
+    base = get_project_root(scope)
+    if is_nil(base), do: throw(:no_project_root)
+
+    project = scope.active_project
+
+    file_maps = Enum.map(dirty_components, &Utils.component_files(&1, project))
+
+    code_files = file_maps |> Enum.map(& &1.code_file) |> resolve_paths(base)
+    test_files = file_maps |> Enum.map(& &1.test_file) |> resolve_paths(base)
+    spec_files = file_maps |> Enum.map(& &1.spec_file) |> resolve_paths(base)
+    elixir_files = Enum.uniq(code_files ++ test_files)
+
+    Logger.info(
+      "[Pipeline] Scoped analysis: #{length(dirty_components)} components, " <>
+        "#{length(code_files)} code, #{length(test_files)} test, #{length(spec_files)} spec"
+    )
+
+    compiler_result = compile_project(scope, opts)
+
+    compiler_problems =
+      case compiler_result do
+        {:ok, p} -> p
+        {:error, p} -> p
+      end
+
+    # Only run remaining tools if compilation succeeded
+    {test_problems, credo_problems, sobelow_problems, spec_problems} =
+      case compiler_result do
+        {:ok, _} ->
+          {_, tp} = run_tests(test_files, scope, opts)
+          {_, cp} = run_credo(elixir_files, scope)
+          {_, sp} = run_sobelow(elixir_files, scope)
+          {_, vp} = validate_spec_files(spec_files)
+          {tp, cp, sp, vp}
+
+        {:error, _} ->
+          {[], [], [], []}
+      end
+
+    %{
+      "compiler" => compiler_problems,
+      "exunit" => test_problems,
+      "credo" => credo_problems,
+      "sobelow" => sobelow_problems,
+      "spec_validation" => spec_problems
+    }
+  end
+
+  defp resolve_paths(rel_paths, base) do
+    rel_paths
+    |> Enum.map(&Path.join(base, &1))
+    |> Enum.filter(&File.exists?/1)
   end
 
   @doc """
@@ -351,7 +419,9 @@ defmodule CodeMySpec.Validation.Pipeline do
 
   defp qa_file?(path) do
     String.contains?(path, @qa_dir) and
-      (String.ends_with?(path, "/brief.md") or String.ends_with?(path, "/result.md"))
+      (String.ends_with?(path, "/brief.md") or String.ends_with?(path, "/result.md") or
+         String.ends_with?(path, "/journey_plan.md") or
+         String.ends_with?(path, "/journey_result.md"))
   end
 
   defp code_file?(path) do
@@ -432,6 +502,7 @@ defmodule CodeMySpec.Validation.Pipeline do
     end
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp validate_single_spec(path) do
     with {:ok, content} <- File.read(path),
          :ok <- validate_not_empty(content),
@@ -464,6 +535,7 @@ defmodule CodeMySpec.Validation.Pipeline do
     }
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp validate_single_qa_file(path) do
     doc_type = qa_document_type(path)
 
@@ -484,7 +556,12 @@ defmodule CodeMySpec.Validation.Pipeline do
   end
 
   defp qa_document_type(path) do
-    if String.ends_with?(path, "/brief.md"), do: "qa_story_brief", else: "qa_result"
+    cond do
+      String.ends_with?(path, "/brief.md") -> "qa_story_brief"
+      String.ends_with?(path, "/journey_plan.md") -> "qa_journey_plan"
+      String.ends_with?(path, "/journey_result.md") -> "qa_journey_result"
+      true -> "qa_result"
+    end
   end
 
   defp qa_problem(path, message, category) do
