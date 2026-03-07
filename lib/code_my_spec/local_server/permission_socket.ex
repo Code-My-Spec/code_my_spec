@@ -26,6 +26,8 @@ defmodule CodeMySpec.LocalServer.PermissionSocket do
 
   @impl Slipstream
   def init(state) do
+    Process.flag(:trap_exit, true)
+
     socket =
       new_socket()
       |> assign(:caller, state.caller)

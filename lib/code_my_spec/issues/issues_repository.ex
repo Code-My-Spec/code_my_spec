@@ -40,10 +40,9 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     Repo.get_by(Issue, id: id, project_id: scope.active_project.id)
   end
 
-  def create_issue(
-        %Scope{active_project: %Project{id: project_id}, active_account: %Account{id: account_id}},
-        attrs
-      ) do
+  def create_issue(%Scope{} = scope, attrs) do
+    project_id = resolve_project_id(scope)
+    account_id = resolve_account_id(scope)
     %Issue{}
     |> Issue.changeset(attrs)
     |> Ecto.Changeset.put_change(:project_id, project_id)
@@ -51,18 +50,21 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.insert()
   end
 
-  def upsert_issue(
-        %Scope{active_project: %Project{id: project_id}, active_account: %Account{id: account_id}},
-        attrs
-      ) do
+  def upsert_issue(%Scope{} = scope, attrs) do
+    project_id = resolve_project_id(scope)
+    account_id = resolve_account_id(scope)
     changeset =
       %Issue{}
       |> Issue.changeset(attrs)
       |> Ecto.Changeset.put_change(:project_id, project_id)
       |> Ecto.Changeset.put_change(:account_id, account_id)
 
-    title = Ecto.Changeset.get_change(changeset, :title) || Ecto.Changeset.get_field(changeset, :title)
-    story_id = Ecto.Changeset.get_change(changeset, :story_id) || Ecto.Changeset.get_field(changeset, :story_id)
+    title =
+      Ecto.Changeset.get_change(changeset, :title) || Ecto.Changeset.get_field(changeset, :title)
+
+    story_id =
+      Ecto.Changeset.get_change(changeset, :story_id) ||
+        Ecto.Changeset.get_field(changeset, :story_id)
 
     case Repo.insert(changeset,
            on_conflict: :nothing,
@@ -73,7 +75,9 @@ defmodule CodeMySpec.Issues.IssuesRepository do
         case Repo.get(Issue, issue.id) do
           nil ->
             # Row not actually inserted (conflict) — fetch existing
-            existing = Repo.get_by!(Issue, title: title, story_id: story_id, project_id: project_id)
+            existing =
+              Repo.get_by!(Issue, title: title, story_id: story_id, project_id: project_id)
+
             {:ok, existing}
 
           _found ->
@@ -122,14 +126,20 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     from(i in query, where: i.story_id == ^story_id)
   end
 
+  defp resolve_project_id(%Scope{active_project: %Project{id: id}}), do: id
+  defp resolve_project_id(%Scope{active_project_id: id}) when not is_nil(id), do: id
+
+  defp resolve_account_id(%Scope{active_account: %Account{id: id}}), do: id
+  defp resolve_account_id(%Scope{active_account_id: id}) when not is_nil(id), do: id
+
   def ordered_by_severity(query \\ Issue) do
-    order_by(query, [i], [
+    order_by(query, [i],
       asc:
         fragment(
           "CASE ? WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 WHEN 'info' THEN 4 ELSE 99 END",
           i.severity
         ),
       desc: i.inserted_at
-    ])
+    )
   end
 end

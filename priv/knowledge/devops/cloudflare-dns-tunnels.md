@@ -211,7 +211,62 @@ config :myapp, MyAppWeb.Endpoint,
 
 ---
 
-## 5. Cloudflare API
+## 5. Cache Rules via API
+
+### Bypass Cache for Dev Environments
+
+Dev tunnels should bypass Cloudflare cache to avoid stale CSS/JS during development. Use the Cache Rules (rulesets) API.
+
+**Required token permission:** Zone > Cache Rules > Edit
+
+```bash
+# Create/replace cache rules for the zone (PUT replaces all rules in this phase)
+curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/rulesets/phases/http_request_cache_settings/entrypoint" \
+  -H "Authorization: Bearer $CF_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rules": [
+      {
+        "expression": "(http.host eq \"dev.myapp.com\")",
+        "description": "Bypass cache for dev environment",
+        "action": "set_cache_settings",
+        "action_parameters": {
+          "cache": false
+        }
+      }
+    ]
+  }'
+```
+
+**Important:** PUT replaces the entire ruleset. To add a rule without removing existing ones, GET the current ruleset first, append your rule, then PUT the full list back.
+
+```bash
+# Read existing cache rules
+curl -s "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/rulesets/phases/http_request_cache_settings/entrypoint" \
+  -H "Authorization: Bearer $CF_API_TOKEN"
+```
+
+### Development Mode (Temporary)
+
+Disables all caching zone-wide for 3 hours. Useful for one-off debugging but not a permanent solution.
+
+```bash
+# Enable
+curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/settings/development_mode" \
+  -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"value":"on"}'
+
+# Disable
+curl -s -X PATCH "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/settings/development_mode" \
+  -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"value":"off"}'
+```
+
+**Required token permission:** Zone > Zone Settings > Edit
+
+---
+
+## 6. Cloudflare API
 
 ### Authentication
 
@@ -255,6 +310,18 @@ Response envelope: `{"success": true, "errors": [], "messages": [], "result": {.
 
 ---
 
+### API Token Permissions Reference
+
+| Permission | Covers |
+|-----------|--------|
+| Zone > DNS > Edit | DNS record CRUD |
+| Zone > Zone Settings > Edit | Development mode, SSL mode, etc. |
+| Zone > Cache Purge > Purge | Purge cache by URL or everything |
+| Zone > Cache Rules > Edit | Cache rulesets (bypass, TTL overrides) |
+| Zone > Zone > Edit | Broad zone-level rulesets (WAF, redirects, etc.) |
+
+---
+
 ## Reference Links
 
 - [Cloudflare Tunnel overview](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)
@@ -265,6 +332,7 @@ Response envelope: `{"success": true, "errors": [], "messages": [], "result": {.
 - [Origin CA certificates](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/)
 - [CNAME flattening](https://developers.cloudflare.com/dns/cname-flattening/)
 - [DNS API](https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/create/)
+- [Rulesets API (Cache Rules)](https://developers.cloudflare.com/ruleset-engine/rulesets-api/)
 - [Cloudflare IP ranges](https://www.cloudflare.com/ips/)
 - [Caddy reverse_proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 - [cloudflared releases](https://github.com/cloudflare/cloudflared/releases)
