@@ -175,6 +175,7 @@ defmodule CodeMySpec.ContentAdmin do
   end
 
   defp log_changeset_validation_error(cs, index) do
+    require Logger
     errors =
       Ecto.Changeset.traverse_errors(cs, fn {msg, opts} ->
         Enum.reduce(opts, msg, fn {key, value}, acc ->

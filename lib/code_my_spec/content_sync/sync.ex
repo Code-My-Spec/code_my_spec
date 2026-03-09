@@ -218,7 +218,7 @@ defmodule CodeMySpec.ContentSync.Sync do
   # File Processing
   # ============================================================================
 
-  @sobelow_skip ["Traversal.FileModule"]
+  # sobelow_skip ["Traversal.FileModule"]
   @spec process_file(String.t()) :: content_attrs()
   defp process_file(file_path) do
     raw_content = File.read!(file_path)
@@ -246,7 +246,7 @@ defmodule CodeMySpec.ContentSync.Sync do
     result
   end
 
-  @sobelow_skip ["Traversal.FileModule"]
+  # sobelow_skip ["Traversal.FileModule"]
   defp build_missing_metadata_attrs(path) do
     require Logger
     filename = Path.basename(path)
