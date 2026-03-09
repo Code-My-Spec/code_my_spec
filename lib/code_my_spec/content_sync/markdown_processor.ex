@@ -80,7 +80,7 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessor do
       parse_errors = %{
         error_type: exception.__struct__ |> to_string() |> String.replace("Elixir.", ""),
         message: Exception.message(exception),
-        details: exception,
+        details: inspect(exception),
         line: nil,
         context: nil
       }
@@ -96,11 +96,17 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessor do
     %{
       error_type: "Earmark.ParseError",
       message: extract_error_message(first_error),
-      details: error_messages,
+      details: Enum.map(error_messages, &serialize_error_tuple/1),
       line: extract_line_number(first_error),
       context: extract_context(first_error)
     }
   end
+
+  defp serialize_error_tuple({severity, line, message}) do
+    %{severity: severity, line: line, message: message}
+  end
+
+  defp serialize_error_tuple(other), do: %{message: inspect(other)}
 
   # Extracts error message from Earmark error tuple
   @spec extract_error_message(tuple() | any()) :: String.t()

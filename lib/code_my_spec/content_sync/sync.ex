@@ -145,10 +145,34 @@ defmodule CodeMySpec.ContentSync.Sync do
   """
   @spec process_directory(String.t()) :: {:ok, [content_attrs()]} | {:error, term()}
   def process_directory(directory) do
+    require Logger
+
     with :ok <- validate_directory(directory) do
-      file_paths = discover_files(directory)
-      attrs_list = Enum.map(file_paths, &process_file/1)
-      {:ok, attrs_list}
+      {file_paths, skipped_paths} = discover_files(directory)
+
+      # Log warnings for content files missing YAML sidecar
+      skipped_attrs =
+        Enum.map(skipped_paths, fn path ->
+          filename = Path.basename(path)
+          Logger.warning("ContentSync: Skipping #{filename} — no YAML metadata sidecar file")
+
+          %{
+            slug: Path.rootname(filename),
+            content_type: :blog,
+            raw_content: File.read!(path),
+            processed_content: nil,
+            parse_status: :error,
+            parse_errors: %{
+              error_type: "MissingMetadata",
+              message: "No YAML sidecar file found for #{filename}. Create #{Path.rootname(filename)}.yaml alongside it."
+            },
+            metadata: %{}
+          }
+        end)
+
+      processed_attrs = Enum.map(file_paths, &process_file/1)
+
+      {:ok, processed_attrs ++ skipped_attrs}
     end
   end
 
@@ -186,18 +210,21 @@ defmodule CodeMySpec.ContentSync.Sync do
   # File Discovery
   # ============================================================================
 
-  @spec discover_files(String.t()) :: [String.t()]
+  @spec discover_files(String.t()) :: {[String.t()], [String.t()]}
   defp discover_files(directory) do
     patterns = [
       Path.join(directory, "*.md"),
       Path.join(directory, "*.html")
     ]
 
-    patterns
-    |> Enum.flat_map(&Path.wildcard/1)
-    |> Enum.uniq()
-    |> Enum.filter(&has_metadata_file?/1)
-    |> Enum.sort()
+    all_files =
+      patterns
+      |> Enum.flat_map(&Path.wildcard/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    {with_meta, without_meta} = Enum.split_with(all_files, &has_metadata_file?/1)
+    {with_meta, without_meta}
   end
 
   @spec has_metadata_file?(String.t()) :: boolean()
@@ -348,8 +375,20 @@ defmodule CodeMySpec.ContentSync.Sync do
   @spec stringify_keys(map()) :: map()
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn
-      {key, value} when is_atom(key) -> {Atom.to_string(key), value}
-      {key, value} -> {key, value}
+      {key, value} when is_atom(key) -> {Atom.to_string(key), json_safe_value(value)}
+      {key, value} -> {to_string(key), json_safe_value(value)}
     end)
   end
+
+  # Ensure values are JSON-encodable (no tuples, structs, etc.)
+  defp json_safe_value(value) when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value), do: value
+  defp json_safe_value(value) when is_atom(value), do: Atom.to_string(value)
+  defp json_safe_value(value) when is_tuple(value), do: inspect(value)
+  defp json_safe_value(%Date{} = d), do: Date.to_iso8601(d)
+  defp json_safe_value(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp json_safe_value(%NaiveDateTime{} = ndt), do: NaiveDateTime.to_iso8601(ndt)
+  defp json_safe_value(value) when is_struct(value), do: inspect(value)
+  defp json_safe_value(value) when is_map(value), do: stringify_keys(value)
+  defp json_safe_value(value) when is_list(value), do: Enum.map(value, &json_safe_value/1)
+  defp json_safe_value(value), do: inspect(value)
 end
