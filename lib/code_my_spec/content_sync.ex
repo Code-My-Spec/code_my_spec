@@ -9,7 +9,7 @@ defmodule CodeMySpec.ContentSync do
   Git repository is always the source of truth.
   """
 
-  alias CodeMySpec.{Projects, ContentAdmin, Git}
+  alias CodeMySpec.{ContentAdmin, Git, Projects}
   alias CodeMySpec.ContentSync.Sync
   alias CodeMySpec.Users.Scope
 
@@ -271,52 +271,41 @@ defmodule CodeMySpec.ContentSync do
 
   @spec validate_attrs_against_content_schema([map()]) :: {:ok, [map()]}
   defp validate_attrs_against_content_schema(attrs_list) do
-    validated_attrs_list =
-      Enum.map(attrs_list, fn attrs ->
-        # Extract only Content schema fields
-        content_attrs =
-          Map.take(attrs, [
-            :slug,
-            :title,
-            :content_type,
-            :processed_content,
-            :protected,
-            :publish_at,
-            :expires_at,
-            :meta_title,
-            :meta_description,
-            :og_image,
-            :og_title,
-            :og_description,
-            :metadata
-          ])
+    {:ok, Enum.map(attrs_list, &validate_single_attrs/1)}
+  end
 
-        # Validate against Content schema
-        content_changeset =
-          CodeMySpec.Content.Content.changeset(%CodeMySpec.Content.Content{}, content_attrs)
+  @content_schema_fields [
+    :slug, :title, :content_type, :processed_content, :protected,
+    :publish_at, :expires_at, :meta_title, :meta_description,
+    :og_image, :og_title, :og_description, :metadata
+  ]
 
-        if content_changeset.valid? do
-          # Keep existing parse_status from Sync.process_directory
-          attrs
-        else
-          # Override with content validation errors
-          content_errors =
-            Ecto.Changeset.traverse_errors(content_changeset, fn {msg, opts} ->
-              Enum.reduce(opts, msg, fn {key, value}, acc ->
-                String.replace(acc, "%{#{key}}", to_string(value))
-              end)
-            end)
+  defp validate_single_attrs(attrs) do
+    content_attrs = Map.take(attrs, @content_schema_fields)
 
-          %{
-            attrs
-            | parse_status: :error,
-              parse_errors:
-                Map.merge(attrs[:parse_errors] || %{}, %{content_validation: content_errors})
-          }
-        end
+    changeset =
+      CodeMySpec.Content.Content.changeset(%CodeMySpec.Content.Content{}, content_attrs)
+
+    if changeset.valid? do
+      attrs
+    else
+      content_errors = format_changeset_errors(changeset)
+
+      %{
+        attrs
+        | parse_status: :error,
+          parse_errors:
+            Map.merge(attrs[:parse_errors] || %{}, %{content_validation: content_errors})
+      }
+    end
+  end
+
+  defp format_changeset_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
       end)
-
-    {:ok, validated_attrs_list}
+    end)
   end
 
   @spec persist_validated_content_to_admin(Scope.t(), [map()]) ::

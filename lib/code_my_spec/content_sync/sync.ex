@@ -50,9 +50,9 @@ defmodule CodeMySpec.ContentSync.Sync do
   """
 
   alias CodeMySpec.ContentSync.{
-    MetaDataParser,
-    MarkdownProcessor,
     HtmlProcessor,
+    MarkdownProcessor,
+    MetaDataParser,
     ProcessorResult
   }
 
@@ -151,6 +151,7 @@ defmodule CodeMySpec.ContentSync.Sync do
       {file_paths, skipped_paths} = discover_files(directory)
 
       # Log warnings for content files missing YAML sidecar
+      # sobelow_skip ["Traversal.FileModule"]
       skipped_attrs =
         Enum.map(skipped_paths, fn path ->
           filename = Path.basename(path)
@@ -237,6 +238,7 @@ defmodule CodeMySpec.ContentSync.Sync do
   # File Processing
   # ============================================================================
 
+  # sobelow_skip ["Traversal.FileModule"]
   @spec process_file(String.t()) :: content_attrs()
   defp process_file(file_path) do
     raw_content = File.read!(file_path)

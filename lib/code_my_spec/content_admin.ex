@@ -8,8 +8,8 @@ defmodule CodeMySpec.ContentAdmin do
   """
 
   import Ecto.Query, warn: false
-  alias CodeMySpec.Repo
   alias CodeMySpec.ContentAdmin.{ContentAdmin, ContentAdminRepository}
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -105,24 +105,27 @@ defmodule CodeMySpec.ContentAdmin do
     # Check if any changesets are invalid
     case Enum.find(changesets, fn {cs, _index} -> not cs.valid? end) do
       nil ->
-        # All valid, proceed with transaction
-        Repo.transaction(fn ->
-          Enum.map(changesets, fn {changeset, _index} ->
-            Repo.insert!(changeset)
-          end)
-        end)
-        |> case do
-          {:ok, content_list} = result ->
-            broadcast_content_change(scope, {:sync_completed, length(content_list)})
-            result
-
-          error ->
-            error
-        end
+        insert_all_changesets(scope, changesets)
 
       {invalid_changeset, index} ->
         Logger.error("Aborting create_many due to validation failure at index #{index}")
         {:error, invalid_changeset}
+    end
+  end
+
+  defp insert_all_changesets(scope, changesets) do
+    Repo.transaction(fn ->
+      Enum.map(changesets, fn {changeset, _index} ->
+        Repo.insert!(changeset)
+      end)
+    end)
+    |> case do
+      {:ok, content_list} = result ->
+        broadcast_content_change(scope, {:sync_completed, length(content_list)})
+        result
+
+      error ->
+        error
     end
   end
 
