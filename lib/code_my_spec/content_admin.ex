@@ -98,10 +98,7 @@ defmodule CodeMySpec.ContentAdmin do
       error_string = CodeMySpec.Utils.changeset_error_to_string(cs)
 
       Logger.error(
-        "ContentAdmin validation failed at index #{index}: #{title} - #{error_string}",
-        changeset_errors: errors,
-        changeset_changes: cs.changes,
-        index: index
+        "ContentAdmin validation failed at index #{index}: #{title} - #{error_string} errors=#{inspect(errors)}"
       )
     end)
 

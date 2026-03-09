@@ -480,7 +480,7 @@ defmodule CodeMySpec.ContentSync do
         {:ok, content_list}
 
       {:error, reason} ->
-        Logger.error("Failed to sync to Content", reason: inspect(reason))
+        Logger.error("Failed to sync to Content: #{inspect(reason)}")
         {:error, reason}
     end
   end
