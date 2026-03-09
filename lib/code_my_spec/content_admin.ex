@@ -87,19 +87,7 @@ defmodule CodeMySpec.ContentAdmin do
     changesets
     |> Enum.filter(fn {cs, _index} -> not cs.valid? end)
     |> Enum.each(fn {cs, index} ->
-      errors =
-        Ecto.Changeset.traverse_errors(cs, fn {msg, opts} ->
-          Enum.reduce(opts, msg, fn {key, value}, acc ->
-            String.replace(acc, "%{#{key}}", to_string(value))
-          end)
-        end)
-
-      title = get_in(cs.changes, [:metadata, "title"]) || "untitled"
-      error_string = CodeMySpec.Utils.changeset_error_to_string(cs)
-
-      Logger.error(
-        "ContentAdmin validation failed at index #{index}: #{title} - #{error_string} errors=#{inspect(errors)}"
-      )
+      log_changeset_validation_error(cs, index)
     end)
 
     # Check if any changesets are invalid
@@ -184,5 +172,21 @@ defmodule CodeMySpec.ContentAdmin do
 
   defp content_admin_topic(%Scope{} = scope) do
     "account:#{scope.active_account.id}:project:#{scope.active_project.id}:content_admin"
+  end
+
+  defp log_changeset_validation_error(cs, index) do
+    errors =
+      Ecto.Changeset.traverse_errors(cs, fn {msg, opts} ->
+        Enum.reduce(opts, msg, fn {key, value}, acc ->
+          String.replace(acc, "%{#{key}}", to_string(value))
+        end)
+      end)
+
+    title = get_in(cs.changes, [:metadata, "title"]) || "untitled"
+    error_string = CodeMySpec.Utils.changeset_error_to_string(cs)
+
+    Logger.error(
+      "ContentAdmin validation failed at index #{index}: #{title} - #{error_string} errors=#{inspect(errors)}"
+    )
   end
 end

@@ -150,27 +150,7 @@ defmodule CodeMySpec.ContentSync.Sync do
     with :ok <- validate_directory(directory) do
       {file_paths, skipped_paths} = discover_files(directory)
 
-      # Log warnings for content files missing YAML sidecar
-      # sobelow_skip ["Traversal.FileModule"]
-      skipped_attrs =
-        Enum.map(skipped_paths, fn path ->
-          filename = Path.basename(path)
-          Logger.warning("ContentSync: Skipping #{filename} — no YAML metadata sidecar file")
-
-          %{
-            slug: Path.rootname(filename),
-            content_type: :blog,
-            raw_content: File.read!(path),
-            processed_content: nil,
-            parse_status: :error,
-            parse_errors: %{
-              error_type: "MissingMetadata",
-              message: "No YAML sidecar file found for #{filename}. Create #{Path.rootname(filename)}.yaml alongside it."
-            },
-            metadata: %{}
-          }
-        end)
-
+      skipped_attrs = Enum.map(skipped_paths, &build_missing_metadata_attrs/1)
       processed_attrs = Enum.map(file_paths, &process_file/1)
 
       {:ok, processed_attrs ++ skipped_attrs}
@@ -238,7 +218,7 @@ defmodule CodeMySpec.ContentSync.Sync do
   # File Processing
   # ============================================================================
 
-  # sobelow_skip ["Traversal.FileModule"]
+  @sobelow_skip ["Traversal.FileModule"]
   @spec process_file(String.t()) :: content_attrs()
   defp process_file(file_path) do
     raw_content = File.read!(file_path)
@@ -264,6 +244,26 @@ defmodule CodeMySpec.ContentSync.Sync do
   defp route_to_processor(".html", raw_content) do
     {:ok, result} = HtmlProcessor.process(raw_content)
     result
+  end
+
+  @sobelow_skip ["Traversal.FileModule"]
+  defp build_missing_metadata_attrs(path) do
+    require Logger
+    filename = Path.basename(path)
+    Logger.warning("ContentSync: Skipping #{filename} — no YAML metadata sidecar file")
+
+    %{
+      slug: Path.rootname(filename),
+      content_type: :blog,
+      raw_content: File.read!(path),
+      processed_content: nil,
+      parse_status: :error,
+      parse_errors: %{
+        error_type: "MissingMetadata",
+        message: "No YAML sidecar file found for #{filename}. Create #{Path.rootname(filename)}.yaml alongside it."
+      },
+      metadata: %{}
+    }
   end
 
   @spec merge_metadata_and_result(map(), ProcessorResult.t(), String.t()) :: content_attrs()
