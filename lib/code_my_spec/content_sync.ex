@@ -97,6 +97,30 @@ defmodule CodeMySpec.ContentSync do
     end
   end
 
+  def sync_directory_to_content_admin(%Scope{} = scope, content_dir) do
+    start_time = System.monotonic_time(:millisecond)
+
+    with {:ok, attrs_list} <- Sync.process_directory(content_dir),
+         {:ok, validated_attrs_list} <- validate_attrs_against_content_schema(attrs_list),
+         {:ok, content_admin_list} <-
+           persist_validated_content_to_admin(scope, validated_attrs_list) do
+      end_time = System.monotonic_time(:millisecond)
+      duration_ms = end_time - start_time
+
+      sync_result = %{
+        total_files: length(content_admin_list),
+        successful: Enum.count(content_admin_list, &(&1.parse_status == :success)),
+        errors: Enum.count(content_admin_list, &(&1.parse_status == :error)),
+        duration_ms: duration_ms,
+        content_synced: 0
+      }
+
+      broadcast_sync_completed(scope, sync_result)
+
+      {:ok, sync_result}
+    end
+  end
+
   def sync_directory_to_content_and_content_admin(%Scope{} = scope, content_dir) do
     start_time = System.monotonic_time(:millisecond)
 

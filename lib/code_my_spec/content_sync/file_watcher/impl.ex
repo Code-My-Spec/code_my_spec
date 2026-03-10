@@ -53,7 +53,7 @@ defmodule CodeMySpec.ContentSync.FileWatcher.Impl do
         debounce_ms: opts[:debounce_ms] || @default_debounce_ms,
         sync_fn:
           opts[:sync_fn] ||
-            (&CodeMySpec.ContentSync.sync_directory_to_content_and_content_admin/2)
+            (&CodeMySpec.ContentSync.sync_directory_to_content_admin/2)
       }
 
       {:ok, config}
