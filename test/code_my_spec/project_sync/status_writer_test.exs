@@ -327,7 +327,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
       # Root summary groups by live context with aggregated completion
       root_content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app_web.md"))
       assert root_content =~ "[MyAppWeb.AiLive]"
-      assert root_content =~ "(2/3)"
+      assert root_content =~ "(2/8)"
       refute root_content =~ "AiLive.Chat"
       refute root_content =~ "AiLive.Insights"
 
@@ -335,8 +335,12 @@ defmodule CodeMySpec.ProjectSync.StatusWriterTest do
       assert root_content =~ "[MyAppWeb.UserAuth]"
       assert root_content =~ "(1/1)"
 
-      # Live context file contains both liveviews inline
+      # Live context file contains requirements from registry and both liveviews inline
       context_content = File.read!(Path.join(tmp_dir, ".code_my_spec/status/my_app_web/ai_live.md"))
+      assert context_content =~ "## MyAppWeb.AiLive (live_context)"
+      assert context_content =~ "- [ ] spec_file"
+      assert context_content =~ "- [ ] children_designs"
+      refute context_content =~ "No requirements defined"
       assert context_content =~ "## MyAppWeb.AiLive.Chat (liveview)"
       assert context_content =~ "## MyAppWeb.AiLive.Insights (liveview)"
     end

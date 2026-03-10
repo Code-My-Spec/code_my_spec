@@ -19,6 +19,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
 
   require Logger
 
+  alias CodeMySpec.Components.Registry
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
@@ -122,16 +123,26 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
       groups
       |> Map.delete(:direct)
       |> Enum.map(fn {context_name, members} ->
+        type = "live_context"
+
         %{
           module_name: root_prefix <> context_name,
           name: context_name,
-          type: "live_context",
+          type: type,
           child_components: Enum.sort_by(members, & &1.name),
-          requirements: []
+          requirements: default_requirements_for_type(type)
         }
       end)
 
     Enum.sort_by(direct ++ virtual_contexts, & &1.name)
+  end
+
+  defp default_requirements_for_type(type) do
+    type
+    |> Registry.get_requirements_for_type()
+    |> Enum.map(fn req_def ->
+      %{name: req_def.name, description: req_def.description, satisfied: false}
+    end)
   end
 
   @doc """
