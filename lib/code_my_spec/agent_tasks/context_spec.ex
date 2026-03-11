@@ -180,7 +180,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     |> Enum.with_index(1)
     |> Enum.map_join("\n\n", fn {story, index} ->
       acceptance_criteria =
-        case story.acceptance_criteria do
+        case criteria_descriptions(story) do
           [] -> "  None specified"
           criteria -> Enum.map_join(criteria, "\n", &"  - #{&1}")
         end
@@ -253,5 +253,15 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
     #{description}
     """
+  end
+
+  defp criteria_descriptions(story) do
+    case story.criteria do
+      criteria when is_list(criteria) and criteria != [] ->
+        Enum.map(criteria, & &1.description)
+
+      _ ->
+        story.acceptance_criteria || []
+    end
   end
 end

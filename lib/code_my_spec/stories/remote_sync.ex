@@ -41,7 +41,6 @@ defmodule CodeMySpec.Stories.RemoteSync do
     attrs = %{
       title: story.title,
       description: story.description,
-      acceptance_criteria: story.acceptance_criteria,
       status: story.status,
       priority: story.priority,
       locked_at: story.locked_at,

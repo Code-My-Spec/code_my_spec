@@ -55,6 +55,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
       |> Enum.map(fn description -> %{description: description} end)
 
     params
+    |> Map.delete(:acceptance_criteria)
     |> Map.put(:criteria, criteria)
   end
 end

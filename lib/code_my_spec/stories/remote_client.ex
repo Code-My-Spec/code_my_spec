@@ -40,7 +40,7 @@ defmodule CodeMySpec.Stories.RemoteClient do
       id: data["id"],
       title: data["title"],
       description: data["description"],
-      acceptance_criteria: data["acceptance_criteria"],
+      acceptance_criteria: data["acceptance_criteria"] || [],
       criteria: parse_criteria(data["criteria"]),
       status: parse_status(data["status"]),
       priority: data["priority"],

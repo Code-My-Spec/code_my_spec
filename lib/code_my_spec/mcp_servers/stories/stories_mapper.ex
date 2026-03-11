@@ -384,7 +384,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       id: story.id,
       title: story.title,
       description: story.description,
-      acceptance_criteria: story.acceptance_criteria,
+      acceptance_criteria: criteria_descriptions(story),
       criteria: format_criteria(story.criteria),
       component_id: story.component_id,
       priority: story.priority
@@ -417,6 +417,16 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
       Map.put(base, :tags, Enum.map(story.tags, & &1.name))
     else
       base
+    end
+  end
+
+  defp criteria_descriptions(story) do
+    case story.criteria do
+      criteria when is_list(criteria) and criteria != [] ->
+        Enum.map(criteria, & &1.description)
+
+      _ ->
+        story.acceptance_criteria || []
     end
   end
 

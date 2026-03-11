@@ -239,9 +239,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     stories
     |> Enum.map_join("\n\n", fn story ->
       acceptance_criteria =
-        case story.acceptance_criteria do
+        case criteria_descriptions(story) do
           [] -> "  None specified"
-          nil -> "  None specified"
           criteria -> Enum.map_join(criteria, "\n", &"  - #{&1}")
         end
 
@@ -257,5 +256,15 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       """
       |> String.trim()
     end)
+  end
+
+  defp criteria_descriptions(story) do
+    case story.criteria do
+      criteria when is_list(criteria) and criteria != [] ->
+        Enum.map(criteria, & &1.description)
+
+      _ ->
+        story.acceptance_criteria || []
+    end
   end
 end

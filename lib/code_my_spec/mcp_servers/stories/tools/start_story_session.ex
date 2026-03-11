@@ -128,7 +128,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
   end
 
   defp format_story_basic(story) do
-    criteria = format_criteria(story.acceptance_criteria, "- ")
+    criteria = format_criteria(criteria_descriptions(story), "- ")
 
     """
     **#{story.title}**
@@ -140,7 +140,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
   end
 
   defp format_story_numbered({story, index}) do
-    criteria = format_criteria(story.acceptance_criteria, "✓ ")
+    criteria = format_criteria(criteria_descriptions(story), "✓ ")
 
     """
     **Story #{index}: #{story.title}**
@@ -149,6 +149,16 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
     Acceptance Criteria:
     #{criteria}
     """
+  end
+
+  defp criteria_descriptions(story) do
+    case story.criteria do
+      criteria when is_list(criteria) and criteria != [] ->
+        Enum.map(criteria, & &1.description)
+
+      _ ->
+        story.acceptance_criteria || []
+    end
   end
 
   defp format_criteria([], _prefix), do: "No acceptance criteria defined"

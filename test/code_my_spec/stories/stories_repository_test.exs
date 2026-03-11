@@ -83,7 +83,7 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
         status: :in_progress,
         description: "some description",
         title: title = Faker.Lorem.word(),
-        acceptance_criteria: ["option1", "option2"],
+        criteria: [%{description: "option1"}, %{description: "option2"}],
         locked_at: ~U[2025-07-17 12:48:00Z],
         lock_expires_at: ~U[2025-07-17 12:48:00Z]
       }
@@ -94,7 +94,7 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert story.status == :in_progress
       assert story.description == "some description"
       assert story.title == title
-      assert story.acceptance_criteria == ["option1", "option2"]
+      assert [%{description: "option1"}, %{description: "option2"}] = story.criteria
       assert story.locked_at == ~U[2025-07-17 12:48:00Z]
       assert story.lock_expires_at == ~U[2025-07-17 12:48:00Z]
       assert story.account_id == scope.active_account.id
@@ -114,7 +114,7 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
         status: :completed,
         description: "some updated description",
         title: title,
-        acceptance_criteria: ["option1"],
+        criteria: [%{description: "option1"}],
         locked_at: ~U[2025-07-18 12:48:00Z],
         lock_expires_at: ~U[2025-07-18 12:48:00Z]
       }
@@ -123,7 +123,7 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert story.status == :completed
       assert story.description == "some updated description"
       assert story.title == title
-      assert story.acceptance_criteria == ["option1"]
+      assert [%{description: "option1"}] = story.criteria
       assert story.locked_at == ~U[2025-07-18 12:48:00Z]
       assert story.lock_expires_at == ~U[2025-07-18 12:48:00Z]
     end

@@ -20,7 +20,7 @@ defmodule CodeMySpecWeb.StoriesJSON do
       id: story.id,
       title: story.title,
       description: story.description,
-      acceptance_criteria: story.acceptance_criteria,
+      acceptance_criteria: criteria_descriptions(story),
       criteria: render_criteria(story.criteria),
       status: story.status,
       priority: story.priority,
@@ -48,6 +48,13 @@ defmodule CodeMySpecWeb.StoriesJSON do
       module_name: component.module_name
     }
   end
+
+  defp criteria_descriptions(%{criteria: criteria}) when is_list(criteria) and criteria != [] do
+    Enum.map(criteria, & &1.description)
+  end
+
+  defp criteria_descriptions(%{acceptance_criteria: ac}) when is_list(ac), do: ac
+  defp criteria_descriptions(_), do: []
 
   defp render_tags(%Ecto.Association.NotLoaded{}), do: []
   defp render_tags(nil), do: []

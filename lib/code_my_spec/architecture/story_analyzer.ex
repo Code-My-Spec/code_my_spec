@@ -236,7 +236,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     [
       story.title || "",
       story.description || "",
-      Enum.join(story.acceptance_criteria || [], " ")
+      criteria_text(story)
     ]
     |> Enum.join(" ")
     |> String.downcase()
@@ -359,6 +359,16 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
       entities
       |> Enum.map(&"- #{&1}")
       |> Enum.join("\n")
+    end
+  end
+
+  defp criteria_text(story) do
+    case story.criteria do
+      criteria when is_list(criteria) and criteria != [] ->
+        Enum.map_join(criteria, " ", & &1.description)
+
+      _ ->
+        Enum.join(story.acceptance_criteria || [], " ")
     end
   end
 end

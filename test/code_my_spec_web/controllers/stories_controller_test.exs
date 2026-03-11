@@ -99,7 +99,7 @@ defmodule CodeMySpecWeb.StoriesControllerTest do
       story_params = %{
         title: "New Story",
         description: "Story description",
-        acceptance_criteria: ["criterion 1", "criterion 2"],
+        criteria: [%{description: "criterion 1"}, %{description: "criterion 2"}],
         status: "in_progress"
       }
 

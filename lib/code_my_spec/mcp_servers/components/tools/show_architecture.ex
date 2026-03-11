@@ -113,7 +113,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
         title: story.title,
         description: story.description,
         status: story.status,
-        acceptance_criteria: story.acceptance_criteria || []
+        acceptance_criteria: criteria_descriptions(story)
       }
     end)
   end
@@ -155,5 +155,15 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
         total_relationships: length(all_relationships)
       }
     }
+  end
+
+  defp criteria_descriptions(story) do
+    case story.criteria do
+      criteria when is_list(criteria) and criteria != [] ->
+        Enum.map(criteria, & &1.description)
+
+      _ ->
+        story.acceptance_criteria || []
+    end
   end
 end

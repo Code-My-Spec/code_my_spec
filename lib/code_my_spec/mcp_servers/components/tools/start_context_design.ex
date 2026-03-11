@@ -66,7 +66,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
 
   defp format_story_summary(story) do
     criteria =
-      case story.acceptance_criteria do
+      case criteria_descriptions(story) do
         [] ->
           "No acceptance criteria defined"
 
@@ -112,5 +112,15 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
     dependencies
     |> Enum.map(&"- #{&1.target_component.name}")
     |> Enum.join("\n")
+  end
+
+  defp criteria_descriptions(story) do
+    case story.criteria do
+      criteria when is_list(criteria) and criteria != [] ->
+        Enum.map(criteria, & &1.description)
+
+      _ ->
+        story.acceptance_criteria || []
+    end
   end
 end
