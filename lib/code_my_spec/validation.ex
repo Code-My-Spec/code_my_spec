@@ -18,6 +18,7 @@ defmodule CodeMySpec.Validation do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.DirtyTracker
+  alias CodeMySpec.Components.Sync, as: ComponentSync
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Problems.ProblemAssigner
@@ -25,8 +26,6 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.ProjectCoordinator.ImplementationStatus
   alias CodeMySpec.Requirements.Sync, as: RequirementsSync
   alias CodeMySpec.Stories
-  alias CodeMySpec.Transcripts.ClaudeCode.FileExtractor
-  alias CodeMySpec.Transcripts.ClaudeCode.Parser, as: TranscriptParser
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.Pipeline
   alias CodeMySpec.Validation.TaskEvaluator
@@ -42,6 +41,10 @@ defmodule CodeMySpec.Validation do
   def validate_subagent(%Scope{} = scope, opts) do
     total_start = System.monotonic_time(:millisecond)
     transcript_path = Keyword.fetch!(opts, :transcript_path)
+
+    # Sync component mtimes before checking dirty status — the file watcher's
+    # debounce may not have fired yet when the hook arrives.
+    sync_ms = sync_component_mtimes(scope)
 
     # Phase 0: Purge stale problems from before dirty tracking
     purge_stale_problems(scope)
@@ -62,16 +65,16 @@ defmodule CodeMySpec.Validation do
     recalculate_for_problem_components(scope)
     recalc_ms = System.monotonic_time(:millisecond) - recalc_start
 
-    # Phase 3: Match edited files to dispatched task and evaluate
+    # Phase 3: Identify subagent task via prompt_path matching and evaluate
     eval_start = System.monotonic_time(:millisecond)
-    task_result = match_and_evaluate_task(scope, transcript_path)
+    task_result = identify_and_evaluate_task(scope, transcript_path)
     eval_ms = System.monotonic_time(:millisecond) - eval_start
 
     total_ms = System.monotonic_time(:millisecond) - total_start
 
     Logger.info(
       "[Validation] validate_subagent completed in #{total_ms}ms: " <>
-        "analysis=#{analysis_ms}ms, tests=#{test_ms}ms, spex=#{spex_ms}ms, " <>
+        "sync=#{sync_ms}ms, analysis=#{analysis_ms}ms, tests=#{test_ms}ms, spex=#{spex_ms}ms, " <>
         "recalc=#{recalc_ms}ms, eval=#{eval_ms}ms"
     )
 
@@ -89,6 +92,10 @@ defmodule CodeMySpec.Validation do
   def validate_stop(%Scope{} = scope, opts) do
     total_start = System.monotonic_time(:millisecond)
     session_id = Keyword.fetch!(opts, :session_id)
+
+    # Sync component mtimes before checking dirty status — the file watcher's
+    # debounce may not have fired yet when the hook arrives.
+    sync_ms = sync_component_mtimes(scope)
 
     # Phase 0: Purge stale problems from before dirty tracking
     purge_stale_problems(scope)
@@ -118,7 +125,7 @@ defmodule CodeMySpec.Validation do
 
     Logger.info(
       "[Validation] validate_stop completed in #{total_ms}ms: " <>
-        "analysis=#{analysis_ms}ms, tests=#{test_ms}ms, spex=#{spex_ms}ms, " <>
+        "sync=#{sync_ms}ms, analysis=#{analysis_ms}ms, tests=#{test_ms}ms, spex=#{spex_ms}ms, " <>
         "recalc=#{recalc_ms}ms, eval=#{eval_ms}ms"
     )
 
@@ -143,6 +150,35 @@ defmodule CodeMySpec.Validation do
 
   def format_output({:error, reason}) when is_binary(reason) do
     %{"decision" => "block", "reason" => reason}
+  end
+
+  # ============================================================================
+  # Pre-validation: Sync component mtimes
+  # ============================================================================
+
+  # Ensures files_changed_at reflects actual file mtimes before dirty checking.
+  # The file watcher runs sync_changed on a 100ms debounce, but the Stop/SubagentStop
+  # hook can arrive before that debounce fires.
+  defp sync_component_mtimes(%Scope{cwd: nil}), do: 0
+
+  defp sync_component_mtimes(%Scope{cwd: cwd} = scope) do
+    start = System.monotonic_time(:millisecond)
+
+    case ComponentSync.sync_changed(scope, base_dir: cwd) do
+      {:ok, _components, changed_ids} ->
+        ms = System.monotonic_time(:millisecond) - start
+
+        Logger.info(
+          "[Validation] Pre-sync: #{length(changed_ids)} component(s) updated in #{ms}ms"
+        )
+
+        ms
+
+      {:error, error} ->
+        ms = System.monotonic_time(:millisecond) - start
+        Logger.warning("[Validation] Pre-sync failed: #{inspect(error)}")
+        ms
+    end
   end
 
   # ============================================================================
@@ -289,29 +325,26 @@ defmodule CodeMySpec.Validation do
   end
 
   # ============================================================================
-  # Phase 3: Task Matching (SubagentStop only)
+  # Phase 3: Task Identification & Evaluation (SubagentStop only)
   # ============================================================================
 
-  defp match_and_evaluate_task(scope, transcript_path) do
-    # Extract edited files from transcript
-    edited_files = extract_edited_files(transcript_path, scope)
+  defp identify_and_evaluate_task(scope, transcript_path) do
+    env = scope.environment
 
-    if edited_files == [] do
-      Logger.info("[Validation] No edited files found in transcript")
+    if is_nil(env) do
       :none
     else
-      # Read dispatched tasks from status file
-      env = scope.environment
-      tasks = if env, do: ImplementationStatus.dispatched_tasks(env), else: []
-
-      case ImplementationStatus.match_task(edited_files, tasks) do
+      case ImplementationStatus.identify_task_from_transcript(env, transcript_path) do
         nil ->
-          Logger.info("[Validation] No dispatched task matched edited files, skipping task eval")
+          Logger.warning(
+            "[Validation] Could not identify subagent task — no prompt_path or file match"
+          )
+
           :none
 
         matched_task ->
           Logger.info(
-            "[Validation] Matched task: #{matched_task["requirement"]} " <>
+            "[Validation] Identified task: #{matched_task["requirement"]} " <>
               "for #{matched_task["component_module"] || "project"}"
           )
 
@@ -361,27 +394,6 @@ defmodule CodeMySpec.Validation do
     e ->
       Logger.error("[Validation] Task evaluation failed: #{Exception.message(e)}")
       {:error, "Task evaluation failed: #{Exception.message(e)}"}
-  end
-
-  defp extract_edited_files(transcript_path, scope) do
-    case TranscriptParser.parse(transcript_path) do
-      {:ok, transcript} ->
-        project_root = scope.cwd || ""
-        FileExtractor.extract_edited_files(transcript)
-        |> relativize_paths(project_root)
-
-      {:error, reason} ->
-        Logger.warning("[Validation] Failed to parse transcript: #{inspect(reason)}")
-        []
-    end
-  end
-
-  defp relativize_paths(paths, project_root) do
-    Enum.map(paths, fn path ->
-      if String.starts_with?(path, "/"),
-        do: Path.relative_to(path, project_root),
-        else: path
-    end)
   end
 
   # ============================================================================
