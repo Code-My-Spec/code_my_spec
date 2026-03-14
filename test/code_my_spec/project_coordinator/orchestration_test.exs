@@ -165,18 +165,18 @@ defmodule CodeMySpec.ProjectCoordinator.OrchestrationTest do
   describe "component_status_dir/1" do
     test "converts module name to status directory path" do
       component = %{module_name: "MetricFlow.Accounts"}
-      assert ProjectCoordinator.component_status_dir(component) == ".code_my_spec/status/metric_flow/accounts"
+      assert ProjectCoordinator.component_status_dir(component) == ".code_my_spec/tasks/metric_flow/accounts"
     end
 
     test "handles deeply nested modules" do
       component = %{module_name: "MyApp.Web.Live.Dashboard"}
-      assert ProjectCoordinator.component_status_dir(component) == ".code_my_spec/status/my_app/web/live/dashboard"
+      assert ProjectCoordinator.component_status_dir(component) == ".code_my_spec/tasks/my_app/web/live/dashboard"
     end
   end
 
   describe "safe_filename/1" do
     test "converts module name to safe filename" do
-      assert ProjectCoordinator.safe_filename("MetricFlow.Accounts") == "metricflow_accounts"
+      assert ProjectCoordinator.safe_filename("MetricFlow.Accounts") == "accounts"
     end
   end
 
