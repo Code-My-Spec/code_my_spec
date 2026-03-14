@@ -1,62 +1,21 @@
 defmodule CodeMySpec.Validation.TaskEvaluator do
   @moduledoc """
-  Evaluates agent tasks. Two entry points for the two hook events:
+  Evaluates agent tasks via the Stop hook.
 
-  - `evaluate_component/2` resolves a component task from a transcript marker
-    and delegates to the task module's `evaluate/3` (SubagentStop).
-  - `evaluate_sessions/2` looks up sessions by external conversation ID,
-    evaluates the session stack at highest priority, deletes passing sessions,
-    and returns combined feedback for failures (Stop).
+  `evaluate_sessions/2` looks up sessions by external conversation ID,
+  evaluates the session stack at highest priority, deletes passing sessions,
+  and returns combined feedback for failures.
+
+  SubagentStop task identification is handled by
+  `ImplementationStatus.identify_task_from_transcript/2` and
+  `Validation.identify_and_evaluate_task/2` instead.
   """
 
   require Logger
 
   alias CodeMySpec.Components
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.SessionType
-  alias CodeMySpec.Transcripts.TaskIdentifier
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Utils
-
-  @doc """
-  Resolve a component task from a transcript marker and evaluate it.
-
-  Returns:
-  - `{:ok, :valid}` when the task module passes
-  - `{:ok, :invalid, feedback}` when the task module finds issues
-  - `{:error, reason}` when the task module errors
-  - `:none` when no marker found, type not recognized, or component not in DB
-  """
-  @spec evaluate_component(Scope.t(), keyword()) ::
-          {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, String.t()} | :none
-  def evaluate_component(%Scope{} = scope, opts) do
-    transcript_path = Keyword.fetch!(opts, :transcript_path)
-
-    case TaskIdentifier.identify(transcript_path) do
-      {:ok, %{type: type_name, component: subject}} ->
-        module = SessionType.mapper() |> Map.get(type_name)
-
-        cond do
-          is_nil(module) ->
-            Logger.info("[TaskEvaluator] Unrecognized task type: #{type_name}")
-            :none
-
-          topic_based_task?(module) ->
-            Logger.info("[TaskEvaluator] Evaluating topic task: #{type_name}/#{subject}")
-            result = evaluate_topic_task(scope, module, subject)
-            Logger.info("[TaskEvaluator] Topic task result: #{inspect(result)}")
-            result
-
-          true ->
-            Logger.info("[TaskEvaluator] Evaluating component task: #{type_name}/#{subject}")
-            evaluate_component_task(scope, module, subject)
-        end
-
-      :none ->
-        Logger.info("[TaskEvaluator] No marker found, skipping task evaluation")
-        :none
-    end
-  end
 
   @doc """
   Look up sessions by external conversation ID, evaluate the session stack,
@@ -78,42 +37,6 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
 
       _error ->
         {:ok, :valid}
-    end
-  end
-
-  # ============================================================================
-  # Component evaluation (SubagentStop)
-  # ============================================================================
-
-  @topic_based_tasks [CodeMySpec.AgentTasks.QaStory]
-
-  defp topic_based_task?(module), do: module in @topic_based_tasks
-
-  defp evaluate_topic_task(scope, module, subject) do
-    session_map = %{
-      project: scope.active_project,
-      state: %{"topic" => subject}
-    }
-
-    call_evaluate(module, scope, session_map, [])
-  end
-
-  defp evaluate_component_task(scope, module, component_module_name) do
-    case Components.get_component_by_module_name(scope, component_module_name) do
-      nil ->
-        Logger.info("[TaskEvaluator] Component not found: #{component_module_name}")
-        :none
-
-      component ->
-        files = Utils.component_files(component, scope.active_project) |> Map.values()
-
-        session_map = %{
-          component: component,
-          project: scope.active_project,
-          files: files
-        }
-
-        call_evaluate(module, scope, session_map, [])
     end
   end
 

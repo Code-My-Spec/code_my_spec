@@ -9,7 +9,6 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
 
   require Logger
 
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
@@ -46,8 +45,7 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
              stories,
              review_file_path
            ) do
-      {:ok,
-       TaskMarker.build("ContextDesignReview", context_component.module_name) <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 

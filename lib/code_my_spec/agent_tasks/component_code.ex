@@ -8,7 +8,6 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   """
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.ProjectCoordinator
@@ -33,7 +32,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     with {:ok, rules} <- get_implementation_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
       {:ok, prompt} = build_implementation_prompt(project, component, rules, similar_components)
-      {:ok, TaskMarker.build("ComponentCode", component.module_name) <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 

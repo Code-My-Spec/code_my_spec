@@ -3,7 +3,8 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   Agent task for triaging incoming QA issues.
 
   Reviews all incoming issues from the database, decides dispositions
-  (accept, dismiss, merge), and moves projected files to `accepted/` or `dismissed/`.
+  (accept, dismiss, merge), and edits the `## Status` field in projected
+  issue files from `incoming` to `accepted` or `dismissed`.
 
   Accepts an optional minimum severity argument (default: :medium) from
   `session.state["topic"]`. Only issues at or above the specified severity
@@ -11,11 +12,10 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
   Two main functions:
   - `command/3` — Reads incoming issues from DB, builds triage prompt
-  - `evaluate/3` — Reconciles filesystem changes to DB, checks that no incoming issues remain
+  - `evaluate/3` — Reconciles status field changes to DB, checks that no incoming issues remain
   """
 
-  alias CodeMySpec.AgentTasks.TaskMarker
-  alias CodeMySpec.{Issues, Paths}
+  alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.ProjectCoordinator
 
@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
   Queries the database for incoming issues at or above the minimum severity
   and builds a prompt instructing the agent to review, deduplicate, and
-  execute dispositions by moving projected files.
+  execute dispositions by editing the `## Status` field in projected files.
 
   Returns `{:ok, prompt_text}`
   """
@@ -33,15 +33,15 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     issues = list_incoming_at_severity(scope, min_severity)
 
     prompt = build_prompt(issues, min_severity)
-    {:ok, TaskMarker.build("TriageIssues", to_string(min_severity)) <> "\n\n" <> prompt}
+    {:ok, prompt}
   end
 
   @doc """
-  Reconcile filesystem triage and check that no incoming issues remain.
+  Reconcile status field edits and check that no incoming issues remain.
 
-  First reconciles the agent's file moves back to the database (files moved
-  to accepted/ get accepted, files removed get dismissed), then checks
-  whether untriaged issues remain.
+  Reads the `## Status` field from each projected issue file in incoming/
+  and syncs the value back to the database. Then checks whether untriaged
+  issues remain at the minimum severity.
 
   Returns:
   - `{:ok, :valid}` when no incoming issues at min severity remain
@@ -49,8 +49,6 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   """
   def evaluate(scope, session, _opts \\ []) do
     min_severity = get_min_severity(session)
-
-    Issues.reconcile_triage(scope)
 
     remaining = list_incoming_at_severity(scope, min_severity)
 
@@ -62,7 +60,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
         names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
 
         {:ok, :invalid,
-         "#{length(issues)} untriaged issue(s) remain at #{min_severity}+ severity:\n\n#{names}\n\nReview each issue and move to accepted/ or dismissed/."}
+         "#{length(issues)} untriaged issue(s) remain at #{min_severity}+ severity:\n\n#{names}\n\nUse `accept-issue <id>` or `dismiss-issue <id> <reason>` for each remaining issue."}
     end
   end
 
@@ -95,19 +93,8 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     issues_text =
       Enum.map_join(grouped, "\n\n", fn {severity, group} ->
         items =
-          Enum.map_join(group, "\n\n", fn issue ->
-            filename = Issues.projected_filename(issue)
-
-            """
-            ### `#{filename}`
-
-            - **Title:** #{issue.title}
-            - **Severity:** #{issue.severity}
-            - **Scope:** #{issue.scope || :app}
-            - **Story:** #{issue.story_id || "N/A"}
-
-            #{issue.description}\
-            """
+          Enum.map_join(group, "\n", fn issue ->
+            "- `#{issue.id}` — #{issue.title} (#{issue.severity})"
           end)
 
         "## #{String.capitalize(to_string(severity))} (#{length(group)})\n\n#{items}"
@@ -118,35 +105,30 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
     You are triaging incoming QA issues at **#{min_severity}+** severity.
 
+    ## Tools
+
+    Use the following bash tools to interact with issues:
+
+    - `list-issues --status incoming` — list all incoming issues
+    - `get-issue <id>` — read full issue details
+    - `accept-issue <id>` — accept a real issue
+    - `dismiss-issue <id> <reason>` — dismiss with a reason
+
     ## Goal
 
-    Produce a clean `accepted/` folder with real, deduplicated issues. Your job:
+    Review all incoming issues and decide their disposition.
 
-    1. **Read all incoming issues** listed below
+    1. **Read each issue** using `get-issue <id>` for the issues listed below
     2. **Identify duplicates** — issues describing the same underlying problem
     3. **Decide a disposition** for each issue:
-       - **Accept** — real issue, move to `#{Paths.issues_accepted_dir()}/`
-       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), move to `#{Paths.issues_dismissed_dir()}/`
-       - **Merge** — consolidate evidence from duplicates into one accepted issue, dismiss the others
-    4. **Execute** — move files using `Write` to the target directory and delete from `incoming/`
-
-    Each issue may have a `## Scope` section (`app`, `qa`, or `docs`). Preserve the scope
-    when moving files. If an issue is missing a scope section, default to `app`.
-
-    When merging duplicates: pick the best title, consolidate description and evidence into
-    one accepted issue file, and dismiss the rest with a note about which issue they merged into.
-
-    Ensure the `accepted/` and `dismissed/` directories exist before writing (create them if needed).
+       - **Accept** — real issue, run `accept-issue <id>`
+       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), run `dismiss-issue <id> "<reason>"`
+       - **Merge** — accept the best issue, dismiss the others with a reason noting the duplicate
+    4. **Execute** each disposition using the tools above
 
     ## Incoming Issues
 
     #{issues_text}
-
-    ## Directories
-
-    - Incoming: `#{Paths.issues_incoming_dir()}/`
-    - Accepted: `#{Paths.issues_accepted_dir()}/`
-    - Dismissed: `#{Paths.issues_dismissed_dir()}/`
 
     Stop the session when all issues have been triaged.
     """

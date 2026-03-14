@@ -5,7 +5,6 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
   require Logger
 
-  alias CodeMySpec.AgentTasks.TrackEdits
   alias CodeMySpec.LocalServer.NotificationClient
   alias CodeMySpec.Validation
 
@@ -79,8 +78,8 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
     Validation.format_output(result)
   end
 
-  defp dispatch(_scope, "PostToolUse", _session_id, hook_input, _req_id) do
-    TrackEdits.run(hook_input)
+  defp dispatch(_scope, "PostToolUse", _session_id, _hook_input, _req_id) do
+    %{}
   end
 
   defp dispatch(_scope, "Notification", _session_id, hook_input, req_id) do

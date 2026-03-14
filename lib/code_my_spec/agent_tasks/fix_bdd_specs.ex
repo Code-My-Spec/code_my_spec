@@ -12,10 +12,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   - `evaluate/3` — Checks that no relevant spex failures remain
   """
 
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
   alias CodeMySpec.Problems
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
@@ -34,17 +32,15 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     problems = Problems.list_project_problems(scope, source: "spex")
 
     if Enum.empty?(problems) do
-      {:ok, TaskMarker.build("FixBddSpecs", "all_passing") <> "\n\n" <> no_failures_message()}
+      {:ok, no_failures_message()}
     else
       relevant = filter_relevant_problems(scope, problems)
 
       if Enum.empty?(relevant) do
-        {:ok,
-         TaskMarker.build("FixBddSpecs", "unimplemented") <> "\n\n" <>
-           unimplemented_message()}
+        {:ok, unimplemented_message()}
       else
         prompt = build_prompt(scope, relevant)
-        {:ok, TaskMarker.build("FixBddSpecs", "fix") <> "\n\n" <> prompt}
+        {:ok, prompt}
       end
     end
   end
@@ -138,7 +134,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # ============================================================================
 
   defp build_prompt(scope, relevant_pairs) do
-    env = scope.environment
     project = scope.active_project
 
     grouped = Enum.group_by(relevant_pairs, fn {_problem, story} -> story.id end)
@@ -147,7 +142,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       Enum.map_join(grouped, "\n\n", fn {_story_id, pairs} ->
         {_problem, story} = List.first(pairs)
         problems = Enum.map(pairs, fn {p, _s} -> p end)
-        build_story_section(env, project, story, problems)
+        build_story_section(project, story, problems)
       end)
 
     """
@@ -177,30 +172,19 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     """
   end
 
-  defp build_story_section(env, project, story, problems) do
+  defp build_story_section(project, story, problems) do
     story_scope = %CodeMySpec.Users.Scope{
       active_project_id: story.project_id,
       active_project: project
     }
 
     component = Components.get_component(story_scope, story.component_id)
-
     files = if component, do: Utils.component_files(component, project), else: %{}
-
-    code_content = read_file_content(env, files[:code_file])
-    test_content = read_file_content(env, files[:test_file])
 
     failure_details =
       Enum.map_join(problems, "\n", fn problem ->
-        spec_content = read_file_content(env, problem.file_path)
-
         """
-        ### `#{problem.file_path}`#{if problem.line, do: ":#{problem.line}", else: ""}
-
-        **Message**: #{problem.message}
-        **Severity**: #{problem.severity}
-
-        #{if spec_content, do: "```elixir\n#{spec_content}\n```", else: "_Spec file could not be read_"}
+        - `#{problem.file_path}`#{if problem.line, do: ":#{problem.line}", else: ""} — #{problem.message}
         """
       end)
 
@@ -211,21 +195,9 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     #{if files[:code_file], do: "**Implementation**: `#{files[:code_file]}`", else: ""}
     #{if files[:test_file], do: "**Tests**: `#{files[:test_file]}`", else: ""}
 
+    **Failures:**
     #{failure_details}
-
-    #{if code_content, do: "### Current Implementation\n\n```elixir\n#{code_content}\n```", else: ""}
-
-    #{if test_content, do: "### Current Tests\n\n```elixir\n#{test_content}\n```", else: ""}
     """
-  end
-
-  defp read_file_content(_env, nil), do: nil
-
-  defp read_file_content(env, path) do
-    case Environments.read_file(env, path) do
-      {:ok, content} -> content
-      _ -> nil
-    end
   end
 
   # ============================================================================

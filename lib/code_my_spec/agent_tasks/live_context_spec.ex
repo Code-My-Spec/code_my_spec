@@ -15,7 +15,6 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
   require Logger
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents
@@ -38,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     with {:ok, rules} <- get_design_rules(scope),
          similar <- Components.list_similar_components(scope, component),
          {:ok, prompt} <- build_spec_prompt(session, rules, similar) do
-      {:ok, TaskMarker.build("LiveContextSpec", component.module_name) <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 

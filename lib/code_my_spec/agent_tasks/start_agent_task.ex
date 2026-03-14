@@ -19,7 +19,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   require Logger
 
   alias CodeMySpec.AgentTasks
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
@@ -180,8 +179,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, session} <- create_topic_session(scope, external_id, agent_task_module, topic),
          session <- enrich_session(session, nil, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
-      marker = task_marker_from_module(agent_task_module, topic)
-      {:ok, with_project_context(marker <> "\n\n" <> prompt, scope), sync_result}
+      {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
 
@@ -368,13 +366,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # Set virtual fields on the session struct
   defp enrich_session(%Session{} = session, component, scope) do
     %{session | component: component, project: scope.active_project}
-  end
-
-  # TaskMarker for topic tasks — derive type name from module
-  # CodeMySpec.AgentTasks.QaStory → "QaStory"
-  defp task_marker_from_module(module, subject) do
-    type_name = module |> Module.split() |> List.last()
-    TaskMarker.build(type_name, to_string(subject))
   end
 
   # Sync — incremental only. File watcher handles continuous sync;

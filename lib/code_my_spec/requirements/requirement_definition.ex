@@ -20,7 +20,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           | :dependencies
           | :hierarchy
 
-  @type scope :: :local | :children | :dependencies | :orchestrate
+  @type scope :: :local | :children | :dependencies | :orchestrate | :pipeline
 
   @type t :: %__MODULE__{
           name: String.t(),
@@ -53,7 +53,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     field :threshold, :float, default: 1.0
     field :config, :map, default: %{}
     field :prerequisites, {:array, :string}, default: []
-    field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate], default: :local
+    field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
   end
 
   @doc """

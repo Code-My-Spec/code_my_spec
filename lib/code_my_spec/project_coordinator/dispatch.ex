@@ -16,7 +16,9 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   require Logger
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments
   alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.ProjectCoordinator.ImplementationStatus
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -37,6 +39,10 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
   def command(%Requirement{scope: :orchestrate} = req, scope, parent_session) do
     command_orchestrate(req, scope, parent_session)
+  end
+
+  def command(%Requirement{scope: :pipeline} = req, scope, parent_session) do
+    command_pipeline(req, scope, parent_session)
   end
 
   def command(%Requirement{} = req, scope, parent_session) do
@@ -62,6 +68,10 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
   def evaluate(%Requirement{scope: :orchestrate} = req, scope, parent_session) do
     evaluate_orchestrate(req, scope, parent_session)
+  end
+
+  def evaluate(%Requirement{scope: :pipeline} = req, scope, parent_session) do
+    evaluate_pipeline(req, scope, parent_session)
   end
 
   def evaluate(%Requirement{} = req, scope, parent_session) do
@@ -101,11 +111,14 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
         ProjectCoordinator.default_orchestrate(task_module, scope, session, [])
       end
 
+    record_orchestrate_task(scope, req, prompt_path: result[:prompt_path])
+
     # Task module can provide full orchestration text via :orchestration key;
     # otherwise fall back to the generic template.
     orchestration =
       Map.get_lazy(result, :orchestration, fn ->
         label = orchestrate_label(session)
+        subagent_type = Map.get(result, :subagent_type, "codemyspec:code-writer")
 
         """
         # Orchestrate: #{label}
@@ -114,7 +127,10 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
         #{result.orchestration_prompt}
 
         ## Instructions
-        Read the prompt file at `#{result.prompt_path}` and invoke the appropriate subagent.
+        Start a #{subagent_type} subagent with exactly this prompt:
+        `#{result.prompt_path}`
+
+        Do NOT read the file or write instructions around it — pass the path string as-is.
         When the task is complete, **stop the session** so the hook can validate.
         """
       end)
@@ -167,6 +183,183 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   end
 
   # ----------------------------------------------------------------
+  # Command: :pipeline
+  #
+  # Bundles a requirement and its downstream dependents into a single
+  # subagent invocation. Each stage gets its own prompt file; the
+  # subagent receives a to-do list.
+  # ----------------------------------------------------------------
+
+  defp command_pipeline(req, scope, parent_session) do
+    Logger.info("[Dispatch] command :pipeline #{req.name} → #{inspect(req.satisfied_by)}")
+
+    chain = collect_pipeline_chain(req)
+    Logger.info("[Dispatch] Pipeline chain: #{Enum.map_join(chain, " → ", & &1.name)}")
+
+    session = build_session(req, scope, parent_session)
+
+    # Generate prompt files for each stage
+    stage_results =
+      Enum.map(chain, fn stage_def ->
+        task_module = stage_def.satisfied_by
+        stage_req = %Requirement{name: stage_def.name, scope: :orchestrate, satisfied_by: task_module,
+          component_id: req.component_id, story_id: req.story_id, project_id: req.project_id}
+
+        {:ok, result} =
+          if has_function?(task_module, :orchestrate, 3) do
+            task_module.orchestrate(scope, session, [])
+          else
+            ProjectCoordinator.default_orchestrate(task_module, scope, session, [])
+          end
+
+        record_orchestrate_task(scope, stage_req, prompt_path: result[:prompt_path])
+
+        {stage_def, result}
+      end)
+
+    # Build the pipeline to-do list
+    pipeline_prompt_path = write_pipeline_prompt(scope, req, stage_results)
+
+    checklist =
+      stage_results
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", fn {{stage_def, result}, idx} ->
+        "#{idx}. [ ] Read and complete: `#{result.prompt_path}` (#{stage_def.name})"
+      end)
+
+    subagent_type =
+      stage_results
+      |> List.first()
+      |> elem(1)
+      |> Map.get(:subagent_type, "codemyspec:qa")
+
+    orchestration = """
+    # Pipeline: #{req.name} (#{length(stage_results)} stages)
+
+    Complete each stage in order. Stop the session after completing ALL stages.
+
+    #{checklist}
+
+    Start a #{subagent_type} subagent with exactly this prompt:
+    `#{pipeline_prompt_path}`
+
+    Do NOT read the file or write instructions around it — pass the path string as-is.
+    """
+
+    {:ok, orchestration}
+  end
+
+  defp write_pipeline_prompt(scope, req, stage_results) do
+    env = scope.environment
+    pipeline_path = ".code_my_spec/tasks/pipeline_#{req.name}.md"
+
+    content =
+      stage_results
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n\n", fn {{stage_def, result}, idx} ->
+        "## Stage #{idx}: #{stage_def.name}\n\nRead and complete: `#{result.prompt_path}`"
+      end)
+
+    prompt = """
+    # Pipeline: #{req.name}
+
+    Complete each stage in order. Do not skip stages.
+
+    #{content}
+
+    When all stages are complete, stop the session.
+    """
+
+    if env, do: Environments.write_file(env, pipeline_path, prompt)
+    pipeline_path
+  end
+
+  # Collect the pipeline chain: starting from this requirement's definition,
+  # follow downstream requirements where the current stage is a prerequisite.
+  defp collect_pipeline_chain(%Requirement{} = req) do
+    # Get all definitions for this entity type
+    all_defs = get_entity_definitions(req)
+    start_def = Enum.find(all_defs, &(&1.name == req.name))
+
+    if start_def do
+      collect_chain_forward([start_def], all_defs)
+    else
+      []
+    end
+  end
+
+  defp collect_chain_forward(chain, all_defs) do
+    current = List.last(chain)
+
+    # Find the next definition that lists current.name as a prerequisite
+    # and has :orchestrate scope (pipeline stages are individually :orchestrate)
+    next =
+      Enum.find(all_defs, fn defn ->
+        defn.name != current.name &&
+          current.name in defn.prerequisites &&
+          defn.scope in [:orchestrate, :pipeline] &&
+          defn not in chain
+      end)
+
+    if next do
+      collect_chain_forward(chain ++ [next], all_defs)
+    else
+      chain
+    end
+  end
+
+  defp get_entity_definitions(%Requirement{project_id: pid}) when not is_nil(pid) do
+    CodeMySpec.Requirements.RequirementDefinitionData.project_requirements()
+  end
+
+  defp get_entity_definitions(%Requirement{story_id: sid}) when not is_nil(sid) do
+    CodeMySpec.Requirements.RequirementDefinitionData.story_requirements()
+  end
+
+  defp get_entity_definitions(_req), do: []
+
+  # ----------------------------------------------------------------
+  # Evaluate: :pipeline
+  #
+  # Evaluates each stage in order. Returns :valid only when ALL pass.
+  # Returns :invalid with first failure's feedback.
+  # ----------------------------------------------------------------
+
+  defp evaluate_pipeline(req, scope, parent_session) do
+    Logger.info("[Dispatch] evaluate :pipeline #{req.name}")
+
+    chain = collect_pipeline_chain(req)
+    session = build_session(req, scope, parent_session)
+
+    Enum.reduce_while(chain, {:ok, :valid}, fn stage_def, _acc ->
+      task_module = stage_def.satisfied_by
+
+      result =
+        if has_function?(task_module, :orchestrate_evaluate, 3) do
+          task_module.orchestrate_evaluate(scope, session, [])
+        else
+          ProjectCoordinator.default_orchestrate_evaluate(task_module, scope, session, [])
+        end
+
+      case result do
+        {:ok, %{complete: true}} ->
+          Logger.info("[Dispatch] Pipeline stage #{stage_def.name} → complete")
+          {:cont, {:ok, :valid}}
+
+        {:ok, %{complete: false} = r} ->
+          Logger.info("[Dispatch] Pipeline stage #{stage_def.name} → incomplete")
+          feedback =
+            "Read your updated instructions at `#{r.problem_path}` and continue.\n" <>
+              "When done, **stop the session** so the hook can validate."
+          {:halt, {:ok, :invalid, feedback}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # ----------------------------------------------------------------
   # Command: :children
   #
   # 1. Resolve component (from req.component_id or story.component_id)
@@ -209,13 +402,23 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
     status_dir = ProjectCoordinator.component_status_dir(component)
 
     results =
-      Enum.map(actionable, fn %{component: child, task_module: task_module} ->
+      Enum.map(actionable, fn %{component: child, task_module: task_module} = action ->
         child_session = %{component: child, project: scope.active_project}
         {:ok, result} = task_module.orchestrate(scope, child_session, status_dir: status_dir)
+        record_child_task(scope, child, action, result[:prompt_path])
         result
       end)
 
     orchestration_lines = Enum.map_join(results, "\n", & &1.orchestration_prompt)
+
+    prompt_instructions =
+      results
+      |> Enum.filter(& &1[:prompt_path])
+      |> Enum.map_join("\n", fn r ->
+        subagent_type = Map.get(r, :subagent_type, "codemyspec:code-writer")
+
+        "Start a #{subagent_type} subagent with exactly this prompt:\n`#{r.prompt_path}`\n\nDo NOT read the file or write instructions around it — pass the path string as-is."
+      end)
 
     orchestration = """
     # Development: #{component.name}
@@ -226,7 +429,7 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
     ## Instructions
 
-    For each incomplete task above, read the prompt file and invoke the appropriate subagent.
+    #{prompt_instructions}
     When all tasks are complete, **stop the session** so the hook can validate.
     """
 
@@ -353,6 +556,53 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
       if Enum.empty?(actionable), do: nil, else: {:ok, dep_context, actionable}
     end)
+  end
+
+  # ----------------------------------------------------------------
+  # Status file — record dispatched tasks
+  # ----------------------------------------------------------------
+
+  defp record_orchestrate_task(scope, %Requirement{} = req, opts) do
+    env = scope.environment
+
+    if env do
+      component = if req.component_id, do: Components.get_component!(scope, req.component_id)
+
+      entry =
+        ImplementationStatus.build_task_entry(req, component, scope.active_project,
+          prompt_path: Keyword.get(opts, :prompt_path)
+        )
+
+      ImplementationStatus.record_task(env, entry)
+    end
+  end
+
+  defp record_child_task(scope, child, %{definitions: definitions}, prompt_path) do
+    env = scope.environment
+
+    if env do
+      req_name =
+        case definitions do
+          [first | _] -> first.name
+          _ -> "unknown"
+        end
+
+      entry = %{
+        "requirement" => req_name,
+        "component_id" => child.id,
+        "component_module" => child.module_name,
+        "expected_files" =>
+          ImplementationStatus.expected_files_for(
+            %Requirement{name: req_name, scope: :local},
+            child,
+            scope.active_project
+          ),
+        "dispatched_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      }
+
+      entry = if prompt_path, do: Map.put(entry, "prompt_path", prompt_path), else: entry
+      ImplementationStatus.record_task(env, entry)
+    end
   end
 
   # ----------------------------------------------------------------

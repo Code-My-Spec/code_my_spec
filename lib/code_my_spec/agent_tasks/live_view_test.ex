@@ -12,7 +12,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   """
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
   alias CodeMySpec.ProjectCoordinator
@@ -27,7 +26,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
     with {:ok, test_rules} <- get_test_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
       {:ok, prompt} = build_test_prompt(scope, session, test_rules, similar_components)
-      {:ok, TaskMarker.build("LiveViewTest", component.module_name) <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 

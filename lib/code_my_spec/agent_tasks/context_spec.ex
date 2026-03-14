@@ -10,7 +10,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   require Logger
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents
@@ -43,7 +42,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
          similar <- Components.list_similar_components(scope, component),
          stories <- Stories.list_component_stories(scope, component.id),
          {:ok, prompt} <- build_spec_prompt(session, rules, stories, similar) do
-      {:ok, TaskMarker.build("ContextSpec", component.module_name) <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 

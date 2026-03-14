@@ -24,7 +24,7 @@ defmodule CodeMySpec.Requirements.Requirement do
           | :dependencies
           | :hierarchy
 
-  @type scope :: :local | :children | :dependencies | :orchestrate
+  @type scope :: :local | :children | :dependencies | :orchestrate | :pipeline
 
   @type requirement_attrs :: %{
           name: String.t(),
@@ -69,7 +69,7 @@ defmodule CodeMySpec.Requirements.Requirement do
     field :description, :string
     field :checker_module, CheckerType
     field :satisfied_by, SessionType
-    field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate], default: :local
+    field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
     field :satisfied, :boolean, default: false
     field :score, :float
     field :checked_at, :utc_datetime

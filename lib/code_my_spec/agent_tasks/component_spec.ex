@@ -10,7 +10,6 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   require Logger
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
@@ -37,7 +36,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
 
     with {:ok, rules} <- get_design_rules(scope, component),
          {:ok, prompt} <- build_spec_prompt(scope, session, rules) do
-      {:ok, TaskMarker.build("ComponentSpec", component.module_name) <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 

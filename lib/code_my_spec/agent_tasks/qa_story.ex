@@ -15,14 +15,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   - `result.md` — test outcomes with evidence (written by the agent)
 
   Three main functions:
-  - `command/3` — Returns the full prompt with TaskMarker embedded (no file writes)
+  - `command/3` — Returns the full prompt (no file writes)
   - `orchestrate/3` — Writes prompt to file, returns QA-specific orchestration for the main agent
   - `evaluate/3` — State machine: validates plan → brief → result → files issues
   """
 
   require Logger
 
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.{BddSpecs, Components, Environments, Issues, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
@@ -38,8 +37,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   Build the phase-appropriate QA prompt for a story.
 
   Phase-aware: checks current state and returns a self-contained prompt
-  for the current step only. Includes the TaskMarker so the validation hook
-  can identify the task from the subagent transcript. Does not write any files.
+  for the current step only. Does not write any files.
 
   - No plan → plan-phase prompt (write the QA plan)
   - No brief → brief-phase prompt (write the brief)
@@ -53,15 +51,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       story = Stories.get_story!(scope, story_id)
       ensure_qa_dirs(env, story_id)
 
-      marker = TaskMarker.build("QaStory", to_string(story_id))
-
       prompt =
         with :ok <- plan_or_prompt(env, scope, story),
              :ok <- brief_or_prompt(env, scope, story) do
           build_test_phase_prompt(scope, story_id)
         end
 
-      {:ok, marker <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 
@@ -89,9 +85,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
       with :ok <- check_plan(env),
            :ok <- check_brief(env, story_id),
-           {:ok, document} <- check_result(env, story_id) do
-        Logger.info("[QaStory] evaluate: all phases valid, filing issues")
-        Issues.create_from_qa_result(scope, story_id, document)
+           {:ok, document} <- check_result(env, story_id),
+           :ok <- ensure_issues_filed(scope, story_id, document) do
+        Logger.info("[QaStory] evaluate: all phases valid, issues filed")
         {:ok, :valid}
       else
         {:ok, :invalid, feedback} = result ->
@@ -105,7 +101,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Orchestrate (used by Dispatch :orchestrate scope)
   # ============================================================================
 
-  @status_dir Path.join(Paths.status_dir(), "qa")
+  @tasks_dir Path.join(Paths.tasks_dir(), "qa")
 
   @doc """
   Orchestrate a QA story for the main agent.
@@ -122,14 +118,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   def orchestrate(scope, session, opts \\ []) do
     with {:ok, story_id} <- get_story_id(session) do
       env = scope.environment
-      status_dir = Keyword.get(opts, :status_dir, @status_dir)
-      prompt_path = prompt_file_path(status_dir, story_id)
-      problem_path = problem_file_path(status_dir, story_id)
+      tasks_dir = Keyword.get(opts, :tasks_dir, @tasks_dir)
+      prompt_path = prompt_file_path(tasks_dir, story_id)
+      problem_path = problem_file_path(tasks_dir, story_id)
 
       {complete, has_problems} =
-        case run_phases(env, story_id) do
-          {:complete, document} ->
-            Issues.create_from_qa_result(scope, story_id, document)
+        case run_phases(scope, story_id) do
+          {:complete, _document} ->
             Environments.delete_file(env, prompt_path)
             cleanup_problem_file(env, problem_path)
             {true, false}
@@ -175,17 +170,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   def orchestrate_evaluate(scope, session, opts \\ []) do
     with {:ok, story_id} <- get_story_id(session) do
       env = scope.environment
-      status_dir = Keyword.get(opts, :status_dir, @status_dir)
-      prompt_path = prompt_file_path(status_dir, story_id)
-      problem_path = problem_file_path(status_dir, story_id)
+      tasks_dir = Keyword.get(opts, :tasks_dir, @tasks_dir)
+      prompt_path = prompt_file_path(tasks_dir, story_id)
+      problem_path = problem_file_path(tasks_dir, story_id)
 
       Logger.info("[QaStory] orchestrate_evaluate: story_id=#{story_id}")
 
       {complete, has_problems} =
-        case run_phases(env, story_id) do
-          {:complete, document} ->
-            Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): complete, filing issues")
-            Issues.create_from_qa_result(scope, story_id, document)
+        case run_phases(scope, story_id) do
+          {:complete, _document} ->
+            Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): complete, issues filed")
             Environments.delete_file(env, prompt_path)
             cleanup_problem_file(env, problem_path)
             {true, false}
@@ -219,27 +213,30 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp prompt_file_path(status_dir, story_id) do
-    "#{status_dir}/story_#{story_id}_qa_story.md"
+  defp prompt_file_path(tasks_dir, story_id) do
+    "#{tasks_dir}/story_#{story_id}_qa_story.md"
   end
 
-  defp problem_file_path(status_dir, story_id) do
-    "#{status_dir}/story_#{story_id}_qa_story_problems.md"
+  defp problem_file_path(tasks_dir, story_id) do
+    "#{tasks_dir}/story_#{story_id}_qa_story_problems.md"
   end
 
   # Determine the current phase: complete, advancing, or has problems.
   #
   # Returns:
-  # - `{:complete, document}` — all phases pass, document ready for issue filing
+  # - `{:complete, document}` — all phases pass, issues filed
   # - `{:advance, phase}` — file missing for next phase → update prompt
   # - `{:problem, feedback}` — validation error in existing artifact
-  defp run_phases(env, story_id) do
+  defp run_phases(scope, story_id) do
+    env = scope.environment
+
     result =
       with :ok <- check_plan(env),
            :ok <- require_file(:brief, env, brief_path(story_id)),
            :ok <- check_brief(env, story_id),
            :ok <- require_file(:test, env, result_path(story_id)),
-           {:ok, document} <- check_result(env, story_id) do
+           {:ok, document} <- check_result(env, story_id),
+           :ok <- ensure_issues_filed(scope, story_id, document) do
         {:complete, document}
       else
         {:advance, _phase} = advance -> advance
@@ -260,6 +257,25 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
 
     result
+  end
+
+  # File issues from the QA result to the database and verify they're persisted.
+  # This phase ensures issues are created in the DB and projected to disk
+  # before qa_complete can be marked as satisfied.
+  defp ensure_issues_filed(scope, story_id, document) do
+    {:ok, created} = Issues.create_from_qa_result(scope, story_id, document)
+    issues_in_result = Map.get(document.sections, "issues", [])
+
+    if issues_in_result == [] or issues_in_result == "None" do
+      Logger.info("[QaStory] ensure_issues_filed(#{story_id}): no issues to file")
+      :ok
+    else
+      Logger.info(
+        "[QaStory] ensure_issues_filed(#{story_id}): #{length(created)} issues filed"
+      )
+
+      :ok
+    end
   end
 
   defp require_file(phase, env, path) do
@@ -301,12 +317,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
       ## Prompt
 
-      Start a `codemyspec:qa` subagent. Set the prompt parameter to the file path
-      itself: `#{prompt_path}`
+      Start a codemyspec:qa subagent with exactly this prompt:
+      `#{prompt_path}`
 
       Do NOT read the file or write instructions around it — pass the path string as-is.
-      The file contains a `<!-- cms:task -->` marker that must appear in the subagent's
-      transcript for the validation hook to work.
       #{problems_section}
       When the subagent completes all QA phases, **stop the session** so the
       hook can validate and advance to the next task.

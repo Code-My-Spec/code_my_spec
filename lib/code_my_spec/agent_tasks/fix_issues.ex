@@ -14,7 +14,6 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   - `evaluate/3` — Reconciles resolutions from files to DB, checks that all medium+ issues are resolved
   """
 
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.{Issues, Paths}
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.ProjectCoordinator
@@ -32,7 +31,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     unresolved = list_unresolved_at_severity(scope, min_severity)
 
     prompt = build_prompt(unresolved, min_severity)
-    {:ok, TaskMarker.build("FixIssues", to_string(min_severity)) <> "\n\n" <> prompt}
+    {:ok, prompt}
   end
 
   @doc """

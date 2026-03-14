@@ -6,6 +6,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   """
 
   alias CodeMySpec.Requirements.AcceptedIssuesChecker
+  alias CodeMySpec.Requirements.AllBddSpecsPassingChecker
   alias CodeMySpec.Requirements.AllStoriesCompleteChecker
   alias CodeMySpec.Requirements.ArtifactExistenceChecker
   alias CodeMySpec.Requirements.BddSpecExistenceChecker
@@ -20,6 +21,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   alias CodeMySpec.Requirements.HierarchicalChecker
   alias CodeMySpec.Requirements.IncomingIssuesChecker
   alias CodeMySpec.Requirements.ProjectQaChecker
+  alias CodeMySpec.Requirements.QaJourneyExecuteChecker
+  alias CodeMySpec.Requirements.QaJourneyPlanChecker
+  alias CodeMySpec.Requirements.QaJourneyWallabyChecker
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Requirements.SpecTestAlignmentChecker
   alias CodeMySpec.Requirements.StoryQaChecker
@@ -403,7 +407,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.FixBddSpecs,
         artifact_type: :tests,
         description: "BDD specs pass",
-        prerequisites: ["component_complete"]
+        prerequisites: ["component_complete"],
+        scope: :orchestrate
       })
 
     definition
@@ -549,6 +554,70 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec all_bdd_specs_passing() :: RequirementDefinition.t()
+  def all_bdd_specs_passing do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "all_bdd_specs_passing",
+        checker: AllBddSpecsPassingChecker,
+        satisfied_by: CodeMySpec.AgentTasks.FixAllBddSpecs,
+        artifact_type: :tests,
+        description: "All BDD specs pass across all stories",
+        prerequisites: ["all_stories_complete"],
+        scope: :orchestrate
+      })
+
+    definition
+  end
+
+  @spec qa_journey_plan() :: RequirementDefinition.t()
+  def qa_journey_plan do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "qa_journey_plan",
+        checker: QaJourneyPlanChecker,
+        satisfied_by: CodeMySpec.AgentTasks.QaJourneyPlan,
+        artifact_type: :review,
+        description: "QA journey plan exists and valid",
+        prerequisites: ["all_bdd_specs_passing"],
+        scope: :pipeline
+      })
+
+    definition
+  end
+
+  @spec qa_journey_execute() :: RequirementDefinition.t()
+  def qa_journey_execute do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "qa_journey_execute",
+        checker: QaJourneyExecuteChecker,
+        satisfied_by: CodeMySpec.AgentTasks.QaJourneyExecute,
+        artifact_type: :review,
+        description: "QA journey result exists and valid",
+        prerequisites: ["qa_journey_plan"],
+        scope: :orchestrate
+      })
+
+    definition
+  end
+
+  @spec qa_journey_wallaby() :: RequirementDefinition.t()
+  def qa_journey_wallaby do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "qa_journey_wallaby",
+        checker: QaJourneyWallabyChecker,
+        satisfied_by: CodeMySpec.AgentTasks.QaJourneyWallaby,
+        artifact_type: :tests,
+        description: "Wallaby journey tests exist",
+        prerequisites: ["qa_journey_execute"],
+        scope: :orchestrate
+      })
+
+    definition
+  end
+
   @spec project_requirements() :: [RequirementDefinition.t()]
   def project_requirements do
     [
@@ -557,7 +626,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       issues_triaged(),
       issues_resolved(),
       all_stories_complete(),
-      project_qa()
+      all_bdd_specs_passing(),
+      qa_journey_plan(),
+      qa_journey_execute(),
+      qa_journey_wallaby()
     ]
   end
 end

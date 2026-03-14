@@ -13,7 +13,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
   """
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
-  alias CodeMySpec.AgentTasks.TaskMarker
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
@@ -44,7 +43,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
       {:ok, prompt} =
         build_implementation_prompt(project, component, rules, similar_components, bdd_spec_files)
 
-      {:ok, TaskMarker.build("LiveViewCode", component.module_name) <> "\n\n" <> prompt}
+      {:ok, prompt}
     end
   end
 

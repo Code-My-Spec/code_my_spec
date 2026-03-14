@@ -1,0 +1,523 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/compile_validation_test.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:14:33.541506Z"
+    },
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/test_results_cache.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:14:35.627886Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_293.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:14:38.519395Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_19332.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "\u001B[0mWaiting for lock on the build directory (held by process 20252)\n==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n==> test_phoenix_project\n\u001B[0mWaiting for lock on the build directory (held by process 20252)\n15:18:33.177 [error] Postgrex.Protocol (#PID<0.339.0> (\"db_conn_14\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.177 [error] Postgrex.Protocol (#PID<0.336.0> (\"db_conn_11\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.177 [error] Postgrex.Protocol (#PID<0.328.0> (\"db_conn_3\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.177 [error] Postgrex.Protocol (#PID<0.326.0> (\"db_conn_1\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.177 [error] Postgrex.Protocol (#PID<0.331.0> (\"db_conn_6\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.329.0> (\"db_conn_4\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.338.0> (\"db_conn_13\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.332.0> (\"db_conn_7\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.335.0> (\"db_conn_10\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.330.0> (\"db_conn_5\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.333.0> (\"db_conn_8\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.334.0> (\"db_conn_9\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.327.0> (\"db_conn_2\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.337.0> (\"db_conn_12\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.341.0> (\"db_conn_16\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:18:33.176 [error] Postgrex.Protocol (#PID<0.340.0> (\"db_conn_15\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n",
+      "recorded_at": "2026-03-14T19:18:33.272774Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_8898.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "\u001B[0mWaiting for lock on the build directory (held by process 21093)\n==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n==> test_phoenix_project\n\u001B[0mWaiting for lock on the build directory (held by process 21093)\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.335.0> (\"db_conn_10\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.331.0> (\"db_conn_6\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.338.0> (\"db_conn_13\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.328.0> (\"db_conn_3\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.330.0> (\"db_conn_5\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.336.0> (\"db_conn_11\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.333.0> (\"db_conn_8\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.334.0> (\"db_conn_9\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.329.0> (\"db_conn_4\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.326.0> (\"db_conn_1\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.339.0> (\"db_conn_14\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.327.0> (\"db_conn_2\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.340.0> (\"db_conn_15\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.341.0> (\"db_conn_16\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.332.0> (\"db_conn_7\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n15:19:11.412 [error] Postgrex.Protocol (#PID<0.337.0> (\"db_conn_12\")) failed to connect: ** (Postgrex.Error) FATAL 53300 (too_many_connections) sorry, too many clients already\n",
+      "recorded_at": "2026-03-14T19:19:11.671920Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_13956.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_9/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:26:51.017460Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_835.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:29:57.016268Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_62850.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:32:12.458590Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_116962.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:35:35.224271Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_2594.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:37:50.138046Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_1282.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:42:18.929676Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_548.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:43:45.878408Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_99682.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:46:16.679679Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_96546.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:48:15.142130Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_19556.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:50:22.192445Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_56322.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:51:42.670501Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_24324.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_9/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\n",
+      "recorded_at": "2026-03-14T19:52:22.594856Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_40195.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:54:23.808917Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_4738.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nGenerated test_phoenix_project app\n",
+      "recorded_at": "2026-03-14T19:54:53.884627Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_33251.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:55:50.446642Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_145250.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:58:06.296343Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_5156.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\n",
+      "recorded_at": "2026-03-14T19:58:17.951622Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_6723.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\nCompiling 1 file (.ex)\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nCompiling 2 files (.ex)\nGenerated sexy_spex app\n==> test_phoenix_project\nCompiling 35 files (.ex)\nGenerated test_phoenix_project app\n",
+      "recorded_at": "2026-03-14T19:58:34.710385Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_1762.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T19:59:14.754689Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_6116.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nGenerated client_utils app\n==> sexy_spex\nGenerated sexy_spex app\n==> test_phoenix_project\nGenerated test_phoenix_project app\n",
+      "recorded_at": "2026-03-14T20:00:46.287289Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_9379.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T20:01:47.908478Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_95042.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* sobelow (Hex package)\n  lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T20:01:53.546926Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_35555.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T20:03:11.880453Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_64930.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T20:03:46.231668Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_52323.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_9",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_9/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T20:06:48.139655Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_10149.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/dev/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T20:07:02.549465Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_9410.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T20:08:43.658257Z"
+    }
+  ],
+  "ports": []
+}

@@ -71,6 +71,11 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
     {:ok, req}
   end
 
+  # :pipeline — same as :orchestrate, return immediately; Dispatch handles bundling
+  defp resolve(%Requirement{scope: :pipeline} = req, _scope) do
+    {:ok, req}
+  end
+
   # :children — validate children have work, return PARENT requirement
   # The execution layer (Dispatch) orchestrates children via ProjectCoordinator
   defp resolve(%Requirement{scope: :children} = req, scope) do
