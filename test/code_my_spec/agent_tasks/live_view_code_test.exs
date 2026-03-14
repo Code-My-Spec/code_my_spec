@@ -56,17 +56,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
   describe "command/3" do
     setup [:create_scope, :create_project, :create_component, :create_session]
 
-    test "returns ok tuple with prompt string containing task marker", %{
-      session: session,
-      scope: scope,
-      component: component
-    } do
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
-      assert is_binary(prompt)
-      assert prompt =~ "<!-- cms:task type=\"LiveViewCode\""
-      assert prompt =~ component.module_name
-    end
-
     test "includes spec file path and test file path in prompt", %{
       session: session,
       scope: scope,

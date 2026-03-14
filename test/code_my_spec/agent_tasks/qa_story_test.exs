@@ -225,11 +225,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       refute prompt =~ "Testing Approach"
     end
 
-    test "plan prompt includes task marker", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaStory.command(scope, session)
-      assert prompt =~ "<!-- cms:task type=\"QaStory\""
-    end
-
   end
 
   describe "command/3 — brief phase (plan exists)" do

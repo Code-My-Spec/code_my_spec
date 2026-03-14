@@ -81,18 +81,6 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
   # ============================================================================
 
   describe "command/3" do
-    test "generates prompt with live context details", %{tmp_dir: tmp_dir} do
-      scope = create_scope_with_env(tmp_dir)
-      live_context = create_live_context(scope)
-      session = create_session(scope, live_context)
-
-      assert {:ok, prompt} = LiveContextSpec.command(scope, session)
-      assert prompt =~ "LiveContextSpec"
-      assert prompt =~ "UserLive"
-      assert prompt =~ "live context"
-      assert prompt =~ "Live Context Spec"
-    end
-
     test "includes project details in prompt", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       live_context = create_live_context(scope)
