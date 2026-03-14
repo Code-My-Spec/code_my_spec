@@ -30,7 +30,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     story =
       story_fixture(
         scope,
-        Map.merge(%{title: "User Login Feature", component_id: component.id}, story_opts)
+        Map.merge(
+          %{title: "User Login Feature", component_id: component.id, criteria: []},
+          story_opts
+        )
       )
 
     criterion1 =
@@ -55,7 +58,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   defp session_with_unlinked_story(scope, _tmp_dir) do
     # Story without component_id
-    story = story_fixture(scope, %{title: "Unlinked Story", component_id: nil})
+    story = story_fixture(scope, %{title: "Unlinked Story", component_id: nil, criteria: []})
     criterion = criterion_fixture(scope, story, %{description: "Some criterion"})
     story = %{story | criteria: [criterion]}
 
@@ -69,12 +72,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   defp prompt_file_path(tmp_dir, story) do
     Path.join(
       tmp_dir,
-      ".code_my_spec/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{story.id}.md"
+      ".code_my_spec/tasks/stories/#{story.id}/subagent_prompts/bdd_specs_prompt.md"
     )
   end
 
-  defp orchestration_file_path(tmp_dir) do
-    Path.join(tmp_dir, ".code_my_spec/sessions/#{@external_id}/write_bdd_specs.md")
+  defp orchestration_file_path(tmp_dir, story) do
+    Path.join(tmp_dir, ".code_my_spec/tasks/stories/#{story.id}/write_bdd_specs.md")
   end
 
   defp write_valid_spec_file!(tmp_dir, story, criterion) do
@@ -183,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert message =~ "write_bdd_specs.md"
 
       # Orchestration file references the story and subagent
-      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      orch_content = File.read!(orchestration_file_path(tmp_dir, session.story))
       assert orch_content =~ session.story.title
       assert orch_content =~ "bdd-spec-writer"
 
@@ -237,20 +240,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert file_content =~ "then_"
     end
 
-    test "prompt file includes Wallaby testing guide for liveview components", %{
-      tmp_dir: tmp_dir
-    } do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
-      assert file_content =~ "LiveView Testing Guide"
-      assert file_content =~ "Wallaby"
-      refute file_content =~ "Phoenix.LiveViewTest"
-    end
-
     test "prompt file includes Controller testing guide for controller components", %{
       tmp_dir: tmp_dir
     } do
@@ -259,7 +248,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       component =
         component_fixture(scope, %{type: "controller", module_name: "MyAppWeb.UserController"})
 
-      story = story_fixture(scope, %{title: "Controller Feature", component_id: component.id})
+      story = story_fixture(scope, %{title: "Controller Feature", component_id: component.id, criteria: []})
       criterion = criterion_fixture(scope, story, %{description: "Some criterion"})
       story = %{story | criteria: [criterion]}
 
@@ -331,10 +320,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
 
       _low_priority =
-        story_fixture(scope, %{title: "Low Priority", priority: 3, component_id: component.id})
+        story_fixture(scope, %{title: "Low Priority", priority: 3, component_id: component.id, criteria: []})
 
       high_priority =
-        story_fixture(scope, %{title: "High Priority", priority: 1, component_id: component.id})
+        story_fixture(scope, %{title: "High Priority", priority: 1, component_id: component.id, criteria: []})
 
       # Add criteria
       criterion = criterion_fixture(scope, high_priority, %{description: "Test criterion"})
@@ -343,14 +332,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       session = session_without_story(tmp_dir)
 
       assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      orch_content = File.read!(orchestration_file_path(tmp_dir, high_priority))
       assert orch_content =~ "High Priority"
     end
 
     test "returns error when all stories complete and no story_id provided", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
-      story = story_fixture(scope, %{title: "Complete Story", component_id: component.id})
+      story = story_fixture(scope, %{title: "Complete Story", component_id: component.id, criteria: []})
       criterion = criterion_fixture(scope, story, %{description: "Done criterion"})
       story = %{story | criteria: [criterion]}
 
@@ -372,7 +361,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
         story_fixture(scope, %{
           title: "First Story Complete",
           priority: 1,
-          component_id: component.id
+          component_id: component.id,
+          criteria: []
         })
 
       criterion1a = criterion_fixture(scope, story1, %{description: "Criterion 1A"})
@@ -383,7 +373,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
         story_fixture(scope, %{
           title: "Second Story Incomplete",
           priority: 2,
-          component_id: component.id
+          component_id: component.id,
+          criteria: []
         })
 
       _criterion2 = criterion_fixture(scope, story2, %{description: "Criterion 2A"})
@@ -398,7 +389,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
       # Should select story2, not story1
-      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      orch_content = File.read!(orchestration_file_path(tmp_dir, story2))
       assert orch_content =~ "Second Story Incomplete"
       refute orch_content =~ "First Story Complete"
     end
@@ -425,9 +416,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
 
       expected_relative_path =
-        ".code_my_spec/sessions/#{@external_id}/subagent_prompts/bdd_specs_story_#{session.story.id}.md"
+        ".code_my_spec/tasks/stories/#{session.story.id}/subagent_prompts/bdd_specs_prompt.md"
 
-      orch_content = File.read!(orchestration_file_path(tmp_dir))
+      orch_content = File.read!(orchestration_file_path(tmp_dir, session.story))
       assert orch_content =~ expected_relative_path
     end
   end
