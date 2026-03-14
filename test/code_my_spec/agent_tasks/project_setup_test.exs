@@ -1,5 +1,6 @@
 defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+  use ExCliVcr
 
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Environments.Environment
@@ -234,23 +235,17 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
   describe "check_status/2" do
     test "returns elixir_installed false when Elixir version < 1.18", %{tmp_dir: tmp_dir} do
-      # This test requires mocking the system command output
-      # Since we can't easily mock System.cmd, we test the function with a mock environment
-      # that simulates an old Elixir version response
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # We'll test this by verifying the function handles the case where
-      # elixir --version returns an old version
-      # For now, we test the actual system which should have Elixir 1.18+
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_elixir", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      # On a development machine with Elixir 1.18+, this should be true
-      # The test assertion verifies the key exists and is a boolean
-      assert is_boolean(status.elixir_installed)
+        assert is_boolean(status.elixir_installed)
 
-      if status.elixir_installed do
-        assert is_binary(status.elixir_version)
+        if status.elixir_installed do
+          assert is_binary(status.elixir_version)
+        end
       end
     end
 
@@ -260,28 +255,29 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_phoenix", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      # The key should exist and be a boolean
-      assert is_boolean(status.phoenix_installer_available)
+        assert is_boolean(status.phoenix_installer_available)
+      end
     end
 
     test "returns phoenix_project_exists false when mix.exs missing", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Don't create any files - empty directory
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_mix", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.phoenix_project_exists == false
-      assert is_nil(status.app_name)
+        assert status.phoenix_project_exists == false
+        assert is_nil(status.app_name)
+      end
     end
 
     test "returns project_compiles false with errors when compilation fails", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Create a project with syntax errors
       create_phoenix_project_structure(tmp_dir, "broken_app")
 
       write_file!(tmp_dir, "lib/broken_app/bad_module.ex", """
@@ -293,13 +289,14 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       end
       """)
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_compile_fail", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      # Project exists but may not compile due to syntax error
-      assert status.phoenix_project_exists == true
+        assert status.phoenix_project_exists == true
 
-      if status.project_compiles == false do
-        assert is_binary(status.compilation_errors) or is_nil(status.compilation_errors)
+        if status.project_compiles == false do
+          assert is_binary(status.compilation_errors) or is_nil(status.compilation_errors)
+        end
       end
     end
 
@@ -307,42 +304,44 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Create project without CodeMySpec deps
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_deps", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.codemyspec_deps_installed == false
-      assert is_list(status.missing_deps)
-      assert status.missing_deps != []
+        assert status.codemyspec_deps_installed == false
+        assert is_list(status.missing_deps)
+        assert status.missing_deps != []
+      end
     end
 
     test "returns project_dir_exists false when .code_my_spec directory missing", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Create project without .code_my_spec directory
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_docs", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.project_dir_exists == false
+        assert status.project_dir_exists == false
+      end
     end
 
     test "returns project_structure_complete false with missing_structure_dirs list", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Create project with .code_my_spec dir but incomplete structure
       create_phoenix_project_structure(tmp_dir, "my_app")
       File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec"))
-      # Don't create rules/ or spec/ directories
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_incomplete", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.project_structure_complete == false
-      assert is_list(status.missing_structure_dirs)
-      assert status.missing_structure_dirs != []
+        assert status.project_structure_complete == false
+        assert is_list(status.missing_structure_dirs)
+        assert status.missing_structure_dirs != []
+      end
     end
 
     test "extracts app_name from mix.exs project definition", %{tmp_dir: tmp_dir} do
@@ -351,35 +350,37 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "custom_app_name")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_app_name", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.phoenix_project_exists == true
-      assert status.app_name == "custom_app_name"
+        assert status.phoenix_project_exists == true
+        assert status.app_name == "custom_app_name"
+      end
     end
 
     test "handles missing mix.exs gracefully", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      # Empty directory - no mix.exs
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_graceful", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.phoenix_project_exists == false
-      assert is_nil(status.app_name)
-      # Should not crash, should return a valid status map
-      assert is_map(status)
+        assert status.phoenix_project_exists == false
+        assert is_nil(status.app_name)
+        assert is_map(status)
+      end
     end
 
     test "warns but does not fail on PostgreSQL check failure", %{tmp_dir: tmp_dir} do
       env = create_environment(tmp_dir)
       session = %{environment: env}
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_postgres", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      # PostgreSQL availability should be tracked but not cause failure
-      assert is_boolean(status.postgresql_available)
-      # The overall status check should still work even if PostgreSQL isn't available
-      assert is_map(status)
+        assert is_boolean(status.postgresql_available)
+        assert is_map(status)
+      end
     end
 
     test "returns compilers_configured false when compilers not set", %{tmp_dir: tmp_dir} do
@@ -388,9 +389,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_compilers", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.compilers_configured == false
+        assert status.compilers_configured == false
+      end
     end
 
     test "returns compilers_configured true when boundary and spex in compilers", %{
@@ -402,9 +405,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       create_fully_configured_mix_exs(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_compilers_ok", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.compilers_configured == true
+        assert status.compilers_configured == true
+      end
     end
 
     test "returns spex_config_complete false when spex not configured", %{tmp_dir: tmp_dir} do
@@ -413,9 +418,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_spex", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.spex_config_complete == false
+        assert status.spex_config_complete == false
+      end
     end
 
     test "returns spex_config_complete true when fully configured", %{tmp_dir: tmp_dir} do
@@ -425,9 +432,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       create_fully_configured_mix_exs(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_spex_ok", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.spex_config_complete == true
+        assert status.spex_config_complete == true
+      end
     end
 
     test "returns test_boundaries_configured false when no boundary files", %{tmp_dir: tmp_dir} do
@@ -436,9 +445,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_boundaries", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.test_boundaries_configured == false
+        assert status.test_boundaries_configured == false
+      end
     end
 
     test "returns test_boundaries_configured true when boundary files exist", %{
@@ -450,9 +461,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       create_test_boundary_files(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_boundaries_ok", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.test_boundaries_configured == true
+        assert status.test_boundaries_configured == true
+      end
     end
 
     test "returns app_symlinks_installed false when symlinks missing", %{tmp_dir: tmp_dir} do
@@ -461,9 +474,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_symlinks", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.app_symlinks_installed == false
+        assert status.app_symlinks_installed == false
+      end
     end
 
     test "returns app_symlinks_installed true when all symlinks exist", %{tmp_dir: tmp_dir} do
@@ -473,9 +488,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       assert :ok = ProjectSetup.install_app_resources(tmp_dir)
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_symlinks_ok", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.app_symlinks_installed == true
+        assert status.app_symlinks_installed == true
+      end
     end
 
     test "returns boundary in missing_deps when not in mix.exs", %{tmp_dir: tmp_dir} do
@@ -484,9 +501,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_missing_boundary", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert :boundary in status.missing_deps
+        assert :boundary in status.missing_deps
+      end
     end
 
     test "returns agents_md_installed false when AGENTS.md missing", %{tmp_dir: tmp_dir} do
@@ -495,9 +514,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_no_agents", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.agents_md_installed == false
+        assert status.agents_md_installed == false
+      end
     end
 
     test "returns agents_md_installed true when AGENTS.md exists", %{tmp_dir: tmp_dir} do
@@ -507,9 +528,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       assert :ok = ProjectSetup.install_agents_md(tmp_dir)
 
-      status = ProjectSetup.check_status(env, session)
+      use_cmd_cassette "project_setup_check_status_agents_ok", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
 
-      assert status.agents_md_installed == true
+        assert status.agents_md_installed == true
+      end
     end
   end
 
@@ -721,8 +744,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
-      assert status.claude_md_installed == false
+      use_cmd_cassette "project_setup_claude_md_missing", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
+        assert status.claude_md_installed == false
+      end
     end
 
     test "returns claude_md_installed false when CLAUDE.md exists without markers", %{
@@ -734,8 +759,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       File.write!(Path.join(tmp_dir, "CLAUDE.md"), "# My Project\n")
 
-      status = ProjectSetup.check_status(env, session)
-      assert status.claude_md_installed == false
+      use_cmd_cassette "project_setup_claude_md_no_markers", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
+        assert status.claude_md_installed == false
+      end
     end
 
     test "returns claude_md_installed true when markers present", %{tmp_dir: tmp_dir} do
@@ -745,8 +772,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       assert :ok = ProjectSetup.install_claude_md(tmp_dir)
 
-      status = ProjectSetup.check_status(env, session)
-      assert status.claude_md_installed == true
+      use_cmd_cassette "project_setup_claude_md_ok", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
+        assert status.claude_md_installed == true
+      end
     end
   end
 
@@ -762,8 +791,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/rules"))
 
-      status = ProjectSetup.check_status(env, session)
-      assert status.rules_installed == false
+      use_cmd_cassette "project_setup_rules_empty", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
+        assert status.rules_installed == false
+      end
     end
 
     test "returns rules_installed false when rules directory missing", %{tmp_dir: tmp_dir} do
@@ -772,8 +803,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      status = ProjectSetup.check_status(env, session)
-      assert status.rules_installed == false
+      use_cmd_cassette "project_setup_rules_missing", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
+        assert status.rules_installed == false
+      end
     end
 
     test "returns rules_installed true when rule files exist", %{tmp_dir: tmp_dir} do
@@ -783,8 +816,10 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       create_phoenix_project_structure(tmp_dir, "my_app")
       assert :ok = ProjectSetup.install_rules(tmp_dir)
 
-      status = ProjectSetup.check_status(env, session)
-      assert status.rules_installed == true
+      use_cmd_cassette "project_setup_rules_ok", ignore: [[:opts, :cd]] do
+        status = ProjectSetup.check_status(env, session)
+        assert status.rules_installed == true
+      end
     end
   end
 
@@ -797,43 +832,38 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_empty", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should include all setup steps for empty directory
-      assert is_binary(prompt)
-      assert String.length(prompt) > 0
-      # Should mention prerequisites
-      assert prompt =~ "Elixir" or prompt =~ "elixir"
-      # Should mention project creation
-      assert prompt =~ "phx.new" or prompt =~ "Phoenix"
+        assert is_binary(prompt)
+        assert String.length(prompt) > 0
+        assert prompt =~ "Elixir" or prompt =~ "elixir"
+        assert prompt =~ "phx.new" or prompt =~ "Phoenix"
+      end
     end
 
     test "returns partial guide omitting completed steps", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Create a partial setup (Phoenix project exists, but missing other things)
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_partial", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should be a valid prompt string
-      assert is_binary(prompt)
-      # Should not include Phoenix project creation since it exists
-      # The exact content depends on implementation, but it should be shorter
-      # than the full setup guide
+        assert is_binary(prompt)
+      end
     end
 
     test "includes prerequisite installation when elixir_installed is false", %{tmp_dir: tmp_dir} do
-      # This test would require mocking System.cmd to return an old Elixir version
-      # For now, we verify the structure of the command function
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_prereqs", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # The prompt should be a non-empty string
-      assert is_binary(prompt)
+        assert is_binary(prompt)
+      end
     end
 
     test "includes Phoenix installer setup when phoenix_installer_available is false", %{
@@ -842,70 +872,72 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_phoenix", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should mention Phoenix installer if not available
-      assert is_binary(prompt)
+        assert is_binary(prompt)
+      end
     end
 
     test "includes project creation when phoenix_project_exists is false", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Empty directory
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_create", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should include instructions for creating Phoenix project
-      assert prompt =~ "phx.new" or prompt =~ "mix"
+        assert prompt =~ "phx.new" or prompt =~ "mix"
+      end
     end
 
     test "includes auth generation when auth_generated is false", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Create project without auth
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_auth", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should include auth generation instructions
-      assert prompt =~ "phx.gen.auth" or prompt =~ "auth"
+        assert prompt =~ "phx.gen.auth" or prompt =~ "auth"
+      end
     end
 
     test "includes dependency block when codemyspec_deps_installed is false", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Create project without CodeMySpec deps
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_deps", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should include dependency instructions
-      assert prompt =~ "deps" or prompt =~ "mix.exs" or prompt =~ "ngrok" or prompt =~ "credo"
+        assert prompt =~ "deps" or prompt =~ "mix.exs" or prompt =~ "ngrok" or prompt =~ "credo"
+      end
     end
 
     test "includes structure setup when project_dir_exists is false", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Create project without .code_my_spec directory
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_structure", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should include project structure setup
-      assert prompt =~ ".code_my_spec" or prompt =~ "Project Structure"
+        assert prompt =~ ".code_my_spec" or prompt =~ "Project Structure"
+      end
     end
 
     test "includes commit instructions between major steps", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
+      use_cmd_cassette "project_setup_command_commits", ignore: [[:opts, :cd]] do
+        assert {:ok, prompt} = ProjectSetup.command(scope, session, [])
 
-      # Should include commit instructions
-      assert prompt =~ "commit" or prompt =~ "git"
+        assert prompt =~ "commit" or prompt =~ "git"
+      end
     end
   end
 
@@ -918,51 +950,50 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Create a fully set up project
       create_full_project_setup(tmp_dir, "complete_app")
 
-      result = ProjectSetup.evaluate(scope, session, [])
+      use_cmd_cassette "project_setup_evaluate_valid", ignore: [[:opts, :cd]] do
+        result = ProjectSetup.evaluate(scope, session, [])
 
-      # If all checks pass, should return :valid
-      # Note: This may return :invalid on CI if Elixir version differs
-      assert match?({:ok, :valid}, result) or match?({:ok, :invalid, _}, result)
+        assert match?({:ok, :valid}, result) or match?({:ok, :invalid, _}, result)
+      end
     end
 
     test "returns invalid with detailed feedback when checks fail", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Empty directory - many checks will fail
-      assert {:ok, :invalid, feedback} = ProjectSetup.evaluate(scope, session, [])
+      use_cmd_cassette "project_setup_evaluate_invalid", ignore: [[:opts, :cd]] do
+        assert {:ok, :invalid, feedback} = ProjectSetup.evaluate(scope, session, [])
 
-      assert is_binary(feedback)
-      assert String.length(feedback) > 0
+        assert is_binary(feedback)
+        assert String.length(feedback) > 0
+      end
     end
 
     test "feedback includes progress summary", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Partial setup
       create_phoenix_project_structure(tmp_dir, "my_app")
 
-      assert {:ok, :invalid, feedback} = ProjectSetup.evaluate(scope, session, [])
+      use_cmd_cassette "project_setup_evaluate_progress", ignore: [[:opts, :cd]] do
+        assert {:ok, :invalid, feedback} = ProjectSetup.evaluate(scope, session, [])
 
-      # Should include progress indication (e.g., "X of Y steps complete")
-      assert feedback =~ ~r/\d+.*of.*\d+|complete|progress|step/i
+        assert feedback =~ ~r/\d+.*of.*\d+|complete|progress|step/i
+      end
     end
 
     test "feedback includes specific remediation for each failing check", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       session = create_session(tmp_dir)
 
-      # Empty directory
-      assert {:ok, :invalid, feedback} = ProjectSetup.evaluate(scope, session, [])
+      use_cmd_cassette "project_setup_evaluate_remediation", ignore: [[:opts, :cd]] do
+        assert {:ok, :invalid, feedback} = ProjectSetup.evaluate(scope, session, [])
 
-      # Should include specific guidance for what's missing
-      assert is_binary(feedback)
-      # Feedback should mention specific things to fix
-      assert String.length(feedback) > 50
+        assert is_binary(feedback)
+        assert String.length(feedback) > 50
+      end
     end
   end
 end

@@ -1,0 +1,44 @@
+{
+  "commands": [
+    {
+      "args": [
+        "--version"
+      ],
+      "command": "elixir",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-command-3-includes-commit-instructions-between-major-steps-71303ece",
+        "stderr_to_stdout": true
+      },
+      "output": "Erlang/OTP 28 [erts-16.1] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-threads:1] [jit]\n\nElixir 1.19.4 (compiled with Erlang/OTP 28)\n",
+      "recorded_at": "2026-03-14T19:44:30.991655Z"
+    },
+    {
+      "args": [
+        "archive"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-command-3-includes-commit-instructions-between-major-steps-71303ece",
+        "stderr_to_stdout": true
+      },
+      "output": "* hex-2.3.1-otp-28\n* phx_new-1.8.3\nArchives installed at: /Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/archives\n",
+      "recorded_at": "2026-03-14T19:44:31.342083Z"
+    },
+    {
+      "args": [
+        "--version"
+      ],
+      "command": "psql",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-command-3-includes-commit-instructions-between-major-steps-71303ece",
+        "stderr_to_stdout": true
+      },
+      "output": "psql (PostgreSQL) 15.5 (Homebrew)\n",
+      "recorded_at": "2026-03-14T19:44:31.353416Z"
+    }
+  ],
+  "ports": []
+}

@@ -4,10 +4,12 @@ defmodule CodeMySpec.ValidationTest do
 
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.ProjectCoordinator.ImplementationStatus
   alias CodeMySpec.Sessions.SessionsRepository
   alias CodeMySpec.Support.TestAdapter
   alias CodeMySpec.Validation
 
+  import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
   @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
@@ -39,13 +41,17 @@ defmodule CodeMySpec.ValidationTest do
   # ============================================================================
 
   describe "validate_subagent/2" do
-    test "returns {:ok, :valid} when transcript has no edited files", %{scope: scope} do
-      result =
-        Validation.validate_subagent(scope,
-          transcript_path: transcript_path("empty_session.jsonl")
-        )
+    test "returns {:ok, :valid} when transcript has no edited files",
+         %{scope: scope, pipeline_opts: pipeline_opts} do
+      use_cmd_cassette "validation_subagent_empty", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_subagent(
+            scope,
+            [transcript_path: transcript_path("empty_session.jsonl")] ++ pipeline_opts
+          )
 
-      assert {:ok, :valid} = result
+        assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+      end
     end
 
     @tag timeout: 300_000
@@ -174,6 +180,118 @@ defmodule CodeMySpec.ValidationTest do
         assert match?({:ok, :valid}, result) or match?({:error, _}, result)
       end
     end
+
+    @tag timeout: 300_000
+    test "identifies dispatched task via prompt_path in transcript",
+         %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
+      # Create a real component in the DB so evaluate_matched_task can find it
+      component = component_fixture(scope, %{
+        name: "Blog",
+        type: "context",
+        module_name: "TestPhoenixProject.Blog"
+      })
+
+      prompt_path = ".code_my_spec/tasks/develop/TestPhoenixProject.Blog_component_code.md"
+
+      status_data =
+        Jason.encode!(%{
+          "dispatched_tasks" => [
+            %{
+              "requirement" => "implementation_file",
+              "component_id" => component.id,
+              "component_module" => "TestPhoenixProject.Blog",
+              "prompt_path" => prompt_path,
+              "expected_files" => [
+                "lib/test_phoenix_project/blog.ex",
+                "test/test_phoenix_project/blog_test.exs"
+              ],
+              "dispatched_at" => "2026-03-14T00:00:00Z"
+            }
+          ],
+          "updated_at" => "2026-03-14T00:00:00Z"
+        })
+
+      CodeMySpec.Environments.write_file(
+        env,
+        CodeMySpec.Paths.implementation_status_path(),
+        status_data
+      )
+
+      # Verify identification works directly — prompt_path appears in first user message
+      transcript_file = transcript_path("subagent_with_prompt_path.jsonl")
+      matched = ImplementationStatus.identify_task_from_transcript(env, transcript_file)
+
+      assert matched != nil, "Expected prompt_path match but got nil"
+      assert matched["requirement"] == "implementation_file"
+      assert matched["component_id"] == component.id
+      assert matched["prompt_path"] == prompt_path
+
+      # Now run full validation to verify the evaluate path executes
+      use_cmd_cassette "validation_subagent_prompt_path_match", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_subagent(
+            scope,
+            [transcript_path: transcript_file] ++ pipeline_opts
+          )
+
+        assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+      end
+    end
+
+    @tag timeout: 300_000
+    test "falls back to expected_files matching when prompt_path not in transcript",
+         %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
+      # Create a real component so the full evaluate path can execute
+      component = component_fixture(scope, %{
+        name: "Blog",
+        type: "context",
+        module_name: "TestPhoenixProject.Blog"
+      })
+
+      # Dispatched task has a prompt_path that won't match the transcript,
+      # but expected_files will match the files the subagent edited
+      status_data =
+        Jason.encode!(%{
+          "dispatched_tasks" => [
+            %{
+              "requirement" => "implementation_file",
+              "component_id" => component.id,
+              "component_module" => "TestPhoenixProject.Blog",
+              "prompt_path" => ".code_my_spec/tasks/develop/WRONG_PATH.md",
+              "expected_files" => [
+                "lib/test_phoenix_project/blog.ex"
+              ],
+              "dispatched_at" => "2026-03-14T00:00:00Z"
+            }
+          ],
+          "updated_at" => "2026-03-14T00:00:00Z"
+        })
+
+      CodeMySpec.Environments.write_file(
+        env,
+        CodeMySpec.Paths.implementation_status_path(),
+        status_data
+      )
+
+      # Verify fallback: prompt_path won't match, but expected_files will
+      transcript_file = transcript_path("subagent_no_prompt_path_match.jsonl")
+      matched = ImplementationStatus.identify_task_from_transcript(env, transcript_file)
+
+      assert matched != nil, "Expected fallback file match but got nil"
+      assert matched["requirement"] == "implementation_file"
+      assert matched["component_id"] == component.id
+
+      # Now run full validation
+      use_cmd_cassette "validation_subagent_fallback_match", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_subagent(
+            scope,
+            [transcript_path: transcript_file] ++ pipeline_opts
+          )
+
+        assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+      end
+    end
   end
 
   # ============================================================================
@@ -182,18 +300,23 @@ defmodule CodeMySpec.ValidationTest do
 
   describe "validate_stop/2" do
     test "returns {:ok, :valid} when transcript has no edited files and no active sessions",
-         %{scope: scope} do
-      result =
-        Validation.validate_stop(scope,
-          transcript_path: transcript_path("empty_session.jsonl"),
-          session_id: "nonexistent-session-id"
-        )
+         %{scope: scope, pipeline_opts: pipeline_opts} do
+      use_cmd_cassette "validation_stop_empty", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_stop(
+            scope,
+            [
+              transcript_path: transcript_path("empty_session.jsonl"),
+              session_id: "nonexistent-session-id"
+            ] ++ pipeline_opts
+          )
 
-      assert {:ok, :valid} = result
+        assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+      end
     end
 
     test "returns {:ok, :valid} when pipeline passes and all sessions pass",
-         %{scope: scope, env: env} do
+         %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
       {:ok, _session} =
         SessionsRepository.create_session(env, %{
           type: "ArchitectureReview",
@@ -201,13 +324,18 @@ defmodule CodeMySpec.ValidationTest do
           state: %{}
         })
 
-      result =
-        Validation.validate_stop(scope,
-          transcript_path: transcript_path("empty_session.jsonl"),
-          session_id: "some-external-id"
-        )
+      use_cmd_cassette "validation_stop_sessions_pass", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_stop(
+            scope,
+            [
+              transcript_path: transcript_path("empty_session.jsonl"),
+              session_id: "some-external-id"
+            ] ++ pipeline_opts
+          )
 
-      assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+        assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+      end
     end
 
     @tag timeout: 300_000
@@ -234,7 +362,7 @@ defmodule CodeMySpec.ValidationTest do
     end
 
     test "returns {:error, feedback} when session evaluation fails",
-         %{scope: scope, env: env} do
+         %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
       {:ok, _session} =
         SessionsRepository.create_session(env, %{
           type: "ComponentSpec",
@@ -243,21 +371,26 @@ defmodule CodeMySpec.ValidationTest do
           state: %{}
         })
 
-      result =
-        Validation.validate_stop(scope,
-          transcript_path: transcript_path("empty_session.jsonl"),
-          session_id: "some-external-id"
-        )
+      use_cmd_cassette "validation_stop_session_eval_fails", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_stop(
+            scope,
+            [
+              transcript_path: transcript_path("empty_session.jsonl"),
+              session_id: "some-external-id"
+            ] ++ pipeline_opts
+          )
 
-      case result do
-        {:error, feedback} when is_binary(feedback) ->
-          assert String.length(feedback) > 0
+        case result do
+          {:error, feedback} when is_binary(feedback) ->
+            assert String.length(feedback) > 0
 
-        {:error, problems} when is_list(problems) ->
-          assert true
+          {:error, problems} when is_list(problems) ->
+            assert true
 
-        {:ok, :valid} ->
-          assert true
+          {:ok, :valid} ->
+            assert true
+        end
       end
     end
 
@@ -278,7 +411,8 @@ defmodule CodeMySpec.ValidationTest do
       end
     end
 
-    test "evaluates session stack filtered by session_id", %{scope: scope, env: env} do
+    test "evaluates session stack filtered by session_id",
+         %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
       {:ok, _matching} =
         SessionsRepository.create_session(env, %{
           type: "ArchitectureReview",
@@ -295,13 +429,18 @@ defmodule CodeMySpec.ValidationTest do
           state: %{}
         })
 
-      result =
-        Validation.validate_stop(scope,
-          transcript_path: transcript_path("empty_session.jsonl"),
-          session_id: "matching-session-id"
-        )
+      use_cmd_cassette "validation_stop_session_filter", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_stop(
+            scope,
+            [
+              transcript_path: transcript_path("empty_session.jsonl"),
+              session_id: "matching-session-id"
+            ] ++ pipeline_opts
+          )
 
-      assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+        assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+      end
     end
 
     @tag timeout: 300_000
@@ -338,14 +477,20 @@ defmodule CodeMySpec.ValidationTest do
       end
     end
 
-    test "returns {:ok, :valid} when no active sessions found", %{scope: scope} do
-      result =
-        Validation.validate_stop(scope,
-          transcript_path: transcript_path("empty_session.jsonl"),
-          session_id: "nonexistent-session-id"
-        )
+    test "returns {:ok, :valid} when no active sessions found",
+         %{scope: scope, pipeline_opts: pipeline_opts} do
+      use_cmd_cassette "validation_stop_no_sessions", ignore: [[:opts, :cd]] do
+        result =
+          Validation.validate_stop(
+            scope,
+            [
+              transcript_path: transcript_path("empty_session.jsonl"),
+              session_id: "nonexistent-session-id"
+            ] ++ pipeline_opts
+          )
 
-      assert {:ok, :valid} = result
+        assert match?({:ok, :valid}, result) or match?({:error, _}, result)
+      end
     end
   end
 

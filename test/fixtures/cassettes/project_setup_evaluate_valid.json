@@ -1,0 +1,58 @@
+{
+  "commands": [
+    {
+      "args": [
+        "--version"
+      ],
+      "command": "elixir",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-evaluate-3-returns-valid-when-all-required-checks-pass-9245beb9",
+        "stderr_to_stdout": true
+      },
+      "output": "Erlang/OTP 28 [erts-16.1] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-threads:1] [jit]\n\nElixir 1.19.4 (compiled with Erlang/OTP 28)\n",
+      "recorded_at": "2026-03-14T19:44:27.312426Z"
+    },
+    {
+      "args": [
+        "archive"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-evaluate-3-returns-valid-when-all-required-checks-pass-9245beb9",
+        "stderr_to_stdout": true
+      },
+      "output": "* hex-2.3.1-otp-28\n* phx_new-1.8.3\nArchives installed at: /Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/archives\n",
+      "recorded_at": "2026-03-14T19:44:27.697630Z"
+    },
+    {
+      "args": [
+        "--version"
+      ],
+      "command": "psql",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-evaluate-3-returns-valid-when-all-required-checks-pass-9245beb9",
+        "stderr_to_stdout": true
+      },
+      "output": "psql (PostgreSQL) 15.5 (Homebrew)\n",
+      "recorded_at": "2026-03-14T19:44:27.708599Z"
+    },
+    {
+      "args": [
+        "compile",
+        "--warnings-as-errors"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-evaluate-3-returns-valid-when-all-required-checks-pass-9245beb9",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* boundary (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n* mix_machine (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n* client_utils (https://github.com/example/client_utils)\n  the dependency is not available, run \"mix deps.get\"\n* phoenix_live_view (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n* sexy_spex (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n* sobelow (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n* exunit_json_formatter (https://github.com/johns10/exunit_json_formatter - master)\n  the dependency is not available, run \"mix deps.get\"\n* phoenix (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n* credo (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:44:28.183900Z"
+    }
+  ],
+  "ports": []
+}

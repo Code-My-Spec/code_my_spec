@@ -1,0 +1,58 @@
+{
+  "commands": [
+    {
+      "args": [
+        "--version"
+      ],
+      "command": "elixir",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-check_status-2---claude_md_installed-returns-claude_md_installed-false-when-CLAUDE.md-missing-c6dd1bd6",
+        "stderr_to_stdout": true
+      },
+      "output": "Erlang/OTP 28 [erts-16.1] [source] [64-bit] [smp:8:8] [ds:8:8:10] [async-threads:1] [jit]\n\nElixir 1.19.4 (compiled with Erlang/OTP 28)\n",
+      "recorded_at": "2026-03-14T19:44:52.269935Z"
+    },
+    {
+      "args": [
+        "archive"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-check_status-2---claude_md_installed-returns-claude_md_installed-false-when-CLAUDE.md-missing-c6dd1bd6",
+        "stderr_to_stdout": true
+      },
+      "output": "* hex-2.3.1-otp-28\n* phx_new-1.8.3\nArchives installed at: /Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/archives\n",
+      "recorded_at": "2026-03-14T19:44:52.663015Z"
+    },
+    {
+      "args": [
+        "--version"
+      ],
+      "command": "psql",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-check_status-2---claude_md_installed-returns-claude_md_installed-false-when-CLAUDE.md-missing-c6dd1bd6",
+        "stderr_to_stdout": true
+      },
+      "output": "psql (PostgreSQL) 15.5 (Homebrew)\n",
+      "recorded_at": "2026-03-14T19:44:52.674536Z"
+    },
+    {
+      "args": [
+        "compile",
+        "--warnings-as-errors"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/tmp/CodeMySpec.AgentTasks.ProjectSetupTest/test-check_status-2---claude_md_installed-returns-claude_md_installed-false-when-CLAUDE.md-missing-c6dd1bd6",
+        "stderr_to_stdout": true
+      },
+      "output": "Unchecked dependencies for environment test:\n* phoenix_live_view (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n* phoenix (Hex package)\n  the dependency is not available, run \"mix deps.get\"\n** (Mix) Can't continue due to errors on dependencies\n",
+      "recorded_at": "2026-03-14T19:44:53.130487Z"
+    }
+  ],
+  "ports": []
+}
