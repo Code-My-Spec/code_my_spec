@@ -37,7 +37,7 @@ defmodule CodeMySpecWeb.StoryLiveTest do
   end
 
   defp create_story_with_criteria(%{scope: scope}) do
-    story = story_fixture(scope)
+    story = story_fixture(scope, %{criteria: []})
     criterion = criterion_fixture(scope, story)
 
     %{story: CodeMySpec.Stories.get_story!(scope, story.id), criterion: criterion}

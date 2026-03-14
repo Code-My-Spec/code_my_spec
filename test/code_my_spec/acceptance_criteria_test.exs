@@ -7,6 +7,10 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.AcceptanceCriteriaFixtures
 
+  defp story_without_criteria(scope, attrs \\ %{}) do
+    story_fixture(scope, Map.merge(%{criteria: []}, attrs))
+  end
+
   describe "subscribe_criteria/1" do
     test "subscribes to account-scoped criteria events" do
       scope = full_scope_fixture()
@@ -15,7 +19,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "receives {:created, criterion}, {:updated, criterion}, {:deleted, criterion} messages" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       AcceptanceCriteria.subscribe_criteria(scope)
 
@@ -48,7 +52,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "create_criterion/3" do
     test "creates criterion with valid attributes" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       attrs = valid_criterion_attrs(%{description: "Valid test criterion"})
 
@@ -60,7 +64,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "sets story_id from provided story" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       attrs = valid_criterion_attrs()
 
@@ -70,7 +74,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "sets project_id from scope" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       attrs = valid_criterion_attrs()
 
@@ -80,7 +84,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "broadcasts created event on success" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       AcceptanceCriteria.subscribe_criteria(scope)
 
@@ -94,7 +98,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "returns changeset error for invalid attributes" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       invalid_attrs = invalid_criterion_attrs()
 
@@ -104,7 +108,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "validates required fields (description)" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       assert {:error, changeset} =
                AcceptanceCriteria.create_criterion(scope, story, %{description: nil})
@@ -116,7 +120,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "update_criterion/3" do
     test "updates criterion with valid attributes" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       update_attrs = %{description: "Updated criterion description"}
@@ -129,7 +133,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
     test "verifies ownership via project_id" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert_raise MatchError, fn ->
@@ -141,7 +145,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "broadcasts updated event on success" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       AcceptanceCriteria.subscribe_criteria(scope)
@@ -157,7 +161,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "returns changeset error for invalid attributes" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert {:error, %Ecto.Changeset{}} =
@@ -170,7 +174,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "delete_criterion/2" do
     test "deletes criterion successfully" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert {:ok, deleted} = AcceptanceCriteria.delete_criterion(scope, criterion)
@@ -181,7 +185,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
     test "verifies ownership via project_id" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert_raise MatchError, fn ->
@@ -191,7 +195,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "broadcasts deleted event on success" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       AcceptanceCriteria.subscribe_criteria(scope)
@@ -206,7 +210,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "change_criterion/3" do
     test "returns changeset for valid criterion" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       changeset =
@@ -219,7 +223,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
     test "validates ownership before returning changeset" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert_raise MatchError, fn ->
@@ -231,7 +235,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "does not persist changes" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
       original_description = criterion.description
 
@@ -247,7 +251,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "mark_verified/2" do
     test "marks criterion as verified" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert criterion.verified == false
@@ -259,7 +263,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "sets verified_at timestamp" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert {:ok, verified} = AcceptanceCriteria.mark_verified(scope, criterion)
@@ -271,7 +275,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "broadcasts updated event on success" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       AcceptanceCriteria.subscribe_criteria(scope)
@@ -285,7 +289,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "idempotent when already verified" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       {:ok, first_verified} = AcceptanceCriteria.mark_verified(scope, criterion)
@@ -299,7 +303,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "mark_unverified/2" do
     test "marks criterion as unverified" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = verified_criterion_fixture(scope, story)
 
       assert criterion.verified == true
@@ -310,7 +314,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "clears verified_at timestamp" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = verified_criterion_fixture(scope, story)
 
       assert criterion.verified_at != nil
@@ -321,7 +325,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "broadcasts updated event on success" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = verified_criterion_fixture(scope, story)
 
       AcceptanceCriteria.subscribe_criteria(scope)
@@ -335,7 +339,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "idempotent when already unverified" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       assert criterion.verified == false
@@ -351,7 +355,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "import_from_strings/3" do
     test "creates criterion for each string" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       strings = [
         "First acceptance criterion",
@@ -374,7 +378,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "handles empty list gracefully" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       assert {:ok, criteria} = AcceptanceCriteria.import_from_strings(scope, story, [])
       assert criteria == []
@@ -382,7 +386,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "broadcasts created event for each criterion" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       AcceptanceCriteria.subscribe_criteria(scope)
 
@@ -402,7 +406,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "export_to_strings/2" do
     test "returns descriptions in creation order" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       # Create criteria in specific order
       criterion_fixture(scope, story, %{description: "First criterion"})
@@ -420,7 +424,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "returns empty list when story has no criteria" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       strings = AcceptanceCriteria.export_to_strings(scope, story)
 
@@ -431,8 +435,8 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
 
-      story_in_scope = story_fixture(scope)
-      story_in_other_scope = story_fixture(other_scope)
+      story_in_scope = story_without_criteria(scope)
+      story_in_other_scope = story_without_criteria(other_scope)
 
       criterion_fixture(scope, story_in_scope, %{description: "Scoped criterion"})
 
@@ -450,7 +454,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "list_story_criteria/2" do
     test "returns all criteria for a story" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       criterion1 = criterion_fixture(scope, story, %{description: "First"})
       criterion2 = criterion_fixture(scope, story, %{description: "Second"})
@@ -465,7 +469,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
 
     test "returns empty list for story with no criteria" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
 
       criteria = AcceptanceCriteria.list_story_criteria(scope, story.id)
 
@@ -476,8 +480,8 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
 
-      story = story_fixture(scope)
-      other_story = story_fixture(other_scope)
+      story = story_without_criteria(scope)
+      other_story = story_without_criteria(other_scope)
 
       criterion_fixture(scope, story)
       criterion_fixture(other_scope, other_story)
@@ -492,7 +496,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "get_criterion!/2" do
     test "returns criterion by id" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       found = AcceptanceCriteria.get_criterion!(scope, criterion.id)
@@ -513,7 +517,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
 
-      story = story_fixture(other_scope)
+      story = story_without_criteria(other_scope)
       criterion = criterion_fixture(other_scope, story)
 
       assert_raise Ecto.NoResultsError, fn ->
@@ -525,7 +529,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
   describe "get_criterion/2" do
     test "returns criterion by id" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
       found = AcceptanceCriteria.get_criterion(scope, criterion.id)
@@ -544,7 +548,7 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
 
-      story = story_fixture(other_scope)
+      story = story_without_criteria(other_scope)
       criterion = criterion_fixture(other_scope, story)
 
       assert is_nil(AcceptanceCriteria.get_criterion(scope, criterion.id))
