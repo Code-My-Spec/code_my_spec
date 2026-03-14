@@ -112,6 +112,16 @@ defmodule CodeMySpec.Validation.PipelineTest do
       assert result.code_files == []
       assert result.elixir_files == []
     end
+
+    test "categorizes journey_plan.md as qa_files" do
+      result = Pipeline.categorize_files([".code_my_spec/qa/journey_plan.md"])
+      assert ".code_my_spec/qa/journey_plan.md" in result.qa_files
+    end
+
+    test "categorizes journey_result.md as qa_files" do
+      result = Pipeline.categorize_files([".code_my_spec/qa/journey_result.md"])
+      assert ".code_my_spec/qa/journey_result.md" in result.qa_files
+    end
   end
 
   # ============================================================================
@@ -689,6 +699,72 @@ defmodule CodeMySpec.Validation.PipelineTest do
       {:ok, problems} = Pipeline.validate_spec_files([context_spec])
       # Should validate as context_spec and pass (has all required sections)
       assert problems == []
+    end
+  end
+
+  # ============================================================================
+  # validate_qa_files/1 — journey document types
+  # ============================================================================
+
+  describe "validate_qa_files/1 with journey documents" do
+    @tag :tmp_dir
+    test "validates journey_plan.md as qa_journey_plan type", %{tmp_dir: tmp_dir} do
+      qa_dir = Path.join(tmp_dir, ".code_my_spec/qa")
+      File.mkdir_p!(qa_dir)
+      plan_file = Path.join(qa_dir, "journey_plan.md")
+
+      File.write!(plan_file, """
+      # Journey Plan
+
+      ## Journeys
+
+      ### Happy Path
+      Steps here.
+
+      ## Prerequisites
+
+      Run seeds first.
+      """)
+
+      assert {:ok, []} = Pipeline.validate_qa_files([plan_file])
+    end
+
+    @tag :tmp_dir
+    test "validates journey_result.md as qa_journey_result type", %{tmp_dir: tmp_dir} do
+      qa_dir = Path.join(tmp_dir, ".code_my_spec/qa")
+      File.mkdir_p!(qa_dir)
+      result_file = Path.join(qa_dir, "journey_result.md")
+
+      File.write!(result_file, """
+      # Journey Result
+
+      ## Status
+
+      pass
+
+      ## Journey Results
+
+      ### Happy Path
+      Passed.
+      """)
+
+      assert {:ok, []} = Pipeline.validate_qa_files([result_file])
+    end
+
+    @tag :tmp_dir
+    test "returns problems for invalid journey_plan.md", %{tmp_dir: tmp_dir} do
+      qa_dir = Path.join(tmp_dir, ".code_my_spec/qa")
+      File.mkdir_p!(qa_dir)
+      plan_file = Path.join(qa_dir, "journey_plan.md")
+
+      File.write!(plan_file, """
+      # Journey Plan
+
+      Some content without required sections.
+      """)
+
+      {:ok, problems} = Pipeline.validate_qa_files([plan_file])
+      assert problems != []
     end
   end
 

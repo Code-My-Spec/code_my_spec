@@ -1,21 +1,22 @@
 defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   @moduledoc """
   Singleton GenServer that watches project directories for file changes and
-  marks components dirty in the DB.
+  runs incremental component sync.
 
   Manages multiple project watchers keyed by project root directory. New
   directories are registered lazily via `ensure_watching/1` — typically called
   from agent task entry points where a scope with `cwd` is available.
 
-  On file change: debounces events, maps paths to components, bumps
-  `files_changed_at` on the component record.
+  On file change: debounces events, runs `Components.Sync.sync_changed/2`
+  which sets `files_changed_at` to the max mtime of changed component files.
+  Then recalculates requirements and marks linked stories dirty.
   """
   use GenServer
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.DirtyTracker
   alias CodeMySpec.Components.HierarchicalTree
+  alias CodeMySpec.Components.Sync, as: ComponentSync
   alias CodeMySpec.ProjectSync.StatusWriter
   alias CodeMySpec.Requirements.Sync, as: RequirementsSync
   alias CodeMySpec.Stories
@@ -157,28 +158,34 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
       project_root ->
         %{scope: scope} = watchers[project_root]
 
-        relative_paths =
-          paths
-          |> Enum.map(&Path.relative_to(&1, project_root))
-          |> Enum.to_list()
-
         try do
           start = System.monotonic_time(:millisecond)
-          changed_components = DirtyTracker.mark_files_changed(scope, relative_paths)
-          dirty_ms = System.monotonic_time(:millisecond) - start
 
-          Enum.each(changed_components, fn component ->
-            RequirementsSync.recalculate_component_requirements(scope, component)
-          end)
+          # Incremental component sync — sets files_changed_at to max mtime
+          {:ok, _all_components, changed_component_ids} =
+            ComponentSync.sync_changed(scope, base_dir: project_root)
 
-          if changed_components != [] do
+          sync_ms = System.monotonic_time(:millisecond) - start
+
+          if changed_component_ids != [] do
+            # Recalculate requirements for changed components
+            changed_components =
+              Enum.map(changed_component_ids, &Components.get_component(scope, &1))
+              |> Enum.reject(&is_nil/1)
+
+            Enum.each(changed_components, fn component ->
+              RequirementsSync.recalculate_component_requirements(scope, component)
+            end)
+
             status_ms = rewrite_status_files(scope)
             total_ms = System.monotonic_time(:millisecond) - start
 
+            file_count = paths |> Enum.to_list() |> length()
+
             Logger.info(
-              "[FileWatcher] Processed #{length(relative_paths)} file(s) → " <>
-                "#{length(changed_components)} component(s) in #{total_ms}ms " <>
-                "(dirty: #{dirty_ms}ms, requirements: #{total_ms - dirty_ms - status_ms}ms, status: #{status_ms}ms)"
+              "[FileWatcher] Processed #{file_count} file(s) → " <>
+                "#{length(changed_component_ids)} component(s) in #{total_ms}ms " <>
+                "(sync: #{sync_ms}ms, status: #{status_ms}ms)"
             )
           end
         rescue

@@ -74,6 +74,90 @@
       },
       "output": "{\n  \"findings\": {\n    \"high_confidence\": [\n      {\n        \"line\": 0,\n        \"type\": \"Config.HTTPS: HTTPS Not Enabled\",\n        \"file\": \"config/prod.exs\"\n      },\n      {\n        \"line\": 12,\n        \"type\": \"Config.CSP: Missing Content-Security-Policy\",\n        \"file\": \"lib/test_phoenix_project_web/router.ex\",\n        \"pipeline\": \"browser\"\n      }\n    ],\n    \"low_confidence\": [],\n    \"medium_confidence\": []\n  },\n  \"sobelow_version\": \"0.14.1\",\n  \"total_findings\": 2\n}\n",
       "recorded_at": "2026-02-15T22:16:35.005972Z"
+    },
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/test_results_cache.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n==> test_phoenix_project\nwarning: the following files do not match any of the configured `:test_load_filters` / `:test_ignore_filters`:\n\ntest/spex/sample_spex.exs\n\nThis might indicate a typo in a test file name (for example, using \"foo_tests.exs\" instead of \"foo_test.exs\").\n\nSee the configuration for `:test_pattern` under `mix help test` for more information.\n\nRunning ExUnit with seed: 152934, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n    warning: module attribute @invalid_attrs was set but never used\n    │\n 10 │   @invalid_attrs %{title: nil, content: nil, published: nil}\n    │   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ test/test_phoenix_project/blog_test.exs:10: TestPhoenixProject.BlogTest (module)\n\n................................................................................................................................................\nFinished in 0.9 seconds (0.7s async, 0.2s sync)\n144 tests, 0 failures\n",
+      "recorded_at": "2026-03-14T17:30:44.194457Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_23844.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\nRunning ExUnit with seed: 499847, max_cases: 16\n\n\u001B[32m.\u001B[0m\nFinished in 0.05 seconds (0.00s async, 0.05s sync)\n\u001B[32m1 test, 0 failures\u001B[0m\n",
+      "recorded_at": "2026-03-14T17:30:45.590136Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_17061.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T17:36:52.934189Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_69090.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_1",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_1/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T17:40:13.613570Z"
+    },
+    {
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_44867.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "../code_my_spec_test_repos/pool_code_repo_7",
+        "stderr_to_stdout": true
+      },
+      "output": "==> client_utils\n    warning: redefining module ClientUtils.CloudflareTunnel (current version loaded from /Users/johndavenport/Documents/github/code_my_spec_test_repos/pool_code_repo_7/_build/test/lib/client_utils/ebin/Elixir.ClientUtils.CloudflareTunnel.beam)\n    │\n  1 │ defmodule ClientUtils.CloudflareTunnel do\n    │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n    │\n    └─ lib/client_utils/cloudflare_tunnel.ex:1: ClientUtils.CloudflareTunnel (module)\n\n",
+      "recorded_at": "2026-03-14T17:42:41.983210Z"
     }
   ],
   "ports": []

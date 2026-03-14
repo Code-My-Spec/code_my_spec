@@ -261,6 +261,20 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     {:ok, count}
   end
 
+  @doc """
+  Returns distinct component IDs that have at least one problem.
+  Excludes problems with nil component_id.
+  """
+  @spec component_ids_with_problems(Scope.t()) :: [binary()]
+  def component_ids_with_problems(%Scope{active_project_id: project_id}) do
+    Problem
+    |> where([p], p.project_id == ^project_id)
+    |> where([p], not is_nil(p.component_id))
+    |> select([p], p.component_id)
+    |> distinct(true)
+    |> Repo.all()
+  end
+
   # Private helpers
 
   defp apply_source_filter(query, []), do: query

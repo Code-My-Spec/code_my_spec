@@ -24,11 +24,11 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths
-  alias CodeMySpec.Problems
-  alias CodeMySpec.ProjectSync.Sync
+  alias CodeMySpec.Components
+  alias CodeMySpec.ProjectSync.FileWatcherServer
+  alias CodeMySpec.Requirements.Sync, as: RequirementsSync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Validation.Pipeline
 
   # Maps session type names to AgentTask modules
   # Note: "spec" is handled specially in resolve_session_type/2 to auto-detect context vs component
@@ -38,6 +38,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "context_component_specs" => AgentTasks.ContextComponentSpecs,
     "context_design_review" => AgentTasks.ContextDesignReview,
     "develop_context" => AgentTasks.DevelopContext,
+    "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
     "fix_bdd_specs" => AgentTasks.FixBddSpecs,
     "develop_controller" => AgentTasks.DevelopController,
     "develop_live_view" => AgentTasks.DevelopLiveView,
@@ -48,7 +49,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "architecture_design" => AgentTasks.ArchitectureDesign,
     "architecture_review" => AgentTasks.ArchitectureReview,
     "write_bdd_specs" => AgentTasks.WriteBddSpecs,
-    "manage_implementation" => AgentTasks.ManageImplementation,
+
     "design_ui" => AgentTasks.DesignUi,
     "liveview_spec" => AgentTasks.LiveViewSpec,
     "develop_live_context" => AgentTasks.DevelopLiveContext,
@@ -56,6 +57,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "technical_strategy" => AgentTasks.TechnicalStrategy,
     "research_topic" => AgentTasks.ResearchTopic,
     "qa_app" => AgentTasks.QaApp,
+    "qa_journey_plan" => AgentTasks.QaJourneyPlan,
+    "qa_journey_execute" => AgentTasks.QaJourneyExecute,
+    "qa_journey_wallaby" => AgentTasks.QaJourneyWallaby,
     "qa_setup" => AgentTasks.QaSetup,
     "qa_story" => AgentTasks.QaStory,
     "start_implementation" => AgentTasks.StartImplementation
@@ -75,8 +79,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "write_bdd_specs",
     "manage_implementation",
     "design_ui",
+    "fix_all_bdd_specs",
     "technical_strategy",
     "qa_app",
+    "qa_journey_plan",
+    "qa_journey_execute",
+    "qa_journey_wallaby",
     "qa_setup"
   ]
 
@@ -142,22 +150,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _} <- validate_environment(scope),
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
-         {:ok, spex_problems} <- Pipeline.run_all_spex(scope),
-         :ok <- persist_spex_problems(scope, spex_problems),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, session} <- find_or_create_session(scope, external_id, agent_task_module),
          session <- enrich_session(session, nil, scope),
          {:ok, prompt} <- agent_task_module.command(scope, session) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
-  end
-
-  defp persist_spex_problems(_scope, []), do: :ok
-
-  defp persist_spex_problems(scope, problems) do
-    spex_files = problems |> Enum.map(& &1.file_path) |> Enum.uniq()
-    Problems.replace_problems_for_files(scope, spex_files, problems)
-    :ok
   end
 
   defp run_componentless_task(scope, external_id, session_type) do
@@ -379,17 +377,25 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     TaskMarker.build(type_name, to_string(subject))
   end
 
-  # Sync
+  # Sync — incremental only. File watcher handles continuous sync;
+  # this catches anything it missed (e.g., files changed while Claude wasn't running).
 
   defp sync_project(scope) do
     opts = if scope.environment, do: [base_dir: scope.environment.cwd], else: []
+    FileWatcherServer.ensure_watching(scope)
 
-    case Sync.sync_all(scope, opts) do
-      {:ok, result} ->
-        {:ok, result}
+    with {:ok, all_components, changed_ids} <- Components.Sync.sync_changed(scope, opts),
+         {:ok, _} <- Components.Sync.update_parent_relationships(scope, all_components, changed_ids, opts) do
+      if changed_ids != [] do
+        changed_ids
+        |> Enum.map(&Components.get_component(scope, &1))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.each(&RequirementsSync.recalculate_component_requirements(scope, &1))
+      end
 
-      {:error, reason} ->
-        {:error, "Sync failed: #{inspect(reason)}"}
+      {:ok, %{components: all_components, changed: changed_ids}}
+    else
+      {:error, reason} -> {:error, "Sync failed: #{inspect(reason)}"}
     end
   end
 end

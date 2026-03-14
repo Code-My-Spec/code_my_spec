@@ -55,10 +55,12 @@ defmodule CodeMySpec.Validation.Pipeline do
   end
 
   @doc """
-  Run scoped analysis on dirty components only.
+  Run scoped static analysis on dirty components only.
 
   Collects files for each dirty component via `Utils.component_files/2`,
-  compiles once, then runs each tool on the relevant file subset.
+  compiles once, then runs credo, sobelow, and spec validation on the
+  relevant file subset. Tests and spex use `--stale` separately.
+
   Returns a map of `%{source => [Problem.t()]}` keyed by tool name.
   """
   @spec run_scoped(Scope.t(), [Component.t()], keyword()) :: %{String.t() => [Problem.t()]}
@@ -91,23 +93,22 @@ defmodule CodeMySpec.Validation.Pipeline do
         {:error, p} -> p
       end
 
-    # Only run remaining tools if compilation succeeded
-    {test_problems, credo_problems, sobelow_problems, spec_problems} =
+    # Only run static analysis tools if compilation succeeded.
+    # Tests and spex run separately via --stale (Phase 1b/1c in Validation).
+    {credo_problems, sobelow_problems, spec_problems} =
       case compiler_result do
         {:ok, _} ->
-          {_, tp} = run_tests(test_files, scope, opts)
           {_, cp} = run_credo(elixir_files, scope)
           {_, sp} = run_sobelow(elixir_files, scope)
           {_, vp} = validate_spec_files(spec_files)
-          {tp, cp, sp, vp}
+          {cp, sp, vp}
 
         {:error, _} ->
-          {[], [], [], []}
+          {[], [], []}
       end
 
     %{
       "compiler" => compiler_problems,
-      "exunit" => test_problems,
       "credo" => credo_problems,
       "sobelow" => sobelow_problems,
       "spec_validation" => spec_problems
@@ -333,6 +334,79 @@ defmodule CodeMySpec.Validation.Pipeline do
         Problems.clear_problems_for_source(scope, [source: "spex"], :all)
         {_, problems} = run_spex(spex_files, scope)
         {:ok, problems}
+      end
+    end
+  end
+
+  @doc """
+  Run tests using Elixir's stale tracking.
+
+  Clears all test problems, runs `mix test --stale`, stores failures.
+  The stale manifest tracks what needs re-testing — no DB timestamps needed.
+  """
+  @spec run_tests_stale(Scope.t(), keyword()) :: {:ok, [Problem.t()]}
+  def run_tests_stale(%Scope{} = scope, opts \\ []) do
+    project_root = get_project_root(scope)
+
+    if is_nil(project_root) do
+      {:ok, []}
+    else
+      Logger.info("[Pipeline] Running mix test --stale")
+      Problems.clear_problems_for_source(scope, [source_type: :test, exclude_source: "spex"], :all)
+
+      test_opts = [project_root: project_root]
+
+      test_opts =
+        if f = opts[:test_output_file],
+          do: Keyword.put(test_opts, :output_file, f),
+          else: test_opts
+
+      ["--stale"]
+      |> Tests.execute(test_opts)
+      |> handle_test_result(["--stale"])
+    end
+  end
+
+  @doc """
+  Run spex using SexySpex's stale tracking.
+
+  Clears all spex problems, runs `mix spex --stale`, stores failures.
+  The stale manifest tracks what needs re-running — no DB timestamps needed.
+  """
+  @spec run_spex_stale(Scope.t()) :: {:ok, [Problem.t()]}
+  def run_spex_stale(%Scope{} = scope) do
+    project_root = get_project_root(scope)
+
+    if is_nil(project_root) do
+      {:ok, []}
+    else
+      Logger.info("[Pipeline] Running mix spex --stale")
+      Problems.clear_problems_for_source(scope, [source: "spex"], :all)
+
+      opts = [project_root: project_root, quiet: true]
+
+      case BddSpecs.run_specs(["--stale"], opts) do
+        {:ok, [], 0} ->
+          {:ok, []}
+
+        {:ok, failures, _exit_code} when failures != [] ->
+          {:ok, convert_spex_failures(failures)}
+
+        {:ok, [], exit_code} when exit_code != 0 ->
+          {:ok,
+           [
+             %Problem{
+               severity: :error,
+               source: "spex",
+               source_type: :test,
+               file_path: "test/spex",
+               message: "BDD spec execution failed (exit code #{exit_code})",
+               category: "spex_error"
+             }
+           ]}
+
+        {:error, _reason} ->
+          {:ok, []}
       end
     end
   end

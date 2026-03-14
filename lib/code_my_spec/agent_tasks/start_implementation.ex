@@ -6,9 +6,10 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   ## Flow
 
   ### command/3
-  1. `get_next_actions` → walks project → stories → components → dependencies
-  2. `Dispatch.command` → generates prompt (handles :local and :children scope)
-  3. Write status file for tracking, return prompt
+  1. Sync framework files
+  2. `get_next_actions` → walks project → stories → components → dependencies
+  3. `Dispatch.command` → generates prompt (handles :local and :children scope)
+  4. Write status file for tracking, return prompt
 
   Caller (`StartAgentTask`) is responsible for syncing before calling command.
 
@@ -23,13 +24,11 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   require Logger
 
-  alias CodeMySpec.{Environments, FrameworkSync}
+  alias CodeMySpec.{Components, FrameworkSync}
   alias CodeMySpec.ProjectCoordinator
-  alias CodeMySpec.ProjectCoordinator.Dispatch
-  alias CodeMySpec.ProjectSync.Sync
+  alias CodeMySpec.ProjectCoordinator.{Dispatch, ImplementationStatus}
   alias CodeMySpec.Requirements.Requirement
-
-  @status_path CodeMySpec.Paths.implementation_status_path()
+  alias CodeMySpec.Requirements.Sync, as: RequirementsSync
 
   # ============================================================================
   # Public API
@@ -66,7 +65,7 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
         case Dispatch.command(req, scope, %{}) do
           {:ok, prompt} ->
-            write_status(env, req)
+            write_status(env, scope, req)
             {:ok, prompt}
 
           {:error, reason} ->
@@ -91,7 +90,7 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
         case Dispatch.command(req, scope, %{}) do
           {:ok, prompt} ->
-            write_status(env, req)
+            write_status(env, scope, req)
             {:ok, :invalid, prompt}
 
           {:error, reason} ->
@@ -109,25 +108,17 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   end
 
   # ============================================================================
-  # Status File I/O (tracking/observability only)
+  # Status File I/O (dispatch registry)
   # ============================================================================
 
-  defp write_status(env, %Requirement{} = req) do
-    data = %{
-      requirement: req.name,
-      scope: req.scope,
-      component_id: req.component_id,
-      story_id: req.story_id,
-      project_id: req.project_id,
-      dispatched_at: DateTime.utc_now() |> DateTime.to_iso8601()
-    }
-
-    :ok = Environments.write_file(env, @status_path, Jason.encode!(data))
+  defp write_status(env, scope, %Requirement{} = req) do
+    component = if req.component_id, do: Components.get_component!(scope, req.component_id)
+    entry = ImplementationStatus.build_task_entry(req, component, scope.active_project)
+    ImplementationStatus.record_task(env, entry)
   end
 
   defp clear_status(env) do
-    Environments.delete_file(env, @status_path)
-    :ok
+    ImplementationStatus.clear(env)
   end
 
   # ============================================================================
@@ -141,10 +132,20 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   defp sync_project(scope) do
     working_dir = get_working_dir(scope.environment)
-    Logger.info("[StartImplementation] Syncing project from #{working_dir}")
+    Logger.info("[StartImplementation] Incremental sync from #{working_dir}")
+    opts = [base_dir: working_dir]
 
-    case Sync.sync_all(scope, base_dir: working_dir) do
-      {:ok, result} -> {:ok, result}
+    with {:ok, all_components, changed_ids} <- Components.Sync.sync_changed(scope, opts),
+         {:ok, _} <- Components.Sync.update_parent_relationships(scope, all_components, changed_ids, opts) do
+      if changed_ids != [] do
+        changed_ids
+        |> Enum.map(&Components.get_component(scope, &1))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.each(&RequirementsSync.recalculate_component_requirements(scope, &1))
+      end
+
+      {:ok, %{components: all_components, changed: changed_ids}}
+    else
       {:error, reason} -> {:error, {:sync_failed, reason}}
     end
   end

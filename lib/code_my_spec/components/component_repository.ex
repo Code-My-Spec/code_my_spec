@@ -96,7 +96,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
     %Component{}
     |> Component.changeset(attrs, scope)
     |> Repo.insert(
-      on_conflict: {:replace_all_except, [:id, :inserted_at]},
+      on_conflict: {:replace_all_except, [:id, :inserted_at, :last_analyzed_at]},
       conflict_target: [:module_name, :project_id],
       returning: true
     )

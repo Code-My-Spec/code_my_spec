@@ -31,26 +31,28 @@ defmodule CodeMySpec.Requirements.BddSpecPassingChecker do
     specs = BddSpecs.list_specs_for_story(env, story.id)
 
     {satisfied, details} =
-      if specs == [] do
-        {false, %{reason: "No BDD spec files to run for story #{story.id}"}}
-      else
-        spec_file_paths = Enum.map(specs, & &1.file_path) |> MapSet.new()
+      cond do
+        specs == [] ->
+          {false, %{reason: "No BDD spec files to run for story #{story.id}"}}
 
-        spex_problems =
-          scope
-          |> Problems.list_project_problems(source: "spex")
-          |> Enum.filter(&MapSet.member?(spec_file_paths, &1.file_path))
+        true ->
+          spec_file_paths = Enum.map(specs, & &1.file_path) |> MapSet.new()
 
-        if spex_problems == [] do
-          {true, %{spec_count: length(specs), all_passing: true}}
-        else
-          {false,
-           %{
-             spec_count: length(specs),
-             failure_count: length(spex_problems),
-             failures: Enum.map(spex_problems, &problem_to_map/1)
-           }}
-        end
+          spex_problems =
+            scope
+            |> Problems.list_project_problems(source: "spex")
+            |> Enum.filter(&MapSet.member?(spec_file_paths, &1.file_path))
+
+          if spex_problems == [] do
+            {true, %{spec_count: length(specs), all_passing: true}}
+          else
+            {false,
+             %{
+               spec_count: length(specs),
+               failure_count: length(spex_problems),
+               failures: Enum.map(spex_problems, &problem_to_map/1)
+             }}
+          end
       end
 
     %{

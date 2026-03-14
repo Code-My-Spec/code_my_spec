@@ -26,9 +26,6 @@ defmodule CodeMySpec.Components.Component do
           type: String.t(),
           module_name: String.t(),
           description: String.t() | nil,
-          synced_at: DateTime.t() | nil,
-          files_changed_at: DateTime.t() | nil,
-          last_analyzed_at: map(),
           account_id: Ecto.UUID.t(),
           project_id: Ecto.UUID.t(),
           parent_component_id: Ecto.UUID.t() | nil,
@@ -47,6 +44,9 @@ defmodule CodeMySpec.Components.Component do
           stories: [CodeMySpec.Stories.Story.t()] | Ecto.Association.NotLoaded.t(),
           requirements: [Requirement.t()] | Ecto.Association.NotLoaded.t(),
           component_status: ComponentStatus.t() | nil,
+          files_changed_at: DateTime.t() | nil,
+          last_analyzed_at: DateTime.t() | nil,
+          synced_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -59,7 +59,7 @@ defmodule CodeMySpec.Components.Component do
     field :description, :string
     field :synced_at, :utc_datetime
     field :files_changed_at, :utc_datetime
-    field :last_analyzed_at, :map, default: %{}
+    field :last_analyzed_at, :utc_datetime
 
     belongs_to :account, Account, type: :binary_id
     belongs_to :project, Project, type: :binary_id

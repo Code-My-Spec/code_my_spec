@@ -6,9 +6,9 @@ defmodule CodeMySpec.Stories do
   For remote API operations (CLI/local server), use Stories.RemoteClient directly.
   """
 
+  alias CodeMySpec.Stories.StoriesRepository
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Stories.StoriesRepository
 
   @doc """
   Subscribes to scoped notifications about any story changes.

@@ -18,8 +18,6 @@ defmodule CodeMySpec.Stories.Story do
           locked_at: DateTime.t() | nil,
           lock_expires_at: DateTime.t() | nil,
           locked_by: integer() | nil,
-          code_changed_at: DateTime.t() | nil,
-          spex_analyzed_at: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           component_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
@@ -38,8 +36,6 @@ defmodule CodeMySpec.Stories.Story do
     field :locked_at, :utc_datetime
     field :lock_expires_at, :utc_datetime
     field :locked_by, :id
-    field :code_changed_at, :utc_datetime
-    field :spex_analyzed_at, :utc_datetime
     field :project_id, :binary_id
     field :account_id, :binary_id
 
@@ -68,8 +64,6 @@ defmodule CodeMySpec.Stories.Story do
       :locked_at,
       :lock_expires_at,
       :locked_by,
-      :code_changed_at,
-      :spex_analyzed_at,
       :project_id,
       :component_id
     ])
