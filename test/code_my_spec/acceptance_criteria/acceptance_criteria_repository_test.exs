@@ -10,7 +10,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
   describe "list_story_criteria/2" do
     test "returns all criteria for the story ordered by inserted_at" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_fixture(scope, %{criteria: []})
 
       criterion1 = criterion_fixture(scope, story, %{description: "First"})
       criterion2 = criterion_fixture(scope, story, %{description: "Second"})
@@ -26,7 +26,7 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
 
     test "returns empty list when story has no criteria" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_fixture(scope, %{criteria: []})
 
       criteria = AcceptanceCriteriaRepository.list_story_criteria(scope, story.id)
 
@@ -36,8 +36,8 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
     test "respects project scope" do
       scope = full_scope_fixture()
       other_scope = full_scope_fixture()
-      story = story_fixture(scope)
-      other_story = story_fixture(other_scope)
+      story = story_fixture(scope, %{criteria: []})
+      other_story = story_fixture(other_scope, %{criteria: []})
 
       _criterion1 = criterion_fixture(scope, story, %{description: "In scope"})
       _criterion2 = criterion_fixture(other_scope, other_story, %{description: "Out of scope"})

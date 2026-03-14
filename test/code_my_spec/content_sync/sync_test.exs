@@ -242,16 +242,18 @@ defmodule CodeMySpec.ContentSync.SyncTest do
       cleanup_directory(dir)
     end
 
-    test "ignores files without metadata sidecar files" do
+    test "returns error attrs for files without metadata sidecar files" do
       dir = Path.join(System.tmp_dir!(), "sync_test_#{System.unique_integer([:positive])}")
       File.mkdir_p!(dir)
 
-      # Create content file without metadata file (should be ignored)
+      # Create content file without metadata file — returns parse error entry
       file_path = Path.join(dir, "post.md")
       File.write!(file_path, simple_markdown_content())
 
-      assert {:ok, attrs_list} = Sync.process_directory(dir)
-      assert attrs_list == []
+      assert {:ok, [attrs]} = Sync.process_directory(dir)
+      assert attrs.slug == "post"
+      assert attrs.parse_status == :error
+      assert attrs.parse_errors.error_type == "MissingMetadata"
 
       cleanup_directory(dir)
     end

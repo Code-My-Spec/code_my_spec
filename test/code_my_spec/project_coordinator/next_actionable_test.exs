@@ -116,20 +116,21 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
       assert req.name == "component_linked"
     end
 
-    test "all stories complete returns project_qa", %{scope: scope} do
+    test "all stories complete returns all_bdd_specs_passing", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, true)
       create_project_requirement(scope, "architecture_designed", :specification, true)
       create_project_requirement(scope, "issues_triaged", :review, true)
       create_project_requirement(scope, "issues_resolved", :review, true)
       create_project_requirement(scope, "all_stories_complete", :dependencies, true)
-      create_project_requirement(scope, "project_qa", :review, false,
-        satisfied_by: CodeMySpec.AgentTasks.QaApp
+      create_project_requirement(scope, "all_bdd_specs_passing", :tests, false,
+        satisfied_by: CodeMySpec.AgentTasks.FixAllBddSpecs,
+        scope: :orchestrate
       )
 
       project = scope.active_project |> Repo.preload(:requirements)
       assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "project_qa"
-      assert req.satisfied_by == CodeMySpec.AgentTasks.QaApp
+      assert req.name == "all_bdd_specs_passing"
+      assert req.satisfied_by == CodeMySpec.AgentTasks.FixAllBddSpecs
     end
 
     test "everything satisfied returns :complete", %{scope: scope} do

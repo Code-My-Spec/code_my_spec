@@ -25,14 +25,17 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.DevelopController,
       AgentTasks.DevelopLiveContext,
       AgentTasks.DevelopLiveView,
+      AgentTasks.FixAllBddSpecs,
       AgentTasks.FixBddSpecs,
       AgentTasks.FixIssues,
       AgentTasks.LinkStoryComponent,
       AgentTasks.LiveContextSpec,
       AgentTasks.LiveViewSpec,
-      AgentTasks.ManageImplementation,
       AgentTasks.ProjectSetup,
       AgentTasks.QaApp,
+      AgentTasks.QaJourneyExecute,
+      AgentTasks.QaJourneyPlan,
+      AgentTasks.QaJourneyWallaby,
       AgentTasks.QaSetup,
       AgentTasks.QaStory,
       AgentTasks.RefactorModule,
@@ -61,14 +64,17 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "DevelopController",
       "DevelopLiveContext",
       "DevelopLiveView",
+      "FixAllBddSpecs",
       "FixBddSpecs",
       "FixIssues",
       "LinkStoryComponent",
       "LiveContextSpec",
       "LiveViewSpec",
-      "ManageImplementation",
       "ProjectSetup",
       "QaApp",
+      "QaJourneyExecute",
+      "QaJourneyPlan",
+      "QaJourneyWallaby",
       "QaSetup",
       "QaStory",
       "RefactorModule",
@@ -112,7 +118,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.ArchitectureReview} = SessionType.cast("ArchitectureReview")
       assert {:ok, AgentTasks.ProjectSetup} = SessionType.cast("ProjectSetup")
       assert {:ok, AgentTasks.WriteBddSpecs} = SessionType.cast("WriteBddSpecs")
-      assert {:ok, AgentTasks.ManageImplementation} = SessionType.cast("ManageImplementation")
+      assert {:ok, AgentTasks.FixAllBddSpecs} = SessionType.cast("FixAllBddSpecs")
       assert {:ok, AgentTasks.DevelopContext} = SessionType.cast("DevelopContext")
       assert {:ok, AgentTasks.DevelopLiveView} = SessionType.cast("DevelopLiveView")
       assert {:ok, AgentTasks.DesignUi} = SessionType.cast("DesignUi")
@@ -127,6 +133,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.TriageIssues} = SessionType.cast("TriageIssues")
       assert {:ok, AgentTasks.FixBddSpecs} = SessionType.cast("FixBddSpecs")
       assert {:ok, AgentTasks.FixIssues} = SessionType.cast("FixIssues")
+      assert {:ok, AgentTasks.QaJourneyExecute} = SessionType.cast("QaJourneyExecute")
+      assert {:ok, AgentTasks.QaJourneyPlan} = SessionType.cast("QaJourneyPlan")
+      assert {:ok, AgentTasks.QaJourneyWallaby} = SessionType.cast("QaJourneyWallaby")
     end
 
     test "returns module atom for valid atom" do

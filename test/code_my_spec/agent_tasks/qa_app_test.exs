@@ -103,14 +103,6 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     )
   end
 
-  defp write_issue(env, name, content \\ nil) do
-    write_file!(
-      env,
-      ".code_my_spec/issues/incoming/#{name}.md",
-      content || "# #{name}\n\nDescription of the issue."
-    )
-  end
-
   defp write_story_brief(env, story_id, content \\ nil) do
     write_file!(
       env,
@@ -223,10 +215,15 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     end
 
     test "lists existing issues to avoid duplicates", %{scope: scope, session: session} do
-      write_issue(scope.environment, "login-form-broken")
+      CodeMySpec.Issues.IssuesRepository.create_issue(scope, %{
+        title: "login-form-broken",
+        severity: :high,
+        description: "Login form is broken",
+        status: :incoming
+      })
 
       assert {:ok, prompt} = QaApp.command(scope, session)
-      assert prompt =~ "login-form-broken"
+      assert prompt =~ "login_form_broken"
     end
 
     test "includes BDD coverage section", %{scope: scope, session: session} do

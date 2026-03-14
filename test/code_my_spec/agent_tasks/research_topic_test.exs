@@ -37,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
   defp write_research_brief(env, topic, content \\ nil) do
     write_file!(
       env,
-      ".code_my_spec/status/research/#{topic}.md",
+      ".code_my_spec/tasks/research/#{topic}.md",
       content || "Research Wallaby for integration testing in a Phoenix LiveView project."
     )
   end
@@ -254,7 +254,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
       write_knowledge(env, "wallaby")
       write_research_brief(env, "wallaby")
 
-      prompt_path = Path.join(env.cwd, ".code_my_spec/status/research/wallaby.md")
+      prompt_path = Path.join(env.cwd, ".code_my_spec/tasks/research/wallaby.md")
       assert File.exists?(prompt_path)
 
       capture_log(fn ->
@@ -271,7 +271,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
       env = scope.environment
       write_research_brief(env, "wallaby")
 
-      prompt_path = Path.join(env.cwd, ".code_my_spec/status/research/wallaby.md")
+      prompt_path = Path.join(env.cwd, ".code_my_spec/tasks/research/wallaby.md")
       assert File.exists?(prompt_path)
 
       capture_log(fn ->
