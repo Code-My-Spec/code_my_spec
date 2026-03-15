@@ -56,22 +56,22 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
   def write_status_files([], [], _project, _env), do: []
 
   def write_status_files(root_components, stories, project, %Environment{} = env) do
-    component_files = write_component_status_files(root_components, stories, project, env)
+    component_files = write_component_status_files(root_components, env)
     story_files = write_stories_status(stories, env)
     project_files = write_project_status(project, env)
 
     component_files ++ story_files ++ project_files
   end
 
-  defp write_component_status_files([], _stories, _project, _env), do: []
+  defp write_component_status_files([], _env), do: []
 
-  defp write_component_status_files(root_components, stories, project, env) do
+  defp write_component_status_files(root_components, env) do
     Enum.flat_map(root_components, fn root ->
       children = root.child_components || []
       contexts = group_into_contexts(root, children)
 
       root_path = component_path(root)
-      root_content = render_root_summary(root, contexts, stories, project)
+      root_content = render_root_summary(root, contexts)
       write_file(env, root_path, root_content)
 
       context_files =
@@ -208,7 +208,7 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
 
   # --- Rendering ---
 
-  defp render_root_summary(root, children, stories, _project) do
+  defp render_root_summary(root, children) do
     type_label = root.type || "module"
     lines = ["# #{root.module_name} (#{type_label})\n"]
 
@@ -227,9 +227,6 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
       else
         lines
       end
-
-    # Stories summary section
-    lines = lines ++ render_stories_summary(stories)
 
     Enum.join(lines, "\n")
   end
@@ -305,29 +302,6 @@ defmodule CodeMySpec.ProjectSync.StatusWriter do
     lines = lines ++ ["\n## Stories\n"] ++ story_sections
 
     Enum.join(lines, "\n")
-  end
-
-  # --- Inline sections for root summary ---
-
-  defp render_stories_summary([]), do: []
-
-  defp render_stories_summary(stories) do
-    {complete, total} = stories_completion(stories)
-
-    story_lines =
-      stories
-      |> Enum.sort_by(fn s -> s.priority || 999 end)
-      |> Enum.map(&render_story_line/1)
-
-    ["\n## Stories (#{complete}/#{total} complete)\n"] ++ story_lines ++ [""]
-  end
-
-  defp render_story_line(story) do
-    requirements = story.requirements || []
-    total = length(requirements)
-    satisfied = Enum.count(requirements, & &1.satisfied)
-    checkbox = if story_complete?(story), do: "[x]", else: "[ ]"
-    "- #{checkbox} ##{story.id} #{story.title} (#{satisfied}/#{total})"
   end
 
   # --- Single story rendering (for stories index) ---
