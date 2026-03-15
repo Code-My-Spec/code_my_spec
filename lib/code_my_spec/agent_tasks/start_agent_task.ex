@@ -23,9 +23,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths
-  alias CodeMySpec.Components
   alias CodeMySpec.ProjectSync.FileWatcherServer
-  alias CodeMySpec.Requirements.Sync, as: RequirementsSync
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
 
@@ -375,18 +374,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     opts = if scope.environment, do: [base_dir: scope.environment.cwd], else: []
     FileWatcherServer.ensure_watching(scope)
 
-    with {:ok, all_components, changed_ids} <- Components.Sync.sync_changed(scope, opts),
-         {:ok, _} <- Components.Sync.update_parent_relationships(scope, all_components, changed_ids, opts) do
-      if changed_ids != [] do
-        changed_ids
-        |> Enum.map(&Components.get_component(scope, &1))
-        |> Enum.reject(&is_nil/1)
-        |> Enum.each(&RequirementsSync.recalculate_component_requirements(scope, &1))
-      end
+    case ProjectSync.incremental_sync(scope, opts ++ [write_status: true]) do
+      {:ok, result} ->
+        {:ok, %{components: result.all_components, changed: result.changed_ids}}
 
-      {:ok, %{components: all_components, changed: changed_ids}}
-    else
-      {:error, reason} -> {:error, "Sync failed: #{inspect(reason)}"}
+      {:error, reason} ->
+        {:error, "Sync failed: #{inspect(reason)}"}
     end
   end
 end

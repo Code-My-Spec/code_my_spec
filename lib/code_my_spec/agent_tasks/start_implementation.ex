@@ -24,11 +24,11 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   require Logger
 
-  alias CodeMySpec.{Components, FrameworkSync}
+  alias CodeMySpec.Components
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.ProjectCoordinator.{Dispatch, ImplementationStatus}
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements.Requirement
-  alias CodeMySpec.Requirements.Sync, as: RequirementsSync
 
   # ============================================================================
   # Public API
@@ -133,19 +133,9 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   defp sync_project(scope) do
     working_dir = get_working_dir(scope.environment)
     Logger.info("[StartImplementation] Incremental sync from #{working_dir}")
-    opts = [base_dir: working_dir]
 
-    with {:ok, all_components, changed_ids} <- Components.Sync.sync_changed(scope, opts),
-         {:ok, _} <- Components.Sync.update_parent_relationships(scope, all_components, changed_ids, opts) do
-      if changed_ids != [] do
-        changed_ids
-        |> Enum.map(&Components.get_component(scope, &1))
-        |> Enum.reject(&is_nil/1)
-        |> Enum.each(&RequirementsSync.recalculate_component_requirements(scope, &1))
-      end
-
-      {:ok, %{components: all_components, changed: changed_ids}}
-    else
+    case ProjectSync.incremental_sync(scope, base_dir: working_dir) do
+      {:ok, _result} -> {:ok, :synced}
       {:error, reason} -> {:error, {:sync_failed, reason}}
     end
   end

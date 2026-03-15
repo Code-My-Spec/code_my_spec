@@ -13,7 +13,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   alias CodeMySpec.Compile
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
-  alias CodeMySpec.Requirements.Sync, as: RequirementsSync
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Stories
 
   require Logger
@@ -152,19 +152,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp do_sync_project(scope, working_dir) do
     Logger.debug("[WriteBddSpecs] Incremental sync from #{working_dir}")
-    opts = [base_dir: working_dir]
 
-    with {:ok, all_components, changed_ids} <- Components.Sync.sync_changed(scope, opts),
-         {:ok, _} <- Components.Sync.update_parent_relationships(scope, all_components, changed_ids, opts) do
-      if changed_ids != [] do
-        changed_ids
-        |> Enum.map(&Components.get_component(scope, &1))
-        |> Enum.reject(&is_nil/1)
-        |> Enum.each(&RequirementsSync.recalculate_component_requirements(scope, &1))
-      end
-
-      {:ok, %{components: all_components, changed: changed_ids}}
-    else
+    case ProjectSync.incremental_sync(scope, base_dir: working_dir) do
+      {:ok, _result} -> {:ok, :synced}
       {:error, reason} ->
         Logger.error("[WriteBddSpecs] Sync failed: #{inspect(reason)}")
         {:error, {:sync_failed, reason}}

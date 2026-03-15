@@ -7,19 +7,14 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   directories are registered lazily via `ensure_watching/1` — typically called
   from agent task entry points where a scope with `cwd` is available.
 
-  On file change: debounces events, runs `Components.Sync.sync_changed/2`
-  which sets `files_changed_at` to the max mtime of changed component files.
-  Then recalculates requirements and marks linked stories dirty.
+  On file change: debounces events, runs `ProjectSync.Sync.incremental_sync/2`
+  which syncs component mtimes, fixes parent relationships, clears stale problems,
+  recalculates requirements, and writes status files.
   """
   use GenServer
   require Logger
 
-  alias CodeMySpec.Components
-  alias CodeMySpec.Components.HierarchicalTree
-  alias CodeMySpec.Components.Sync, as: ComponentSync
-  alias CodeMySpec.ProjectSync.StatusWriter
-  alias CodeMySpec.Requirements.Sync, as: RequirementsSync
-  alias CodeMySpec.Stories
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Users.Scope
 
   @watched_subdirs [".code_my_spec/spec", "lib", "test"]
@@ -159,34 +154,17 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
         %{scope: scope} = watchers[project_root]
 
         try do
-          start = System.monotonic_time(:millisecond)
+          case ProjectSync.incremental_sync(scope, base_dir: project_root, write_status: true) do
+            {:ok, result} ->
+              file_count = paths |> Enum.to_list() |> length()
 
-          # Incremental component sync — sets files_changed_at to max mtime
-          {:ok, _all_components, changed_component_ids} =
-            ComponentSync.sync_changed(scope, base_dir: project_root)
+              Logger.info(
+                "[FileWatcher] Processed #{file_count} file(s) → " <>
+                  "#{length(result.expanded_ids)} component(s) changed"
+              )
 
-          sync_ms = System.monotonic_time(:millisecond) - start
-
-          if changed_component_ids != [] do
-            # Recalculate requirements for changed components
-            changed_components =
-              Enum.map(changed_component_ids, &Components.get_component(scope, &1))
-              |> Enum.reject(&is_nil/1)
-
-            Enum.each(changed_components, fn component ->
-              RequirementsSync.recalculate_component_requirements(scope, component)
-            end)
-
-            status_ms = rewrite_status_files(scope)
-            total_ms = System.monotonic_time(:millisecond) - start
-
-            file_count = paths |> Enum.to_list() |> length()
-
-            Logger.info(
-              "[FileWatcher] Processed #{file_count} file(s) → " <>
-                "#{length(changed_component_ids)} component(s) in #{total_ms}ms " <>
-                "(sync: #{sync_ms}ms, status: #{status_ms}ms)"
-            )
+            {:error, reason} ->
+              Logger.error("[FileWatcher] Sync failed for #{project_root}: #{inspect(reason)}")
           end
         rescue
           e ->
@@ -195,28 +173,6 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
             )
         end
     end
-  end
-
-  defp rewrite_status_files(scope) do
-    start = System.monotonic_time(:millisecond)
-
-    components =
-      Components.list_components_with_dependencies(scope)
-      |> HierarchicalTree.enrich()
-
-    root_components = Enum.filter(components, &is_nil(&1.parent_component_id))
-
-    stories =
-      case Stories.list_project_stories(scope) do
-        {:ok, s} -> CodeMySpec.Repo.preload(s, [:requirements, :component])
-        _ -> []
-      end
-
-    project = CodeMySpec.Repo.preload(scope.active_project, :requirements)
-
-    StatusWriter.write_status_files(root_components, stories, project, scope.environment)
-
-    System.monotonic_time(:millisecond) - start
   end
 
   defp find_root_by_watcher(watcher_pid, watchers) do
