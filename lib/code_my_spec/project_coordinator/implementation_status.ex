@@ -45,6 +45,7 @@ defmodule CodeMySpec.ProjectCoordinator.ImplementationStatus do
   @spec read(term()) :: {:ok, map()} | {:error, :not_found}
   def read(env) do
     case Environments.read_file(env, @status_path) do
+      {:ok, ""} -> {:error, :not_found}
       {:ok, content} -> {:ok, Jason.decode!(content)}
       {:error, _} -> {:error, :not_found}
     end

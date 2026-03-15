@@ -27,7 +27,7 @@ defmodule CodeMySpec.ProjectCoordinator do
   @type component_list :: [Component.t()]
   @type file_list :: [String.t()]
 
-  @status_dir CodeMySpec.Paths.status_dir()
+  @tasks_dir CodeMySpec.Paths.tasks_dir()
   @container_types ["context", "coordination_context", "live_context"]
 
   @spec sync_project_requirements(Scope.t(), file_list(), TestRun.t(), keyword()) ::
@@ -274,9 +274,9 @@ defmodule CodeMySpec.ProjectCoordinator do
   end
 
   @doc """
-  Derive a status directory from a component's module_name.
+  Derive a tasks directory from a component's module_name.
 
-  MetricFlow.Accounts → .code_my_spec/status/metric_flow/accounts
+  MetricFlow.Accounts → .code_my_spec/tasks/metric_flow/accounts
   """
   @spec component_status_dir(map()) :: String.t()
   def component_status_dir(component) do
@@ -286,7 +286,7 @@ defmodule CodeMySpec.ProjectCoordinator do
       |> Enum.map(&Macro.underscore/1)
 
     {dir_parts, [dirname]} = Enum.split(parts, -1)
-    Path.join([@status_dir | dir_parts] ++ [dirname])
+    Path.join([@tasks_dir | dir_parts] ++ [dirname])
   end
 
   @doc """
@@ -328,7 +328,7 @@ defmodule CodeMySpec.ProjectCoordinator do
     problem_path = "#{status_dir}/#{safe_name}_#{suffix}_problems.md"
 
     # Check completeness — write prompt + problems only if incomplete
-    {complete, _problems} =
+    {complete, problems} =
       case task_module.evaluate(scope, session) do
         {:ok, :valid} ->
           Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: complete")
@@ -345,13 +345,17 @@ defmodule CodeMySpec.ProjectCoordinator do
           {false, feedback}
       end
 
-    # Build orchestration checklist line — this is the initial command pass,
-    # so point to the prompt file (the work to do), not the problems file.
     orchestration_prompt =
-      if complete do
-        "[x] #{suffix} for #{module_name} complete."
-      else
-        "[ ] #{suffix} for #{module_name}: read prompt at `#{prompt_path}`"
+      cond do
+        complete ->
+          "[x] #{suffix} for #{module_name} complete."
+
+        not is_nil(problems) ->
+          "[ ] #{suffix} for #{module_name} has problems. " <>
+            "Fix the problems at `#{problem_path}` (full spec at `#{prompt_path}`)"
+
+        true ->
+          "[ ] #{suffix} for #{module_name}: read prompt at `#{prompt_path}`"
       end
 
     {:ok,
@@ -440,12 +444,18 @@ defmodule CodeMySpec.ProjectCoordinator do
 
   @doc """
   Convert a module name to a safe filename.
+
+  Uses only the last segment of the module name since the directory path
+  already encodes the full module hierarchy.
+
+  MetricFlow.Accounts.AccountRepository → "account_repository"
   """
   @spec safe_filename(String.t()) :: String.t()
   def safe_filename(module_name) do
     module_name
-    |> String.replace(".", "_")
-    |> String.downcase()
+    |> String.split(".")
+    |> List.last()
+    |> Macro.underscore()
   end
 
   @doc """
@@ -475,7 +485,7 @@ defmodule CodeMySpec.ProjectCoordinator do
       _ ->
         project = session.project
         module_name = project.name
-        status_dir = Keyword.get(opts, :status_dir, @status_dir)
+        status_dir = Keyword.get(opts, :status_dir, @tasks_dir)
         {module_name, status_dir}
     end
   end

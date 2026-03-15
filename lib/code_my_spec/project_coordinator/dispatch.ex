@@ -118,7 +118,6 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
     orchestration =
       Map.get_lazy(result, :orchestration, fn ->
         label = orchestrate_label(session)
-        subagent_type = Map.get(result, :subagent_type, "codemyspec:code-writer")
 
         """
         # Orchestrate: #{label}
@@ -127,7 +126,7 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
         #{result.orchestration_prompt}
 
         ## Instructions
-        Start a #{subagent_type} subagent with exactly this prompt:
+        Start a subagent with exactly this prompt:
         `#{result.prompt_path}`
 
         Do NOT read the file or write instructions around it — pass the path string as-is.
@@ -202,8 +201,15 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
     stage_results =
       Enum.map(chain, fn stage_def ->
         task_module = stage_def.satisfied_by
-        stage_req = %Requirement{name: stage_def.name, scope: :orchestrate, satisfied_by: task_module,
-          component_id: req.component_id, story_id: req.story_id, project_id: req.project_id}
+
+        stage_req = %Requirement{
+          name: stage_def.name,
+          scope: :orchestrate,
+          satisfied_by: task_module,
+          component_id: req.component_id,
+          story_id: req.story_id,
+          project_id: req.project_id
+        }
 
         {:ok, result} =
           if has_function?(task_module, :orchestrate, 3) do
@@ -348,9 +354,11 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
         {:ok, %{complete: false} = r} ->
           Logger.info("[Dispatch] Pipeline stage #{stage_def.name} → incomplete")
+
           feedback =
             "Read your updated instructions at `#{r.problem_path}` and continue.\n" <>
               "When done, **stop the session** so the hook can validate."
+
           {:halt, {:ok, :invalid, feedback}}
 
         {:error, reason} ->
@@ -458,7 +466,10 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
     # spec_file, not code/test). If satisfied, clean up and return.
     case req.satisfied_by.evaluate(scope, session) do
       {:ok, :valid} ->
-        Logger.info("[Dispatch] evaluate :children #{component.module_name} → parent evaluate valid")
+        Logger.info(
+          "[Dispatch] evaluate :children #{component.module_name} → parent evaluate valid"
+        )
+
         ProjectCoordinator.cleanup_status_directory(status_dir, working_dir)
         {:ok, :valid}
 
@@ -478,10 +489,20 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
       case find_actionable_dependency_context(scope, component) do
         {:ok, dep_context, dep_actionable} ->
           dep_status_dir = ProjectCoordinator.component_status_dir(dep_context)
-          orchestrate_children_eval(scope, dep_context, dep_actionable, dep_status_dir, working_dir)
+
+          orchestrate_children_eval(
+            scope,
+            dep_context,
+            dep_actionable,
+            dep_status_dir,
+            working_dir
+          )
 
         :complete ->
-          Logger.info("[Dispatch] evaluate :children #{component.module_name} → no actionable anywhere")
+          Logger.info(
+            "[Dispatch] evaluate :children #{component.module_name} → no actionable anywhere"
+          )
+
           ProjectCoordinator.cleanup_status_directory(status_dir, working_dir)
           {:ok, :valid}
       end
@@ -508,11 +529,17 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
     pending = Enum.reject(results, & &1.complete)
 
     if Enum.empty?(pending) do
-      Logger.info("[Dispatch] evaluate :children #{context.module_name} → all orchestrated, complete")
+      Logger.info(
+        "[Dispatch] evaluate :children #{context.module_name} → all orchestrated, complete"
+      )
+
       ProjectCoordinator.cleanup_status_directory(status_dir, working_dir)
       {:ok, :valid}
     else
-      Logger.info("[Dispatch] evaluate :children #{context.module_name} → #{length(pending)} pending")
+      Logger.info(
+        "[Dispatch] evaluate :children #{context.module_name} → #{length(pending)} pending"
+      )
+
       feedback = Enum.map_join(results, "\n", & &1.orchestration_prompt)
       {:ok, :invalid, feedback}
     end
