@@ -72,6 +72,13 @@ defmodule CodeMySpecWeb.Router do
     post "/register", OAuthController, :register
   end
 
+  # MCP clients fall back to /register when they can't fetch authorization server metadata
+  scope "/", CodeMySpecWeb do
+    pipe_through :api
+
+    post "/register", OAuthController, :register
+  end
+
   # MCP OAuth discovery endpoints
   scope "/.well-known", CodeMySpecWeb do
     pipe_through :api

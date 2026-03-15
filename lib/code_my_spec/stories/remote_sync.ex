@@ -21,7 +21,7 @@ defmodule CodeMySpec.Stories.RemoteSync do
     case RemoteClient.list_project_stories(client) do
       {:ok, %{status: 200, body: %{"data" => stories}}} ->
         remote_stories = Enum.map(stories, &RemoteClient.deserialize_story/1)
-        Logger.info("[RemoteSync] Upserting #{length(remote_stories)} stories from remote")
+        Logger.debug("[RemoteSync] Upserting #{length(remote_stories)} stories from remote")
         Enum.each(remote_stories, &upsert_story(&1, scope))
         :ok
 
@@ -59,7 +59,7 @@ defmodule CodeMySpec.Stories.RemoteSync do
          ) do
       {:ok, _} ->
         criteria = story.criteria || []
-        Logger.info("[RemoteSync] Upserted story #{story.id} with #{length(criteria)} criteria")
+        :ok
         upsert_criteria(criteria, project_id)
 
       {:error, changeset} ->
@@ -89,7 +89,7 @@ defmodule CodeMySpec.Stories.RemoteSync do
              conflict_target: :id
            ) do
         {:ok, _} ->
-          Logger.debug("[RemoteSync] Upserted criterion #{criterion.id}")
+          :ok
 
         {:error, changeset} ->
           Logger.warning(

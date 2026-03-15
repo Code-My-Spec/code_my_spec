@@ -554,6 +554,17 @@ defmodule CodeMySpec.Documents.Registry do
   - Environment-specific notes
   """
 
+  @qa_issue_status """
+  Format:
+  - Use H2 heading
+  - Single line: one of `incoming`, `accepted`, `dismissed`
+
+  Content:
+  - incoming — issue has not been triaged yet
+  - accepted — issue has been reviewed and accepted as a real problem
+  - dismissed — issue has been reviewed and dismissed (not a bug, duplicate, etc.)
+  """
+
   @qa_issue_scope """
   Format:
   - Use H2 heading
@@ -1002,10 +1013,11 @@ defmodule CodeMySpec.Documents.Registry do
     },
     "qa_issue" => %{
       overview: "QA-discovered issue filed to .code_my_spec/issues/incoming/ for triage.",
-      required_sections: ["severity", "description"],
+      required_sections: ["status", "severity", "description"],
       optional_sections: ["scope", "source", "reproduction", "requirements impact", "resolution"],
       allowed_additional_sections: [],
       section_descriptions: %{
+        "status" => @qa_issue_status,
         "severity" => @qa_issue_severity,
         "scope" => @qa_issue_scope,
         "description" => @qa_issue_description,

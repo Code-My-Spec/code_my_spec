@@ -137,8 +137,8 @@ defmodule CodeMySpec.LocalServer.Controllers.PermissionController do
         after
           timeout_ms ->
             Process.demonitor(ref, [:flush])
-            Process.exit(pid, :kill)
-            Logger.info("[PermissionController] Timed out waiting for decision on #{request_id}")
+            Process.exit(pid, :shutdown)
+            Logger.debug("[PermissionController] Timed out waiting for decision on #{request_id}")
             send_sse_event(conn, %{decision: "ask", reason: "timeout"})
         end
 

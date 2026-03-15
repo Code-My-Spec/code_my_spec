@@ -4,7 +4,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
 
   Generates a self-contained research prompt that includes the full research
   methodology, evaluation criteria, and output format. The prompt file is written
-  to a status directory and picked up by whatever subagent the orchestrator
+  to a tasks directory and picked up by whatever subagent the orchestrator
   dispatches — no specific subagent is required.
 
   In the requirement flow, this task runs AFTER TechnicalStrategy has created the
@@ -15,7 +15,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   Produces:
   - `.code_my_spec/knowledge/{topic}/` — knowledge entries (getting_started.md, etc.)
 
-  Cleans up `.code_my_spec/status/research/{topic}.md` on successful validation.
+  Cleans up `.code_my_spec/tasks/research/{topic}.md` on successful validation.
   """
 
   alias CodeMySpec.{Environments, Paths}

@@ -36,6 +36,11 @@ defmodule CodeMySpec.Requirements.FileExistenceChecker do
           {true, %{status: "File exists", path: file_path}}
 
         false ->
+          Logger.warning(
+            "[FileExistenceChecker] #{name} MISSING for #{component.module_name}: " <>
+              "file_key=#{file_key}, path=#{inspect(file_path)}, cwd=#{inspect(environment && environment.cwd)}"
+          )
+
           {false, %{reason: "File missing", path: file_path}}
 
         {:error, reason} ->

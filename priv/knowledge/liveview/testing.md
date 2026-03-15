@@ -1,7 +1,7 @@
 # LiveView Testing
 
 > **Note:** This covers `Phoenix.LiveViewTest` for unit/integration tests of LiveViews.
-> For BDD specs (end-to-end browser testing), use **Wallaby** instead — see `../bdd/wallaby.md`.
+> BDD specs also use `Phoenix.LiveViewTest` — see `../bdd/spex.md` for the Spex DSL reference.
 
 ## Sources
 - https://hexdocs.pm/phoenix_live_view/Phoenix.LiveViewTest.html

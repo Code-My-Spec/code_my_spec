@@ -767,7 +767,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
     test "returns nil when all stories have complete coverage" do
       scope = full_scope_fixture()
-      story = story_fixture(scope)
+      story = story_fixture(scope, %{criteria: []})
       criterion = criterion_fixture(scope, story)
 
       # Create project WITH spec for the criterion
@@ -785,11 +785,11 @@ defmodule CodeMySpec.BddSpecsTest do
       scope = full_scope_fixture()
 
       # Story with complete coverage
-      story1 = story_fixture(scope, %{title: "Complete Story", priority: 1})
+      story1 = story_fixture(scope, %{title: "Complete Story", priority: 1, criteria: []})
       criterion1 = criterion_fixture(scope, story1)
 
       # Story with incomplete coverage
-      story2 = story_fixture(scope, %{title: "Incomplete Story", priority: 2})
+      story2 = story_fixture(scope, %{title: "Incomplete Story", priority: 2, criteria: []})
       _criterion2 = criterion_fixture(scope, story2)
 
       # Create spec only for story1
@@ -807,7 +807,7 @@ defmodule CodeMySpec.BddSpecsTest do
     test "handles story with no criteria" do
       scope = full_scope_fixture()
       # Story created without any criteria (don't call criterion_fixture)
-      _story = story_fixture(scope, %{title: "No Criteria Story"})
+      _story = story_fixture(scope, %{title: "No Criteria Story", criteria: []})
 
       # Create project
       dir = Path.join(System.tmp_dir!(), "no_criteria_#{System.unique_integer([:positive])}")
