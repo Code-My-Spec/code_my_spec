@@ -21,6 +21,7 @@ defmodule CodeMySpec.Components.Sync do
   alias CodeMySpec.Components.Sync.FileInfo
   alias CodeMySpec.Paths
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.Paths, as: UtilPaths
 
   @type parse_error :: {path :: String.t(), reason :: term()}
 
@@ -54,9 +55,9 @@ defmodule CodeMySpec.Components.Sync do
     base_dir = Keyword.get(opts, :base_dir, ".")
     force = Keyword.get(opts, :force, false)
 
-    # Load existing components and build synced_at lookup
+    # Load existing components and build files_changed_at lookup for mtime comparison
     existing_components = Components.list_components(scope)
-    synced_at_map = Map.new(existing_components, fn c -> {c.module_name, c.synced_at} end)
+    changed_at_map = Map.new(existing_components, fn c -> {c.module_name, c.files_changed_at} end)
 
     # Collect file infos with mtimes
     spec_file_infos = FileInfo.collect_files(base_dir, Paths.spec_glob())
@@ -64,35 +65,60 @@ defmodule CodeMySpec.Components.Sync do
 
     # PRE-FILTER by mtime BEFORE parsing (key optimization)
     {changed_spec_files, unchanged_spec_files} =
-      filter_files_by_mtime(spec_file_infos, synced_at_map, force, :spec, base_dir)
+      filter_files_by_mtime(spec_file_infos, changed_at_map, force, :spec, base_dir)
 
     {changed_impl_files, unchanged_impl_files} =
-      filter_files_by_mtime(impl_file_infos, synced_at_map, force, :impl, base_dir)
+      filter_files_by_mtime(impl_file_infos, changed_at_map, force, :impl, base_dir)
 
-    # Parse ONLY changed files
+    # Parse changed files
     {changed_spec_data, spec_errors} =
       parse_files(changed_spec_files, &parse_spec_file(&1, base_dir))
 
     {changed_impl_data, impl_errors} =
       parse_files(changed_impl_files, &parse_impl_file(&1, base_dir))
 
-    parse_errors = spec_errors ++ impl_errors
+    # When an impl file changed but its spec didn't (or vice versa), we need
+    # the counterpart's data for a correct merge (especially for type info).
+    # Find unchanged counterparts of changed files and parse them too.
+    changed_spec_modules = MapSet.new(changed_spec_data, & &1.module_name)
+    changed_impl_modules = MapSet.new(changed_impl_data, & &1.module_name)
+
+    {counterpart_spec_files, unchanged_spec_files} =
+      Enum.split_with(unchanged_spec_files, fn file_info ->
+        module = derive_module_from_path(file_info.path, base_dir, :spec)
+        module in changed_impl_modules and module not in changed_spec_modules
+      end)
+
+    {counterpart_impl_files, unchanged_impl_files} =
+      Enum.split_with(unchanged_impl_files, fn file_info ->
+        module = derive_module_from_path(file_info.path, base_dir, :impl)
+        module in changed_spec_modules and module not in changed_impl_modules
+      end)
+
+    {counterpart_spec_data, counterpart_spec_errors} =
+      parse_files(counterpart_spec_files, &parse_spec_file(&1, base_dir))
+
+    {counterpart_impl_data, counterpart_impl_errors} =
+      parse_files(counterpart_impl_files, &parse_impl_file(&1, base_dir))
+
+    all_spec_data = changed_spec_data ++ counterpart_spec_data
+    all_impl_data = changed_impl_data ++ counterpart_impl_data
+
+    parse_errors = spec_errors ++ impl_errors ++ counterpart_spec_errors ++ counterpart_impl_errors
 
     Enum.each(parse_errors, fn {path, error} ->
       Logger.warning("Failed to parse #{path}: #{inspect(error)}")
     end)
 
     # For unchanged files, derive module names from paths (no file I/O)
-    # NOTE: This assumes file paths match module names (e.g., mcp_servers.ex → McpServers)
-    # If you have acronyms that need special casing (McpServers), rename the file to match
     unchanged_spec_modules =
       extract_module_names_from_paths(unchanged_spec_files, base_dir, :spec)
 
     unchanged_impl_modules =
       extract_module_names_from_paths(unchanged_impl_files, base_dir, :impl)
 
-    # Merge changed data by module name
-    changed_merged = merge_by_module_name(changed_spec_data, changed_impl_data)
+    # Merge changed data by module name (now includes counterpart data for correct type merging)
+    changed_merged = merge_by_module_name(all_spec_data, all_impl_data)
 
     unchanged_module_names =
       MapSet.union(
@@ -107,6 +133,10 @@ defmodule CodeMySpec.Components.Sync do
 
     # Upsert ONLY changed components
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    changed_module_names_list = Enum.map(changed_merged, & &1.module_name)
+    Logger.info("[Sync] Changed modules (#{length(changed_module_names_list)}): #{Enum.join(changed_module_names_list, ", ")}")
+
     synced_components = Enum.map(changed_merged, &upsert_from_data(scope, &1, now))
     changed_component_ids = Enum.map(synced_components, & &1.id)
 
@@ -175,12 +205,13 @@ defmodule CodeMySpec.Components.Sync do
         |> Enum.map(&Map.get(id_to_module, &1))
         |> MapSet.new()
 
-      # Find affected components (changed + children of changed)
+      # Find affected components (changed + children of changed + orphans needing parents)
       affected_components =
         all_components
         |> Enum.filter(fn component ->
           component.id in changed_ids_set ||
-            parent_changed?(component, component_map, changed_module_names)
+            parent_changed?(component, component_map, changed_module_names) ||
+            orphan_needing_parent?(component, component_map)
         end)
 
       # Update parent relationships for affected components
@@ -231,6 +262,61 @@ defmodule CodeMySpec.Components.Sync do
       {:error, error}
   end
 
+  @doc """
+  Synchronizes a single component by module name.
+
+  Looks up the expected spec and impl file paths for the module, parses any that
+  exist, upserts the component, syncs its dependencies, and updates its parent
+  relationship.
+
+  Returns `{:ok, component}` or `{:error, reason}`.
+
+  ## Options
+
+  - `:base_dir` - Base directory (defaults to current working directory)
+  """
+  @spec sync_one(Scope.t(), String.t(), keyword()) ::
+          {:ok, Component.t()} | {:error, term()}
+  def sync_one(%Scope{} = scope, module_name, opts \\ []) when is_binary(module_name) do
+    base_dir = Keyword.get(opts, :base_dir, ".")
+    module_path = UtilPaths.module_to_path(module_name)
+
+    spec_path = Path.join(base_dir, Paths.spec_file(module_path))
+    impl_path = Path.join(base_dir, "lib/#{module_path}.ex")
+
+    spec_data = if File.exists?(spec_path), do: parse_spec_file(FileInfo.from_path(spec_path), base_dir)
+    impl_data = if File.exists?(impl_path), do: parse_impl_file(FileInfo.from_path(impl_path), base_dir)
+
+    data =
+      case {spec_data, impl_data} do
+        {nil, nil} -> {:error, :no_files_found}
+        {nil, impl} -> {:ok, impl}
+        {spec, nil} -> {:ok, spec}
+        {spec, impl} -> {:ok, merge_spec_impl(spec, impl)}
+      end
+
+    with {:ok, data} <- data do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      component = upsert_from_data(scope, data, now)
+
+      # Sync dependencies using all project components for resolution
+      all_components = Components.list_components(scope)
+      sync_dependencies(scope, [data], all_components)
+
+      # Update parent relationship
+      component_map = Map.new(all_components, &{&1.module_name, &1})
+      # Re-fetch after upsert to get the latest state
+      component_map = Map.put(component_map, component.module_name, component)
+      maybe_update_parent(scope, component, component_map)
+
+      {:ok, component}
+    end
+  rescue
+    error ->
+      Logger.error("Error during sync_one for #{module_name}: #{inspect(error)}")
+      {:error, error}
+  end
+
   defp reject_ignored(merged_data, %MapSet{} = ignored) do
     if MapSet.size(ignored) == 0 do
       merged_data
@@ -241,20 +327,20 @@ defmodule CodeMySpec.Components.Sync do
 
   # --- File filtering (new optimization) ---
 
-  defp filter_files_by_mtime(file_infos, synced_at_map, force, type, base_dir) do
+  defp filter_files_by_mtime(file_infos, changed_at_map, force, type, base_dir) do
     if force do
       {file_infos, []}
     else
-      Enum.split_with(file_infos, &file_changed?(&1, synced_at_map, type, base_dir))
+      Enum.split_with(file_infos, &file_changed?(&1, changed_at_map, type, base_dir))
     end
   end
 
-  defp file_changed?(file_info, synced_at_map, type, base_dir) do
+  defp file_changed?(file_info, changed_at_map, type, base_dir) do
     module_name = derive_module_from_path(file_info.path, base_dir, type)
 
-    case Map.get(synced_at_map, module_name) do
+    case Map.get(changed_at_map, module_name) do
       nil -> true
-      synced_at -> DateTime.compare(file_info.mtime, synced_at) == :gt
+      changed_at -> DateTime.compare(file_info.mtime, changed_at) == :gt
     end
   end
 
@@ -283,6 +369,7 @@ defmodule CodeMySpec.Components.Sync do
     {data, errors}
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp parse_spec_file(%FileInfo{path: path, mtime: mtime}, base_dir) do
     content = File.read!(path)
 
@@ -326,6 +413,7 @@ defmodule CodeMySpec.Components.Sync do
     Logger.warning("[Spec Validation] #{path}: #{message}")
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp parse_impl_file(%FileInfo{path: path, mtime: mtime}, base_dir) do
     content = File.read!(path)
 
@@ -471,17 +559,22 @@ defmodule CodeMySpec.Components.Sync do
   # --- Sync logic ---
 
   defp upsert_from_data(%Scope{} = scope, data, synced_at) do
-    attrs = %{
-      module_name: data.module_name,
-      name: data.module_name |> String.split(".") |> List.last(),
-      type: data.type,
-      description: data.description,
-      parent_component_id: nil,
-      synced_at: synced_at
-    }
+    attrs =
+      %{
+        module_name: data.module_name,
+        name: data.module_name |> String.split(".") |> List.last(),
+        description: data.description,
+        parent_component_id: nil,
+        synced_at: synced_at,
+        files_changed_at: data.mtime
+      }
+      |> maybe_put(:type, data.type)
 
     Components.upsert_component(scope, attrs)
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   # --- Dependency syncing ---
 
@@ -548,6 +641,12 @@ defmodule CodeMySpec.Components.Sync do
   defp parent_changed?(component, _component_map, changed_module_names) do
     parent_name = parent_module_name(component.module_name)
     parent_name && parent_name in changed_module_names
+  end
+
+  # A component with no parent_component_id that should have one (has an ancestor in the map)
+  defp orphan_needing_parent?(component, component_map) do
+    is_nil(component.parent_component_id) &&
+      find_nearest_ancestor(component.module_name, component_map) != nil
   end
 
   defp derive_all_parent_relationships(scope, components) do

@@ -23,7 +23,7 @@ defmodule CodeMySpec.ValidationTest do
     scope = %{scope | environment: env, cwd: project_dir}
 
     pipeline_opts = [
-      compile_output_file: Path.join(System.tmp_dir!(), "compile_validation_test.json"),
+      compile_output_file: Path.expand(TestAdapter.compiler_ok_cache_path()),
       test_output_file: Path.expand(TestAdapter.test_results_cache_path())
     ]
 

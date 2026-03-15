@@ -235,7 +235,7 @@ defmodule CodeMySpec.Requirements.Sync do
     |> CodeMySpec.Repo.preload([
       :requirements,
       :project,
-      :dependencies,
+      dependencies: :requirements,
       child_components: :requirements
     ])
     |> Map.put(:project, scope.active_project)
@@ -283,6 +283,48 @@ defmodule CodeMySpec.Requirements.Sync do
       |> Enum.reject(&is_nil/1)
 
     %{project | requirements: requirements}
+  end
+
+  @doc """
+  Cascades requirement recalculation from changed components up to stories and project.
+
+  After component requirements are recalculated, this syncs requirements for
+  stories linked to those components, then syncs project requirements.
+  """
+  @spec cascade_from_components(Scope.t(), [String.t()]) :: :ok
+  def cascade_from_components(_scope, []), do: :ok
+
+  def cascade_from_components(scope, changed_component_ids) when is_list(changed_component_ids) do
+    start = System.monotonic_time(:millisecond)
+    changed_set = MapSet.new(changed_component_ids)
+
+    # Find stories linked to changed components
+    affected_stories =
+      case CodeMySpec.Stories.list_project_stories(scope) do
+        {:ok, stories} ->
+          stories
+          |> Enum.filter(&(&1.component_id in changed_set))
+          |> CodeMySpec.Repo.preload([:requirements, :component])
+
+        _ ->
+          []
+      end
+
+    # Sync story requirements for affected stories
+    if affected_stories != [] do
+      sync_story_requirements(affected_stories, scope)
+    end
+
+    # Sync project requirements (depends on story state)
+    sync_project_requirements(scope)
+
+    ms = System.monotonic_time(:millisecond) - start
+
+    Logger.info(
+      "[RequirementsSync] Cascaded to #{length(affected_stories)} stories + project in #{ms}ms"
+    )
+
+    :ok
   end
 
   @doc """

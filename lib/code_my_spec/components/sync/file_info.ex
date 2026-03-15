@@ -1,9 +1,16 @@
 defmodule CodeMySpec.Components.Sync.FileInfo do
   @moduledoc """
-  Struct representing a file's metadata for sync comparison.
+  Embedded schema representing a file's metadata for sync comparison.
   """
 
-  defstruct [:path, :mtime]
+  use Ecto.Schema
+
+  @primary_key false
+
+  embedded_schema do
+    field :path, :string
+    field :mtime, :utc_datetime
+  end
 
   @type t :: %__MODULE__{
           path: String.t(),

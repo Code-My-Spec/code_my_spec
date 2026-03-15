@@ -321,6 +321,9 @@ defmodule CodeMySpec.Validation do
       components = Components.list_components(scope)
       problem_components = Enum.filter(components, &(&1.id in problem_component_ids))
       Enum.each(problem_components, &RequirementsSync.recalculate_component_requirements(scope, &1))
+
+      # Cascade to story and project requirements
+      RequirementsSync.cascade_from_components(scope, problem_component_ids)
     end
   end
 
