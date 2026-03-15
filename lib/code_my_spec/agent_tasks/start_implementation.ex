@@ -8,8 +8,8 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   ### command/3
   1. Sync framework files
   2. `get_next_actions` → walks project → stories → components → dependencies
-  3. `Dispatch.command` → generates prompt (handles :local and :children scope)
-  4. Write status file for tracking, return prompt
+  3. `Dispatch.command` → generates prompt (handles :local, :orchestrate, :children scope)
+  4. Return prompt (Dispatch records task entries with prompt_path for matching)
 
   Caller (`StartAgentTask`) is responsible for syncing before calling command.
 
@@ -18,13 +18,11 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   2. Re-walk the graph via `dispatch_or_complete`
   3. If unsatisfied requirement found → return prompt as feedback
   4. If all complete → return :valid
-
-  The status file is for observability only — evaluate does not depend on it.
   """
 
   require Logger
 
-  alias CodeMySpec.Components
+  alias CodeMySpec.FrameworkSync
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.ProjectCoordinator.{Dispatch, ImplementationStatus}
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
@@ -65,7 +63,6 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
         case Dispatch.command(req, scope, %{}) do
           {:ok, prompt} ->
-            write_status(env, scope, req)
             {:ok, prompt}
 
           {:error, reason} ->
@@ -74,7 +71,7 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
       :complete ->
         Logger.info("[StartImplementation] All requirements complete")
-        clear_status(env)
+        ImplementationStatus.clear(env)
         {:ok, "All requirements are satisfied. No further action needed."}
 
       {:error, reason} ->
@@ -90,7 +87,6 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
         case Dispatch.command(req, scope, %{}) do
           {:ok, prompt} ->
-            write_status(env, scope, req)
             {:ok, :invalid, prompt}
 
           {:error, reason} ->
@@ -99,26 +95,12 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
       :complete ->
         Logger.info("[StartImplementation] All requirements complete")
-        clear_status(env)
+        ImplementationStatus.clear(env)
         {:ok, :valid}
 
       {:error, reason} ->
         {:error, reason}
     end
-  end
-
-  # ============================================================================
-  # Status File I/O (dispatch registry)
-  # ============================================================================
-
-  defp write_status(env, scope, %Requirement{} = req) do
-    component = if req.component_id, do: Components.get_component!(scope, req.component_id)
-    entry = ImplementationStatus.build_task_entry(req, component, scope.active_project)
-    ImplementationStatus.record_task(env, entry)
-  end
-
-  defp clear_status(env) do
-    ImplementationStatus.clear(env)
   end
 
   # ============================================================================
