@@ -78,10 +78,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
             existing =
               Repo.get_by!(Issue, title: title, story_id: story_id, project_id: project_id)
 
-            {:ok, existing}
+            {:ok, existing, :existing}
 
           _found ->
-            {:ok, issue}
+            {:ok, issue, :created}
         end
 
       {:error, changeset} ->
@@ -112,6 +112,17 @@ defmodule CodeMySpec.Issues.IssuesRepository do
       {:error, Ecto.Changeset.change(issue) |> Ecto.Changeset.add_error(:id, "does not exist")}
   end
 
+  def list_filtered(%Scope{} = scope, filters) when is_map(filters) do
+    Issue
+    |> by_project(scope.active_project.id)
+    |> maybe_filter(:status, filters)
+    |> maybe_filter(:severity, filters)
+    |> maybe_filter(:story_id, filters)
+    |> maybe_filter(:scope, filters)
+    |> ordered_by_severity()
+    |> Repo.all()
+  end
+
   # Query composables
 
   def by_project(query \\ Issue, project_id) do
@@ -125,6 +136,29 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   def by_story(query \\ Issue, story_id) do
     from(i in query, where: i.story_id == ^story_id)
   end
+
+  def by_min_severity(query \\ Issue, min_severity) do
+    severities = Issue.severities_at_or_above(min_severity)
+    from(i in query, where: i.severity in ^severities)
+  end
+
+  def by_scope(query \\ Issue, scope) do
+    from(i in query, where: i.scope == ^scope)
+  end
+
+  defp maybe_filter(query, :status, %{status: status}) when not is_nil(status),
+    do: by_status(query, status)
+
+  defp maybe_filter(query, :severity, %{severity: severity}) when not is_nil(severity),
+    do: by_min_severity(query, severity)
+
+  defp maybe_filter(query, :story_id, %{story_id: story_id}) when not is_nil(story_id),
+    do: by_story(query, story_id)
+
+  defp maybe_filter(query, :scope, %{scope: scope}) when not is_nil(scope),
+    do: by_scope(query, scope)
+
+  defp maybe_filter(query, _, _), do: query
 
   defp resolve_project_id(%Scope{active_project: %Project{id: id}}), do: id
   defp resolve_project_id(%Scope{active_project_id: id}) when not is_nil(id), do: id

@@ -60,7 +60,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
         names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
 
         {:ok, :invalid,
-         "#{length(issues)} untriaged issue(s) remain at #{min_severity}+ severity:\n\n#{names}\n\nUse `accept-issue <id>` or `dismiss-issue <id> <reason>` for each remaining issue."}
+         "#{length(issues)} untriaged issue(s) remain at #{min_severity}+ severity:\n\n#{names}\n\nUse `.code_my_spec/tools/issues/accept-issue <id>` or `.code_my_spec/tools/issues/dismiss-issue <id> <reason>` for each remaining issue."}
     end
   end
 
@@ -107,12 +107,12 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
     ## Tools
 
-    Use the following bash tools to interact with issues:
+    Use the following bash tools in `.code_my_spec/tools/issues/` to interact with issues:
 
-    - `list-issues --status incoming` — list all incoming issues
-    - `get-issue <id>` — read full issue details
-    - `accept-issue <id>` — accept a real issue
-    - `dismiss-issue <id> <reason>` — dismiss with a reason
+    - `.code_my_spec/tools/issues/list-issues --status incoming` — list all incoming issues
+    - `.code_my_spec/tools/issues/get-issue <id>` — read full issue details
+    - `.code_my_spec/tools/issues/accept-issue <id>` — accept a real issue
+    - `.code_my_spec/tools/issues/dismiss-issue <id> <reason>` — dismiss with a reason
 
     ## Goal
 
@@ -121,8 +121,8 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     1. **Read each issue** using `get-issue <id>` for the issues listed below
     2. **Identify duplicates** — issues describing the same underlying problem
     3. **Decide a disposition** for each issue:
-       - **Accept** — real issue, run `accept-issue <id>`
-       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), run `dismiss-issue <id> "<reason>"`
+       - **Accept** — real issue, run `.code_my_spec/tools/issues/accept-issue <id>`
+       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), run `.code_my_spec/tools/issues/dismiss-issue <id> "<reason>"`
        - **Merge** — accept the best issue, dismiss the others with a reason noting the duplicate
     4. **Execute** each disposition using the tools above
 

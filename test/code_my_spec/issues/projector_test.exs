@@ -269,6 +269,8 @@ defmodule CodeMySpec.Issues.ProjectorTest do
       content = Projector.build_content(issue)
 
       assert content =~ "# Missing Auth Check"
+      assert content =~ "## Status"
+      assert content =~ "incoming"
       assert content =~ "## Severity"
       assert content =~ "## Scope"
       assert content =~ "## Description"

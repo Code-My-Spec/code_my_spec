@@ -200,7 +200,7 @@ defmodule CodeMySpec.Issues.IssuesRepositoryTest do
         story_id: 1
       }
 
-      assert {:ok, %Issue{} = issue} = IssuesRepository.upsert_issue(scope, attrs)
+      assert {:ok, %Issue{} = issue, :created} = IssuesRepository.upsert_issue(scope, attrs)
       assert issue.title == "Unique issue title"
       assert issue.id != nil
     end
@@ -215,10 +215,10 @@ defmodule CodeMySpec.Issues.IssuesRepositoryTest do
         story_id: 5
       }
 
-      {:ok, original} = IssuesRepository.upsert_issue(scope, attrs)
+      {:ok, original, :created} = IssuesRepository.upsert_issue(scope, attrs)
 
       duplicate_attrs = Map.put(attrs, :description, "Second insert")
-      {:ok, returned} = IssuesRepository.upsert_issue(scope, duplicate_attrs)
+      {:ok, returned, :existing} = IssuesRepository.upsert_issue(scope, duplicate_attrs)
 
       assert returned.id == original.id
     end
@@ -233,10 +233,10 @@ defmodule CodeMySpec.Issues.IssuesRepositoryTest do
         story_id: 7
       }
 
-      {:ok, original} = IssuesRepository.upsert_issue(scope, attrs)
+      {:ok, original, :created} = IssuesRepository.upsert_issue(scope, attrs)
 
       updated_attrs = Map.merge(attrs, %{severity: :low, description: "Overwritten description"})
-      {:ok, returned} = IssuesRepository.upsert_issue(scope, updated_attrs)
+      {:ok, returned, :existing} = IssuesRepository.upsert_issue(scope, updated_attrs)
 
       assert returned.id == original.id
       assert returned.severity == :critical

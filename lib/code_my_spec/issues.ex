@@ -22,7 +22,11 @@ defmodule CodeMySpec.Issues do
 
   def list_by_story(%Scope{} = scope, story_id), do: IssuesRepository.list_by_story(scope, story_id)
 
+  def get_issue(%Scope{} = scope, id), do: IssuesRepository.get_issue(scope, id)
+
   def get_issue!(%Scope{} = scope, id), do: IssuesRepository.get_issue!(scope, id)
+
+  def list_filtered(%Scope{} = scope, filters), do: IssuesRepository.list_filtered(scope, filters)
 
   # -- Create -----------------------------------------------------------------
 
@@ -56,8 +60,11 @@ defmodule CodeMySpec.Issues do
         }
 
         case IssuesRepository.upsert_issue(scope, attrs) do
-          {:ok, issue} ->
+          {:ok, issue, :created} ->
             Projector.project_issue(scope.environment, issue)
+            issue
+
+          {:ok, issue, :existing} ->
             issue
 
           {:error, _} ->
@@ -131,13 +138,14 @@ defmodule CodeMySpec.Issues do
   @doc """
   Reconciles filesystem triage state back to the database.
 
-  The triage agent moves projected files between incoming/ and accepted/ directories.
-  This function checks each :incoming issue in the DB and updates its status based
-  on where the agent moved its projected file:
+  Reads the `## Status` field from each projected issue file in incoming/.
+  Updates the DB status accordingly, then re-projects the issue which
+  automatically moves the file to the correct directory (accepted/).
 
-  - File still in incoming/ → no change
-  - File moved to accepted/ → accept the issue
-  - File removed from incoming/ → dismiss the issue
+  - `incoming` → no change
+  - `accepted` → accept in DB, re-project moves file to accepted/
+  - `dismissed` → dismiss in DB, re-project removes file
+  - File missing → dismiss in DB
   """
   def reconcile_triage(%Scope{} = scope) do
     incoming = IssuesRepository.list_by_status(scope, :incoming)
@@ -146,17 +154,27 @@ defmodule CodeMySpec.Issues do
     Enum.each(incoming, fn issue ->
       filename = Projector.build_filename(issue)
       incoming_path = Path.join(Paths.issues_incoming_dir(), filename)
-      accepted_path = Path.join(Paths.issues_accepted_dir(), filename)
 
-      cond do
-        Environments.file_exists?(env, incoming_path) ->
+      case Environments.read_file(env, incoming_path) do
+        {:ok, content} ->
+          case extract_status(content) do
+            {:ok, "accepted"} ->
+              accept_issue(scope, issue)
+              Projector.project_issue(env, %{issue | status: :accepted})
+
+            {:ok, "dismissed"} ->
+              dismiss_issue(scope, issue, "Dismissed during triage")
+              Projector.remove_projection(env, issue)
+
+            _ ->
+              :noop
+          end
+
+        {:error, _} ->
+          # File not found — don't auto-dismiss, just skip.
+          # The file may not have been projected yet or the environment
+          # doesn't match where it was written.
           :noop
-
-        Environments.file_exists?(env, accepted_path) ->
-          accept_issue(scope, issue)
-
-        true ->
-          dismiss_issue(scope, issue, "Dismissed during triage")
       end
     end)
 
@@ -235,6 +253,13 @@ defmodule CodeMySpec.Issues do
     end
   end
   defp parse_scope(nil), do: :app
+
+  defp extract_status(content) do
+    case Regex.run(~r/^## Status\s*\n\s*(\S+)/m, content) do
+      [_, status] -> {:ok, String.downcase(String.trim(status))}
+      _ -> :error
+    end
+  end
 
   defp extract_resolution(content) do
     case Regex.run(~r/^## Resolution\s*\n([\s\S]*?)(?=\n## |\z)/m, content) do

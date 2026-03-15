@@ -60,6 +60,10 @@ defmodule CodeMySpec.Issues.Projector do
     """
     # #{issue.title}
 
+    ## Status
+
+    #{issue.status}
+
     ## Severity
 
     #{issue.severity}

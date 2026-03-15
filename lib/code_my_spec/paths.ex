@@ -65,8 +65,11 @@ defmodule CodeMySpec.Paths do
   @doc "QA scripts directory (`.code_my_spec/qa/scripts`)."
   def qa_scripts_dir, do: Path.join(@base_dir, "qa/scripts")
 
-  @doc "Transient research prompts directory (`.code_my_spec/status/research`)."
-  def research_dir, do: Path.join(@base_dir, "status/research")
+  @doc "Task prompts and ephemeral agent outputs directory (`.code_my_spec/tasks`)."
+  def tasks_dir, do: Path.join(@base_dir, "tasks")
+
+  @doc "Transient research prompts directory (`.code_my_spec/tasks/research`)."
+  def research_dir, do: Path.join(tasks_dir(), "research")
 
   @doc "Sessions directory (`.code_my_spec/sessions`)."
   def sessions_dir, do: Path.join(@base_dir, "sessions")
@@ -89,6 +92,15 @@ defmodule CodeMySpec.Paths do
 
   @doc "QA plan document."
   def qa_plan, do: Path.join(@base_dir, "qa/plan.md")
+
+  @doc "QA journey plan document."
+  def qa_journey_plan, do: Path.join(@base_dir, "qa/journey_plan.md")
+
+  @doc "QA journey result document."
+  def qa_journey_result, do: Path.join(@base_dir, "qa/journey_result.md")
+
+  @doc "QA journey Wallaby test directory (relative, target project)."
+  def qa_journey_wallaby_dir, do: "test/journeys"
 
   @doc "Design system HTML file."
   def design_system_path, do: Path.join(@base_dir, "design/design_system.html")
