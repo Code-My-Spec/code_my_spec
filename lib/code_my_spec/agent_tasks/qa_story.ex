@@ -69,13 +69,15 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   State machine evaluate — phase is derived from artifact existence.
 
   Phase flow:
-  1. plan.md missing/invalid → feedback
-  2. brief.md missing/invalid → feedback to write the brief
-  3. brief valid, result.md missing/invalid → feedback to execute tests
-  4. all valid → file issues, return :valid
+  1. result_complete.md exists → :valid (already passed)
+  2. plan.md missing/invalid → feedback
+  3. brief.md missing/invalid → feedback to write the brief
+  4. result.md missing/invalid → feedback to execute tests
+  5. result.md valid, status=pass → file issues, move to result_complete.md → :valid
+  6. result.md valid, status=fail/partial → file issues, archive as result_failed_{ts}.md → :invalid
 
   Returns:
-  - `{:ok, :valid}` when all phases pass (issues filed)
+  - `{:ok, :valid}` when QA passed (result_complete.md exists)
   - `{:ok, :invalid, feedback}` when the current phase artifact is missing or invalid
   """
   def evaluate(scope, session, _opts \\ []) do
@@ -83,17 +85,69 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       env = scope.environment
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
 
-      with :ok <- check_plan(env),
-           :ok <- check_brief(env, story_id),
-           {:ok, document} <- check_result(env, story_id),
-           :ok <- ensure_issues_filed(scope, story_id, document) do
-        Logger.info("[QaStory] evaluate: all phases valid, issues filed")
+      # Short-circuit: already completed
+      if Environments.file_exists?(env, result_complete_path(story_id)) do
+        Logger.info("[QaStory] evaluate: result_complete.md exists, already passed")
         {:ok, :valid}
       else
-        {:ok, :invalid, feedback} = result ->
-          Logger.info("[QaStory] evaluate: invalid — #{String.slice(feedback, 0..120)}")
-          result
+        do_evaluate(scope, env, story_id)
       end
+    end
+  end
+
+  defp do_evaluate(scope, env, story_id) do
+    with :ok <- check_plan(env),
+         :ok <- check_brief(env, story_id),
+         {:ok, document} <- check_result(env, story_id) do
+      finalize_result(scope, env, story_id, document)
+    else
+      {:ok, :invalid, feedback} = result ->
+        Logger.info("[QaStory] evaluate: invalid — #{String.slice(feedback, 0..120)}")
+        result
+    end
+  end
+
+  # After result.md is structurally valid, check pass/fail status and finalize.
+  defp finalize_result(scope, env, story_id, document) do
+    # Always file issues regardless of pass/fail
+    ensure_issues_filed(scope, story_id, document)
+
+    if qa_passed?(document) do
+      Logger.info("[QaStory] evaluate(#{story_id}): QA passed — promoting to result_complete.md")
+      move_file(env, result_path(story_id), result_complete_path(story_id))
+    else
+      timestamp = DateTime.utc_now() |> Calendar.strftime("%Y%m%d_%H%M%S")
+      failed_path = result_failed_path(story_id, timestamp)
+      Logger.info("[QaStory] evaluate(#{story_id}): QA failed — archiving to #{failed_path}, issues filed for triage")
+      move_file(env, result_path(story_id), failed_path)
+    end
+
+    # Always return :valid — let the QA session complete.
+    # StoryQaChecker checks for result_complete.md, so the story requirement
+    # stays unsatisfied until QA actually passes. Failed results get picked
+    # up on the next triage cycle.
+    {:ok, :valid}
+  end
+
+  defp qa_passed?(document) do
+    status =
+      document.sections
+      |> Map.get("status", "")
+      |> to_string()
+      |> String.downcase()
+      |> String.trim()
+
+    status in ["pass", "passed"]
+  end
+
+  defp move_file(env, from, to) do
+    case Environments.read_file(env, from) do
+      {:ok, content} ->
+        Environments.write_file(env, to, content)
+        Environments.delete_file(env, from)
+
+      {:error, _} ->
+        :ok
     end
   end
 
@@ -224,19 +278,42 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Determine the current phase: complete, advancing, or has problems.
   #
   # Returns:
-  # - `{:complete, document}` — all phases pass, issues filed
+  # - `{:complete, :already_passed}` — result_complete.md exists
+  # - `{:complete, document}` — result.md passed, promoted to result_complete.md
   # - `{:advance, phase}` — file missing for next phase → update prompt
-  # - `{:problem, feedback}` — validation error in existing artifact
+  # - `{:problem, feedback}` — validation error or QA failed
   defp run_phases(scope, story_id) do
     env = scope.environment
 
+    # Short-circuit: already completed
+    if Environments.file_exists?(env, result_complete_path(story_id)) do
+      Logger.info("[QaStory] run_phases(#{story_id}): already complete (result_complete.md exists)")
+      {:complete, :already_passed}
+    else
+      do_run_phases(scope, env, story_id)
+    end
+  end
+
+  defp do_run_phases(scope, env, story_id) do
     result =
       with :ok <- check_plan(env),
            :ok <- require_file(:brief, env, brief_path(story_id)),
            :ok <- check_brief(env, story_id),
            :ok <- require_file(:test, env, result_path(story_id)),
-           {:ok, document} <- check_result(env, story_id),
-           :ok <- ensure_issues_filed(scope, story_id, document) do
+           {:ok, document} <- check_result(env, story_id) do
+        # Result is structurally valid — file issues and finalize
+        ensure_issues_filed(scope, story_id, document)
+
+        if qa_passed?(document) do
+          Logger.info("[QaStory] run_phases(#{story_id}): QA passed — promoting to result_complete.md")
+          move_file(env, result_path(story_id), result_complete_path(story_id))
+        else
+          timestamp = DateTime.utc_now() |> Calendar.strftime("%Y%m%d_%H%M%S")
+          failed_path = result_failed_path(story_id, timestamp)
+          Logger.info("[QaStory] run_phases(#{story_id}): QA failed — archiving to #{failed_path}, issues filed for triage")
+          move_file(env, result_path(story_id), failed_path)
+        end
+
         {:complete, document}
       else
         {:advance, _phase} = advance -> advance
@@ -740,6 +817,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp result_path(story_id) do
     Path.join([Paths.qa_dir(), to_string(story_id), "result.md"])
+  end
+
+  defp result_complete_path(story_id) do
+    Path.join([Paths.qa_dir(), to_string(story_id), "result_complete.md"])
+  end
+
+  defp result_failed_path(story_id, timestamp) do
+    Path.join([Paths.qa_dir(), to_string(story_id), "result_failed_#{timestamp}.md"])
   end
 
   defp screenshot_dir(story_id) do

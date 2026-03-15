@@ -571,7 +571,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
-      # Should create files for all severities
+      # Should create files for all severities even though QA failed
       dir = issues_dir(scope.environment)
       assert File.exists?(dir)
       files = File.ls!(dir)
@@ -612,7 +612,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-      # Run evaluate to create files
+      # Run evaluate to create issue files (and archive result as failed)
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
       dir = issues_dir(scope.environment)
@@ -623,10 +623,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # Modify the file
       File.write!(Path.join(dir, login_file), "MODIFIED")
 
-      # Run evaluate again
+      # Write a new result and run evaluate again
+      write_result_with_issues(scope.environment, story.id)
       assert {:ok, :valid} = QaStory.evaluate(scope, session)
 
-      # File should NOT be overwritten
+      # Issue file should NOT be overwritten (upsert returns existing)
       assert File.read!(Path.join(dir, login_file)) == "MODIFIED"
       refute File.read!(Path.join(dir, login_file)) == original_content
     end
