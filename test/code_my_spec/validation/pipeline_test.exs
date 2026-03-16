@@ -35,7 +35,8 @@ defmodule CodeMySpec.Validation.PipelineTest do
   defp cached_pipeline_opts do
     [
       compile_output_file: Path.expand(TestAdapter.compiler_ok_cache_path()),
-      test_output_file: Path.expand(TestAdapter.test_results_cache_path())
+      test_output_file: Path.expand(TestAdapter.test_results_cache_path()),
+      spex_output_file: Path.expand(TestAdapter.spex_results_passing_cache_path())
     ]
   end
 

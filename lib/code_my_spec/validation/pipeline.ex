@@ -39,7 +39,7 @@ defmodule CodeMySpec.Validation.Pipeline do
         {_, test_problems} = run_tests(categorized.test_files, scope, opts)
         {_, credo_problems} = run_credo(categorized.elixir_files, scope)
         {_, sobelow_problems} = run_sobelow(categorized.elixir_files, scope)
-        {_, spex_problems} = run_spex(categorized.spex_files, scope)
+        {_, spex_problems} = run_spex(categorized.spex_files, scope, opts)
         {_, spec_problems} = validate_spec_files(categorized.spec_files)
         {_, qa_problems} = validate_qa_files(categorized.qa_files)
 
@@ -373,8 +373,8 @@ defmodule CodeMySpec.Validation.Pipeline do
   Clears all spex problems, runs `mix spex --stale`, stores failures.
   The stale manifest tracks what needs re-running — no DB timestamps needed.
   """
-  @spec run_spex_stale(Scope.t()) :: {:ok, [Problem.t()]}
-  def run_spex_stale(%Scope{} = scope) do
+  @spec run_spex_stale(Scope.t(), keyword()) :: {:ok, [Problem.t()]}
+  def run_spex_stale(%Scope{} = scope, opts \\ []) do
     project_root = get_project_root(scope)
 
     if is_nil(project_root) do
@@ -383,9 +383,14 @@ defmodule CodeMySpec.Validation.Pipeline do
       Logger.info("[Pipeline] Running mix spex --stale")
       Problems.clear_problems_for_source(scope, [source: "spex"], :all)
 
-      opts = [project_root: project_root, quiet: true]
+      spex_opts = [project_root: project_root, quiet: true]
 
-      case BddSpecs.run_specs(["--stale"], opts) do
+      spex_opts =
+        if f = opts[:spex_output_file],
+          do: Keyword.put(spex_opts, :output_file, f),
+          else: spex_opts
+
+      case BddSpecs.run_specs(["--stale"], spex_opts) do
         {:ok, [], 0} ->
           {:ok, []}
 
@@ -414,11 +419,12 @@ defmodule CodeMySpec.Validation.Pipeline do
   @doc """
   Run BDD specs for modified spex files.
   """
-  @spec run_spex([Path.t()], Scope.t() | nil) :: {:ok, [Problem.t()]}
-  def run_spex([], _scope), do: {:ok, []}
-  def run_spex(_spex_files, nil), do: {:ok, []}
+  @spec run_spex([Path.t()], Scope.t() | nil, keyword()) :: {:ok, [Problem.t()]}
+  def run_spex(spex_files, scope, opts \\ [])
+  def run_spex([], _scope, _opts), do: {:ok, []}
+  def run_spex(_spex_files, nil, _opts), do: {:ok, []}
 
-  def run_spex(spex_files, scope) do
+  def run_spex(spex_files, scope, opts) do
     project_root = get_project_root(scope)
 
     if is_nil(project_root) do
@@ -426,9 +432,14 @@ defmodule CodeMySpec.Validation.Pipeline do
     else
       Logger.info("[Pipeline] Running spex on #{length(spex_files)} files")
 
-      opts = [project_root: project_root, quiet: true]
+      spex_opts = [project_root: project_root, quiet: true]
 
-      case BddSpecs.run_specs(spex_files, opts) do
+      spex_opts =
+        if f = opts[:spex_output_file],
+          do: Keyword.put(spex_opts, :output_file, f),
+          else: spex_opts
+
+      case BddSpecs.run_specs(spex_files, spex_opts) do
         {:ok, [], 0} ->
           {:ok, []}
 

@@ -2,7 +2,10 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.BddSpecs.Spex
-  alias CodeMySpec.BddSpecs.Spex.{Failure, Step, Error}
+  alias CodeMySpec.BddSpecs.Spex.Error
+  alias CodeMySpec.BddSpecs.Spex.Failure
+  alias CodeMySpec.BddSpecs.Spex.Step
+  alias CodeMySpec.Support.TestAdapter
 
   @moduletag :tmp_dir
 
@@ -109,7 +112,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
 
     test "parses real passing spex output from cached run" do
       # Use cached passing spex results from TestAdapter
-      cached_jsonl = CodeMySpec.Support.TestAdapter.spex_results_passing_cache_path()
+      cached_jsonl = TestAdapter.spex_results_passing_cache_path()
 
       assert {:ok, failures} = Spex.parse_jsonl(cached_jsonl)
       # Passing tests should have no failures
@@ -118,11 +121,11 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
 
     test "parses real failing spex output from cached run" do
       # Use cached failing spex results from TestAdapter
-      cached_jsonl = CodeMySpec.Support.TestAdapter.spex_results_failing_cache_path()
+      cached_jsonl = TestAdapter.spex_results_failing_cache_path()
 
       assert {:ok, failures} = Spex.parse_jsonl(cached_jsonl)
       # Should have at least one failure
-      assert length(failures) > 0
+      assert failures != []
 
       # Verify first failure has proper structure
       [failure | _] = failures

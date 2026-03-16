@@ -36,11 +36,17 @@ defmodule CodeMySpec.BddSpecs.Spex do
     project_root = Keyword.get(opts, :project_root, File.cwd!())
     quiet = Keyword.get(opts, :quiet, false)
 
+    caller_provided_file = Keyword.has_key?(opts, :output_file) or Keyword.has_key?(opts, :jsonl_path)
+
     temp_file =
       Keyword.get(
         opts,
-        :jsonl_path,
-        Path.join(System.tmp_dir!(), "spex_output_#{System.unique_integer([:positive])}.jsonl")
+        :output_file,
+        Keyword.get(
+          opts,
+          :jsonl_path,
+          Path.join(System.tmp_dir!(), "spex_output_#{System.unique_integer([:positive])}.jsonl")
+        )
       )
 
     spex_args = build_args(args, temp_file, quiet)
@@ -51,7 +57,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     case System.cmd("mix", spex_args, cd: project_root, stderr_to_stdout: true) do
       {_raw_output, exit_code} ->
         result = parse_and_return_failures(temp_file, exit_code)
-        cleanup_temp_file(temp_file)
+        unless caller_provided_file, do: cleanup_temp_file(temp_file)
         result
     end
   rescue
@@ -72,6 +78,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   `{:ok, [Failure.t()]}` - List of parsed failures (empty if file doesn't exist or is empty)
   `{:error, term()}` - If JSON parsing fails
   """
+  # sobelow_skip ["Traversal.FileModule"]
   @spec parse_jsonl(String.t()) :: {:ok, [Failure.t()]} | {:error, term()}
   def parse_jsonl(path) do
     case File.read(path) do
@@ -111,6 +118,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp cleanup_temp_file(temp_file) do
     File.rm(temp_file)
   end

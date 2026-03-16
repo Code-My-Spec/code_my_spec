@@ -56,7 +56,7 @@ defmodule CodeMySpec.Validation do
     {test_problems, test_ms} = run_tests_stale(scope, opts)
 
     # Phase 1c: Spex via --stale (SexySpex's manifest tracking)
-    {spex_problems, spex_ms} = run_spex_stale(scope)
+    {spex_problems, spex_ms} = run_spex_stale(scope, opts)
 
     all_problems = analysis_problems ++ test_problems ++ spex_problems
 
@@ -107,7 +107,7 @@ defmodule CodeMySpec.Validation do
     {test_problems, test_ms} = run_tests_stale(scope, opts)
 
     # Phase 1c: Spex via --stale (SexySpex's manifest tracking)
-    {spex_problems, spex_ms} = run_spex_stale(scope)
+    {spex_problems, spex_ms} = run_spex_stale(scope, opts)
 
     all_problems = analysis_problems ++ test_problems ++ spex_problems
 
@@ -282,12 +282,13 @@ defmodule CodeMySpec.Validation do
   # Phase 1c: Spex via --stale (SexySpex's manifest tracking)
   # ============================================================================
 
-  defp run_spex_stale(%Scope{environment: nil} = _scope), do: {[], 0}
+  defp run_spex_stale(%Scope{environment: nil} = _scope, _opts), do: {[], 0}
 
-  defp run_spex_stale(%Scope{} = scope) do
+  defp run_spex_stale(%Scope{} = scope, opts) do
     start = System.monotonic_time(:millisecond)
 
-    {:ok, problems} = Pipeline.run_spex_stale(scope)
+    pipeline_opts = Keyword.take(opts, [:spex_output_file])
+    {:ok, problems} = Pipeline.run_spex_stale(scope, pipeline_opts)
 
     # Recalculate story requirements after spex run
     if problems != [] do
