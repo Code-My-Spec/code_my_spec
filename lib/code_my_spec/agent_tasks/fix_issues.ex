@@ -127,10 +127,13 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     Read the scope before fixing — a `qa` issue means the seeds or scripts need updating, not the app code.
 
-    ## QA Results
+    ## QA Context
 
-    Issue source references point to QA result files in `#{Paths.qa_dir()}/`. Read those
-    files for additional context, reproduction steps, and screenshots.
+    - **QA plan:** `#{Paths.qa_plan()}` — server startup, seeds, auth strategy
+    - **QA results:** `#{Paths.qa_dir()}/{story_id}/` — failed results, screenshots, briefs
+
+    Read the QA plan for how to start the server and run seeds if you need to verify fixes.
+    Read the failed result and screenshots for each issue's story to understand the reproduction.
 
     ## Unresolved Issues
 
@@ -147,12 +150,17 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   defp format_issue_items(issues) do
     Enum.map_join(issues, "\n\n", fn issue ->
       filename = Issues.projected_filename(issue)
-      source_ref = if issue.source_path, do: "`#{issue.source_path}`", else: nil
+      source_ref = if issue.source_path, do: "**Source:** `#{issue.source_path}`\n", else: ""
+
+      qa_dir_ref =
+        if issue.story_id,
+          do: "**QA evidence:** `#{Paths.qa_dir()}/#{issue.story_id}/`\n",
+          else: ""
 
       """
       ### `#{filename}`
 
-      #{if source_ref, do: "**Source:** #{source_ref}\n", else: ""}
+      #{source_ref}#{qa_dir_ref}\
       - **Title:** #{issue.title}
       - **Severity:** #{issue.severity}
       - **Scope:** #{issue.scope || :app}
