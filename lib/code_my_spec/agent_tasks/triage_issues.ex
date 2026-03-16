@@ -6,7 +6,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   (accept, dismiss, merge), and edits the `## Status` field in projected
   issue files from `incoming` to `accepted` or `dismissed`.
 
-  Accepts an optional minimum severity argument (default: :medium) from
+  Accepts an optional minimum severity argument (default: :info, i.e. all) from
   `session.state["topic"]`. Only issues at or above the specified severity
   are included in the triage.
 
@@ -145,11 +145,11 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
       "medium" -> :medium
       "low" -> :low
       "info" -> :info
-      _ -> :medium
+      _ -> :info
     end
   end
 
-  defp get_min_severity(_session), do: :medium
+  defp get_min_severity(_session), do: :info
 
   defp list_incoming_at_severity(scope, min_severity) do
     Issues.list_by_status(scope, :incoming)
