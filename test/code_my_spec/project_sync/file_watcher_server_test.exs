@@ -36,13 +36,13 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     setup [:start_server]
 
     test "registers a new project directory", %{scope: scope, server: name, tmp_dir: tmp_dir} do
-      assert FileWatcherServer.ensure_watching(scope, name) == :ok
+      assert ensure_watching_sync(scope, name) == :ok
       assert tmp_dir in FileWatcherServer.watched_dirs(name)
     end
 
     test "is a no-op for already watched directories", %{scope: scope, server: name} do
-      assert FileWatcherServer.ensure_watching(scope, name) == :ok
-      assert FileWatcherServer.ensure_watching(scope, name) == :ok
+      assert ensure_watching_sync(scope, name) == :ok
+      assert ensure_watching_sync(scope, name) == :ok
       assert length(FileWatcherServer.watched_dirs(name)) == 1
     end
 
@@ -59,8 +59,8 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
       scope2 = %{scope | cwd: tmp_dir2}
 
-      FileWatcherServer.ensure_watching(scope, name)
-      FileWatcherServer.ensure_watching(scope2, name)
+      ensure_watching_sync(scope, name)
+      ensure_watching_sync(scope2, name)
 
       assert length(FileWatcherServer.watched_dirs(name)) == 2
     end
@@ -76,7 +76,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
       tmp_dir: tmp_dir
     } do
       component = component_fixture(scope, %{module_name: "CodeMySpec.Accounts", type: "context"})
-      FileWatcherServer.ensure_watching(scope, name)
+      ensure_watching_sync(scope, name)
 
       path = Path.join(tmp_dir, "lib/code_my_spec/accounts.ex")
       File.mkdir_p!(Path.dirname(path))
@@ -95,7 +95,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
       server_pid: pid,
       tmp_dir: tmp_dir
     } do
-      FileWatcherServer.ensure_watching(scope, name)
+      ensure_watching_sync(scope, name)
       watcher_pid = get_watcher_pid(name, tmp_dir)
 
       send(pid, {:file_event, watcher_pid, {Path.join(tmp_dir, "lib/foo.ex"), [:modified]}})
@@ -120,7 +120,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     end
 
     test "ignores non-relevant events", %{scope: scope, server: name, server_pid: pid, tmp_dir: tmp_dir} do
-      FileWatcherServer.ensure_watching(scope, name)
+      ensure_watching_sync(scope, name)
 
       send(pid, {:file_event, get_watcher_pid(name, tmp_dir), {"/some/path", [:isdir]}})
 
@@ -133,7 +133,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     setup [:start_server]
 
     test "removes watcher entry on FileSystem stop", %{scope: scope, server: name, server_pid: pid, tmp_dir: tmp_dir} do
-      FileWatcherServer.ensure_watching(scope, name)
+      ensure_watching_sync(scope, name)
       assert tmp_dir in FileWatcherServer.watched_dirs(name)
 
       watcher_pid = get_watcher_pid(name, tmp_dir)
@@ -142,6 +142,14 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
       refute tmp_dir in FileWatcherServer.watched_dirs(name)
     end
+  end
+
+  # Ensure the cast has been processed by making a synchronous call after it
+  defp ensure_watching_sync(scope, name) do
+    result = FileWatcherServer.ensure_watching(scope, name)
+    # watched_dirs/1 is a call, so it forces the server to process the cast first
+    FileWatcherServer.watched_dirs(name)
+    result
   end
 
   # Get the FileSystem watcher PID for a given project root from the server state

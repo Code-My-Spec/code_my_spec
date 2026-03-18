@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
   Two main functions:
   - `command/3` — Reads accepted issues from DB, builds fix prompt
-  - `evaluate/3` — Reconciles resolutions from files to DB, checks that all medium+ issues are resolved
+  - `evaluate/3` — Checks that all medium+ issues are resolved (via tool or file fallback)
   """
 
   alias CodeMySpec.{Issues, Paths}
@@ -35,10 +35,10 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   end
 
   @doc """
-  Reconcile resolutions and check that all medium+ accepted issues are resolved.
+  Check that all medium+ accepted issues are resolved.
 
-  First reconciles agent-written `## Resolution` sections from projected files
-  back to the database, then checks whether unresolved blocking issues remain.
+  Falls back to reconciling file-based resolutions for any the agent missed
+  with the tool, then checks whether unresolved blocking issues remain.
 
   Uses :medium as the blocking threshold regardless of the session's min_severity.
 
@@ -47,6 +47,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   - `{:ok, :invalid, feedback}` when unresolved blocking issues exist
   """
   def evaluate(scope, _session, _opts \\ []) do
+    # Fallback: reconcile any file-based resolutions the agent wrote directly
     Issues.reconcile_resolutions(scope)
 
     remaining = list_unresolved_at_severity(scope, :medium)
@@ -59,7 +60,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
         names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
 
         {:ok, :invalid,
-         "#{length(issues)} unresolved medium+ issue(s):\n\n#{names}\n\nFix each issue and add a ## Resolution section describing what was done."}
+         "#{length(issues)} unresolved medium+ issue(s):\n\n#{names}\n\nUse `.code_my_spec/tools/issues/resolve-issue <id> \"<resolution>\"` for each fixed issue."}
     end
   end
 
@@ -102,6 +103,13 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     You are fixing accepted QA issues at **#{min_severity}+** severity.
 
+    ## Tools
+
+    Use the following bash tools in `.code_my_spec/tools/issues/` to interact with issues:
+
+    - `.code_my_spec/tools/issues/get-issue <id>` — read full issue details
+    - `.code_my_spec/tools/issues/resolve-issue <id> "<resolution>"` — mark as resolved with description of fix
+
     ## Goal
 
     For each issue below:
@@ -112,8 +120,8 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
        - Read the relevant source files
        - Make the fix
        - Verify the fix works
-    3. **Add a `## Resolution` section** to each issue file describing what was done:
-       - Summary of the fix
+    3. **Resolve the issue** — run `.code_my_spec/tools/issues/resolve-issue <id> "<resolution>"` with a summary of:
+       - What was fixed
        - Files changed
        - How the fix was verified
     4. **Run tests** after all fixes to verify nothing is broken: `mix test`
@@ -143,7 +151,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     Accepted issues: `#{Paths.issues_accepted_dir()}/`
 
-    Fix the issues, add resolution sections, and run tests to verify.
+    Fix the issues, resolve them with the tool, and run tests to verify.
     """
   end
 
@@ -158,7 +166,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
           else: ""
 
       """
-      ### `#{filename}`
+      ### `#{filename}` (ID: #{issue.id})
 
       #{source_ref}#{qa_dir_ref}\
       - **Title:** #{issue.title}

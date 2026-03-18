@@ -1,0 +1,69 @@
+{
+  "commands": [
+    {
+      "args": [
+        "spex",
+        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284460/test/spex/457_addition/criterion_4420_given_i_am_on_the_addition_page_when_i_enter_two_valid_numbers_and_click_calculate_then_i_see_their_sum_displayed_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_10914.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284460",
+        "stderr_to_stdout": true
+      },
+      "output": "Compiling 25 files (.ex)\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/subtraction.ex:9:44: MathTestProjectWeb.CalculationLive.Subtraction.mount/3\n\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/addition.ex:9:44: MathTestProjectWeb.CalculationLive.Addition.mount/3\n\n\n== Compilation error in file lib/math_test_project_web/live/calculation_live/addition.ex ==\n** (CompileError) lib/math_test_project_web/live/calculation_live/addition.ex: cannot compile module MathTestProjectWeb.CalculationLive.Addition (errors have been logged)\n\n** (Protocol.UndefinedError) protocol Jason.Encoder not implemented for Tuple, Jason.Encoder protocol must always be explicitly implemented\n\nGot value:\n\n    {:error,\n     %CompileError{\n       file: \"/private/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284460/lib/math_test_project_web/live/calculation_live/addition.ex\",\n       line: 0,\n       description: \"cannot compile module MathTestProjectWeb.CalculationLive.Addition (errors have been logged)\"\n     }}\n\n    (jason 1.4.4) lib/jason.ex:164: Jason.encode!/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (client_utils 0.1.12) lib/client_utils/diagnostics_format.ex:14: ClientUtils.DiagnosticsFormat.to_jsonl/1\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:68: Mix.Tasks.Compile.Diagnostics.write_diagnostics/2\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:43: anonymous fn/2 in Mix.Tasks.Compile.Diagnostics.run/1\n    (elixir 1.19.4) lib/enum.ex:2520: Enum.\"-reduce/3-lists^foldl/2-0-\"/3\n    (mix 1.19.4) lib/mix/task.compiler.ex:287: Mix.Task.Compiler.run/4\n",
+      "recorded_at": "2026-03-12T03:01:13.272766Z"
+    },
+    {
+      "args": [
+        "spex",
+        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284460/test/spex/458_subtraction/criterion_4423_given_i_am_on_the_subtraction_page_when_i_enter_two_valid_numbers_and_click_calculate_then_i_see_their_difference_displayed_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_11010.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284460",
+        "stderr_to_stdout": true
+      },
+      "output": "Compiling 25 files (.ex)\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/subtraction.ex:9:44: MathTestProjectWeb.CalculationLive.Subtraction.mount/3\n\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/addition.ex:9:44: MathTestProjectWeb.CalculationLive.Addition.mount/3\n\n\n== Compilation error in file lib/math_test_project_web/live/calculation_live/subtraction.ex ==\n** (CompileError) lib/math_test_project_web/live/calculation_live/subtraction.ex: cannot compile module MathTestProjectWeb.CalculationLive.Subtraction (errors have been logged)\n\n** (Protocol.UndefinedError) protocol Jason.Encoder not implemented for Tuple, Jason.Encoder protocol must always be explicitly implemented\n\nGot value:\n\n    {:error,\n     %CompileError{\n       file: \"/private/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284460/lib/math_test_project_web/live/calculation_live/subtraction.ex\",\n       line: 0,\n       description: \"cannot compile module MathTestProjectWeb.CalculationLive.Subtraction (errors have been logged)\"\n     }}\n\n    (jason 1.4.4) lib/jason.ex:164: Jason.encode!/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (client_utils 0.1.12) lib/client_utils/diagnostics_format.ex:14: ClientUtils.DiagnosticsFormat.to_jsonl/1\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:68: Mix.Tasks.Compile.Diagnostics.write_diagnostics/2\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:43: anonymous fn/2 in Mix.Tasks.Compile.Diagnostics.run/1\n    (elixir 1.19.4) lib/enum.ex:2520: Enum.\"-reduce/3-lists^foldl/2-0-\"/3\n    (mix 1.19.4) lib/mix/task.compiler.ex:287: Mix.Task.Compiler.run/4\n",
+      "recorded_at": "2026-03-12T03:01:16.392619Z"
+    },
+    {
+      "args": [
+        "spex",
+        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284504/test/spex/457_addition/criterion_4420_given_i_am_on_the_addition_page_when_i_enter_two_valid_numbers_and_click_calculate_then_i_see_their_sum_displayed_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_14082.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284504",
+        "stderr_to_stdout": true
+      },
+      "output": "Compiling 25 files (.ex)\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/addition.ex:9:44: MathTestProjectWeb.CalculationLive.Addition.mount/3\n\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/subtraction.ex:9:44: MathTestProjectWeb.CalculationLive.Subtraction.mount/3\n\n\n== Compilation error in file lib/math_test_project_web/live/calculation_live/addition.ex ==\n** (CompileError) lib/math_test_project_web/live/calculation_live/addition.ex: cannot compile module MathTestProjectWeb.CalculationLive.Addition (errors have been logged)\n\n** (Protocol.UndefinedError) protocol Jason.Encoder not implemented for Tuple, Jason.Encoder protocol must always be explicitly implemented\n\nGot value:\n\n    {:error,\n     %CompileError{\n       file: \"/private/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284504/lib/math_test_project_web/live/calculation_live/addition.ex\",\n       line: 0,\n       description: \"cannot compile module MathTestProjectWeb.CalculationLive.Addition (errors have been logged)\"\n     }}\n\n    (jason 1.4.4) lib/jason.ex:164: Jason.encode!/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (client_utils 0.1.12) lib/client_utils/diagnostics_format.ex:14: ClientUtils.DiagnosticsFormat.to_jsonl/1\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:68: Mix.Tasks.Compile.Diagnostics.write_diagnostics/2\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:43: anonymous fn/2 in Mix.Tasks.Compile.Diagnostics.run/1\n    (elixir 1.19.4) lib/enum.ex:2520: Enum.\"-reduce/3-lists^foldl/2-0-\"/3\n    (mix 1.19.4) lib/mix/task.compiler.ex:287: Mix.Task.Compiler.run/4\n",
+      "recorded_at": "2026-03-12T03:01:54.277447Z"
+    },
+    {
+      "args": [
+        "spex",
+        "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284504/test/spex/458_subtraction/criterion_4423_given_i_am_on_the_subtraction_page_when_i_enter_two_valid_numbers_and_click_calculate_then_i_see_their_difference_displayed_spex.exs",
+        "--jsonl=/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex_output_14178.jsonl",
+        "--quiet"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284504",
+        "stderr_to_stdout": true
+      },
+      "output": "Compiling 25 files (.ex)\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/addition.ex:9:44: MathTestProjectWeb.CalculationLive.Addition.mount/3\n\n    error: MathTestProject.Calculations.Calculation.__struct__/1 is undefined, cannot expand struct MathTestProject.Calculations.Calculation. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code\n    │\n  9 │     changeset = Calculation.form_changeset(%Calculation{}, %{})\n    │                                            ^\n    │\n    └─ lib/math_test_project_web/live/calculation_live/subtraction.ex:9:44: MathTestProjectWeb.CalculationLive.Subtraction.mount/3\n\n\n== Compilation error in file lib/math_test_project_web/live/calculation_live/subtraction.ex ==\n** (CompileError) lib/math_test_project_web/live/calculation_live/subtraction.ex: cannot compile module MathTestProjectWeb.CalculationLive.Subtraction (errors have been logged)\n\n** (Protocol.UndefinedError) protocol Jason.Encoder not implemented for Tuple, Jason.Encoder protocol must always be explicitly implemented\n\nGot value:\n\n    {:error,\n     %CompileError{\n       file: \"/private/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/step_through_math_test_project_1773284504/lib/math_test_project_web/live/calculation_live/subtraction.ex\",\n       line: 0,\n       description: \"cannot compile module MathTestProjectWeb.CalculationLive.Subtraction (errors have been logged)\"\n     }}\n\n    (jason 1.4.4) lib/jason.ex:164: Jason.encode!/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (elixir 1.19.4) lib/enum.ex:1688: Enum.\"-map/2-lists^map/1-1-\"/2\n    (client_utils 0.1.12) lib/client_utils/diagnostics_format.ex:14: ClientUtils.DiagnosticsFormat.to_jsonl/1\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:68: Mix.Tasks.Compile.Diagnostics.write_diagnostics/2\n    (client_utils 0.1.12) lib/mix/tasks/compile.diagnostics.ex:43: anonymous fn/2 in Mix.Tasks.Compile.Diagnostics.run/1\n    (elixir 1.19.4) lib/enum.ex:2520: Enum.\"-reduce/3-lists^foldl/2-0-\"/3\n    (mix 1.19.4) lib/mix/task.compiler.ex:287: Mix.Task.Compiler.run/4\n",
+      "recorded_at": "2026-03-12T03:01:56.438799Z"
+    }
+  ],
+  "ports": []
+}

@@ -79,7 +79,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
               <p class="text-base-content/70">{phase.tagline}</p>
             </div>
           </div>
-          <%= if phase.number < 5 do %>
+          <%= if phase.number < length(@copy.phases) do %>
             <div class="text-3xl text-primary">↓</div>
           <% end %>
         <% end %>
@@ -155,7 +155,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
     ~H"""
     <div class="mb-20">
       <div class="text-center mb-12">
-        <h2 class="text-4xl font-bold">The Five Phases</h2>
+        <h2 class="text-4xl font-bold">The Six Phases</h2>
       </div>
 
       <div class="space-y-8">

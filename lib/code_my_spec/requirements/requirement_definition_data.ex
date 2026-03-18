@@ -531,8 +531,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.TriageIssues,
         artifact_type: :review,
         description: "All incoming QA issues have been triaged",
-        prerequisites: ["architecture_designed"],
-        scope: :orchestrate
+        prerequisites: ["architecture_designed"]
       })
 
     definition

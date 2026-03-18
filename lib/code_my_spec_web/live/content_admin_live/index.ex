@@ -21,8 +21,8 @@ defmodule CodeMySpecWeb.ContentAdminLive.Index do
           </:actions>
         </.header>
 
-        <dialog id="push-error-modal" class="modal">
-          <div :if={@push_error_detail} class="modal-box w-11/12 max-w-3xl">
+        <dialog :if={@push_error_detail} id="push-error-modal" class="modal modal-open">
+          <div class="modal-box w-11/12 max-w-3xl">
             <form method="dialog">
               <button
                 phx-click="close-error-modal"
@@ -489,7 +489,6 @@ defmodule CodeMySpecWeb.ContentAdminLive.Index do
       message: message,
       debug_info: debug_info
     })
-    |> push_event("show-error-modal", %{})
   end
 
   defp format_response_body(body) when is_binary(body), do: body

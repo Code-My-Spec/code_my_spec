@@ -37,14 +37,19 @@ if [[ -z "$TITLE" || -z "$SEVERITY" || -z "$DESCRIPTION" ]]; then
   exit 1
 fi
 
-JSON="{\"title\": \"${TITLE}\", \"severity\": \"${SEVERITY}\", \"description\": \"${DESCRIPTION}\""
+JQ_ARGS=(--arg title "$TITLE" --arg severity "$SEVERITY" --arg description "$DESCRIPTION")
+JQ_EXPR='{title: $title, severity: $severity, description: $description}'
+
 if [[ -n "$SCOPE" ]]; then
-  JSON="${JSON}, \"scope\": \"${SCOPE}\""
+  JQ_ARGS+=(--arg scope "$SCOPE")
+  JQ_EXPR='{title: $title, severity: $severity, description: $description, scope: $scope}'
 fi
 if [[ -n "$STORY_ID" ]]; then
-  JSON="${JSON}, \"story_id\": ${STORY_ID}"
+  JQ_ARGS+=(--argjson story_id "$STORY_ID")
+  JQ_EXPR="${JQ_EXPR%\}}, story_id: \$story_id}"
 fi
-JSON="${JSON}}"
+
+JSON=$(jq -n "${JQ_ARGS[@]}" "$JQ_EXPR")
 
 curl -sf -X POST "http://localhost:${PORT}/api/issues" \
   -H "Content-Type: application/json" \

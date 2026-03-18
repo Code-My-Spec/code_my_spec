@@ -1027,6 +1027,85 @@ defmodule CodeMySpec.Documents.Registry do
         "resolution" => @qa_issue_resolution
       }
     },
+    "qa_journey_plan" => %{
+      overview: "End-to-end QA journey plan. Defines user journeys through the app from empty instance to functioning software, with prerequisites and step-by-step scenarios.",
+      required_sections: ["journeys", "prerequisites"],
+      optional_sections: ["notes"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "journeys" => """
+        Format:
+        - Use H2 heading
+        - Use H3 per journey with Role, Steps, Expected outcome
+
+        Content:
+        - Each journey is a named end-to-end path through the app
+        - Role: which user persona performs this journey
+        - Steps: numbered sequence of actions
+        - Expected outcome: what success looks like
+        """,
+        "prerequisites" => """
+        Format:
+        - Use H2 heading
+        - Bullet list of setup requirements
+
+        Content:
+        - Server startup commands
+        - Seeds to run
+        - Credentials needed
+        - Configuration requirements
+        """,
+        "notes" => """
+        Format:
+        - Use H2 heading
+        - Free-form paragraphs
+
+        Content:
+        - Additional context, caveats, known limitations
+        """
+      }
+    },
+    "qa_journey_result" => %{
+      overview: "End-to-end QA journey execution result. Records the outcome of each journey from the plan, with pass/fail status, details, and evidence.",
+      required_sections: ["status", "journey results"],
+      optional_sections: ["issues", "evidence"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "status" => """
+        Format:
+        - Use H2 heading
+        - Single line: pass, fail, or partial
+
+        Content:
+        - Overall result across all journeys
+        """,
+        "journey results" => """
+        Format:
+        - Use H2 heading
+        - Use H3 per journey matching plan names
+        - Include pass/fail, steps taken, observations
+
+        Content:
+        - Each journey from the plan with execution details
+        """,
+        "issues" => """
+        Format:
+        - Use H2 heading
+        - Use H3 per issue found
+
+        Content:
+        - Issues discovered during journey execution
+        """,
+        "evidence" => """
+        Format:
+        - Use H2 heading
+        - Bullet list of screenshot/file paths
+
+        Content:
+        - Paths to screenshots or logs captured during testing
+        """
+      }
+    },
     "adr" => %{
       overview: """
       Architecture Decision Records (ADRs) document technology choices for the project.

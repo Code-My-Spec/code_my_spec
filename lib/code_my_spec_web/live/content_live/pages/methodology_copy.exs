@@ -1,24 +1,23 @@
 %{
-  # Metadata from codemyspec_method.yaml
   metadata: %{
-    meta_title: "Stop Fighting AI Drift, Control Context",
+    meta_title: "Ship Working Software with AI, Not Just Generate Code",
     meta_description:
-      "Methodology for controlling AI code generation - from user stories, architecture, production code.",
-    og_title: "The CodeMySpec Method - Design-Driven AI Development",
+      "The full methodology for shipping production software with AI — from stories through BDD specs, implementation, and application QA.",
+    og_title: "The CodeMySpec Method - Ship Working Software with AI",
     og_description:
-      "Stop fighting AI drift. The proven 5-phase methodology for building production apps with AI - stories, context mapping, design docs, tests, code.",
+      "Generating code is the easy part. The CodeMySpec method covers the full loop — stories, architecture, BDD specs, implementation, and QA — so what you ship actually works.",
     og_image: nil,
     author: "John Davenport",
     tags: [
       "methodology",
-      "design-driven-development",
+      "bdd",
+      "verification",
       "ai-code-generation",
       "phoenix",
       "elixir",
-      "context-mapping",
-      "design-documents",
-      "test-first",
-      "vertical-slice",
+      "qa",
+      "acceptance-testing",
+      "bounded-contexts",
       "claude-code",
       "mcp",
       "user-stories",
@@ -27,60 +26,62 @@
   },
   hero: %{
     title: "The CodeMySpec Method",
-    tagline: "Stop Fighting AI Drift. Control What Goes Into Context.",
+    tagline: "Generating Code Is the Easy Part.",
     description:
-      "The 5-phase methodology I use to build CodeMySpec with AI - from stories to production code."
+      "AI can write code. But shipping working software? That takes stories, architecture, BDD specs, verified implementations, and QA. Here's the full loop."
   },
   problem: %{
-    title: "The Problem: Compounding Drift",
+    title: "The Problem: Code Generation Isn't Software",
     description:
-      "AI drift compounds through reasoning layers. The farther the LLM's reasoning gets from your actual prompt, the more the output drifts from your intent.",
+      "Most AI coding tools stop at code generation. You get output that looks right, passes a vibe check, and falls apart in production.",
     points: [
       %{
-        title: "Reasoning Drift",
+        title: "No Verification",
         description:
-          "LLM's reasoning slightly off from your intent → code generation is more off. Each inference step compounds the error."
+          "Generated code compiles and maybe passes a few tests. But does it actually do what the user asked for? Nobody checks."
       },
       %{
-        title: "Documentation Drift",
+        title: "No Traceability",
         description:
-          "Generate PRD → generate code from PRD → two layers of drift between your intent and the output."
+          "Requirements live in a chat thread. Architecture lives in the AI's head. When something breaks, there's no trail back to intent."
       },
       %{
-        title: "Process Drift",
+        title: "No Feedback Loop",
         description:
-          "Ask LLM to prescribe AND follow process → compounding error. Every time you ask the LLM to figure out the process, you add drift."
+          "When QA finds a bug, where does it go? Back into the same chat? A new prompt? There's no structured path from 'this is broken' to 'this is fixed.'"
       }
     ],
     conclusion:
-      "Every intermediate step adds drift. Every time you ask the LLM to figure out the process, you add drift."
+      "AI code generation without verification is just sophisticated autocomplete. You need the full loop."
   },
   solution: %{
-    title: "The Solution: Control Context",
+    title: "The Solution: The Full Loop",
     description:
-      "Remove drift by controlling exactly what goes into the LLM's context. No intermediate reasoning about requirements. No inventing process.",
+      "Code generation is one step in a six-step process. Every step produces artifacts that the next step verifies against. Nothing ships without passing through the full loop.",
     approach: [
-      "Design documents define the specifications",
-      "Tests define the validation",
-      "LLM only generates code to match both"
+      "Stories define what 'done' looks like — with testable acceptance criteria",
+      "BDD specs turn acceptance criteria into executable Gherkin scenarios",
+      "Component specs and tests verify the implementation per bounded context",
+      "Application QA verifies features work end-to-end in the running app",
+      "Problems at any gate route back to the right level — story, design, or code"
     ],
-    tagline: "Here's the spec, here are the tests, make them pass."
+    tagline: "Stories → Architecture → BDD Specs → Implementation → QA → Ship."
   },
   phases: [
     %{
       number: 1,
-      title: "User Stories",
-      tagline: "Define requirements in plain English",
+      title: "Stories",
+      tagline: "Define what 'done' looks like",
       icon: "📝",
       color: "purple",
-      creates: "`user_stories.md` with acceptance criteria",
+      creates: "User stories with testable acceptance criteria",
       manual: %{
         description: "Write stories yourself or interview with AI",
         steps: [
-          "Create user_stories.md in your repo",
-          "Interview yourself about requirements",
           "Write stories in 'As a... I want... So that...' format",
-          "Add specific, testable acceptance criteria"
+          "Add specific, testable acceptance criteria to each story",
+          "Acceptance criteria become the source of truth for BDD specs and QA",
+          "Group stories by feature or workflow"
         ],
         guide: %{
           title: "How to Manage User Stories",
@@ -89,13 +90,12 @@
         }
       },
       automated: %{
-        description: "Stories MCP Server handles interviews and generation",
+        description: "Stories MCP Server handles interviews, generation, and lifecycle",
         steps: [
           "AI interviews you about requirements with structured PM persona",
-          "AI creates stories in database with full version history",
-          "AI reviews stories for quality and completeness on demand",
-          "Link stories to components automatically during design",
-          "Track status (in_progress, completed, dirty) throughout lifecycle"
+          "AI creates stories with acceptance criteria and version history",
+          "Stories link to bounded contexts and BDD specs automatically",
+          "Track status throughout the development lifecycle"
         ],
         guide: %{
           title: "Stories - AI-Managed Requirements",
@@ -104,26 +104,26 @@
         }
       },
       example: %{
-        title: "Story Schema Implementation",
+        title: "Story with Acceptance Criteria",
         file: "lib/code_my_spec/stories/story.ex",
-        description: "Ecto schema with versioning, locking, and component association"
+        description: "Ecto schema with acceptance criteria that drive BDD spec generation"
       }
     },
     %{
       number: 2,
-      title: "Context Mapping",
-      tagline: "Map stories to Phoenix contexts",
-      icon: "🗺️",
+      title: "Architecture",
+      tagline: "Define bounded contexts and dependencies",
+      icon: "🏗️",
       color: "orange",
-      creates: "Context boundaries, entity ownership, dependency graph",
+      creates: "Context boundaries, dependency graph, component spec stubs",
       manual: %{
-        description: "Map stories to Phoenix contexts using vertical slice architecture",
+        description: "Map stories to bounded contexts, define dependencies",
         steps: [
-          "Group stories by entity ownership",
-          "Apply business capability grouping within entity boundaries",
-          "Keep contexts flat (no nested contexts)",
+          "Group stories by entity ownership into bounded contexts",
+          "Map dependencies between contexts",
           "Identify components within each context",
-          "Map dependencies between contexts"
+          "Generate spec stubs for each component",
+          "Architecture review validates the design before implementation begins"
         ],
         guide: %{
           title: "Context Mapping for AI Development",
@@ -132,14 +132,12 @@
         }
       },
       automated: %{
-        description: "Architect MCP Server guides context design and validates dependencies",
+        description: "Architect MCP Server designs contexts and validates dependencies",
         steps: [
           "AI interviews you about architecture with structured architect persona",
-          "AI creates domain and coordination contexts in database",
-          "AI validates dependencies and detects circular references",
-          "Link stories to contexts automatically during design",
-          "Track architectural health (orphaned contexts, dependency depth)",
-          "Review architecture quality on demand with best practices validation"
+          "AI creates bounded contexts with dependency validation",
+          "Architecture review catches circular dependencies and orphaned contexts",
+          "Component spec stubs generated for each context"
         ],
         guide: %{
           title: "Architect - AI-Guided Context Design",
@@ -148,27 +146,69 @@
         }
       },
       example: %{
-        title: "Stories Context Design",
-        file: ".code_my_spec/design/code_my_spec/stories.md",
-        description: "Entity ownership, access patterns, public API, dependencies"
+        title: "Requirements Context Design",
+        file: ".code_my_spec/design/code_my_spec/requirements.md",
+        description: "Bounded context with checkers, definitions, and dependency graph"
       }
     },
     %{
       number: 3,
-      title: "Design Documents",
-      tagline: "Write specifications that control AI context",
-      icon: "📐",
+      title: "BDD Specs",
+      tagline: "Turn acceptance criteria into executable scenarios",
+      icon: "🎯",
       color: "purple",
-      creates: "Structured markdown specs (purpose, entities, API, components, dependencies)",
+      creates: "Gherkin scenarios for each story's acceptance criteria",
       manual: %{
-        description: "Write design docs following template structure",
+        description: "Write Gherkin scenarios from acceptance criteria",
         steps: [
-          "Create docs/design/{app_name}/{context_name}.md",
-          "Follow template structure (purpose, entities, access patterns, etc.)",
-          "Be specific about behavior, edge cases, error handling",
-          "Include acceptance criteria from relevant user stories",
-          "List every component (file) that needs to be implemented",
-          "Paste design document into AI context before asking for code"
+          "Take each acceptance criterion from the story",
+          "Write a Given/When/Then scenario for each criterion",
+          "Scenarios test the feature from the user's perspective",
+          "These run against the actual application after implementation",
+          "BDD specs are the contract between stories and working software"
+        ],
+        guide: %{
+          title: "BDD Specs for AI-Generated Code",
+          url: "/pages/bdd-specs-for-ai-generated-code",
+          status: :published
+        }
+      },
+      automated: %{
+        description: "BDD spec generation from story acceptance criteria",
+        steps: [
+          "AI generates one Gherkin scenario per acceptance criterion",
+          "Scenarios validated against story structure",
+          "Fixture generation for test data",
+          "Specs execute against the running application after implementation"
+        ],
+        guide: %{
+          title: "BDD Specification Lifecycle",
+          url: "/content/bdd-specification-lifecycle",
+          status: :planned
+        }
+      },
+      example: %{
+        title: "Story QA Spec",
+        file: "test/code_my_spec/bdd_specs/",
+        description: "Executable Gherkin scenarios generated from acceptance criteria"
+      }
+    },
+    %{
+      number: 4,
+      title: "Implementation",
+      tagline: "Specs → tests → code → green, per bounded context",
+      icon: "⚡",
+      color: "orange",
+      creates: "Component specs, tests, and implementation that passes all tests",
+      manual: %{
+        description: "For each bounded context: generate specs, write tests, implement, iterate until green",
+        steps: [
+          "Generate component specs from the context design",
+          "Write tests from specs — they should fail (no implementation yet)",
+          "Generate implementation from specs + failing tests",
+          "Run tests — iterate until all pass",
+          "Static analysis validates code quality",
+          "Repeat for each bounded context the story touches"
         ],
         guide: %{
           title: "How to Write Design Documents for AI",
@@ -177,13 +217,13 @@
         }
       },
       automated: %{
-        description: "Design Sessions orchestrator generates validated designs from architecture",
+        description: "Session orchestrators handle the full spec → test → code → green loop",
         steps: [
-          "AI generates context design from architecture and user stories",
-          "System validates design against schema (required sections, dependencies)",
-          "AI revises if validation fails, loops until design passes",
-          "System spawns parallel component design sessions",
-          "All designs committed to git with clear audit trail"
+          "Component spec sessions generate validated specs from context design",
+          "Test sessions generate tests from specs",
+          "Coding sessions implement and iterate until green",
+          "Static analysis pipeline validates the result",
+          "All sessions tracked with full audit trail"
         ],
         guide: %{
           title: "Design Sessions - AI-Generated Specifications",
@@ -192,99 +232,110 @@
         }
       },
       example: %{
-        title: "ContextDesign Schema",
-        file: "lib/code_my_spec/documents/context_design.ex",
-        description: "Embedded schema for parsing and storing design documents"
-      }
-    },
-    %{
-      number: 4,
-      title: "Test Generation",
-      tagline: "Generate tests from design documents",
-      icon: "🧪",
-      color: "orange",
-      creates: "Test files, fixtures, integration tests",
-      manual: %{
-        description: "Write tests from design docs before implementation",
-        steps: [
-          "Read design document",
-          "Write tests for each component's public API",
-          "Include edge cases and error scenarios from acceptance criteria",
-          "Create fixtures for test data",
-          "Run tests (they should fail - no implementation yet)",
-          "Paste design doc + failing tests into AI context for implementation"
-        ],
-        guide: %{
-          title: "Test-First AI Code Generation",
-          url: "/content/test_first_ai_generation",
-          status: :planned
-        }
-      },
-      automated: %{
-        description: "Component Test Sessions orchestrator generates and validates tests",
-        guide: %{
-          title: "Component Test Sessions - Automated Test Generation",
-          url: "/content/component_test_sessions",
-          status: :planned
-        }
-      },
-      example: %{
-        title: "Stories Context Tests",
-        file: "test/code_my_spec/stories_test.exs",
-        description: "Comprehensive tests for public API, edge cases, error handling"
+        title: "Requirements Context Implementation",
+        file: "lib/code_my_spec/requirements/",
+        description: "Spec → test → implementation chain with checkers and definitions"
       }
     },
     %{
       number: 5,
-      title: "Code Generation",
-      tagline: "Generate code that makes tests pass",
-      icon: "⚡",
+      title: "BDD Verification",
+      tagline: "Run BDD specs against the app — does it actually work?",
+      icon: "🧪",
       color: "purple",
-      creates: "Implementation that passes tests",
+      creates: "Verified features that pass acceptance criteria against the running app",
       manual: %{
-        description: "Paste design + tests into LLM, iterate until green",
+        description: "Run BDD specs against the application, file issues for failures",
         steps: [
-          "Paste design document into AI context",
-          "Paste failing tests into AI context",
-          "Ask AI to implement each component following the design",
-          "Run tests",
-          "If tests fail, paste errors back to AI and ask for fixes",
-          "Iterate until all tests pass",
-          "Commit with clear message referencing design doc and tests"
+          "Run Gherkin scenarios against the running application",
+          "Each scenario exercises the feature from the user's perspective",
+          "Failures trace back to specific acceptance criteria",
+          "Issues route to the right level: story problem, design problem, or code bug",
+          "Iterate until all BDD specs pass"
         ],
         guide: %{
-          title: "Design-Driven Code Generation with AI",
-          url: "/content/design_driven_code_generation",
-          status: :draft
+          title: "Verification Over Writing Code",
+          url: "/blog/verification-pipeline",
+          status: :published
         }
       },
       automated: %{
-        description: "Component Coding Sessions orchestrator implements and iterates until green",
+        description: "BDD execution engine runs specs and files structured issues",
+        steps: [
+          "Specs execute against the live application automatically",
+          "Failures generate structured issues with reproduction steps",
+          "Issues categorized by root cause: spec, design, or implementation",
+          "Feedback loop routes issues back to the appropriate phase"
+        ],
         guide: %{
-          title: "Component Coding Sessions - Full Automation",
-          url: "/content/component_coding_sessions",
+          title: "BDD Verification Pipeline",
+          url: "/content/bdd-verification-pipeline",
           status: :planned
         }
       },
       example: %{
-        title: "Stories Context Implementation",
-        file: "lib/code_my_spec/stories.ex",
-        description: "Public API generated from design doc, validated by tests"
+        title: "BDD Spec Execution",
+        file: "lib/code_my_spec/bdd_specs/",
+        description: "Executable scenarios that verify features against the running app"
+      }
+    },
+    %{
+      number: 6,
+      title: "Application QA",
+      tagline: "Browser automation, screenshots, and end-to-end verification",
+      icon: "✅",
+      color: "orange",
+      creates: "QA results with screenshots, filed issues, ship-ready features",
+      manual: %{
+        description: "QA the running application against each story",
+        steps: [
+          "Walk through each story's acceptance criteria in the running app",
+          "Take screenshots of key states",
+          "File structured issues for anything that doesn't match the story",
+          "Issues feed back into the development loop",
+          "Feature ships when QA passes"
+        ],
+        guide: %{
+          title: "Agentic QA Testing",
+          url: "/content/agentic-qa",
+          status: :draft
+        }
+      },
+      automated: %{
+        description: "QA agent tests stories against the running application with browser automation",
+        steps: [
+          "Agent reads story and acceptance criteria",
+          "Creates test brief and executes against the live app",
+          "Browser automation clicks through flows, takes screenshots",
+          "Structured issues filed automatically for failures",
+          "Journey QA tests end-to-end flows spanning multiple features"
+        ],
+        guide: %{
+          title: "Application QA - Automated Verification",
+          url: "/content/application-qa",
+          status: :planned
+        }
+      },
+      example: %{
+        title: "Story QA Session",
+        file: ".code_my_spec/status/qa/",
+        description: "QA results with screenshots, issues, and pass/fail per acceptance criterion"
       }
     }
   ],
   proof: %{
     title: "The Proof",
-    description: "I built CodeMySpec using this method. The codebase is the proof.",
+    description: "I built CodeMySpec using this method. Every feature went through the full loop.",
     evidence: [
-      "Stories context: Generated from design docs",
-      "Components context: Generated from design docs",
-      "Sessions orchestration: Generated from design docs",
-      "MCP servers: Generated from design docs",
-      "This entire application: Built with the product"
+      "Stories with acceptance criteria drive every feature",
+      "Architecture review catches design problems before implementation",
+      "BDD specs verify features do what users asked for",
+      "Unit tests verify implementations match their specs",
+      "Application QA catches what automated tests miss",
+      "The feedback loop routes problems to the right level"
     ],
     tagline:
-      "Every module links back to a design document. Every design document links back to user stories.",
+      "Every feature traces from story → BDD spec → implementation → QA. The loop is the methodology.",
     repo_url: "https://github.com/yourusername/code_my_spec"
   },
   getting_started: %{
@@ -301,12 +352,12 @@
           "Prefer more control"
         ],
         steps: [
-          "Read \"Managing User Stories\" guide",
-          "Create user_stories.md",
-          "Map contexts",
-          "Write one design doc",
-          "Write tests",
-          "Generate code with design + tests"
+          "Write user stories with testable acceptance criteria",
+          "Map stories to bounded contexts",
+          "Write BDD scenarios from acceptance criteria",
+          "Generate specs, tests, and code per context",
+          "Run BDD specs against the running app",
+          "QA each story before shipping"
         ],
         cta: %{
           text: "Start with Manual Process",
@@ -319,16 +370,17 @@
         time: "30 minutes setup",
         best_for: [
           "Phoenix/Elixir projects",
-          "Want maximum speed",
-          "Trust the automated workflow",
-          "Medium/large projects"
+          "Want the full loop automated",
+          "Medium/large projects",
+          "Teams that need traceability"
         ],
         steps: [
           "Install CodeMySpec",
-          "Run setup session",
-          "Interview generates stories",
-          "Review generated designs",
-          "Approve and generate code"
+          "AI interviews you → generates stories",
+          "Architect designs bounded contexts",
+          "BDD specs generated from acceptance criteria",
+          "Implementation sessions run the spec → test → code loop",
+          "QA agent verifies features against the running app"
         ],
         cta: %{
           text: "Try CodeMySpec",
@@ -339,31 +391,33 @@
   },
   faq: [
     %{
+      question: "How is this different from just using Cursor/Copilot/Claude?",
+      answer:
+        "Those tools generate code. This is a methodology for shipping working software. Code generation is step 4 of 6. The verification steps — BDD specs and application QA — are what catch the problems that code generation introduces."
+    },
+    %{
+      question: "Why BDD specs AND unit tests?",
+      answer:
+        "They catch different things. Unit tests verify the implementation matches its spec. BDD specs verify the feature does what the user asked for. You need both — unit tests passing doesn't mean the feature works."
+    },
+    %{
       question: "What if requirements change?",
       answer:
-        "Update stories → regenerate designs → update tests → regenerate code. Version control shows impact. The process supports change."
+        "Update the story → BDD specs update → implementation changes flow through the same loop. Every change goes through verification. The traceability means you can see exactly what's affected."
     },
     %{
       question: "What about other frameworks?",
-      answer: "Manual process works anywhere. Automation is Phoenix/Elixir only (for now)."
-    },
-    %{
-      question: "Do I need MCP servers?",
-      answer: "No. Manual process is copy-paste. MCP removes tedium."
-    },
-    %{
-      question: "How is this different from Cursor/Windsurf/etc?",
-      answer: "They optimize prompts. This controls context. Different approach."
-    },
-    %{
-      question: "What if AI still generates wrong code?",
-      answer:
-        "Tests catch it. Iterate until green. If repeatedly failing, refine design. Tests are the validation gate."
+      answer: "The manual process works with any language or framework. The automated workflow is Phoenix/Elixir only (for now)."
     },
     %{
       question: "Isn't this a lot of overhead?",
       answer:
-        "Less overhead than refactoring AI-generated technical debt. Manual process takes time; automation removes overhead."
+        "Less than you'd think. Most of the artifacts are generated. And it's far less overhead than debugging AI-generated code that passed a vibe check but doesn't actually work. The verification steps save more time than they cost."
+    },
+    %{
+      question: "What happens when BDD specs or QA finds a problem?",
+      answer:
+        "Problems get filed as structured issues and routed to the right level. A code bug goes back to implementation. A spec mismatch goes back to design. A requirements gap goes back to the story. The feedback loop is the point."
     }
   ],
   related_content: %{
@@ -379,14 +433,14 @@
         status: :published
       },
       %{
-        title: "Writing Design Documents for AI",
-        url: "/content/writing-design-documents",
+        title: "BDD Specs for AI-Generated Code",
+        url: "/pages/bdd-specs-for-ai-generated-code",
         status: :published
       },
       %{
-        title: "Complete Workflow Walkthrough",
-        url: "/content/workflow_walkthrough",
-        status: :planned
+        title: "Writing Design Documents for AI",
+        url: "/content/writing-design-documents",
+        status: :published
       }
     ],
     side_quest: [
@@ -406,18 +460,13 @@
         status: :published
       },
       %{
-        title: "Building a Components MCP Server",
-        url: "/content/components_mcp_server",
-        status: :draft
+        title: "Verification Over Writing Code",
+        url: "/blog/verification-pipeline",
+        status: :published
       },
       %{
-        title: "Session Orchestration in Phoenix",
-        url: "/content/session_orchestration",
-        status: :planned
-      },
-      %{
-        title: "CodeMySpec Product Introduction",
-        url: "/content/codemyspec_introduction",
+        title: "Application QA - Automated Verification",
+        url: "/content/application-qa",
         status: :planned
       }
     ]

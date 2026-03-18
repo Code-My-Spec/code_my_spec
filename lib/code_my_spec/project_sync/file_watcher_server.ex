@@ -36,7 +36,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   def ensure_watching(%Scope{cwd: nil}, _name), do: :ignored
 
   def ensure_watching(%Scope{cwd: cwd} = scope, name) when is_binary(cwd) do
-    GenServer.call(name, {:ensure_watching, cwd, scope})
+    GenServer.cast(name, {:ensure_watching, cwd, scope})
   end
 
   @doc """
@@ -55,23 +55,24 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   end
 
   @impl true
-  def handle_call({:ensure_watching, project_root, scope}, _from, state) do
+  def handle_cast({:ensure_watching, project_root, scope}, state) do
     if Map.has_key?(state.watchers, project_root) do
-      {:reply, :ok, state}
+      {:noreply, state}
     else
       case start_watcher(project_root) do
         {:ok, watcher_pid} ->
           entry = %{watcher_pid: watcher_pid, scope: scope}
           watchers = Map.put(state.watchers, project_root, entry)
-          {:reply, :ok, %{state | watchers: watchers}}
+          {:noreply, %{state | watchers: watchers}}
 
         {:error, reason} ->
           Logger.warning("[FileWatcher] Could not watch #{project_root}: #{inspect(reason)}")
-          {:reply, :ok, state}
+          {:noreply, state}
       end
     end
   end
 
+  @impl true
   def handle_call(:watched_dirs, _from, state) do
     {:reply, Map.keys(state.watchers), state}
   end

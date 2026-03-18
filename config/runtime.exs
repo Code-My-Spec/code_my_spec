@@ -88,6 +88,10 @@ if config_env() == :prod do
 
   config :code_my_spec, CodeMySpecWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
+    check_origin: [
+      "https://#{host}",
+      "https://www.#{host}"
+    ],
     http: [ip: {0, 0, 0, 0}, port: port],
     secret_key_base: secret_key_base
 

@@ -4,6 +4,7 @@ defmodule CodeMySpec.Requirements.CheckerType do
   use CodeMySpec.Utils.ModuleType,
     valid_types: [
       CodeMySpec.Requirements.AcceptedIssuesChecker,
+      CodeMySpec.Requirements.AllBddSpecsPassingChecker,
       CodeMySpec.Requirements.AllStoriesCompleteChecker,
       CodeMySpec.Requirements.ArtifactExistenceChecker,
       CodeMySpec.Requirements.BddSpecExistenceChecker,
@@ -18,6 +19,9 @@ defmodule CodeMySpec.Requirements.CheckerType do
       CodeMySpec.Requirements.HierarchicalChecker,
       CodeMySpec.Requirements.IncomingIssuesChecker,
       CodeMySpec.Requirements.ProjectQaChecker,
+      CodeMySpec.Requirements.QaJourneyExecuteChecker,
+      CodeMySpec.Requirements.QaJourneyPlanChecker,
+      CodeMySpec.Requirements.QaJourneyWallabyChecker,
       CodeMySpec.Requirements.SpecTestAlignmentChecker,
       CodeMySpec.Requirements.StoryQaChecker,
       CodeMySpec.Requirements.TestStatusChecker

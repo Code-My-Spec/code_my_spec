@@ -9,7 +9,9 @@ ID="${1:?Usage: dismiss-issue <id> <reason>}"
 REASON="${2:?Usage: dismiss-issue <id> <reason>}"
 PORT="${CODEMYSPEC_PORT:-4002}"
 
+JSON=$(jq -n --arg reason "$REASON" '{reason: $reason}')
+
 curl -sf -X POST "http://localhost:${PORT}/api/issues/${ID}/dismiss" \
   -H "Content-Type: application/json" \
   -H "X-Working-Dir: ${PWD}" \
-  -d "{\"reason\": \"${REASON}\"}"
+  -d "$JSON"

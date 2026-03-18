@@ -159,7 +159,9 @@ defmodule CodeMySpec.BddSpecs.Parser do
   Extract story ID from file path using naming convention.
 
   Expects directory names in format: `<story_id>_<description>` or `test_<unique>_<story_id>_<description>`.
-  Returns the last numeric ID found before an underscore followed by text.
+
+  Uses anchored patterns to avoid false matches on numbers embedded in the slug
+  (e.g. "509_sync_google_analytics_4_data" correctly returns 509, not 4).
 
   ## Examples
 
@@ -169,6 +171,9 @@ defmodule CodeMySpec.BddSpecs.Parser do
       iex> derive_story_id("/path/to/test_999_123_user_auth/spec.exs")
       123
 
+      iex> derive_story_id("/path/to/509_sync_google_analytics_4_data/spec.exs")
+      509
+
       iex> derive_story_id("/path/to/regular_dir/spec.exs")
       nil
   """
@@ -176,20 +181,17 @@ defmodule CodeMySpec.BddSpecs.Parser do
   def derive_story_id(file_path) do
     dirname = file_path |> Path.dirname() |> Path.basename()
 
-    # Try to match pattern like "test_<unique>_<story_id>_<description>"
-    # or "<story_id>_<description>" by finding the last number before underscore+text
-    matches = Regex.scan(~r/(\d+)_(?:[a-z]|$)/, dirname)
+    # First try "test_<unique>_<story_id>_<description>" pattern
+    case Regex.run(~r/^test_\d+_(\d+)_/, dirname) do
+      [_, id] ->
+        String.to_integer(id)
 
-    case matches do
-      [] ->
-        nil
-
-      matches ->
-        # Get the last match (which would be the story_id in test_<unique>_<story_id>_ pattern)
-        matches
-        |> List.last()
-        |> Enum.at(1)
-        |> String.to_integer()
+      nil ->
+        # Then try "<story_id>_<description>" pattern (ID at start of dirname)
+        case Regex.run(~r/^(\d+)_/, dirname) do
+          [_, id] -> String.to_integer(id)
+          nil -> nil
+        end
     end
   end
 
