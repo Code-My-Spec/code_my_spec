@@ -175,6 +175,13 @@ defmodule CodeMySpecWeb.Router do
   scope "/app", CodeMySpecWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    live_session :onboarding,
+      on_mount: [
+        {CodeMySpecWeb.UserAuth, :require_authenticated}
+      ] do
+      live "/onboarding", AppLive.Onboarding
+    end
+
     live_session :require_authenticated_user,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},

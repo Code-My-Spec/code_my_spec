@@ -5,7 +5,9 @@ defmodule CodeMySpecWeb.UserSessionController do
   alias CodeMySpecWeb.UserAuth
 
   def create(conn, %{"_action" => "confirmed"} = params) do
-    create(conn, params, "User confirmed successfully.")
+    conn
+    |> put_session(:user_return_to, ~p"/app/onboarding")
+    |> create(params, "User confirmed successfully.")
   end
 
   def create(conn, params) do
