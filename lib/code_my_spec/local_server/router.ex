@@ -93,6 +93,14 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&BootstrapController.install_claude_md/1)
   end
 
+  # Install Credo custom checks directories + .credo.exs config
+  post "/api/bootstrap/install-credo-checks" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&BootstrapController.install_credo_checks/1)
+  end
+
   # Install default rules
   post "/api/bootstrap/install-rules" do
     conn

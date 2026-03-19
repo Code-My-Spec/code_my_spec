@@ -16,7 +16,8 @@ defmodule CodeMySpec.FrameworkSync do
 
   @copy_dirs [
     {"priv/knowledge", Paths.framework_dir()},
-    {"priv/tools", Paths.tools_dir()}
+    {"priv/tools", Paths.tools_dir()},
+    {"priv/credo_checks", Paths.credo_checks_framework_dir()}
   ]
 
   @doc """

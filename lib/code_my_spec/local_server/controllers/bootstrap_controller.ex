@@ -362,6 +362,32 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
     end
   end
 
+  # --- Install Credo Checks ---
+
+  @doc """
+  Install Credo custom checks directory structure.
+
+  Creates framework/ and local/ subdirectories under `.code_my_spec/credo_checks/`.
+  Requires `X-Working-Dir` header.
+
+  Returns `{"status": "ok", "path": ".code_my_spec/credo_checks/"}`.
+  """
+  def install_credo_checks(conn) do
+    working_dir = conn.assigns[:working_dir]
+
+    if is_nil(working_dir) do
+      json_response(conn, 400, %{error: "X-Working-Dir header is required"})
+    else
+      case ProjectSetup.install_credo_checks(working_dir) do
+        :ok ->
+          json_response(conn, 200, %{status: "ok", path: ".code_my_spec/credo_checks/"})
+
+        {:error, reason} ->
+          json_response(conn, 500, %{error: "Failed to install credo checks: #{inspect(reason)}"})
+      end
+    end
+  end
+
   defp write_project_config(conn, working_dir, project) do
     app_name = detect_app_name(working_dir) || "my_app"
     module_name = Macro.camelize(app_name)

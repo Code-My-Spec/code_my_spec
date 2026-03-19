@@ -65,6 +65,15 @@ defmodule CodeMySpec.Paths do
   @doc "QA scripts directory (`.code_my_spec/qa/scripts`)."
   def qa_scripts_dir, do: Path.join(@base_dir, "qa/scripts")
 
+  @doc "Credo custom checks directory (`.code_my_spec/credo_checks`)."
+  def credo_checks_dir, do: Path.join(@base_dir, "credo_checks")
+
+  @doc "Framework-provided Credo checks (`.code_my_spec/credo_checks/framework`). Synced from app's priv/credo_checks/."
+  def credo_checks_framework_dir, do: Path.join(credo_checks_dir(), "framework")
+
+  @doc "Project-specific local Credo checks (`.code_my_spec/credo_checks/local`). Never touched by sync."
+  def credo_checks_local_dir, do: Path.join(credo_checks_dir(), "local")
+
   @doc "Task prompts and ephemeral agent outputs directory (`.code_my_spec/tasks`)."
   def tasks_dir, do: Path.join(@base_dir, "tasks")
 

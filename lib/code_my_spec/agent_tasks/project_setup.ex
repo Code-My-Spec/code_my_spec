@@ -108,6 +108,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     # CLAUDE.md installed
     claude_md_check = check_claude_md(working_dir)
 
+    # Credo checks configured
+    credo_checks_check = check_credo_checks_configured(working_dir)
+
     # Ignored components (optional)
     ignored_components_check = check_ignored_components(working_dir)
 
@@ -137,6 +140,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       claude_md_installed: claude_md_check.installed,
       cli_config_has_project_id: cli_config_check.has_project_id,
       application_in_web: application_check.in_web,
+      credo_checks_configured: credo_checks_check.configured,
       ignored_components_configured: ignored_components_check.configured
     }
   end
@@ -343,7 +347,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   @app_resource_dirs [
     :framework_dir,
-    :tools_dir
+    :tools_dir,
+    :credo_checks_dir
   ]
 
   defp check_app_symlinks(working_dir) do
@@ -394,6 +399,26 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
       {:error, _} ->
         %{installed: false}
+    end
+  end
+
+  # Credo checks check — .credo.exs has requires + eval_file for framework checks
+
+  defp check_credo_checks_configured(working_dir) do
+    credo_exs = Path.join(working_dir, ".credo.exs")
+
+    case File.read(credo_exs) do
+      {:ok, content} ->
+        has_requires =
+          String.contains?(content, "credo_checks/framework") and
+            String.contains?(content, "credo_checks/local")
+
+        has_eval = String.contains?(content, "credo_checks/framework/checks.exs")
+
+        %{configured: has_requires and has_eval}
+
+      {:error, _} ->
+        %{configured: false}
     end
   end
 
@@ -450,9 +475,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       case File.read(mix_exs_path) do
         {:ok, content} ->
           has_preferred_env = Regex.match?(~r/spex:\s*:test/, content)
-          has_alias = Regex.match?(~r/spex:\s*\["spex/, content)
 
-          %{complete: has_preferred_env and has_alias}
+          %{complete: has_preferred_env}
 
         _ ->
           %{complete: false}
@@ -545,6 +569,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     |> maybe_add_symlinks_instructions(status)
     |> maybe_add_agents_md_instructions(status)
     |> maybe_add_rules_instructions(status)
+    |> maybe_add_credo_checks_instructions(status)
     |> maybe_add_claude_md_instructions(status)
     |> maybe_add_cli_config_instructions(status)
     |> maybe_add_ignored_components_instructions(status)
@@ -667,23 +692,12 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     instruction = """
     ## Configure Spex
 
-    Add the following to your `mix.exs` to enable BDD spec testing:
+    Add `spex: :test` to `preferred_envs` in `cli/0` in your `mix.exs`:
 
-    **1. Add `spex: :test` to `preferred_envs` in `cli/0`:**
     ```elixir
     def cli do
       [
         preferred_envs: [spex: :test]
-      ]
-    end
-    ```
-
-    **2. Add spex alias to `aliases/0`:**
-    ```elixir
-    defp aliases do
-      [
-        spex: ["spex --quiet"],
-        ...
       ]
     end
     ```
@@ -830,20 +844,21 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   defp maybe_add_symlinks_instructions(sections, _status) do
     instruction = """
-    ## Install Framework Knowledge & Tools
+    ## Install Framework Knowledge, Tools & Credo Checks
 
-    CodeMySpec copies framework knowledge and tools into your project on CLI startup.
+    Install framework resources into the project:
+    ```bash
+    curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks \\
+      -H "Content-Type: application/json" \\
+      -H "X-Working-Dir: $(pwd)"
+    ```
 
-    These directories are created automatically when the CLI starts from a project
-    that has a `.code_my_spec/` directory:
-
+    This copies from the CLI into your project:
     - `.code_my_spec/framework/` — framework reference (LiveView, DaisyUI, Boundary, etc.)
     - `.code_my_spec/tools/` — helper scripts (e.g., `set-story-component`)
+    - `.code_my_spec/credo_checks/framework/` — custom Credo checks
 
-    If they're missing, restart the CLI (`cms`) from the project root directory.
-
-    These files are kept in sync with the CLI version automatically on each startup.
-    Add them to `.gitignore` — they're regenerated from the CLI.
+    These are kept in sync with the CLI version — re-run the command after CLI upgrades.
     """
 
     [instruction | sections]
@@ -890,6 +905,48 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     This copies default rule files into `.code_my_spec/rules/`.
     Rules are safe to customize — existing files are never overwritten.
     These files should be committed to version control.
+    """
+
+    [instruction | sections]
+  end
+
+  defp maybe_add_credo_checks_instructions(sections, %{credo_checks_configured: true}),
+    do: sections
+
+  defp maybe_add_credo_checks_instructions(sections, _status) do
+    instruction = """
+    ## Configure Credo Custom Checks
+
+    CodeMySpec provides custom Credo checks via `.code_my_spec/credo_checks/`.
+
+    First, create the local checks directory for project-specific checks:
+    ```bash
+    mkdir -p .code_my_spec/credo_checks/local
+    ```
+
+    Then edit `.credo.exs` (create it if it doesn't exist) and configure:
+
+    1. Add `requires` to compile check files:
+    ```elixir
+    requires: [
+      ".code_my_spec/credo_checks/framework/**/*.ex",
+      ".code_my_spec/credo_checks/local/**/*.ex"
+    ]
+    ```
+
+    2. Add `extra` to run framework checks (auto-updates when new checks ship):
+    ```elixir
+    checks: %{
+      extra:
+        if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
+          do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
+          else: []
+        )
+    }
+    ```
+
+    The `framework/` directory is synced from the CLI via bootstrap.
+    The `local/` directory is for your project-specific custom checks.
     """
 
     [instruction | sections]
@@ -1184,7 +1241,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   @app_copy_dirs [
     {"priv/knowledge", :framework_dir},
-    {"priv/tools", :tools_dir}
+    {"priv/tools", :tools_dir},
+    {"priv/credo_checks", :credo_checks_framework_dir}
   ]
 
   @doc """
@@ -1275,6 +1333,29 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
         {:error, reason} ->
           {:error, {:source_dir, reason}}
       end
+    end
+  end
+
+  @doc """
+  Install Credo custom checks directory structure.
+
+  Creates:
+  - `.code_my_spec/credo_checks/framework/` (populated by FrameworkSync)
+  - `.code_my_spec/credo_checks/local/` (for project-specific checks)
+
+  The `.credo.exs` configuration is handled by the setup prompt — the LLM
+  adds the `requires` paths as part of project setup.
+
+  Returns `:ok` on success, `{:error, reason}` on failure.
+  """
+  @spec install_credo_checks(String.t()) :: :ok | {:error, term()}
+  def install_credo_checks(working_dir) do
+    framework_dir = Path.join(working_dir, CodeMySpec.Paths.credo_checks_framework_dir())
+    local_dir = Path.join(working_dir, CodeMySpec.Paths.credo_checks_local_dir())
+
+    with :ok <- File.mkdir_p(framework_dir),
+         :ok <- File.mkdir_p(local_dir) do
+      :ok
     end
   end
 
@@ -1569,6 +1650,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     :app_symlinks_installed,
     :agents_md_installed,
     :rules_installed,
+    :credo_checks_configured,
     :claude_md_installed,
     :cli_config_has_project_id
   ]
@@ -1620,7 +1702,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Compilers (boundary + spex)", status.compilers_configured,
        "Add compilers: compilers(Mix.env()) to project/0 with per-env defp compilers(:test) including :spex and defp compilers(_) without :spex"},
       {"Spex config", status.spex_config_complete,
-       "Add preferred_envs spex: :test to cli/0 and spex: [\"spex --quiet\"] alias"},
+       "Add preferred_envs spex: :test to cli/0 in mix.exs"},
       {"Test boundaries", status.test_boundaries_configured,
        "Create boundary namespace modules in test/support/ with use Boundary"},
       {"Test support namespace", status.test_support_namespace_correct,
@@ -1630,11 +1712,13 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Project structure dirs", status.project_structure_complete,
        "Create directories: #{Enum.join(status.missing_structure_dirs, ", ")}"},
       {"App resources (framework + tools)", status.app_symlinks_installed,
-       "Restart the CLI from the project root, or run: curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks -H 'X-Working-Dir: <project_dir>'"},
+       "Run: curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks -H 'Content-Type: application/json' -H 'X-Working-Dir: <project_dir>'"},
       {"AGENTS.md", status.agents_md_installed,
        "Generate AGENTS.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md -H 'X-Working-Dir: <project_dir>'"},
       {"Rules", status.rules_installed,
        "Install rules: curl -s -X POST http://localhost:4002/api/bootstrap/install-rules -H 'X-Working-Dir: <project_dir>'"},
+      {"Credo custom checks", status.credo_checks_configured,
+       "Add requires paths and extra: elem(Code.eval_file(\".code_my_spec/credo_checks/framework/checks.exs\"), 0) to .credo.exs"},
       {"CLAUDE.md", status.claude_md_installed,
        "Install CLAUDE.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-claude-md -H 'X-Working-Dir: <project_dir>'"},
       {"CLI config", status.cli_config_has_project_id,
