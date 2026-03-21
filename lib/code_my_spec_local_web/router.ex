@@ -73,6 +73,7 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/requirements", RequirementsController, :index
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt
+    get "/requirements/:name/:child_id", RequirementsController, :child
   end
 
   # ── Legacy routes (tasks, not yet migrated to LiveView) ─────────

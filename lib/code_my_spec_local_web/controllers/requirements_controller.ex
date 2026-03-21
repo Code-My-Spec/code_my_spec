@@ -48,6 +48,22 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     end
   end
 
+  def child(conn, %{"name" => _name, "child_id" => child_id}) do
+    scope = conn.assigns.current_scope
+    step = Enum.find(CodeMySpec.Setup.SetupSteps.all(), &(&1.id == child_id))
+
+    if step do
+      session = %{project: scope.active_project}
+
+      case step.module.command(scope, session) do
+        {:ok, prompt_text} -> text(conn, prompt_text)
+        {:error, reason} -> conn |> put_status(500) |> text("Error: #{inspect(reason)}")
+      end
+    else
+      conn |> put_status(404) |> text("Step not found: #{child_id}")
+    end
+  end
+
   def show(conn, %{"name" => name}) do
     scope = conn.assigns.current_scope
     project = Repo.preload(scope.active_project, :requirements)
