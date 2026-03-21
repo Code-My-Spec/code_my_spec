@@ -69,11 +69,11 @@ defmodule CodeMySpec.Projects do
   Gets a project by name (case-insensitive). For local web routes using project name in URL.
   """
   def get_project_by_name(name) when is_binary(name) do
-    slug = name |> String.replace("-", " ") |> String.downcase()
+    slug = name |> String.replace(~r/[-_]/, " ") |> String.downcase()
 
     query =
       from p in Project,
-        where: fragment("lower(?)", p.name) == ^slug
+        where: fragment("lower(replace(replace(?, '-', ' '), '_', ' '))", p.name) == ^slug
 
     case Repo.one(query) do
       nil -> {:error, :not_found}
