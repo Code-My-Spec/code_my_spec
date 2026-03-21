@@ -1,30 +1,17 @@
 defmodule CodeMySpec.Requirements.ProjectSetupChecker do
   @moduledoc """
-  Checker that verifies a project's bootstrap setup is complete.
+  Checker for the project_setup requirement.
 
-  Delegates to `ProjectSetup.check_status/2` and checks all required
-  setup steps (deps, compilers, project structure, CLI config, etc.).
+  Evaluates each setup step from `SetupSteps.all()` inline by calling
+  the step module's `evaluate/3`. Reports a checklist in details.
+  Satisfied when all steps pass.
   """
 
   @behaviour CodeMySpec.Requirements.CheckerBehaviour
 
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Requirements.RequirementDefinition
+  alias CodeMySpec.Setup.SetupSteps
   alias CodeMySpec.Users.Scope
-
-  @required_keys [
-    :elixir_installed,
-    :phoenix_project_exists,
-    :codemyspec_deps_installed,
-    :compilers_configured,
-    :project_dir_exists,
-    :project_structure_complete,
-    :app_symlinks_installed,
-    :agents_md_installed,
-    :rules_installed,
-    :claude_md_installed,
-    :cli_config_has_project_id
-  ]
 
   def check(
         %Scope{} = scope,
@@ -38,32 +25,31 @@ defmodule CodeMySpec.Requirements.ProjectSetupChecker do
         _entity,
         _opts \\ []
       ) do
-    env = scope.environment
+    steps = SetupSteps.all()
 
-    {satisfied, score, details} =
-      if env && env.cwd do
-        status = ProjectSetup.check_status(env, %{})
+    results =
+      Enum.map(steps, fn step ->
+        status =
+          case step.module.evaluate(scope, %{}) do
+            {:ok, :valid} -> :done
+            {:ok, :invalid, detail} -> {:not_done, detail}
+            _ -> {:not_done, "unknown"}
+          end
 
-        passing =
-          Enum.count(@required_keys, fn key -> Map.get(status, key, false) end)
+        {step.id, step.name, status}
+      end)
 
-        total = length(@required_keys)
-        all_pass = passing == total
+    total = length(results)
+    done = Enum.count(results, fn {_, _, s} -> s == :done end)
+    all_done = done == total
 
-        failing =
-          @required_keys
-          |> Enum.reject(fn key -> Map.get(status, key, false) end)
-          |> Enum.map(&Atom.to_string/1)
-
-        {all_pass, passing / total,
-         %{
-           passing: passing,
-           total: total,
-           failing: failing
-         }}
-      else
-        {false, 0.0, %{reason: "No working directory available"}}
-      end
+    checklist =
+      Enum.map(results, fn {id, step_name, status} ->
+        case status do
+          :done -> %{id: id, name: step_name, satisfied: true}
+          {:not_done, detail} -> %{id: id, name: step_name, satisfied: false, detail: detail}
+        end
+      end)
 
     %{
       name: name,
@@ -71,10 +57,14 @@ defmodule CodeMySpec.Requirements.ProjectSetupChecker do
       description: description,
       checker_module: checker,
       satisfied_by: satisfied_by,
-      satisfied: satisfied,
-      score: Float.round(score, 2),
+      satisfied: all_done,
+      score: if(total > 0, do: Float.round(done / total, 2), else: 0.0),
       checked_at: DateTime.utc_now(),
-      details: details
+      details: %{
+        done: done,
+        total: total,
+        checklist: checklist
+      }
     }
   end
 end

@@ -470,7 +470,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ProjectSetup,
         artifact_type: :specification,
         description: "Project bootstrap setup is complete",
-        prerequisites: []
+        prerequisites: [],
+        scope: :children
       })
 
     definition
