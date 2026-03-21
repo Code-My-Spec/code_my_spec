@@ -113,14 +113,22 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         </span>
       </div>
 
-      <div :if={@requirement.details != %{}} style="margin-bottom: 24px;">
-        <h2>Details</h2>
-        <pre>{Jason.encode!(@requirement.details, pretty: true)}</pre>
+      <div :if={checklist = @requirement.details["checklist"] || @requirement.details[:checklist]} style="margin-bottom: 24px;">
+        <.progress done={@requirement.details["done"] || @requirement.details[:done] || 0} total={@requirement.details["total"] || @requirement.details[:total] || 0} />
+        <table class="checklist">
+          <tr :for={item <- checklist} class={if item["satisfied"] || item[:satisfied], do: "done", else: "actionable"}>
+            <td class="icon">{if item["satisfied"] || item[:satisfied], do: raw("&#10003;"), else: raw("&#9744;")}</td>
+            <td>
+              {item["name"] || item[:name]}
+              <span :if={detail = item["detail"] || item[:detail]} class="detail">{detail}</span>
+            </td>
+          </tr>
+        </table>
       </div>
 
-      <div :if={@requirement.satisfied_by} style="margin-bottom: 24px;">
-        <h2>Satisfied by</h2>
-        <code>{inspect(@requirement.satisfied_by)}</code>
+      <div :if={@requirement.details != %{} && !(@requirement.details["checklist"] || @requirement.details[:checklist])} style="margin-bottom: 24px;">
+        <h2>Details</h2>
+        <pre>{Jason.encode!(@requirement.details, pretty: true)}</pre>
       </div>
 
       <div :if={@requirement.checked_at} style="color: #64748b; font-size: 13px;">
