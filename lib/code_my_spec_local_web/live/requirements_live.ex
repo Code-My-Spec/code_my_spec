@@ -91,17 +91,11 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       requirement = Enum.find(project.requirements, &(&1.name == req_name))
 
       if requirement do
-        command_text =
-          if requirement.satisfied_by do
-            generate_prompt(requirement.satisfied_by, scope, project)
-          end
-
         {:noreply,
          assign(socket,
            project: project,
            scope: scope,
            requirement: requirement,
-           command_text: command_text,
            error: nil
          )}
       else
@@ -163,11 +157,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         <span :if={@requirement.score} style="color: #94a3b8; margin-left: 8px;">
           (score: {Float.round(@requirement.score, 2)})
         </span>
-      </div>
-
-      <%!-- Command output: the instructions for the agent --%>
-      <div :if={@command_text} style="margin-bottom: 24px;">
-        <pre>{@command_text}</pre>
       </div>
 
       <%!-- Child checklist (for scope: :children requirements) --%>
