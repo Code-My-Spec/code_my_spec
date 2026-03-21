@@ -23,6 +23,9 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/setup", SetupLive, :index
       live "/setup/:step", SetupLive, :show
       live "/setup/:step/prompt", SetupLive, :prompt
+
+      live "/projects/:project_id/requirements", RequirementsLive, :index
+      live "/projects/:project_id/requirements/:name", RequirementsLive, :show
     end
   end
 
@@ -53,6 +56,13 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/", SetupController, :index
     get "/:step", SetupController, :show
     get "/:step/prompt", SetupController, :prompt
+  end
+
+  scope "/api/projects/:project_id", CodeMySpecLocalWeb do
+    pipe_through :api_with_scope
+
+    get "/requirements", RequirementsController, :index
+    get "/requirements/:name", RequirementsController, :show
   end
 
   # ── Legacy routes (tasks, not yet migrated to LiveView) ─────────
