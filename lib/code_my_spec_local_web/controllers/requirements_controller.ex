@@ -7,6 +7,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   """
   use CodeMySpecLocalWeb, :controller
 
+  alias CodeMySpec.Prompts
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpecLocalWeb.RequirementsMarkdown
@@ -40,11 +41,21 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
       true ->
         session = %{project: project}
+        {:ok, parent_text} = requirement.satisfied_by.command(scope, session)
 
-        case requirement.satisfied_by.command(scope, session) do
-          {:ok, prompt_text} -> text(conn, prompt_text)
-          {:error, reason} -> conn |> put_status(500) |> text("Error: #{inspect(reason)}")
-        end
+        prompt_text =
+          case requirement.scope do
+            :children ->
+              checklist = requirement.details["checklist"] || requirement.details[:checklist] || []
+              project_slug = project_slug(project)
+              base_url = "/api/projects/#{project_slug}/requirements/#{name}"
+              Prompts.build_children_prompt(parent_text, checklist, base_url)
+
+            _ ->
+              parent_text
+          end
+
+        text(conn, prompt_text)
     end
   end
 
@@ -62,6 +73,13 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     else
       conn |> put_status(404) |> text("Step not found: #{child_id}")
     end
+  end
+
+  defp project_slug(project) do
+    (project.name || "project")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 
   def show(conn, %{"name" => name}) do

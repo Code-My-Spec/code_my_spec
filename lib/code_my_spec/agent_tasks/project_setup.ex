@@ -23,55 +23,18 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   completed steps based on check_status results.
   """
   @spec command(term(), map(), keyword()) :: {:ok, String.t()}
-  def command(scope, session, _opts \\ []) do
-    project = session[:project] || scope.active_project
-    project_slug = project_slug(project)
-    base_url = "http://localhost:4003/api/projects/#{project_slug}/requirements/project_setup"
+  def command(_scope, _session, _opts \\ []) do
+    {:ok, """
+    # Project Setup
 
-    steps = CodeMySpec.Setup.SetupSteps.all()
+    Configure this Phoenix project for CodeMySpec integration.
 
-    step_results =
-      Enum.map(steps, fn step ->
-        status =
-          case step.module.evaluate(scope, %{}) do
-            {:ok, :valid} -> :done
-            {:ok, :invalid, _} -> :not_done
-            _ -> :not_done
-          end
+    This includes installing dependencies, configuring compilers,
+    setting up project structure, and installing framework resources.
 
-        {step, status}
-      end)
-
-    done = Enum.count(step_results, fn {_, s} -> s == :done end)
-    total = length(step_results)
-
-    checklist =
-      Enum.map_join(step_results, "\n", fn {step, status} ->
-        case status do
-          :done -> "- [x] #{step.name}"
-          :not_done -> "- [ ] #{step.name} — `GET #{base_url}/#{step.id}`"
-        end
-      end)
-
-    prompt = """
-    # Project Setup (#{done}/#{total})
-
-    Complete each unchecked step below. For each one, fetch the instructions
-    from the linked endpoint and follow them.
-
-    #{checklist}
-
-    Work through the steps in order. When all steps are complete, stop the session.
-    """
-
-    {:ok, prompt}
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
+    Fetch instructions for each step from the linked endpoints
+    and complete them in order.
+    """}
   end
 
   @doc """
