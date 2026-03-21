@@ -7,7 +7,9 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.ProjectSync.Sync
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @impl true
@@ -16,6 +18,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
      assign(socket,
        project: nil,
        working_dir: nil,
+       scope: nil,
        sync_status: :idle,
        sync_result: nil,
        error: nil
@@ -26,22 +29,25 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   def handle_params(%{"project_id" => project_id, "dir" => dir}, _uri, socket) do
     working_dir = Path.expand(dir)
 
-    case Scope.from_local_config(working_dir) do
-      {:ok, scope} ->
-        if scope.active_project.id == project_id do
-          {:noreply,
-           assign(socket,
-             project: scope.active_project,
-             working_dir: working_dir,
-             scope: scope,
-             error: nil
-           )}
-        else
-          {:noreply, assign(socket, error: "Project ID mismatch")}
-        end
+    case Repo.get(CodeMySpec.Projects.Project, project_id) do
+      nil ->
+        {:noreply, assign(socket, error: "Project not found: #{project_id}")}
 
-      {:error, reason} ->
-        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
+      project ->
+        scope = %Scope{
+          active_project: project,
+          active_project_id: project.id,
+          cwd: working_dir,
+          environment: Environment.new(:local, working_dir)
+        }
+
+        {:noreply,
+         assign(socket,
+           project: project,
+           working_dir: working_dir,
+           scope: scope,
+           error: nil
+         )}
     end
   end
 
