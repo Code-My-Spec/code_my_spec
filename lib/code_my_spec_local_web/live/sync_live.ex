@@ -7,10 +7,10 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.ProjectSync.Sync
-  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+
+  require Logger
 
   @impl true
   def mount(_params, _session, socket) do
@@ -26,40 +26,34 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   end
 
   @impl true
-  def handle_params(%{"project_id" => project_id, "dir" => dir}, _uri, socket) do
+  def handle_params(%{"dir" => dir}, _uri, socket) do
     working_dir = Path.expand(dir)
 
-    case Repo.get(CodeMySpec.Projects.Project, project_id) do
-      nil ->
-        {:noreply, assign(socket, error: "Project not found: #{project_id}")}
-
-      project ->
-        scope = %Scope{
-          active_project: project,
-          active_project_id: project.id,
-          cwd: working_dir,
-          environment: Environment.new(:local, working_dir)
-        }
-
+    case Scope.from_local_config(working_dir) do
+      {:ok, scope} ->
         {:noreply,
          assign(socket,
-           project: project,
+           project: scope.active_project,
            working_dir: working_dir,
            scope: scope,
            error: nil
          )}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
     end
   end
 
-  def handle_params(%{"project_id" => _project_id}, _uri, socket) do
+  def handle_params(_params, _uri, socket) do
     {:noreply, assign(socket, error: "Missing ?dir= parameter")}
   end
 
   @impl true
   def handle_event("sync", _params, socket) do
     socket = assign(socket, sync_status: :running, sync_result: nil)
+    working_dir = socket.assigns.working_dir
 
-    case Sync.incremental_sync(socket.assigns.scope, write_status: true) do
+    case Sync.incremental_sync(socket.assigns.scope, base_dir: working_dir, write_status: true) do
       {:ok, result} ->
         {:noreply,
          assign(socket,
@@ -68,6 +62,8 @@ defmodule CodeMySpecLocalWeb.SyncLive do
          )}
 
       {:error, reason} ->
+        Logger.error("[SyncLive] Sync failed: #{inspect(reason)}")
+
         {:noreply,
          assign(socket,
            sync_status: :error,
