@@ -9,6 +9,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementDefinitionData
 
   @impl true
   def mount(_params, _session, socket) do
@@ -121,10 +122,15 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   end
 
   defp requirements_list(assigns) do
-    grouped =
+    # Sort by definition order (prerequisite/dependency order)
+    definition_order =
+      RequirementDefinitionData.project_requirements()
+      |> Enum.with_index()
+      |> Map.new(fn {defn, idx} -> {defn.name, idx} end)
+
+    sorted =
       assigns.requirements
-      |> Enum.sort_by(& &1.name)
-      |> Enum.group_by(& &1.artifact_type)
+      |> Enum.sort_by(fn req -> Map.get(definition_order, req.name, 999) end)
 
     actionable_names =
       assigns.actionable
@@ -132,21 +138,18 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       |> List.flatten()
       |> MapSet.new(& &1.name)
 
-    assigns = assign(assigns, grouped: grouped, actionable_names: actionable_names)
+    assigns = assign(assigns, sorted: sorted, actionable_names: actionable_names)
 
     ~H"""
-    <div :for={{type, reqs} <- @grouped} style="margin-bottom: 24px;">
-      <h2>{type}</h2>
-      <table class="checklist">
-        <tr :for={req <- reqs} class={if req.satisfied, do: "done", else: if(MapSet.member?(@actionable_names, req.name), do: "actionable", else: "blocked")}>
-          <td class="icon">{if req.satisfied, do: raw("&#10003;"), else: raw("&#9744;")}</td>
-          <td>
-            <a href={"/projects/#{@project.id}/requirements/#{req.name}"}>{req.name}</a>
-            <span class="detail">{req.description}</span>
-          </td>
-        </tr>
-      </table>
-    </div>
+    <table class="checklist">
+      <tr :for={req <- @sorted} class={if req.satisfied, do: "done", else: if(MapSet.member?(@actionable_names, req.name), do: "actionable", else: "blocked")}>
+        <td class="icon">{if req.satisfied, do: raw("&#10003;"), else: raw("&#9744;")}</td>
+        <td>
+          <a href={"/projects/#{@project.id}/requirements/#{req.name}"}>{req.name}</a>
+          <span class="detail">{req.description}</span>
+        </td>
+      </tr>
+    </table>
     """
   end
 

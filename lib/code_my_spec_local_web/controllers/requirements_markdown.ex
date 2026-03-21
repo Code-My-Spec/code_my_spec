@@ -4,14 +4,21 @@ defmodule CodeMySpecLocalWeb.RequirementsMarkdown do
   """
 
   def index(%{project: project, requirements: requirements, actionable: actionable}) do
+    alias CodeMySpec.Requirements.RequirementDefinitionData
+
     name = project.name || "Project"
     total = length(requirements)
     satisfied = Enum.count(requirements, & &1.satisfied)
 
-    grouped =
+    # Sort by definition order (prerequisite/dependency order)
+    definition_order =
+      RequirementDefinitionData.project_requirements()
+      |> Enum.with_index()
+      |> Map.new(fn {defn, idx} -> {defn.name, idx} end)
+
+    sorted =
       requirements
-      |> Enum.sort_by(& &1.name)
-      |> Enum.group_by(& &1.artifact_type)
+      |> Enum.sort_by(fn req -> Map.get(definition_order, req.name, 999) end)
 
     actionable_names =
       actionable
@@ -19,19 +26,14 @@ defmodule CodeMySpecLocalWeb.RequirementsMarkdown do
       |> List.flatten()
       |> MapSet.new(& &1.name)
 
-    sections =
-      Enum.map_join(grouped, "\n\n", fn {type, reqs} ->
-        lines =
-          Enum.map_join(reqs, "\n", fn req ->
-            check = if req.satisfied, do: "[x]", else: "[ ]"
-            actionable_tag = if MapSet.member?(actionable_names, req.name), do: " (actionable)", else: ""
-            "- #{check} **#{req.name}** — #{req.description}#{actionable_tag}"
-          end)
-
-        "## #{type}\n\n#{lines}"
+    lines =
+      Enum.map_join(sorted, "\n", fn req ->
+        check = if req.satisfied, do: "[x]", else: "[ ]"
+        actionable_tag = if MapSet.member?(actionable_names, req.name), do: " (actionable)", else: ""
+        "- #{check} **#{req.name}** — #{req.description}#{actionable_tag}"
       end)
 
-    "# #{name} — Requirements (#{satisfied}/#{total})\n\n#{sections}\n"
+    "# #{name} — Requirements (#{satisfied}/#{total})\n\n#{lines}\n"
   end
 
   def show(%{requirement: req}) do

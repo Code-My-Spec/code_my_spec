@@ -275,12 +275,27 @@ defmodule CodeMySpec.Requirements.Sync do
     project = scope.active_project
     definitions = RequirementsRegistry.get_project_requirements()
 
+    Logger.info("[RequirementsSync] Syncing #{length(definitions)} project requirements: #{inspect(Enum.map(definitions, & &1.name))}")
+
     Requirements.clear_project_requirements(scope, project, opts)
 
+    check_results = Requirements.check_requirements(scope, project, definitions, opts)
+    Logger.info("[RequirementsSync] Check results: #{inspect(Enum.map(check_results, fn r -> {r.name, r.satisfied} end))}")
+
     requirements =
-      Requirements.check_requirements(scope, project, definitions, opts)
-      |> Enum.map(&create_project_requirement(scope, project, &1, opts))
+      check_results
+      |> Enum.map(fn result ->
+        case create_project_requirement(scope, project, result, opts) do
+          nil ->
+            Logger.error("[RequirementsSync] Failed to persist: #{result.name}")
+            nil
+          req ->
+            req
+        end
+      end)
       |> Enum.reject(&is_nil/1)
+
+    Logger.info("[RequirementsSync] Persisted #{length(requirements)} project requirements")
 
     %{project | requirements: requirements}
   end
