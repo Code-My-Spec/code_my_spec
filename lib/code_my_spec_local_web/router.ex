@@ -24,6 +24,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/setup/:step", SetupLive, :show
       live "/setup/:step/prompt", SetupLive, :prompt
 
+      live "/projects/:project_id/sync", SyncLive
       live "/projects/:project_id/requirements", RequirementsLive, :index
       live "/projects/:project_id/requirements/:name", RequirementsLive, :show
     end
@@ -61,6 +62,7 @@ defmodule CodeMySpecLocalWeb.Router do
   scope "/api/projects/:project_id", CodeMySpecLocalWeb do
     pipe_through :api_with_scope
 
+    post "/sync", SyncController, :create
     get "/requirements", RequirementsController, :index
     get "/requirements/:name", RequirementsController, :show
   end
