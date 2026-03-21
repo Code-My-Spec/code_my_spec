@@ -26,6 +26,28 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     text(conn, markdown)
   end
 
+  def prompt(conn, %{"project_id" => _project_id, "name" => name}) do
+    scope = conn.assigns.current_scope
+    project = Repo.preload(scope.active_project, :requirements)
+    requirement = Enum.find(project.requirements, &(&1.name == name))
+
+    cond do
+      is_nil(requirement) ->
+        conn |> put_status(404) |> text("Requirement not found: #{name}")
+
+      is_nil(requirement.satisfied_by) ->
+        conn |> put_status(400) |> text("No task module for requirement: #{name}")
+
+      true ->
+        session = %{project: project}
+
+        case requirement.satisfied_by.command(scope, session) do
+          {:ok, prompt_text} -> text(conn, prompt_text)
+          {:error, reason} -> conn |> put_status(500) |> text("Error: #{inspect(reason)}")
+        end
+    end
+  end
+
   def show(conn, %{"project_id" => _project_id, "name" => name}) do
     scope = conn.assigns.current_scope
     project = Repo.preload(scope.active_project, :requirements)

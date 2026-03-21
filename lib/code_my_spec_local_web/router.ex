@@ -27,6 +27,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_id/sync", SyncLive
       live "/projects/:project_id/requirements", RequirementsLive, :index
       live "/projects/:project_id/requirements/:name", RequirementsLive, :show
+      live "/projects/:project_id/requirements/:name/prompt", RequirementsLive, :prompt
     end
   end
 
@@ -65,6 +66,7 @@ defmodule CodeMySpecLocalWeb.Router do
     post "/sync", SyncController, :create
     get "/requirements", RequirementsController, :index
     get "/requirements/:name", RequirementsController, :show
+    get "/requirements/:name/prompt", RequirementsController, :prompt
   end
 
   # ── Legacy routes (tasks, not yet migrated to LiveView) ─────────
