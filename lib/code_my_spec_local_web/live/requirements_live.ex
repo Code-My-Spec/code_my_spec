@@ -3,13 +3,15 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   Human interface for project requirements status.
 
   Shows all requirements for a project with their satisfaction status,
-  grouped by artifact type. Replaces the static .code_my_spec/status/ files.
+  sorted by prerequisite order.
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Projects
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
@@ -25,10 +27,10 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   end
 
   @impl true
-  def handle_params(%{"project_id" => project_id, "name" => name}, _uri, %{assigns: %{live_action: :prompt}} = socket) do
-    with {:ok, scope} <- resolve_scope_for_project(project_id) do
-      project = Repo.preload(scope.active_project, :requirements)
-      requirement = Enum.find(project.requirements, &(&1.name == name))
+  def handle_params(%{"project_name" => name, "name" => req_name}, _uri, %{assigns: %{live_action: :prompt}} = socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      project = Repo.preload(project, :requirements)
+      requirement = Enum.find(project.requirements, &(&1.name == req_name))
 
       if requirement && requirement.satisfied_by do
         prompt_text = generate_prompt(requirement.satisfied_by, scope, project)
@@ -41,37 +43,32 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
            error: nil
          )}
       else
-        {:noreply, assign(socket, error: "No prompt available for: #{name}")}
+        {:noreply, assign(socket, error: "No prompt available for: #{req_name}")}
       end
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
   end
 
-  def handle_params(%{"project_id" => project_id, "name" => name}, _uri, %{assigns: %{live_action: :show}} = socket) do
-    with {:ok, scope} <- resolve_scope_for_project(project_id) do
-      project = Repo.preload(scope.active_project, :requirements)
-      requirement = Enum.find(project.requirements, &(&1.name == name))
+  def handle_params(%{"project_name" => name, "name" => req_name}, _uri, %{assigns: %{live_action: :show}} = socket) do
+    with {:ok, project, _scope} <- load_project_and_scope(name) do
+      project = Repo.preload(project, :requirements)
+      requirement = Enum.find(project.requirements, &(&1.name == req_name))
 
       if requirement do
-        {:noreply,
-         assign(socket,
-           project: project,
-           requirement: requirement,
-           error: nil
-         )}
+        {:noreply, assign(socket, project: project, requirement: requirement, error: nil)}
       else
-        {:noreply, assign(socket, error: "Requirement not found: #{name}")}
+        {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
       end
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
   end
 
-  def handle_params(%{"project_id" => project_id}, _uri, socket) do
-    with {:ok, scope} <- resolve_scope_for_project(project_id) do
-      project = Repo.preload(scope.active_project, :requirements)
-      requirements = load_requirements(scope, project)
+  def handle_params(%{"project_name" => name}, _uri, socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      project = Repo.preload(project, :requirements)
+      requirements = project.requirements || []
       project = %{project | requirements: requirements}
       actionable = Requirements.next_actionable(scope, project)
 
@@ -103,7 +100,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     </div>
 
     <div :if={!@error && @project && @live_action == :show && @requirement}>
-      <a href={"/projects/#{@project.id}/requirements"} class="back-link">&larr; Back to requirements</a>
+      <a href={"/projects/#{project_slug(@project)}/requirements"} class="back-link">&larr; Back to requirements</a>
       <h1>{@requirement.name}</h1>
       <p style="color: #94a3b8; margin-bottom: 16px;">{@requirement.description}</p>
 
@@ -130,13 +127,13 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         Last checked: {Calendar.strftime(@requirement.checked_at, "%Y-%m-%d %H:%M:%S UTC")}
       </div>
 
-      <a :if={@requirement.satisfied_by} href={"/projects/#{@project.id}/requirements/#{@requirement.name}/prompt"} style="display: inline-block; margin-top: 12px;">
+      <a :if={@requirement.satisfied_by} href={"/projects/#{project_slug(@project)}/requirements/#{@requirement.name}/prompt"} style="display: inline-block; margin-top: 12px;">
         View prompt &rarr;
       </a>
     </div>
 
     <div :if={!@error && @project && @live_action == :prompt && @requirement}>
-      <a href={"/projects/#{@project.id}/requirements/#{@requirement.name}"} class="back-link">&larr; Back to requirement</a>
+      <a href={"/projects/#{project_slug(@project)}/requirements/#{@requirement.name}"} class="back-link">&larr; Back to requirement</a>
       <h1>{@requirement.name} — Prompt</h1>
       <p style="color: #94a3b8; margin-bottom: 16px;">
         Generated by <code>{inspect(@requirement.satisfied_by)}</code>
@@ -159,7 +156,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   end
 
   defp requirements_list(assigns) do
-    # Sort by definition order (prerequisite/dependency order)
     definition_order =
       RequirementDefinitionData.project_requirements()
       |> Enum.with_index()
@@ -182,7 +178,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       <tr :for={req <- @sorted} class={if req.satisfied, do: "done", else: if(MapSet.member?(@actionable_names, req.name), do: "actionable", else: "blocked")}>
         <td class="icon">{if req.satisfied, do: raw("&#10003;"), else: raw("&#9744;")}</td>
         <td>
-          <a href={"/projects/#{@project.id}/requirements/#{req.name}"}>{req.name}</a>
+          <a href={"/projects/#{project_slug(@project)}/requirements/#{req.name}"}>{req.name}</a>
           <span class="detail">{req.description}</span>
         </td>
       </tr>
@@ -202,22 +198,17 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     error -> "Error: #{inspect(error)}"
   end
 
-  defp load_requirements(_scope, project) do
-    project.requirements || []
+  defp load_project_and_scope(name) do
+    with {:ok, project} <- Projects.get_project_by_name(name),
+         {:ok, scope} <- Scope.for_local_project(project) do
+      {:ok, project, scope}
+    end
   end
 
-  defp resolve_scope_for_project(project_id) do
-    case Repo.get(CodeMySpec.Projects.Project, project_id) do
-      nil ->
-        {:error, "Project not found: #{project_id}"}
-
-      project ->
-        # Minimal scope — no user/account needed for local requirements display
-        {:ok,
-         %CodeMySpec.Users.Scope{
-           active_project: project,
-           active_project_id: project.id
-         }}
-    end
+  defp project_slug(project) do
+    (project.name || "project")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 end

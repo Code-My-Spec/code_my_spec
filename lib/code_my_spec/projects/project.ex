@@ -17,6 +17,7 @@ defmodule CodeMySpec.Projects.Project do
           deploy_key: String.t() | nil,
           google_analytics_property_id: String.t() | nil,
           setup_error: String.t() | nil,
+          local_path: String.t() | nil,
           account_id: Ecto.UUID.t() | nil,
           status:
             :created
@@ -43,6 +44,7 @@ defmodule CodeMySpec.Projects.Project do
     field :deploy_key, :string
     field :google_analytics_property_id, :string
     field :setup_error, :string
+    field :local_path, :string
     field :account_id, :binary_id
 
     has_many :requirements, CodeMySpec.Requirements.Requirement
@@ -78,7 +80,8 @@ defmodule CodeMySpec.Projects.Project do
       :deploy_key,
       :google_analytics_property_id,
       :status,
-      :setup_error
+      :setup_error,
+      :local_path
     ])
     |> validate_required([:name])
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,

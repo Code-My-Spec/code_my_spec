@@ -24,10 +24,10 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/setup/:step", SetupLive, :show
       live "/setup/:step/prompt", SetupLive, :prompt
 
-      live "/projects/:project_id/sync", SyncLive
-      live "/projects/:project_id/requirements", RequirementsLive, :index
-      live "/projects/:project_id/requirements/:name", RequirementsLive, :show
-      live "/projects/:project_id/requirements/:name/prompt", RequirementsLive, :prompt
+      live "/projects/:project_name/sync", SyncLive
+      live "/projects/:project_name/requirements", RequirementsLive, :index
+      live "/projects/:project_name/requirements/:name", RequirementsLive, :show
+      live "/projects/:project_name/requirements/:name/prompt", RequirementsLive, :prompt
     end
   end
 

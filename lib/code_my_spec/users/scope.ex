@@ -106,6 +106,31 @@ defmodule CodeMySpec.Users.Scope do
 
   def from_local_config(nil), do: {:error, :no_working_dir}
 
+  @doc """
+  Builds a complete local scope from a project record that has `local_path` set.
+
+  No config.yml needed — uses the project's persisted `local_path` for the environment.
+  """
+  @spec for_local_project(Project.t()) :: {:ok, t()} | {:error, atom()}
+  @spec for_local_project(Project.t()) :: {:ok, t()} | {:error, atom()}
+  def for_local_project(%Project{local_path: nil}), do: {:error, :no_local_path}
+
+  def for_local_project(%Project{} = project) do
+    user = default_local_user()
+
+    {:ok,
+     %__MODULE__{
+       user: user,
+       user_id: user.id,
+       active_account: nil,
+       active_account_id: project.account_id,
+       active_project: project,
+       active_project_id: project.id,
+       cwd: project.local_path,
+       environment: Environment.new(:local, project.local_path)
+     }}
+  end
+
   # Default user for local/CLI contexts where no OAuth user is available
   defp default_local_user do
     %ClientUser{
@@ -143,7 +168,7 @@ defmodule CodeMySpec.Users.Scope do
       project_id ->
         case CodeMySpec.Repo.get(Project, project_id) do
           %Project{} = project ->
-            sync_project_from_config(project, config)
+            sync_project_from_config(project, config, working_dir)
 
           nil ->
             create_project_from_config(config, working_dir)
@@ -151,13 +176,14 @@ defmodule CodeMySpec.Users.Scope do
     end
   end
 
-  defp sync_project_from_config(project, config) do
+  defp sync_project_from_config(project, config, working_dir) do
     attrs =
       %{}
       |> maybe_put(:name, config["name"])
       |> maybe_put(:module_name, config["module_name"])
       |> maybe_put(:description, config["description"])
       |> maybe_put(:account_id, config["account_id"])
+      |> maybe_put(:local_path, working_dir)
 
     if attrs == %{} do
       {:ok, project}
@@ -168,13 +194,14 @@ defmodule CodeMySpec.Users.Scope do
     end
   end
 
-  defp create_project_from_config(config, _working_dir) do
+  defp create_project_from_config(config, working_dir) do
     attrs = %{
       id: config["project_id"],
       name: config["name"] || "Unnamed Project",
       module_name: config["module_name"] || "App",
       description: config["description"],
-      account_id: config["account_id"]
+      account_id: config["account_id"],
+      local_path: working_dir
     }
 
     CodeMySpec.Repo.insert(struct(Project, attrs))

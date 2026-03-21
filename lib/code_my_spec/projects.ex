@@ -66,19 +66,21 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
-  Gets a single project.
-
-  Raises `Ecto.NoResultsError` if the Project does not exist.
-
-  ## Examples
-
-      iex> get_project!(123)
-      %Project{}
-
-      iex> get_project!(456)
-      ** (Ecto.NoResultsError)
-
+  Gets a project by name (case-insensitive). For local web routes using project name in URL.
   """
+  def get_project_by_name(name) when is_binary(name) do
+    slug = name |> String.replace("-", " ") |> String.downcase()
+
+    query =
+      from p in Project,
+        where: fragment("lower(?)", p.name) == ^slug
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      project -> {:ok, project}
+    end
+  end
+
   def get_project!(%Scope{} = scope, id) do
     Repo.get_by!(Project, id: id, account_id: scope.active_account_id)
   end

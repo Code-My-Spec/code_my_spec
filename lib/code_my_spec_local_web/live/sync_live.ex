@@ -7,6 +7,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Users.Scope
 
@@ -17,7 +18,6 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     {:ok,
      assign(socket,
        project: nil,
-       working_dir: nil,
        scope: nil,
        sync_status: :idle,
        sync_result: nil,
@@ -26,34 +26,22 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   end
 
   @impl true
-  def handle_params(%{"dir" => dir}, _uri, socket) do
-    working_dir = Path.expand(dir)
-
-    case Scope.from_local_config(working_dir) do
-      {:ok, scope} ->
-        {:noreply,
-         assign(socket,
-           project: scope.active_project,
-           working_dir: working_dir,
-           scope: scope,
-           error: nil
-         )}
-
+  def handle_params(%{"project_name" => name}, _uri, socket) do
+    with {:ok, project} <- Projects.get_project_by_name(name),
+         {:ok, scope} <- Scope.for_local_project(project) do
+      {:noreply, assign(socket, project: project, scope: scope, error: nil)}
+    else
       {:error, reason} ->
         {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
     end
   end
 
-  def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, error: "Missing ?dir= parameter")}
-  end
-
   @impl true
   def handle_event("sync", _params, socket) do
     socket = assign(socket, sync_status: :running, sync_result: nil)
-    working_dir = socket.assigns.working_dir
+    scope = socket.assigns.scope
 
-    case Sync.incremental_sync(socket.assigns.scope, base_dir: working_dir, write_status: true) do
+    case Sync.incremental_sync(scope, base_dir: scope.cwd, write_status: true) do
       {:ok, result} ->
         {:noreply,
          assign(socket,
@@ -106,7 +94,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
             <td style="padding: 6px 8px;">{value}</td>
           </tr>
         </table>
-        <a href={"/projects/#{@project.id}/requirements"} style="display: inline-block; margin-top: 16px;">
+        <a href={"/projects/#{project_slug(@project)}/requirements"} style="display: inline-block; margin-top: 16px;">
           View requirements &rarr;
         </a>
       </div>
@@ -125,5 +113,12 @@ defmodule CodeMySpecLocalWeb.SyncLive do
       {"Changed", Map.get(result, :changed_ids, []) |> length()},
       {"Requirements updated", Map.get(result, :requirements_updated, 0)}
     ]
+  end
+
+  defp project_slug(project) do
+    (project.name || "project")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 end
