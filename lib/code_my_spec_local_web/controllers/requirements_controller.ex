@@ -11,7 +11,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   alias CodeMySpec.Requirements
   alias CodeMySpecLocalWeb.RequirementsMarkdown
 
-  def index(conn, %{"project_id" => _project_id}) do
+  def index(conn, _params) do
     scope = conn.assigns.current_scope
     project = Repo.preload(scope.active_project, :requirements)
     actionable = Requirements.next_actionable(scope, project)
@@ -26,7 +26,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     text(conn, markdown)
   end
 
-  def prompt(conn, %{"project_id" => _project_id, "name" => name}) do
+  def prompt(conn, %{"name" => name}) do
     scope = conn.assigns.current_scope
     project = Repo.preload(scope.active_project, :requirements)
     requirement = Enum.find(project.requirements, &(&1.name == name))
@@ -48,7 +48,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     end
   end
 
-  def show(conn, %{"project_id" => _project_id, "name" => name}) do
+  def show(conn, %{"name" => name}) do
     scope = conn.assigns.current_scope
     project = Repo.preload(scope.active_project, :requirements)
     requirement = Enum.find(project.requirements, &(&1.name == name))
