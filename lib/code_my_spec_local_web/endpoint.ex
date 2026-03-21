@@ -11,7 +11,7 @@ defmodule CodeMySpecLocalWeb.Endpoint do
   # LiveView websocket
   socket "/local-live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    longpoll: false
 
   # Serve static assets (JS bundle for LiveView)
   plug Plug.Static,

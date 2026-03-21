@@ -8315,8 +8315,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
   // js/local_app.js
   var csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content");
   var liveSocket = new LiveSocket2("/local-live", Socket, {
-    params: { _csrf_token: csrfToken },
-    longPollFallbackMs: 2500
+    params: { _csrf_token: csrfToken }
   });
   liveSocket.connect();
   window.liveSocket = liveSocket;
