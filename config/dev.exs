@@ -73,6 +73,21 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
     ]
   ]
 
+# Local developer web endpoint (port 4002)
+config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
+  code_reloader: true,
+  debug_errors: true,
+  check_origin: false,
+  watchers: [
+    esbuild: {Esbuild, :install_and_run, [:code_my_spec_local, ~w(--sourcemap=inline --watch)]}
+  ],
+  live_reload: [
+    patterns: [
+      ~r"priv/static/local/.*(js|css)$",
+      ~r"lib/code_my_spec_local_web/(controllers|live|components)/.*(ex|heex)$"
+    ]
+  ]
+
 # Enable dev routes for dashboard and mailbox
 config :code_my_spec, dev_routes: true
 
