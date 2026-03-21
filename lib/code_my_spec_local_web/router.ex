@@ -28,6 +28,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/requirements", RequirementsLive, :index
       live "/projects/:project_name/requirements/:name", RequirementsLive, :show
       live "/projects/:project_name/requirements/:name/prompt", RequirementsLive, :prompt
+      live "/projects/:project_name/requirements/:name/:child_id", RequirementsLive, :child
     end
   end
 
