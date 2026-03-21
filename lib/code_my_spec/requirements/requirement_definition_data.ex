@@ -21,9 +21,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   alias CodeMySpec.Requirements.HierarchicalChecker
   alias CodeMySpec.Requirements.IncomingIssuesChecker
   alias CodeMySpec.Requirements.ProjectQaChecker
+  alias CodeMySpec.Requirements.QaIntegrationPlanChecker
   alias CodeMySpec.Requirements.QaJourneyExecuteChecker
   alias CodeMySpec.Requirements.QaJourneyPlanChecker
   alias CodeMySpec.Requirements.QaJourneyWallabyChecker
+  alias CodeMySpec.Requirements.QaPreflightChecker
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Requirements.SpecTestAlignmentChecker
   alias CodeMySpec.Requirements.StoryQaChecker
@@ -459,6 +461,21 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
 
   # --- Project requirement definitions ---
 
+  @spec project_setup() :: RequirementDefinition.t()
+  def project_setup do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "project_setup",
+        checker: CodeMySpec.Requirements.ProjectSetupChecker,
+        satisfied_by: CodeMySpec.AgentTasks.ProjectSetup,
+        artifact_type: :specification,
+        description: "Project bootstrap setup is complete",
+        prerequisites: []
+      })
+
+    definition
+  end
+
   @spec technical_strategy() :: RequirementDefinition.t()
   def technical_strategy do
     {:ok, definition} =
@@ -468,8 +485,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy,
         artifact_type: :specification,
         description: "Technical strategy decisions file exists",
-        prerequisites: [],
+        prerequisites: ["project_setup"],
         config: %{path: ".code_my_spec/architecture/decisions.md"}
+      })
+
+    definition
+  end
+
+  @spec qa_integration_plan() :: RequirementDefinition.t()
+  def qa_integration_plan do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "qa_integration_plan",
+        checker: QaIntegrationPlanChecker,
+        satisfied_by: CodeMySpec.AgentTasks.QaIntegrationPlan,
+        artifact_type: :specification,
+        description: "Integration specs exist and all verified",
+        prerequisites: ["technical_strategy"],
+        scope: :orchestrate
       })
 
     definition
@@ -484,7 +517,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign,
         artifact_type: :specification,
         description: "Architecture proposal executed",
-        prerequisites: ["technical_strategy"],
+        prerequisites: ["qa_integration_plan"],
         config: %{path: ".code_my_spec/architecture/overview.md"}
       })
 
@@ -553,6 +586,22 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec qa_preflight() :: RequirementDefinition.t()
+  def qa_preflight do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "qa_preflight",
+        checker: QaPreflightChecker,
+        satisfied_by: CodeMySpec.AgentTasks.QaPreflight,
+        artifact_type: :review,
+        description: "App-level integration verification complete",
+        prerequisites: ["all_stories_complete"],
+        scope: :orchestrate
+      })
+
+    definition
+  end
+
   @spec all_bdd_specs_passing() :: RequirementDefinition.t()
   def all_bdd_specs_passing do
     {:ok, definition} =
@@ -562,7 +611,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.FixAllBddSpecs,
         artifact_type: :tests,
         description: "All BDD specs pass across all stories",
-        prerequisites: ["all_stories_complete"],
+        prerequisites: ["qa_preflight"],
         scope: :orchestrate
       })
 
@@ -620,11 +669,14 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   @spec project_requirements() :: [RequirementDefinition.t()]
   def project_requirements do
     [
+      project_setup(),
       technical_strategy(),
+      qa_integration_plan(),
       architecture_designed(),
       issues_triaged(),
       issues_resolved(),
       all_stories_complete(),
+      qa_preflight(),
       all_bdd_specs_passing(),
       qa_journey_plan(),
       qa_journey_execute(),

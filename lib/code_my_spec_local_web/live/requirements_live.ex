@@ -9,6 +9,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.Requirement
 
   @impl true
   def mount(_params, _session, socket) do
@@ -46,12 +48,14 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_id" => project_id}, _uri, socket) do
     with {:ok, scope} <- resolve_scope_for_project(project_id) do
       project = Repo.preload(scope.active_project, :requirements)
+      requirements = load_requirements(scope, project)
+      project = %{project | requirements: requirements}
       actionable = Requirements.next_actionable(scope, project)
 
       {:noreply,
        assign(socket,
          project: project,
-         requirements: project.requirements || [],
+         requirements: requirements,
          actionable: actionable,
          requirement: nil,
          error: nil
@@ -146,6 +150,32 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       </table>
     </div>
     """
+  end
+
+  # Load persisted requirements, falling back to computing from definitions
+  defp load_requirements(_scope, project) do
+    case project.requirements do
+      [] -> compute_requirements_from_definitions(project)
+      persisted -> persisted
+    end
+  end
+
+  defp compute_requirements_from_definitions(project) do
+    RequirementDefinitionData.project_requirements()
+    |> Enum.map(fn defn ->
+      %Requirement{
+        name: defn.name,
+        artifact_type: defn.artifact_type,
+        description: defn.description,
+        checker_module: defn.checker,
+        satisfied_by: defn.satisfied_by,
+        scope: defn.scope,
+        satisfied: false,
+        score: 0.0,
+        details: %{},
+        project_id: project.id
+      }
+    end)
   end
 
   defp resolve_scope_for_project(project_id) do
