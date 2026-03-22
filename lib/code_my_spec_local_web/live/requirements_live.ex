@@ -1,35 +1,23 @@
 defmodule CodeMySpecLocalWeb.RequirementsLive do
   @moduledoc """
-  Human interface for project requirements status.
+  Human interface for project requirements.
 
-  - Index: sorted checklist of all project requirements
-  - Show: command output (instructions) + child checklist if scope: :children
-  - Child: individual child step's command output
-  - Prompt: raw prompt text for LLM consumption
+  Generates markdown (same source as the LLM API), renders via MDEx.
   """
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Projects
+  alias CodeMySpec.Prompts
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Setup.SetupSteps
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecLocalWeb.RequirementsMarkdown
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok,
-     assign(socket,
-       project: nil,
-       scope: nil,
-       requirements: [],
-       requirement: nil,
-       command_text: nil,
-       prompt_text: nil,
-       child_step: nil,
-       actionable: %{},
-       error: nil
-     )}
+    {:ok, assign(socket, project: nil, scope: nil, markdown: nil, error: nil)}
   end
 
   # --- Handle params ---
@@ -37,22 +25,14 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   @impl true
   def handle_params(%{"project_name" => name, "name" => req_name, "child_id" => child_id}, _uri, %{assigns: %{live_action: :child}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
-      project = Repo.preload(project, :requirements)
-      requirement = Enum.find(project.requirements, &(&1.name == req_name))
       step = Enum.find(SetupSteps.all(), &(&1.id == child_id))
 
-      if requirement && step do
-        command_text = generate_prompt(step.module, scope, project)
+      if step do
+        command_text = generate_command(step.module, scope, project)
+        back = "[← Back to #{req_name}](/projects/#{project_slug(project)}/requirements/#{req_name})\n\n"
+        markdown = back <> "# #{step.name}\n\n" <> command_text
 
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           requirement: requirement,
-           child_step: step,
-           command_text: command_text,
-           error: nil
-         )}
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
       else
         {:noreply, assign(socket, error: "Step not found: #{child_id}")}
       end
@@ -67,16 +47,11 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       requirement = Enum.find(project.requirements, &(&1.name == req_name))
 
       if requirement && requirement.satisfied_by do
-        prompt_text = generate_prompt(requirement.satisfied_by, scope, project)
+        prompt_text = build_prompt(requirement, scope, project)
+        back = "[← Back to #{req_name}](/projects/#{project_slug(project)}/requirements/#{req_name})\n\n"
+        markdown = back <> "# #{req_name} — Prompt\n\n```\n#{prompt_text}\n```"
 
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           requirement: requirement,
-           prompt_text: prompt_text,
-           error: nil
-         )}
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
       else
         {:noreply, assign(socket, error: "No prompt available for: #{req_name}")}
       end
@@ -91,13 +66,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       requirement = Enum.find(project.requirements, &(&1.name == req_name))
 
       if requirement do
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           requirement: requirement,
-           error: nil
-         )}
+        markdown = build_show_markdown(requirement, project, scope)
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
       else
         {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
       end
@@ -113,15 +83,11 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       project = %{project | requirements: requirements}
       actionable = Requirements.next_actionable(scope, project)
 
-      {:noreply,
-       assign(socket,
-         project: project,
-         scope: scope,
-         requirements: requirements,
-         actionable: actionable,
-         requirement: nil,
-         error: nil
-       )}
+      markdown =
+        RequirementsMarkdown.index(%{project: project, requirements: requirements, actionable: actionable})
+        |> rewrite_api_links_to_ui(project)
+
+      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
@@ -132,129 +98,91 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} style="color: #f87171; padding: 24px;">
+    <div :if={@error} class="text-red-400">
       <h1>Error</h1>
       <p>{@error}</p>
     </div>
 
-    <%!-- Index: all project requirements --%>
-    <div :if={!@error && @project && @live_action == :index}>
-      <h1>{@project.name || "Project"} — Requirements</h1>
-      <.requirements_progress requirements={@requirements} />
-      <.requirements_list requirements={@requirements} project={@project} actionable={@actionable} />
-    </div>
-
-    <%!-- Show: requirement detail with command output + child checklist --%>
-    <div :if={!@error && @project && @live_action == :show && @requirement}>
-      <a href={"/projects/#{project_slug(@project)}/requirements"} class="back-link">&larr; Back to requirements</a>
-      <h1>{@requirement.name}</h1>
-      <p style="color: #94a3b8; margin-bottom: 8px;">{@requirement.description}</p>
-
-      <div style="margin-bottom: 24px;">
-        <span class={if @requirement.satisfied, do: "status-done", else: "status-actionable"}>
-          {if @requirement.satisfied, do: "Satisfied", else: "Not satisfied"}
-        </span>
-        <span :if={@requirement.score} style="color: #94a3b8; margin-left: 8px;">
-          (score: {Float.round(@requirement.score, 2)})
-        </span>
-      </div>
-
-      <%!-- Child checklist (for scope: :children requirements) --%>
-      <.child_checklist
-        :if={get_checklist(@requirement)}
-        requirement={@requirement}
-        project={@project}
-      />
-
-      <div :if={@requirement.checked_at} style="color: #64748b; font-size: 13px; margin-top: 16px;">
-        Last checked: {Calendar.strftime(@requirement.checked_at, "%Y-%m-%d %H:%M:%S UTC")}
-      </div>
-    </div>
-
-    <%!-- Child: individual child step detail --%>
-    <div :if={!@error && @project && @live_action == :child && @child_step}>
-      <a href={"/projects/#{project_slug(@project)}/requirements/#{@requirement.name}"} class="back-link">&larr; Back to {@requirement.name}</a>
-      <h1>{@child_step.name}</h1>
-
-      <pre :if={@command_text}>{@command_text}</pre>
-      <p :if={!@command_text} style="color: #94a3b8;">No instructions available.</p>
-    </div>
-
-    <%!-- Prompt: raw text for LLM --%>
-    <div :if={!@error && @project && @live_action == :prompt && @requirement}>
-      <a href={"/projects/#{project_slug(@project)}/requirements/#{@requirement.name}"} class="back-link">&larr; Back to requirement</a>
-      <h1>{@requirement.name} — Prompt</h1>
-      <pre>{@prompt_text}</pre>
+    <div :if={@markdown} class="prose prose-invert max-w-none">
+      {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
     </div>
     """
   end
 
-  # --- Components ---
+  # --- Markdown builders ---
 
-  defp requirements_progress(assigns) do
-    total = length(assigns.requirements)
-    satisfied = Enum.count(assigns.requirements, & &1.satisfied)
-    pct = if total > 0, do: round(satisfied / total * 100), else: 0
-    assigns = assign(assigns, satisfied: satisfied, total: total, pct: pct)
+  defp build_show_markdown(requirement, project, scope) do
+    slug = project_slug(project)
+    back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
 
-    ~H"""
-    <div class="subtitle">{@satisfied} of {@total} requirements satisfied</div>
-    <div class="progress"><div class="progress-bar" style={"width: #{@pct}%"}></div></div>
-    """
+    status = if requirement.satisfied, do: "✓ Satisfied", else: "Not satisfied"
+    score = if requirement.score, do: " (#{Float.round(requirement.score, 2)})", else: ""
+
+    header = "# #{requirement.name}\n\n#{requirement.description}\n\n**#{status}#{score}**\n"
+
+    # Child checklist for scope: :children
+    children_md =
+      case get_checklist(requirement) do
+        nil ->
+          ""
+
+        items ->
+          done = Enum.count(items, &get_field(&1, "satisfied"))
+          total = length(items)
+
+          lines =
+            Enum.map_join(items, "\n", fn item ->
+              name = get_field(item, "name")
+              id = get_field(item, "id")
+              satisfied = get_field(item, "satisfied")
+              detail = get_field(item, "detail")
+
+              check = if satisfied, do: "[x]", else: "[ ]"
+              link = "[#{name}](/projects/#{slug}/requirements/#{requirement.name}/#{id})"
+              detail_text = if detail && !satisfied, do: " — #{detail}", else: ""
+
+              "- #{check} #{link}#{detail_text}"
+            end)
+
+          "\n\n## Steps (#{done}/#{total})\n\n#{lines}"
+      end
+
+    prompt_link =
+      if requirement.satisfied_by do
+        "\n\n[View prompt →](/projects/#{slug}/requirements/#{requirement.name}/prompt)"
+      else
+        ""
+      end
+
+    checked_at =
+      if requirement.checked_at do
+        "\n\n*Last checked: #{Calendar.strftime(requirement.checked_at, "%Y-%m-%d %H:%M:%S UTC")}*"
+      else
+        ""
+      end
+
+    back <> header <> children_md <> prompt_link <> checked_at
   end
 
-  defp requirements_list(assigns) do
-    definition_order =
-      RequirementDefinitionData.project_requirements()
-      |> Enum.with_index()
-      |> Map.new(fn {defn, idx} -> {defn.name, idx} end)
+  defp build_prompt(requirement, scope, project) do
+    {:ok, parent_text} = requirement.satisfied_by.command(scope, %{project: project})
 
-    sorted =
-      assigns.requirements
-      |> Enum.sort_by(fn req -> Map.get(definition_order, req.name, 999) end)
+    case requirement.scope do
+      :children ->
+        checklist = get_checklist(requirement) || []
+        base_url = "/api/projects/#{project_slug(project)}/requirements/#{requirement.name}"
+        Prompts.build_children_prompt(parent_text, checklist, base_url)
 
-    actionable_names =
-      assigns.actionable
-      |> Map.values()
-      |> List.flatten()
-      |> MapSet.new(& &1.name)
-
-    assigns = assign(assigns, sorted: sorted, actionable_names: actionable_names)
-
-    ~H"""
-    <table class="checklist">
-      <tr :for={req <- @sorted} class={if req.satisfied, do: "done", else: if(MapSet.member?(@actionable_names, req.name), do: "actionable", else: "blocked")}>
-        <td class="icon">{if req.satisfied, do: raw("&#10003;"), else: raw("&#9744;")}</td>
-        <td>
-          <a href={"/projects/#{project_slug(@project)}/requirements/#{req.name}"}>{req.name}</a>
-          <span class="detail">{req.description}</span>
-        </td>
-      </tr>
-    </table>
-    """
+      _ ->
+        parent_text
+    end
   end
 
-  defp child_checklist(assigns) do
-    items = get_checklist(assigns.requirement) || []
-    done = Enum.count(items, &(get_field(&1, "satisfied")))
-    total = length(items)
-    assigns = assign(assigns, items: items, done: done, total: total)
-
-    ~H"""
-    <div style="margin-top: 24px;">
-      <h2>Steps</h2>
-      <.progress done={@done} total={@total} />
-      <table class="checklist">
-        <tr :for={item <- @items} class={if get_field(item, "satisfied"), do: "done", else: "actionable"}>
-          <td class="icon">{if get_field(item, "satisfied"), do: raw("&#10003;"), else: raw("&#9744;")}</td>
-          <td>
-            <a href={"/projects/#{project_slug(@project)}/requirements/#{@requirement.name}/#{get_field(item, "id")}"}>{get_field(item, "name")}</a>
-            <span :if={detail = get_field(item, "detail")} class="detail">{detail}</span>
-          </td>
-        </tr>
-      </table>
-    </div>
-    """
+  # Make the index markdown link to UI pages instead of API
+  defp rewrite_api_links_to_ui(markdown, project) do
+    slug = project_slug(project)
+    # The markdown has **req_name** — make them links to the show page
+    String.replace(markdown, ~r/\*\*([a-z_\/]+)\*\*/, "[**\\1**](/projects/#{slug}/requirements/\\1)")
   end
 
   # --- Helpers ---
@@ -269,13 +197,10 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     _ -> Map.get(map, key)
   end
 
-  defp generate_prompt(task_module, scope, project) do
-    session = %{project: project}
-
-    case task_module.command(scope, session) do
-      {:ok, prompt} -> prompt
-      {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
-      prompt when is_binary(prompt) -> prompt
+  defp generate_command(task_module, scope, project) do
+    case task_module.command(scope, %{project: project}) do
+      {:ok, text} -> text
+      {:error, reason} -> "Error: #{inspect(reason)}"
     end
   rescue
     error -> "Error: #{inspect(error)}"
