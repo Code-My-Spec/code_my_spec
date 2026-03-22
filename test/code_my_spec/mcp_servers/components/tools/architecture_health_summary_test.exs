@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummaryTest d
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
 
   describe "ArchitectureHealthSummary tool" do
     setup do

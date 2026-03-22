@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   to do, and what you expected to happen.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.IssuesMapper

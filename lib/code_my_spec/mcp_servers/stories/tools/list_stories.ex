@@ -6,7 +6,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
   list of just titles, use list_story_titles instead.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   require Logger
 

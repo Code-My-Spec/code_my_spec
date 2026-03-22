@@ -41,6 +41,7 @@ defmodule CodeMySpecWeb.Router do
       live "/landing/:slug", ContentLive.Public, :landing
       live "/documentation/:slug", ContentLive.Public, :documentation
       live "/methodology", ContentLive.Pages.Methodology, :methodology
+      live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
     end
   end
 
@@ -93,13 +94,13 @@ defmodule CodeMySpecWeb.Router do
   scope "/mcp" do
     pipe_through :mcp_protected
 
-    forward "/stories", Hermes.Server.Transport.StreamableHTTP.Plug,
+    forward "/stories", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.StoriesServer
 
-    forward "/components", Hermes.Server.Transport.StreamableHTTP.Plug,
+    forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer
 
-    forward "/analytics-admin", Hermes.Server.Transport.StreamableHTTP.Plug,
+    forward "/analytics-admin", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.AnalyticsAdminServer
   end
 

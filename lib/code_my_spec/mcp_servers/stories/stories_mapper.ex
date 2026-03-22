@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   """
 
   alias CodeMySpec.McpServers.Formatters
-  alias Hermes.Server.Response
+  alias Anubis.Server.Response
 
   # ---------------------------------------------------------------------------
   # Tool Responses (hybrid format: summary + JSON)

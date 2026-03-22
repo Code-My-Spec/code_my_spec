@@ -6,7 +6,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitles do
   Use this for quick lookups, selection lists, or when you need to find a story ID.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper

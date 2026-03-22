@@ -7,7 +7,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
   - "review": Evaluate completeness and quality of existing stories
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper

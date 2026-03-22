@@ -3,8 +3,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
 
   alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
   alias CodeMySpec.Tags
-  alias Hermes.Server.Frame
-  alias Hermes.Server.Response
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 

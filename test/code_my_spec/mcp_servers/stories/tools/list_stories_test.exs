@@ -5,8 +5,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
 
   alias CodeMySpec.McpServers.Stories.Tools.ListStories
   alias CodeMySpec.Tags
-  alias Hermes.Server.Frame
-  alias Hermes.Server.Response
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)

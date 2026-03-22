@@ -6,7 +6,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
   Use get_story to see criteria IDs and their verification status.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.McpServers.Stories.StoriesMapper

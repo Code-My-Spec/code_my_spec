@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.IssuesServer do
   @moduledoc false
 
-  use Hermes.Server,
+  use Anubis.Server,
     name: "issues-server",
     version: "1.0.0",
     capabilities: [:tools]

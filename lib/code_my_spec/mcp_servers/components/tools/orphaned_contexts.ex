@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Components.Tools.OrphanedContexts do
   @moduledoc "Lists all contexts with no user story and no dependencies"
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper

@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.ArchitectureServerTest do
       spec = ArchitectureServer.child_spec([])
 
       assert spec.id == ArchitectureServer
-      assert spec.start == {Hermes.Server.Supervisor, :start_link, [ArchitectureServer, []]}
+      assert spec.start == {Anubis.Server.Supervisor, :start_link, [ArchitectureServer, []]}
       assert spec.type == :supervisor
       assert spec.restart == :permanent
     end

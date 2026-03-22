@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatisticsTest do
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.McpServers.Components.Tools.ContextStatistics
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
 
   describe "ContextStatistics tool" do
     setup do

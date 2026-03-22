@@ -7,7 +7,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatistics do
   - Raw numbers for LLM analysis
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
@@ -92,7 +92,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatistics do
   end
 
   defp statistics_response(statistics) do
-    Hermes.Server.Response.tool()
-    |> Hermes.Server.Response.json(statistics)
+    Anubis.Server.Response.tool()
+    |> Anubis.Server.Response.json(statistics)
   end
 end

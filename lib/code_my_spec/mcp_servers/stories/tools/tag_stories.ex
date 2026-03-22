@@ -13,7 +13,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
   can be filtered, e.g., `list_stories(tag: "persona:driver")`.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.Tags

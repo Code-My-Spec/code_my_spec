@@ -2,7 +2,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -32,7 +32,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStoryTest do
       assert response.type == :tool
       assert response.isError == true
 
-      protocol = Hermes.Server.Response.to_protocol(response)
+      protocol = Anubis.Server.Response.to_protocol(response)
       content = hd(protocol["content"])["text"]
       assert content =~ "not found"
     end

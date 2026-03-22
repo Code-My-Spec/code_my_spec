@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
   @moduledoc "Reviews current context design against best practices and provides architectural feedback"
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.Components

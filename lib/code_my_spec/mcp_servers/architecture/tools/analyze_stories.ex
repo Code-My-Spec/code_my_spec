@@ -8,13 +8,13 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
   Returns a structured view of stories organized by domain/feature tags.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
   require Logger
 
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Stories
-  alias Hermes.Server.Response
+  alias Anubis.Server.Response
 
   schema do
   end

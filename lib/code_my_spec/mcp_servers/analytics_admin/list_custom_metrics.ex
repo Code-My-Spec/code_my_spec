@@ -7,9 +7,9 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListCustomMetrics do
   connected their Google account via OAuth and have access to the specified property.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
-  alias Hermes.Server.Response
+  alias Anubis.Server.Response
   alias CodeMySpec.Google.Analytics
   alias CodeMySpec.McpServers.Validators
 

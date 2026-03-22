@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent do
   Use this when a story is no longer satisfied by its assigned component.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper

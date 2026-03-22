@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Components.Tools.AddSimilarComponent do
   @moduledoc "Adds a similar component relationship"
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.AddSimilarComponent do
   end
 
   defp similar_component_response(component, similar_component) do
-    alias Hermes.Server.Response
+    alias Anubis.Server.Response
 
     Response.tool()
     |> Response.json(%{

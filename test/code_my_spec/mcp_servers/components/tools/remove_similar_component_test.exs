@@ -3,7 +3,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.RemoveSimilarComponentTest do
 
   alias CodeMySpec.McpServers.Components.Tools.RemoveSimilarComponent
   alias CodeMySpec.Components
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 

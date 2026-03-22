@@ -8,7 +8,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
     acceptance_criteria: ["User can enter email and password", "Invalid credentials show error"]
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators

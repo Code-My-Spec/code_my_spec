@@ -7,7 +7,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph do
   harder to test and maintain.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper

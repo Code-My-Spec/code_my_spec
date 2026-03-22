@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitectureTest do
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
 
   describe "ShowArchitecture tool" do
     setup do

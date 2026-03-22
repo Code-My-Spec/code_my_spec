@@ -6,7 +6,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListProjectTags do
   Use this to see what organizational categories exist.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Tags
   alias CodeMySpec.McpServers.Stories.StoriesMapper

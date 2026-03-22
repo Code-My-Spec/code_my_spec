@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Components.Tools.CreateComponent do
   @moduledoc "Creates a component"
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
@@ -22,7 +22,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateComponent do
   end
 
   @impl true
-  @spec execute(any(), any()) :: {:reply, Hermes.Server.Response.t(), any()}
+  @spec execute(any(), any()) :: {:reply, Anubis.Server.Response.t(), any()}
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
          {:ok, component} <- Components.create_component(scope, params) do

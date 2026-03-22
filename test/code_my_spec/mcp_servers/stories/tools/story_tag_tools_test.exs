@@ -4,8 +4,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StoryTagToolsTest do
   alias CodeMySpec.McpServers.Stories.Tools.ListProjectTags
   alias CodeMySpec.McpServers.Stories.Tools.TagStories
   alias CodeMySpec.Tags
-  alias Hermes.Server.Frame
-  alias Hermes.Server.Response
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures

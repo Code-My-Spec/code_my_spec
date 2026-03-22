@@ -3,7 +3,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.OrphanedContextsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.McpServers.Components.Tools.OrphanedContexts
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)

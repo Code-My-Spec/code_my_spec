@@ -1,5 +1,5 @@
 defmodule CodeMySpec.McpServers.Components.ComponentsMapper do
-  alias Hermes.Server.Response
+  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Formatters
 
   def component_response(component) do

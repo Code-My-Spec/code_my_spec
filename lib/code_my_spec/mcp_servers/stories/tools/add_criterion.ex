@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AddCriterion do
   Use get_story to see existing criteria before adding.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Stories

@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   """
 
   alias CodeMySpec.McpServers.Formatters
-  alias Hermes.Server.Response
+  alias Anubis.Server.Response
 
   def issue_created_response(issue) do
     data = issue_data(issue)

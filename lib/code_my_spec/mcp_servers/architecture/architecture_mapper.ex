@@ -3,7 +3,7 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
 
   alias CodeMySpec.Architecture.StoryAnalyzer
   alias CodeMySpec.McpServers.Formatters
-  alias Hermes.Server.Response
+  alias Anubis.Server.Response
 
   # Story analysis response (hybrid text + JSON)
   def story_analysis_response(analysis) do

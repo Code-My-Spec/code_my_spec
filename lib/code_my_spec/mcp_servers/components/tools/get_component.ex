@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
   @moduledoc "Gets a single component by ID"
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper

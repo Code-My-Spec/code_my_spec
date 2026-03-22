@@ -2,8 +2,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySessionTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.McpServers.Stories.Tools.StartStorySession
-  alias Hermes.Server.Frame
-  alias Hermes.Server.Response
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures

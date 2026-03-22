@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Components.Tools.DeleteDependency do
   @moduledoc "Deletes a dependency relationship between components"
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
@@ -27,7 +27,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteDependency do
   end
 
   defp dependency_response(dependency) do
-    alias Hermes.Server.Response
+    alias Anubis.Server.Response
 
     Response.tool()
     |> Response.json(%{

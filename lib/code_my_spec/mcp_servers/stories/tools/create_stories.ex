@@ -4,7 +4,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStories do
   Returns successful creations and any validation errors.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper

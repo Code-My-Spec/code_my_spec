@@ -12,7 +12,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   Use `list_stories(tag: "...")` to filter by tag.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators

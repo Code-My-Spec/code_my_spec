@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStory do
   Use list_story_titles to find story IDs. This action cannot be undone.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper

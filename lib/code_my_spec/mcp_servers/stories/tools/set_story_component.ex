@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
   Use this to track which component satisfies which user story.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper

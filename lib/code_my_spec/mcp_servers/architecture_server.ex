@@ -1,12 +1,12 @@
 defmodule CodeMySpec.McpServers.ArchitectureServer do
   @moduledoc "MCP server exposing architecture management tools to AI agents."
 
-  use Hermes.Server,
+  use Anubis.Server,
     name: "architecture-server",
     version: "1.0.0",
     capabilities: [:tools]
 
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
 
   @impl true
   def init(_client_info, frame) do

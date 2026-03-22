@@ -2,7 +2,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesignTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.McpServers.Components.Tools.ReviewContextDesign
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
   import CodeMySpec.UsersFixtures
 
   setup do

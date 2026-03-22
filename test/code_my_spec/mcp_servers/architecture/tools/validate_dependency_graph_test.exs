@@ -2,7 +2,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraphTest d
   use ExUnit.Case, async: false
 
   alias CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraphTest d
 
       {:reply, response, _frame} = ValidateDependencyGraph.execute(params, frame)
 
-      assert %Hermes.Server.Response{type: :tool} = response
+      assert %Anubis.Server.Response{type: :tool} = response
       assert response.isError == false
 
       assert [%{"type" => "text", "text" => json_text}] = response.content

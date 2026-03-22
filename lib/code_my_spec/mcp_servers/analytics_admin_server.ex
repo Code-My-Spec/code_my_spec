@@ -1,5 +1,5 @@
 defmodule CodeMySpec.McpServers.AnalyticsAdminServer do
-  use Hermes.Server,
+  use Anubis.Server,
     name: "analytics-admin-server",
     version: "1.0.0",
     capabilities: [:tools]

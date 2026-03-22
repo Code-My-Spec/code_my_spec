@@ -1,6 +1,6 @@
 defmodule CodeMySpec.LocalServer.McpPlug do
   @moduledoc """
-  Plug that wraps Hermes MCP transport with local security and context plugs.
+  Plug that wraps Anubis MCP transport with local security and context plugs.
   """
 
   @behaviour Plug
@@ -10,17 +10,18 @@ defmodule CodeMySpec.LocalServer.McpPlug do
   @impl true
   def init(opts) do
     server = Keyword.fetch!(opts, :server)
-    hermes_opts = Hermes.Server.Transport.StreamableHTTP.Plug.init(server: server)
-    %{hermes_opts: hermes_opts}
+    %{server: server}
   end
 
   @impl true
-  def call(conn, %{hermes_opts: hermes_opts}) do
+  def call(conn, %{server: server}) do
+    anubis_opts = Anubis.Server.Transport.StreamableHTTP.Plug.init(server: server)
+
     conn
     |> Plugs.LocalOnly.call([])
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
     |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&Hermes.Server.Transport.StreamableHTTP.Plug.call(&1, hermes_opts))
+    |> maybe_continue(&Anubis.Server.Transport.StreamableHTTP.Plug.call(&1, anubis_opts))
   end
 
   defp maybe_continue(%Plug.Conn{halted: true} = conn, _fun), do: conn

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.McpServers.ComponentsServer do
-  use Hermes.Server,
+  use Anubis.Server,
     name: "components-server",
     version: "1.0.0",
     capabilities: [:tools]

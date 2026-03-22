@@ -10,7 +10,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
   showing which components satisfy which stories and how components depend on each other.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
@@ -31,8 +31,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
   end
 
   defp architecture_response(architecture) do
-    Hermes.Server.Response.tool()
-    |> Hermes.Server.Response.json(%{
+    Anubis.Server.Response.tool()
+    |> Anubis.Server.Response.json(%{
       architecture: %{
         overview: architecture_overview(architecture),
         components: Enum.map(architecture, &architecture_entry/1),

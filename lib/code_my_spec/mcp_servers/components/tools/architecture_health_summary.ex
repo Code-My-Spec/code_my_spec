@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
   This gives LLMs and developers a quick health assessment of the entire architecture.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper
@@ -275,8 +275,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
   defp score_to_health_level(_), do: :poor
 
   defp health_response(health_summary) do
-    Hermes.Server.Response.tool()
-    |> Hermes.Server.Response.json(%{
+    Anubis.Server.Response.tool()
+    |> Anubis.Server.Response.json(%{
       architecture_health: health_summary
     })
   end

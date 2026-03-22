@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponent do
   They will be persisted exactly as you send them.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
   alias CodeMySpec.McpServers.Components.ComponentsMapper

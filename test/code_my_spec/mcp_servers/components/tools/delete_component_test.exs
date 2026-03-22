@@ -2,7 +2,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteComponentTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.McpServers.Components.Tools.DeleteComponent
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 

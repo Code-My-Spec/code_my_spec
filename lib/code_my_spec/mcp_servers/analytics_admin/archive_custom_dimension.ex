@@ -8,9 +8,9 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ArchiveCustomDimension do
   specified property.
   """
 
-  use Hermes.Server.Component, type: :tool
+  use Anubis.Server.Component, type: :tool
 
-  alias Hermes.Server.Response
+  alias Anubis.Server.Response
   alias CodeMySpec.Google.Analytics
   alias CodeMySpec.McpServers.Validators
 

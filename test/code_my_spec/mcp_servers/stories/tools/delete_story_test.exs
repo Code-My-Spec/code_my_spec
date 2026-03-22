@@ -2,7 +2,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStoryTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.McpServers.Stories.Tools.DeleteStory
-  alias Hermes.Server.Frame
+  alias Anubis.Server.Frame
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 

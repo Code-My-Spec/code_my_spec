@@ -1,5 +1,5 @@
 defmodule CodeMySpec.McpServers.StoriesServer do
-  use Hermes.Server,
+  use Anubis.Server,
     name: "stories-server",
     version: "1.0.0",
     capabilities: [:tools]
