@@ -53,18 +53,10 @@ defmodule CodeMySpecLocalWeb do
   end
 
   @doc """
-  Converts markdown to HTML via Earmark with GFM task list support.
+  Converts markdown to HTML via MDEx (comrak) with full GFM support.
   """
   def markdown_to_html(markdown) do
-    html =
-      case Earmark.as_html(markdown) do
-        {:ok, html, _} -> html
-        {:error, html, _} -> html
-      end
-
-    html
-    |> String.replace(~r/<li>\[x\]\s*/, "<li><input type=\"checkbox\" checked disabled /> ")
-    |> String.replace(~r/<li>\[ \]\s*/, "<li><input type=\"checkbox\" disabled /> ")
+    MDEx.to_html!(markdown)
   end
 
   defp html_helpers do
