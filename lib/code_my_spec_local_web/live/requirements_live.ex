@@ -7,10 +7,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Projects
-  alias CodeMySpec.Prompts
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Setup.SetupSteps
   alias CodeMySpec.Users.Scope
   alias CodeMySpecLocalWeb.RequirementsMarkdown
@@ -35,25 +33,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
       else
         {:noreply, assign(socket, error: "Step not found: #{child_id}")}
-      end
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
-    end
-  end
-
-  def handle_params(%{"project_name" => name, "name" => req_name}, _uri, %{assigns: %{live_action: :prompt}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      project = Repo.preload(project, :requirements)
-      requirement = Enum.find(project.requirements, &(&1.name == req_name))
-
-      if requirement && requirement.satisfied_by do
-        prompt_text = build_prompt(requirement, scope, project)
-        back = "[← Back to #{req_name}](/projects/#{project_slug(project)}/requirements/#{req_name})\n\n"
-        markdown = back <> "# #{req_name} — Prompt\n\n```\n#{prompt_text}\n```"
-
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
-      else
-        {:noreply, assign(socket, error: "No prompt available for: #{req_name}")}
       end
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
@@ -111,7 +90,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   # --- Markdown builders ---
 
-  defp build_show_markdown(requirement, project, scope) do
+  defp build_show_markdown(requirement, project, _scope) do
     slug = project_slug(project)
     back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
 
@@ -147,13 +126,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
           "\n\n## Steps (#{done}/#{total})\n\n#{lines}"
       end
 
-    prompt_link =
-      if requirement.satisfied_by do
-        "\n\n[View prompt →](/projects/#{slug}/requirements/#{requirement.name}/prompt)"
-      else
-        ""
-      end
-
     checked_at =
       if requirement.checked_at do
         "\n\n*Last checked: #{Calendar.strftime(requirement.checked_at, "%Y-%m-%d %H:%M:%S UTC")}*"
@@ -161,21 +133,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         ""
       end
 
-    back <> header <> children_md <> prompt_link <> checked_at
-  end
-
-  defp build_prompt(requirement, scope, project) do
-    {:ok, parent_text} = requirement.satisfied_by.command(scope, %{project: project})
-
-    case requirement.scope do
-      :children ->
-        checklist = get_checklist(requirement) || []
-        base_url = "/api/projects/#{project_slug(project)}/requirements/#{requirement.name}"
-        Prompts.build_children_prompt(parent_text, checklist, base_url)
-
-      _ ->
-        parent_text
-    end
+    back <> header <> children_md <> checked_at
   end
 
   # Make the index markdown link to UI pages instead of API
