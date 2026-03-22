@@ -52,6 +52,21 @@ defmodule CodeMySpecLocalWeb do
     end
   end
 
+  @doc """
+  Converts markdown to HTML via Earmark with GFM task list support.
+  """
+  def markdown_to_html(markdown) do
+    html =
+      case Earmark.as_html(markdown) do
+        {:ok, html, _} -> html
+        {:error, html, _} -> html
+      end
+
+    html
+    |> String.replace(~r/<li>\[x\]\s*/, "<li><input type=\"checkbox\" checked disabled /> ")
+    |> String.replace(~r/<li>\[ \]\s*/, "<li><input type=\"checkbox\" disabled /> ")
+  end
+
   defp html_helpers do
     quote do
       import Phoenix.HTML

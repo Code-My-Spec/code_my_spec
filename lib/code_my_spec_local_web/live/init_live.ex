@@ -46,7 +46,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
     </div>
 
     <div :if={@markdown} class="prose prose-invert">
-      {raw(to_html(@markdown))}
+      {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
     </div>
     """
   end
@@ -115,13 +115,6 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
       {:error, :not_found} ->
         assign(socket, error: "Step not found: #{step_id}")
-    end
-  end
-
-  defp to_html(markdown) do
-    case Earmark.as_html(markdown) do
-      {:ok, html, _} -> html
-      {:error, html, _} -> html
     end
   end
 
