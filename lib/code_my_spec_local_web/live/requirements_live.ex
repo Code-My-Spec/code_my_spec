@@ -90,7 +90,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   # --- Markdown builders ---
 
-  defp build_show_markdown(requirement, project, _scope) do
+  defp build_show_markdown(requirement, project, scope) do
     slug = project_slug(project)
     back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
 
@@ -99,13 +99,10 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
     header = "# #{requirement.name}\n\n#{requirement.description}\n\n**#{status}#{score}**\n"
 
-    # Child checklist for scope: :children
-    children_md =
+    body =
       case get_checklist(requirement) do
-        nil ->
-          ""
-
-        items ->
+        # scope: :children — show the child checklist
+        items when is_list(items) ->
           done = Enum.count(items, &get_field(&1, "satisfied"))
           total = length(items)
 
@@ -124,16 +121,17 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
             end)
 
           "\n\n## Steps (#{done}/#{total})\n\n#{lines}"
+
+        # Direct — show the command output
+        nil ->
+          if requirement.satisfied_by do
+            "\n\n" <> generate_command(requirement.satisfied_by, scope, project)
+          else
+            ""
+          end
       end
 
-    checked_at =
-      if requirement.checked_at do
-        "\n\n*Last checked: #{Calendar.strftime(requirement.checked_at, "%Y-%m-%d %H:%M:%S UTC")}*"
-      else
-        ""
-      end
-
-    back <> header <> children_md <> checked_at
+    back <> header <> body
   end
 
   # Make the index markdown link to UI pages instead of API
