@@ -62,6 +62,14 @@ defmodule CodeMySpec.ProjectSync.Sync do
   def incremental_sync(%Scope{} = scope, opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
+    # Ensure ignored_components is always passed through
+    opts =
+      if Keyword.has_key?(opts, :ignored_components) do
+        opts
+      else
+        Keyword.put(opts, :ignored_components, get_ignored_components(scope))
+      end
+
     with {:ok, all_components, changed_ids} <- ComponentSync.sync_changed(scope, opts),
          {:ok, expanded_ids} <-
            ComponentSync.update_parent_relationships(scope, all_components, changed_ids, opts) do
@@ -244,11 +252,17 @@ defmodule CodeMySpec.ProjectSync.Sync do
     case Scope.read_local_config(cwd) do
       {:ok, config} ->
         case config["ignored_components"] do
-          list when is_list(list) -> list
-          _ -> []
+          list when is_list(list) ->
+            Logger.info("[ProjectSync] Loaded #{length(list)} ignored components from config: #{inspect(list)}")
+            list
+
+          other ->
+            Logger.info("[ProjectSync] No ignored_components in config (got: #{inspect(other)})")
+            []
         end
 
-      {:error, _} ->
+      {:error, reason} ->
+        Logger.info("[ProjectSync] Could not read local config: #{inspect(reason)}")
         []
     end
   end

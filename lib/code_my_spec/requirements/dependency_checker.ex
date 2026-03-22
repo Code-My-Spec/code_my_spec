@@ -17,17 +17,25 @@ defmodule CodeMySpec.Requirements.DependencyChecker do
         %Component{dependencies: dependencies},
         _opts \\ []
       ) do
-    {satisfied, details} =
+    {satisfied, details, depends_on} =
       case {String.to_existing_atom(name), dependencies} do
         {:dependencies_satisfied, []} ->
-          {true, %{status: "No dependencies to satisfy"}}
+          {true, %{status: "No dependencies to satisfy"}, []}
 
         {:dependencies_satisfied, deps} when is_list(deps) ->
-          # Check if all dependencies have their requirements satisfied
           all_satisfied = Enum.all?(deps, &dependency_satisfied?/1)
 
+          dep_edges =
+            Enum.map(deps, fn dep ->
+              %{
+                "entity_type" => "component",
+                "entity_id" => dep.id,
+                "requirement_name" => "tests_passing"
+              }
+            end)
+
           if all_satisfied do
-            {true, %{status: "All dependencies satisfied", count: length(deps)}}
+            {true, %{status: "All dependencies satisfied", count: length(deps)}, dep_edges}
           else
             unsatisfied_deps =
               deps
@@ -40,16 +48,14 @@ defmodule CodeMySpec.Requirements.DependencyChecker do
                unsatisfied_dependencies: unsatisfied_deps,
                total_dependencies: length(deps),
                unsatisfied_count: length(unsatisfied_deps)
-             }}
+             }, dep_edges}
           end
 
-        # Handle case where dependencies is not loaded
         {:dependencies_satisfied, %Ecto.Association.NotLoaded{}} ->
-          {false, %{reason: "Dependencies not loaded"}}
+          {false, %{reason: "Dependencies not loaded"}, []}
 
-        # Handle other cases
         {_, _} ->
-          {false, %{reason: "Invalid dependency structure"}}
+          {false, %{reason: "Invalid dependency structure"}, []}
       end
 
     %{
@@ -61,7 +67,8 @@ defmodule CodeMySpec.Requirements.DependencyChecker do
       satisfied: satisfied,
       score: if(satisfied, do: 1.0, else: 0.0),
       checked_at: DateTime.utc_now(),
-      details: details
+      details: details,
+      depends_on: depends_on
     }
   end
 

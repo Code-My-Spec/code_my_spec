@@ -15,7 +15,9 @@ defmodule CodeMySpec.LocalServer.Router do
     IssuesController,
     NotificationController,
     PermissionController,
+    RequirementsGraphController,
     StoryComponentController,
+    SetupController,
     StoryLinkageController
   }
   alias CodeMySpec.LocalServer.Plugs
@@ -234,6 +236,67 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
     |> maybe_continue(&Plugs.LocalScope.call(&1, []))
     |> maybe_continue(&IssuesController.resolve/1)
+  end
+
+  # --- Init checklist (pre-project-ID bootstrap) ---
+
+  get "/init" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&SetupController.index/1)
+  end
+
+  get "/init/:step" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&SetupController.show/1)
+  end
+
+  get "/init/:step/prompt" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&SetupController.prompt/1)
+  end
+
+  # --- Setup checklist (post-init, project exists) ---
+
+  get "/setup" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&SetupController.setup_index/1)
+  end
+
+  get "/setup/:step" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&SetupController.setup_show/1)
+  end
+
+  get "/setup/:step/prompt" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&SetupController.setup_prompt/1)
+  end
+
+  # --- Requirements graph ---
+  # Content-negotiated:
+  #   Browser (?dir=): HTML page with interactive Mermaid diagram
+  #   LLM (X-Working-Dir header): raw Mermaid source (text/plain)
+  get "/requirements/graph" do
+    conn
+    |> Plugs.LocalOnly.call([])
+    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
+    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
+    |> maybe_continue(&RequirementsGraphController.auto/1)
   end
 
   # MCP routes - require localhost, working dir, and scope

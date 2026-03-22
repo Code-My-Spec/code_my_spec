@@ -134,7 +134,8 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
     :satisfied,
     :score,
     :checked_at,
-    :details
+    :details,
+    :depends_on
   ]
 
   # Partial unique indexes require the WHERE clause for SQLite to match them.
@@ -146,6 +147,162 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
     requirements_project_id_name_index:
       ~s|("project_id","name") WHERE "project_id" IS NOT NULL|
   }
+
+  # --- Graph query functions ---
+
+  @doc """
+  Resolves depends_on edge maps to actual Requirement records.
+  """
+  @spec resolve_edges([map()]) :: [Requirement.t()]
+  def resolve_edges([]), do: []
+
+  def resolve_edges(edges) when is_list(edges) do
+    # Group edges by entity type for efficient querying
+    edges
+    |> Enum.group_by(& &1["entity_type"])
+    |> Enum.flat_map(fn {entity_type, type_edges} ->
+      resolve_edges_for_type(entity_type, type_edges)
+    end)
+  end
+
+  defp resolve_edges_for_type("component", edges) do
+    pairs = Enum.map(edges, fn e -> {e["entity_id"], e["requirement_name"]} end)
+
+    Requirement
+    |> where([r], not is_nil(r.component_id))
+    |> Repo.all()
+    |> Enum.filter(fn r -> {r.component_id, r.name} in pairs end)
+  end
+
+  defp resolve_edges_for_type("story", edges) do
+    pairs = Enum.map(edges, fn e -> {e["entity_id"], e["requirement_name"]} end)
+
+    Requirement
+    |> where([r], not is_nil(r.story_id))
+    |> Repo.all()
+    |> Enum.filter(fn r -> {r.story_id, r.name} in pairs end)
+  end
+
+  defp resolve_edges_for_type("project", edges) do
+    pairs = Enum.map(edges, fn e -> {e["entity_id"], e["requirement_name"]} end)
+
+    Requirement
+    |> where([r], not is_nil(r.project_id))
+    |> Repo.all()
+    |> Enum.filter(fn r -> {r.project_id, r.name} in pairs end)
+  end
+
+  defp resolve_edges_for_type(_, _), do: []
+
+  @doc """
+  Finds all requirements that depend on the given requirement.
+  Searches depends_on JSON arrays using SQLite LIKE on the serialized text.
+  """
+  @spec find_dependents(Requirement.t()) :: [Requirement.t()]
+  def find_dependents(%Requirement{} = req) do
+    {entity_type, entity_id} = entity_key(req)
+    name = req.name
+
+    # SQLite: depends_on is stored as JSON text, search for matching edge substring
+    pattern = "%\"requirement_name\":\"#{name}\"%"
+
+    Requirement
+    |> where([r], fragment("? LIKE ?", r.depends_on, ^pattern))
+    |> Repo.all()
+    |> Enum.filter(fn r ->
+      Enum.any?(r.depends_on || [], fn edge ->
+        edge["entity_type"] == entity_type and
+          edge["entity_id"] == entity_id and
+          edge["requirement_name"] == name
+      end)
+    end)
+  end
+
+  @doc """
+  Returns the full requirements graph for a project.
+  """
+  @spec project_graph(Scope.t()) :: %{nodes: [Requirement.t()], edges: [map()]}
+  def project_graph(%Scope{active_project_id: project_id}) do
+    component_ids =
+      Component
+      |> where([c], c.project_id == ^project_id)
+      |> select([c], c.id)
+
+    story_ids =
+      Story
+      |> where([s], s.project_id == ^project_id)
+      |> select([s], s.id)
+
+    nodes =
+      Requirement
+      |> where([r], r.component_id in subquery(component_ids))
+      |> or_where([r], r.story_id in subquery(story_ids))
+      |> or_where([r], r.project_id == ^project_id)
+      |> Repo.all()
+
+    edges =
+      nodes
+      |> Enum.flat_map(fn node ->
+        (node.depends_on || [])
+        |> Enum.map(fn edge ->
+          %{
+            from: edge,
+            to: %{
+              "entity_type" => entity_type(node),
+              "entity_id" => entity_id(node),
+              "requirement_name" => node.name
+            }
+          }
+        end)
+      end)
+
+    %{nodes: nodes, edges: edges}
+  end
+
+  @doc """
+  Returns next actionable requirements across all entity levels in a project.
+  A requirement is actionable when: not satisfied, has satisfied_by, all depends_on are satisfied.
+  """
+  @spec next_actionable_project(Scope.t()) :: [Requirement.t()]
+  def next_actionable_project(%Scope{} = scope) do
+    %{nodes: all_requirements} = project_graph(scope)
+
+    # Build lookup: {entity_type, entity_id, name} -> satisfied
+    satisfaction_map =
+      Map.new(all_requirements, fn r ->
+        {{entity_type(r), entity_id(r), r.name}, r.satisfied}
+      end)
+
+    all_requirements
+    |> Enum.filter(fn r ->
+      not r.satisfied and
+        r.satisfied_by != nil and
+        all_deps_satisfied?(r.depends_on || [], satisfaction_map)
+    end)
+  end
+
+  defp all_deps_satisfied?([], _map), do: true
+
+  defp all_deps_satisfied?(deps, satisfaction_map) do
+    Enum.all?(deps, fn edge ->
+      key = {edge["entity_type"], edge["entity_id"], edge["requirement_name"]}
+      Map.get(satisfaction_map, key, true)
+    end)
+  end
+
+  defp entity_key(%Requirement{component_id: id}) when not is_nil(id), do: {"component", id}
+  defp entity_key(%Requirement{story_id: id}) when not is_nil(id), do: {"story", id}
+  defp entity_key(%Requirement{project_id: id}) when not is_nil(id), do: {"project", id}
+
+  defp entity_type(%Requirement{component_id: id}) when not is_nil(id), do: "component"
+  defp entity_type(%Requirement{story_id: id}) when not is_nil(id), do: "story"
+  defp entity_type(%Requirement{project_id: id}) when not is_nil(id), do: "project"
+
+  defp entity_id(%Requirement{component_id: id}) when not is_nil(id), do: id
+  defp entity_id(%Requirement{story_id: id}) when not is_nil(id), do: id
+  defp entity_id(%Requirement{project_id: id}) when not is_nil(id), do: id
+
+  # --- Private: persistence ---
 
   defp persist_or_apply(changeset, opts, conflict_target) do
     if Keyword.get(opts, :persist, true) do

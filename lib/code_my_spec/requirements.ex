@@ -154,12 +154,26 @@ defmodule CodeMySpec.Requirements do
   def check_requirements(scope, entity, requirements_or_definitions, opts)
 
   def check_requirements(scope, entity, [%RequirementDefinition{} | _] = definitions, opts) do
+    # Only create prerequisite edges for requirements that actually exist for this entity type
+    definition_names = MapSet.new(definitions, & &1.name)
+
     Enum.map(definitions, fn requirement_definition ->
       checker = requirement_definition.checker
+      result = checker.check(scope, requirement_definition, entity, opts)
 
-      checker.check(scope, requirement_definition, entity, opts)
+      # Compute same-level prerequisite edges (only for prerequisites defined for this entity)
+      prereq_edges =
+        requirement_definition.prerequisites
+        |> Enum.filter(&MapSet.member?(definition_names, &1))
+        |> prerequisite_edges(entity)
+
+      # Merge with any cross-entity edges the checker returned
+      checker_edges = Map.get(result, :depends_on, [])
+
+      result
       |> Map.put(:scope, requirement_definition.scope)
       |> Map.put(:satisfied_by, requirement_definition.satisfied_by)
+      |> Map.put(:depends_on, prereq_edges ++ checker_edges)
     end)
   end
 
@@ -181,6 +195,66 @@ defmodule CodeMySpec.Requirements do
         artifact_types == [] or artifact_type in artifact_types
 
       include && !exclude && artifact_match
+    end)
+  end
+
+  # --- Graph query functions ---
+
+  @doc """
+  Returns all requirements that this requirement depends on (its blockers).
+  Resolves depends_on edges to actual Requirement records.
+  """
+  @spec blocking(any(), Requirement.t()) :: [Requirement.t()]
+  def blocking(_scope, %Requirement{depends_on: depends_on}) when is_list(depends_on) do
+    RequirementsRepository.resolve_edges(depends_on)
+  end
+
+  def blocking(_scope, _), do: []
+
+  @doc """
+  Returns all requirements that depend on this requirement (it blocks them).
+  """
+  @spec blocked_by(any(), Requirement.t()) :: [Requirement.t()]
+  def blocked_by(_scope, %Requirement{} = req) do
+    RequirementsRepository.find_dependents(req)
+  end
+
+  @doc """
+  Returns the full requirements graph for a project as nodes + edges.
+  """
+  @spec project_graph(any()) :: %{nodes: [Requirement.t()], edges: [map()]}
+  def project_graph(scope) do
+    RequirementsRepository.project_graph(scope)
+  end
+
+  @doc """
+  Returns the next actionable requirements across the entire project
+  (all entity levels).
+  """
+  @spec next_actionable_project(any()) :: [Requirement.t()]
+  def next_actionable_project(scope) do
+    RequirementsRepository.next_actionable_project(scope)
+  end
+
+  # --- Private helpers ---
+
+  defp prerequisite_edges([], _entity), do: []
+
+  defp prerequisite_edges(prerequisites, %Component{id: id}) do
+    Enum.map(prerequisites, fn prereq_name ->
+      %{"entity_type" => "component", "entity_id" => id, "requirement_name" => prereq_name}
+    end)
+  end
+
+  defp prerequisite_edges(prerequisites, %Story{id: id}) do
+    Enum.map(prerequisites, fn prereq_name ->
+      %{"entity_type" => "story", "entity_id" => id, "requirement_name" => prereq_name}
+    end)
+  end
+
+  defp prerequisite_edges(prerequisites, %Project{id: id}) do
+    Enum.map(prerequisites, fn prereq_name ->
+      %{"entity_type" => "project", "entity_id" => id, "requirement_name" => prereq_name}
     end)
   end
 end

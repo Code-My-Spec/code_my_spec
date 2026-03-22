@@ -55,6 +55,12 @@ defmodule CodeMySpec.Components.Sync do
     base_dir = Keyword.get(opts, :base_dir, ".")
     force = Keyword.get(opts, :force, false)
 
+    # Delete any existing components that are now ignored (immediate cleanup)
+    ignored_list = Keyword.get(opts, :ignored_components, [])
+    ignored = MapSet.new(ignored_list)
+    Logger.info("[Sync] ignored_components option: #{inspect(ignored_list)} (#{MapSet.size(ignored)} entries)")
+    cleanup_ignored(scope, ignored)
+
     # Load existing components and build files_changed_at lookup for mtime comparison
     existing_components = Components.list_components(scope)
     changed_at_map = Map.new(existing_components, fn c -> {c.module_name, c.files_changed_at} end)
@@ -695,5 +701,18 @@ defmodule CodeMySpec.Components.Sync do
     existing
     |> Enum.reject(&(&1.module_name in current_names))
     |> Enum.each(&Components.delete_component(scope, &1))
+  end
+
+  defp cleanup_ignored(%Scope{} = scope, %MapSet{} = ignored) do
+    if MapSet.size(ignored) == 0 do
+      :ok
+    else
+      Components.list_components(scope)
+      |> Enum.filter(&(&1.module_name in ignored))
+      |> Enum.each(fn component ->
+        Logger.info("[Sync] Deleting ignored component: #{component.module_name}")
+        Components.delete_component(scope, component)
+      end)
+    end
   end
 end

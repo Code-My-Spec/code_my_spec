@@ -51,6 +51,7 @@ defmodule CodeMySpec.Requirements.Requirement do
           score: float() | nil,
           checked_at: DateTime.t() | nil,
           details: map(),
+          depends_on: [map()],
           component_id: Ecto.UUID.t() | nil,
           component: Component.t() | Ecto.Association.NotLoaded.t(),
           story_id: integer() | nil,
@@ -74,6 +75,7 @@ defmodule CodeMySpec.Requirements.Requirement do
     field :score, :float
     field :checked_at, :utc_datetime
     field :details, :map, default: %{}
+    field :depends_on, CodeMySpec.Requirements.DependsOnType, default: []
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story
     belongs_to :project, Project, type: :binary_id
@@ -218,6 +220,7 @@ defmodule CodeMySpec.Requirements.Requirement do
       :score,
       :checked_at,
       :details,
+      :depends_on,
       :component_id,
       :story_id,
       :project_id

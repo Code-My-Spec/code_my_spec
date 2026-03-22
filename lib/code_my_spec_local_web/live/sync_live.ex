@@ -7,8 +7,10 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Components
   alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSync.Sync
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
 
   require Logger
@@ -60,6 +62,25 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     end
   end
 
+  def handle_event("purge", _params, socket) do
+    scope = socket.assigns.scope
+
+    # Delete all requirements (project, story, component)
+    Requirements.clear_all_project_requirements(scope)
+
+    # Delete all components
+    components = Components.list_components(scope)
+    Enum.each(components, &Components.delete_component(scope, &1))
+
+    Logger.info("[SyncLive] Purged #{length(components)} components and all requirements for #{scope.active_project.name}")
+
+    {:noreply,
+     assign(socket,
+       sync_status: :done,
+       sync_result: [{"Purged", "#{length(components)} components + all requirements deleted"}]
+     )}
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -74,17 +95,29 @@ defmodule CodeMySpecLocalWeb.SyncLive do
         Recalculate requirements, update component status, and persist results.
       </p>
 
-      <button
-        phx-click="sync"
-        disabled={@sync_status == :running}
-        style={"padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; " <>
-          if(@sync_status == :running, do: "background: #334155; color: #64748b;", else: "background: #4ade80; color: #0f172a; font-weight: 600;")}
-      >
-        {case @sync_status do
-          :running -> "Syncing..."
-          _ -> "Run Sync"
-        end}
-      </button>
+      <div style="display: flex; gap: 12px;">
+        <button
+          phx-click="sync"
+          disabled={@sync_status == :running}
+          style={"padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; " <>
+            if(@sync_status == :running, do: "background: #334155; color: #64748b;", else: "background: #4ade80; color: #0f172a; font-weight: 600;")}
+        >
+          {case @sync_status do
+            :running -> "Syncing..."
+            _ -> "Run Sync"
+          end}
+        </button>
+
+        <button
+          phx-click="purge"
+          disabled={@sync_status == :running}
+          data-confirm="This will delete ALL components and requirements for this project. Continue?"
+          style={"padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; " <>
+            if(@sync_status == :running, do: "background: #334155; color: #64748b;", else: "background: #f87171; color: #fff; font-weight: 600;")}
+        >
+          Purge All
+        </button>
+      </div>
 
       <div :if={@sync_status == :done && @sync_result} style="margin-top: 24px;">
         <h2>Sync Complete</h2>

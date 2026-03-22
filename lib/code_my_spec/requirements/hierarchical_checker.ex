@@ -19,10 +19,13 @@ defmodule CodeMySpec.Requirements.HierarchicalChecker do
         %Component{} = component,
         _opts \\ []
       ) do
-    {satisfied, details} =
+    {satisfied, details, child_depends_on} =
       case name do
         "children_designs" ->
-          check_children_requirements(component, "spec_file")
+          # Check spec_file for satisfaction, edge to spec_valid (design completion)
+          {sat, det, _} = check_children_requirements(component, "spec_file")
+          edges = collect_child_edges(get_children(component), "spec_valid")
+          {sat, det, edges}
 
         "children_implementations" ->
           check_children_requirements(component, "implementation_file")
@@ -35,7 +38,7 @@ defmodule CodeMySpec.Requirements.HierarchicalChecker do
 
         _ ->
           Logger.error("#{__MODULE__} was passed a registry spec with an invalid name #{name}.")
-          {false, %{reason: "Invalid hierarchical requirement type"}}
+          {false, %{reason: "Invalid hierarchical requirement type"}, []}
       end
 
     %{
@@ -47,7 +50,8 @@ defmodule CodeMySpec.Requirements.HierarchicalChecker do
       satisfied: satisfied,
       score: if(satisfied, do: 1.0, else: 0.0),
       checked_at: DateTime.utc_now(),
-      details: details
+      details: details,
+      depends_on: child_depends_on
     }
   end
 
@@ -59,43 +63,58 @@ defmodule CodeMySpec.Requirements.HierarchicalChecker do
       "#{__MODULE__} was passed a component with child components not loaded: #{inspect(component.id)}"
     )
 
-    {false, %{reason: "Child components not loaded"}}
+    {false, %{reason: "Child components not loaded"}, []}
   end
 
   defp check_children_requirements(%Component{child_components: []}, _requirement_name) do
-    {true, %{status: "No child components to check", count: 0}}
+    {true, %{status: "No child components to check", count: 0}, []}
   end
 
   defp check_children_requirements(%Component{child_components: children}, requirement_name)
        when is_list(children) do
     all_satisfied = all_children_have_requirement?(children, requirement_name)
+    depends_on = collect_child_edges(children, requirement_name)
 
     if all_satisfied do
-      {true, %{status: "All child components have required #{requirement_name}"}}
+      {true, %{status: "All child components have required #{requirement_name}"}, depends_on}
     else
-      {false, %{reason: "Some child components missing #{requirement_name}"}}
+      {false, %{reason: "Some child components missing #{requirement_name}"}, depends_on}
     end
   end
 
   defp check_all_children_requirements(%Component{
          child_components: %Ecto.Association.NotLoaded{}
        }) do
-    {false, %{reason: "Child components not loaded"}}
+    {false, %{reason: "Child components not loaded"}, []}
   end
 
   defp check_all_children_requirements(%Component{child_components: []}) do
-    {true, %{status: "No child components to check", count: 0}}
+    {true, %{status: "No child components to check", count: 0}, []}
   end
 
   defp check_all_children_requirements(%Component{child_components: children})
        when is_list(children) do
     all_complete = all_children_complete?(children)
+    depends_on = collect_child_edges(children, "tests_passing")
 
     if all_complete do
-      {true, %{status: "All child components fully complete"}}
+      {true, %{status: "All child components fully complete"}, depends_on}
     else
-      {false, %{reason: "Some child components not fully complete"}}
+      {false, %{reason: "Some child components not fully complete"}, depends_on}
     end
+  end
+
+  defp collect_child_edges(children, requirement_name) do
+    Enum.flat_map(children, fn child ->
+      edge = %{
+        "entity_type" => "component",
+        "entity_id" => child.id,
+        "requirement_name" => requirement_name
+      }
+
+      nested = collect_child_edges(get_children(child), requirement_name)
+      [edge | nested]
+    end)
   end
 
   defp all_children_have_requirement?([], _requirement_name), do: true

@@ -23,7 +23,7 @@ defmodule CodeMySpec.Requirements.ComponentCompleteChecker do
         %Story{} = story,
         _opts \\ []
       ) do
-    {satisfied, details} = evaluate(scope, story)
+    {satisfied, details, depends_on} = evaluate(scope, story)
 
     %{
       name: name,
@@ -34,18 +34,19 @@ defmodule CodeMySpec.Requirements.ComponentCompleteChecker do
       satisfied: satisfied,
       score: if(satisfied, do: 1.0, else: 0.0),
       checked_at: DateTime.utc_now(),
-      details: details
+      details: details,
+      depends_on: depends_on
     }
   end
 
   defp evaluate(_scope, %Story{component_id: nil}) do
-    {false, %{reason: "No component linked"}}
+    {false, %{reason: "No component linked"}, []}
   end
 
   defp evaluate(scope, %Story{component_id: component_id}) do
     case ComponentRepository.get_component(scope, component_id) do
       nil ->
-        {false, %{reason: "Linked component not found"}}
+        {false, %{reason: "Linked component not found"}, []}
 
       root ->
         descendants = ComponentRepository.list_all_descendants(scope, component_id)
@@ -58,13 +59,24 @@ defmodule CodeMySpec.Requirements.ComponentCompleteChecker do
         unsatisfied =
           Enum.reject(all_requirements, & &1.satisfied)
 
+        # Build depends_on edges to each component's terminal requirement (tests_passing)
+        depends_on =
+          all_components
+          |> Enum.map(fn c ->
+            %{
+              "entity_type" => "component",
+              "entity_id" => c.id,
+              "requirement_name" => "tests_passing"
+            }
+          end)
+
         if unsatisfied == [] do
           {true,
            %{
              component_count: length(all_components),
              requirement_count: length(all_requirements),
              all_satisfied: true
-           }}
+           }, depends_on}
         else
           {false,
            %{
@@ -75,7 +87,7 @@ defmodule CodeMySpec.Requirements.ComponentCompleteChecker do
                Enum.map(unsatisfied, fn r ->
                  %{requirement: r.name, component_id: r.component_id}
                end)
-           }}
+           }, depends_on}
         end
     end
   end

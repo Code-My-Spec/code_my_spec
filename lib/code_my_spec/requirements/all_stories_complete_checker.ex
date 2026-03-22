@@ -36,7 +36,7 @@ defmodule CodeMySpec.Requirements.AllStoriesCompleteChecker do
       RequirementsRegistry.get_story_requirements()
       |> Enum.map(& &1.name)
 
-    {satisfied, details} = evaluate_stories(stories, story_requirement_names)
+    {satisfied, details, depends_on} = evaluate_stories(stories, story_requirement_names)
 
     %{
       name: name,
@@ -47,12 +47,13 @@ defmodule CodeMySpec.Requirements.AllStoriesCompleteChecker do
       satisfied: satisfied,
       score: if(satisfied, do: 1.0, else: 0.0),
       checked_at: DateTime.utc_now(),
-      details: details
+      details: details,
+      depends_on: depends_on
     }
   end
 
   defp evaluate_stories([], _story_requirement_names) do
-    {false, %{reason: "No stories found in project"}}
+    {false, %{reason: "No stories found in project"}, []}
   end
 
   defp evaluate_stories(stories, story_requirement_names) do
@@ -61,15 +62,25 @@ defmodule CodeMySpec.Requirements.AllStoriesCompleteChecker do
         story_satisfied?(story, story_requirement_names)
       end)
 
+    # Build depends_on edges to each story's terminal requirement (qa_complete)
+    depends_on =
+      Enum.map(stories, fn story ->
+        %{
+          "entity_type" => "story",
+          "entity_id" => story.id,
+          "requirement_name" => "qa_complete"
+        }
+      end)
+
     if incomplete == [] do
-      {true, %{story_count: length(stories), all_complete: true}}
+      {true, %{story_count: length(stories), all_complete: true}, depends_on}
     else
       {false,
        %{
          story_count: length(stories),
          incomplete_count: length(incomplete),
          incomplete_story_ids: Enum.map(incomplete, & &1.id)
-       }}
+       }, depends_on}
     end
   end
 
