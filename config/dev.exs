@@ -79,7 +79,8 @@ config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   debug_errors: true,
   check_origin: false,
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:code_my_spec_local, ~w(--sourcemap=inline --watch)]}
+    esbuild: {Esbuild, :install_and_run, [:code_my_spec_local, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:code_my_spec_local, ~w(--watch)]}
   ],
   live_reload: [
     patterns: [

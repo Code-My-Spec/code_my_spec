@@ -82,6 +82,13 @@ config :tailwind,
       --output=priv/static/assets/css/app.css
     ),
     cd: Path.expand("..", __DIR__)
+  ],
+  code_my_spec_local: [
+    args: ~w(
+      --input=assets/css/local_app.css
+      --output=priv/static/local/assets/css/local_app.css
+    ),
+    cd: Path.expand("..", __DIR__)
   ]
 
 # Configures Elixir's Logger
