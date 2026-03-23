@@ -2,88 +2,70 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   @moduledoc """
   Evaluates agent tasks via the Stop hook.
 
-  `evaluate_sessions/2` looks up sessions by external conversation ID,
-  evaluates the session stack at highest priority, deletes passing sessions,
-  and returns combined feedback for failures.
-
-  SubagentStop task identification is handled by
-  `ImplementationStatus.identify_task_from_transcript/2` and
-  `Validation.identify_and_evaluate_task/2` instead.
+  Looks up the DB session by external conversation ID, finds the active task,
+  and evaluates it via the task module's `evaluate/3` callback.
   """
 
   require Logger
 
   alias CodeMySpec.Components
   alias CodeMySpec.Sessions
+  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Look up sessions by external conversation ID, evaluate the session stack,
-  delete passing sessions, and return combined feedback for failures.
+  Look up session by external conversation ID, evaluate the active task.
   """
   @spec evaluate_sessions(Scope.t(), String.t()) :: {:ok, :valid} | {:error, String.t()}
   def evaluate_sessions(%Scope{} = scope, session_id) when is_binary(session_id) do
-    case Sessions.list_sessions(scope) do
-      {:ok, all_sessions} ->
-        sessions =
-          all_sessions
-          |> Enum.filter(&(&1.external_conversation_id == session_id))
+    case Sessions.get_by_external_id(scope, session_id) do
+      nil ->
+        {:ok, :valid}
 
-        if sessions == [] do
+      %Session{} = session ->
+        evaluate_session(scope, session)
+    end
+  end
+
+  # ============================================================================
+  # Session evaluation
+  # ============================================================================
+
+  defp evaluate_session(scope, session) do
+    case Session.active_task(session) do
+      nil ->
+        # No active task — nothing to evaluate
+        {:ok, :valid}
+
+      task ->
+        evaluate_task(scope, session, task)
+    end
+  end
+
+  defp evaluate_task(scope, session, task) do
+    module = task.session_type
+
+    if is_nil(module) do
+      Logger.warning("[TaskEvaluator] Task #{task.id} has no session_type, skipping")
+      {:ok, :valid}
+    else
+      type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
+      Logger.info("[TaskEvaluator] Evaluating task #{task.id} (#{type_name})")
+
+      enriched_session = enrich_session(scope, session)
+
+      case call_evaluate(module, scope, enriched_session, []) do
+        {:ok, :valid} ->
+          # Mark task completed
+          Sessions.complete_task(scope, session, task.id, :completed)
           {:ok, :valid}
-        else
-          evaluate_session_stack(scope, sessions)
-        end
 
-      _error ->
-        {:ok, :valid}
-    end
-  end
+        {:ok, :invalid, feedback} ->
+          {:error, feedback}
 
-  # ============================================================================
-  # Session stack evaluation (Stop)
-  # ============================================================================
-
-  defp evaluate_session_stack(scope, sessions) do
-    # Get sessions at highest priority level
-    max_priority = sessions |> Enum.map(& &1.priority) |> Enum.max()
-    top_sessions = Enum.filter(sessions, &(&1.priority == max_priority))
-
-    results = Enum.map(top_sessions, &evaluate_one_session(scope, &1))
-
-    {passed, failed} = Enum.split_with(results, &match?({:ok, :valid, _}, &1))
-
-    # Delete passing sessions
-    Enum.each(passed, fn {:ok, :valid, session} ->
-      Sessions.delete_session(scope, session.id)
-    end)
-
-    case failed do
-      [] ->
-        {:ok, :valid}
-
-      failures ->
-        feedback = build_combined_feedback(failures)
-        {:error, feedback}
-    end
-  end
-
-  defp evaluate_one_session(scope, session) do
-    session = enrich_session(scope, session)
-    module = session.type
-
-    type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
-    Logger.info("[TaskEvaluator] Evaluating session #{session.id} (#{type_name})")
-
-    case call_evaluate(module, scope, session, []) do
-      {:ok, :valid} ->
-        {:ok, :valid, session}
-
-      {:ok, :invalid, feedback} ->
-        {:ok, :invalid, session, feedback}
-
-      {:error, reason} ->
-        {:ok, :invalid, session, "Error: #{inspect(reason)}"}
+        {:error, reason} ->
+          {:error, "Error: #{inspect(reason)}"}
+      end
     end
   end
 
@@ -101,19 +83,5 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   rescue
     e ->
       {:error, "Task evaluation failed: #{Exception.message(e)}"}
-  end
-
-  defp build_combined_feedback(failures) do
-    failures
-    |> Enum.map_join("\n\n", fn
-      {:ok, :invalid, session, feedback} ->
-        type_name =
-          session.type
-          |> Atom.to_string()
-          |> String.split(".")
-          |> List.last()
-
-        "[#{type_name}] #{feedback}"
-    end)
   end
 end

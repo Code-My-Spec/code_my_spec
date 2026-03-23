@@ -1,0 +1,94 @@
+defmodule CodeMySpecLocalWeb.StartTaskController do
+  @moduledoc """
+  Activates a prepared task and returns the prompt as markdown.
+
+  This is the gate — the agent must call this to see the prompt.
+  Transitions the task from :prepared → :active.
+  """
+  use CodeMySpecLocalWeb, :controller
+
+  alias CodeMySpec.Components
+  alias CodeMySpec.Sessions
+  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Stories
+
+  def start(conn, %{"session_id" => session_id, "task_id" => task_id}) do
+    scope = conn.assigns.current_scope
+    agent_id = get_agent_id(conn)
+
+    case Sessions.get_session(scope, session_id) do
+      nil ->
+        conn |> put_status(404) |> text("Session not found: #{session_id}")
+
+      session ->
+        handle_task(conn, scope, session, task_id, agent_id)
+    end
+  end
+
+  defp get_agent_id(conn) do
+    # POST body or query param
+    (conn.body_params || %{})["agent_id"] ||
+      (conn.query_params || %{})["agent_id"]
+  end
+
+  defp handle_task(conn, scope, session, task_id, agent_id) do
+    case Session.find_task(session, task_id) do
+      nil ->
+        conn |> put_status(404) |> text("Task not found: #{task_id}")
+
+      %{status: :active} = task ->
+        # Already active — assign agent_id if provided and not yet set
+        if agent_id && is_nil(task.agent_id) do
+          Sessions.assign_agent(scope, session, task_id, agent_id)
+        end
+
+        text(conn, generate_prompt(task, scope))
+
+      %{status: :prepared} = task ->
+        case Sessions.activate_task(scope, session, task_id, agent_id) do
+          {:ok, _updated} ->
+            text(conn, generate_prompt(task, scope))
+
+          {:error, reason} ->
+            conn |> put_status(422) |> text("Failed to activate task: #{inspect(reason)}")
+        end
+
+      %{status: other} ->
+        conn |> put_status(409) |> text("Task is #{other}, cannot start")
+    end
+  end
+
+  defp generate_prompt(task, scope) do
+    task_module = task.session_type
+
+    if is_nil(task_module) do
+      "No task module configured for this task."
+    else
+      session = build_session_for_command(task, scope)
+
+      case task_module.command(scope, session) do
+        {:ok, prompt} -> prompt
+        {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
+      end
+    end
+  rescue
+    error -> "Error: #{inspect(error)}"
+  end
+
+  defp build_session_for_command(task, scope) do
+    component =
+      if task.component_id, do: Components.get_component!(scope, task.component_id)
+
+    story =
+      if task.story_id, do: Stories.get_story!(scope, task.story_id)
+
+    %CodeMySpec.Sessions.Session{
+      component: component,
+      project: scope.active_project,
+      state:
+        %{}
+        |> then(fn s -> if component, do: Map.put(s, "component_id", component.id), else: s end)
+        |> then(fn s -> if story, do: Map.put(s, "story_id", story.id), else: s end)
+    }
+  end
+end

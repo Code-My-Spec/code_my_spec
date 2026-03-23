@@ -55,9 +55,11 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "technical_strategy" => AgentTasks.TechnicalStrategy,
     "research_topic" => AgentTasks.ResearchTopic,
     "qa_app" => AgentTasks.QaApp,
+    "qa_integration_plan" => AgentTasks.QaIntegrationPlan,
     "qa_journey_plan" => AgentTasks.QaJourneyPlan,
     "qa_journey_execute" => AgentTasks.QaJourneyExecute,
     "qa_journey_wallaby" => AgentTasks.QaJourneyWallaby,
+    "qa_preflight" => AgentTasks.QaPreflight,
     "qa_setup" => AgentTasks.QaSetup,
     "qa_story" => AgentTasks.QaStory,
     "start_implementation" => AgentTasks.StartImplementation
@@ -82,7 +84,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "qa_app",
     "qa_journey_plan",
     "qa_journey_execute",
+    "qa_integration_plan",
     "qa_journey_wallaby",
+    "qa_preflight",
     "qa_setup"
   ]
 
@@ -332,34 +336,26 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # Session creation
 
   defp find_or_create_session(scope, external_id, session_module) do
-    {:ok, sessions} = Sessions.list_sessions(scope)
-
-    case Enum.find(sessions, &(&1.type == session_module && &1.status == :active && &1.external_conversation_id == external_id)) do
-      %Session{} = existing -> {:ok, existing}
-      nil -> create_session(scope, external_id, session_module, nil)
-    end
+    Sessions.find_or_create_session(scope, external_id, %{type: session_module})
   end
 
   defp create_session(scope, external_id, session_module, component) do
     attrs = %{
       type: session_module,
-      external_conversation_id: external_id,
       component_module_name: component && component.module_name,
       state: if(component, do: %{"component_id" => component.id}, else: %{})
     }
 
-    Sessions.create_session(scope, attrs)
+    Sessions.find_or_create_session(scope, external_id, attrs)
   end
 
   defp create_topic_session(scope, external_id, session_module, topic) do
     attrs = %{
       type: session_module,
-      external_conversation_id: external_id,
-      component_module_name: nil,
       state: %{"topic" => topic}
     }
 
-    Sessions.create_session(scope, attrs)
+    Sessions.find_or_create_session(scope, external_id, attrs)
   end
 
   # Set virtual fields on the session struct

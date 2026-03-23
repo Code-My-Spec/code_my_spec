@@ -30,9 +30,11 @@ defmodule CodeMySpec.Sessions.SessionType do
 
     AgentTasks.ProjectSetup,
     AgentTasks.QaApp,
+    AgentTasks.QaIntegrationPlan,
     AgentTasks.QaJourneyExecute,
     AgentTasks.QaJourneyPlan,
     AgentTasks.QaJourneyWallaby,
+    AgentTasks.QaPreflight,
     AgentTasks.QaSetup,
     AgentTasks.QaStory,
     AgentTasks.RefactorModule,
@@ -55,14 +57,29 @@ defmodule CodeMySpec.Sessions.SessionType do
   end
 
   def cast(string) when is_binary(string) do
-    Map.get(mapper(), string)
-    |> cast
+    # Try short name first ("TechnicalStrategy"), then full atom string ("Elixir.CodeMySpec.AgentTasks.TechnicalStrategy")
+    case Map.get(mapper(), string) do
+      nil ->
+        atom = String.to_atom(string)
+        if atom in @valid_types, do: {:ok, atom}, else: :error
+
+      module ->
+        {:ok, module}
+    end
   end
 
   def cast(_module), do: :error
 
   @spec load(binary()) :: {:ok, t()} | :error
-  def load(data) when is_binary(data), do: {:ok, String.to_existing_atom(data)}
+  def load(data) when is_binary(data) do
+    atom = String.to_atom(data)
+
+    if atom in @valid_types do
+      {:ok, atom}
+    else
+      :error
+    end
+  end
 
   @spec dump(atom()) :: {:ok, binary()} | :error
   def dump(module) when is_atom(module), do: {:ok, Atom.to_string(module)}

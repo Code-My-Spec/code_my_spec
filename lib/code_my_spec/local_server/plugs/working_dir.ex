@@ -27,7 +27,9 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
               "[LocalServer] Working directory: #{working_dir} -> project root: #{project_root}"
             )
 
-            assign(conn, :working_dir, project_root)
+            conn
+            |> assign(:working_dir, project_root)
+            |> assign_source_if_missing(:header)
 
           {:error, reason} ->
             Logger.warning("[LocalServer] Invalid working directory: #{reason}")
@@ -39,12 +41,22 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
         end
 
       [] ->
-        Logger.warning("[LocalServer] Missing X-Working-Dir header")
+        # Fall back to ?dir= query param (for browser access)
+        conn = fetch_query_params(conn)
 
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(400, Jason.encode!(%{error: "X-Working-Dir header is required"}))
-        |> halt()
+        case Map.get(conn.query_params, "dir") do
+          nil ->
+            Logger.warning("[LocalServer] Missing X-Working-Dir header")
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(400, Jason.encode!(%{error: "X-Working-Dir header is required"}))
+            |> halt()
+
+          dir ->
+            conn = assign(conn, :working_dir_source, :query_param)
+            call(%{conn | req_headers: [{"x-working-dir", dir} | conn.req_headers]}, [])
+        end
     end
   end
 
@@ -79,6 +91,15 @@ defmodule CodeMySpec.LocalServer.Plugs.WorkingDir do
 
       true ->
         find_project_root(Path.dirname(dir), original_dir)
+    end
+  end
+
+  # Only set :working_dir_source if not already set (the ?dir= fallback sets it before re-calling)
+  defp assign_source_if_missing(conn, source) do
+    if conn.assigns[:working_dir_source] do
+      conn
+    else
+      assign(conn, :working_dir_source, source)
     end
   end
 end

@@ -81,6 +81,17 @@ defmodule CodeMySpec.Projects do
     end
   end
 
+  @doc """
+  Gets a project by its local filesystem path. For hook endpoints that
+  resolve project from X-Working-Dir instead of a project name in the URL.
+  """
+  def get_project_by_local_path(path) when is_binary(path) do
+    case Repo.get_by(Project, local_path: path) do
+      nil -> {:error, :not_found}
+      project -> {:ok, project}
+    end
+  end
+
   def get_project!(%Scope{} = scope, id) do
     Repo.get_by!(Project, id: id, account_id: scope.active_account_id)
   end

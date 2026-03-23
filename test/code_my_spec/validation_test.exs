@@ -5,7 +5,7 @@ defmodule CodeMySpec.ValidationTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.ProjectCoordinator.ImplementationStatus
-  alias CodeMySpec.Sessions.SessionsRepository
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Support.TestAdapter
   alias CodeMySpec.Validation
 
@@ -319,7 +319,7 @@ defmodule CodeMySpec.ValidationTest do
     test "returns {:ok, :valid} when pipeline passes and all sessions pass",
          %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
       {:ok, _session} =
-        SessionsRepository.create_session(env, %{
+        Sessions.create_session(scope, %{
           type: "ArchitectureReview",
           priority: 1,
           state: %{}
@@ -365,7 +365,7 @@ defmodule CodeMySpec.ValidationTest do
     test "returns {:error, feedback} when session evaluation fails",
          %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
       {:ok, _session} =
-        SessionsRepository.create_session(env, %{
+        Sessions.create_session(scope, %{
           type: "ComponentSpec",
           priority: 10,
           component_module_name: "NonExistent.Module",
@@ -415,7 +415,7 @@ defmodule CodeMySpec.ValidationTest do
     test "evaluates session stack filtered by session_id",
          %{scope: scope, env: env, pipeline_opts: pipeline_opts} do
       {:ok, _matching} =
-        SessionsRepository.create_session(env, %{
+        Sessions.create_session(scope, %{
           type: "ArchitectureReview",
           priority: 1,
           external_conversation_id: "matching-session-id",
@@ -423,7 +423,7 @@ defmodule CodeMySpec.ValidationTest do
         })
 
       {:ok, _other} =
-        SessionsRepository.create_session(env, %{
+        Sessions.create_session(scope, %{
           type: "ArchitectureReview",
           priority: 1,
           external_conversation_id: "other-session-id",

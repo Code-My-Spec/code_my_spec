@@ -1,7 +1,6 @@
 defmodule CodeMySpecLocalWeb.Plugs.LocalScope do
   @moduledoc """
   Loads the project scope from the working directory's config file.
-  Also ensures the SessionServer is running for this project.
   """
 
   import Plug.Conn
@@ -20,7 +19,6 @@ defmodule CodeMySpecLocalWeb.Plugs.LocalScope do
 
     case Scope.from_local_config(working_dir) do
       {:ok, scope} ->
-        ensure_session_server(scope)
         assign(conn, :current_scope, scope)
 
       {:error, reason} ->
@@ -31,14 +29,5 @@ defmodule CodeMySpecLocalWeb.Plugs.LocalScope do
         |> send_resp(400, Jason.encode!(%{error: "No project found: #{reason}"}))
         |> halt()
     end
-  end
-
-  defp ensure_session_server(scope) do
-    CodeMySpec.Sessions.SessionServer.ensure_started(scope)
-    :ok
-  rescue
-    _ -> :ok
-  catch
-    :exit, _ -> :ok
   end
 end
