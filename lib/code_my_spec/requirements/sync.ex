@@ -343,6 +343,41 @@ defmodule CodeMySpec.Requirements.Sync do
   end
 
   @doc """
+  Rechecks a single requirement by ID.
+
+  Loads the requirement, finds its definition from the registry,
+  runs the checker, and upserts the result.
+  """
+  @spec recheck_requirement(Scope.t(), integer()) :: :ok
+  def recheck_requirement(scope, requirement_id) do
+    requirement = Requirements.get_requirement!(requirement_id)
+    {entity, definitions} = entity_and_definitions(requirement)
+    definition = Enum.find(definitions, &(&1.name == requirement.name))
+
+    [result] = Requirements.check_requirements(scope, entity, [definition], persist: true)
+
+    case entity do
+      %Component{} -> Requirements.create_requirement(scope, entity, result, persist: true)
+      %Story{} -> Requirements.create_story_requirement(scope, entity, result, persist: true)
+      %Project{} -> Requirements.create_project_requirement(scope, entity, result, persist: true)
+    end
+
+    :ok
+  end
+
+  defp entity_and_definitions(%Requirement{component: %Component{} = component}) do
+    {component, RequirementsRegistry.get_requirements_for_type(component.type)}
+  end
+
+  defp entity_and_definitions(%Requirement{story: %Story{} = story}) do
+    {story, RequirementsRegistry.get_story_requirements()}
+  end
+
+  defp entity_and_definitions(%Requirement{project: %Project{} = project}) do
+    {project, RequirementsRegistry.get_project_requirements()}
+  end
+
+  @doc """
   Sorts requirements according to their order in the registry type definition.
   """
   @spec sort_requirements_by_registry_order([Requirement.t()], String.t()) :: [Requirement.t()]

@@ -131,6 +131,15 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionable do
     end
   end
 
+  # Project-level → children are in the checklist (e.g., project_setup steps)
+  defp descend_children(%Requirement{project_id: pid, story_id: nil, component_id: nil} = req, _scope)
+       when not is_nil(pid) do
+    checklist = get_in(req.details, ["checklist"]) || []
+    has_unsatisfied = Enum.any?(checklist, fn item -> not (item["satisfied"] || false) end)
+
+    if has_unsatisfied, do: {:ok, :has_work}, else: :complete
+  end
+
   # Component → iterate child components (via parent_component_id)
   defp descend_children(%Requirement{component_id: cid}, scope) when not is_nil(cid) do
     children = Components.list_child_components(scope, cid)

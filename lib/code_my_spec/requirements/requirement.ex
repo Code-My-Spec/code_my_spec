@@ -47,6 +47,8 @@ defmodule CodeMySpec.Requirements.Requirement do
           checker_module: CheckerType.t() | nil,
           satisfied_by: SessionType.t() | nil,
           scope: scope(),
+          validation_type: :automatic | :manual,
+          execution_type: :main_agent | :sub_agent,
           satisfied: boolean(),
           score: float() | nil,
           checked_at: DateTime.t() | nil,
@@ -71,6 +73,8 @@ defmodule CodeMySpec.Requirements.Requirement do
     field :checker_module, CheckerType
     field :satisfied_by, SessionType
     field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
+    field :validation_type, Ecto.Enum, values: [:automatic, :manual], default: :automatic
+    field :execution_type, Ecto.Enum, values: [:main_agent, :sub_agent], default: :main_agent
     field :satisfied, :boolean, default: false
     field :score, :float
     field :checked_at, :utc_datetime
@@ -188,6 +192,8 @@ defmodule CodeMySpec.Requirements.Requirement do
       checker_module: requirement_definition.checker,
       satisfied_by: requirement_definition.satisfied_by,
       scope: requirement_definition.scope,
+      validation_type: requirement_definition.validation_type,
+      execution_type: requirement_definition.execution_type,
       satisfied: satisfied,
       score: score,
       checked_at: DateTime.utc_now(),
@@ -216,6 +222,8 @@ defmodule CodeMySpec.Requirements.Requirement do
       :checker_module,
       :satisfied_by,
       :scope,
+      :validation_type,
+      :execution_type,
       :satisfied,
       :score,
       :checked_at,

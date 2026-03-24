@@ -15,11 +15,16 @@ defmodule CodeMySpec.Sessions.Task do
   alias CodeMySpec.Sessions.SessionType
 
   @statuses [:prepared, :active, :completed, :failed, :cancelled]
+  @validation_types [:automatic, :manual]
+  @execution_types [:main_agent, :sub_agent]
 
   @type t :: %__MODULE__{
           id: String.t() | nil,
           status: atom() | nil,
           session_type: SessionType.t() | nil,
+          validation_type: :automatic | :manual | nil,
+          execution_type: :main_agent | :sub_agent | nil,
+          requirement_id: integer() | nil,
           requirement_name: String.t() | nil,
           component_id: String.t() | nil,
           component_module_name: String.t() | nil,
@@ -36,6 +41,9 @@ defmodule CodeMySpec.Sessions.Task do
     field :id, :string
     field :status, Ecto.Enum, values: @statuses, default: :prepared
     field :session_type, SessionType
+    field :validation_type, Ecto.Enum, values: @validation_types, default: :automatic
+    field :execution_type, Ecto.Enum, values: @execution_types, default: :main_agent
+    field :requirement_id, :integer
     field :requirement_name, :string
     field :component_id, :string
     field :component_module_name, :string
@@ -54,6 +62,9 @@ defmodule CodeMySpec.Sessions.Task do
       :id,
       :status,
       :session_type,
+      :validation_type,
+      :execution_type,
+      :requirement_id,
       :requirement_name,
       :component_id,
       :component_module_name,

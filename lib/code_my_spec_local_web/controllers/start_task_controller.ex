@@ -8,6 +8,7 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
   use CodeMySpecLocalWeb, :controller
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Stories
@@ -66,13 +67,60 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
     else
       session = build_session_for_command(task, scope)
 
-      case task_module.command(scope, session) do
-        {:ok, prompt} -> prompt
-        {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
-      end
+      prompt =
+        case task_module.command(scope, session) do
+          {:ok, text} -> text
+          {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
+        end
+
+      prompt <> checklist_section(task, scope)
     end
   rescue
     error -> "Error: #{inspect(error)}"
+  end
+
+  defp checklist_section(%{requirement_id: nil}, _scope), do: ""
+
+  defp checklist_section(%{requirement_id: req_id} = task, _scope) do
+    requirement = Requirements.get_requirement!(req_id)
+    checklist = get_in(requirement.details, ["checklist"]) || []
+
+    if checklist == [] do
+      ""
+    else
+      done = Enum.count(checklist, fn item -> item["satisfied"] || false end)
+      total = length(checklist)
+
+      # Build the same linked checklist as the requirements show page
+      project_name = task.project_id
+      slug = requirement_slug(requirement)
+
+      lines =
+        Enum.map_join(checklist, "\n", fn item ->
+          name = item["name"]
+          id = item["id"]
+          satisfied = item["satisfied"] || false
+          detail = item["detail"]
+
+          check = if satisfied, do: "[x]", else: "[ ]"
+          link = "[#{name}](/api/projects/#{slug}/requirements/#{requirement.name}/#{id})"
+          detail_text = if detail && !satisfied, do: " — #{detail}", else: ""
+
+          "- #{check} #{link}#{detail_text}"
+        end)
+
+      "\n\n## Steps (#{done}/#{total})\n\n#{lines}\n"
+    end
+  end
+
+  defp requirement_slug(requirement) do
+    case requirement.project do
+      %{name: name} when is_binary(name) ->
+        name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-")
+
+      _ ->
+        "project"
+    end
   end
 
   defp build_session_for_command(task, scope) do

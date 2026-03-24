@@ -53,6 +53,7 @@ defmodule CodeMySpec.Requirements do
     end
   end
 
+  defdelegate get_requirement!(id), to: RequirementsRepository
   defdelegate clear_all_project_requirements(scope), to: RequirementsRepository
   defdelegate clear_requirements(scope, component, opts \\ []), to: RequirementsRepository
   defdelegate create_requirement(scope, component, attrs, opts \\ []), to: RequirementsRepository
@@ -172,6 +173,8 @@ defmodule CodeMySpec.Requirements do
 
       result
       |> Map.put(:scope, requirement_definition.scope)
+      |> Map.put(:validation_type, requirement_definition.validation_type)
+      |> Map.put(:execution_type, requirement_definition.execution_type)
       |> Map.put(:satisfied_by, requirement_definition.satisfied_by)
       |> Map.put(:depends_on, prereq_edges ++ checker_edges)
     end)

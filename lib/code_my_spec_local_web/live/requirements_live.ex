@@ -101,6 +101,32 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end
   end
 
+  def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components}} = socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      components =
+        Components.list_components(scope)
+        |> Repo.preload(:requirements)
+
+      slug = project_slug(project)
+
+      lines =
+        Enum.map_join(components, "\n", fn component ->
+          reqs = component.requirements || []
+          total = length(reqs)
+          satisfied = Enum.count(reqs, & &1.satisfied)
+          check = if satisfied == total and total > 0, do: "[x]", else: "[ ]"
+          "- #{check} [#{component.module_name}](/projects/#{slug}/components/#{component.id}) (#{satisfied}/#{total})"
+        end)
+
+      back = "[← Back to project](/projects/#{slug})\n\n"
+      markdown = back <> "# Components\n\n#{lines}\n"
+
+      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, mermaid: nil, error: nil)}
+    else
+      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
+    end
+  end
+
   def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       component =

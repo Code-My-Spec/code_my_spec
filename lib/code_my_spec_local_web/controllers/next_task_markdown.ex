@@ -10,9 +10,9 @@ defmodule CodeMySpecLocalWeb.NextTaskMarkdown do
   @doc """
   Build markdown for a next-task result.
 
-  When a task_id is provided, includes a start-task link that gates the prompt.
+  When a task_info tuple is provided, includes start-task and evaluation instructions.
   """
-  def render({:ok, requirement}, _scope, project, task_id \\ nil) do
+  def render({:ok, requirement}, _scope, project, task_info \\ nil) do
     requirement = Repo.preload(requirement, [:component, :story])
     slug = project_slug(project)
 
@@ -20,18 +20,19 @@ defmodule CodeMySpecLocalWeb.NextTaskMarkdown do
       back_link(slug),
       header(requirement),
       entity_context(requirement, slug, project),
-      start_link(requirement, slug, task_id)
+      start_section(requirement, slug, task_info),
+      validation_section(requirement, slug, task_info)
     ]
 
     Enum.reject(sections, &is_nil/1) |> Enum.join("\n\n")
   end
 
-  def render(:complete, _scope, project, _task_id) do
+  def render(:complete, _scope, project, _task_info) do
     slug = project_slug(project)
     "[← Back to requirements](/projects/#{slug}/requirements)\n\n# All requirements satisfied\n\nNo actionable tasks remain."
   end
 
-  def render({:error, reason}, _scope, project, _task_id) do
+  def render({:error, reason}, _scope, project, _task_info) do
     slug = project_slug(project)
     "[← Back to requirements](/projects/#{slug}/requirements)\n\n# No actionable task\n\n#{reason}"
   end
@@ -63,17 +64,46 @@ defmodule CodeMySpecLocalWeb.NextTaskMarkdown do
     end
   end
 
-  defp start_link(%{satisfied_by: nil}, _slug, _task_info), do: nil
+  # -- Start section ---------------------------------------------------------
 
-  defp start_link(%{satisfied_by: task_module}, slug, {session_id, task_id}) do
+  defp start_section(%{satisfied_by: nil}, _slug, _task_info), do: nil
+
+  defp start_section(%{satisfied_by: task_module, execution_type: execution_type}, slug, {session_id, task_id}) do
     task_name = task_module |> inspect() |> String.split(".") |> List.last()
-    "**Task:** `#{task_name}` — [Start task](/api/projects/#{slug}/sessions/#{session_id}/tasks/#{task_id}/start)"
+    start_url = "/api/projects/#{slug}/sessions/#{session_id}/tasks/#{task_id}/start"
+
+    execution_note =
+      case execution_type do
+        :sub_agent ->
+          "**Execution:** This task should be delegated to a sub-agent. Start it, then pass the prompt."
+
+        _ ->
+          "**Execution:** You are the agent responsible for this task. Start it to get the prompt."
+      end
+
+    "**Task:** `#{task_name}` — [Start task](#{start_url})\n\n#{execution_note}"
   end
 
-  defp start_link(%{satisfied_by: task_module}, _slug, nil) do
+  defp start_section(%{satisfied_by: task_module, execution_type: execution_type}, _slug, nil) do
     task_name = task_module |> inspect() |> String.split(".") |> List.last()
-    "**Task:** `#{task_name}` (no active session — start a session first)"
+    exec_label = if execution_type == :sub_agent, do: "sub-agent", else: "main agent"
+    "**Task:** `#{task_name}` | **Execution:** #{exec_label}"
   end
+
+  # -- Validation section ----------------------------------------------------
+
+  defp validation_section(%{validation_type: :manual}, slug, {session_id, task_id}) do
+    evaluate_url = "/api/projects/#{slug}/sessions/#{session_id}/tasks/#{task_id}/evaluate"
+
+    "**Validation:** Manual — the task will not be marked complete automatically. " <>
+      "When done, [evaluate the task](#{evaluate_url})."
+  end
+
+  defp validation_section(%{validation_type: :automatic}, _slug, {_session_id, _task_id}) do
+    "**Validation:** Automatic. The stop hook will evaluate this task when the agent finishes."
+  end
+
+  defp validation_section(_, _, _), do: nil
 
   defp project_slug(project) do
     (project.name || "project")

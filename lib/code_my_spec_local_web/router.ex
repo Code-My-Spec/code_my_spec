@@ -33,6 +33,10 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/sessions", SessionsLive, :index
       live "/projects/:project_name/sessions/:id", SessionsLive, :show
       live "/projects/:project_name/sessions/:id/tasks/:task_id", SessionsLive, :task_show
+      live "/projects/:project_name/knowledge", MarkdownBrowserLive, :knowledge
+      live "/projects/:project_name/knowledge/*path", MarkdownBrowserLive, :knowledge
+      live "/projects/:project_name/project-knowledge", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_name/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
       live "/projects/:project_name/components", RequirementsLive, :components
       live "/projects/:project_name/components/:component_id", RequirementsLive, :component_show
       live "/projects/:project_name/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
@@ -77,6 +81,7 @@ defmodule CodeMySpecLocalWeb.Router do
 
     post "/sync", SyncController, :create
     get "/next-task", NextTaskController, :show
+    get "/next-task/:session_id", NextTaskController, :show
     get "/requirements", RequirementsController, :index
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt
@@ -90,6 +95,11 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/sessions/:session_id/tasks/:task_id", SessionsController, :show_task
     get "/sessions/:session_id/tasks/:task_id/start", StartTaskController, :start
     post "/sessions/:session_id/tasks/:task_id/start", StartTaskController, :start
+    get "/sessions/:session_id/tasks/:task_id/evaluate", EvaluateTaskController, :evaluate
+    get "/knowledge", MarkdownBrowserController, :index
+    get "/knowledge/*path", MarkdownBrowserController, :show
+    get "/project-knowledge", MarkdownBrowserController, :index
+    get "/project-knowledge/*path", MarkdownBrowserController, :show
     get "/components", ComponentsRequirementsController, :index
     get "/components/:component_id", ComponentsRequirementsController, :show
     get "/components/:component_id/requirements/:name", ComponentsRequirementsController, :show_requirement

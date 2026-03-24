@@ -22,6 +22,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
 
   @type scope :: :local | :children | :dependencies | :orchestrate | :pipeline
 
+  @type validation_type :: :automatic | :manual
+  @type execution_type :: :main_agent | :sub_agent
+
   @type t :: %__MODULE__{
           name: String.t(),
           checker: module(),
@@ -31,7 +34,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           threshold: float(),
           config: map(),
           prerequisites: [String.t()],
-          scope: scope()
+          scope: scope(),
+          validation_type: validation_type(),
+          execution_type: execution_type()
         }
 
   @artifact_types [
@@ -54,6 +59,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     field :config, :map, default: %{}
     field :prerequisites, {:array, :string}, default: []
     field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
+    field :validation_type, Ecto.Enum, values: [:automatic, :manual], default: :automatic
+    field :execution_type, Ecto.Enum, values: [:main_agent, :sub_agent], default: :main_agent
   end
 
   @doc """
@@ -108,7 +115,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :threshold,
       :config,
       :prerequisites,
-      :scope
+      :scope,
+      :validation_type,
+      :execution_type
     ])
     |> validate_required([
       :name,

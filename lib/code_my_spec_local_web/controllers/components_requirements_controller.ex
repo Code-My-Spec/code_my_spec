@@ -8,6 +8,25 @@ defmodule CodeMySpecLocalWeb.ComponentsRequirementsController do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
 
+  def index(conn, _params) do
+    scope = conn.assigns.current_scope
+
+    components =
+      Components.list_components(scope)
+      |> Repo.preload(:requirements)
+
+    lines =
+      Enum.map_join(components, "\n", fn component ->
+        reqs = component.requirements || []
+        total = length(reqs)
+        satisfied = Enum.count(reqs, & &1.satisfied)
+        check = if satisfied == total and total > 0, do: "[x]", else: "[ ]"
+        "- #{check} **#{component.module_name}** (#{satisfied}/#{total}) — type: #{component.type}, id: #{component.id}"
+      end)
+
+    text(conn, "# Components\n\n#{lines}\n")
+  end
+
   def show(conn, %{"component_id" => component_id}) do
     scope = conn.assigns.current_scope
 

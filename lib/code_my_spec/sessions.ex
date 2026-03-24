@@ -90,14 +90,28 @@ defmodule CodeMySpec.Sessions do
   Returns `{:ok, updated_session}` or `{:error, changeset}`.
   """
   def prepare_task(%Scope{} = _scope, %Session{} = session, task_attrs) do
-    attrs =
-      task_attrs
-      |> Map.put_new(:id, Ecto.UUID.generate())
-      |> Map.put(:status, :prepared)
+    requirement_name = Map.get(task_attrs, :requirement_name)
 
-    session
-    |> Session.add_task(attrs)
-    |> Repo.update()
+    # Don't create duplicates — return existing if there's already a
+    # prepared or active task for this requirement
+    existing =
+      (session.tasks || [])
+      |> Enum.find(fn t ->
+        t.requirement_name == requirement_name and t.status in [:prepared, :active]
+      end)
+
+    if existing do
+      {:ok, session}
+    else
+      attrs =
+        task_attrs
+        |> Map.put_new(:id, Ecto.UUID.generate())
+        |> Map.put(:status, :prepared)
+
+      session
+      |> Session.add_task(attrs)
+      |> Repo.update()
+    end
   end
 
   @doc """

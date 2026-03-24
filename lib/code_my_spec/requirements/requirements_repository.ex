@@ -13,6 +13,15 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
   alias CodeMySpec.Users.Scope
 
   @doc """
+  Gets a single requirement by ID, preloading the owning entity (component, story, or project).
+  """
+  @spec get_requirement!(integer()) :: Requirement.t()
+  def get_requirement!(id) do
+    Repo.get!(Requirement, id)
+    |> Repo.preload([:component, :story, :project])
+  end
+
+  @doc """
   Clears all requirements for the entire project.
   """
   @spec clear_all_project_requirements(Scope.t()) :: {integer(), nil}
@@ -131,6 +140,8 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
     :checker_module,
     :satisfied_by,
     :scope,
+    :validation_type,
+    :execution_type,
     :satisfied,
     :score,
     :checked_at,
