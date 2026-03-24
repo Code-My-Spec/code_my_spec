@@ -20,7 +20,7 @@ defmodule CodeMySpecLocalWeb.NextTaskMarkdown do
 
     sections = [
       back_link(slug),
-      header(requirement),
+      header(requirement, slug),
       entity_context(requirement, slug, project),
       start_section(requirement, slug, task_info),
       validation_section(requirement, slug, task_info)
@@ -45,12 +45,13 @@ defmodule CodeMySpecLocalWeb.NextTaskMarkdown do
     "[← Back to requirements](/projects/#{slug}/requirements)"
   end
 
-  defp header(req) do
+  defp header(req, slug) do
     status = if req.satisfied, do: "✓ Satisfied", else: "Not satisfied"
     score = if req.score, do: " (#{Float.round(req.score, 2)})", else: ""
     scope_tag = if req.scope != :local, do: " | scope: `#{req.scope}`", else: ""
+    req_link = "[#{req.name}](/projects/#{slug}/requirements/#{req.name})"
 
-    "# Next Task: #{req.name}\n\n#{req.description}\n\n**#{status}#{score}**#{scope_tag}"
+    "# Next Task: #{req_link}\n\n#{req.description}\n\n**#{status}#{score}**#{scope_tag}"
   end
 
   defp entity_context(req, slug, project) do
@@ -103,6 +104,14 @@ defmodule CodeMySpecLocalWeb.NextTaskMarkdown do
 
   defp validation_section(%{validation_type: :automatic}, _slug, {_session_id, _task_id}) do
     "**Validation:** Automatic. The stop hook will evaluate this task when the agent finishes."
+  end
+
+  defp validation_section(%{validation_type: :manual}, _slug, nil) do
+    "**Validation:** Manual"
+  end
+
+  defp validation_section(%{validation_type: :automatic}, _slug, nil) do
+    "**Validation:** Automatic"
   end
 
   defp validation_section(_, _, _), do: nil

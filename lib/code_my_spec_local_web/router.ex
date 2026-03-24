@@ -27,8 +27,10 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/requirements/:name", RequirementsLive, :show
       live "/projects/:project_name/requirements/:name/:child_id", RequirementsLive, :child
       live "/projects/:project_name/graph", RequirementsLive, :graph
-      live "/projects/:project_name/stories", RequirementsLive, :stories
-      live "/projects/:project_name/stories/:story_id", RequirementsLive, :story_show
+      live "/projects/:project_name/stories", StoriesLive, :index
+      live "/projects/:project_name/stories/requirements", RequirementsLive, :stories
+      live "/projects/:project_name/stories/:story_id", StoriesLive, :show
+      live "/projects/:project_name/stories/:story_id/requirements", RequirementsLive, :story_show
       live "/projects/:project_name/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
       live "/projects/:project_name/sessions", SessionsLive, :index
       live "/projects/:project_name/sessions/:id", SessionsLive, :show
@@ -87,8 +89,11 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/requirements/:name/prompt", RequirementsController, :prompt
     get "/requirements/:name/:child_id", RequirementsController, :child
     get "/graph", RequirementsGraphController, :show
-    get "/stories", StoriesRequirementsController, :index
-    get "/stories/:story_id", StoriesRequirementsController, :show
+    get "/stories", StoriesController, :index
+    get "/stories/:story_id", StoriesController, :show
+    post "/stories/:story_id/set-component", StoriesController, :set_component
+    get "/stories/requirements", StoriesRequirementsController, :index
+    get "/stories/:story_id/requirements", StoriesRequirementsController, :show
     get "/stories/:story_id/requirements/:name", StoriesRequirementsController, :show_requirement
     get "/sessions", SessionsController, :index
     get "/sessions/:id", SessionsController, :show
@@ -100,8 +105,8 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/knowledge/*path", MarkdownBrowserController, :show
     get "/project-knowledge", MarkdownBrowserController, :index
     get "/project-knowledge/*path", MarkdownBrowserController, :show
-    get "/components", ComponentsRequirementsController, :index
-    get "/components/:component_id", ComponentsRequirementsController, :show
+    get "/components/requirements", ComponentsRequirementsController, :index
+    get "/components/:component_id/requirements", ComponentsRequirementsController, :show
     get "/components/:component_id/requirements/:name", ComponentsRequirementsController, :show_requirement
   end
 

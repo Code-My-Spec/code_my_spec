@@ -31,7 +31,7 @@ defmodule CodeMySpecLocalWeb.StoriesRequirementsController do
     end
   end
 
-  def show(conn, %{"story_id" => story_id}) do
+  def show(conn, %{"story_id" => story_id, "project_name" => project_name}) do
     scope = conn.assigns.current_scope
 
     case Stories.get_story(scope, story_id) do
@@ -59,7 +59,9 @@ defmodule CodeMySpecLocalWeb.StoriesRequirementsController do
             "\n\nNo component linked."
           end
 
-        text(conn, "# #{story.title} — Requirements (#{satisfied}/#{total})\n\n#{lines}#{component_info}\n")
+        story_detail = "Story detail: /api/projects/#{project_name}/stories/#{story_id}"
+
+        text(conn, "# #{story.title} — Requirements (#{satisfied}/#{total})\n\n#{lines}#{component_info}\n\n#{story_detail}\n")
 
       nil ->
         conn |> put_status(404) |> text("Story not found: #{story_id}")

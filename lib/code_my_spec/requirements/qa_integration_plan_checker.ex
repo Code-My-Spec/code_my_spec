@@ -52,15 +52,27 @@ defmodule CodeMySpec.Requirements.QaIntegrationPlanChecker do
   end
 
   defp run_checks(env) do
-    with :ok <- check_index_exists(env),
-         {:ok, spec_files} <- check_specs_exist(env),
-         :ok <- check_specs_valid(env, spec_files),
-         :ok <- check_verify_scripts_exist(env, spec_files),
-         :ok <- check_all_verified(env, spec_files) do
-      {true, %{status: "All integrations verified", integration_count: length(spec_files)}}
+    spec_files = list_spec_files(env)
+
+    if spec_files == [] do
+      {true, %{status: "No integrations required", integration_count: 0}}
     else
-      {:error, reason} ->
-        {false, %{reason: reason}}
+      with :ok <- check_index_exists(env),
+           :ok <- check_specs_valid(env, spec_files),
+           :ok <- check_verify_scripts_exist(env, spec_files),
+           :ok <- check_all_verified(env, spec_files) do
+        {true, %{status: "All integrations verified", integration_count: length(spec_files)}}
+      else
+        {:error, reason} ->
+          {false, %{reason: reason}}
+      end
+    end
+  end
+
+  defp list_spec_files(env) do
+    case Environments.glob(env, Path.join(@integrations_dir, "*.md")) do
+      files when is_list(files) -> files
+      _ -> []
     end
   end
 
@@ -69,16 +81,6 @@ defmodule CodeMySpec.Requirements.QaIntegrationPlanChecker do
       {:ok, content} when byte_size(content) > 0 -> :ok
       {:ok, _} -> {:error, "Integration index is empty at #{@integrations_index}"}
       _ -> {:error, "Integration index missing at #{@integrations_index}"}
-    end
-  end
-
-  defp check_specs_exist(env) do
-    case Environments.glob(env, Path.join(@integrations_dir, "*.md")) do
-      files when is_list(files) and files != [] ->
-        {:ok, files}
-
-      _ ->
-        {:error, "No integration specs found in #{@integrations_dir}/"}
     end
   end
 

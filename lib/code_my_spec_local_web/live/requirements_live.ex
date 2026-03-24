@@ -428,7 +428,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     actionable_names =
       actionable |> Map.values() |> List.flatten() |> MapSet.new(& &1.name)
 
-    back = "[← Back to stories](/projects/#{slug}/stories)\n\n"
+    back = "[← Back to stories](/projects/#{slug}/stories) | [Story detail](/projects/#{slug}/stories/#{story.id})\n\n"
     header = "# #{story.title} — Requirements (#{satisfied}/#{total})\n\n"
 
     component_info =

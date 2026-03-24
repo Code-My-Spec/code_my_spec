@@ -56,15 +56,19 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   """
   def evaluate(scope, _session, _opts \\ []) do
     env = scope.environment
+    spec_files = list_spec_files(env)
 
-    with :ok <- check_index(env),
-         {:ok, spec_files} <- check_specs(env),
-         :ok <- check_verify_scripts(env, spec_files),
-         :ok <- check_verified_status(env, spec_files) do
+    if spec_files == [] do
       {:ok, :valid}
     else
-      {:error, feedback} ->
-        {:ok, :invalid, feedback}
+      with :ok <- check_index(env),
+           :ok <- check_verify_scripts(env, spec_files),
+           :ok <- check_verified_status(env, spec_files) do
+        {:ok, :valid}
+      else
+        {:error, feedback} ->
+          {:ok, :invalid, feedback}
+      end
     end
   end
 
@@ -278,24 +282,10 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
     end
   end
 
-  defp check_specs(env) do
+  defp list_spec_files(env) do
     case Environments.glob(env, Path.join(@integrations_dir, "*.md")) do
-      files when is_list(files) and files != [] ->
-        {:ok, files}
-
-      _ ->
-        # Check if the index says no integrations needed
-        case Environments.read_file(env, @integrations_index) do
-          {:ok, content} ->
-            if String.contains?(String.downcase(content), "no integrations") do
-              {:ok, []}
-            else
-              {:error, "No integration specs found in `#{@integrations_dir}/`. Draft specs for each integration and stop again."}
-            end
-
-          _ ->
-            {:error, "No integration specs found in `#{@integrations_dir}/`."}
-        end
+      files when is_list(files) -> files
+      _ -> []
     end
   end
 

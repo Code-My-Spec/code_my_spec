@@ -55,10 +55,14 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
     - [Project Init Checklist](/init?dir=#{dir_param})
 
+    ## Data
+
+    - [Stories](/projects/#{slug}/stories)
+
     ## Requirements
 
     - [Project Requirements](/projects/#{slug}/requirements)
-    - [Stories Requirements](/projects/#{slug}/stories)
+    - [Stories Requirements](/projects/#{slug}/stories/requirements)
     - [Components Requirements](/projects/#{slug}/components)
 
     ## Reference
