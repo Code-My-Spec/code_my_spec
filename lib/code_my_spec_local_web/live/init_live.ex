@@ -7,7 +7,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
-  alias CodeMySpec.Setup.Steps
+  alias CodeMySpec.AgentTasks.Init
   alias CodeMySpecLocalWeb.InitMarkdown
 
   @impl true
@@ -53,7 +53,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
   defp load_index(socket, working_dir) do
     scope = %{cwd: working_dir}
-    evaluated = Steps.evaluate_all(scope, working_dir)
+    evaluated = Init.evaluate_all(scope)
     {done, total} = count_progress(evaluated)
 
     markdown =
@@ -79,22 +79,24 @@ defmodule CodeMySpecLocalWeb.InitLive do
   defp load_step(socket, working_dir, step_id) do
     scope = %{cwd: working_dir}
 
-    case Steps.evaluate_one(step_id, scope, working_dir) do
-      {:ok, step, status} ->
+    case Init.evaluate_one(step_id, scope) do
+      {:ok, mod, status} ->
+        name = Init.step_name(mod)
+
         markdown =
           case socket.assigns.live_action do
             :prompt ->
-              case step.module.command(scope, %{}) do
-                {:ok, text} -> "# #{step.name} — Prompt\n\n```\n#{text}\n```"
-                _ -> "# #{step.name}\n\nNo prompt available."
+              case mod.command(scope, %{}) do
+                {:ok, text} -> "# #{name} — Prompt\n\n```\n#{text}\n```"
+                _ -> "# #{name}\n\nNo prompt available."
               end
 
             :show ->
-              show_md = InitMarkdown.show(%{step: step, status: status, base_path: "/init"})
+              show_md = InitMarkdown.show(%{mod: mod, status: status, base_path: "/init"})
 
               prompt_md =
                 if match?({:not_done, _}, status) do
-                  case step.module.command(scope, %{}) do
+                  case mod.command(scope, %{}) do
                     {:ok, text} -> "\n\n## Instructions\n\n#{text}"
                     _ -> ""
                   end
@@ -109,7 +111,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
         assign(socket,
           working_dir: working_dir,
           markdown: markdown,
-          page_title: step.name,
+          page_title: name,
           error: nil
         )
 

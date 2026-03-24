@@ -7,13 +7,13 @@ defmodule CodeMySpecLocalWeb.InitController do
   """
   use CodeMySpecLocalWeb, :controller
 
-  alias CodeMySpec.Setup.Steps
+  alias CodeMySpec.AgentTasks.Init
   alias CodeMySpecLocalWeb.InitMarkdown
 
   def index(conn, _params) do
     working_dir = conn.assigns.working_dir
     scope = %{cwd: working_dir}
-    evaluated = Steps.evaluate_all(scope, working_dir)
+    evaluated = Init.evaluate_all(scope)
     {done, total} = count_progress(evaluated)
 
     markdown =
@@ -32,11 +32,11 @@ defmodule CodeMySpecLocalWeb.InitController do
     working_dir = conn.assigns.working_dir
     scope = %{cwd: working_dir}
 
-    case Steps.evaluate_one(step_id, scope, working_dir) do
-      {:ok, step, status} ->
+    case Init.evaluate_one(step_id, scope) do
+      {:ok, mod, status} ->
         markdown =
           InitMarkdown.show(%{
-            step: step,
+            mod: mod,
             status: status,
             base_path: "/api/init"
           })
@@ -52,9 +52,9 @@ defmodule CodeMySpecLocalWeb.InitController do
     working_dir = conn.assigns.working_dir
     scope = %{cwd: working_dir}
 
-    case Steps.evaluate_one(step_id, scope, working_dir) do
-      {:ok, step, _} ->
-        {:ok, prompt_text} = step.module.command(scope, %{})
+    case Init.evaluate_one(step_id, scope) do
+      {:ok, mod, _} ->
+        {:ok, prompt_text} = mod.command(scope, %{})
         text(conn, prompt_text)
 
       {:error, :not_found} ->

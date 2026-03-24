@@ -61,12 +61,12 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
   def child(conn, %{"name" => _name, "child_id" => child_id}) do
     scope = conn.assigns.current_scope
-    step = Enum.find(CodeMySpec.Setup.SetupSteps.all(), &(&1.id == child_id))
+    mod = CodeMySpec.AgentTasks.ProjectSetup.find_step(child_id)
 
-    if step do
+    if mod do
       session = %{project: scope.active_project}
 
-      case step.module.command(scope, session) do
+      case mod.command(scope, session) do
         {:ok, prompt_text} -> text(conn, prompt_text)
         {:error, reason} -> conn |> put_status(500) |> text("Error: #{inspect(reason)}")
       end

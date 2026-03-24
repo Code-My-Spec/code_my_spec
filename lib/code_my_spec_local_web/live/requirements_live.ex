@@ -11,7 +11,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
-  alias CodeMySpec.Setup.SetupSteps
+  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpecLocalWeb.RequirementsMarkdown
@@ -26,12 +26,12 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   @impl true
   def handle_params(%{"project_name" => name, "name" => req_name, "child_id" => child_id}, _uri, %{assigns: %{live_action: :child}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
-      step = Enum.find(SetupSteps.all(), &(&1.id == child_id))
+      mod = ProjectSetup.find_step(child_id)
 
-      if step do
-        command_text = generate_command(step.module, scope, project)
+      if mod do
+        command_text = generate_command(mod, scope, project)
         back = "[← Back to #{req_name}](/projects/#{project_slug(project)}/requirements/#{req_name})\n\n"
-        markdown = back <> "# #{step.name}\n\n" <> command_text
+        markdown = back <> "# #{ProjectSetup.step_name(mod)}\n\n" <> command_text
 
         {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
       else

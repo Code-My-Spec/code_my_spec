@@ -10,11 +10,44 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   from any point and provides flexibility for the agent to adapt to different starting states.
   """
 
+  alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Environments.Environment
 
   @required_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
   @min_elixir_version {1, 18, 0}
+
+  @setup_steps [
+    Setup.ProjectCompiles,
+    Setup.ApplicationInWeb,
+    Setup.CodemyspecDeps,
+    Setup.Compilers,
+    Setup.SpexConfig,
+    Setup.TestBoundaries,
+    Setup.TestSupportNamespace,
+    Setup.ProjectStructure,
+    Setup.AppResources,
+    Setup.AgentsMd,
+    Setup.Rules,
+    Setup.CredoChecks,
+    Setup.ClaudeMd
+  ]
+
+  @doc "Returns the ordered list of setup step modules."
+  def setup_steps, do: @setup_steps
+
+  @doc "Find a setup step module by its derived ID."
+  def find_step(id) do
+    Enum.find(@setup_steps, fn mod -> step_id(mod) == id end)
+  end
+
+  @doc "Derive a URL-friendly ID from a step module name."
+  def step_id(mod), do: mod |> Module.split() |> List.last() |> Macro.underscore()
+
+  @doc "Derive a human-readable name from a step module name."
+  def step_name(mod) do
+    mod |> Module.split() |> List.last() |> Macro.underscore() |> String.replace("_", " ") |> String.capitalize()
+  end
 
   @doc """
   Generate setup instructions for the agent based on current environment state.
