@@ -12,7 +12,9 @@ defmodule CodeMySpecLocalWeb.NextTaskMarkdown do
 
   When a task_info tuple is provided, includes start-task and evaluation instructions.
   """
-  def render({:ok, requirement}, _scope, project, task_info \\ nil) do
+  def render(result, scope, project, task_info \\ nil)
+
+  def render({:ok, requirement}, _scope, project, task_info) do
     requirement = Repo.preload(requirement, [:component, :story])
     slug = project_slug(project)
 

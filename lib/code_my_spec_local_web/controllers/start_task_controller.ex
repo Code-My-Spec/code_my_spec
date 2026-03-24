@@ -81,7 +81,7 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
 
   defp checklist_section(%{requirement_id: nil}, _scope), do: ""
 
-  defp checklist_section(%{requirement_id: req_id} = task, _scope) do
+  defp checklist_section(%{requirement_id: req_id}, _scope) do
     requirement = Requirements.get_requirement!(req_id)
     checklist = get_in(requirement.details, ["checklist"]) || []
 
@@ -92,7 +92,6 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
       total = length(checklist)
 
       # Build the same linked checklist as the requirements show page
-      project_name = task.project_id
       slug = requirement_slug(requirement)
 
       lines =

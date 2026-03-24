@@ -242,7 +242,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   # --- Markdown builders ---
 
-  defp build_show_markdown(requirement, project, scope, names \\ %{}) do
+  defp build_show_markdown(requirement, project, scope, names) do
     slug = project_slug(project)
     back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
 
@@ -289,7 +289,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     back <> header <> body <> nav
   end
 
-  defp build_requirement_nav(requirement, project, names \\ %{}) do
+  defp build_requirement_nav(requirement, project, names) do
     slug = project_slug(project)
     all_requirements = project.requirements || []
 
@@ -348,7 +348,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   end
 
   # Renders cross-entity dependency links for :dependencies/:children scope requirements
-  defp render_cross_entity_deps(requirement, slug, names \\ %{}) do
+  defp render_cross_entity_deps(requirement, slug, names) do
     story_edges =
       (requirement.depends_on || [])
       |> Enum.filter(fn edge -> edge["entity_type"] == "story" end)

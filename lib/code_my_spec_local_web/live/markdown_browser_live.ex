@@ -168,7 +168,7 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
     "#{back}# #{title}\n#{description}\n#{lines}\n"
   end
 
-  defp build_file_view(config, full_path, base_url, relative_path) do
+  defp build_file_view(_config, full_path, base_url, relative_path) do
     parent_dir = Path.dirname(relative_path)
     parent_url = if parent_dir == ".", do: base_url, else: "#{base_url}/#{parent_dir}"
     content = File.read!(full_path)
