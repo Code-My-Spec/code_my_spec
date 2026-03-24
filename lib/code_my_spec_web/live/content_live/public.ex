@@ -7,7 +7,27 @@ defmodule CodeMySpecWeb.ContentLive.Public do
   def render(assigns) do
     ~H"""
     <Layouts.marketing flash={@flash} current_scope={@current_scope}>
-      <.render_template content={@content} tags={@tags} template={@template} />
+      <div id="content-page" phx-hook=".DeepContentRead">
+        <.render_template content={@content} tags={@tags} template={@template} />
+      </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".DeepContentRead">
+        export default {
+          mounted() {
+            this._timer = setTimeout(() => {
+              if (typeof gtag === "function") {
+                gtag("event", "deep_content_read", {
+                  content_category: document.title,
+                  page_path: window.location.pathname
+                });
+              }
+            }, 60000);
+          },
+          destroyed() {
+            clearTimeout(this._timer);
+          }
+        }
+      </script>
     </Layouts.marketing>
     """
   end

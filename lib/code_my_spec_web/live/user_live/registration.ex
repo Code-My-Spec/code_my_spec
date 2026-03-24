@@ -7,7 +7,7 @@ defmodule CodeMySpecWeb.UserLive.Registration do
   def render(assigns) do
     ~H"""
     <Layouts.marketing flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm">
+      <div id="register-page" phx-hook=".ViewRegisterPage" class="mx-auto max-w-sm">
         <div class="text-center">
           <.header>
             Register for an account
@@ -36,6 +36,16 @@ defmodule CodeMySpecWeb.UserLive.Registration do
           </.button>
         </.form>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".ViewRegisterPage">
+        export default {
+          mounted() {
+            if (typeof gtag === "function") {
+              gtag("event", "view_register_page");
+            }
+          }
+        }
+      </script>
     </Layouts.marketing>
     """
   end

@@ -15,15 +15,35 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
   def render(assigns) do
     ~H"""
     <Layouts.marketing flash={@flash} current_scope={@current_scope}>
-      {hero_section(assigns)}
-      {interactive_diagram(assigns)}
-      {problem_section(assigns)}
-      {solution_section(assigns)}
-      {phases_detail_section(assigns)}
-      {proof_section(assigns)}
-      {getting_started_section(assigns)}
-      {faq_section(assigns)}
-      {related_content_section(assigns)}
+      <div id="methodology-page" phx-hook=".DeepContentRead">
+        {hero_section(assigns)}
+        {interactive_diagram(assigns)}
+        {problem_section(assigns)}
+        {solution_section(assigns)}
+        {phases_detail_section(assigns)}
+        {proof_section(assigns)}
+        {getting_started_section(assigns)}
+        {faq_section(assigns)}
+        {related_content_section(assigns)}
+      </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".DeepContentRead">
+        export default {
+          mounted() {
+            this._timer = setTimeout(() => {
+              if (typeof gtag === "function") {
+                gtag("event", "deep_content_read", {
+                  content_category: document.title,
+                  page_path: window.location.pathname
+                });
+              }
+            }, 60000);
+          },
+          destroyed() {
+            clearTimeout(this._timer);
+          }
+        }
+      </script>
     </Layouts.marketing>
     """
   end

@@ -9,7 +9,12 @@ defmodule CodeMySpecWeb.UserLive.Confirmation do
   def render(assigns) do
     ~H"""
     <Layouts.marketing flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm">
+      <div
+        id="confirmation-page"
+        phx-hook=".SignUpTracking"
+        data-first-confirmation={to_string(!@user.confirmed_at)}
+        class="mx-auto max-w-sm"
+      >
         <div class="text-center">
           <.header>Welcome {@user.email}</.header>
         </div>
@@ -70,6 +75,16 @@ defmodule CodeMySpecWeb.UserLive.Confirmation do
           Tip: If you prefer passwords, you can enable them in the user settings.
         </p>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
+        export default {
+          mounted() {
+            if (this.el.dataset.firstConfirmation === "true" && typeof gtag === "function") {
+              gtag("event", "sign_up");
+            }
+          }
+        }
+      </script>
     </Layouts.marketing>
     """
   end
