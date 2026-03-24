@@ -46,6 +46,7 @@ defmodule CodeMySpec.Components do
   defdelegate get_component!(scope, id), to: ComponentRepository
   defdelegate get_component_by_module_name(scope, id), to: ComponentRepository
   defdelegate get_component(scope, id), to: ComponentRepository
+  defdelegate list_all_descendants(scope, parent_component_id), to: ComponentRepository
   defdelegate show_architecture(scope), to: ComponentRepository
   defdelegate upsert_component(scope, attrs), to: ComponentRepository
 

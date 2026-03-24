@@ -1,0 +1,20 @@
+#!/bin/bash
+# List DB tasks for the project, optionally filtered by status.
+# Usage: list [--status STATUS]
+#
+# Options:
+#   --status  Filter by status (actionable, pending, complete, failed)
+set -euo pipefail
+
+PORT="${CODEMYSPEC_PORT:-4002}"
+QUERY=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --status) QUERY="?status=$2"; shift 2 ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+curl -sf "http://localhost:${PORT}/api/tasks${QUERY}" \
+  -H "X-Working-Dir: ${PWD}" | jq .

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Show task orchestration status (session server + DB task counts).
+# Usage: status
+set -euo pipefail
+
+PORT="${CODEMYSPEC_PORT:-4002}"
+
+curl -sf "http://localhost:${PORT}/api/tasks/status" \
+  -H "X-Working-Dir: ${PWD}" | jq .

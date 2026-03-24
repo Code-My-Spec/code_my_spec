@@ -38,8 +38,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     %{
       topic: "phoenix",
       title: "Use Phoenix as the web framework",
-      context:
-        "We need a performant, productive web framework for building our application.",
+      context: "We need a performant, productive web framework for building our application.",
       decision:
         "Use Phoenix. It provides excellent real-time capabilities, a productive development experience, and tight integration with Elixir's concurrency model."
     },
@@ -54,8 +53,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     %{
       topic: "tailwind",
       title: "Use Tailwind CSS for styling",
-      context:
-        "We need a CSS approach that scales well and avoids naming collisions.",
+      context: "We need a CSS approach that scales well and avoids naming collisions.",
       decision:
         "Use Tailwind CSS with its utility-first approach. It ships with Phoenix by default and integrates well with LiveView's component model."
     },
@@ -70,8 +68,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     %{
       topic: "phx-gen-auth",
       title: "Use phx.gen.auth for authentication",
-      context:
-        "We need user authentication with registration, login, and session management.",
+      context: "We need user authentication with registration, login, and session management.",
       decision:
         "Use `mix phx.gen.auth` to generate authentication. It provides a well-tested, customizable authentication system that lives in the project's codebase rather than behind an opaque library."
     },
@@ -173,19 +170,20 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     env = scope.environment
 
     index_exists = decisions_index_exists?(env)
-    existing_decisions = list_existing_decisions(env)
-    missing_premade = missing_premade_decisions(existing_decisions)
 
-    Logger.info(
-      "[TechnicalStrategy] evaluate: #{length(missing_premade)} missing pre-made, " <>
-        "index_exists=#{index_exists}"
-    )
+    Logger.info("[TechnicalStrategy] evaluate: index_exists=#{index_exists}")
 
-    if index_exists and Enum.empty?(missing_premade) do
+    if index_exists do
       {:ok, :valid}
     else
-      feedback = build_evaluate_feedback(index_exists, missing_premade)
-      {:ok, :invalid, feedback}
+      {:ok, :invalid,
+       """
+       Technical strategy is incomplete:
+
+       - Decisions index not found at `#{Paths.decisions_index()}`
+
+       Address the remaining items and stop the session again.
+       """}
     end
   end
 
@@ -332,7 +330,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
     #{decision_list}
 
-    Review these to avoid duplicating work. You can update existing decisions if needed.
+    Review these to avoid duplicating work. You can update existing decisions if needed. Remove any decisions that are not necessary for this project.
     """
   end
 
@@ -394,29 +392,4 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   # Evaluation
   # ============================================================================
 
-  defp build_evaluate_feedback(index_exists, missing_premade) do
-    parts = []
-
-    parts =
-      if index_exists do
-        parts
-      else
-        ["- Decisions index not found at `#{Paths.decisions_index()}`" | parts]
-      end
-
-    parts =
-      Enum.reduce(missing_premade, parts, fn d, acc ->
-        ["- Pre-made decision \"#{d.topic}\" has no decision record" | acc]
-      end)
-
-    issue_list = parts |> Enum.reverse() |> Enum.join("\n")
-
-    """
-    Technical strategy is incomplete:
-
-    #{issue_list}
-
-    Address the remaining items and stop the session again.
-    """
-  end
 end

@@ -1,0 +1,13 @@
+#!/bin/bash
+# Assign an agent to a prepared task.
+# Usage: assign <task_id> <agent_id>
+set -euo pipefail
+
+TASK_ID="${1:?Usage: assign <task_id> <agent_id>}"
+AGENT_ID="${2:?Usage: assign <task_id> <agent_id>}"
+PORT="${CODEMYSPEC_PORT:-4002}"
+
+curl -sf -X POST "http://localhost:${PORT}/api/tasks/assign" \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: ${PWD}" \
+  -d "{\"task_id\": \"${TASK_ID}\", \"agent_id\": \"${AGENT_ID}\"}" | jq .

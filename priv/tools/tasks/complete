@@ -1,0 +1,12 @@
+#!/bin/bash
+# Mark a task as complete.
+# Usage: complete <task_id>
+set -euo pipefail
+
+TASK_ID="${1:?Usage: complete <task_id>}"
+PORT="${CODEMYSPEC_PORT:-4002}"
+
+curl -sf -X POST "http://localhost:${PORT}/api/tasks/complete" \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: ${PWD}" \
+  -d "{\"task_id\": \"${TASK_ID}\"}" | jq .

@@ -835,6 +835,58 @@ defmodule CodeMySpec.Documents.Registry do
     }
   }
 
+  @integration_auth_type """
+  Format:
+  - Use H2 heading
+  - Single line: `api_token` or `oauth2`
+
+  Content:
+  - The authentication mechanism for this integration
+  - `api_token` — API key/secret in env var (e.g., Twilio, Stripe)
+  - `oauth2` — Client ID + Client Secret, then user-level token exchange (e.g., Google Calendar, GitHub)
+  """
+
+  @integration_required_credentials """
+  Format:
+  - Use H2 heading
+  - Bullet list of env var names with descriptions
+
+  Content:
+  - Each credential needed, as `ENV_VAR_NAME` — description of what it is and where to get it
+  - For oauth2: include both client credentials and any token-related vars
+  """
+
+  @integration_verify_script """
+  Format:
+  - Use H2 heading
+  - Single line: file path to the verify script
+
+  Content:
+  - Path to the shell script that proves credentials are valid
+  - Script must output structured JSON: {"integration": "name", "status": "ok"|"error", ...}
+  """
+
+  @integration_token_exchange_script """
+  Format:
+  - Use H2 heading
+  - Single line: file path to the token exchange script
+
+  Content:
+  - Path to the shell script that exchanges OAuth2 client creds for a test token
+  - Only applicable for oauth2 auth type
+  """
+
+  @integration_status """
+  Format:
+  - Use H2 heading
+  - Single line: `pending`, `configured`, or `verified`
+
+  Content:
+  - `pending` — integration spec drafted, credentials not yet provided
+  - `configured` — credentials provided but not yet verified
+  - `verified` — verify script ran successfully, integration works
+  """
+
   @document_definitions %{
     "spec" => @default_spec_definition,
     "schema" => %{
@@ -1122,6 +1174,19 @@ defmodule CodeMySpec.Documents.Registry do
         "options considered" => @adr_options_considered,
         "decision" => @adr_decision,
         "consequences" => @adr_consequences
+      }
+    },
+    "integration_spec" => %{
+      overview: "Per-integration configuration spec. Defines auth type, required credentials, verify scripts, and current status for a third-party integration.",
+      required_sections: ["auth type", "required credentials", "verify script", "status"],
+      optional_sections: ["token exchange script", "notes"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "auth type" => @integration_auth_type,
+        "required credentials" => @integration_required_credentials,
+        "verify script" => @integration_verify_script,
+        "token exchange script" => @integration_token_exchange_script,
+        "status" => @integration_status
       }
     },
     "architecture_proposal" => %{

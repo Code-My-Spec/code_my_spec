@@ -1,0 +1,12 @@
+#!/bin/bash
+# Build task graph for a story.
+# Usage: build <story_id>
+set -euo pipefail
+
+STORY_ID="${1:?Usage: build <story_id>}"
+PORT="${CODEMYSPEC_PORT:-4002}"
+
+curl -sf -X POST "http://localhost:${PORT}/api/tasks/build" \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: ${PWD}" \
+  -d "{\"story_id\": ${STORY_ID}}" | jq .

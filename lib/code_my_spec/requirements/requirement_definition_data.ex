@@ -471,7 +471,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Project bootstrap setup is complete",
         prerequisites: [],
-        scope: :children
+        scope: :children,
+        validation_type: :manual,
+        execution_type: :main_agent
       })
 
     definition
@@ -504,7 +506,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Integration specs exist and all verified",
         prerequisites: ["technical_strategy"],
-        scope: :orchestrate
+        scope: :orchestrate,
+        validation_type: :manual,
+        execution_type: :main_agent
       })
 
     definition

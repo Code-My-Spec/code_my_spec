@@ -65,6 +65,9 @@ defmodule CodeMySpec.Paths do
   @doc "QA scripts directory (`.code_my_spec/qa/scripts`)."
   def qa_scripts_dir, do: Path.join(@base_dir, "qa/scripts")
 
+  @doc "Integrations directory (`.code_my_spec/integrations`)."
+  def integrations_dir, do: Path.join(@base_dir, "integrations")
+
   @doc "Credo custom checks directory (`.code_my_spec/credo_checks`)."
   def credo_checks_dir, do: Path.join(@base_dir, "credo_checks")
 
@@ -111,6 +114,9 @@ defmodule CodeMySpec.Paths do
   @doc "QA journey Wallaby test directory (relative, target project)."
   def qa_journey_wallaby_dir, do: "test/journeys"
 
+  @doc "Integrations index file (`.code_my_spec/integrations.md`)."
+  def integrations_index, do: Path.join(@base_dir, "integrations.md")
+
   @doc "Design system HTML file."
   def design_system_path, do: Path.join(@base_dir, "design/design_system.html")
 
@@ -135,6 +141,9 @@ defmodule CodeMySpec.Paths do
 
   @doc "Research prompt file for a topic."
   def research_file(topic), do: Path.join(research_dir(), "#{topic}.md")
+
+  @doc "Integration spec file for a named integration."
+  def integration_file(name), do: Path.join(integrations_dir(), "#{name}.md")
 
   @doc "Knowledge directory for a topic."
   def knowledge_topic_dir(topic), do: Path.join(knowledge_dir(), topic)

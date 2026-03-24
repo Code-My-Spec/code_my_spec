@@ -1,0 +1,9 @@
+#!/bin/bash
+# List active tasks from the session server (tasks assigned to agents).
+# Usage: active
+set -euo pipefail
+
+PORT="${CODEMYSPEC_PORT:-4002}"
+
+curl -sf "http://localhost:${PORT}/api/tasks/active" \
+  -H "X-Working-Dir: ${PWD}" | jq .

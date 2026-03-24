@@ -1,0 +1,19 @@
+#!/bin/bash
+# Prepare a task (record in session server, awaiting agent assignment).
+# Usage: prepare <task_id> [session_type] [component_module_name]
+set -euo pipefail
+
+TASK_ID="${1:?Usage: prepare <task_id> [session_type] [component_module_name]}"
+SESSION_TYPE="${2:-}"
+MODULE_NAME="${3:-}"
+PORT="${CODEMYSPEC_PORT:-4002}"
+
+BODY="{\"task_id\": \"${TASK_ID}\""
+[[ -n "$SESSION_TYPE" ]] && BODY="${BODY}, \"session_type\": \"${SESSION_TYPE}\""
+[[ -n "$MODULE_NAME" ]] && BODY="${BODY}, \"component_module_name\": \"${MODULE_NAME}\""
+BODY="${BODY}}"
+
+curl -sf -X POST "http://localhost:${PORT}/api/tasks/prepare" \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: ${PWD}" \
+  -d "$BODY" | jq .

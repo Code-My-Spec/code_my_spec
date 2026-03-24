@@ -1,0 +1,12 @@
+#!/bin/bash
+# Cancel a prepared or active task.
+# Usage: cancel <task_id>
+set -euo pipefail
+
+TASK_ID="${1:?Usage: cancel <task_id>}"
+PORT="${CODEMYSPEC_PORT:-4002}"
+
+curl -sf -X POST "http://localhost:${PORT}/api/tasks/cancel" \
+  -H "Content-Type: application/json" \
+  -H "X-Working-Dir: ${PWD}" \
+  -d "{\"task_id\": \"${TASK_ID}\"}" | jq .
