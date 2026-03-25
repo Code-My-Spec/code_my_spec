@@ -12,14 +12,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
   end
 
   describe "SetStoryComponent tool" do
-    test "executes with valid params and scope" do
+    test "executes with valid module_name" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
       component = component_fixture(scope)
 
       params = %{
         story_id: Integer.to_string(story.id),
-        component_id: component.id
+        module_name: component.module_name
       }
 
       frame = %Frame{assigns: %{current_scope: scope}}
@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
 
       params = %{
         story_id: "999999",
-        component_id: component.id
+        module_name: component.module_name
       }
 
       frame = %Frame{assigns: %{current_scope: scope}}
@@ -45,22 +45,20 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       assert response.isError == true
     end
 
-    test "allows setting component_id that doesn't exist in database" do
-      # Component IDs can reference components that only exist in CLI environments
-      # (local spec files), not necessarily in the server database
+    test "returns error when component not found by module_name" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
 
       params = %{
         story_id: Integer.to_string(story.id),
-        component_id: "00000000-0000-0000-0000-000000000000"
+        module_name: "NonExistent.Module"
       }
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} = SetStoryComponent.execute(params, frame)
       assert response.type == :tool
-      assert response.isError == false
+      assert response.isError == true
     end
   end
 end
