@@ -7,4 +7,9 @@ defmodule CodeMySpec.McpServers.IssuesServer do
     capabilities: [:tools]
 
   component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.ListIssues)
+  component(CodeMySpec.McpServers.Issues.Tools.GetIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.DismissIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
 end

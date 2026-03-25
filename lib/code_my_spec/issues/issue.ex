@@ -31,6 +31,20 @@ defmodule CodeMySpec.Issues.Issue do
     resolved: []
   }
 
+  @doc "Field descriptions for API documentation."
+  def field_docs do
+    %{
+      title: "Short issue title",
+      severity: "Issue severity: critical, high, medium, low, or info",
+      description: "Detailed description including steps to reproduce if applicable",
+      scope: "Issue scope: app (default), qa, or docs",
+      status: "Issue status: incoming, accepted, dismissed, or resolved",
+      resolution: "How the issue was resolved or why it was dismissed",
+      story_id: "Related story ID, if applicable",
+      source_path: "File path where the issue was found, if applicable"
+    }
+  end
+
   @primary_key {:id, :binary_id, autogenerate: true}
 
   schema "issues" do

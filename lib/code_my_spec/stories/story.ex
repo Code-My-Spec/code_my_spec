@@ -27,6 +27,18 @@ defmodule CodeMySpec.Stories.Story do
           updated_at: DateTime.t() | nil
         }
 
+  @doc "Field descriptions for API documentation."
+  def field_docs do
+    %{
+      title: "Story title, e.g. 'User Login Feature'",
+      description: "User story in 'As a [role], I want [goal] so that [value]' format",
+      acceptance_criteria: "List of acceptance criteria strings",
+      priority: "Priority order (1 = highest). Lower numbers are higher priority",
+      status: "Story status: in_progress, completed, or dirty",
+      component_id: "Linked component ID"
+    }
+  end
+
   schema "stories" do
     field :title, :string
     field :description, :string

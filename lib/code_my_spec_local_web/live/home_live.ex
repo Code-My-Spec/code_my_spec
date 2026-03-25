@@ -58,6 +58,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
     ## Data
 
     - [Stories](/projects/#{slug}/stories)
+    - [Issues](/projects/#{slug}/issues)
 
     ## Requirements
 
