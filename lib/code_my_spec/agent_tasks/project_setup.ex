@@ -55,8 +55,8 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   Returns a comprehensive prompt containing setup instructions customized to skip
   completed steps based on check_status results.
   """
-  @spec command(term(), map(), keyword()) :: {:ok, String.t()}
-  def command(_scope, _session, _opts \\ []) do
+  @spec command(term(), map()) :: {:ok, String.t()}
+  def command(_scope, _task) do
     {:ok, """
     # Project Setup
 
@@ -78,7 +78,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   - `{:ok, :invalid, feedback}` with detailed remediation hints if checks fail
   - `{:error, term()}` if something went wrong
   """
-  @spec evaluate(term(), map(), keyword()) ::
+  @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, session, _opts \\ []) do
     env = scope.environment

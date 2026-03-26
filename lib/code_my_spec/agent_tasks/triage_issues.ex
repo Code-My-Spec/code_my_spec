@@ -6,13 +6,12 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   (accept, dismiss, merge), and edits the `## Status` field in projected
   issue files from `incoming` to `accepted` or `dismissed`.
 
-  Accepts an optional minimum severity argument (default: :info, i.e. all) from
-  `session.state["topic"]`. Only issues at or above the specified severity
-  are included in the triage.
+  Accepts an optional minimum severity via `task.state["topic"]` (default: :medium).
+  Only issues at or above the specified severity are included in the triage.
 
   Two main functions:
-  - `command/3` — Reads incoming issues from DB, builds triage prompt
-  - `evaluate/3` — Reconciles status field changes to DB, checks that no incoming issues remain
+  - `command/2` — Reads incoming issues from DB, builds triage prompt
+  - `evaluate/2` — Reconciles status field changes to DB, checks that no incoming issues remain
   """
 
   alias CodeMySpec.Issues
@@ -28,8 +27,8 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
   Returns `{:ok, prompt_text}`
   """
-  def command(scope, session, _opts \\ []) do
-    min_severity = get_min_severity(session)
+  def command(scope, task) do
+    min_severity = get_min_severity(task)
     issues = list_incoming_at_severity(scope, min_severity)
 
     prompt = build_prompt(issues, min_severity)
@@ -47,8 +46,8 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   - `{:ok, :valid}` when no incoming issues at min severity remain
   - `{:ok, :invalid, feedback}` when untriaged issues remain
   """
-  def evaluate(scope, session, _opts \\ []) do
-    min_severity = get_min_severity(session)
+  def evaluate(scope, task) do
+    min_severity = get_min_severity(task)
 
     remaining = list_incoming_at_severity(scope, min_severity)
 
@@ -139,17 +138,21 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   # ============================================================================
 
   defp get_min_severity(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "" do
-    case String.downcase(String.trim(topic)) do
+    parse_severity(topic)
+  end
+
+  defp get_min_severity(_task), do: :medium
+
+  defp parse_severity(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
       "critical" -> :critical
       "high" -> :high
       "medium" -> :medium
       "low" -> :low
       "info" -> :info
-      _ -> :info
+      _ -> :medium
     end
   end
-
-  defp get_min_severity(_session), do: :info
 
   defp list_incoming_at_severity(scope, min_severity) do
     Issues.list_by_status(scope, :incoming)

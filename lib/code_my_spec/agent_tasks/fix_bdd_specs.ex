@@ -28,7 +28,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   Returns `{:ok, prompt_text}`.
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     problems = Problems.list_project_problems(scope, source: "spex")
 
     if Enum.empty?(problems) do
@@ -52,7 +52,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   - `{:ok, :valid}` when no relevant failures exist
   - `{:ok, :invalid, feedback}` when relevant failures remain
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     problems = Problems.list_project_problems(scope, source: "spex")
 
     if Enum.empty?(problems) do

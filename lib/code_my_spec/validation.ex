@@ -363,8 +363,8 @@ defmodule CodeMySpec.Validation do
         task_module = find_task_module(requirement_name, component)
 
         if task_module do
-          session = %{component: component, project: scope.active_project}
-          call_evaluate(task_module, scope, session)
+          task = %{component_id: component.id, project_id: scope.active_project_id}
+          call_evaluate(task_module, scope, task)
         else
           Logger.info("[Validation] No task module for requirement: #{requirement_name}")
           :none
@@ -385,8 +385,8 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  defp call_evaluate(module, scope, session) do
-    module.evaluate(scope, session, [])
+  defp call_evaluate(module, scope, task) do
+    module.evaluate(scope, task)
   rescue
     e ->
       Logger.error("[Validation] Task evaluation failed: #{Exception.message(e)}")

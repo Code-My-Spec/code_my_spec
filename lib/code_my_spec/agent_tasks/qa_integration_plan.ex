@@ -32,7 +32,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   instructing the agent to draft specs, generate verify scripts, and coordinate
   credential gathering with the user.
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     env = scope.environment
 
     decisions = read_decisions(env)
@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   3. All specs have verify scripts?
   4. All specs have `status: verified`?
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
     spec_files = list_spec_files(env)
 

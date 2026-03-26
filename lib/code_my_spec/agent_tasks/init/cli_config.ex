@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.Init.CliConfig do
 
   import Ecto.Query
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     query = from p in CodeMySpec.Projects.Project, where: p.local_path == ^dir
@@ -16,7 +16,7 @@ defmodule CodeMySpec.AgentTasks.Init.CliConfig do
     end
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Link Project
 

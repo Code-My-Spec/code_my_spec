@@ -3,12 +3,11 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   Evaluates agent tasks via the Stop hook.
 
   Looks up the DB session by external conversation ID, finds the active task,
-  and evaluates it via the task module's `evaluate/3` callback.
+  and evaluates it via the task module's `evaluate/2` callback.
   """
 
   require Logger
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Users.Scope
@@ -27,14 +26,9 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     end
   end
 
-  # ============================================================================
-  # Session evaluation
-  # ============================================================================
-
   defp evaluate_session(scope, session) do
     case Session.active_task(session) do
       nil ->
-        # No active task — nothing to evaluate
         {:ok, :valid}
 
       task ->
@@ -52,11 +46,8 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
       Logger.info("[TaskEvaluator] Evaluating task #{task.id} (#{type_name})")
 
-      enriched_session = enrich_session(scope, session)
-
-      case call_evaluate(module, scope, enriched_session, []) do
+      case call_evaluate(module, scope, task) do
         {:ok, :valid} ->
-          # Mark task completed
           Sessions.complete_task(scope, session, task.id, :completed)
           {:ok, :valid}
 
@@ -69,17 +60,8 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     end
   end
 
-  defp enrich_session(scope, session) do
-    component =
-      if session.component_module_name do
-        Components.get_component_by_module_name(scope, session.component_module_name)
-      end
-
-    %{session | component: component, project: scope.active_project}
-  end
-
-  defp call_evaluate(module, scope, session, opts) do
-    module.evaluate(scope, session, opts)
+  defp call_evaluate(module, scope, task) do
+    module.evaluate(scope, task)
   rescue
     e ->
       {:error, "Task evaluation failed: #{Exception.message(e)}"}

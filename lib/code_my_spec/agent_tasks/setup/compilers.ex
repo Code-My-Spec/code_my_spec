@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Compilers do
   Setup step: boundary and spex compilers configured in mix.exs.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
     mix_exs = Path.join(dir, "mix.exs")
 
@@ -21,7 +21,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Compilers do
     end
   end
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     {:ok, """

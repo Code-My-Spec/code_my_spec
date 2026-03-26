@@ -35,13 +35,14 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{component: component} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, rules} <- get_design_rules(scope),
          similar <- Components.list_similar_components(scope, component),
          stories <- Stories.list_component_stories(scope, component.id),
-         {:ok, prompt} <- build_spec_prompt(session, rules, stories, similar) do
+         {:ok, prompt} <- build_spec_prompt(component, project, rules, stories, similar) do
       {:ok, prompt}
     end
   end
@@ -60,8 +61,9 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - {:ok, :invalid, errors} if the spec needs revision
   - {:error, reason} if something went wrong
   """
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
     spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
@@ -90,9 +92,9 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
       {:ok, :valid} ->
         # Requirements and problems pass — create child spec stubs (won't overwrite existing)
-        with {:ok, spec_content} <- read_spec_file(scope, session),
+        with {:ok, spec_content} <- read_spec_file(scope, component, project),
              {:ok, document} <- validate_document(spec_content),
-             {:ok, _paths} <- create_child_spec_files(scope, session, document.sections) do
+             {:ok, _paths} <- create_child_spec_files(scope, document.sections) do
           {:ok, :valid}
         end
     end
@@ -113,8 +115,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     {:ok, rules}
   end
 
-  defp build_spec_prompt(session, rules, stories, similar_components) do
-    %{project: project, component: context} = session
+  defp build_spec_prompt(context, project, rules, stories, similar_components) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
     stories_text = format_stories(stories)
     similar_text = format_similar_components(project, similar_components)
@@ -194,8 +195,8 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end)
   end
 
-  defp read_spec_file(scope, session) do
-    %{spec_file: path} = Utils.component_files(session.component, session.project)
+  defp read_spec_file(scope, component, project) do
+    %{spec_file: path} = Utils.component_files(component, project)
 
     environment = scope.environment
 
@@ -219,7 +220,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     Documents.create_dynamic_document(spec_content, "context_spec")
   end
 
-  defp create_child_spec_files(scope, _session, %{"components" => components})
+  defp create_child_spec_files(scope, %{"components" => components})
        when is_list(components) do
     results = Enum.map(components, &maybe_create_child_spec(scope, &1))
 
@@ -229,7 +230,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end
   end
 
-  defp create_child_spec_files(_scope, _session, _sections), do: {:ok, []}
+  defp create_child_spec_files(_scope, _sections), do: {:ok, []}
 
   defp maybe_create_child_spec(scope, %{module_name: module_name, description: description}) do
     %{spec_file: file_path} = Utils.component_files(module_name)

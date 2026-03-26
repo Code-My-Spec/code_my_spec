@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Init.Auth do
   Init step: authenticate with CodeMySpec.
   """
 
-  def evaluate(_scope, _session, _opts \\ []) do
+  def evaluate(_scope, _task) do
     if auth_ok?() do
       {:ok, :valid}
     else
@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.Init.Auth do
     end
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Authenticate with CodeMySpec
 

@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   @doc """
   Read all failing spex problems and build a fix prompt.
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     problems = Problems.list_project_problems(scope, source: "spex")
 
     if Enum.empty?(problems) do
@@ -38,7 +38,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   @doc """
   Check that no relevant spex failures remain across the project.
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     problems = Problems.list_project_problems(scope, source: "spex")
 
     if Enum.empty?(problems) do

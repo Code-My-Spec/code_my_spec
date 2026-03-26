@@ -23,8 +23,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     "tests_passing"
   ]
 
-  def command(_scope, session, _opts \\ []) do
-    %{component: liveview} = session
+  def command(scope, task) do
+    liveview = Components.get_component!(scope, task.component_id)
 
     {:ok, """
     # Develop LiveView: #{liveview.name}
@@ -50,8 +50,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     """}
   end
 
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: liveview} = session
+  def evaluate(scope, task) do
+    liveview = Components.get_component!(scope, task.component_id)
     liveview = ComponentRepository.get_component(scope, liveview.id)
     children = Components.list_child_components(scope, liveview.id)
     all = [liveview | children]

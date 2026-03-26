@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.Setup.AppResources do
 
   @resource_dirs [:framework_dir, :tools_dir, :credo_checks_dir]
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     missing =
@@ -22,7 +22,7 @@ defmodule CodeMySpec.AgentTasks.Setup.AppResources do
       else: {:ok, :invalid, "Missing resource directories: #{Enum.join(missing, ", ")}"}
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Install Framework Knowledge + Tools
 

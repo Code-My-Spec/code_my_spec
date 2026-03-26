@@ -28,18 +28,18 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   @doc """
   Generate the prompt for Claude to create BDD specification files for a story.
 
-  If `session.story_id` is provided, writes specs for that story. Otherwise,
+  If `task.story_id` is provided, writes specs for that story. Otherwise,
   auto-selects the top-priority incomplete story via `BddSpecs.get_next_incomplete_story/2`.
 
   Returns "all complete" message if no stories need specs.
   """
-  @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def command(scope, session, opts \\ []) do
+  @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
+  def command(scope, task) do
     env = scope.environment
     working_dir = get_working_dir(env)
 
-    with {:ok, _sync_result} <- maybe_sync_project(scope, working_dir, opts),
-         {:ok, story} <- resolve_story(scope, session, env),
+    with {:ok, _sync_result} <- maybe_sync_project(scope, working_dir, []),
+         {:ok, story} <- resolve_story(scope, task, env),
          {:ok, component} <- get_story_component(scope, story) do
       ensure_app_spex_exists(env)
       ensure_shared_givens_exists(env)
@@ -66,12 +66,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   Returns `:invalid` with specific feedback for missing/invalid specs.
   Also runs `mix compile` to verify specs compile correctly.
   """
-  @spec evaluate(term(), map(), keyword()) ::
+  @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
-  def evaluate(scope, session, _opts \\ []) do
+  def evaluate(scope, task) do
     env = scope.environment
 
-    with {:ok, story} <- resolve_story(scope, session, env),
+    with {:ok, story} <- resolve_story(scope, task, env),
          result <- validate_story_specs(env, story) do
       case result do
         {:ok, :valid} ->
@@ -95,12 +95,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     end
   end
 
-  defp resolve_story(_scope, %{story: %{id: _} = story}, _env) do
-    # Story already embedded in session
-    {:ok, story}
-  end
-
-  defp resolve_story(scope, _session, env) do
+  defp resolve_story(scope, _task, env) do
     case BddSpecs.get_next_incomplete_story(env, scope) do
       nil -> {:error, :all_stories_complete}
       story -> {:ok, story}

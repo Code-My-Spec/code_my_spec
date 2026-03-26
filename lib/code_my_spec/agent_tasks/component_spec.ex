@@ -10,6 +10,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   require Logger
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
+  alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
@@ -31,11 +32,12 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{component: component} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, rules} <- get_design_rules(scope, component),
-         {:ok, prompt} <- build_spec_prompt(scope, session, rules) do
+         {:ok, prompt} <- build_spec_prompt(scope, component, project, rules) do
       {:ok, prompt}
     end
   end
@@ -54,11 +56,12 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   - {:ok, :invalid, errors} if the spec needs revision
   - {:error, reason} if something went wrong
   """
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     if is_nil(component) do
-      {:error, "No component found for session (module: #{session.component_module_name})"}
+      {:error, "No component found for task (module: #{task.component_module_name})"}
     else
       evaluate_component(scope, component, project)
     end
@@ -108,8 +111,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     end
   end
 
-  defp build_spec_prompt(scope, session, rules) do
-    %{project: project, component: component} = session
+  defp build_spec_prompt(scope, component, project, rules) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
     document_spec = DocumentSpecProjector.project_spec(component.type)
     %{spec_file: spec_file_path} = Utils.component_files(component, project)

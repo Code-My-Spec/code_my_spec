@@ -13,6 +13,7 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
   satisfied.
   """
 
+  alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Utils.Paths
@@ -25,8 +26,8 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
     "tests_passing"
   ]
 
-  def command(scope, session, _opts \\ []) do
-    %{component: controller} = session
+  def command(scope, task) do
+    controller = Components.get_component!(scope, task.component_id)
 
     ensure_json_stub_spec(scope, controller)
 
@@ -56,8 +57,8 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
     """}
   end
 
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: controller} = session
+  def evaluate(scope, task) do
+    controller = Components.get_component!(scope, task.component_id)
     controller = ComponentRepository.get_component(scope, controller.id)
 
     if all_requirements_satisfied?(controller) do

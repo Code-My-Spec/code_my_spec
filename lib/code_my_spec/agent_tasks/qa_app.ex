@@ -35,7 +35,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     env = scope.environment
     project = scope.active_project
 
@@ -99,12 +99,9 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     env = scope.environment
 
     Enum.map(stories, fn story ->
-      child_session = %{
-        project: scope.active_project,
-        state: %{"topic" => story.id}
-      }
+      child_task = %{story_id: story.id}
 
-      case QaStory.command(scope, child_session) do
+      case QaStory.command(scope, child_task) do
         {:ok, prompt} ->
           prompt_path = Path.join([Paths.qa_dir(), to_string(story.id), "prompt.md"])
           :ok = Environments.write_file(env, prompt_path, prompt)
@@ -392,12 +389,9 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   defp evaluate_stories(scope, _session, stories, summary_exists) do
     story_results =
       Enum.map(stories, fn story ->
-        child_session = %{
-          project: scope.active_project,
-          state: %{"topic" => story.id}
-        }
+        child_task = %{story_id: story.id}
 
-        case QaStory.evaluate(scope, child_session) do
+        case QaStory.evaluate(scope, child_task) do
           {:ok, :valid} -> {story.id, :valid}
           {:ok, :invalid, feedback} -> {story.id, {:invalid, feedback}}
           {:error, reason} -> {story.id, {:invalid, reason}}

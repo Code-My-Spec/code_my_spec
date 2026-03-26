@@ -26,8 +26,9 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, rules} <- get_implementation_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
@@ -45,8 +46,9 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   - {:ok, :valid} if the code file exists
   - {:ok, :invalid, feedback} if the code file is missing
   """
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
     code_reqs = Requirements.check_artifact_requirements(scope, component, :code)

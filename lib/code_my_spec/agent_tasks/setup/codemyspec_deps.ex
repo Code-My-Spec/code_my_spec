@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
 
   @required_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
     mix_exs = Path.join(dir, "mix.exs")
 
@@ -22,7 +22,7 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
     end
   end
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     {:ok, """

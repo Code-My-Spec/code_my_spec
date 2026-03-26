@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyWallaby do
 
   Returns `{:ok, prompt_text}`
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     env = scope.environment
 
     journey_plan = read_file(env, Paths.qa_journey_plan())
@@ -42,7 +42,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyWallaby do
   - `{:ok, :valid}` if at least one `*_test.exs` exists under `test/journeys/`
   - `{:ok, :invalid, feedback}` if no tests found
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
 
     case Environments.glob(env, @wallaby_glob) do

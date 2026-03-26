@@ -27,7 +27,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
 
   Returns `{:ok, prompt_text}`
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     env = scope.environment
 
     app_name = derive_app_name(env)
@@ -47,7 +47,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   - `{:ok, :valid}` if plan.md exists with all required sections
   - `{:ok, :invalid, feedback}` if plan.md is missing or incomplete
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
     plan_path = Paths.qa_plan()
 

@@ -31,12 +31,13 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{component: component} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, rules} <- get_design_rules(scope),
          similar <- Components.list_similar_components(scope, component),
-         {:ok, prompt} <- build_spec_prompt(session, rules, similar) do
+         {:ok, prompt} <- build_spec_prompt(component, project, rules, similar) do
       {:ok, prompt}
     end
   end
@@ -52,8 +53,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
   - {:ok, :invalid, errors} if the spec needs revision
   - {:error, reason} if something went wrong
   """
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
     spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
@@ -81,7 +83,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
         invalid
 
       {:ok, :valid} ->
-        with {:ok, spec_content} <- read_spec_file(scope, session),
+        with {:ok, spec_content} <- read_spec_file(scope, component, project),
              {:ok, document} <- validate_document(spec_content),
              {:ok, _paths} <- create_child_spec_files(scope, document.sections) do
           {:ok, :valid}
@@ -104,8 +106,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     {:ok, rules}
   end
 
-  defp build_spec_prompt(session, rules, similar_components) do
-    %{project: project, component: component} = session
+  defp build_spec_prompt(component, project, rules, similar_components) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
     similar_text = format_similar_components(project, similar_components)
     document_spec = DocumentSpecProjector.project_spec("live_context_spec")
@@ -158,8 +159,8 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     end)
   end
 
-  defp read_spec_file(scope, session) do
-    %{spec_file: path} = Utils.component_files(session.component, session.project)
+  defp read_spec_file(scope, component, project) do
+    %{spec_file: path} = Utils.component_files(component, project)
 
     case Environments.read_file(scope.environment, path) do
       {:ok, content} ->

@@ -1,6 +1,6 @@
 defmodule CodeMySpecLocalWeb.EvaluateTaskController do
   @moduledoc """
-  Evaluates a task by calling its session_type module's evaluate/3.
+  Evaluates a task by calling its session_type module's evaluate/2.
 
   Returns markdown: either a success message or feedback for the agent to fix.
   On success, marks the task as :completed.
@@ -9,11 +9,9 @@ defmodule CodeMySpecLocalWeb.EvaluateTaskController do
 
   require Logger
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Requirements.Sync, as: RequirementsSync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Stories
 
   def evaluate(conn, %{"session_id" => session_id, "task_id" => task_id}) do
     scope = conn.assigns.current_scope
@@ -48,10 +46,9 @@ defmodule CodeMySpecLocalWeb.EvaluateTaskController do
     if is_nil(task_module) do
       text(conn, "# No task module\n\nThis task has no session_type configured.")
     else
-      enriched = enrich_session(task, scope)
       type_name = task_module |> Atom.to_string() |> String.split(".") |> List.last()
 
-      case call_evaluate(task_module, scope, enriched) do
+      case call_evaluate(task_module, scope, task) do
         {:ok, :valid} ->
           {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
           if task.requirement_id do
@@ -73,26 +70,8 @@ defmodule CodeMySpecLocalWeb.EvaluateTaskController do
     end
   end
 
-  defp enrich_session(task, scope) do
-    component =
-      if task.component_id, do: Components.get_component!(scope, task.component_id)
-
-    story =
-      if task.story_id, do: Stories.get_story!(scope, task.story_id)
-
-    %Session{
-      component: component,
-      project: scope.active_project,
-      component_module_name: task.component_module_name,
-      state:
-        %{}
-        |> then(fn s -> if component, do: Map.put(s, "component_id", component.id), else: s end)
-        |> then(fn s -> if story, do: Map.put(s, "story_id", story.id), else: s end)
-    }
-  end
-
-  defp call_evaluate(module, scope, session) do
-    module.evaluate(scope, session, [])
+  defp call_evaluate(module, scope, task) do
+    module.evaluate(scope, task)
   rescue
     e -> {:error, "Evaluation failed: #{Exception.message(e)}"}
   end

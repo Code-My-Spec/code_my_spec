@@ -32,15 +32,15 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   # Public API
   # ============================================================================
 
-  @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def command(scope, _session, _opts \\ []) do
+  @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
+  def command(scope, _task) do
     sync_framework(scope.environment)
     dispatch(scope.environment, scope)
   end
 
-  @spec evaluate(term(), map(), keyword()) ::
+  @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
 
     with {:ok, _} <- sync_project(scope) do

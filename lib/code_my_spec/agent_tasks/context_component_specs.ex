@@ -17,8 +17,8 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
   alias CodeMySpec.Components
   alias CodeMySpec.ProjectCoordinator
 
-  def command(_scope, session, _opts \\ []) do
-    %{component: context} = session
+  def command(scope, task) do
+    context = Components.get_component!(scope, task.component_id)
 
     {:ok, """
     # Child Component Designs: #{context.name}
@@ -40,8 +40,8 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
     """}
   end
 
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: context} = session
+  def evaluate(scope, task) do
+    context = Components.get_component!(scope, task.component_id)
     children = Components.list_child_components(scope, context.id)
 
     missing =

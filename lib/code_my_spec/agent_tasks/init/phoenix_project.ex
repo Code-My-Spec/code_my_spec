@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Init.PhoenixProject do
   Init step: verify a Phoenix project exists (mix.exs, lib/, config/).
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = working_dir(scope)
     mix_exs = Path.join(dir, "mix.exs")
     lib = Path.join(dir, "lib")
@@ -19,7 +19,7 @@ defmodule CodeMySpec.AgentTasks.Init.PhoenixProject do
       else: {:ok, :invalid, "No Phoenix project at `#{dir}` — missing: #{Enum.join(missing, ", ")}"}
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Create Phoenix Project
 

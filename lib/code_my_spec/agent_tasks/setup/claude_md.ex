@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ClaudeMd do
   Setup step: CLAUDE.md with managed section exists at project root.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
     path = Path.join(dir, "CLAUDE.md")
 
@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ClaudeMd do
     end
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Install CLAUDE.md
 

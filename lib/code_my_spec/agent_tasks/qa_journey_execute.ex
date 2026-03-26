@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyExecute do
 
   Returns `{:ok, prompt_text}`
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     env = scope.environment
 
     journey_plan = read_file(env, Paths.qa_journey_plan())
@@ -42,7 +42,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyExecute do
   - `{:ok, :valid}` if journey_result.md exists with all required sections
   - `{:ok, :invalid, feedback}` if missing or incomplete
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
     result_path = Paths.qa_journey_result()
 

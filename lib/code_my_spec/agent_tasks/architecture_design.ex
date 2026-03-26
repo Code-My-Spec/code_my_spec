@@ -6,8 +6,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   to application surface components (controllers, liveviews, CLI modules).
 
   Two main functions:
-  - `command/3` - Called by slash command to generate the design prompt
-  - `evaluate/3` - Called by stop hook to validate and execute the proposal
+  - `command/2` - Called by slash command to generate the design prompt
+  - `evaluate/2` - Called by stop hook to validate and execute the proposal
   """
 
   alias CodeMySpec.{Architecture, Components, Paths, Stories}
@@ -29,8 +29,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{project: project} = session
+  def command(scope, _task) do
+    project = scope.active_project
     working_dir = scope.environment && scope.environment.cwd
 
     stories = Stories.list_unsatisfied_stories(scope)
@@ -59,9 +59,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - {:ok, :valid} if proposal is valid and execution succeeds
   - {:ok, :invalid, feedback} if proposal has errors or execution fails
   """
-  def evaluate(scope, session, _opts \\ []) do
+  def evaluate(scope, _task) do
     working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
-    project = Map.get(session, :project)
+    project = scope.active_project
     app_name = get_app_name(project)
 
     env = scope.environment || Environment.new(:cli, working_dir)

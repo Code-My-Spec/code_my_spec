@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
     Logger.debug("[ListStories] execute called, scope project: #{inspect(frame.assigns[:current_scope] && frame.assigns[:current_scope].active_project_id)}")
 
 
-    case Validators.validate_scope(frame) do
+    case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
         limit = min(params[:limit] || @default_limit, @max_limit)
         offset = params[:offset] || 0

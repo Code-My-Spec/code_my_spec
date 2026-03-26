@@ -22,8 +22,8 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrap do
 
   Returns `{:ok, prompt_text}`.
   """
-  @spec command(CodeMySpec.Users.Scope.t(), map(), keyword()) :: {:ok, String.t()}
-  def command(scope, _session, _opts \\ []) do
+  @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
+  def command(scope, _task) do
     env = scope.environment
     project = scope.active_project
 
@@ -63,9 +63,9 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrap do
   Returns `{:ok, :valid}` if all pass, or `{:ok, :invalid, feedback}` with
   actionable items.
   """
-  @spec evaluate(CodeMySpec.Users.Scope.t(), map(), keyword()) ::
+  @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
 
     failures = []

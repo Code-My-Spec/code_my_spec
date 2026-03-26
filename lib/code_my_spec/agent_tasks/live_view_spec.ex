@@ -26,20 +26,22 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
 
-  @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def command(scope, session, _opts \\ []) do
-    %{component: component} = session
+  @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, rules} <- get_design_rules(scope, component),
-         {:ok, prompt} <- build_spec_prompt(scope, session, rules) do
+         {:ok, prompt} <- build_spec_prompt(scope, component, project, rules) do
       {:ok, prompt}
     end
   end
 
-  @spec evaluate(term(), map(), keyword()) ::
+  @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
     spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
@@ -84,8 +86,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
     end
   end
 
-  defp build_spec_prompt(scope, session, rules) do
-    %{project: project, component: component} = session
+  defp build_spec_prompt(scope, component, project, rules) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
     document_spec = DocumentSpecProjector.project_spec(component.type)
     %{spec_file: spec_file_path} = Utils.component_files(component, project)

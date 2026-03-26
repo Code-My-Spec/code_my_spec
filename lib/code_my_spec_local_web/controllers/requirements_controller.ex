@@ -40,8 +40,8 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
         conn |> put_status(400) |> text("No task module for requirement: #{name}")
 
       true ->
-        session = %{project: project}
-        {:ok, parent_text} = requirement.satisfied_by.command(scope, session)
+        task = %{project_id: project.id, component_id: requirement.component_id, story_id: requirement.story_id}
+        {:ok, parent_text} = requirement.satisfied_by.command(scope, task)
 
         prompt_text =
           case requirement.scope do
@@ -64,9 +64,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
     mod = CodeMySpec.AgentTasks.ProjectSetup.find_step(child_id)
 
     if mod do
-      session = %{project: scope.active_project}
-
-      case mod.command(scope, session) do
+      case mod.command(scope, %{}) do
         {:ok, prompt_text} -> text(conn, prompt_text)
         {:error, reason} -> conn |> put_status(500) |> text("Error: #{inspect(reason)}")
       end

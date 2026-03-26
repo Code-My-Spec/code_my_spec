@@ -29,8 +29,9 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{component: context_component, project: project} = session
+  def command(scope, task) do
+    context_component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, context_spec_path} <- get_context_spec_path(context_component, project),
          {:ok, child_spec_paths} <- get_child_spec_paths(scope, context_component, project),
@@ -63,8 +64,8 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
   - {:ok, :invalid, errors} if the review needs revision
   - {:error, reason} if something went wrong
   """
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
     component = ComponentRepository.get_component(scope, component.id)
 
     review_reqs = Requirements.check_artifact_requirements(scope, component, :review)

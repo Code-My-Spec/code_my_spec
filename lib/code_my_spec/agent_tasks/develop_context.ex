@@ -28,8 +28,8 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     "tests_passing"
   ]
 
-  def command(_scope, session, _opts \\ []) do
-    %{component: context} = session
+  def command(scope, task) do
+    context = Components.get_component!(scope, task.component_id)
 
     {:ok, """
     # Develop Context: #{context.name}
@@ -57,8 +57,8 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     """}
   end
 
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: context} = session
+  def evaluate(scope, task) do
+    context = Components.get_component!(scope, task.component_id)
     context = ComponentRepository.get_component(scope, context.id)
     children = Components.list_child_components(scope, context.id)
     all = [context | children]

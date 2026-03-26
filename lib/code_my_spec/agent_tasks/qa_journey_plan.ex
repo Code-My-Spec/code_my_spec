@@ -26,7 +26,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyPlan do
   """
   @stories_file Path.join(Paths.qa_dir(), "stories_summary.md")
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     env = scope.environment
 
     stories = list_stories(scope)
@@ -57,7 +57,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyPlan do
   - `{:ok, :valid}` if journey_plan.md exists with all required sections
   - `{:ok, :invalid, feedback}` if missing or incomplete
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
     plan_path = Paths.qa_journey_plan()
 

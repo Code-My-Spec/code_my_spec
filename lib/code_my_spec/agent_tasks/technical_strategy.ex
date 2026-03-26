@@ -129,8 +129,8 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   Returns `{:ok, prompt_text}`.
   """
-  @spec command(CodeMySpec.Users.Scope.t(), map(), keyword()) :: {:ok, String.t()}
-  def command(scope, _session, _opts \\ []) do
+  @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
+  def command(scope, _task) do
     env = scope.environment
     project = scope.active_project
 
@@ -164,9 +164,9 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   - `{:ok, :valid}` if all checks pass
   - `{:ok, :invalid, feedback}` if anything is incomplete
   """
-  @spec evaluate(CodeMySpec.Users.Scope.t(), map(), keyword()) ::
+  @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
 
     index_exists = decisions_index_exists?(env)

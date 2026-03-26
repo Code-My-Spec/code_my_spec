@@ -26,13 +26,13 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   The prompt includes all research methodology, evaluation criteria, and output
   templates so the executing agent needs no external instructions.
 
-  The topic is taken from `session.state["topic"]`.
+  The topic is taken from `task.requirement_name` (with fallback to `task.state["topic"]`).
 
   Returns `{:ok, prompt_text}`.
   """
-  @spec command(CodeMySpec.Users.Scope.t(), map(), keyword()) :: {:ok, String.t()}
-  def command(scope, session, _opts \\ []) do
-    topic = get_topic(session)
+  @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
+  def command(scope, task) do
+    topic = get_topic(task)
     env = scope.environment
 
     research_brief = read_research_brief(env, topic)
@@ -54,10 +54,10 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   - `{:ok, :valid}` when knowledge entries exist
   - `{:ok, :invalid, feedback}` when no knowledge entries exist
   """
-  @spec evaluate(CodeMySpec.Users.Scope.t(), map(), keyword()) ::
+  @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
-  def evaluate(scope, session, _opts \\ []) do
-    topic = get_topic(session)
+  def evaluate(scope, task) do
+    topic = get_topic(task)
     env = scope.environment
 
     knowledge_files = check_existing_knowledge(env, topic)
@@ -75,8 +75,9 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   # Helpers
   # ============================================================================
 
-  defp get_topic(%{state: %{"topic" => topic}}), do: topic
-  defp get_topic(_session), do: raise("ResearchTopic requires session.state[\"topic\"]")
+  defp get_topic(%{requirement_name: name}) when is_binary(name) and name != "", do: name
+  defp get_topic(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "", do: topic
+  defp get_topic(_task), do: raise("ResearchTopic requires task.requirement_name or state[\"topic\"]")
 
   defp read_research_brief(env, topic) do
     path = "#{Paths.research_dir()}/#{topic}.md"

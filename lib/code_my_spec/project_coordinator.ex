@@ -317,8 +317,8 @@ defmodule CodeMySpec.ProjectCoordinator do
   - `:status_dir` — override status directory (defaults to component-derived path)
   """
   @spec default_orchestrate(module(), any(), map(), keyword()) :: {:ok, map()}
-  def default_orchestrate(task_module, scope, session, opts) do
-    {module_name, status_dir} = resolve_session_identity(session, opts)
+  def default_orchestrate(task_module, scope, task, opts) do
+    {module_name, status_dir} = resolve_task_identity(scope, task, opts)
     safe_name = safe_filename(module_name)
     suffix = task_module_suffix(task_module)
 
@@ -327,9 +327,8 @@ defmodule CodeMySpec.ProjectCoordinator do
     prompt_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
     problem_path = "#{status_dir}/#{safe_name}_#{suffix}_problems.md"
 
-    # Check completeness — write prompt + problems only if incomplete
     {complete, problems} =
-      case task_module.evaluate(scope, session) do
+      case task_module.evaluate(scope, task) do
         {:ok, :valid} ->
           Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: complete")
           cwd = scope.environment && scope.environment.cwd
@@ -339,7 +338,7 @@ defmodule CodeMySpec.ProjectCoordinator do
 
         {:ok, :invalid, feedback} ->
           Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: incomplete, writing prompt")
-          {:ok, prompt_content} = task_module.command(scope, session)
+          {:ok, prompt_content} = task_module.command(scope, task)
           :ok = Environments.write_file(scope.environment, prompt_path, prompt_content)
           :ok = Environments.write_file(scope.environment, problem_path, feedback)
           {false, feedback}
@@ -380,8 +379,8 @@ defmodule CodeMySpec.ProjectCoordinator do
   - `:status_dir` — override status directory (defaults to component-derived path)
   """
   @spec default_orchestrate_evaluate(module(), any(), map(), keyword()) :: {:ok, map()}
-  def default_orchestrate_evaluate(task_module, scope, session, opts) do
-    {module_name, status_dir} = resolve_session_identity(session, opts)
+  def default_orchestrate_evaluate(task_module, scope, task, opts) do
+    {module_name, status_dir} = resolve_task_identity(scope, task, opts)
     safe_name = safe_filename(module_name)
     suffix = task_module_suffix(task_module)
 
@@ -389,7 +388,7 @@ defmodule CodeMySpec.ProjectCoordinator do
     problem_path = "#{status_dir}/#{safe_name}_#{suffix}_problems.md"
 
     {complete, _problems} =
-      case task_module.evaluate(scope, session) do
+      case task_module.evaluate(scope, task) do
         {:ok, :valid} ->
           Logger.info("[ProjectCoordinator] #{suffix} evaluate for #{module_name}: complete")
           # Clean up prompt and problems files
@@ -474,16 +473,20 @@ defmodule CodeMySpec.ProjectCoordinator do
   # Extracts module_name and status_dir from a session map.
   # Handles both component-scoped sessions (has :component) and
   # project-scoped sessions (only :project).
-  defp resolve_session_identity(session, opts) do
-    case Map.get(session, :component) do
-      %{module_name: module_name} = component ->
+  defp resolve_task_identity(scope, task, opts) do
+    case {Map.get(task, :component_id), Map.get(task, :component_module_name)} do
+      {cid, _} when not is_nil(cid) ->
+        component = Components.get_component!(scope, cid)
         status_dir =
           Keyword.get_lazy(opts, :status_dir, fn -> component_status_dir(component) end)
 
-        {module_name, status_dir}
+        {component.module_name, status_dir}
+
+      {_, name} when is_binary(name) ->
+        {name, Keyword.get(opts, :status_dir, @tasks_dir)}
 
       _ ->
-        project = session.project
+        project = scope.active_project
         module_name = project.name
         status_dir = Keyword.get(opts, :status_dir, @tasks_dir)
         {module_name, status_dir}

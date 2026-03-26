@@ -26,8 +26,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContext do
     "tests_passing"
   ]
 
-  def command(_scope, session, _opts \\ []) do
-    %{component: live_context} = session
+  def command(scope, task) do
+    live_context = Components.get_component!(scope, task.component_id)
 
     {:ok, """
     # Develop Live Context: #{live_context.name}
@@ -55,8 +55,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContext do
     """}
   end
 
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: live_context} = session
+  def evaluate(scope, task) do
+    live_context = Components.get_component!(scope, task.component_id)
     # Reload to ensure requirements are preloaded
     _live_context = ComponentRepository.get_component(scope, live_context.id)
     # Only check children — parent live_context has no code

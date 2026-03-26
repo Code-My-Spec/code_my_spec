@@ -23,8 +23,8 @@ defmodule CodeMySpec.AgentTasks.ResearchTopics do
 
   Returns `{:ok, prompt_text}`.
   """
-  @spec command(Scope.t(), map(), keyword()) :: {:ok, String.t()}
-  def command(scope, _session, _opts \\ []) do
+  @spec command(Scope.t(), map()) :: {:ok, String.t()}
+  def command(scope, _task) do
     env = scope.environment
 
     decided = list_decided_topics(env)
@@ -53,9 +53,9 @@ defmodule CodeMySpec.AgentTasks.ResearchTopics do
   - `{:ok, :valid}` when all qualifying topics pass
   - `{:ok, :invalid, feedback}` when some topics fail
   """
-  @spec evaluate(Scope.t(), map(), keyword()) ::
+  @spec evaluate(Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
 
     decided = list_decided_topics(env)
@@ -142,9 +142,9 @@ defmodule CodeMySpec.AgentTasks.ResearchTopics do
   end
 
   defp topic_valid?(scope, topic) do
-    child_session = %{state: %{"topic" => topic}}
+    child_task = %{requirement_name: topic}
 
-    case ResearchTopic.evaluate(scope, child_session) do
+    case ResearchTopic.evaluate(scope, child_task) do
       {:ok, :valid} -> true
       _ -> false
     end

@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Rules do
   Setup step: default rules installed in .code_my_spec/rules/.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
     rules_path = Path.join(dir, CodeMySpec.Paths.rules_dir())
 
@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Rules do
     end
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Install Default Rules
 

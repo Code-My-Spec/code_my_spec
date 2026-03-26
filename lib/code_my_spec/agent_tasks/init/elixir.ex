@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Init.Elixir do
   Init step: verify Elixir 1.18+ is installed.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = working_dir(scope)
 
     case System.cmd("elixir", ["--version"], cd: dir, stderr_to_stdout: true) do
@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.Init.Elixir do
     end
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Install Elixir 1.18+
 

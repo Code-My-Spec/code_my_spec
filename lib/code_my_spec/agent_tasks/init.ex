@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.Init do
 
   # --- Agent task interface ---
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     scope = ensure_cwd(scope)
     evaluated = evaluate_all(scope)
     {done, total} = count_progress(evaluated)
@@ -94,7 +94,7 @@ defmodule CodeMySpec.AgentTasks.Init do
     {:ok, prompt}
   end
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     scope = ensure_cwd(scope)
 
     if all_done?(scope) do

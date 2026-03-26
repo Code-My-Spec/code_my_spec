@@ -15,8 +15,8 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   @tailwind_config_path "assets/tailwind.config.js"
   @required_sections ~w(theme colors typography layout tone)
 
-  @spec command(term(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def command(scope, _session, _opts \\ []) do
+  @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
+  def command(scope, _task) do
     env = scope.environment
     project = scope.active_project
 
@@ -28,9 +28,9 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
     {:ok, prompt}
   end
 
-  @spec evaluate(term(), map(), keyword()) ::
+  @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
 
     with {:ok, content} <- Environments.read_file(env, @design_system_path),

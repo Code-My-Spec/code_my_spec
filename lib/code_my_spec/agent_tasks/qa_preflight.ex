@@ -29,7 +29,7 @@ defmodule CodeMySpec.AgentTasks.QaPreflight do
   Reads integration specs and builds a prompt instructing the agent to verify
   each integration works against the running app.
   """
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     env = scope.environment
 
     integration_specs = read_integration_specs(env)
@@ -48,7 +48,7 @@ defmodule CodeMySpec.AgentTasks.QaPreflight do
   - Preflight report exists
   - All integration specs remain at `verified` status
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     env = scope.environment
 
     with :ok <- check_report(env),

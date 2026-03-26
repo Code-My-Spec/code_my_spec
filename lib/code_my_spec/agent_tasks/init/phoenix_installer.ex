@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Init.PhoenixInstaller do
   Init step: verify Phoenix installer (phx_new) is available.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = working_dir(scope)
 
     case System.cmd("mix", ["archive"], cd: dir, stderr_to_stdout: true) do
@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.Init.PhoenixInstaller do
     end
   end
 
-  def command(_scope, _session, _opts \\ []) do
+  def command(_scope, _task) do
     {:ok, """
     # Install Phoenix Installer
 

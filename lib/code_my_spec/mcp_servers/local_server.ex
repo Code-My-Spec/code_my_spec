@@ -14,6 +14,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Scope resolved from x-working-dir header via merge_transport_assigns.
 
   # Stories — delegates to remote server API
+  component(CodeMySpec.McpServers.Stories.Tools.ListStories)
+  component(CodeMySpec.McpServers.Stories.Tools.ListStoryTitles)
   component(CodeMySpec.McpServers.Stories.Tools.SetStoryComponent)
 
   # Architecture

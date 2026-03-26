@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
   Setup step: .credo.exs configured with custom check paths.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
     credo_path = Path.join(dir, ".credo.exs")
 
@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
     end
   end
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     {:ok, """

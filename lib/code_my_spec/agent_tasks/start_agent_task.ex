@@ -26,7 +26,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
 
   # Maps session type names to AgentTask modules
   # Note: "spec" is handled specially in resolve_session_type/2 to auto-detect context vs component
@@ -153,9 +152,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, session} <- find_or_create_session(scope, external_id, agent_task_module),
-         session <- enrich_session(session, nil, scope),
-         {:ok, prompt} <- agent_task_module.command(scope, session) do
+         {:ok, _session} <- find_or_create_session(scope, external_id, agent_task_module),
+         {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id}) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -166,9 +164,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, session} <- create_session(scope, external_id, agent_task_module, nil),
-         session <- enrich_session(session, nil, scope),
-         {:ok, prompt} <- agent_task_module.command(scope, session) do
+         {:ok, _session} <- create_session(scope, external_id, agent_task_module, nil),
+         {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id}) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -179,9 +176,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, session} <- create_topic_session(scope, external_id, agent_task_module, topic),
-         session <- enrich_session(session, nil, scope),
-         {:ok, prompt} <- agent_task_module.command(scope, session) do
+         {:ok, _session} <- create_topic_session(scope, external_id, agent_task_module, topic),
+         {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id, requirement_name: topic}) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -193,9 +189,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, sync_result} <- sync_project(scope),
          {:ok, component} <- get_component(scope, module_name),
          {:ok, agent_task_module} <- resolve_session_type(session_type, component),
-         {:ok, session} <- create_session(scope, external_id, agent_task_module, component),
-         session <- enrich_session(session, component, scope),
-         {:ok, prompt} <- agent_task_module.command(scope, session) do
+         {:ok, _session} <- create_session(scope, external_id, agent_task_module, component),
+         {:ok, prompt} <- agent_task_module.command(scope, %{component_id: component.id, project_id: scope.active_project_id}) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -356,11 +351,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     }
 
     Sessions.find_or_create_session(scope, external_id, attrs)
-  end
-
-  # Set virtual fields on the session struct
-  defp enrich_session(%Session{} = session, component, scope) do
-    %{session | component: component, project: scope.active_project}
   end
 
   # Sync — incremental only. File watcher handles continuous sync;

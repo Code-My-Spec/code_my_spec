@@ -18,12 +18,12 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
 
   Routes to component or context-specific refactoring based on component type.
   """
-  def command(scope, session, _opts \\ []) do
-    %{component: component} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
 
     case component.type do
-      "context" -> command_for_context(scope, session)
-      _ -> command_for_component(scope, session)
+      "context" -> command_for_context(scope, component)
+      _ -> command_for_component(scope, component)
     end
   end
 
@@ -32,15 +32,14 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
 
   Always returns {:ok, :valid} since we rely on the standard validate_edits hook.
   """
-  def evaluate(_scope, _session, _opts \\ []) do
+  def evaluate(_scope, _task) do
     {:ok, :valid}
   end
 
   # Private functions
 
-  defp command_for_component(scope, session) do
-    %{component: component, project: project} = session
-
+  defp command_for_component(scope, component) do
+    project = scope.active_project
     environment = scope.environment
 
     %{spec_file: spec_file, code_file: code_file, test_file: test_file} =
@@ -100,9 +99,8 @@ defmodule CodeMySpec.AgentTasks.RefactorModule do
     {:ok, prompt}
   end
 
-  defp command_for_context(scope, session) do
-    %{component: context, project: project} = session
-
+  defp command_for_context(scope, context) do
+    project = scope.active_project
     environment = scope.environment
 
     %{spec_file: context_spec_file} = Utils.component_files(context, project)

@@ -2,7 +2,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @moduledoc """
   Per-story QA agent that plans and tests a single user story.
 
-  Takes a story ID from `session.state["topic"]`.
+  Takes a story ID from `task.story_id`.
 
   Evaluate is a state machine — phase is derived from artifact existence:
   1. **plan** — plan.md missing/invalid → feedback
@@ -15,9 +15,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   - `result.md` — test outcomes with evidence (written by the agent)
 
   Three main functions:
-  - `command/3` — Returns the full prompt (no file writes)
+  - `command/2` — Returns the full prompt (no file writes)
   - `orchestrate/3` — Writes prompt to file, returns QA-specific orchestration for the main agent
-  - `evaluate/3` — State machine: validates plan → brief → result → files issues
+  - `evaluate/2` — State machine: validates plan → brief → result → files issues
   """
 
   require Logger
@@ -45,8 +45,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   Returns `{:ok, prompt_text}`
   """
-  def command(scope, session, _opts \\ []) do
-    with {:ok, story_id} <- get_story_id(session) do
+  def command(scope, task) do
+    with {:ok, story_id} <- get_story_id(task) do
       env = scope.environment
       story = Stories.get_story!(scope, story_id)
       ensure_qa_dirs(env, story_id)
@@ -80,8 +80,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   - `{:ok, :valid}` when QA passed (result_complete.md exists)
   - `{:ok, :invalid, feedback}` when the current phase artifact is missing or invalid
   """
-  def evaluate(scope, session, _opts \\ []) do
-    with {:ok, story_id} <- get_story_id(session) do
+  def evaluate(scope, task) do
+    with {:ok, story_id} <- get_story_id(task) do
       env = scope.environment
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
 
@@ -169,8 +169,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   from brief to test phase, the prompt is rewritten with test-phase instructions.
   The problems file only contains actual validation errors.
   """
-  def orchestrate(scope, session, opts \\ []) do
-    with {:ok, story_id} <- get_story_id(session) do
+  def orchestrate(scope, task, opts \\ []) do
+    with {:ok, story_id} <- get_story_id(task) do
       env = scope.environment
       tasks_dir = Keyword.get(opts, :tasks_dir, @tasks_dir)
       prompt_path = prompt_file_path(tasks_dir, story_id)
@@ -184,13 +184,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
             {true, false}
 
           {:advance, _phase} ->
-            {:ok, prompt} = command(scope, session)
+            {:ok, prompt} = command(scope, task)
             :ok = Environments.write_file(env, prompt_path, prompt)
             cleanup_problem_file(env, problem_path)
             {false, false}
 
           {:problem, feedback} ->
-            {:ok, prompt} = command(scope, session)
+            {:ok, prompt} = command(scope, task)
             :ok = Environments.write_file(env, prompt_path, prompt)
             :ok = Environments.write_file(env, problem_path, feedback)
             {false, true}
@@ -221,8 +221,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   - **problem** — writes validation errors to the problems file
   - **complete** — files issues, cleans up
   """
-  def orchestrate_evaluate(scope, session, opts \\ []) do
-    with {:ok, story_id} <- get_story_id(session) do
+  def orchestrate_evaluate(scope, task, opts \\ []) do
+    with {:ok, story_id} <- get_story_id(task) do
       env = scope.environment
       tasks_dir = Keyword.get(opts, :tasks_dir, @tasks_dir)
       prompt_path = prompt_file_path(tasks_dir, story_id)
@@ -240,7 +240,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
           {:advance, phase} ->
             Logger.info("[QaStory] orchestrate_evaluate(#{story_id}): advancing to #{phase}")
-            {:ok, prompt} = command(scope, session)
+            {:ok, prompt} = command(scope, task)
             :ok = Environments.write_file(env, prompt_path, prompt)
             cleanup_problem_file(env, problem_path)
             {false, false}
@@ -414,14 +414,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Session Helpers
   # ============================================================================
 
-  defp get_story_id(%{state: %{"topic" => topic}}) when not is_nil(topic) do
-    case Integer.parse(to_string(topic)) do
+  defp get_story_id(%{story_id: story_id}) when not is_nil(story_id) do
+    case Integer.parse(to_string(story_id)) do
       {id, _} -> {:ok, id}
-      :error -> {:error, "QaStory requires a numeric story ID, got: #{inspect(topic)}"}
+      :error -> {:error, "QaStory requires a numeric story ID, got: #{inspect(story_id)}"}
     end
   end
 
-  defp get_story_id(_session) do
+  defp get_story_id(_task) do
     {:error, "QaStory requires a story ID argument. Usage: /qa-story <story_id>"}
   end
 

@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ApplicationInWeb do
   Setup step: Application module lives in the web namespace.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     case extract_app_name(dir) do
@@ -19,7 +19,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ApplicationInWeb do
     end
   end
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     dir = scope.cwd || File.cwd!()
     app_name = extract_app_name(dir) || "your_app"
     module_name = Macro.camelize(app_name)

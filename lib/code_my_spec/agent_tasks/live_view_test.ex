@@ -20,18 +20,20 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
 
-  def command(scope, session, _opts \\ []) do
-    %{component: component} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, test_rules} <- get_test_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
-      {:ok, prompt} = build_test_prompt(scope, session, test_rules, similar_components)
+      {:ok, prompt} = build_test_prompt(scope, component, project, test_rules, similar_components)
       {:ok, prompt}
     end
   end
 
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
     test_reqs = Requirements.check_artifact_requirements(scope, component, :tests)
@@ -68,8 +70,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
     end
   end
 
-  defp build_test_prompt(scope, session, test_rules, similar_components) do
-    %{project: project, component: component} = session
+  defp build_test_prompt(scope, component, project, test_rules, similar_components) do
     test_rules_text = Enum.map_join(test_rules, "\n\n", & &1.content)
     similar_text = format_similar_components(project, similar_components)
 

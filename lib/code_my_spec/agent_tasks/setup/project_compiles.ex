@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectCompiles do
   Setup step: project compiles without errors or warnings.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     case System.cmd("mix", ["compile", "--warnings-as-errors"],
@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectCompiles do
     end
   end
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     dir = scope.cwd || File.cwd!()
 
     {:ok, """

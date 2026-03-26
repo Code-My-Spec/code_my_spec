@@ -33,20 +33,20 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   Returns the concatenated prompt.
   """
   @spec command(Requirement.t(), Scope.t(), map()) :: {:ok, String.t()} | {:error, term()}
-  def command(%Requirement{scope: :children} = req, scope, parent_session) do
-    command_children(req, scope, parent_session)
+  def command(%Requirement{scope: :children} = req, scope, _opts) do
+    command_children(req, scope)
   end
 
-  def command(%Requirement{scope: :orchestrate} = req, scope, parent_session) do
-    command_orchestrate(req, scope, parent_session)
+  def command(%Requirement{scope: :orchestrate} = req, scope, _opts) do
+    command_orchestrate(req, scope)
   end
 
-  def command(%Requirement{scope: :pipeline} = req, scope, parent_session) do
-    command_pipeline(req, scope, parent_session)
+  def command(%Requirement{scope: :pipeline} = req, scope, _opts) do
+    command_pipeline(req, scope)
   end
 
-  def command(%Requirement{} = req, scope, parent_session) do
-    command_local(req, scope, parent_session)
+  def command(%Requirement{} = req, scope, _opts) do
+    command_local(req, scope)
   end
 
   @doc """
@@ -60,34 +60,34 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   and write/cleanup problems files. Returns structured feedback pointing to the
   problems file rather than inline text.
   """
-  @spec evaluate(Requirement.t(), Scope.t(), map()) ::
+  @spec evaluate(Requirement.t(), Scope.t()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
-  def evaluate(%Requirement{scope: :children} = req, scope, _parent_session) do
+  def evaluate(%Requirement{scope: :children} = req, scope) do
     evaluate_children(req, scope)
   end
 
-  def evaluate(%Requirement{scope: :orchestrate} = req, scope, parent_session) do
-    evaluate_orchestrate(req, scope, parent_session)
+  def evaluate(%Requirement{scope: :orchestrate} = req, scope) do
+    evaluate_orchestrate(req, scope)
   end
 
-  def evaluate(%Requirement{scope: :pipeline} = req, scope, parent_session) do
-    evaluate_pipeline(req, scope, parent_session)
+  def evaluate(%Requirement{scope: :pipeline} = req, scope) do
+    evaluate_pipeline(req, scope)
   end
 
-  def evaluate(%Requirement{} = req, scope, parent_session) do
+  def evaluate(%Requirement{} = req, scope) do
     Logger.info("[Dispatch] evaluate :local #{req.name} → #{inspect(req.satisfied_by)}")
-    session = build_session(req, scope, parent_session)
-    req.satisfied_by.evaluate(scope, session)
+    task = build_task_map(req, scope)
+    req.satisfied_by.evaluate(scope, task)
   end
 
   # ----------------------------------------------------------------
   # Command: :local
   # ----------------------------------------------------------------
 
-  defp command_local(req, scope, parent_session) do
+  defp command_local(req, scope) do
     Logger.info("[Dispatch] command :local #{req.name} → #{inspect(req.satisfied_by)}")
-    session = build_session(req, scope, parent_session)
-    req.satisfied_by.command(scope, session, skip_sync: true)
+    task = build_task_map(req, scope)
+    req.satisfied_by.command(scope, task)
   end
 
   # ----------------------------------------------------------------
@@ -98,26 +98,23 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   # a subagent.
   # ----------------------------------------------------------------
 
-  defp command_orchestrate(req, scope, parent_session) do
+  defp command_orchestrate(req, scope) do
     Logger.info("[Dispatch] command :orchestrate #{req.name} → #{inspect(req.satisfied_by)}")
     task_module = req.satisfied_by
-    session = build_session(req, scope, parent_session)
+    task = build_task_map(req, scope)
 
     {:ok, result} =
       if has_function?(task_module, :orchestrate, 3) do
-        task_module.orchestrate(scope, session, [])
+        task_module.orchestrate(scope, task, [])
       else
-        # default_orchestrate handles both component and project-scoped sessions
-        ProjectCoordinator.default_orchestrate(task_module, scope, session, [])
+        ProjectCoordinator.default_orchestrate(task_module, scope, task, [])
       end
 
     record_orchestrate_task(scope, req, prompt_path: result[:prompt_path])
 
-    # Task module can provide full orchestration text via :orchestration key;
-    # otherwise fall back to the generic template.
     orchestration =
       Map.get_lazy(result, :orchestration, fn ->
-        label = orchestrate_label(session)
+        label = orchestrate_label(task)
 
         """
         # Orchestrate: #{label}
@@ -145,23 +142,22 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   # pointing to the file.
   # ----------------------------------------------------------------
 
-  defp evaluate_orchestrate(req, scope, parent_session) do
+  defp evaluate_orchestrate(req, scope) do
     Logger.info("[Dispatch] evaluate :orchestrate #{req.name} → #{inspect(req.satisfied_by)}")
     task_module = req.satisfied_by
-    session = build_session(req, scope, parent_session)
+    task = build_task_map(req, scope)
     working_dir = scope.environment && scope.environment.cwd
 
     {:ok, result, cleanup_dir} =
       if has_function?(task_module, :orchestrate_evaluate, 3) do
-        {:ok, r} = task_module.orchestrate_evaluate(scope, session, [])
+        {:ok, r} = task_module.orchestrate_evaluate(scope, task, [])
         {:ok, r, nil}
       else
-        # default_orchestrate_evaluate handles both component and project-scoped sessions
         {:ok, r} =
           ProjectCoordinator.default_orchestrate_evaluate(
             task_module,
             scope,
-            session,
+            task,
             []
           )
 
@@ -189,13 +185,13 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   # subagent receives a to-do list.
   # ----------------------------------------------------------------
 
-  defp command_pipeline(req, scope, parent_session) do
+  defp command_pipeline(req, scope) do
     Logger.info("[Dispatch] command :pipeline #{req.name} → #{inspect(req.satisfied_by)}")
 
     chain = collect_pipeline_chain(req)
     Logger.info("[Dispatch] Pipeline chain: #{Enum.map_join(chain, " → ", & &1.name)}")
 
-    session = build_session(req, scope, parent_session)
+    task = build_task_map(req, scope)
 
     # Generate prompt files for each stage
     stage_results =
@@ -213,9 +209,9 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
         {:ok, result} =
           if has_function?(task_module, :orchestrate, 3) do
-            task_module.orchestrate(scope, session, [])
+            task_module.orchestrate(scope, task, [])
           else
-            ProjectCoordinator.default_orchestrate(task_module, scope, session, [])
+            ProjectCoordinator.default_orchestrate(task_module, scope, task, [])
           end
 
         record_orchestrate_task(scope, stage_req, prompt_path: result[:prompt_path])
@@ -331,20 +327,20 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   # Returns :invalid with first failure's feedback.
   # ----------------------------------------------------------------
 
-  defp evaluate_pipeline(req, scope, parent_session) do
+  defp evaluate_pipeline(req, scope) do
     Logger.info("[Dispatch] evaluate :pipeline #{req.name}")
 
     chain = collect_pipeline_chain(req)
-    session = build_session(req, scope, parent_session)
+    task = build_task_map(req, scope)
 
     Enum.reduce_while(chain, {:ok, :valid}, fn stage_def, _acc ->
       task_module = stage_def.satisfied_by
 
       result =
         if has_function?(task_module, :orchestrate_evaluate, 3) do
-          task_module.orchestrate_evaluate(scope, session, [])
+          task_module.orchestrate_evaluate(scope, task, [])
         else
-          ProjectCoordinator.default_orchestrate_evaluate(task_module, scope, session, [])
+          ProjectCoordinator.default_orchestrate_evaluate(task_module, scope, task, [])
         end
 
       case result do
@@ -380,12 +376,12 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
   @container_types ["context", "coordination_context", "live_context"]
 
-  defp command_children(req, scope, _parent_session) do
+  defp command_children(req, scope) do
     Logger.info("[Dispatch] command :children #{req.name} → #{inspect(req.satisfied_by)}")
     component = resolve_children_component(req, scope)
-    session = %{component: component, project: scope.active_project}
+    task = %{component_id: component.id, project_id: scope.active_project_id, story_id: nil}
 
-    {:ok, parent_prompt} = req.satisfied_by.command(scope, session)
+    {:ok, parent_prompt} = req.satisfied_by.command(scope, task)
 
     # collect_components returns component + all descendants; find_actionable
     # filters to only components with unsatisfied requirements (completed children skipped)
@@ -457,14 +453,14 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   defp evaluate_children(req, scope) do
     Logger.info("[Dispatch] evaluate :children #{req.name}")
     component = resolve_children_component(req, scope)
-    session = %{component: component, project: scope.active_project}
+    task = %{component_id: component.id, project_id: scope.active_project_id, story_id: nil}
     status_dir = ProjectCoordinator.component_status_dir(component)
     working_dir = scope.environment && scope.environment.cwd
 
     # Check the parent requirement's evaluate first — it's the authoritative
     # check for this specific requirement (e.g. children_designs only checks
     # spec_file, not code/test). If satisfied, clean up and return.
-    case req.satisfied_by.evaluate(scope, session) do
+    case req.satisfied_by.evaluate(scope, task) do
       {:ok, :valid} ->
         Logger.info(
           "[Dispatch] evaluate :children #{component.module_name} → parent evaluate valid"
@@ -636,31 +632,16 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   # Session building — minimal, just load the entity
   # ----------------------------------------------------------------
 
-  defp build_session(%Requirement{story_id: sid} = _req, scope, parent_session)
-       when not is_nil(sid) do
-    story = Stories.get_story!(scope, sid)
-    component = if story.component_id, do: Components.get_component!(scope, story.component_id)
-
-    Map.merge(parent_session, %{
-      story_id: story.id,
-      state: %{"topic" => story.id},
-      component: component,
-      project: scope.active_project
-    })
+  defp build_task_map(%Requirement{} = req, scope) do
+    %{
+      component_id: req.component_id,
+      component_module_name: if(req.component_id, do: (Components.get_component!(scope, req.component_id)).module_name),
+      story_id: req.story_id,
+      project_id: scope.active_project_id,
+      requirement_id: req.id,
+      requirement_name: req.name
+    }
   end
-
-  defp build_session(%Requirement{component_id: cid} = _req, scope, parent_session)
-       when not is_nil(cid) do
-    component = Components.get_component!(scope, cid)
-    Map.merge(parent_session, %{component: component, project: scope.active_project})
-  end
-
-  defp build_session(%Requirement{project_id: pid} = _req, scope, parent_session)
-       when not is_nil(pid) do
-    Map.merge(parent_session, %{project: scope.active_project})
-  end
-
-  defp build_session(_req, _scope, parent_session), do: parent_session
 
   # function_exported? returns false for unloaded modules; ensure_loaded first.
   defp has_function?(module, function, arity) do
@@ -669,7 +650,7 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   end
 
   # Label for the orchestration header — component module_name or story ID fallback
-  defp orchestrate_label(%{component: %{module_name: name}}) when is_binary(name), do: name
+  defp orchestrate_label(%{component_module_name: name}) when is_binary(name), do: name
   defp orchestrate_label(%{story_id: sid}) when not is_nil(sid), do: "Story #{sid}"
-  defp orchestrate_label(_session), do: "Task"
+  defp orchestrate_label(_task), do: "Task"
 end

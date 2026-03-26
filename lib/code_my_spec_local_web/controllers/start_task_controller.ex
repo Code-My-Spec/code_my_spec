@@ -7,11 +7,9 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
   """
   use CodeMySpecLocalWeb, :controller
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Stories
 
   def start(conn, %{"session_id" => session_id, "task_id" => task_id}) do
     scope = conn.assigns.current_scope
@@ -27,7 +25,6 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
   end
 
   defp get_agent_id(conn) do
-    # POST body or query param
     (conn.body_params || %{})["agent_id"] ||
       (conn.query_params || %{})["agent_id"]
   end
@@ -38,7 +35,6 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
         conn |> put_status(404) |> text("Task not found: #{task_id}")
 
       %{status: :active} = task ->
-        # Already active — assign agent_id if provided and not yet set
         if agent_id && is_nil(task.agent_id) do
           Sessions.assign_agent(scope, session, task_id, agent_id)
         end
@@ -65,10 +61,8 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
     if is_nil(task_module) do
       "No task module configured for this task."
     else
-      session = build_session_for_command(task, scope)
-
       prompt =
-        case task_module.command(scope, session) do
+        case task_module.command(scope, task) do
           {:ok, text} -> text
           {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
         end
@@ -97,7 +91,6 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
       done = Enum.count(checklist, fn item -> item["satisfied"] || false end)
       total = length(checklist)
 
-      # Build the same linked checklist as the requirements show page
       slug = requirement_slug(requirement)
 
       lines =
@@ -126,22 +119,5 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
       _ ->
         "project"
     end
-  end
-
-  defp build_session_for_command(task, scope) do
-    component =
-      if task.component_id, do: Components.get_component!(scope, task.component_id)
-
-    story =
-      if task.story_id, do: Stories.get_story!(scope, task.story_id)
-
-    %CodeMySpec.Sessions.Session{
-      component: component,
-      project: scope.active_project,
-      state:
-        %{}
-        |> then(fn s -> if component, do: Map.put(s, "component_id", component.id), else: s end)
-        |> then(fn s -> if story, do: Map.put(s, "story_id", story.id), else: s end)
-    }
   end
 end

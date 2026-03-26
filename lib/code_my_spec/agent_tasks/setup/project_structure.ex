@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
   Setup step: .code_my_spec/ directory structure exists.
   """
 
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     dir = scope.cwd || File.cwd!()
     base = Path.join(dir, CodeMySpec.Paths.base_dir())
     app_name = extract_app_name(dir)
@@ -25,7 +25,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
       else: {:ok, :invalid, "Missing directories: #{Enum.map_join(missing, ", ", &"`#{&1}`")}"}
   end
 
-  def command(scope, _session, _opts \\ []) do
+  def command(scope, _task) do
     dir = scope.cwd || File.cwd!()
     app_name = extract_app_name(dir) || "your_app"
     base = CodeMySpec.Paths.base_dir()

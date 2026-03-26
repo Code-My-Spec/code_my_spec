@@ -13,10 +13,11 @@ defmodule CodeMySpec.AgentTasks.DevelopComponent do
   through Dispatch, not through default_orchestrate.
   """
 
+  alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
 
-  def command(_scope, session, _opts \\ []) do
-    %{component: component} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
 
     {:ok, """
     # Develop Component Tree: #{component.name}
@@ -37,8 +38,8 @@ defmodule CodeMySpec.AgentTasks.DevelopComponent do
     """}
   end
 
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: root} = session
+  def evaluate(scope, task) do
+    root = Components.get_component!(scope, task.component_id)
     root = ComponentRepository.get_component(scope, root.id)
 
     descendants = ComponentRepository.list_all_descendants(scope, root.id)

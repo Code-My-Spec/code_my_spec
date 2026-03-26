@@ -535,8 +535,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     _ -> Map.get(map, key)
   end
 
-  defp generate_command(task_module, scope, project) do
-    case task_module.command(scope, %{project: project}) do
+  defp generate_command(task_module, scope, _project) do
+    case task_module.command(scope, %{}) do
       {:ok, text} -> text
       {:error, reason} -> "Error: #{inspect(reason)}"
     end

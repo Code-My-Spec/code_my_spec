@@ -6,12 +6,11 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   specified severity that haven't been resolved, and builds a prompt instructing
   the agent to fix each issue and document the resolution.
 
-  Accepts an optional minimum severity argument (default: :medium) from
-  `session.state["topic"]`.
+  Accepts an optional minimum severity via `task.state["topic"]` (default: :medium).
 
   Two main functions:
-  - `command/3` — Reads accepted issues from DB, builds fix prompt
-  - `evaluate/3` — Checks that all medium+ issues are resolved (via tool or file fallback)
+  - `command/2` — Reads accepted issues from DB, builds fix prompt
+  - `evaluate/2` — Checks that all medium+ issues are resolved (via tool or file fallback)
   """
 
   alias CodeMySpec.{Issues, Paths}
@@ -26,8 +25,8 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
   Returns `{:ok, prompt_text}`
   """
-  def command(scope, session, _opts \\ []) do
-    min_severity = get_min_severity(session)
+  def command(scope, task) do
+    min_severity = get_min_severity(task)
     unresolved = list_unresolved_at_severity(scope, min_severity)
 
     prompt = build_prompt(unresolved, min_severity)
@@ -46,7 +45,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   - `{:ok, :valid}` when no blocking unresolved issues remain
   - `{:ok, :invalid, feedback}` when unresolved blocking issues exist
   """
-  def evaluate(scope, _session, _opts \\ []) do
+  def evaluate(scope, _task) do
     # Fallback: reconcile any file-based resolutions the agent wrote directly
     Issues.reconcile_resolutions(scope)
 
@@ -184,7 +183,13 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   # ============================================================================
 
   defp get_min_severity(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "" do
-    case String.downcase(String.trim(topic)) do
+    parse_severity(topic)
+  end
+
+  defp get_min_severity(_task), do: :medium
+
+  defp parse_severity(value) when is_binary(value) do
+    case String.downcase(String.trim(value)) do
       "critical" -> :critical
       "high" -> :high
       "medium" -> :medium
@@ -193,8 +198,6 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
       _ -> :medium
     end
   end
-
-  defp get_min_severity(_session), do: :medium
 
   defp list_unresolved_at_severity(scope, min_severity) do
     Issues.list_by_status(scope, :accepted)

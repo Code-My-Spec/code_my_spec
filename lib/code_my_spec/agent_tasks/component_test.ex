@@ -27,12 +27,13 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{component: component} = session
+  def command(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
 
     with {:ok, test_rules} <- get_test_rules(scope, component) do
       similar_components = Components.list_similar_components(scope, component)
-      {:ok, prompt} = build_test_prompt(scope, session, test_rules, similar_components)
+      {:ok, prompt} = build_test_prompt(scope, component, project, test_rules, similar_components)
       {:ok, prompt}
     end
   end
@@ -51,8 +52,9 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   - {:ok, :valid} if the test file exists with no blocking problems
   - {:ok, :invalid, feedback} if the test file is missing or has blocking problems
   """
-  def evaluate(scope, session, _opts \\ []) do
-    %{component: component, project: project} = session
+  def evaluate(scope, task) do
+    component = Components.get_component!(scope, task.component_id)
+    project = scope.active_project
     component = ComponentRepository.get_component(scope, component.id)
 
     # Check test-artifact requirements (test_file, test_spec_alignment)
@@ -92,8 +94,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     end
   end
 
-  defp build_test_prompt(scope, session, test_rules, similar_components) do
-    %{project: project, component: component} = session
+  defp build_test_prompt(scope, component, project, test_rules, similar_components) do
     test_rules_text = Enum.map_join(test_rules, "\n\n", & &1.content)
     similar_text = format_similar_components(project, similar_components)
 

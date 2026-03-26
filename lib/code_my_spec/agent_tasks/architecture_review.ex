@@ -7,8 +7,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
   and alignment with user stories.
 
   Two main functions:
-  - `command/3` - Called by slash command to generate the review prompt
-  - `evaluate/3` - Called by stop hook (currently auto-approves)
+  - `command/2` - Called by slash command to generate the review prompt
+  - `evaluate/2` - Called by stop hook (currently auto-approves)
   """
 
   alias CodeMySpec.{Architecture, Components, Paths, Stories}
@@ -24,8 +24,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, session, _opts \\ []) do
-    %{project: project} = session
+  def command(scope, _task) do
+    project = scope.active_project
     working_dir = scope.environment && scope.environment.cwd
 
     unsatisfied_stories = Stories.list_unsatisfied_stories(scope)
@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureReview do
   Architecture review is a conversational session - no strict validation.
   Returns {:ok, :valid} to allow the session to complete.
   """
-  def evaluate(_scope, _session, _opts \\ []) do
+  def evaluate(_scope, _task) do
     {:ok, :valid}
   end
 
