@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ResolveIssue do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
          {:ok, updated} <- Issues.resolve_issue(scope, issue, params.resolution) do
       {:reply, IssuesMapper.issue_updated_response(updated, "resolved"), frame}

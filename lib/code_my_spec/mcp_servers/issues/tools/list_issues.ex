@@ -22,7 +22,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
   @impl true
   def execute(params, frame) do
-    case Validators.validate_scope(frame) do
+    case Validators.validate_local_scope(frame, params) do
       {:ok, scope} ->
         filters = build_filters(params)
         issues = Issues.list_filtered(scope, filters)

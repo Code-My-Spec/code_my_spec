@@ -45,6 +45,39 @@ defmodule CodeMySpec.McpServers.Validators do
   end
 
   @doc """
+  Validates scope, falling back to resolving from a working_dir param.
+
+  Use this for local MCP tools where scope may be injected via a PreToolUse
+  hook that adds working_dir to the tool input.
+  """
+  def validate_local_scope(frame, _params \\ %{}) do
+    case frame.assigns[:current_scope] do
+      %{active_project_id: pid} = scope when not is_nil(pid) ->
+        {:ok, scope}
+
+      _ ->
+        resolve_scope_from_working_dir(frame.assigns[:working_dir])
+    end
+  end
+
+  defp resolve_scope_from_working_dir(nil), do: {:error, :no_working_dir}
+
+  defp resolve_scope_from_working_dir(working_dir) do
+    require Logger
+    alias CodeMySpec.Projects
+    alias CodeMySpec.Users.Scope
+
+    with {:ok, project} <- Projects.get_project_by_local_path(working_dir),
+         {:ok, scope} <- Scope.for_local_project(project) do
+      {:ok, scope}
+    else
+      {:error, reason} ->
+        Logger.warning("[Validators] Failed to resolve scope from #{working_dir}: #{inspect(reason)}")
+        {:error, :unauthorized}
+    end
+  end
+
+  @doc """
   Validates that the current scope has an active project set (no account required).
   Use this for local/CLI operations that don't need account context.
   Returns {:ok, scope} if valid, {:error, reason} if not.

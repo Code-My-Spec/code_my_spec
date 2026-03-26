@@ -2,14 +2,14 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
   @moduledoc """
   Links a story to the component that implements it, by module name.
 
-  Use this to track which component satisfies which user story.
-  Find module names with the list components tool or architecture docs.
+  Delegates to the remote server API — story mutations happen server-side,
+  then sync back down to the local clone.
   """
 
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.RemoteClient
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
 
@@ -20,18 +20,29 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
-         component when not is_nil(component) <-
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        do_set_component(params, scope, frame)
+
+      {:error, reason} ->
+        {:reply, StoriesMapper.error(reason), frame}
+    end
+  end
+
+  defp do_set_component(params, scope, frame) do
+    with component when not is_nil(component) <-
            Components.get_component_by_module_name(scope, params.module_name),
-         {:ok, updated_story} <- Stories.set_story_component(scope, story, component.id) do
-      {:reply, StoriesMapper.story_component_set_response(updated_story), frame}
+         client <- RemoteClient.new(scope),
+         {:ok, %{status: 200, body: %{"data" => story_data}}} <-
+           RemoteClient.set_story_component(client, params.story_id, component.id) do
+      updated = RemoteClient.deserialize_story(story_data)
+      {:reply, StoriesMapper.story_component_set_response(updated), frame}
     else
       nil ->
-        {:reply, StoriesMapper.error("Story or component not found"), frame}
+        {:reply, StoriesMapper.error("Component not found: #{params.module_name}"), frame}
 
-      {:error, changeset = %Ecto.Changeset{}} ->
-        {:reply, StoriesMapper.validation_error(changeset), frame}
+      {:ok, %{status: status, body: body}} ->
+        {:reply, StoriesMapper.error("Remote API error: #{status} #{inspect(body)}"), frame}
 
       {:error, reason} ->
         {:reply, StoriesMapper.error(reason), frame}

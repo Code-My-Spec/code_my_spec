@@ -189,7 +189,7 @@ defmodule CodeMySpec.Stories do
     account_id =
       if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
 
-    if account_id && story.account_id != account_id do
+    if account_id && story.account_id && story.account_id != account_id do
       {:error, :unauthorized}
     else
       with {:ok, story = %Story{}} <-
@@ -213,7 +213,7 @@ defmodule CodeMySpec.Stories do
     account_id =
       if scope.active_account, do: scope.active_account.id, else: scope.active_account_id
 
-    if account_id && story.account_id != account_id do
+    if account_id && story.account_id && story.account_id != account_id do
       {:error, :unauthorized}
     else
       with {:ok, story = %Story{}} <- StoriesRepository.clear_story_component(scope, story) do

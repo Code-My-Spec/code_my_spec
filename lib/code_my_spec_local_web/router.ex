@@ -31,7 +31,11 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/stories/requirements", RequirementsLive, :stories
       live "/projects/:project_name/stories/:story_id", StoriesLive, :show
       live "/projects/:project_name/stories/:story_id/requirements", RequirementsLive, :story_show
-      live "/projects/:project_name/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+
+      live "/projects/:project_name/stories/:story_id/requirements/:name",
+           RequirementsLive,
+           :story_req_show
+
       live "/projects/:project_name/issues", IssuesLive, :index
       live "/projects/:project_name/issues/:id", IssuesLive, :show
       live "/projects/:project_name/sessions", SessionsLive, :index
@@ -40,10 +44,17 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/knowledge", MarkdownBrowserLive, :knowledge
       live "/projects/:project_name/knowledge/*path", MarkdownBrowserLive, :knowledge
       live "/projects/:project_name/project-knowledge", MarkdownBrowserLive, :project_knowledge
-      live "/projects/:project_name/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
+
+      live "/projects/:project_name/project-knowledge/*path",
+           MarkdownBrowserLive,
+           :project_knowledge
+
       live "/projects/:project_name/components", RequirementsLive, :components
       live "/projects/:project_name/components/:component_id", RequirementsLive, :component_show
-      live "/projects/:project_name/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
+
+      live "/projects/:project_name/components/:component_id/requirements/:name",
+           RequirementsLive,
+           :component_req_show
     end
   end
 
@@ -111,7 +122,23 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/issues/:id", IssuesController, :show
     get "/components/requirements", ComponentsRequirementsController, :index
     get "/components/:component_id/requirements", ComponentsRequirementsController, :show
-    get "/components/:component_id/requirements/:name", ComponentsRequirementsController, :show_requirement
+
+    get "/components/:component_id/requirements/:name",
+        ComponentsRequirementsController,
+        :show_requirement
+  end
+
+  # ── MCP (Streamable HTTP) ──────────────────────────────────────
+
+  pipeline :mcp do
+    plug CodeMySpecLocalWeb.Plugs.LocalOnly
+    plug CodeMySpecLocalWeb.Plugs.WorkingDir
+  end
+
+  scope "/mcp", CodeMySpecLocalWeb do
+    pipe_through :mcp
+
+    forward "/", McpPlug, server: CodeMySpec.McpServers.LocalServer
   end
 
   # ── Health check (no auth) ──────────────────────────────────────

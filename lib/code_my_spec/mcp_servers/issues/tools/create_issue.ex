@@ -45,7 +45,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          attrs <- build_attrs(params),
          {:ok, issue} <- Issues.create_issue(scope, attrs) do
       {:reply, IssuesMapper.issue_created_response(issue), frame}

@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.GetIssue do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id) do
       {:reply, IssuesMapper.issue_get_response(issue), frame}
     else
