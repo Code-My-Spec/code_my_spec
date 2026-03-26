@@ -28,6 +28,7 @@
     />
     <meta :if={assigns[:og_image]} property="og:image" content={assigns[:og_image]} />
     <meta property="og:type" content="website" />
+    <link :if={assigns[:canonical_url]} rel="canonical" href={assigns[:canonical_url]} />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

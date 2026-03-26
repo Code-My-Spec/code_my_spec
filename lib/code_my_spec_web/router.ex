@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/sitemap.xml", SitemapController, :index
 
     # Public content routes (CLIENT APP FUNCTIONALITY)
     live_session :public_content,
