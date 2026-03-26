@@ -488,7 +488,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy,
         artifact_type: :specification,
         description: "Technical strategy decisions file exists",
-        validation_type: :manual,
         prerequisites: ["project_setup"],
         config: %{path: ".code_my_spec/architecture/decisions.md"}
       })
@@ -523,7 +522,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign,
         artifact_type: :specification,
         description: "Architecture proposal executed",
-        validation_type: :manual,
         prerequisites: ["qa_integration_plan"],
         config: %{path: ".code_my_spec/architecture/overview.md"}
       })

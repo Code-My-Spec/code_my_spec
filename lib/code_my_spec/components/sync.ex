@@ -58,7 +58,11 @@ defmodule CodeMySpec.Components.Sync do
     # Delete any existing components that are now ignored (immediate cleanup)
     ignored_list = Keyword.get(opts, :ignored_components, [])
     ignored = MapSet.new(ignored_list)
-    Logger.info("[Sync] ignored_components option: #{inspect(ignored_list)} (#{MapSet.size(ignored)} entries)")
+
+    Logger.info(
+      "[Sync] ignored_components option: #{inspect(ignored_list)} (#{MapSet.size(ignored)} entries)"
+    )
+
     cleanup_ignored(scope, ignored)
 
     # Load existing components and build files_changed_at lookup for mtime comparison
@@ -110,7 +114,8 @@ defmodule CodeMySpec.Components.Sync do
     all_spec_data = changed_spec_data ++ counterpart_spec_data
     all_impl_data = changed_impl_data ++ counterpart_impl_data
 
-    parse_errors = spec_errors ++ impl_errors ++ counterpart_spec_errors ++ counterpart_impl_errors
+    parse_errors =
+      spec_errors ++ impl_errors ++ counterpart_spec_errors ++ counterpart_impl_errors
 
     Enum.each(parse_errors, fn {path, error} ->
       Logger.warning("Failed to parse #{path}: #{inspect(error)}")
@@ -141,7 +146,10 @@ defmodule CodeMySpec.Components.Sync do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     changed_module_names_list = Enum.map(changed_merged, & &1.module_name)
-    Logger.info("[Sync] Changed modules (#{length(changed_module_names_list)}): #{Enum.join(changed_module_names_list, ", ")}")
+
+    Logger.info(
+      "[Sync] Changed modules (#{length(changed_module_names_list)}): #{Enum.join(changed_module_names_list, ", ")}"
+    )
 
     synced_components = Enum.map(changed_merged, &upsert_from_data(scope, &1, now))
     changed_component_ids = Enum.map(synced_components, & &1.id)
@@ -163,10 +171,6 @@ defmodule CodeMySpec.Components.Sync do
     sync_dependencies(scope, changed_merged, all_components)
 
     {:ok, all_components, changed_component_ids}
-  rescue
-    error ->
-      Logger.error("Error during sync_changed: #{inspect(error)}")
-      {:error, error}
   end
 
   @doc """
@@ -290,8 +294,11 @@ defmodule CodeMySpec.Components.Sync do
     spec_path = Path.join(base_dir, Paths.spec_file(module_path))
     impl_path = Path.join(base_dir, "lib/#{module_path}.ex")
 
-    spec_data = if File.exists?(spec_path), do: parse_spec_file(FileInfo.from_path(spec_path), base_dir)
-    impl_data = if File.exists?(impl_path), do: parse_impl_file(FileInfo.from_path(impl_path), base_dir)
+    spec_data =
+      if File.exists?(spec_path), do: parse_spec_file(FileInfo.from_path(spec_path), base_dir)
+
+    impl_data =
+      if File.exists?(impl_path), do: parse_impl_file(FileInfo.from_path(impl_path), base_dir)
 
     data =
       case {spec_data, impl_data} do

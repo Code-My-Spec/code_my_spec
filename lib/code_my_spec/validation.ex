@@ -164,21 +164,14 @@ defmodule CodeMySpec.Validation do
   defp sync_component_mtimes(%Scope{cwd: cwd} = scope) do
     start = System.monotonic_time(:millisecond)
 
-    case ComponentSync.sync_changed(scope, base_dir: cwd) do
-      {:ok, _components, changed_ids} ->
-        ms = System.monotonic_time(:millisecond) - start
+    {:ok, _components, changed_ids} = ComponentSync.sync_changed(scope, base_dir: cwd)
+    ms = System.monotonic_time(:millisecond) - start
 
-        Logger.info(
-          "[Validation] Pre-sync: #{length(changed_ids)} component(s) updated in #{ms}ms"
-        )
+    Logger.info(
+      "[Validation] Pre-sync: #{length(changed_ids)} component(s) updated in #{ms}ms"
+    )
 
-        ms
-
-      {:error, error} ->
-        ms = System.monotonic_time(:millisecond) - start
-        Logger.warning("[Validation] Pre-sync failed: #{inspect(error)}")
-        ms
-    end
+    ms
   end
 
   # ============================================================================

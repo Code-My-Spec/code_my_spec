@@ -36,6 +36,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
          {:ok, %{status: 200, body: %{"data" => story_data}}} <-
            RemoteClient.set_story_component(client, params.story_id, component.id) do
       updated = RemoteClient.deserialize_story(story_data)
+
+      # Sync stories from remote so local clone has the updated component_id
+      CodeMySpec.Stories.RemoteSync.sync(scope)
+
       {:reply, StoriesMapper.story_component_set_response(updated), frame}
     else
       nil ->

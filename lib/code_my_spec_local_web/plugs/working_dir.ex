@@ -28,10 +28,14 @@ defmodule CodeMySpecLocalWeb.Plugs.WorkingDir do
           nil ->
             conn
             |> put_resp_content_type("application/json")
-            |> send_resp(400, Jason.encode!(%{error: "X-Working-Dir header or ?dir= param required"}))
+            |> send_resp(
+              400,
+              Jason.encode!(%{error: "X-Working-Dir header or ?dir= param required"})
+            )
             |> halt()
 
           dir ->
+            IO.puts("working dir plug")
             resolve_and_assign(conn, dir, :html)
         end
     end

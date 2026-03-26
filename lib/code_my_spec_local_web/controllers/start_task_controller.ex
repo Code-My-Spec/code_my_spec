@@ -82,7 +82,13 @@ defmodule CodeMySpecLocalWeb.StartTaskController do
   defp checklist_section(%{requirement_id: nil}, _scope), do: ""
 
   defp checklist_section(%{requirement_id: req_id}, _scope) do
-    requirement = Requirements.get_requirement!(req_id)
+    case Requirements.get_requirement(req_id) do
+      nil -> ""
+      requirement -> render_checklist(requirement)
+    end
+  end
+
+  defp render_checklist(requirement) do
     checklist = get_in(requirement.details, ["checklist"]) || []
 
     if checklist == [] do

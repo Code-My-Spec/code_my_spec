@@ -6,6 +6,9 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
   require Logger
 
   alias CodeMySpec.LocalServer.NotificationClient
+  alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Sessions
+  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
 
   @doc """
@@ -51,18 +54,13 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
         session_id: session_id
       )
 
-    # Only notify when Claude truly stops (validation passed, no blocking feedback)
-    if match?({:ok, :valid}, result) do
-      Task.start(fn ->
-        NotificationClient.notify(%{
-          type: "task_complete",
-          title: "Claude has finished",
-          body: "Claude Code has completed its current task"
-        })
-      end)
-    end
+    case result do
+      {:ok, :valid} ->
+        maybe_continue_with_next_task(scope, session_id, req_id)
 
-    Validation.format_output(result)
+      _ ->
+        Validation.format_output(result)
+    end
   end
 
   defp dispatch(scope, "SubagentStop", _session_id, hook_input, req_id) do
@@ -135,6 +133,89 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
   defp dispatch(_scope, event_name, _session_id, _hook_input, req_id) do
     Logger.warning("[HookController] [#{req_id}] Unhandled hook event: #{event_name}")
     %{}
+  end
+
+  # After validation passes, check if there's more work to do.
+  # If so, block the stop and tell the agent to call next-task.
+  # If not, let the agent stop and notify the user.
+  defp maybe_continue_with_next_task(scope, session_id, req_id) do
+    session = session_id && Sessions.get_by_external_id(scope, session_id)
+
+    cond do
+      # No session tracking — let it stop
+      is_nil(session) ->
+        Logger.info("[HookController] [#{req_id}] No session, allowing stop")
+        notify_complete()
+        %{}
+
+      # Active sub_agent task — the subagent is still working, let main agent stop
+      has_active_subagent_task?(session) ->
+        Logger.info("[HookController] [#{req_id}] Active subagent task, allowing stop")
+        notify_complete()
+        %{}
+
+      # Active manual validation task — user needs to act, let agent stop
+      has_active_manual_task?(session) ->
+        Logger.info("[HookController] [#{req_id}] Active manual task, allowing stop")
+        notify_complete()
+        %{}
+
+      # Check if there's more work in the project
+      true ->
+        case ProjectCoordinator.get_next_actions(scope) do
+          {:ok, _requirement} ->
+            Logger.info("[HookController] [#{req_id}] More work available, blocking stop")
+
+            slug = project_slug(scope.active_project)
+
+            %{
+              "decision" => "block",
+              "reason" => """
+              Task completed successfully. There is more work to do on this project.
+
+              Call the next-task endpoint to get your next assignment:
+              `curl -s http://localhost:4003/api/projects/#{slug}/next-task?session_id=#{session_id}`
+              """
+            }
+
+          _ ->
+            Logger.info("[HookController] [#{req_id}] No more work, allowing stop")
+            notify_complete()
+            %{}
+        end
+    end
+  end
+
+  defp has_active_subagent_task?(session) do
+    Enum.any?(session.tasks || [], fn task ->
+      task.status == :active and task.execution_type == :sub_agent
+    end)
+  end
+
+  defp has_active_manual_task?(session) do
+    case Session.active_task(session) do
+      %{validation_type: :manual} -> true
+      _ -> false
+    end
+  end
+
+  defp notify_complete do
+    Task.start(fn ->
+      NotificationClient.notify(%{
+        type: "task_complete",
+        title: "Claude has finished",
+        body: "Claude Code has completed its current task"
+      })
+    end)
+  end
+
+  defp project_slug(nil), do: "project"
+
+  defp project_slug(project) do
+    (project.name || "project")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 
   defp permission_notification?(title, message) do

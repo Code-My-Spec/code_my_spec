@@ -21,6 +21,13 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
     |> Repo.preload([:component, :story, :project])
   end
 
+  @spec get_requirement(integer()) :: Requirement.t() | nil
+  def get_requirement(id) do
+    Requirement
+    |> Repo.get(id)
+    |> Repo.preload([:component, :story, :project])
+  end
+
   @doc """
   Clears all requirements for the entire project.
   """

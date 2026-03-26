@@ -53,6 +53,7 @@ defmodule CodeMySpec.Requirements do
     end
   end
 
+  defdelegate get_requirement(id), to: RequirementsRepository
   defdelegate get_requirement!(id), to: RequirementsRepository
   defdelegate clear_all_project_requirements(scope), to: RequirementsRepository
   defdelegate clear_requirements(scope, component, opts \\ []), to: RequirementsRepository
