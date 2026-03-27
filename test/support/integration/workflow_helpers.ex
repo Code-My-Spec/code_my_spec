@@ -58,6 +58,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
       scope: scope,
       frame: frame,
       session_id: session.id,
+      external_session_id: external_id,
       project: project,
       req1: req1,
       req2: req2,

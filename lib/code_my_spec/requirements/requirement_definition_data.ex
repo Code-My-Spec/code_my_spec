@@ -472,7 +472,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         description: "Project bootstrap setup is complete",
         prerequisites: [],
         scope: :local,
-        validation_type: :manual,
+        validation_type: :automatic,
         execution_type: :main_agent
       })
 

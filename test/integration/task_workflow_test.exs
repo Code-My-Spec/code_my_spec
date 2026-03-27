@@ -1,31 +1,39 @@
 defmodule CodeMySpec.Integration.TaskWorkflowTest do
   @moduledoc """
   Integration test for the core MCP tool workflow:
-  get_next_requirement → start_task → satisfy → get_next_requirement
+  get_next_requirement → start_task → stop hook evaluates → get_next_requirement
 
-  Exercises the full chain using real DB state, no filesystem.
+  Exercises the full chain using real DB state and tmp dir filesystem.
   """
   use ExUnit.Case, async: true
 
   import CodeMySpec.Integration.WorkflowHelpers
 
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.{EvaluateTask, StartTask}
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Requirements.RequirementsRepository
   alias CodeMySpec.Sessions
+  alias CodeMySpec.Validation.TaskEvaluator
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
     setup_workflow_scenario()
   end
 
-  test "full cycle: get_next → start → complete a step → prompt reflects it → satisfy → get_next",
-       %{scope: scope, frame: frame, session_id: session_id, req1: req1, tmp_dir: tmp_dir} do
+  test "full cycle: get_next → start → complete steps → stop hook evaluates → get_next",
+       %{
+         scope: scope,
+         frame: frame,
+         session_id: session_id,
+         external_session_id: external_session_id,
+         req1: req1,
+         tmp_dir: tmp_dir
+       } do
     # Step 1: get_next_requirement → returns project_setup (technical_strategy is blocked)
     next_data = call_get_next!(frame)
     assert next_data["requirement_name"] == "project_setup"
 
-    # Step 2: start_task → all 13 steps unchecked (empty tmp dir)
+    # Step 2: start_task → all 12 steps unchecked (empty tmp dir)
     start_data = call_start_task!(frame, next_data["requirement_id"], session_id)
     prompt = call_start_task_text!(frame, next_data["requirement_id"], session_id)
     assert prompt =~ "Project Setup (0/12)"
@@ -56,14 +64,14 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
     assert prompt3 =~ "Project Setup (12/12)"
     refute prompt3 =~ "- [ ] "
 
-    # Step 7: evaluate_task → all steps pass → task completed
-    call_evaluate_task!(frame, task_id, session_id)
+    # Step 7: stop hook triggers TaskEvaluator → all steps pass → task completed
+    assert {:ok, :valid} = TaskEvaluator.evaluate_sessions(scope, external_session_id)
 
     session2 = Sessions.get_session(scope, session_id)
     completed_task = Enum.find(session2.tasks, &(&1.id == task_id))
     assert completed_task.status == :completed
 
-    # Step 8: satisfy the requirement in DB (simulates sync after evaluate passes)
+    # Step 8: satisfy the requirement in DB (simulates sync after stop hook)
     {:ok, _} =
       RequirementsRepository.update_requirement(scope, req1, %{satisfied: true, score: 1.0})
 
@@ -88,14 +96,6 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
 
     refute resp.isError, "start_task failed: #{response_text(resp)}"
     extract_data(resp)
-  end
-
-  defp call_evaluate_task!(frame, task_id, session_id) do
-    assert {:reply, resp, ^frame} =
-             EvaluateTask.execute(%{task_id: task_id, session_id: session_id}, frame)
-
-    refute resp.isError, "evaluate_task failed: #{response_text(resp)}"
-    resp
   end
 
   defp call_start_task_text!(frame, requirement_id, session_id) do
