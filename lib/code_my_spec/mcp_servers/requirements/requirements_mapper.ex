@@ -57,8 +57,8 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   def init_required_response(prompt) do
     Response.tool()
-    |> Response.text(prompt)
-    |> Map.put(:structured_content, %{status: :init_required})
+    |> Response.text(prompt <> "\n\nWhen all steps are complete, call `get_next_requirement` again.")
+    |> Map.put(:structured_content, %{status: :init_required, action: :work_inline})
   end
 
   def error(reason) when is_atom(reason), do: reason |> to_string() |> error()
