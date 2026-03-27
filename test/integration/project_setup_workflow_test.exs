@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Integration.TaskWorkflowTest do
+defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
   @moduledoc """
   Integration test for the core MCP tool workflow:
   get_next_requirement → start_task → stop hook evaluates → get_next_requirement
