@@ -3,7 +3,8 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
   Integration test for the core MCP tool workflow:
   get_next_requirement → start_task → stop hook evaluates → get_next_requirement
 
-  Exercises the full chain using real DB state and tmp dir filesystem.
+  Exercises the full chain using real DB state, tmp dir filesystem,
+  and the actual stop hook HTTP endpoint.
   """
   use ExUnit.Case, async: true
 
@@ -13,7 +14,7 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Requirements.RequirementsRepository
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Validation.TaskEvaluator
+  alias CodeMySpecLocalWeb.Hooks.StopController
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
@@ -64,9 +65,12 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
     assert prompt3 =~ "Project Setup (12/12)"
     refute prompt3 =~ "- [ ] "
 
-    # Step 7: stop hook triggers TaskEvaluator → all steps pass → task completed
-    assert {:ok, :valid} = TaskEvaluator.evaluate_sessions(scope, external_session_id)
+    # Step 7: stop hook → evaluates task → passes → tells agent to get next task
+    stop_response = call_stop_hook!(scope, external_session_id)
+    assert stop_response["decision"] == "block"
+    assert stop_response["reason"] =~ "get_next_requirement"
 
+    # Verify task is completed in DB
     session2 = Sessions.get_session(scope, session_id)
     completed_task = Enum.find(session2.tasks, &(&1.id == task_id))
     assert completed_task.status == :completed
@@ -104,5 +108,16 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
 
     refute resp.isError, "start_task failed: #{response_text(resp)}"
     response_text(resp)
+  end
+
+  defp call_stop_hook!(scope, session_id) do
+    conn =
+      Phoenix.ConnTest.build_conn(:post, "/api/hooks/stop", %{"session_id" => session_id})
+      |> Plug.Conn.assign(:current_scope, scope)
+      |> Plug.Conn.put_private(:phoenix_format, "json")
+      |> Map.put(:body_params, %{"session_id" => session_id})
+
+    conn = StopController.handle(conn, conn.body_params)
+    Jason.decode!(conn.resp_body)
   end
 end

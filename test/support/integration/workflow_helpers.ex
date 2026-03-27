@@ -10,6 +10,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Projects
   alias CodeMySpec.Sessions
 
   @doc """
@@ -25,11 +26,14 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   def setup_workflow_scenario do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+
+    # Set local_path so the WorkingDirScope plug can find this project
+    {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
+    scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
+
     external_id = "workflow-#{System.unique_integer([:positive])}"
     {:ok, session} = Sessions.find_or_create_session(scope, external_id)
     frame = %Frame{assigns: %{current_scope: scope}}
-    project = scope.active_project
 
     req1 =
       project_requirement_fixture(scope, %{
