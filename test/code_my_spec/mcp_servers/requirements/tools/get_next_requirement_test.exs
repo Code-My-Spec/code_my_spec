@@ -71,11 +71,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
       assert content =~ "All requirements satisfied"
     end
 
-    test "returns error without valid scope" do
+    test "returns init checklist when no project is linked" do
       frame = %Frame{assigns: %{}}
 
       assert {:reply, response, ^frame} = GetNextRequirement.execute(%{}, frame)
-      assert response.isError
+      refute response.isError
+      assert response.structured_content == %{status: :init_required}
+      assert response_text(response) =~ "Initialization"
     end
   end
 

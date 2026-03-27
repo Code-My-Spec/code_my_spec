@@ -55,6 +55,12 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     |> Map.put(:structured_content, %{status: :complete})
   end
 
+  def init_required_response(prompt) do
+    Response.tool()
+    |> Response.text(prompt)
+    |> Map.put(:structured_content, %{status: :init_required})
+  end
+
   def error(reason) when is_atom(reason), do: reason |> to_string() |> error()
 
   def error(reason) when is_binary(reason) do
