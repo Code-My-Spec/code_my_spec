@@ -7,7 +7,7 @@ set -euo pipefail
 
 ID="${1:?Usage: resolve-issue <id> <resolution>}"
 RESOLUTION="${2:?Usage: resolve-issue <id> <resolution>}"
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 JSON=$(jq -n --arg resolution "$RESOLUTION" '{resolution: $resolution}')
 

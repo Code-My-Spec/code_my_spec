@@ -4,7 +4,7 @@
 set -euo pipefail
 
 TASK_ID="${1:?Usage: cancel <task_id>}"
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 curl -sf -X POST "http://localhost:${PORT}/api/tasks/cancel" \
   -H "Content-Type: application/json" \

@@ -11,7 +11,7 @@
 # Calls the local CodeMySpec server (no auth needed).
 set -euo pipefail
 
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 QUERY=""
 
 while [[ $# -gt 0 ]]; do

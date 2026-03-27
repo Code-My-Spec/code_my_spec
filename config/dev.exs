@@ -73,7 +73,7 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
     ]
   ]
 
-# Local developer web endpoint (port 4002)
+# Local developer web endpoint (port 4003)
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   code_reloader: true,
   debug_errors: true,

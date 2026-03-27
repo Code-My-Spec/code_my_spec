@@ -18,13 +18,13 @@ defmodule CodeMySpec.AgentTasks.Init.Auth do
     Start the OAuth flow, then have the user open the URL in their browser:
 
     ```bash
-    curl -s -X POST http://localhost:4002/api/bootstrap/auth/start
+    curl -s -X POST http://localhost:4003/api/bootstrap/auth/start
     ```
 
     The response contains an `auth_url`. Tell the user to open it. Then verify:
 
     ```bash
-    curl -s http://localhost:4002/api/bootstrap/auth/status
+    curl -s http://localhost:4003/api/bootstrap/auth/status
     ```
 
     Once `authenticated` is `true`, this step is complete.

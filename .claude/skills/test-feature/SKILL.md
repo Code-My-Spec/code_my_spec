@@ -20,7 +20,7 @@ $ARGUMENTS is a free-form description of what to test. If empty, ask what to tes
 - **Test target project**: /Users/johndavenport/Documents/github/test_phoenix_project
 - **Plugin dir**: /Users/johndavenport/Documents/github/code_my_spec_cli/CodeMySpec
 - **Server logs**: ~/.codemyspec/cli.log
-- **Server port**: 4002
+- **Server port**: 4003
 - **Claude Code transcripts**: ~/.claude/projects/ (JSONL files)
 
 ## System Architecture (quick reference)
@@ -29,13 +29,13 @@ The CMS system works like this:
 
 1. **Skills** invoke `cms start-agent-task` which generates a prompt on stdout
 2. **Claude Code** receives that prompt and works on the task
-3. **Hooks** fire HTTP POSTs to `localhost:4002/api/hooks` on Stop, SubagentStop, PostToolUse events
+3. **Hooks** fire HTTP POSTs to `localhost:4003/api/hooks` on Stop, SubagentStop, PostToolUse events
 4. **Validation** module runs on Stop/SubagentStop hooks — parses transcripts, runs pipeline (compile, tests, credo, sobelow), evaluates tasks, persists problems, syncs
 5. **Transcripts** are JSONL files Claude Code produces, parsed by the system after the fact
 
 ## Your workflow
 
-1. **Check the server**: Is `localhost:4002` responding? If not, start it:
+1. **Check the server**: Is `localhost:4003` responding? If not, start it:
    ```
    cd /Users/johndavenport/Documents/github/code_my_spec_cli && mix cli server run
    ```
@@ -57,7 +57,7 @@ The CMS system works like this:
      ```
    - Sending a simulated hook:
      ```
-     curl -X POST http://localhost:4002/api/hooks \
+     curl -X POST http://localhost:4003/api/hooks \
        -H "Content-Type: application/json" \
        -d '{"hook_event_name":"Stop","session_id":"test-123","cwd":"/Users/johndavenport/Documents/github/test_phoenix_project"}'
      ```
@@ -92,7 +92,7 @@ See `learnings/` subdirectory for detailed notes on past QA runs.
 - **Server logs go to stdout** of the `mix cli server run` process, not always to `~/.codemyspec/cli.log`
 - **`--print` mode** buffers all output until the end — use `wc -l` on the output file to check progress
 - **`--print` mode won't spawn subagents** — it runs everything inline, so SubagentStop hooks won't fire. For full subagent testing, use interactive mode.
-- **Start agent tasks via API** when server is already running: `curl -s http://localhost:4002/api/agent-tasks/start -X POST -H "Content-Type: application/json" -H "X-Working-Dir: <project>" -d '{"session_type":"<type>","module_name":"<Module.Name>","external_id":"<id>"}'`
+- **Start agent tasks via API** when server is already running: `curl -s http://localhost:4003/api/agent-tasks/start -X POST -H "Content-Type: application/json" -H "X-Working-Dir: <project>" -d '{"session_type":"<type>","module_name":"<Module.Name>","external_id":"<id>"}'`
 - **Module names** use dot notation (`TestPhoenixProject.Blog`), not slash notation
 
 ## Test scenario

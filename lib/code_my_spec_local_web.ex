@@ -2,7 +2,7 @@ defmodule CodeMySpecLocalWeb do
   @moduledoc """
   The local developer web interface.
 
-  Two distinct interfaces on the same endpoint (port 4002):
+  Two distinct interfaces on the same endpoint (port 4003):
 
   - **Human UI** (LiveView) — interactive browser pages at `/init`, `/setup`, `/tasks`
   - **LLM API** (Controllers) — markdown in/out at `/api/init`, `/api/setup`, `/api/tasks`

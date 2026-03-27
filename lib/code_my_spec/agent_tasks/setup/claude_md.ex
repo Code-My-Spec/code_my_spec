@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ClaudeMd do
     # Install CLAUDE.md
 
     ```bash
-    curl -s -X POST http://localhost:4002/api/bootstrap/install-claude-md \\
+    curl -s -X POST http://localhost:4003/api/bootstrap/install-claude-md \\
       -H "X-Working-Dir: $(pwd)"
     ```
     """}

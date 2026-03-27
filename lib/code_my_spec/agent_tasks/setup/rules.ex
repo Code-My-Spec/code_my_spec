@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Rules do
     # Install Default Rules
 
     ```bash
-    curl -s -X POST http://localhost:4002/api/bootstrap/install-rules \\
+    curl -s -X POST http://localhost:4003/api/bootstrap/install-rules \\
       -H "X-Working-Dir: $(pwd)"
     ```
     """}

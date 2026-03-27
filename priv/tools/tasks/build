@@ -4,7 +4,7 @@
 set -euo pipefail
 
 STORY_ID="${1:?Usage: build <story_id>}"
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 curl -sf -X POST "http://localhost:${PORT}/api/tasks/build" \
   -H "Content-Type: application/json" \

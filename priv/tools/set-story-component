@@ -3,12 +3,12 @@
 # Usage: set-story-component <story_id> <module_name>
 #
 # Calls the local CodeMySpec server (no auth needed).
-# Requires the server to be running on localhost:4002.
+# Requires the server to be running on localhost:4003.
 set -euo pipefail
 
 STORY_ID="${1:?Usage: set-story-component <story_id> <module_name>}"
 MODULE_NAME="${2:?Usage: set-story-component <story_id> <module_name>}"
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 curl -sf -X POST "http://localhost:${PORT}/api/stories/set-component" \
   -H "Content-Type: application/json" \

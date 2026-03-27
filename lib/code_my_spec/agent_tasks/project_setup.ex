@@ -985,7 +985,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   defp evaluation_checks(status) do
     [
       {"Authenticated", status.user_authenticated,
-       "Run: curl -s -X POST http://localhost:4002/api/bootstrap/auth/start, then visit the auth_url, then verify with curl -s http://localhost:4002/api/bootstrap/auth/status"},
+       "Run: curl -s -X POST http://localhost:4003/api/bootstrap/auth/start, then visit the auth_url, then verify with curl -s http://localhost:4003/api/bootstrap/auth/status"},
       {"Elixir 1.18+", status.elixir_installed, "Install Elixir 1.18+ using asdf or brew"},
       {"Phoenix installer", status.phoenix_installer_available,
        "Run: mix archive.install hex phx_new"},
@@ -1010,17 +1010,17 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       {"Project structure dirs", status.project_structure_complete,
        "Create directories: #{Enum.join(status.missing_structure_dirs, ", ")}"},
       {"App resources (framework + tools)", status.app_symlinks_installed,
-       "Run: curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks -H 'Content-Type: application/json' -H 'X-Working-Dir: <project_dir>'"},
+       "Run: curl -s -X POST http://localhost:4003/api/bootstrap/install-symlinks -H 'Content-Type: application/json' -H 'X-Working-Dir: <project_dir>'"},
       {"AGENTS.md", status.agents_md_installed,
-       "Generate AGENTS.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-agents-md -H 'X-Working-Dir: <project_dir>'"},
+       "Generate AGENTS.md: curl -s -X POST http://localhost:4003/api/bootstrap/install-agents-md -H 'X-Working-Dir: <project_dir>'"},
       {"Rules", status.rules_installed,
-       "Install rules: curl -s -X POST http://localhost:4002/api/bootstrap/install-rules -H 'X-Working-Dir: <project_dir>'"},
+       "Install rules: curl -s -X POST http://localhost:4003/api/bootstrap/install-rules -H 'X-Working-Dir: <project_dir>'"},
       {"Credo custom checks", status.credo_checks_configured,
        "Add requires paths and extra: elem(Code.eval_file(\".code_my_spec/credo_checks/framework/checks.exs\"), 0) to .credo.exs"},
       {"CLAUDE.md", status.claude_md_installed,
-       "Install CLAUDE.md: curl -s -X POST http://localhost:4002/api/bootstrap/install-claude-md -H 'X-Working-Dir: <project_dir>'"},
+       "Install CLAUDE.md: curl -s -X POST http://localhost:4003/api/bootstrap/install-claude-md -H 'X-Working-Dir: <project_dir>'"},
       {"CLI config", status.cli_config_has_project_id,
-       "Run curl -s http://localhost:4002/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}
+       "Run curl -s http://localhost:4003/api/bootstrap/projects to list, then POST /api/bootstrap/init with project_id to create config"}
     ]
   end
 

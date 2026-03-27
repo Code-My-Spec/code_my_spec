@@ -6,10 +6,10 @@
 # and polls until authentication is complete.
 #
 # Calls the local CodeMySpec server.
-# Requires the server to be running on localhost:4002.
+# Requires the server to be running on localhost:4003.
 set -euo pipefail
 
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 BASE="http://localhost:${PORT}"
 
 # Start the auth flow

@@ -7,7 +7,7 @@ set -euo pipefail
 
 ID="${1:?Usage: dismiss-issue <id> <reason>}"
 REASON="${2:?Usage: dismiss-issue <id> <reason>}"
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 JSON=$(jq -n --arg reason "$REASON" '{reason: $reason}')
 

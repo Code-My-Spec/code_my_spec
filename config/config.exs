@@ -35,7 +35,7 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
   pubsub_server: CodeMySpec.PubSub,
   live_view: [signing_salt: "WM19jFVv"]
 
-# Configures the local developer web endpoint (port 4002, localhost only)
+# Configures the local developer web endpoint (port 4003, localhost only)
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,

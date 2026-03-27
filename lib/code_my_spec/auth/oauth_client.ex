@@ -332,7 +332,7 @@ defmodule CodeMySpec.Auth.OAuthClient do
       if redirect_uri do
         [redirect_uri]
       else
-        ["http://localhost:4002/api/bootstrap/auth/callback"]
+        ["http://localhost:4003/api/bootstrap/auth/callback"]
       end
 
     registration_params = %{

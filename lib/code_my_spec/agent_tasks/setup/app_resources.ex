@@ -27,7 +27,7 @@ defmodule CodeMySpec.AgentTasks.Setup.AppResources do
     # Install Framework Knowledge + Tools
 
     ```bash
-    curl -s -X POST http://localhost:4002/api/bootstrap/install-symlinks \\
+    curl -s -X POST http://localhost:4003/api/bootstrap/install-symlinks \\
       -H "Content-Type: application/json" \\
       -H "X-Working-Dir: $(pwd)"
     ```

@@ -3,7 +3,7 @@
 # Usage: status
 set -euo pipefail
 
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 curl -sf "http://localhost:${PORT}/api/tasks/status" \
   -H "X-Working-Dir: ${PWD}" | jq .

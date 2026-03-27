@@ -6,7 +6,7 @@
 set -euo pipefail
 
 ID="${1:?Usage: get-issue <id>}"
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 curl -sf "http://localhost:${PORT}/api/issues/${ID}" \
   -H "X-Working-Dir: ${PWD}"

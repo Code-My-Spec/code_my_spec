@@ -22,12 +22,12 @@ defmodule CodeMySpec.AgentTasks.Init.CliConfig do
 
     1. List available projects:
     ```bash
-    curl -s http://localhost:4002/api/bootstrap/projects
+    curl -s http://localhost:4003/api/bootstrap/projects
     ```
 
     2. Ask the user which project, then init:
     ```bash
-    curl -s -X POST http://localhost:4002/api/bootstrap/init \\
+    curl -s -X POST http://localhost:4003/api/bootstrap/init \\
       -H "Content-Type: application/json" \\
       -H "X-Working-Dir: $(pwd)" \\
       -d '{"project_id": "<PROJECT_ID>"}'

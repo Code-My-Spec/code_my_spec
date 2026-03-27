@@ -6,7 +6,7 @@ set -euo pipefail
 TASK_ID="${1:?Usage: prepare <task_id> [session_type] [component_module_name]}"
 SESSION_TYPE="${2:-}"
 MODULE_NAME="${3:-}"
-PORT="${CODEMYSPEC_PORT:-4002}"
+PORT="${CODEMYSPEC_PORT:-4003}"
 
 BODY="{\"task_id\": \"${TASK_ID}\""
 [[ -n "$SESSION_TYPE" ]] && BODY="${BODY}, \"session_type\": \"${SESSION_TYPE}\""
