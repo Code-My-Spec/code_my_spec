@@ -17,7 +17,7 @@ defmodule CodeMySpec.LocalServer.Controllers.BootstrapController do
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.LocalServer.AuthState
+  alias CodeMySpec.Auth.AuthState
   alias CodeMySpec.LocalServer.Config, as: ServerConfig
   alias CodeMySpec.Users.Scope
 

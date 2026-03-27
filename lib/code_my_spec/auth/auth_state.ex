@@ -1,4 +1,4 @@
-defmodule CodeMySpec.LocalServer.AuthState do
+defmodule CodeMySpec.Auth.AuthState do
   @moduledoc """
   Holds pending OAuth PKCE state between `/auth/start` and `/auth/callback`.
 

@@ -5,7 +5,7 @@ defmodule CodeMySpec.LocalServer.Controllers.HookController do
 
   require Logger
 
-  alias CodeMySpec.LocalServer.NotificationClient
+  alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session

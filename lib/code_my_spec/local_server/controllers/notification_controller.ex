@@ -5,7 +5,7 @@ defmodule CodeMySpec.LocalServer.Controllers.NotificationController do
 
   import Plug.Conn
 
-  alias CodeMySpec.LocalServer.NotificationClient
+  alias CodeMySpec.Notifications.NotificationClient
 
   @doc """
   Send a push notification with arbitrary text.

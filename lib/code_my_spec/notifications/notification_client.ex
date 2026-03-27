@@ -1,4 +1,4 @@
-defmodule CodeMySpec.LocalServer.NotificationClient do
+defmodule CodeMySpec.Notifications.NotificationClient do
   @moduledoc """
   Sends push notifications by threading them through the production server.
 

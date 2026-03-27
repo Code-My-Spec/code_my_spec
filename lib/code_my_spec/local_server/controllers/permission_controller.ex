@@ -18,7 +18,7 @@ defmodule CodeMySpec.LocalServer.Controllers.PermissionController do
   require Logger
 
   alias CodeMySpec.Auth.OAuthClient
-  alias CodeMySpec.LocalServer.PermissionSocket
+  alias CodeMySpec.Permissions.PermissionSocket
 
   @default_timeout_s 120
 

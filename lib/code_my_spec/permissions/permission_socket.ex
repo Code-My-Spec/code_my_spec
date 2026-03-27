@@ -1,4 +1,4 @@
-defmodule CodeMySpec.LocalServer.PermissionSocket do
+defmodule CodeMySpec.Permissions.PermissionSocket do
   @moduledoc """
   Slipstream WebSocket client that connects to the production server's
   permission channel and waits for a decision.
