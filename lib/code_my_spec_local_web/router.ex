@@ -56,6 +56,21 @@ defmodule CodeMySpecLocalWeb.Router do
     end
   end
 
+  # ── Bootstrap (OAuth flow, no scope needed) ─────────────────────
+
+  pipeline :bootstrap do
+    plug CodeMySpecLocalWeb.Plugs.LocalOnly
+  end
+
+  scope "/api/bootstrap", CodeMySpecLocalWeb do
+    pipe_through :bootstrap
+
+    get "/auth/status", BootstrapController, :auth_status
+    post "/auth/start", BootstrapController, :auth_start
+    get "/auth/callback", BootstrapController, :auth_callback
+    get "/projects", BootstrapController, :list_projects
+  end
+
   # ── LLM API (Controllers, markdown) ─────────────────────────────
 
   pipeline :api do
@@ -84,6 +99,25 @@ defmodule CodeMySpecLocalWeb.Router do
     post "/session-start", SessionStartController, :handle
     post "/pre-tool-use", PreToolUseController, :handle
     post "/post-tool-use", PostToolUseController, :handle
+    post "/stop", StopController, :handle
+    post "/subagent-stop", SubagentStopController, :handle
+    post "/notification", NotificationHookController, :handle
+  end
+
+  # ── External integrations (notifications, permissions) ──────────
+
+  scope "/api", CodeMySpecLocalWeb do
+    pipe_through :hook
+
+    post "/notifications/send", NotificationController, :send_notification
+    post "/permissions/request", PermissionController, :create
+  end
+
+  scope "/api/permissions", CodeMySpecLocalWeb do
+    pipe_through :bootstrap
+
+    get "/:id/stream", PermissionController, :stream
+    post "/:id/respond", PermissionController, :respond
   end
 
   pipeline :project do
