@@ -8,8 +8,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.AgentTasks.ProjectSetup
-  alias CodeMySpec.McpServers.Bootstrap.BootstrapMapper
+  alias CodeMySpec.McpServers.Bootstrap.{BootstrapMapper, Content}
   alias CodeMySpec.McpServers.Validators
 
   schema do
@@ -19,12 +18,42 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd do
   def execute(_params, frame) do
     working_dir = Validators.mcp_working_dir(frame)
 
-    case ProjectSetup.install_claude_md(working_dir) do
+    case install(working_dir) do
       :ok ->
         {:reply, BootstrapMapper.install_success("CLAUDE.md"), frame}
 
       {:error, reason} ->
         {:reply, BootstrapMapper.error("Failed to install CLAUDE.md: #{inspect(reason)}"), frame}
     end
+  end
+
+  defp install(working_dir) do
+    app_name = Content.extract_app_name(Path.join(working_dir, "mix.exs"))
+    managed_section = Content.claude_md_content(app_name)
+    claude_md_path = Path.join(working_dir, "CLAUDE.md")
+    start_marker = Content.claude_md_start_marker()
+
+    case File.read(claude_md_path) do
+      {:ok, existing} ->
+        if String.contains?(existing, start_marker) do
+          updated = replace_managed_section(existing, managed_section)
+          File.write(claude_md_path, updated)
+        else
+          File.write(claude_md_path, existing <> "\n" <> managed_section)
+        end
+
+      {:error, :enoent} ->
+        File.write(claude_md_path, managed_section)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp replace_managed_section(content, managed_section) do
+    start_marker = Content.claude_md_start_marker()
+    end_marker = Content.claude_md_end_marker()
+    pattern = ~r/#{Regex.escape(start_marker)}.*#{Regex.escape(end_marker)}/s
+    String.replace(content, pattern, String.trim_trailing(managed_section))
   end
 end
