@@ -212,10 +212,6 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     ### Detected Entities
 
     #{format_entities(analysis.detected_entities)}
-
-    ---
-
-    Data: #{Jason.encode!(analysis)}
     """
   end
 

@@ -31,7 +31,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
       assert content =~ "[x] **spec_file**"
       assert content =~ "[ ] **tests_passing**"
 
-      data = extract_data(content)
+      data = extract_data(response)
       assert data["count"] == 2
       assert length(data["requirements"]) == 2
 
@@ -47,7 +47,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
       assert {:reply, response, ^frame} = ListRequirements.execute(%{}, frame)
 
       refute response.isError
-      data = extract_data(response_text(response))
+      data = extract_data(response)
       assert data["count"] == 0
       assert data["requirements"] == []
     end
@@ -65,8 +65,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
     hd(protocol["content"])["text"]
   end
 
-  defp extract_data(text) do
-    [_, json] = String.split(text, "Data: ", parts: 2)
-    Jason.decode!(json)
+  defp extract_data(%{structured_content: data}) when is_map(data) do
+    Jason.decode!(Jason.encode!(data))
   end
 end

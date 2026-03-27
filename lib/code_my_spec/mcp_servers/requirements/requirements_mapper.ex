@@ -51,10 +51,8 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   def all_satisfied_response do
     Response.tool()
-    |> Response.text(
-      "# All requirements satisfied\n\nNo actionable requirements remain.\n\nData: " <>
-        Jason.encode!(%{status: :complete})
-    )
+    |> Response.text("# All requirements satisfied\n\nNo actionable requirements remain.")
+    |> Map.put(:structured_content, %{status: :complete})
   end
 
   def error(reason) when is_atom(reason), do: reason |> to_string() |> error()
@@ -146,7 +144,8 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   defp hybrid_response(summary, data) do
     Response.tool()
-    |> Response.text(summary <> "\n\nData: " <> Jason.encode!(data))
+    |> Response.text(summary)
+    |> Map.put(:structured_content, data)
   end
 
   defp execution_label(:sub_agent), do: "Delegate to a sub-agent"

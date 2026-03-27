@@ -15,6 +15,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
 
+  describe "execute/2 — evaluate pass" do
+    test "marks task completed when evaluate returns :valid" do
+      {scope, session, task} = setup_active_task(CodeMySpec.AgentTasks.RefactorModule)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               EvaluateTask.execute(%{task_id: task.id, session_id: session.id}, frame)
+
+      refute response.isError
+      content = response_text(response)
+      assert content =~ "passed" or content =~ "completed"
+
+      # Task should be marked completed in DB
+      updated_session = Sessions.get_session(scope, session.id)
+      updated_task = Enum.find(updated_session.tasks, &(&1.id == task.id))
+      assert updated_task.status == :completed
+    end
+  end
+
   describe "execute/2 — terminal state" do
     test "returns already-terminal for completed task" do
       {scope, session, task} = setup_active_task()
@@ -137,7 +156,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
-  defp setup_active_task do
+  defp setup_active_task(task_module \\ CodeMySpec.AgentTasks.ContextSpec) do
     scope = full_scope_fixture()
     component = component_fixture(scope)
     session = session_fixture(scope)
@@ -146,7 +165,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
       requirement_fixture(scope, component, %{
         name: "test_spec",
         satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ContextSpec
+        satisfied_by: task_module
       })
 
     task_attrs = %{

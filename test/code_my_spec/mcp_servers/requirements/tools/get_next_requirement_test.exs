@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
       assert content =~ "Next Requirement: tests_passing"
       assert content =~ "start_task"
 
-      data = extract_data(content)
+      data = extract_data(response)
       assert data["requirement_name"] == "tests_passing"
       assert data["requirement_id"]
     end
@@ -84,8 +84,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
     hd(protocol["content"])["text"]
   end
 
-  defp extract_data(text) do
-    [_, json] = String.split(text, "Data: ", parts: 2)
-    Jason.decode!(json)
+  defp extract_data(%{structured_content: data}) when is_map(data) do
+    Jason.decode!(Jason.encode!(data))
   end
 end

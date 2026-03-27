@@ -7,26 +7,30 @@ defmodule CodeMySpec.McpServers.Bootstrap.BootstrapMapper do
 
   def install_success(path) do
     Response.tool()
-    |> Response.text("Installed: #{path}\n\nData: " <> Jason.encode!(%{status: :ok, path: path}))
+    |> Response.text("Installed: #{path}")
+    |> Map.put(:structured_content, %{status: :ok, path: path})
   end
 
   def install_success(path, extras) do
     data = Map.merge(%{status: :ok, path: path}, extras)
 
     Response.tool()
-    |> Response.text("Installed: #{path}\n\nData: " <> Jason.encode!(data))
+    |> Response.text("Installed: #{path}")
+    |> Map.put(:structured_content, data)
   end
 
   def init_success(config_path, project_name) do
     data = %{status: :ok, config_path: config_path, project_name: project_name}
 
     Response.tool()
-    |> Response.text("Project initialized: #{project_name}\nConfig: #{config_path}\n\nData: " <> Jason.encode!(data))
+    |> Response.text("Project initialized: #{project_name}\nConfig: #{config_path}")
+    |> Map.put(:structured_content, data)
   end
 
   def status_response(text, data) do
     Response.tool()
-    |> Response.text(text <> "\n\nData: " <> Jason.encode!(data))
+    |> Response.text(text)
+    |> Map.put(:structured_content, data)
   end
 
   def error(reason) when is_binary(reason) do

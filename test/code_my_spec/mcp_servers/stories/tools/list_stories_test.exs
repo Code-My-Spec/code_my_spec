@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
 
       assert content =~ "Showing 1-20 of 25 stories"
       assert content =~ "Use offset: 20 to see more"
-      assert content =~ "Data:"
+      assert response.structured_content
     end
 
     test "respects limit parameter" do
@@ -85,9 +85,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
 
       assert {:reply, response, ^frame} = ListStories.execute(%{limit: 500}, frame)
 
-      protocol = Response.to_protocol(response)
-      data = protocol["content"] |> hd() |> Map.get("text") |> extract_json_data()
-
+      data = extract_structured(response)
       assert data["limit"] == 100
     end
 
@@ -141,8 +139,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
     end
   end
 
-  defp extract_json_data(text) do
-    [_, json] = String.split(text, "Data: ", parts: 2)
-    Jason.decode!(json)
+  defp extract_structured(%{structured_content: data}) when is_map(data) do
+    Jason.decode!(Jason.encode!(data))
   end
 end

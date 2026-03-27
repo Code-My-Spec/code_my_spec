@@ -5,12 +5,12 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
   alias CodeMySpec.McpServers.Formatters
   alias Anubis.Server.Response
 
-  # Story analysis response (hybrid text + JSON)
   def story_analysis_response(analysis) do
     markdown = StoryAnalyzer.format_as_markdown(analysis)
 
     Response.tool()
     |> Response.text(markdown)
+    |> Map.put(:structured_content, analysis)
   end
 
   # Proposal responses

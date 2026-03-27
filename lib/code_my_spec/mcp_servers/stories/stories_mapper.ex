@@ -194,7 +194,8 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     }
 
     Response.tool()
-    |> Response.error(String.trim(summary) <> "\n\nData: " <> Jason.encode!(data))
+    |> Response.error(String.trim(summary))
+    |> Map.put(:structured_content, data)
   end
 
   def prompt_response(prompt) do
@@ -376,7 +377,8 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
   defp hybrid_response(summary, data) do
     Response.tool()
-    |> Response.text(summary <> "\n\nData: " <> Jason.encode!(data))
+    |> Response.text(summary)
+    |> Map.put(:structured_content, data)
   end
 
   defp story_data(story) do

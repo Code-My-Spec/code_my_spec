@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitlesTest do
       assert content =~ "Second Story"
 
       # Verify lightweight data structure (no criteria)
-      data = extract_json_data(content)
+      data = extract_structured(response)
       story = hd(data["stories"])
       assert Map.has_key?(story, "id")
       assert Map.has_key?(story, "title")
@@ -68,8 +68,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitlesTest do
 
       assert {:reply, response, ^frame} = ListStoryTitles.execute(%{}, frame)
 
-      protocol = Response.to_protocol(response)
-      data = extract_json_data(hd(protocol["content"])["text"])
+      data = extract_structured(response)
 
       titles = Enum.map(data["stories"], & &1["title"])
       assert titles == ["Alpha Story", "Beta Story", "Zebra Story"]
@@ -88,8 +87,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitlesTest do
     end
   end
 
-  defp extract_json_data(text) do
-    [_, json] = String.split(text, "Data: ", parts: 2)
-    Jason.decode!(json)
+  defp extract_structured(%{structured_content: data}) when is_map(data) do
+    Jason.decode!(Jason.encode!(data))
   end
 end

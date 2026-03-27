@@ -18,15 +18,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
-         {:ok, story} <- Stories.get_story(scope, params.story_id),
+         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
          {:ok, updated_story} <- Stories.clear_story_component(scope, story) do
       {:reply, StoriesMapper.story_component_cleared_response(updated_story), frame}
     else
+      nil ->
+        {:reply, StoriesMapper.error("Story not found"), frame}
+
       {:error, changeset = %Ecto.Changeset{}} ->
         {:reply, StoriesMapper.validation_error(changeset), frame}
-
-      {:error, :not_found} ->
-        {:reply, StoriesMapper.error("Story not found"), frame}
 
       {:error, atom} ->
         {:reply, StoriesMapper.error(atom), frame}

@@ -198,10 +198,9 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
       assert is_binary(markdown)
       assert String.contains?(markdown, "## Story Analysis Summary")
       assert String.contains?(markdown, "**Total Stories:** 1")
-      assert String.contains?(markdown, "Data:")
     end
 
-    test "includes JSON data at the end" do
+    test "does not embed JSON data in markdown" do
       stories = [
         build_story(1, "Test Story", "Test description")
       ]
@@ -209,9 +208,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
       analysis = StoryAnalyzer.analyze(stories)
       markdown = StoryAnalyzer.format_as_markdown(analysis)
 
-      # Extract JSON from the end
-      [_, json_part] = String.split(markdown, "Data: ", parts: 2)
-      assert {:ok, _} = Jason.decode(String.trim(json_part))
+      refute String.contains?(markdown, "Data:")
     end
   end
 

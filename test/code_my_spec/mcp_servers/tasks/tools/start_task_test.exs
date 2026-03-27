@@ -31,9 +31,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       # Prompt should come from the task module
       assert is_binary(content)
-      # Data JSON should be appended
-      assert content =~ "Data: "
-      data = extract_data(content)
+      # Structured data should be on the response
+      data = extract_data(response)
       assert data["task_id"]
       assert data["requirement_name"] == "test_spec"
       assert data["task_type"] == "ContextSpec"
@@ -106,7 +105,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
                )
 
       refute response.isError
-      assert response_text(response) =~ "Data: "
+      assert response.structured_content
 
       final_session = Sessions.get_session(scope, session.id)
       matching = Enum.filter(final_session.tasks, &(&1.requirement_name == "test_spec"))
@@ -235,8 +234,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
     hd(protocol["content"])["text"]
   end
 
-  defp extract_data(text) do
-    [_, json] = String.split(text, "Data: ", parts: 2)
-    Jason.decode!(json)
+  defp extract_data(%{structured_content: data}) when is_map(data) do
+    Jason.decode!(Jason.encode!(data))
   end
 end

@@ -89,7 +89,8 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
 
   defp hybrid_response(summary, data) do
     Response.tool()
-    |> Response.text(summary <> "\n\nData: " <> Jason.encode!(data))
+    |> Response.text(summary)
+    |> Map.put(:structured_content, data)
   end
 
   defp issue_data(issue) do

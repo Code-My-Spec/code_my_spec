@@ -18,9 +18,9 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
       requirement_name: task.requirement_name
     }
 
-    # The prompt IS the content — put it front and center
     Response.tool()
-    |> Response.text(prompt <> "\n\nData: " <> Jason.encode!(data))
+    |> Response.text(prompt)
+    |> Map.put(:structured_content, data)
   end
 
   def evaluate_passed_response(task) do
@@ -75,7 +75,8 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
 
   defp hybrid_response(summary, data) do
     Response.tool()
-    |> Response.text(summary <> "\n\nData: " <> Jason.encode!(data))
+    |> Response.text(summary)
+    |> Map.put(:structured_content, data)
   end
 
   defp task_type_name(task) do

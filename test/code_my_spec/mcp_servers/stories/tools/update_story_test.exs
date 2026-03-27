@@ -12,12 +12,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  defp get_data(response) do
-    protocol = Response.to_protocol(response)
-    text = hd(protocol["content"])["text"]
-    # Extract JSON from "Data: {...}" at the end
-    [_, json] = String.split(text, "\n\nData: ")
-    Jason.decode!(json)
+  defp get_data(%{structured_content: data}) when is_map(data) do
+    Jason.decode!(Jason.encode!(data))
   end
 
   describe "UpdateStory tool" do
