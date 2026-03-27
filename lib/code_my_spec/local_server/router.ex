@@ -12,11 +12,9 @@ defmodule CodeMySpec.LocalServer.Router do
     AgentTaskController,
     BootstrapController,
     HookController,
-    IssuesController,
     NotificationController,
     PermissionController,
     RequirementsGraphController,
-    StoryComponentController,
     SetupController,
     StoryLinkageController
   }
@@ -171,14 +169,7 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&PermissionController.respond/1)
   end
 
-  # Link a story to a component by module name
-  post "/api/stories/set-component" do
-    conn
-    |> Plugs.LocalOnly.call([])
-    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&StoryComponentController.set/1)
-  end
+  # set-component removed — use MCP tool (SetStoryComponent)
 
   # Analyze story-component linkage
   get "/api/stories/linkage" do
@@ -189,54 +180,7 @@ defmodule CodeMySpec.LocalServer.Router do
     |> maybe_continue(&StoryLinkageController.analyze/1)
   end
 
-  # Issues API - require localhost, working dir, and scope
-  get "/api/issues" do
-    conn
-    |> Plugs.LocalOnly.call([])
-    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&IssuesController.index/1)
-  end
-
-  get "/api/issues/:id" do
-    conn
-    |> Plugs.LocalOnly.call([])
-    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&IssuesController.show/1)
-  end
-
-  post "/api/issues" do
-    conn
-    |> Plugs.LocalOnly.call([])
-    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&IssuesController.create/1)
-  end
-
-  post "/api/issues/:id/accept" do
-    conn
-    |> Plugs.LocalOnly.call([])
-    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&IssuesController.accept/1)
-  end
-
-  post "/api/issues/:id/dismiss" do
-    conn
-    |> Plugs.LocalOnly.call([])
-    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&IssuesController.dismiss/1)
-  end
-
-  post "/api/issues/:id/resolve" do
-    conn
-    |> Plugs.LocalOnly.call([])
-    |> maybe_continue(&Plugs.WorkingDir.call(&1, []))
-    |> maybe_continue(&Plugs.LocalScope.call(&1, []))
-    |> maybe_continue(&IssuesController.resolve/1)
-  end
+  # Issues API removed — use MCP tools (CreateIssue, ListIssues, GetIssue, etc.)
 
   # --- Init checklist (pre-project-ID bootstrap) ---
 

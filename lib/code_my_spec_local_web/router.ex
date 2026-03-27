@@ -36,8 +36,8 @@ defmodule CodeMySpecLocalWeb.Router do
            RequirementsLive,
            :story_req_show
 
-      live "/projects/:project_name/issues", IssuesLive, :index
-      live "/projects/:project_name/issues/:id", IssuesLive, :show
+      live "/projects/:project_name/issues", IssuesLive.Index, :index
+      live "/projects/:project_name/issues/:id", IssuesLive.Show, :show
       live "/projects/:project_name/sessions", SessionsLive, :index
       live "/projects/:project_name/sessions/:id", SessionsLive, :show
       live "/projects/:project_name/sessions/:id/tasks/:task_id", SessionsLive, :task_show
@@ -118,8 +118,7 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/knowledge/*path", MarkdownBrowserController, :show
     get "/project-knowledge", MarkdownBrowserController, :index
     get "/project-knowledge/*path", MarkdownBrowserController, :show
-    get "/issues", IssuesController, :index
-    get "/issues/:id", IssuesController, :show
+    # issues API removed — use MCP tools (ListIssues, GetIssue)
     get "/components/requirements", ComponentsRequirementsController, :index
     get "/components/:component_id/requirements", ComponentsRequirementsController, :show
 
