@@ -60,7 +60,8 @@ defmodule CodeMySpecWeb.ContentLive.Public do
          |> assign(:og_title, content.og_title)
          |> assign(:og_description, content.og_description)
          |> assign(:og_image, content.og_image)
-         |> assign(:canonical_url, build_canonical_url(content, is_protected))}
+         |> assign(:canonical_url, build_canonical_url(content, is_protected))
+         |> assign(:json_ld, build_json_ld(content, is_protected))}
 
       {:error, :not_found} ->
         {:ok,
@@ -110,9 +111,17 @@ defmodule CodeMySpecWeb.ContentLive.Public do
       (is_nil(content.expires_at) || DateTime.compare(content.expires_at, now) == :gt)
   end
 
+  @content_type_paths %{
+    blog: "blog",
+    page: "pages",
+    landing: "landing",
+    documentation: "documentation"
+  }
+
   defp build_canonical_url(content, is_protected) do
     prefix = if is_protected, do: "/private", else: ""
-    "#{prefix}/#{content.content_type}/#{content.slug}"
+    path = Map.fetch!(@content_type_paths, content.content_type)
+    "#{prefix}/#{path}/#{content.slug}"
   end
 
   # Template rendering component
@@ -141,7 +150,7 @@ defmodule CodeMySpecWeb.ContentLive.Public do
 
       <div class="prose prose-lg max-w-none">
         <%= if @content.processed_content do %>
-          {raw(@content.processed_content)}
+          {raw(strip_leading_h1(@content.processed_content))}
         <% else %>
           <div class="opacity-60 italic">
             Content not available
@@ -180,7 +189,7 @@ defmodule CodeMySpecWeb.ContentLive.Public do
 
           <div class="prose prose-lg max-w-none">
             <%= if @content.processed_content do %>
-              {raw(@content.processed_content)}
+              {raw(strip_leading_h1(@content.processed_content))}
             <% else %>
               <div class="opacity-60 italic">
                 Content not available
@@ -232,7 +241,7 @@ defmodule CodeMySpecWeb.ContentLive.Public do
 
           <div class="prose prose-lg max-w-none">
             <%= if @content.processed_content do %>
-              {raw(@content.processed_content)}
+              {raw(strip_leading_h1(@content.processed_content))}
             <% else %>
               <div class="opacity-60 italic">
                 Content not available
@@ -252,6 +261,53 @@ defmodule CodeMySpecWeb.ContentLive.Public do
       </div>
     </div>
     """
+  end
+
+  defp build_json_ld(content, is_protected) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = build_canonical_url(content, is_protected)
+    url = "#{base_url}#{canonical}"
+
+    schema =
+      case content.content_type do
+        :blog ->
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "Article",
+            "headline" => content.title || content.slug,
+            "url" => url,
+            "datePublished" => format_iso8601(content.publish_at),
+            "dateModified" => format_iso8601(content.updated_at),
+            "publisher" => %{
+              "@type" => "Organization",
+              "name" => "CodeMySpec"
+            }
+          }
+
+        _ ->
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "WebPage",
+            "name" => content.title || content.slug,
+            "url" => url
+          }
+      end
+
+    schema =
+      if content.meta_description,
+        do: Map.put(schema, "description", content.meta_description),
+        else: schema
+
+    Jason.encode!(schema)
+  end
+
+  defp format_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp format_iso8601(_), do: nil
+
+  defp strip_leading_h1(nil), do: nil
+
+  defp strip_leading_h1(html) do
+    String.replace(html, ~r/\A\s*<h1[^>]*>.*?<\/h1>\s*/s, "", global: false)
   end
 
   defp format_publish_date(nil), do: ""

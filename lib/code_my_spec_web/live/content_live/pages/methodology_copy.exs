@@ -6,6 +6,7 @@
     og_title: "The CodeMySpec Method - Ship Working Software with AI",
     og_description:
       "Generating code is the easy part. The CodeMySpec method covers the full loop — stories, architecture, BDD specs, implementation, and QA — so what you ship actually works.",
+    canonical_url: "https://codemyspec.com/methodology",
     og_image: nil,
     author: "John Davenport",
     tags: [

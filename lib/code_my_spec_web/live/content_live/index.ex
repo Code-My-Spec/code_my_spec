@@ -95,7 +95,7 @@ defmodule CodeMySpecWeb.ContentLive.Index do
     {:ok,
      socket
      |> assign(:posts, sorted_posts)
-     |> assign(:page_title, "Blog")
+     |> assign(:page_title, "CodeMySpec Blog")
      |> assign(
        :meta_description,
        "Insights on structured AI development and Phoenix applications"

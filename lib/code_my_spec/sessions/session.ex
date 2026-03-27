@@ -36,11 +36,11 @@ defmodule CodeMySpec.Sessions.Session do
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "sessions" do
     field :type, SessionType
+
     field :status, Ecto.Enum,
       values: [:active, :complete, :failed, :cancelled],
       default: :active
 
-    field :priority, :integer
     field :external_conversation_id, :string
     field :component_module_name, :string
     field :state, :map, default: %{}
@@ -67,7 +67,6 @@ defmodule CodeMySpec.Sessions.Session do
     |> cast(attrs, [
       :type,
       :status,
-      :priority,
       :external_conversation_id,
       :component_module_name,
       :state,

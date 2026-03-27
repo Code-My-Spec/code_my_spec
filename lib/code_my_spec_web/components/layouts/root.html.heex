@@ -29,6 +29,9 @@
     <meta :if={assigns[:og_image]} property="og:image" content={assigns[:og_image]} />
     <meta property="og:type" content="website" />
     <link :if={assigns[:canonical_url]} rel="canonical" href={assigns[:canonical_url]} />
+    <%= if assigns[:json_ld] do %>
+      <script type="application/ld+json"><%= raw(assigns[:json_ld]) %></script>
+    <% end %>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
