@@ -104,6 +104,14 @@ defmodule CodeMySpecLocalWeb.Router do
     post "/notification", NotificationHookController, :handle
   end
 
+  # ── Agent tasks (skill-invoked) ──────────────────────────────────
+
+  scope "/api", CodeMySpecLocalWeb do
+    pipe_through :hook
+
+    post "/agent-tasks/start", AgentTaskController, :start
+  end
+
   # ── External integrations (notifications, permissions) ──────────
 
   scope "/api", CodeMySpecLocalWeb do
