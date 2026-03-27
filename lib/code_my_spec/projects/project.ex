@@ -91,6 +91,29 @@ defmodule CodeMySpec.Projects.Project do
     |> put_change(:account_id, user_scope.active_account_id)
   end
 
+  @doc """
+  Changeset for bootstrapping a project from server data.
+
+  Accepts `id` and `account_id` directly (no scope required).
+  Used during init when no local project/scope exists yet.
+  """
+  def bootstrap_changeset(project, attrs) do
+    project
+    |> cast(attrs, [
+      :id,
+      :name,
+      :description,
+      :module_name,
+      :code_repo,
+      :docs_repo,
+      :client_api_url,
+      :account_id,
+      :local_path,
+      :status
+    ])
+    |> validate_required([:id, :name, :account_id])
+  end
+
   defp maybe_validate_url(changeset, field) do
     case get_field(changeset, field) do
       nil ->
