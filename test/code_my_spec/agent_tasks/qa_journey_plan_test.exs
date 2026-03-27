@@ -18,9 +18,9 @@ defmodule CodeMySpec.AgentTasks.QaJourneyPlanTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
-    session = %{project: context.scope.active_project}
-    Map.put(context, :session, session)
+  defp create_task(context) do
+    task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -57,31 +57,31 @@ defmodule CodeMySpec.AgentTasks.QaJourneyPlanTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
-    setup [:create_scope, :create_session]
+  describe "command/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaJourneyPlan.command(scope, session)
+    test "returns ok tuple with non-empty prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaJourneyPlan.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes document spec projection", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaJourneyPlan.command(scope, session)
+    test "includes document spec projection", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaJourneyPlan.command(scope, task)
       assert prompt =~ "Required Sections"
       assert prompt =~ "Journeys"
       assert prompt =~ "Prerequisites"
     end
 
-    test "includes journey plan output path", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaJourneyPlan.command(scope, session)
+    test "includes journey plan output path", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaJourneyPlan.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/journey_plan.md"
     end
 
-    test "references QA plan path when it exists", %{scope: scope, session: session} do
+    test "references QA plan path when it exists", %{scope: scope, task: task} do
       write_file!(scope.environment, ".code_my_spec/qa/plan.md", """
       # QA Plan
 
@@ -89,57 +89,57 @@ defmodule CodeMySpec.AgentTasks.QaJourneyPlanTest do
       Phoenix app on port 4000.
       """)
 
-      assert {:ok, prompt} = QaJourneyPlan.command(scope, session)
+      assert {:ok, prompt} = QaJourneyPlan.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/plan.md"
     end
 
     test "notes missing context when no QA plan or architecture", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = QaJourneyPlan.command(scope, session)
+      assert {:ok, prompt} = QaJourneyPlan.command(scope, task)
       assert prompt =~ "No QA plan or architecture"
     end
 
-    test "references architecture path when it exists", %{scope: scope, session: session} do
+    test "references architecture path when it exists", %{scope: scope, task: task} do
       write_file!(scope.environment, ".code_my_spec/architecture/overview.md", """
       # Architecture Overview
       Component graph here.
       """)
 
-      assert {:ok, prompt} = QaJourneyPlan.command(scope, session)
+      assert {:ok, prompt} = QaJourneyPlan.command(scope, task)
       assert prompt =~ ".code_my_spec/architecture/overview.md"
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/2" do
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when plan has all required sections", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_journey_plan(scope.environment)
 
-      assert {:ok, :valid} = QaJourneyPlan.evaluate(scope, session)
+      assert {:ok, :valid} = QaJourneyPlan.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when plan doesn't exist", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, :invalid, feedback} = QaJourneyPlan.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaJourneyPlan.evaluate(scope, task)
       assert feedback =~ "Journey plan not found"
       assert feedback =~ ".code_my_spec/qa/journey_plan.md"
     end
 
     test "returns {:ok, :invalid, feedback} when plan is missing required sections", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_journey_plan(scope.environment, """
       # QA Journey Plan
@@ -149,7 +149,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyPlanTest do
       Some journey content.
       """)
 
-      assert {:ok, :invalid, feedback} = QaJourneyPlan.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaJourneyPlan.evaluate(scope, task)
       assert feedback =~ "missing required section"
       assert feedback =~ "Prerequisites"
     end

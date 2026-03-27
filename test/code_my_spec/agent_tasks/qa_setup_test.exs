@@ -18,9 +18,9 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
-    session = %{project: context.scope.active_project}
-    Map.put(context, :session, session)
+  defp create_task(context) do
+    task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -97,103 +97,103 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
-    setup [:create_scope, :create_session]
+  describe "command/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+    test "returns ok tuple with non-empty prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes document spec projection", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+    test "includes document spec projection", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ "Required Sections"
       assert prompt =~ "App Overview"
       assert prompt =~ "Tools Registry"
       assert prompt =~ "Seed Strategy"
     end
 
-    test "includes router content when router exists", %{scope: scope, session: session} do
+    test "includes router content when router exists", %{scope: scope, task: task} do
       write_mix_exs(scope.environment)
       write_router(scope.environment)
 
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ "PageController"
       assert prompt =~ "DashboardLive"
     end
 
     test "includes mix phx.routes fallback when router not found", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ "mix phx.routes"
     end
 
     test "includes existing plan reference when plan.md exists", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_qa_plan(scope.environment)
 
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ "Existing Plan"
       assert prompt =~ "update rather than"
     end
 
     test "does not include existing plan section when no plan", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       refute prompt =~ "Existing Plan"
     end
 
-    test "includes shell scripts instructions", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+    test "includes shell scripts instructions", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ "qa/scripts"
       assert prompt =~ "authenticated_curl"
     end
 
-    test "includes plan output path", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaSetup.command(scope, session)
+    test "includes plan output path", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/plan.md"
     end
 
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/2" do
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when plan has all required sections", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_qa_plan(scope.environment)
 
-      assert {:ok, :valid} = QaSetup.evaluate(scope, session)
+      assert {:ok, :valid} = QaSetup.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when plan.md doesn't exist", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
       assert feedback =~ "QA plan not found"
       assert feedback =~ ".code_my_spec/qa/plan.md"
     end
 
     test "returns {:ok, :invalid, feedback} when plan is missing required sections", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_qa_plan(scope.environment, """
       # QA Plan
@@ -203,7 +203,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       Some overview content.
       """)
 
-      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
       assert feedback =~ "missing required section"
       assert feedback =~ "Tools Registry"
       assert feedback =~ "Seed Strategy"
@@ -211,7 +211,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
 
     test "returns {:ok, :invalid, feedback} when plan is missing one section", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_qa_plan(scope.environment, """
       # QA Plan
@@ -225,7 +225,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       Tools here.
       """)
 
-      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
       assert feedback =~ "Seed Strategy"
     end
 

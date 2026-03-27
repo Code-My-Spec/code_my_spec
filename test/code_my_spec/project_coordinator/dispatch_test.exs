@@ -81,10 +81,10 @@ defmodule CodeMySpec.ProjectCoordinator.DispatchTest do
   end
 
   # ============================================================================
-  # evaluate/3
+  # evaluate/2
   # ============================================================================
 
-  describe "evaluate/3 with :children scope" do
+  describe "evaluate/2 with :children scope" do
     test "returns :invalid when children have actionable work", %{scope: scope} do
       context = component_fixture(scope, %{name: "Blog", module_name: "Blog", type: "context"})
 
@@ -104,7 +104,7 @@ defmodule CodeMySpec.ProjectCoordinator.DispatchTest do
       }
 
       # Children have unsatisfied requirements → invalid with feedback
-      assert {:ok, :invalid, feedback} = Dispatch.evaluate(req, scope, %{})
+      assert {:ok, :invalid, feedback} = Dispatch.evaluate(req, scope)
       assert is_binary(feedback)
     end
 
@@ -144,12 +144,12 @@ defmodule CodeMySpec.ProjectCoordinator.DispatchTest do
         satisfied_by: CodeMySpec.AgentTasks.ContextComponentSpecs
       }
 
-      assert {:ok, :valid} = Dispatch.evaluate(req, scope, %{})
+      assert {:ok, :valid} = Dispatch.evaluate(req, scope)
     end
   end
 
-  describe "evaluate/3 with :local scope" do
-    test "delegates to task module's evaluate/3", %{scope: scope} do
+  describe "evaluate/2 with :local scope" do
+    test "delegates to task module's evaluate/2", %{scope: scope} do
       context = component_fixture(scope, %{name: "Blog", module_name: "Blog", type: "context"})
 
       _child =
@@ -166,7 +166,7 @@ defmodule CodeMySpec.ProjectCoordinator.DispatchTest do
         satisfied_by: CodeMySpec.AgentTasks.ContextSpec
       }
 
-      result = Dispatch.evaluate(req, scope, %{})
+      result = Dispatch.evaluate(req, scope)
 
       case result do
         {:ok, :valid} -> :ok

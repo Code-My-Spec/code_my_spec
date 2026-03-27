@@ -6,6 +6,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
+  import Plug.Conn
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
@@ -17,14 +18,45 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       story = story_fixture(scope)
       component = component_fixture(scope)
 
+      remote_plug = fn conn ->
+        body =
+          case conn.method do
+            "POST" ->
+              Jason.encode!(%{
+                data: %{
+                  id: story.id,
+                  title: story.title,
+                  component_id: component.id,
+                  status: "#{story.status}",
+                  priority: story.priority,
+                  project_id: story.project_id,
+                  account_id: story.account_id
+                }
+              })
+
+            "GET" ->
+              # RemoteSync.sync fetches stories list
+              Jason.encode!(%{data: []})
+          end
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, body)
+      end
+
+      frame = %Frame{
+        assigns: %{
+          current_scope: scope,
+          remote_client_opts: [plug: remote_plug, token: "test-token"]
+        }
+      }
+
       params = %{
         story_id: Integer.to_string(story.id),
         module_name: component.module_name
       }
 
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      assert {:reply, response, ^frame} = SetStoryComponent.execute(params, frame)
+      assert {:reply, response, _frame} = SetStoryComponent.execute(params, frame)
       assert response.type == :tool
       assert response.isError == false
     end
@@ -33,14 +65,27 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       scope = full_scope_fixture()
       component = component_fixture(scope)
 
+      remote_plug = fn conn ->
+        body = Jason.encode!(%{error: "Story not found"})
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(404, body)
+      end
+
+      frame = %Frame{
+        assigns: %{
+          current_scope: scope,
+          remote_client_opts: [plug: remote_plug, token: "test-token"]
+        }
+      }
+
       params = %{
         story_id: "999999",
         module_name: component.module_name
       }
 
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      assert {:reply, response, ^frame} = SetStoryComponent.execute(params, frame)
+      assert {:reply, response, _frame} = SetStoryComponent.execute(params, frame)
       assert response.type == :tool
       assert response.isError == true
     end

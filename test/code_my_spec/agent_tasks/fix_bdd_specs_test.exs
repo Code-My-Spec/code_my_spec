@@ -22,8 +22,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
     %{scope | environment: Environment.new(:local, tmp_dir)}
   end
 
-  defp session do
-    %{external_conversation_id: "test-fix-bdd-specs"}
+  defp task do
+    %{}
   end
 
   defp create_implemented_component(scope, module_name \\ "MyAppWeb.UserLive") do
@@ -78,14 +78,14 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
+  describe "command/2" do
     test "returns all-passing message when no spex problems exist", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
-      assert {:ok, prompt} = FixBddSpecs.command(scope, session())
+      assert {:ok, prompt} = FixBddSpecs.command(scope, task())
       assert prompt =~ "All BDD specs are passing"
     end
 
@@ -97,7 +97,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       story = create_story_with_component(scope, component)
       create_spex_problem(scope, story)
 
-      assert {:ok, prompt} = FixBddSpecs.command(scope, session())
+      assert {:ok, prompt} = FixBddSpecs.command(scope, task())
       assert prompt =~ "not yet been implemented"
     end
 
@@ -107,7 +107,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       story = create_story_with_component(scope, component)
       create_spex_problem(scope, story)
 
-      assert {:ok, prompt} = FixBddSpecs.command(scope, session())
+      assert {:ok, prompt} = FixBddSpecs.command(scope, task())
       assert prompt =~ "Fix BDD Specs"
       assert prompt =~ "failing"
       assert prompt =~ story.title
@@ -120,7 +120,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       story = create_story_with_component(scope, component)
       create_spex_problem(scope, story)
 
-      assert {:ok, prompt} = FixBddSpecs.command(scope, session())
+      assert {:ok, prompt} = FixBddSpecs.command(scope, task())
       assert prompt =~ "MyAppWeb.DashboardLive"
     end
 
@@ -137,20 +137,20 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
         category: "spex"
       })
 
-      assert {:ok, prompt} = FixBddSpecs.command(scope, session())
+      assert {:ok, prompt} = FixBddSpecs.command(scope, task())
       assert prompt =~ "All BDD specs are passing" or prompt =~ "not yet been implemented"
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
+  describe "evaluate/2" do
     test "returns {:ok, :valid} when no spex problems exist", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
-      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, session())
+      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, task())
     end
 
     test "returns {:ok, :valid} when all failures are for unimplemented components", %{
@@ -161,7 +161,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       story = create_story_with_component(scope, component)
       create_spex_problem(scope, story)
 
-      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, session())
+      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, task())
     end
 
     test "returns {:ok, :invalid, feedback} when relevant failures remain", %{tmp_dir: tmp_dir} do
@@ -170,7 +170,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       story = create_story_with_component(scope, component)
       create_spex_problem(scope, story)
 
-      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, session())
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, task())
       assert feedback =~ "BDD spec failure"
       assert feedback =~ story.title
       assert feedback =~ "Expected user to see welcome message"
@@ -194,7 +194,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
         line: 2
       })
 
-      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, session())
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, task())
       assert feedback =~ "2 BDD spec failure(s)"
     end
   end

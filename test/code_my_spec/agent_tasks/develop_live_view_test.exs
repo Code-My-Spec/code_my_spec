@@ -35,17 +35,17 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
     {liveview, [child1, child2]}
   end
 
-  defp create_session(scope, component) do
-    %{component: component, project: scope.active_project}
+  defp create_task(scope, component) do
+    %{component_id: component.id, project_id: scope.active_project.id, story_id: nil}
   end
 
   describe "command/3" do
     test "returns static development instructions with LiveView name" do
       scope = full_scope_fixture()
       {liveview, _children} = create_liveview_with_children(scope)
-      session = create_session(scope, liveview)
+      task = create_task(scope, liveview)
 
-      assert {:ok, prompt} = DevelopLiveView.command(scope, session)
+      assert {:ok, prompt} = DevelopLiveView.command(scope, task)
       assert prompt =~ "Develop LiveView: DashboardLive"
       assert prompt =~ "LiveView Spec"
       assert prompt =~ "Component Specs"
@@ -70,9 +70,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       end
 
       liveview = Components.get_component(scope, liveview.id)
-      session = create_session(scope, liveview)
+      task = create_task(scope, liveview)
 
-      assert {:ok, :valid} = DevelopLiveView.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopLiveView.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when components have unsatisfied requirements" do
@@ -88,9 +88,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       end
 
       liveview = Components.get_component(scope, liveview.id)
-      session = create_session(scope, liveview)
+      task = create_task(scope, liveview)
 
-      assert {:ok, :invalid, feedback} = DevelopLiveView.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = DevelopLiveView.evaluate(scope, task)
       assert feedback =~ "Components still need work"
     end
 
@@ -99,9 +99,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       {liveview, _children} = create_liveview_with_children(scope)
 
       liveview = Components.get_component(scope, liveview.id)
-      session = create_session(scope, liveview)
+      task = create_task(scope, liveview)
 
-      assert {:ok, :valid} = DevelopLiveView.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopLiveView.evaluate(scope, task)
     end
   end
 end

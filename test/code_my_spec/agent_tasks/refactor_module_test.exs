@@ -79,15 +79,16 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
     |> Map.put(:child_components, [child1, child2])
   end
 
-  defp create_session(context, _opts \\ []) do
+  defp create_task(context, _opts \\ []) do
     %{project: project, component: component} = context
 
-    session = %{
-      project: project,
-      component: component
+    task = %{
+      component_id: component.id,
+      project_id: project.id,
+      story_id: nil
     }
 
-    Map.put(context, :session, session)
+    Map.put(context, :task, task)
   end
 
   defp write_files(%{skip_write_files: true} = context), do: context
@@ -139,26 +140,26 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
   # ============================================================================
 
   describe "command/3 for component refactoring" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     setup :write_files
 
-    test "returns {:ok, prompt} with instruction to ask user", %{session: session, scope: scope} do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+    test "returns {:ok, prompt} with instruction to ask user", %{task: task, scope: scope} do
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert is_binary(prompt)
       assert prompt =~ "Start by asking the user"
     end
 
     test "includes spec file path and content in prompt", %{
-      session: session,
+      task: task,
       component: component,
       project: project,
       scope: scope
     } do
       %{spec_file: spec_file} = CodeMySpec.Utils.component_files(component, project)
 
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ spec_file
       assert prompt =~ "Spec File:"
@@ -167,14 +168,14 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
     end
 
     test "includes implementation file path and content in prompt", %{
-      session: session,
+      task: task,
       component: component,
       project: project,
       scope: scope
     } do
       %{code_file: code_file} = CodeMySpec.Utils.component_files(component, project)
 
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ code_file
       assert prompt =~ "Implementation:"
@@ -183,14 +184,14 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
     end
 
     test "includes test file path and content in prompt", %{
-      session: session,
+      task: task,
       component: component,
       project: project,
       scope: scope
     } do
       %{test_file: test_file} = CodeMySpec.Utils.component_files(component, project)
 
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ test_file
       assert prompt =~ "Tests:"
@@ -199,10 +200,10 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
     end
 
     test "instructs agent to modify spec first, then tests, then code", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       # Check for the ordering instruction
       assert prompt =~ "First update the spec"
@@ -212,45 +213,45 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
 
     @tag :skip_write_files
     test "handles missing spec file gracefully", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ "(File does not exist yet)"
     end
 
     @tag :skip_write_files
     test "handles missing implementation file gracefully", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ "(File does not exist yet)"
     end
 
-    test "includes project context in prompt", %{session: session, project: project, scope: scope} do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+    test "includes project context in prompt", %{task: task, project: project, scope: scope} do
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ project.name
       assert prompt =~ "Project:"
     end
 
     test "includes component context in prompt", %{
-      session: session,
+      task: task,
       component: component,
       scope: scope
     } do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ component.name
       assert prompt =~ component.description
       assert prompt =~ component.type
     end
 
-    test "includes design rules in prompt", %{session: session, scope: scope} do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+    test "includes design rules in prompt", %{task: task, scope: scope} do
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       # Should include design rules section
       assert prompt =~ "Design Rules"
@@ -262,35 +263,35 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
   # ============================================================================
 
   describe "command/3 for context refactoring" do
-    setup [:create_scope, :create_project, :create_context_with_children, :create_session]
+    setup [:create_scope, :create_project, :create_context_with_children, :create_task]
 
-    test "returns {:ok, prompt} for context type component", %{session: session, scope: scope} do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+    test "returns {:ok, prompt} for context type component", %{task: task, scope: scope} do
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert is_binary(prompt)
       assert prompt =~ "bounded context"
     end
 
     test "includes context spec file path in prompt", %{
-      session: session,
+      task: task,
       component: context,
       project: project,
       scope: scope
     } do
       %{spec_file: spec_file} = CodeMySpec.Utils.component_files(context, project)
 
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ spec_file
       assert prompt =~ "Context Spec:"
     end
 
     test "lists all child components in prompt", %{
-      session: session,
+      task: task,
       child_components: children,
       scope: scope
     } do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ "Child Components"
 
@@ -301,7 +302,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
     end
 
     test "includes child component file paths in prompt", %{
-      session: session,
+      task: task,
       child_components: [child1 | _],
       project: project,
       scope: scope
@@ -309,7 +310,7 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
       %{spec_file: spec_file, code_file: code_file, test_file: test_file} =
         CodeMySpec.Utils.component_files(child1, project)
 
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ spec_file
       assert prompt =~ code_file
@@ -317,16 +318,16 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
     end
 
     test "instructs agent to consider ripple effects on child components", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ "child components"
       assert prompt =~ "ripple"
     end
 
-    test "handles context with no children", %{session: session, scope: scope} do
+    test "handles context with no children", %{task: task, scope: scope} do
       # Remove child components by creating a fresh context
       {:ok, empty_context} =
         Components.create_component(scope, %{
@@ -334,12 +335,12 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
           description: "Context with no children",
           type: "context",
           module_name: "TestApp.EmptyContext",
-          project_id: session.project.id
+          project_id: task.project_id
         })
 
-      session = %{session | component: empty_context}
+      task = %{task | component_id: empty_context.id}
 
-      assert {:ok, prompt} = RefactorModule.command(scope, session)
+      assert {:ok, prompt} = RefactorModule.command(scope, task)
 
       assert prompt =~ "No child components"
     end
@@ -350,24 +351,24 @@ defmodule CodeMySpec.AgentTasks.RefactorModuleTest do
   # ============================================================================
 
   describe "evaluate/3" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
-    test "always returns {:ok, :valid}", %{session: session, scope: scope} do
-      assert {:ok, :valid} = RefactorModule.evaluate(scope, session)
+    test "always returns {:ok, :valid}", %{task: task, scope: scope} do
+      assert {:ok, :valid} = RefactorModule.evaluate(scope, task)
     end
 
-    test "does not perform any file validation", %{session: session, scope: scope} do
+    test "does not perform any file validation", %{task: task, scope: scope} do
       # Even with missing files, should return valid
-      assert {:ok, :valid} = RefactorModule.evaluate(scope, session)
+      assert {:ok, :valid} = RefactorModule.evaluate(scope, task)
     end
 
-    test "returns valid regardless of session state", %{session: session, scope: scope} do
-      # Empty session still valid
-      empty_session = %{}
-      assert {:ok, :valid} = RefactorModule.evaluate(scope, empty_session)
+    test "returns valid regardless of task state", %{task: task, scope: scope} do
+      # Empty task still valid
+      empty_task = %{}
+      assert {:ok, :valid} = RefactorModule.evaluate(scope, empty_task)
 
-      # Original session still valid
-      assert {:ok, :valid} = RefactorModule.evaluate(scope, session)
+      # Original task still valid
+      assert {:ok, :valid} = RefactorModule.evaluate(scope, task)
     end
   end
 end

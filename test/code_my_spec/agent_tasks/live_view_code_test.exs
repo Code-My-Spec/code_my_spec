@@ -44,9 +44,14 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
     Map.put(context, :component, component)
   end
 
-  defp create_session(context) do
-    %{project: project, component: component} = context
-    Map.put(context, :session, %{project: project, component: component})
+  defp create_task(context) do
+    %{scope: scope, component: component} = context
+
+    Map.put(context, :task, %{
+      component_id: component.id,
+      project_id: scope.active_project.id,
+      story_id: nil
+    })
   end
 
   # ============================================================================
@@ -54,10 +59,10 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
   # ============================================================================
 
   describe "command/3" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     test "includes spec file path and test file path in prompt", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -65,48 +70,48 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
       %{spec_file: spec_file, test_file: test_file} =
         CodeMySpec.Utils.component_files(component, project)
 
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ spec_file
       assert prompt =~ test_file
     end
 
     test "includes component name and type in prompt", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ component.name
       assert prompt =~ component.type
     end
 
     test "includes project name and description in prompt", %{
-      session: session,
+      task: task,
       scope: scope,
       project: project
     } do
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ project.name
     end
 
     test "includes coding rules from matching rules", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ "Coding Rules" or prompt =~ "rules"
     end
 
     test "includes resources directory path for progressive disclosure", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ "resources"
     end
 
     test "includes similar components with file paths when available", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -122,15 +127,15 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
 
       {:ok, _} = Components.add_similar_component(scope, component, similar)
 
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ similar.name
     end
 
     test "handles empty similar components list with fallback text", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ "No similar components" or prompt =~ "Similar Components"
     end
 
@@ -147,9 +152,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
           project_id: project.id
         })
 
-      session = %{project: project, component: component}
+      task = %{component_id: component.id, project_id: project.id, story_id: nil}
 
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert is_binary(prompt)
     end
   end
@@ -159,10 +164,10 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
   # ============================================================================
 
   describe "evaluate/3" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     test "returns {:ok, :valid} when all code requirements are satisfied", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -180,12 +185,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
         satisfied: true
       })
 
-      assert {:ok, :valid} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :valid} = LiveViewCode.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when implementation_file requirement is unsatisfied",
          %{
-           session: session,
+           task: task,
            scope: scope,
            component: component
          } do
@@ -197,12 +202,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
         details: %{reason: "File missing", path: "lib/test_app_web/dashboard_live.ex"}
       })
 
-      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, task)
       assert feedback =~ "requirements not met"
     end
 
     test "returns {:ok, :invalid, feedback} when tests_passing requirement is unsatisfied", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -221,12 +226,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
         details: %{reason: "Test failures found", problem_count: 2}
       })
 
-      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, task)
       assert feedback =~ "requirements not met"
     end
 
     test "ignores non-code artifact type requirements", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -253,11 +258,11 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
         satisfied: false
       })
 
-      assert {:ok, :valid} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :valid} = LiveViewCode.evaluate(scope, task)
     end
 
     test "feedback includes requirements not met context message", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -269,13 +274,13 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
         details: %{reason: "File missing"}
       })
 
-      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, task)
       assert is_binary(feedback)
       assert String.length(feedback) > 0
     end
 
     test "reloads component from database before checking requirements", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -289,11 +294,11 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
         details: %{reason: "File missing"}
       })
 
-      assert {:ok, :invalid, _feedback} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :invalid, _feedback} = LiveViewCode.evaluate(scope, task)
     end
 
     test "returns invalid when problems exist on code or test files even if requirements pass", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -313,12 +318,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, task)
       assert feedback =~ "@moduledoc"
     end
 
     test "combines requirement and problem feedback when both fail", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -345,7 +350,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewCode.evaluate(scope, task)
       assert feedback =~ "requirements not met"
       assert feedback =~ "undefined function"
     end
@@ -356,10 +361,10 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
   # ============================================================================
 
   describe "command/3 with BDD specs" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     test "includes BDD spec instructions when component satisfies a story with specs", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -367,46 +372,46 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
       {:ok, _} = Stories.set_story_component(scope, story, component.id)
       create_spex_file(scope.environment.cwd, story.id, 1)
 
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       assert prompt =~ "BDD Acceptance Specs"
       assert prompt =~ "mix spex"
     end
 
     test "does not include BDD spec instructions when component has no stories", %{
-      session: session,
+      task: task,
       scope: scope
     } do
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       refute prompt =~ "BDD Acceptance Specs"
     end
 
     test "does not include BDD spec instructions when story has no spec files", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
       story = story_fixture(scope)
       {:ok, _} = Stories.set_story_component(scope, story, component.id)
 
-      assert {:ok, prompt} = LiveViewCode.command(scope, session)
+      assert {:ok, prompt} = LiveViewCode.command(scope, task)
       refute prompt =~ "BDD Acceptance Specs"
     end
   end
 
   describe "evaluate/3 with BDD specs" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     test "returns valid when component has no stories", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
       satisfy_code_requirements(scope, component)
-      assert {:ok, :valid} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :valid} = LiveViewCode.evaluate(scope, task)
     end
 
     test "returns valid when story has no spec files", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -414,7 +419,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCodeTest do
       {:ok, _} = Stories.set_story_component(scope, story, component.id)
       satisfy_code_requirements(scope, component)
 
-      assert {:ok, :valid} = LiveViewCode.evaluate(scope, session)
+      assert {:ok, :valid} = LiveViewCode.evaluate(scope, task)
     end
   end
 

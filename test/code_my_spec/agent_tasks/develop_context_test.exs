@@ -35,17 +35,17 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
     {context, [child1, child2]}
   end
 
-  defp create_session(scope, component) do
-    %{component: component, project: scope.active_project}
+  defp create_task(scope, component) do
+    %{component_id: component.id, project_id: scope.active_project.id, story_id: nil}
   end
 
   describe "command/3" do
     test "returns static development instructions with context name" do
       scope = full_scope_fixture()
       {context, _children} = create_context_with_children(scope)
-      session = create_session(scope, context)
+      task = create_task(scope, context)
 
-      assert {:ok, prompt} = DevelopContext.command(scope, session)
+      assert {:ok, prompt} = DevelopContext.command(scope, task)
       assert prompt =~ "Develop Context: TestContext"
       assert prompt =~ "Lifecycle Phases"
       assert prompt =~ "Context Spec"
@@ -73,9 +73,9 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       end
 
       context = Components.get_component(scope, context.id)
-      session = create_session(scope, context)
+      task = create_task(scope, context)
 
-      assert {:ok, :valid} = DevelopContext.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopContext.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when requirements are unsatisfied" do
@@ -98,9 +98,9 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       end
 
       context = Components.get_component(scope, context.id)
-      session = create_session(scope, context)
+      task = create_task(scope, context)
 
-      assert {:ok, :invalid, feedback} = DevelopContext.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = DevelopContext.evaluate(scope, task)
       assert feedback =~ "Components still need work"
       assert feedback =~ "TestSchema"
       assert feedback =~ "TestRepository"
@@ -111,9 +111,9 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       {context, _children} = create_context_with_children(scope)
 
       context = Components.get_component(scope, context.id)
-      session = create_session(scope, context)
+      task = create_task(scope, context)
 
-      assert {:ok, :valid} = DevelopContext.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopContext.evaluate(scope, task)
     end
   end
 end

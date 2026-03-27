@@ -19,12 +19,8 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
     %{scope | environment: Environment.new(:local, tmp_dir)}
   end
 
-  defp create_session(scope, component) do
-    %{
-      component: component,
-      project: scope.active_project,
-      external_conversation_id: "test-session-#{System.unique_integer([:positive])}"
-    }
+  defp create_task(scope, component) do
+    %{component_id: component.id, project_id: scope.active_project.id, story_id: nil}
   end
 
   defp create_live_context(scope) do
@@ -84,9 +80,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
     test "includes project details in prompt", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       live_context = create_live_context(scope)
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, prompt} = LiveContextSpec.command(scope, session)
+      assert {:ok, prompt} = LiveContextSpec.command(scope, task)
       assert prompt =~ scope.active_project.name
     end
   end
@@ -99,9 +95,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
     test "returns {:ok, :invalid} when spec file is missing", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       live_context = create_live_context(scope)
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      result = LiveContextSpec.evaluate(scope, session)
+      result = LiveContextSpec.evaluate(scope, task)
       assert {:ok, :invalid, _feedback} = result
     end
 
@@ -125,9 +121,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
         satisfied: true
       })
 
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, :valid} = LiveContextSpec.evaluate(scope, session)
+      assert {:ok, :valid} = LiveContextSpec.evaluate(scope, task)
     end
 
     test "creates child spec stubs from LiveViews and Components sections on valid", %{
@@ -150,9 +146,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
         satisfied: true
       })
 
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, :valid} = LiveContextSpec.evaluate(scope, session)
+      assert {:ok, :valid} = LiveContextSpec.evaluate(scope, task)
 
       # Check that child spec stubs were created
       index_stub = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_live/index.spec.md")
@@ -187,9 +183,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpecTest do
         satisfied: true
       })
 
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, :valid} = LiveContextSpec.evaluate(scope, session)
+      assert {:ok, :valid} = LiveContextSpec.evaluate(scope, task)
 
       # Existing file should not be overwritten
       assert File.read!(index_path) =~ "Custom content"

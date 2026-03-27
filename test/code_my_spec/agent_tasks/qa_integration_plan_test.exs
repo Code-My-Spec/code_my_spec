@@ -18,9 +18,9 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
-    session = %{project: context.scope.active_project}
-    Map.put(context, :session, session)
+  defp create_task(context) do
+    task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -109,43 +109,43 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
   # ============================================================================
 
   describe "command/3" do
-    setup [:create_scope, :create_session]
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaIntegrationPlan.command(scope, session)
+    test "returns ok tuple with non-empty prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes integration spec format", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaIntegrationPlan.command(scope, session)
+    test "includes integration spec format", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ "Integration Spec Format"
       assert prompt =~ "Auth Type"
       assert prompt =~ "Required Credentials"
     end
 
-    test "includes decisions when they exist", %{scope: scope, session: session} do
+    test "includes decisions when they exist", %{scope: scope, task: task} do
       write_decision(scope.environment, "twilio")
 
-      assert {:ok, prompt} = QaIntegrationPlan.command(scope, session)
+      assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ "twilio"
       assert prompt =~ "Technical Decisions"
     end
 
-    test "handles no decisions gracefully", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaIntegrationPlan.command(scope, session)
+    test "handles no decisions gracefully", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ "No decision records found"
     end
 
-    test "includes existing specs when present", %{scope: scope, session: session} do
+    test "includes existing specs when present", %{scope: scope, task: task} do
       write_integration_spec(scope.environment, "twilio")
 
-      assert {:ok, prompt} = QaIntegrationPlan.command(scope, session)
+      assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ "Existing Integration Specs"
     end
 
-    test "includes verify script instructions", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaIntegrationPlan.command(scope, session)
+    test "includes verify script instructions", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ "verify_"
       assert prompt =~ "JSON"
     end
@@ -156,72 +156,72 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
   # ============================================================================
 
   describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when all integrations verified", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "verified")
       write_verify_script(env, "twilio")
 
-      assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, session)
+      assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
 
     test "returns {:ok, :valid} when no integrations needed", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_integration_index(
         scope.environment,
         "# Integrations\n\nNo integrations required for this project."
       )
 
-      assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, session)
+      assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when index missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
       assert feedback =~ "Integration index not found"
     end
 
     test "returns {:ok, :invalid, feedback} when specs missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_integration_index(scope.environment)
 
-      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
       assert feedback =~ "No integration specs found"
     end
 
     test "returns {:ok, :invalid, feedback} when verify script missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "verified")
 
-      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
       assert feedback =~ "missing"
     end
 
     test "returns {:ok, :invalid, feedback} when not yet verified", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "pending")
       write_verify_script(env, "twilio")
 
-      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
       assert feedback =~ "not yet verified"
     end
   end

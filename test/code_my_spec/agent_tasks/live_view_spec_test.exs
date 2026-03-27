@@ -36,11 +36,8 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
     )
   end
 
-  defp create_session(scope, component) do
-    %{
-      component: component,
-      project: scope.active_project
-    }
+  defp create_task(scope, component) do
+    %{component_id: component.id, project_id: scope.active_project.id, story_id: nil}
   end
 
   defp write_file!(tmp_dir, relative_path, content) do
@@ -101,12 +98,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
   # ============================================================================
 
   describe "command/3" do
-    test "returns ok tuple with prompt text for valid session", %{tmp_dir: tmp_dir} do
+    test "returns ok tuple with prompt text for valid task", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
@@ -114,18 +111,18 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
     test "includes project name and description in prompt", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ scope.active_project.name
     end
 
     test "includes component name, description, and type in prompt", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ component.name
       assert prompt =~ component.description
       assert prompt =~ component.type
@@ -134,20 +131,20 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
     test "includes design rules content in prompt", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       # At minimum, wildcard design rules (elixir_design.md with component_type: "*")
-      # should match for any component type + session_type "design"
+      # should match for any component type + task_type "design"
       assert prompt =~ "Design Rules" or prompt =~ "Rules"
     end
 
     test "includes document specification in prompt", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       # DocumentSpecProjector.project_spec/1 returns section documentation
       assert prompt =~ "Required Sections" or prompt =~ "Document Specifications"
     end
@@ -155,38 +152,38 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
     test "includes spec file path in prompt", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
       %{spec_file: spec_path} =
         CodeMySpec.Utils.component_files(component, scope.active_project)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ spec_path
     end
 
     test "includes existing implementation file path when code exists", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
       write_code_file!(tmp_dir, component, scope.active_project)
 
       %{code_file: code_path} =
         CodeMySpec.Utils.component_files(component, scope.active_project)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ code_path
     end
 
     test "includes existing test file path when tests exist", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
       write_test_file!(tmp_dir, component, scope.active_project)
 
       %{test_file: test_path} =
         CodeMySpec.Utils.component_files(component, scope.active_project)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ test_path
     end
 
@@ -208,12 +205,12 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
 
       # Reload with parent_component preloaded
       component = Components.get_component(scope, component.id) |> Repo.preload(:parent_component)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
       %{spec_file: parent_spec_path} =
         CodeMySpec.Utils.component_files(parent, scope.active_project)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ parent_spec_path
     end
 
@@ -230,9 +227,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
         })
 
       {:ok, _} = Components.add_similar_component(scope, component, similar)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ similar.name or prompt =~ similar.module_name
     end
 
@@ -240,9 +237,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
          %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
       assert prompt =~ "route" or prompt =~ "Route"
 
       assert prompt =~ "interaction" or prompt =~ "Interaction" or
@@ -256,9 +253,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
     } do
       scope = create_scope(tmp_dir)
       component = create_liveview_component(scope)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, prompt} = LiveViewSpec.command(scope, session)
+      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
 
       # Required liveview sections should appear in the document spec
       assert prompt =~ "Route"
@@ -280,9 +277,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       # Simulate a component with a nil type (not possible via normal creation)
       # to verify the implementation handles invalid state gracefully
       broken_component = %{component | type: nil}
-      session = create_session(scope, broken_component)
+      task = create_task(scope, broken_component)
 
-      assert {:error, _reason} = LiveViewSpec.command(scope, session)
+      assert {:error, _reason} = LiveViewSpec.command(scope, task)
     end
   end
 
@@ -309,9 +306,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       })
 
       component = Components.get_component(scope, component.id)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, :valid} = LiveViewSpec.evaluate(scope, session)
+      assert {:ok, :valid} = LiveViewSpec.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when specification requirements are unsatisfied",
@@ -333,9 +330,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       })
 
       component = Components.get_component(scope, component.id)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, task)
       assert is_binary(feedback)
     end
 
@@ -355,9 +352,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       })
 
       component = Components.get_component(scope, component.id)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, task)
       assert feedback =~ "spec" or feedback =~ "Spec" or feedback =~ "specification"
     end
 
@@ -369,9 +366,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       # No spec file written, no persisted requirements
       # Falls back to Registry defaults — FileExistenceChecker will find file missing
       component = Components.get_component(scope, component.id)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, task)
       assert is_binary(feedback)
     end
 
@@ -386,9 +383,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       # No persisted requirements — falls back to Registry defaults
       # FileExistenceChecker passes, but DocumentValidityChecker will fail
       component = Components.get_component(scope, component.id)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, task)
       assert is_binary(feedback)
     end
 
@@ -425,9 +422,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
         ])
 
       component = Components.get_component(scope, component.id)
-      session = create_session(scope, component)
+      task = create_task(scope, component)
 
-      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = LiveViewSpec.evaluate(scope, task)
       assert feedback =~ "Missing required section"
     end
   end

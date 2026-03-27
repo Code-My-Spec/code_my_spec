@@ -18,10 +18,10 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
+  defp create_task(context) do
     %{scope: scope} = context
-    session = %{project: scope.active_project}
-    Map.put(context, :session, session)
+    task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -135,57 +135,57 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
-    setup [:create_scope, :create_session]
+  describe "command/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with prompt text", %{scope: scope, session: session} do
+    test "returns ok tuple with prompt text", %{scope: scope, task: task} do
       write_template_file(scope.environment)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
     test "loads template from priv/templates/design_system.html for new projects", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_template_file(scope.environment)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "Design System Template"
     end
 
     test "includes existing design system content when file already exists", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_template_file(env)
       write_design_system_html(env)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "Corporate theme selected"
     end
 
-    test "includes tailwind config when available", %{scope: scope, session: session} do
+    test "includes tailwind config when available", %{scope: scope, task: task} do
       env = scope.environment
       write_template_file(env)
       write_tailwind_config(env)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "tailwind" or prompt =~ "daisyui" or prompt =~ "brand"
     end
 
-    test "includes core_components reference", %{scope: scope, session: session} do
+    test "includes core_components reference", %{scope: scope, task: task} do
       env = scope.environment
       write_template_file(env)
       write_core_components(env)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
 
       assert prompt =~ "core_components" or prompt =~ "CoreComponents" or prompt =~ "button" or
                prompt =~ "modal"
@@ -193,21 +193,21 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
 
     test "prompt includes the template or existing file content", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_template_file(scope.environment)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "<html" or prompt =~ "<!DOCTYPE" or prompt =~ "section"
     end
 
     test "prompt instructs agent to interview user section by section", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_template_file(scope.environment)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
 
       assert prompt =~ "theme" or prompt =~ "Theme"
       assert prompt =~ "color" or prompt =~ "Color"
@@ -218,91 +218,91 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
 
     test "prompt instructs agent to present DaisyUI theme options", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_template_file(scope.environment)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "DaisyUI" or prompt =~ "daisyui" or prompt =~ "daisy"
     end
 
     test "prompt instructs agent to modify template rather than generate from scratch", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_template_file(scope.environment)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "modify" or prompt =~ "template" or prompt =~ "update"
     end
 
-    test "includes project name and description for context", %{scope: scope, session: session} do
+    test "includes project name and description for context", %{scope: scope, task: task} do
       write_template_file(scope.environment)
 
-      assert {:ok, prompt} = DesignUi.command(scope, session)
+      assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ scope.active_project.name
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/2" do
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when HTML has all required sections and theme", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_design_system_html(scope.environment)
 
-      assert {:ok, :valid} = DesignUi.evaluate(scope, session)
+      assert {:ok, :valid} = DesignUi.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when sections are missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_design_system_html(scope.environment, html_missing_sections())
 
-      assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, task)
       assert is_binary(feedback)
       assert feedback =~ "typography" or feedback =~ "layout" or feedback =~ "tone"
     end
 
     test "returns {:ok, :invalid, feedback} when data-theme is not set", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_design_system_html(scope.environment, html_no_data_theme())
 
-      assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, task)
       assert is_binary(feedback)
       assert feedback =~ "theme" or feedback =~ "data-theme"
     end
 
     test "returns {:ok, :invalid, feedback} when a section is empty", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_design_system_html(scope.environment, html_empty_section())
 
-      assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, task)
       assert is_binary(feedback)
       assert feedback =~ "typography" or feedback =~ "empty" or feedback =~ "content"
     end
 
-    test "returns error when file does not exist", %{scope: scope, session: session} do
-      result = DesignUi.evaluate(scope, session)
+    test "returns error when file does not exist", %{scope: scope, task: task} do
+      result = DesignUi.evaluate(scope, task)
 
       assert {:error, _reason} = result
     end
 
-    test "returns error when file cannot be parsed as HTML", %{scope: scope, session: session} do
+    test "returns error when file cannot be parsed as HTML", %{scope: scope, task: task} do
       write_file!(scope.environment, ".code_my_spec/design/design_system.html", "")
 
-      result = DesignUi.evaluate(scope, session)
+      result = DesignUi.evaluate(scope, task)
 
       assert match?({:error, _}, result) or match?({:ok, :invalid, _}, result)
     end

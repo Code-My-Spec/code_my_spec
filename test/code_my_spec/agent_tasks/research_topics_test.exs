@@ -19,10 +19,10 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
+  defp create_task(context) do
     %{scope: scope} = context
-    session = %{project: scope.active_project}
-    Map.put(context, :session, session)
+    task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -85,27 +85,27 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
-    setup [:create_scope, :create_session]
+  describe "command/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt string", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ResearchTopics.command(scope, session)
+    test "returns ok tuple with non-empty prompt string", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ResearchTopics.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
     test "excludes pre-made decision topics from research list", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_premade_decisions(env)
       write_decision(env, "stripe")
 
-      assert {:ok, prompt} = ResearchTopics.command(scope, session)
+      assert {:ok, prompt} = ResearchTopics.command(scope, task)
 
       for topic <- premade_topics() do
         # Pre-made topics should not appear as topics needing research.
@@ -114,18 +114,18 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       end
     end
 
-    test "excludes topics covered by framework directory", %{scope: scope, session: session} do
+    test "excludes topics covered by framework directory", %{scope: scope, task: task} do
       env = scope.environment
       write_decision(env, "boundary")
       write_framework_file(env, "boundary.md")
 
-      assert {:ok, prompt} = ResearchTopics.command(scope, session)
+      assert {:ok, prompt} = ResearchTopics.command(scope, task)
 
       # boundary is covered by framework, so it should not appear as needing research
       refute prompt =~ ~r/research.*boundary/i
     end
 
-    test "includes ADR content for topics needing research", %{scope: scope, session: session} do
+    test "includes ADR content for topics needing research", %{scope: scope, task: task} do
       env = scope.environment
 
       write_decision(
@@ -142,19 +142,19 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
         """
       )
 
-      assert {:ok, prompt} = ResearchTopics.command(scope, session)
+      assert {:ok, prompt} = ResearchTopics.command(scope, task)
       assert prompt =~ "Stripe for Payments"
       assert prompt =~ "process payments"
     end
 
     test "instructs to dispatch subagents (does NOT name a specific subagent)", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_decision(env, "stripe")
 
-      assert {:ok, prompt} = ResearchTopics.command(scope, session)
+      assert {:ok, prompt} = ResearchTopics.command(scope, task)
 
       # Should instruct dispatch of subagents in general
       assert prompt =~ ~r/dispatch|subagent/i
@@ -163,11 +163,11 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       refute prompt =~ ~r/@"CodeMySpec:/
     end
 
-    test "lists skipped topics with reason", %{scope: scope, session: session} do
+    test "lists skipped topics with reason", %{scope: scope, task: task} do
       env = scope.environment
       write_premade_decisions(env)
 
-      assert {:ok, prompt} = ResearchTopics.command(scope, session)
+      assert {:ok, prompt} = ResearchTopics.command(scope, task)
 
       # Pre-made topics must appear in a skip section with explanation
       assert prompt =~ ~r/skip|pre-made|already covered/i
@@ -175,7 +175,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
 
     test "returns prompt noting no research needed when all topics are covered", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
 
@@ -186,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       # Also write all pre-made decisions so everything is covered
       write_premade_decisions(env)
 
-      assert {:ok, prompt} = ResearchTopics.command(scope, session)
+      assert {:ok, prompt} = ResearchTopics.command(scope, task)
 
       # When no topics need research, prompt should note that
       assert prompt =~ ~r/no (topics|research)|all (topics|decisions) (are )?covered/i
@@ -194,27 +194,27 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/2" do
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when no topics need research (all pre-made or framework-covered)",
-         %{scope: scope, session: session} do
+         %{scope: scope, task: task} do
       env = scope.environment
 
       # Only write pre-made decision topics — all are covered by pre-made list
       write_premade_decisions(env)
 
       capture_log(fn ->
-        assert {:ok, :valid} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :valid} = ResearchTopics.evaluate(scope, task)
       end)
     end
 
     test "returns {:ok, :valid} when all qualifying topics pass ResearchTopic.evaluate/3", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_premade_decisions(env)
@@ -224,12 +224,12 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       write_knowledge(env, "stripe")
 
       capture_log(fn ->
-        assert {:ok, :valid} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :valid} = ResearchTopics.evaluate(scope, task)
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when qualifying topics fail ResearchTopic.evaluate/3",
-         %{scope: scope, session: session} do
+         %{scope: scope, task: task} do
       env = scope.environment
       write_premade_decisions(env)
 
@@ -238,14 +238,14 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       write_decision(env, "stripe")
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = ResearchTopics.evaluate(scope, task)
         assert is_binary(feedback)
         assert String.length(feedback) > 0
         assert feedback =~ "stripe"
       end)
     end
 
-    test "reports multiple incomplete topics in feedback", %{scope: scope, session: session} do
+    test "reports multiple incomplete topics in feedback", %{scope: scope, task: task} do
       env = scope.environment
       write_premade_decisions(env)
 
@@ -254,13 +254,13 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       write_decision(env, "sendgrid")
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = ResearchTopics.evaluate(scope, task)
         assert feedback =~ "stripe"
         assert feedback =~ "sendgrid"
       end)
     end
 
-    test "does not check pre-made decision topics", %{scope: scope, session: session} do
+    test "does not check pre-made decision topics", %{scope: scope, task: task} do
       env = scope.environment
 
       # Write only pre-made decisions — no knowledge entries for them
@@ -268,11 +268,11 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       write_premade_decisions(env)
 
       capture_log(fn ->
-        assert {:ok, :valid} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :valid} = ResearchTopics.evaluate(scope, task)
       end)
     end
 
-    test "does not check framework-covered topics", %{scope: scope, session: session} do
+    test "does not check framework-covered topics", %{scope: scope, task: task} do
       env = scope.environment
 
       # Write a decision for a topic covered by the framework directory,
@@ -281,23 +281,23 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       write_framework_file(env, "boundary.md")
 
       capture_log(fn ->
-        assert {:ok, :valid} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :valid} = ResearchTopics.evaluate(scope, task)
       end)
     end
 
     test "returns {:ok, :valid} when there are no decided topics at all", %{
       scope: scope,
-      session: session
+      task: task
     } do
       # No decision files written — nothing to check
       capture_log(fn ->
-        assert {:ok, :valid} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :valid} = ResearchTopics.evaluate(scope, task)
       end)
     end
 
     test "qualifying topic covered by framework directory as a sub-directory is skipped", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
 
@@ -306,7 +306,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicsTest do
       write_framework_dir_entry(env, "liveview")
 
       capture_log(fn ->
-        assert {:ok, :valid} = ResearchTopics.evaluate(scope, session)
+        assert {:ok, :valid} = ResearchTopics.evaluate(scope, task)
       end)
     end
   end

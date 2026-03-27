@@ -42,15 +42,16 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
     Map.put(context, :component, component)
   end
 
-  defp create_session(context, _opts \\ []) do
-    %{project: project, component: component} = context
+  defp create_task(context, _opts \\ []) do
+    %{scope: scope, component: component} = context
 
-    session = %{
-      project: project,
-      component: component
+    task = %{
+      component_id: component.id,
+      project_id: scope.active_project.id,
+      story_id: nil
     }
 
-    Map.put(context, :session, session)
+    Map.put(context, :task, task)
   end
 
   defp write_spec_file(context) do
@@ -143,28 +144,28 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
   # ============================================================================
 
   describe "command/3" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     test "returns prompt with component information", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
-      assert {:ok, prompt} = ComponentTest.command(scope, session)
+      assert {:ok, prompt} = ComponentTest.command(scope, task)
 
       assert is_binary(prompt)
       assert prompt =~ component.name
       assert prompt =~ component.type
     end
 
-    test "includes test rules in prompt", %{session: session, scope: scope} do
-      assert {:ok, prompt} = ComponentTest.command(scope, session)
+    test "includes test rules in prompt", %{task: task, scope: scope} do
+      assert {:ok, prompt} = ComponentTest.command(scope, task)
 
       assert prompt =~ "Test Rules:"
     end
 
     test "includes similar components when available", %{
-      session: session,
+      task: task,
       scope: scope,
       project: project
     } do
@@ -177,15 +178,15 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
           project_id: project.id
         })
 
-      assert {:ok, prompt} = ComponentTest.command(scope, session)
+      assert {:ok, prompt} = ComponentTest.command(scope, task)
 
       # The prompt should have a section for similar components
       assert prompt =~ "Similar Components"
     end
 
-    test "indicates TDD mode when implementation doesn't exist", %{session: session, scope: scope} do
+    test "indicates TDD mode when implementation doesn't exist", %{task: task, scope: scope} do
       # No code file written, so TDD mode should be indicated
-      assert {:ok, prompt} = ComponentTest.command(scope, session)
+      assert {:ok, prompt} = ComponentTest.command(scope, task)
 
       assert prompt =~ "TDD"
       assert prompt =~ "doesn't exist yet"
@@ -193,7 +194,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
 
     test "indicates validation mode when implementation exists", context do
       context = setup_all_files(context)
-      %{session: session, scope: scope, component: component} = context
+      %{task: task, scope: scope, component: component} = context
 
       # Create satisfied implementation_file requirement
       requirement_fixture(scope, component, %{
@@ -203,14 +204,14 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
         satisfied: true
       })
 
-      assert {:ok, prompt} = ComponentTest.command(scope, session)
+      assert {:ok, prompt} = ComponentTest.command(scope, task)
 
       assert prompt =~ "implementation already exists"
       assert prompt =~ "validate the existing implementation"
     end
 
     test "includes spec file path and test file path", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -218,7 +219,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
       %{spec_file: spec_file, test_file: test_file} =
         CodeMySpec.Utils.component_files(component, project)
 
-      assert {:ok, prompt} = ComponentTest.command(scope, session)
+      assert {:ok, prompt} = ComponentTest.command(scope, task)
 
       assert prompt =~ spec_file
       assert prompt =~ test_file
@@ -232,7 +233,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
   # ============================================================================
 
   describe "evaluate/3" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     defp satisfy_test_requirements(scope, component) do
       requirement_fixture(scope, component, %{
@@ -251,7 +252,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
     end
 
     test "returns invalid when test_file requirement is unsatisfied", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -263,12 +264,12 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
         details: %{reason: "File missing", path: "test/test_app/test_module_test.exs"}
       })
 
-      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, task)
       assert feedback =~ "requirements not met"
     end
 
     test "returns invalid when test_spec_alignment requirement is unsatisfied", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -287,23 +288,23 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
         details: %{reason: "Test alignment issues", problems: ["Missing test for foo/1"]}
       })
 
-      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, task)
       assert feedback =~ "requirements not met"
       assert feedback =~ "Test alignment issues"
     end
 
     test "returns valid when all test requirements satisfied and no problems", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
       satisfy_test_requirements(scope, component)
 
-      assert {:ok, :valid} = ComponentTest.evaluate(scope, session)
+      assert {:ok, :valid} = ComponentTest.evaluate(scope, task)
     end
 
     test "returns valid when only test failure problems exist (TDD mode)", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -324,11 +325,11 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
           }
         ])
 
-      assert {:ok, :valid} = ComponentTest.evaluate(scope, session)
+      assert {:ok, :valid} = ComponentTest.evaluate(scope, task)
     end
 
     test "returns invalid when non-test problems exist", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -349,12 +350,12 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, task)
       assert feedback =~ "undefined function"
     end
 
     test "filters out test failures but keeps other problems", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -383,7 +384,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, task)
       assert feedback =~ "moduledoc"
     end
   end

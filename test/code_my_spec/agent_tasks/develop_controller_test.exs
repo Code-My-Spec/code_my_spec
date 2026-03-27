@@ -16,8 +16,8 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
     %{scope | environment: Environment.new(:local, tmp_dir)}
   end
 
-  defp create_session(scope, component) do
-    %{component: component, project: scope.active_project}
+  defp create_task(scope, component) do
+    %{component_id: component.id, project_id: scope.active_project.id, story_id: nil}
   end
 
   defp create_controller_component(scope) do
@@ -32,9 +32,9 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
     test "returns static development instructions with controller name", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       controller = create_controller_component(scope)
-      session = create_session(scope, controller)
+      task = create_task(scope, controller)
 
-      assert {:ok, prompt} = DevelopController.command(scope, session)
+      assert {:ok, prompt} = DevelopController.command(scope, task)
       assert prompt =~ "Develop Controller: UserController"
       assert prompt =~ "Controller Spec"
       assert prompt =~ "Implementation"
@@ -44,12 +44,12 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
     test "generates JSON view stub spec on command", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       controller = create_controller_component(scope)
-      session = create_session(scope, controller)
+      task = create_task(scope, controller)
 
       json_spec_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_json.spec.md")
       refute File.exists?(json_spec_path)
 
-      assert {:ok, _prompt} = DevelopController.command(scope, session)
+      assert {:ok, _prompt} = DevelopController.command(scope, task)
 
       assert File.exists?(json_spec_path)
       content = File.read!(json_spec_path)
@@ -60,13 +60,13 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
     test "does not overwrite existing JSON view spec", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       controller = create_controller_component(scope)
-      session = create_session(scope, controller)
+      task = create_task(scope, controller)
 
       json_spec_path = Path.join(tmp_dir, ".code_my_spec/spec/test_app_web/user_json.spec.md")
       json_spec_path |> Path.dirname() |> File.mkdir_p!()
       File.write!(json_spec_path, "# Custom spec\n\nCustom content")
 
-      assert {:ok, _prompt} = DevelopController.command(scope, session)
+      assert {:ok, _prompt} = DevelopController.command(scope, task)
       assert File.read!(json_spec_path) =~ "Custom content"
     end
   end
@@ -85,9 +85,9 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       end
 
       controller = Components.get_component(scope, controller.id)
-      session = create_session(scope, controller)
+      task = create_task(scope, controller)
 
-      assert {:ok, :valid} = DevelopController.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopController.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when requirements unsatisfied", %{tmp_dir: tmp_dir} do
@@ -101,9 +101,9 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       })
 
       controller = Components.get_component(scope, controller.id)
-      session = create_session(scope, controller)
+      task = create_task(scope, controller)
 
-      assert {:ok, :invalid, feedback} = DevelopController.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = DevelopController.evaluate(scope, task)
       assert feedback =~ "UserController"
       assert feedback =~ "spec_file"
     end
@@ -113,9 +113,9 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       controller = create_controller_component(scope)
 
       controller = Components.get_component(scope, controller.id)
-      session = create_session(scope, controller)
+      task = create_task(scope, controller)
 
-      assert {:ok, :valid} = DevelopController.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopController.evaluate(scope, task)
     end
   end
 end

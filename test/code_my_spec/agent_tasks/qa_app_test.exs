@@ -19,9 +19,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
-    session = %{project: context.scope.active_project}
-    Map.put(context, :session, session)
+  defp create_task(context) do
+    task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp create_story(context) do
@@ -168,53 +168,53 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
-    setup [:create_scope, :create_session]
+  describe "command/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
+    test "returns ok tuple with prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes project name", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
+    test "includes project name", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ scope.active_project.name
     end
 
-    test "includes router content when router exists", %{scope: scope, session: session} do
+    test "includes router content when router exists", %{scope: scope, task: task} do
       write_mix_exs(scope.environment)
       write_router(scope.environment)
 
-      assert {:ok, prompt} = QaApp.command(scope, session)
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ "PageController"
       assert prompt =~ "DashboardLive"
     end
 
-    test "handles missing router gracefully", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
+    test "handles missing router gracefully", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ "mix phx.routes"
     end
 
-    test "includes server startup instructions", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
+    test "includes server startup instructions", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ "mix phx.server"
     end
 
-    test "instructs agent to dispatch qa subagent", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
+    test "instructs agent to dispatch qa subagent", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ "qa (agent)"
     end
 
-    test "instructs agent to write summary", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
+    test "instructs agent to write summary", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/summary.md"
     end
 
-    test "lists existing issues to avoid duplicates", %{scope: scope, session: session} do
+    test "lists existing issues to avoid duplicates", %{scope: scope, task: task} do
       CodeMySpec.Issues.IssuesRepository.create_issue(scope, %{
         title: "login-form-broken",
         severity: :high,
@@ -222,20 +222,20 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
         status: :incoming
       })
 
-      assert {:ok, prompt} = QaApp.command(scope, session)
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ "login_form_broken"
     end
 
-    test "includes BDD coverage section", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaApp.command(scope, session)
+    test "includes BDD coverage section", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ "BDD Spec Coverage"
     end
 
     test "generates per-story prompt files", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
-      session = %{project: scope.active_project}
+      task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      assert {:ok, _prompt} = QaApp.command(scope, session)
+      assert {:ok, _prompt} = QaApp.command(scope, task)
 
       # Prompt file should be written for the story
       prompt_path = Path.join(scope.environment.cwd, ".code_my_spec/qa/#{story.id}/prompt.md")
@@ -247,82 +247,82 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
     test "includes prompt file paths in orchestration prompt", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
-      session = %{project: scope.active_project}
+      task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      assert {:ok, prompt} = QaApp.command(scope, session)
+      assert {:ok, prompt} = QaApp.command(scope, task)
 
       assert prompt =~ ".code_my_spec/qa/#{story.id}/prompt.md"
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/2" do
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when no stories and summary exists", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_qa_summary(scope.environment)
 
-      assert {:ok, :valid} = QaApp.evaluate(scope, session)
+      assert {:ok, :valid} = QaApp.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when summary is missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "summary"
     end
 
     test "delegates story validation to QaStory.evaluate", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
-      session = %{project: scope.active_project}
+      task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
       write_qa_plan(scope.environment)
 
       # No brief or result — QaStory.evaluate should report brief missing
-      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "Story #{story.id}"
       assert feedback =~ "Brief"
     end
 
     test "returns valid when all stories have brief + result and summary exists", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
-      session = %{project: scope.active_project}
+      task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       write_qa_plan(scope.environment)
       write_story_brief(scope.environment, story.id)
       write_story_result(scope.environment, story.id)
       write_qa_summary(scope.environment)
 
-      assert {:ok, :valid} = QaApp.evaluate(scope, session)
+      assert {:ok, :valid} = QaApp.evaluate(scope, task)
     end
 
     test "returns invalid when story has brief but no result", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
-      session = %{project: scope.active_project}
+      task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       write_qa_plan(scope.environment)
       write_story_brief(scope.environment, story.id)
       write_qa_summary(scope.environment)
 
-      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "Story #{story.id}"
     end
 
     test "returns invalid when stories pass but summary missing", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
-      session = %{project: scope.active_project}
+      task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       write_qa_plan(scope.environment)
       write_story_brief(scope.environment, story.id)
       write_story_result(scope.environment, story.id)
 
-      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "summary"
     end
   end

@@ -19,10 +19,10 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
+  defp create_task(context) do
     %{scope: scope} = context
-    session = %{project: scope.active_project}
-    Map.put(context, :session, session)
+    task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -132,51 +132,51 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   # ============================================================================
 
   describe "command/3" do
-    setup [:create_scope, :create_session]
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt string", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+    test "returns ok tuple with non-empty prompt string", %{scope: scope, task: task} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes project name in prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+    test "includes project name in prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ scope.active_project.name
     end
 
-    test "includes deps context when mix.exs exists", %{scope: scope, session: session} do
+    test "includes deps context when mix.exs exists", %{scope: scope, task: task} do
       write_mix_exs(scope.environment)
 
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ "Current Dependencies"
     end
 
-    test "lists existing decisions in prompt", %{scope: scope, session: session} do
+    test "lists existing decisions in prompt", %{scope: scope, task: task} do
       env = scope.environment
       write_existing_decision(env, "wallaby")
 
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ "wallaby"
     end
 
     test "instructs to research and write ADRs for identified topics", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ ".code_my_spec/architecture/decisions/"
     end
 
     test "writes missing pre-made decision ADR files to the environment", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_existing_decision(env, "elixir")
       write_existing_decision(env, "phoenix")
 
-      assert {:ok, _prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, _prompt} = TechnicalStrategy.command(scope, task)
 
       for d <- TechnicalStrategy.premade_decisions() do
         path = Path.join(env.cwd, ".code_my_spec/architecture/decisions/#{d.topic}.md")
@@ -184,11 +184,11 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       end
     end
 
-    test "does not overwrite pre-existing decision files", %{scope: scope, session: session} do
+    test "does not overwrite pre-existing decision files", %{scope: scope, task: task} do
       env = scope.environment
       write_existing_decision(env, "elixir")
 
-      assert {:ok, _prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, _prompt} = TechnicalStrategy.command(scope, task)
 
       elixir_content =
         File.read!(Path.join(env.cwd, ".code_my_spec/architecture/decisions/elixir.md"))
@@ -198,63 +198,63 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
 
     test "does not include a Pre-made Decisions to Write section in prompt", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       refute prompt =~ "Pre-made Decisions to Write"
     end
 
     test "lists pre-made decisions as existing decisions after writing them", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ "Existing Decisions"
       assert prompt =~ "elixir"
       assert prompt =~ "phoenix"
       assert prompt =~ "daisyui"
     end
 
-    test "does NOT include knowledge base building steps (handled by ResearchTopics)", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+    test "does NOT include knowledge base building steps (handled by ResearchTopics)", %{scope: scope, task: task} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       refute prompt =~ "Build Knowledge Base"
     end
 
     test "does NOT include bootstrap/library installation steps (handled by ProjectBootstrap)", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       refute prompt =~ "Bootstrap"
       refute prompt =~ "Add libraries"
       refute prompt =~ "Smoke test"
     end
 
-    test "does NOT reference a specific subagent by name", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+    test "does NOT reference a specific subagent by name", %{scope: scope, task: task} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       refute prompt =~ ~r/@"CodeMySpec:/
     end
 
-    test "instructs to update the decisions index", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+    test "instructs to update the decisions index", %{scope: scope, task: task} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ ".code_my_spec/architecture/decisions.md"
     end
 
-    test "instructs to stop after completing the work", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+    test "instructs to stop after completing the work", %{scope: scope, task: task} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ "Stop"
     end
 
     test "omits architecture section when project has no components", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       refute prompt =~ "Architecture Overview"
     end
 
-    test "omits deps section when mix.exs is absent", %{scope: scope, session: session} do
-      assert {:ok, prompt} = TechnicalStrategy.command(scope, session)
+    test "omits deps section when mix.exs is absent", %{scope: scope, task: task} do
+      assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       refute prompt =~ "Current Dependencies"
     end
   end
@@ -264,35 +264,35 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   # ============================================================================
 
   describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when all pre-made decisions and index exist", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_all_premade_decisions(env)
       write_decisions_index(env)
 
       capture_log(fn ->
-        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, task)
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when pre-made decisions are missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_decisions_index(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
         assert feedback =~ "Pre-made decision"
       end)
     end
 
-    test "feedback names the missing pre-made topic", %{scope: scope, session: session} do
+    test "feedback names the missing pre-made topic", %{scope: scope, task: task} do
       env = scope.environment
       write_decisions_index(env)
 
@@ -301,58 +301,58 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       end
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
         assert feedback =~ "elixir"
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when decisions index is missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_all_premade_decisions(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
         assert feedback =~ "index"
       end)
     end
 
     test "feedback references the expected index path when index is missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_all_premade_decisions(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
         assert feedback =~ ".code_my_spec/architecture/decisions.md"
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when both index and pre-made decisions are missing",
-         %{scope: scope, session: session} do
+         %{scope: scope, task: task} do
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
         assert feedback =~ "index"
         assert feedback =~ "Pre-made decision"
       end)
     end
 
-    test "does NOT check for knowledge entries (handled by ResearchTopics)", %{scope: scope, session: session} do
+    test "does NOT check for knowledge entries (handled by ResearchTopics)", %{scope: scope, task: task} do
       env = scope.environment
       write_all_premade_decisions(env)
       write_existing_decision(env, "wallaby")
       write_decisions_index(env)
 
       capture_log(fn ->
-        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, task)
       end)
     end
 
-    test "does NOT check for research prompt files", %{scope: scope, session: session} do
+    test "does NOT check for research prompt files", %{scope: scope, task: task} do
       env = scope.environment
       write_all_premade_decisions(env)
       write_decisions_index(env)
@@ -364,7 +364,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       )
 
       capture_log(fn ->
-        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, session)
+        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, task)
       end)
     end
   end

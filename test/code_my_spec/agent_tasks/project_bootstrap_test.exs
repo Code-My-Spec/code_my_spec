@@ -19,10 +19,10 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
+  defp create_task(context) do
     %{scope: scope} = context
-    session = %{project: scope.active_project}
-    Map.put(context, :session, session)
+    task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -184,120 +184,120 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
-    setup [:create_scope, :create_session]
+  describe "command/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt string", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "returns ok tuple with non-empty prompt string", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes project name in prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "includes project name in prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ scope.active_project.name
     end
 
-    test "lists decided technologies from decisions index", %{scope: scope, session: session} do
+    test "lists decided technologies from decisions index", %{scope: scope, task: task} do
       env = scope.environment
       write_decisions_index(env, [{"stripe", "Use Stripe for payments"}, {"openai", "Use OpenAI for AI features"}])
       write_decision_adr(env, "stripe")
       write_decision_adr(env, "openai")
 
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "stripe"
       assert prompt =~ "openai"
     end
 
-    test "includes knowledge entries for researched topics", %{scope: scope, session: session} do
+    test "includes knowledge entries for researched topics", %{scope: scope, task: task} do
       env = scope.environment
       write_decisions_index(env, [{"stripe", "Use Stripe"}])
       write_decision_adr(env, "stripe")
       write_knowledge_entry(env, "stripe", "# Stripe Setup\n\nUse the Stripe gem...")
 
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "Stripe Setup"
     end
 
-    test "includes framework references for relevant standard topics", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "includes framework references for relevant standard topics", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ ".code_my_spec/framework"
     end
 
-    test "references client_utils for shared utilities", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "references client_utils for shared utilities", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "client_utils"
     end
 
-    test "includes Dotenvy setup instructions", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "includes Dotenvy setup instructions", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "Dotenvy"
     end
 
-    test "instructs to create .env.example with variable descriptions", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "instructs to create .env.example with variable descriptions", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ ".env.example"
     end
 
-    test "instructs to collect secrets from user", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "instructs to collect secrets from user", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ ~r/secret|credential|API key/i
     end
 
-    test "instructs to write Req-based API client modules", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "instructs to write Req-based API client modules", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "Req"
     end
 
-    test "instructs to use req_cassette for recording strategy", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "instructs to use req_cassette for recording strategy", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "req_cassette"
     end
 
-    test "instructs smoke tests to call real APIs and record cassettes", %{scope: scope, session: session} do
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+    test "instructs smoke tests to call real APIs and record cassettes", %{scope: scope, task: task} do
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "smoke"
     end
 
-    test "includes already-installed deps to avoid duplicating work", %{scope: scope, session: session} do
+    test "includes already-installed deps to avoid duplicating work", %{scope: scope, task: task} do
       env = scope.environment
       write_mix_exs(env)
 
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "req"
     end
 
-    test "notes existing cassettes to avoid re-recording", %{scope: scope, session: session} do
+    test "notes existing cassettes to avoid re-recording", %{scope: scope, task: task} do
       env = scope.environment
       write_cassette(env, "smoke_stripe_list_products")
 
-      assert {:ok, prompt} = ProjectBootstrap.command(scope, session)
+      assert {:ok, prompt} = ProjectBootstrap.command(scope, task)
       assert prompt =~ "smoke_stripe_list_products"
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns {:ok, :valid} when all checks pass", %{scope: scope, session: session} do
+    test "returns {:ok, :valid} when all checks pass", %{scope: scope, task: task} do
       env = scope.environment
       write_full_valid_bootstrap(env)
 
       capture_log(fn ->
-        assert {:ok, :valid} = ProjectBootstrap.evaluate(scope, session)
+        assert {:ok, :valid} = ProjectBootstrap.evaluate(scope, task)
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when .env.example is missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_runtime_exs_with_dotenvy(env)
@@ -305,14 +305,14 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
       write_smoke_test(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, task)
         assert feedback =~ ".env.example"
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when Dotenvy is not configured in runtime.exs", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_env_example(env)
@@ -321,14 +321,14 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
       write_smoke_test(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, task)
         assert feedback =~ "Dotenvy"
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when .env is not gitignored", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_env_example(env)
@@ -337,14 +337,14 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
       write_smoke_test(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, task)
         assert feedback =~ ".env"
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when smoke test file is missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_env_example(env)
@@ -352,14 +352,14 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
       write_gitignore_with_env(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, task)
         assert feedback =~ "smoke_test"
       end)
     end
 
     test "returns {:ok, :invalid, feedback} when project fails to compile", %{
       scope: scope,
-      session: session
+      task: task
     } do
       {:ok, tmp_dir} = Briefly.create(directory: true)
 
@@ -376,7 +376,7 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
       write_smoke_test(env)
 
       capture_log(fn ->
-        result = ProjectBootstrap.evaluate(scope_with_broken, session)
+        result = ProjectBootstrap.evaluate(scope_with_broken, task)
 
         case result do
           {:ok, :valid} ->
@@ -395,11 +395,11 @@ defmodule CodeMySpec.AgentTasks.ProjectBootstrapTest do
 
     test "reports multiple failures in a single feedback message", %{
       scope: scope,
-      session: session
+      task: task
     } do
       # Write nothing — all checks should fail
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, session)
+        assert {:ok, :invalid, feedback} = ProjectBootstrap.evaluate(scope, task)
         assert feedback =~ ".env.example"
         assert feedback =~ "Dotenvy"
         assert feedback =~ "smoke_test"

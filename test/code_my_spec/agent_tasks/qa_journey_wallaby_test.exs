@@ -18,9 +18,9 @@ defmodule CodeMySpec.AgentTasks.QaJourneyWallabyTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
-    session = %{project: context.scope.active_project}
-    Map.put(context, :session, session)
+  defp create_task(context) do
+    task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -44,24 +44,24 @@ defmodule CodeMySpec.AgentTasks.QaJourneyWallabyTest do
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2 Tests
   # ============================================================================
 
-  describe "command/3" do
-    setup [:create_scope, :create_session]
+  describe "command/2" do
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaJourneyWallaby.command(scope, session)
+    test "returns ok tuple with non-empty prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaJourneyWallaby.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes Wallaby test output directory", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaJourneyWallaby.command(scope, session)
+    test "includes Wallaby test output directory", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaJourneyWallaby.command(scope, task)
       assert prompt =~ "test/journeys/"
     end
 
-    test "includes journey plan content when it exists", %{scope: scope, session: session} do
+    test "includes journey plan content when it exists", %{scope: scope, task: task} do
       write_file!(scope.environment, ".code_my_spec/qa/journey_plan.md", """
       # Journey Plan
 
@@ -75,11 +75,11 @@ defmodule CodeMySpec.AgentTasks.QaJourneyWallabyTest do
       Run seeds.
       """)
 
-      assert {:ok, prompt} = QaJourneyWallaby.command(scope, session)
+      assert {:ok, prompt} = QaJourneyWallaby.command(scope, task)
       assert prompt =~ "Checkout Flow"
     end
 
-    test "includes journey result content when it exists", %{scope: scope, session: session} do
+    test "includes journey result content when it exists", %{scope: scope, task: task} do
       write_file!(scope.environment, ".code_my_spec/qa/journey_result.md", """
       # Journey Result
 
@@ -92,58 +92,58 @@ defmodule CodeMySpec.AgentTasks.QaJourneyWallabyTest do
       - **Result:** pass
       """)
 
-      assert {:ok, prompt} = QaJourneyWallaby.command(scope, session)
+      assert {:ok, prompt} = QaJourneyWallaby.command(scope, task)
       assert prompt =~ "Checkout Flow"
     end
 
-    test "notes existing tests when present", %{scope: scope, session: session} do
+    test "notes existing tests when present", %{scope: scope, task: task} do
       write_journey_test(scope.environment)
 
-      assert {:ok, prompt} = QaJourneyWallaby.command(scope, session)
+      assert {:ok, prompt} = QaJourneyWallaby.command(scope, task)
       assert prompt =~ "registration_test.exs"
     end
 
     test "handles missing journey plan and result gracefully", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, prompt} = QaJourneyWallaby.command(scope, session)
+      assert {:ok, prompt} = QaJourneyWallaby.command(scope, task)
       assert prompt =~ "No journey plan found"
       assert prompt =~ "No journey result found"
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2 Tests
   # ============================================================================
 
-  describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+  describe "evaluate/2" do
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when at least one journey test exists", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_journey_test(scope.environment)
 
-      assert {:ok, :valid} = QaJourneyWallaby.evaluate(scope, session)
+      assert {:ok, :valid} = QaJourneyWallaby.evaluate(scope, task)
     end
 
     test "returns {:ok, :valid} with multiple journey tests", %{
       scope: scope,
-      session: session
+      task: task
     } do
       write_journey_test(scope.environment, "registration")
       write_journey_test(scope.environment, "checkout")
 
-      assert {:ok, :valid} = QaJourneyWallaby.evaluate(scope, session)
+      assert {:ok, :valid} = QaJourneyWallaby.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when no tests exist", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, :invalid, feedback} = QaJourneyWallaby.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaJourneyWallaby.evaluate(scope, task)
       assert feedback =~ "No journey tests found"
       assert feedback =~ "test/journeys/"
     end

@@ -35,17 +35,17 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
     {live_context, [child1, child2]}
   end
 
-  defp create_session(scope, component) do
-    %{component: component, project: scope.active_project}
+  defp create_task(scope, component) do
+    %{component_id: component.id, project_id: scope.active_project.id, story_id: nil}
   end
 
   describe "command/3" do
     test "returns static development instructions with live context name" do
       scope = full_scope_fixture()
       {live_context, _children} = create_live_context_with_children(scope)
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, prompt} = DevelopLiveContext.command(scope, session)
+      assert {:ok, prompt} = DevelopLiveContext.command(scope, task)
       assert prompt =~ "Develop Live Context: DashboardLive"
       assert prompt =~ "Live Context Spec"
       assert prompt =~ "Child Specs"
@@ -71,9 +71,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
       end
 
       live_context = Components.get_component(scope, live_context.id)
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, :valid} = DevelopLiveContext.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopLiveContext.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when children have unsatisfied requirements" do
@@ -89,9 +89,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
       end
 
       live_context = Components.get_component(scope, live_context.id)
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, :invalid, feedback} = DevelopLiveContext.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = DevelopLiveContext.evaluate(scope, task)
       assert feedback =~ "Children still need work"
       assert feedback =~ "StatsView"
       assert feedback =~ "ChartComponent"
@@ -102,9 +102,9 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
       {live_context, _children} = create_live_context_with_children(scope)
 
       live_context = Components.get_component(scope, live_context.id)
-      session = create_session(scope, live_context)
+      task = create_task(scope, live_context)
 
-      assert {:ok, :valid} = DevelopLiveContext.evaluate(scope, session)
+      assert {:ok, :valid} = DevelopLiveContext.evaluate(scope, task)
     end
   end
 end

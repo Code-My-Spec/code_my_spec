@@ -18,9 +18,9 @@ defmodule CodeMySpec.AgentTasks.QaPreflightTest do
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
-  defp create_session(context) do
-    session = %{project: context.scope.active_project}
-    Map.put(context, :session, session)
+  defp create_task(context) do
+    task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
+    Map.put(context, :task, task)
   end
 
   defp write_file!(env, relative_path, content) do
@@ -111,44 +111,44 @@ defmodule CodeMySpec.AgentTasks.QaPreflightTest do
   # ============================================================================
 
   describe "command/3" do
-    setup [:create_scope, :create_session]
+    setup [:create_scope, :create_task]
 
-    test "returns ok tuple with non-empty prompt", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaPreflight.command(scope, session)
+    test "returns ok tuple with non-empty prompt", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaPreflight.command(scope, task)
       assert is_binary(prompt)
       assert String.length(prompt) > 0
     end
 
-    test "includes preflight header", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaPreflight.command(scope, session)
+    test "includes preflight header", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaPreflight.command(scope, task)
       assert prompt =~ "QA Preflight"
       assert prompt =~ "App-Level Integration Verification"
     end
 
-    test "includes integration specs when present", %{scope: scope, session: session} do
+    test "includes integration specs when present", %{scope: scope, task: task} do
       env = scope.environment
       write_integration_index(env)
       write_integration_spec(env, "twilio")
 
-      assert {:ok, prompt} = QaPreflight.command(scope, session)
+      assert {:ok, prompt} = QaPreflight.command(scope, task)
       assert prompt =~ "twilio"
     end
 
-    test "handles no integration specs", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaPreflight.command(scope, session)
+    test "handles no integration specs", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaPreflight.command(scope, task)
       assert prompt =~ "No integration specs found"
     end
 
-    test "references QA plan when it exists", %{scope: scope, session: session} do
+    test "references QA plan when it exists", %{scope: scope, task: task} do
       write_qa_plan(scope.environment)
 
-      assert {:ok, prompt} = QaPreflight.command(scope, session)
+      assert {:ok, prompt} = QaPreflight.command(scope, task)
       assert prompt =~ "QA Plan"
       assert prompt =~ "plan.md"
     end
 
-    test "includes verification instructions", %{scope: scope, session: session} do
-      assert {:ok, prompt} = QaPreflight.command(scope, session)
+    test "includes verification instructions", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaPreflight.command(scope, task)
       assert prompt =~ "Verify Each Integration"
       assert prompt =~ "preflight.md"
     end
@@ -159,60 +159,60 @@ defmodule CodeMySpec.AgentTasks.QaPreflightTest do
   # ============================================================================
 
   describe "evaluate/3" do
-    setup [:create_scope, :create_session]
+    setup [:create_scope, :create_task]
 
     test "returns {:ok, :valid} when report exists and integrations verified", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "verified")
       write_preflight_report(env)
 
-      assert {:ok, :valid} = QaPreflight.evaluate(scope, session)
+      assert {:ok, :valid} = QaPreflight.evaluate(scope, task)
     end
 
     test "returns {:ok, :valid} when no integrations and report exists", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_integration_index(env, "# Integrations\n\nNo integrations required.")
       write_preflight_report(env, "# Preflight\n\nNo integrations to verify.")
 
-      assert {:ok, :valid} = QaPreflight.evaluate(scope, session)
+      assert {:ok, :valid} = QaPreflight.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when report missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
-      assert {:ok, :invalid, feedback} = QaPreflight.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaPreflight.evaluate(scope, task)
       assert feedback =~ "Preflight report not found"
     end
 
     test "returns {:ok, :invalid, feedback} when integration not verified", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "configured")
       write_preflight_report(env)
 
-      assert {:ok, :invalid, feedback} = QaPreflight.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaPreflight.evaluate(scope, task)
       assert feedback =~ "not verified"
     end
 
     test "returns {:ok, :invalid, feedback} when index missing", %{
       scope: scope,
-      session: session
+      task: task
     } do
       env = scope.environment
       write_preflight_report(env)
 
-      assert {:ok, :invalid, feedback} = QaPreflight.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = QaPreflight.evaluate(scope, task)
       assert feedback =~ "Integration index missing"
     end
   end

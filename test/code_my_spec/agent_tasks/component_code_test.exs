@@ -42,15 +42,16 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
     Map.put(context, :component, component)
   end
 
-  defp create_session(context, _opts \\ []) do
-    %{project: project, component: component} = context
+  defp create_task(context, _opts \\ []) do
+    %{scope: scope, component: component} = context
 
-    session = %{
-      project: project,
-      component: component
+    task = %{
+      component_id: component.id,
+      project_id: scope.active_project.id,
+      story_id: nil
     }
 
-    Map.put(context, :session, session)
+    Map.put(context, :task, task)
   end
 
   # ============================================================================
@@ -58,10 +59,10 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
   # ============================================================================
 
   describe "evaluate/3" do
-    setup [:create_scope, :create_project, :create_component, :create_session]
+    setup [:create_scope, :create_project, :create_component, :create_task]
 
     test "returns invalid when implementation_file requirement is unsatisfied", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -73,12 +74,12 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
         details: %{reason: "File missing", path: "lib/test_app/test_module.ex"}
       })
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
       assert feedback =~ "requirements not met"
     end
 
     test "returns invalid when tests_passing requirement is unsatisfied", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -97,12 +98,12 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
         details: %{reason: "Test failures found", problem_count: 2}
       })
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
       assert feedback =~ "requirements not met"
     end
 
     test "returns valid when all :code requirements are satisfied", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -120,11 +121,11 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
         satisfied: true
       })
 
-      assert {:ok, :valid} = ComponentCode.evaluate(scope, session)
+      assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
 
     test "ignores non-code artifact type requirements", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component
     } do
@@ -151,11 +152,11 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
         satisfied: false
       })
 
-      assert {:ok, :valid} = ComponentCode.evaluate(scope, session)
+      assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
 
     test "returns invalid when problems exist on code file even if requirements pass", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -175,12 +176,12 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
       assert feedback =~ "@moduledoc"
     end
 
     test "returns invalid when problems exist on test file even if requirements pass", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -200,12 +201,12 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
       assert feedback =~ "test failed"
     end
 
     test "combines requirement and problem feedback when both fail", %{
-      session: session,
+      task: task,
       scope: scope,
       component: component,
       project: project
@@ -232,7 +233,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
           }
         ])
 
-      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, session)
+      assert {:ok, :invalid, feedback} = ComponentCode.evaluate(scope, task)
       assert feedback =~ "requirements not met"
       assert feedback =~ "undefined function"
     end
