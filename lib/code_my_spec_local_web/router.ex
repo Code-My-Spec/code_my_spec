@@ -127,7 +127,6 @@ defmodule CodeMySpecLocalWeb.Router do
   scope "/api/projects/:project_name", CodeMySpecLocalWeb do
     pipe_through :project
 
-    post "/sync", SyncController, :create
     get "/requirements", RequirementsController, :index
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt

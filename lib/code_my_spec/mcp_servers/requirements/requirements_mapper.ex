@@ -49,6 +49,13 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     hybrid_response(String.trim(summary), data)
   end
 
+  def sync_required_response do
+    Response.tool()
+    |> Response.text(
+      "# Project Needs Sync\n\nThe project is linked but has no requirements yet.\n\nCall `sync_project` to sync components and requirements, then `get_next_requirement` again."
+    )
+  end
+
   def all_satisfied_response do
     Response.tool()
     |> Response.text("# All requirements satisfied\n\nNo actionable requirements remain.")

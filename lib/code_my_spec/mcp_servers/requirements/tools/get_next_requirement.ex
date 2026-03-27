@@ -27,7 +27,14 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
       {:ok, scope} ->
         case Requirements.next_actionable_project(scope) do
           [] ->
-            {:reply, RequirementsMapper.all_satisfied_response(), frame}
+            # Distinguish "all done" from "nothing synced yet"
+            %{nodes: all} = Requirements.project_graph(scope)
+
+            if all == [] do
+              {:reply, RequirementsMapper.sync_required_response(), frame}
+            else
+              {:reply, RequirementsMapper.all_satisfied_response(), frame}
+            end
 
           [req | _] ->
             req = Repo.preload(req, [:component, :story, :project])
