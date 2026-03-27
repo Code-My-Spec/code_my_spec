@@ -20,8 +20,8 @@ defmodule CodeMySpec.AgentTasks.Init.CliConfig do
     {:ok, """
     # Link Project
 
-    Use the `init_project` tool to link this directory to a CodeMySpec project.
-    Pass the `project_id` for the project you want to link.
+    1. Use the `list_projects` tool to see available projects
+    2. Use `init_project` with the project_id to link this directory
 
     Then add to `.gitignore`:
     ```

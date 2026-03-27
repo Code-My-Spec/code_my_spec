@@ -78,14 +78,6 @@ defmodule CodeMySpecLocalWeb.Router do
     plug CodeMySpecLocalWeb.Plugs.WorkingDir
   end
 
-  scope "/api/init", CodeMySpecLocalWeb do
-    pipe_through :api
-
-    get "/", InitController, :index
-    get "/:step", InitController, :show
-    get "/:step/prompt", InitController, :prompt
-  end
-
   # Hook endpoints — resolve scope from X-Working-Dir header
   pipeline :hook do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly

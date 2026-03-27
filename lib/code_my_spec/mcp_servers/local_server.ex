@@ -13,9 +13,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   # Scope resolved from x-working-dir header via merge_transport_assigns.
 
-  # Bootstrap — init, setup, resource installation
-  component(CodeMySpec.McpServers.Bootstrap.Tools.GetInitStatus)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.GetSetupStatus)
+  # Bootstrap — project linking, resource installation
+  component(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InitProject)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAppResources)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd)
