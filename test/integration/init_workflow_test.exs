@@ -29,7 +29,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
 
     {:reply, init_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
     refute init_resp.isError
-    assert init_resp.structured_content.status == :init_required
+    assert is_nil(init_resp.structured_content)
     init_text = response_text(init_resp)
     assert init_text =~ "Initialization"
 
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
 
     # Step 3: call get_next_requirement again — still init (no project in DB)
     {:reply, still_init_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
-    assert still_init_resp.structured_content.status == :init_required
+    assert is_nil(still_init_resp.structured_content)
 
     # Step 4: create project in DB with local_path (simulates init_project MCP tool)
     scope = full_scope_fixture()

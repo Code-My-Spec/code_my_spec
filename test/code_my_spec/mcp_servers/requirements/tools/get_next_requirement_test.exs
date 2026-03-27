@@ -76,7 +76,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
 
       assert {:reply, response, ^frame} = GetNextRequirement.execute(%{}, frame)
       refute response.isError
-      assert response.structured_content.status == :init_required
+      assert is_nil(response.structured_content)
       assert response_text(response) =~ "Initialization"
       assert response_text(response) =~ "get_next_requirement"
     end
