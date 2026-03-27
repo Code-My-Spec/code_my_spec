@@ -22,7 +22,7 @@ defmodule CodeMySpecLocalWeb.Router do
 
       live "/projects/:project_name", HomeLive
       live "/projects/:project_name/sync", SyncLive
-      live "/projects/:project_name/next-task", NextTaskLive
+      live "/projects/:project_name/next-task", Tasks.NextTaskLive
       live "/projects/:project_name/requirements", RequirementsLive, :index
       live "/projects/:project_name/requirements/:name", RequirementsLive, :show
       live "/projects/:project_name/requirements/:name/:child_id", RequirementsLive, :child

@@ -1,9 +1,9 @@
-defmodule CodeMySpecLocalWeb.NextTaskLive do
+defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   @moduledoc """
   Human interface for the next actionable task.
 
   Preview only — shows what the next task would be without drafting
-  it onto a session. The API endpoint handles task creation.
+  it onto a session. Agents use the DraftTask MCP tool instead.
   """
   use CodeMySpecLocalWeb, :live_view
 
