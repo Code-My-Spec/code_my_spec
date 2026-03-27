@@ -17,8 +17,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.DraftTask do
 
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
 
   schema do
@@ -31,8 +31,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.DraftTask do
   def execute(%{session_id: session_id}, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, session} <- resolve_session(scope, session_id) do
-      result = ProjectCoordinator.get_next_actions(scope)
-      handle_result(scope, session, result, frame)
+      case Requirements.next_actionable_project(scope) do
+        [] -> {:reply, TasksMapper.all_complete_response(), frame}
+        [req | _] -> handle_result(scope, session, req, frame)
+      end
     else
       {:error, reason} ->
         {:reply, TasksMapper.error(reason), frame}
@@ -55,15 +57,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.DraftTask do
     Ecto.Query.CastError -> Sessions.get_by_external_id(scope, session_id)
   end
 
-  defp handle_result(_scope, _session, :complete, frame) do
-    {:reply, TasksMapper.all_complete_response(), frame}
-  end
-
-  defp handle_result(_scope, _session, {:error, reason}, frame) do
-    {:reply, TasksMapper.error(reason), frame}
-  end
-
-  defp handle_result(scope, session, {:ok, requirement}, frame) do
+  defp handle_result(scope, session, requirement, frame) do
     requirement = Repo.preload(requirement, [:component, :story])
 
     task_attrs = %{

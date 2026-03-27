@@ -16,9 +16,11 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   require Logger
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Environments
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.ProjectCoordinator.ImplementationStatus
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -385,8 +387,8 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
 
     # collect_components returns component + all descendants; find_actionable
     # filters to only components with unsatisfied requirements (completed children skipped)
-    components = ProjectCoordinator.collect_components(scope, component)
-    actionable = ProjectCoordinator.find_actionable(scope, components)
+    components = collect_components(scope, component)
+    actionable = find_actionable(scope, components)
 
     if Enum.empty?(actionable) do
       # Surface component blocked — find first unsatisfied dependency context
@@ -477,8 +479,8 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   # Evaluate children with dependency context fallback.
   # First tries the surface component's own tree, then falls back to dependency contexts.
   defp orchestrate_evaluate_with_deps(scope, component, status_dir, working_dir) do
-    components = ProjectCoordinator.collect_components(scope, component)
-    actionable = ProjectCoordinator.find_actionable(scope, components)
+    components = collect_components(scope, component)
+    actionable = find_actionable(scope, components)
 
     if Enum.empty?(actionable) do
       # Surface has no actionable work — check dependency contexts
@@ -574,8 +576,8 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
       |> Enum.filter(&(&1.type in @container_types))
 
     Enum.find_value(dep_contexts, :complete, fn dep_context ->
-      components = ProjectCoordinator.collect_components(scope, dep_context)
-      actionable = ProjectCoordinator.find_actionable(scope, components)
+      components = collect_components(scope, dep_context)
+      actionable = find_actionable(scope, components)
 
       if Enum.empty?(actionable), do: nil, else: {:ok, dep_context, actionable}
     end)
@@ -653,4 +655,27 @@ defmodule CodeMySpec.ProjectCoordinator.Dispatch do
   defp orchestrate_label(%{component_module_name: name}) when is_binary(name), do: name
   defp orchestrate_label(%{story_id: sid}) when not is_nil(sid), do: "Story #{sid}"
   defp orchestrate_label(_task), do: "Task"
+
+  # ----------------------------------------------------------------
+  # Component collection & actionable discovery
+  # ----------------------------------------------------------------
+
+  defp collect_components(scope, component) do
+    if component.type in @container_types do
+      children = ComponentRepository.list_all_descendants(scope, component.id)
+      [component | children]
+    else
+      [component]
+    end
+  end
+
+  defp find_actionable(scope, components) do
+    Enum.flat_map(components, fn component ->
+      scope
+      |> Requirements.next_actionable(component)
+      |> Enum.map(fn {task_module, definitions} ->
+        %{component: component, task_module: task_module, definitions: definitions}
+      end)
+    end)
+  end
 end

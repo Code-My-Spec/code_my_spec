@@ -8,7 +8,7 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Projects
-  alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
 
   @impl true
@@ -20,7 +20,7 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   def handle_params(%{"project_name" => name}, _uri, socket) do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
-      result = ProjectCoordinator.get_next_actions(scope)
+      result = Requirements.next_actionable_project(scope)
       {:noreply, assign(socket, project: project, result: result, error: nil)}
     else
       {:error, reason} ->
@@ -45,7 +45,7 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
     """
   end
 
-  defp render_result(%{result: {:ok, requirement}} = assigns) do
+  defp render_result(%{result: [requirement | _]} = assigns) do
     assigns = assign(assigns, :requirement, requirement)
 
     ~H"""
@@ -63,7 +63,7 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
     """
   end
 
-  defp render_result(%{result: :complete} = assigns) do
+  defp render_result(%{result: []} = assigns) do
     ~H"""
     <div class="prose prose-invert max-w-none">
       <h1>All requirements satisfied</h1>
@@ -72,14 +72,7 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
     """
   end
 
-  defp render_result(%{result: {:error, reason}} = assigns) do
-    assigns = assign(assigns, :reason, reason)
-
-    ~H"""
-    <div class="prose prose-invert max-w-none">
-      <h1>No actionable task</h1>
-      <p>{@reason}</p>
-    </div>
-    """
+  defp render_result(assigns) do
+    ~H""
   end
 end

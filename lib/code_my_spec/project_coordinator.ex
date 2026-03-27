@@ -1,10 +1,9 @@
 defmodule CodeMySpec.ProjectCoordinator do
   @moduledoc """
-  Central coordinator for project requirements, dependency chains, and orchestration.
+  Central coordinator for project requirements and orchestration.
 
   Provides:
-  - Requirement sync and next-actionable traversal
-  - Dependency-chain traversal (build chain, find next ready)
+  - Requirement sync via ComponentAnalyzer
   - Component collection and actionable-work discovery
   - Prompt/problem file generation and orchestration for task modules
   """
@@ -13,14 +12,8 @@ defmodule CodeMySpec.ProjectCoordinator do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.Components.DependencyTree
   alias CodeMySpec.Environments
   alias CodeMySpec.ProjectCoordinator.ComponentAnalyzer
-  alias CodeMySpec.ProjectCoordinator.NextActionable
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Tests.TestRun
   alias CodeMySpec.Users.Scope
 
@@ -28,7 +21,6 @@ defmodule CodeMySpec.ProjectCoordinator do
   @type file_list :: [String.t()]
 
   @tasks_dir CodeMySpec.Paths.tasks_dir()
-  @container_types ["context", "coordination_context", "live_context"]
 
   @spec sync_project_requirements(Scope.t(), file_list(), TestRun.t(), keyword()) ::
           component_list()
@@ -46,146 +38,6 @@ defmodule CodeMySpec.ProjectCoordinator do
       failures,
       Keyword.put(opts, :scope, scope)
     )
-  end
-
-  @doc """
-  Find the next actionable requirement for the project.
-
-  Recursively descends: project → stories → components → dependencies.
-  Returns `{:ok, %Requirement{}}` with a `satisfied_by` task module, `:complete`,
-  or `{:error, reason}` if a requirement is stuck with no actionable descent.
-  """
-  @spec get_next_actions(Scope.t()) :: {:ok, Requirement.t()} | :complete | {:error, String.t()}
-  def get_next_actions(%Scope{} = scope) do
-    project = scope.active_project |> Repo.preload(:requirements)
-    NextActionable.call(scope, project)
-  end
-
-  # ============================================================================
-  # Dependency Chain Traversal
-  # ============================================================================
-
-  @doc """
-  Build the dependency chain for a component, ordered bottom-up (leaves first).
-
-  Collects transitive dependencies, filters to chain members, topologically sorts
-  via `DependencyTree.build/1`.
-  """
-  @spec build_dependency_chain(Component.t(), [Component.t()]) :: [Component.t()]
-  def build_dependency_chain(target, all_components) do
-    component_map = Map.new(all_components, &{&1.id, &1})
-
-    chain_ids =
-      target
-      |> collect_transitive_deps(component_map, MapSet.new())
-      |> MapSet.put(target.id)
-
-    all_components
-    |> Enum.filter(&MapSet.member?(chain_ids, &1.id))
-    |> DependencyTree.build()
-  end
-
-  @doc """
-  Find the next component ready for work in the dependency chain.
-
-  Walks bottom-up: returns the first component that has unsatisfied requirements
-  AND whose own dependencies are satisfied.
-  """
-  @spec find_next_in_chain(Component.t(), [Component.t()]) ::
-          {:ready, Component.t()} | {:blocked, [Component.t()]} | :complete
-  def find_next_in_chain(target, all_components) do
-    chain = build_dependency_chain(target, all_components)
-
-    ready =
-      Enum.find(chain, fn c ->
-        has_unsatisfied_requirements?(c) and dependencies_satisfied?(c)
-      end)
-
-    cond do
-      ready != nil -> {:ready, ready}
-      Enum.any?(chain, &has_unsatisfied_requirements?/1) -> {:blocked, chain}
-      true -> :complete
-    end
-  end
-
-  # ============================================================================
-  # Component Collection & Actionable Discovery
-  # ============================================================================
-
-  @doc """
-  Collect a component and its descendants for container types.
-  Non-container types return just the component itself.
-  """
-  @spec collect_components(any(), map()) :: [map()]
-  def collect_components(scope, component) do
-    if component.type in @container_types do
-      children = ComponentRepository.list_all_descendants(scope, component.id)
-      Logger.info("[ProjectCoordinator] #{component.module_name}: collected #{length(children)} descendants")
-      [component | children]
-    else
-      Logger.info("[ProjectCoordinator] #{component.module_name}: leaf component (#{component.type})")
-      [component]
-    end
-  end
-
-  @doc """
-  Find all actionable {component, task_module, definitions} tuples across components.
-
-  Uses `Requirements.next_actionable/2` to find unsatisfied requirements with met
-  prerequisites. Components with all requirements satisfied are skipped.
-  """
-  @spec find_actionable(any(), [map()]) :: [
-          %{component: map(), task_module: module(), definitions: [map()]}
-        ]
-  def find_actionable(scope, components) do
-    actionable =
-      Enum.flat_map(components, fn component ->
-        scope
-        |> Requirements.next_actionable(component)
-        |> Enum.map(fn {task_module, definitions} ->
-          %{component: component, task_module: task_module, definitions: definitions}
-        end)
-      end)
-
-    if actionable == [] do
-      Logger.info("[ProjectCoordinator] No actionable work found across #{length(components)} components")
-    else
-      summary =
-        Enum.map_join(actionable, ", ", fn %{component: c, task_module: tm} ->
-          "#{c.module_name}→#{task_module_suffix(tm)}"
-        end)
-
-      Logger.info("[ProjectCoordinator] Actionable: #{summary}")
-    end
-
-    actionable
-  end
-
-  @doc """
-  Find remaining unsatisfied requirements across components (including meta requirements).
-  Used to check if all work is truly done.
-  """
-  @spec find_remaining(any(), [map()]) :: [%{component: map(), name: String.t()}]
-  def find_remaining(_scope, components) do
-    remaining =
-      Enum.flat_map(components, fn component ->
-        (component.requirements || [])
-        |> Enum.reject(& &1.satisfied)
-        |> Enum.map(fn req -> %{component: component, name: req.name} end)
-      end)
-
-    if remaining == [] do
-      Logger.info("[ProjectCoordinator] All requirements satisfied across #{length(components)} components")
-    else
-      summary =
-        Enum.map_join(remaining, ", ", fn %{component: c, name: n} ->
-          "#{c.module_name}:#{n}"
-        end)
-
-      Logger.info("[ProjectCoordinator] Remaining (#{length(remaining)}): #{summary}")
-    end
-
-    remaining
   end
 
   # ============================================================================
@@ -515,46 +367,6 @@ defmodule CodeMySpec.ProjectCoordinator do
   # ============================================================================
   # Private Helpers
   # ============================================================================
-
-  defp has_unsatisfied_requirements?(%Component{requirements: requirements})
-       when is_list(requirements) do
-    Enum.any?(requirements, fn req -> not req.satisfied end)
-  end
-
-  defp has_unsatisfied_requirements?(_), do: false
-
-  defp dependencies_satisfied?(component) do
-    dep_req =
-      (component.requirements || [])
-      |> Enum.find(fn r -> r.name == "dependencies_satisfied" end)
-
-    is_nil(dep_req) or dep_req.satisfied
-  end
-
-  defp collect_transitive_deps(component, component_map, visited) do
-    deps =
-      case component.dependencies do
-        %Ecto.Association.NotLoaded{} -> []
-        deps -> deps
-      end
-
-    Enum.reduce(deps, visited, fn dep, acc ->
-      collect_dep(dep, component_map, acc)
-    end)
-  end
-
-  defp collect_dep(dep, component_map, visited) do
-    if MapSet.member?(visited, dep.id) do
-      visited
-    else
-      visited = MapSet.put(visited, dep.id)
-
-      case Map.get(component_map, dep.id) do
-        nil -> visited
-        dep_component -> collect_transitive_deps(dep_component, component_map, visited)
-      end
-    end
-  end
 
   defp resolve_dir(status_dir, nil), do: status_dir
   defp resolve_dir(status_dir, working_dir), do: Path.join(working_dir, status_dir)

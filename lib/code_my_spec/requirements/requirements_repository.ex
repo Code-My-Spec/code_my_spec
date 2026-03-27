@@ -8,6 +8,7 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -278,8 +279,15 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
   end
 
   @doc """
-  Returns next actionable requirements across all entity levels in a project.
+  Returns next actionable requirements across all entity levels in a project,
+  sorted by priority.
+
   A requirement is actionable when: not satisfied, has satisfied_by, all depends_on are satisfied.
+
+  Sort order:
+  - Project-level requirements first (by definition order)
+  - Story-level requirements by story priority (lower = higher priority, nulls last)
+  - Component-level requirements by owning story priority, then definition order
   """
   @spec next_actionable_project(Scope.t()) :: [Requirement.t()]
   def next_actionable_project(%Scope{} = scope) do
@@ -297,6 +305,7 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
         r.satisfied_by != nil and
         all_deps_satisfied?(r.depends_on || [], satisfaction_map)
     end)
+    |> sort_by_priority(scope)
   end
 
   defp all_deps_satisfied?([], _map), do: true
@@ -319,6 +328,95 @@ defmodule CodeMySpec.Requirements.RequirementsRepository do
   defp entity_id(%Requirement{component_id: id}) when not is_nil(id), do: id
   defp entity_id(%Requirement{story_id: id}) when not is_nil(id), do: id
   defp entity_id(%Requirement{project_id: id}) when not is_nil(id), do: id
+
+  # --- Private: priority sorting ---
+
+  defp sort_by_priority(actionable_reqs, %Scope{active_project_id: project_id}) do
+    # Load story priorities: surface_component_id -> story priority
+    story_priorities =
+      Story
+      |> where([s], s.project_id == ^project_id)
+      |> where([s], not is_nil(s.component_id))
+      |> select([s], {s.component_id, s.priority})
+      |> Repo.all()
+      |> Map.new()
+
+    # Build component_id -> story priority by walking parent chains to root
+    component_story_map = build_component_story_map(project_id, story_priorities)
+
+    Enum.sort_by(actionable_reqs, fn req ->
+      cond do
+        not is_nil(req.project_id) ->
+          {0, 0, definition_order(req)}
+
+        not is_nil(req.story_id) ->
+          priority = story_priority_for(req.story_id, project_id)
+          {1, priority, definition_order(req)}
+
+        not is_nil(req.component_id) ->
+          priority = Map.get(component_story_map, req.component_id, 999)
+          {1, priority, definition_order(req)}
+      end
+    end)
+  end
+
+  defp story_priority_for(story_id, project_id) do
+    Story
+    |> where([s], s.id == ^story_id and s.project_id == ^project_id)
+    |> select([s], s.priority)
+    |> Repo.one()
+    |> case do
+      nil -> 999
+      priority -> priority || 999
+    end
+  end
+
+  defp build_component_story_map(project_id, story_priorities) do
+    # Load all components with parent pointers
+    components =
+      Component
+      |> where([c], c.project_id == ^project_id)
+      |> select([c], {c.id, c.parent_component_id})
+      |> Repo.all()
+
+    parent_map = Map.new(components, fn {id, parent_id} -> {id, parent_id} end)
+
+    # For each component, walk to root and look up story priority
+    components
+    |> Enum.map(fn {id, _} ->
+      root_id = find_root_id(id, parent_map)
+      priority = Map.get(story_priorities, root_id, 999)
+      {id, priority}
+    end)
+    |> Map.new()
+  end
+
+  defp find_root_id(id, parent_map) do
+    case Map.get(parent_map, id) do
+      nil -> id
+      parent_id -> find_root_id(parent_id, parent_map)
+    end
+  end
+
+  defp definition_order(req) do
+    definitions =
+      cond do
+        not is_nil(req.project_id) -> RequirementsRegistry.get_project_requirements()
+        not is_nil(req.story_id) -> RequirementsRegistry.get_story_requirements()
+        not is_nil(req.component_id) -> definition_order_for_component(req)
+        true -> []
+      end
+
+    Enum.find_index(definitions, &(&1.name == req.name)) || 999
+  end
+
+  defp definition_order_for_component(req) do
+    # Load component type to look up registry definitions
+    case Repo.get(Component, req.component_id) do
+      nil -> []
+      component -> RequirementsRegistry.get_requirements_for_type(component.type)
+    end
+  end
 
   # --- Private: persistence ---
 

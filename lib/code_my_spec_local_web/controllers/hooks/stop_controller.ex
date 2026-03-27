@@ -10,7 +10,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   require Logger
 
   alias CodeMySpec.Notifications.NotificationClient
-  alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
@@ -61,8 +61,8 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
         %{}
 
       true ->
-        case ProjectCoordinator.get_next_actions(scope) do
-          {:ok, _requirement} ->
+        case Requirements.next_actionable_project(scope) do
+          [_ | _] ->
             Logger.info("[StopHook] [#{req_id}] More work available, blocking stop")
 
             %{
@@ -74,7 +74,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
               """
             }
 
-          _ ->
+          [] ->
             Logger.info("[StopHook] [#{req_id}] No more work, allowing stop")
             notify_complete()
             %{}

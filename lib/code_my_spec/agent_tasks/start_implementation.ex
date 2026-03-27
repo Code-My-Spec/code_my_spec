@@ -1,13 +1,13 @@
 defmodule CodeMySpec.AgentTasks.StartImplementation do
   @moduledoc """
-  Graph-driven orchestrator that uses NextActionable + Dispatch to find and
-  execute the next actionable requirement for a project.
+  Graph-driven orchestrator that queries the requirements graph and uses
+  Dispatch to execute the next actionable requirement for a project.
 
   ## Flow
 
   ### command/3
   1. Sync framework files
-  2. `get_next_actions` → walks project → stories → components → dependencies
+  2. `Requirements.next_actionable_project` → queries graph for unsatisfied requirements with all deps met
   3. `Dispatch.command` → generates prompt (handles :local, :orchestrate, :children scope)
   4. Return prompt (Dispatch records task entries with prompt_path for matching)
 
@@ -23,9 +23,9 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   require Logger
 
   alias CodeMySpec.FrameworkSync
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.ProjectCoordinator.{Dispatch, ImplementationStatus}
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Requirement
 
   # ============================================================================
@@ -57,32 +57,21 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   # ============================================================================
 
   defp dispatch(env, scope) do
-    case ProjectCoordinator.get_next_actions(scope) do
-      {:ok, %Requirement{} = req} ->
+    case Requirements.next_actionable_project(scope) do
+      [%Requirement{} = req | _] ->
         Logger.info("[StartImplementation] Dispatching: #{req.name} (scope: #{req.scope})")
+        Dispatch.command(req, scope, %{})
 
-        case Dispatch.command(req, scope, %{}) do
-          {:ok, prompt} ->
-            {:ok, prompt}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-
-      :complete ->
+      [] ->
         Logger.info("[StartImplementation] All requirements complete")
         ImplementationStatus.clear(env)
         {:ok, "All requirements are satisfied. No further action needed."}
-
-      {:error, reason} ->
-        Logger.warning("[StartImplementation] Graph error: #{reason}")
-        {:error, reason}
     end
   end
 
   defp dispatch_or_complete(env, scope) do
-    case ProjectCoordinator.get_next_actions(scope) do
-      {:ok, %Requirement{} = req} ->
+    case Requirements.next_actionable_project(scope) do
+      [%Requirement{} = req | _] ->
         Logger.info("[StartImplementation] Next: #{req.name} (scope: #{req.scope})")
 
         case Dispatch.command(req, scope, %{}) do
@@ -93,13 +82,10 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
             {:error, reason}
         end
 
-      :complete ->
+      [] ->
         Logger.info("[StartImplementation] All requirements complete")
         ImplementationStatus.clear(env)
         {:ok, :valid}
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 

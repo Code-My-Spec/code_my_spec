@@ -2,14 +2,11 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.DependencyFixtures
   import CodeMySpec.RequirementsFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.ProjectCoordinator
-  alias CodeMySpec.ProjectCoordinator.NextActionable
-  alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsRepository
 
   setup do
@@ -18,466 +15,228 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
   end
 
   # ============================================================================
-  # Project-level requirements
+  # Graph-based next actionable
   # ============================================================================
 
-  describe "project-level traversal" do
-    test "returns first unsatisfied project requirement", %{scope: scope} do
+  describe "Requirements.next_actionable_project/1" do
+    test "returns unsatisfied requirement with no deps", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, false,
         satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy
       )
 
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
+      [req] = Requirements.next_actionable_project(scope)
       assert req.name == "technical_strategy"
       assert req.satisfied_by == CodeMySpec.AgentTasks.TechnicalStrategy
-      assert req.project_id == project.id
     end
 
-    test "skips satisfied requirements and returns next unsatisfied", %{
-      scope: scope
-    } do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
+    test "skips satisfied requirements", %{scope: scope} do
+      create_project_requirement(scope, "technical_strategy", :specification, true,
+        satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy
+      )
+
       create_project_requirement(scope, "architecture_designed", :specification, false,
         satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign
       )
 
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "architecture_designed"
-      assert req.satisfied_by == CodeMySpec.AgentTasks.ArchitectureDesign
+      reqs = Requirements.next_actionable_project(scope)
+      assert length(reqs) == 1
+      assert hd(reqs).name == "architecture_designed"
     end
 
-    test "all_stories_complete with no stories returns error", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
+    test "skips requirements without satisfied_by", %{scope: scope} do
+      create_project_requirement(scope, "all_stories_complete", :dependencies, false)
 
-      # all_stories_complete has scope: :dependencies → descends into stories,
-      # finds none → error (unsatisfied but nothing to descend into)
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:error, msg} = NextActionable.call(scope, project)
-      assert msg =~ "all_stories_complete"
-      assert msg =~ "dependencies"
-    end
-  end
-
-  # ============================================================================
-  # Project → Story descent
-  # ============================================================================
-
-  describe "project → story descent" do
-    test "descends into story when all_stories_complete is stuck", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      # Create a story with its first requirement unsatisfied
-      story = story_fixture(scope)
-      create_story_requirement(scope, story, "component_linked", :dependencies, false,
-        satisfied_by: CodeMySpec.AgentTasks.LinkStoryComponent
-      )
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "component_linked"
-      assert req.satisfied_by == CodeMySpec.AgentTasks.LinkStoryComponent
+      assert [] == Requirements.next_actionable_project(scope)
     end
 
-    test "skips completed stories and finds first incomplete", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      # First story: fully satisfied
-      story1 = story_fixture(scope, %{priority: 1})
-      satisfy_all_story_requirements(scope, story1)
-
-      # Second story: needs work
-      story2 = story_fixture(scope, %{priority: 2})
-      create_story_requirement(scope, story2, "component_linked", :dependencies, false,
-        satisfied_by: CodeMySpec.AgentTasks.LinkStoryComponent
-      )
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "component_linked"
-    end
-
-    test "all stories complete returns all_bdd_specs_passing", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, true)
-      create_project_requirement(scope, "all_bdd_specs_passing", :tests, false,
-        satisfied_by: CodeMySpec.AgentTasks.FixAllBddSpecs,
-        scope: :orchestrate
-      )
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "all_bdd_specs_passing"
-      assert req.satisfied_by == CodeMySpec.AgentTasks.FixAllBddSpecs
-    end
-
-    test "everything satisfied returns :complete", %{scope: scope} do
-      for {name, artifact_type} <- [
-            {"technical_strategy", :specification},
-            {"architecture_designed", :specification},
-            {"issues_triaged", :review},
-            {"issues_resolved", :review},
-            {"all_stories_complete", :dependencies},
-            {"project_qa", :review}
-          ] do
-        create_project_requirement(scope, name, artifact_type, true)
-      end
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert :complete = NextActionable.call(scope, project)
-    end
-  end
-
-  # ============================================================================
-  # Story → Component descent
-  # ============================================================================
-
-  describe "story → component descent" do
-    test "story with component_complete stuck resolves via :children scope", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      # Create a context component with a child, and link story to it
-      context = component_fixture(scope, %{name: "Blog", module_name: "Blog", type: "context"})
-
-      _child =
-        component_fixture(scope, %{
-          name: "Post",
-          module_name: "Blog.Post",
-          type: "schema",
-          parent_component_id: context.id
-        })
-
-      story = story_fixture(scope, %{component_id: context.id})
-
-      # Satisfy story requirements up to component_complete
-      create_story_requirement(scope, story, "component_linked", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_exist", :tests, true)
-      create_story_requirement(scope, story, "component_complete", :dependencies, false,
-        scope: :children,
-        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent
-      )
-
-      project = scope.active_project |> Repo.preload(:requirements)
-
-      # component_complete has scope: :children → descends into story's linked component tree.
-      # Child component has no requirements synced → find_actionable finds work →
-      # returns the parent component_complete requirement for Dispatch to orchestrate
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "component_complete"
-      assert req.scope == :children
-    end
-
-    test "story with component_complete satisfied returns bdd_specs_passing", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      component = component_fixture(scope, %{name: "MyWidget", module_name: "MyWidget"})
-      story = story_fixture(scope, %{component_id: component.id})
-
-      create_story_requirement(scope, story, "component_linked", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_exist", :tests, true)
-      create_story_requirement(scope, story, "component_complete", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_passing", :tests, false)
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      # bdd_specs_passing has scope: :local → returned immediately
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "bdd_specs_passing"
-    end
-  end
-
-  # ============================================================================
-  # Component → Dependency descent
-  # ============================================================================
-
-  describe "component_complete with :children scope" do
-    test "story component_complete returns the parent requirement when actionable work exists", %{
-      scope: scope
-    } do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      # Create a context with a child that has actionable work
-      context = component_fixture(scope, %{name: "Blog", module_name: "Blog", type: "context"})
-
-      child =
-        component_fixture(scope, %{
-          name: "Post",
-          module_name: "Blog.Post",
-          type: "schema",
-          parent_component_id: context.id
-        })
-
-      story = story_fixture(scope, %{component_id: context.id})
-      create_story_requirement(scope, story, "component_linked", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_exist", :tests, true)
-      create_story_requirement(scope, story, "component_complete", :dependencies, false,
-        scope: :children,
-        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent
-      )
-
-      # Child has unsatisfied spec_file → actionable work exists
-      requirement_fixture(scope, child, %{
-        name: "spec_file",
-        artifact_type: :specification,
-        satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec
-      })
-
-      project = scope.active_project |> Repo.preload(:requirements)
-
-      # component_complete has scope: :children → descend_children finds actionable work →
-      # returns the PARENT requirement (Dispatch will handle orchestration)
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "component_complete"
-      assert req.scope == :children
-    end
-  end
-
-  # ============================================================================
-  # Scope-based dispatch
-  # ============================================================================
-
-  describe "scope-based dispatch" do
-    test ":local scope with satisfied_by: nil returns requirement (not :complete)", %{
-      scope: scope
-    } do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      component = component_fixture(scope, %{name: "TestComp", module_name: "TestComp"})
-      story = story_fixture(scope, %{component_id: component.id})
-
-      create_story_requirement(scope, story, "component_linked", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_exist", :tests, true)
-      create_story_requirement(scope, story, "component_complete", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_passing", :tests, false)
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "bdd_specs_passing"
-      assert req.scope == :local
-    end
-
-    test ":children scope on component-level descends into child components", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      # Create a context (parent) with a child component
-      context = component_fixture(scope, %{name: "Blog", module_name: "Blog", type: "context"})
-
-      _child =
-        component_fixture(scope, %{
-          name: "Post",
-          module_name: "Blog.Post",
-          type: "schema",
-          parent_component_id: context.id
-        })
-
-      story = story_fixture(scope, %{component_id: context.id})
-
-      create_story_requirement(scope, story, "component_linked", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_exist", :tests, true)
-      # component_complete now uses :children scope
-      create_story_requirement(scope, story, "component_complete", :dependencies, false,
-        scope: :children,
-        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent
-      )
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
-
-      # component_complete (scope: :children) → descend_children resolves story's component →
-      # collects descendants → find_actionable finds child has unsatisfied reqs (no reqs = nothing) →
-      # but component itself may have actionable work → returns parent requirement
-      assert req.name == "component_complete"
-      assert req.scope == :children
-    end
-
-    test ":children scope returns error when no children have work", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      context = component_fixture(scope, %{name: "Blog", module_name: "Blog", type: "context"})
-      story = story_fixture(scope, %{component_id: context.id})
-
-      create_story_requirement(scope, story, "component_linked", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_exist", :tests, true)
-
-      # children_designs is a component-level :children scope requirement
-      requirement_fixture(scope, context, %{
-        name: "spec_file",
-        artifact_type: :specification,
-        satisfied: true,
-        satisfied_by: CodeMySpec.AgentTasks.ContextSpec
-      })
-
-      requirement_fixture(scope, context, %{
-        name: "spec_valid",
-        artifact_type: :specification,
-        satisfied: true,
-        satisfied_by: CodeMySpec.AgentTasks.ContextSpec
-      })
-
-      requirement_fixture(scope, context, %{
-        name: "children_designs",
-        artifact_type: :hierarchy,
-        satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ContextComponentSpecs,
-        scope: :children
-      })
-
-      # component_complete uses :children scope now — goes through story descend_children
-      create_story_requirement(scope, story, "component_complete", :dependencies, false,
-        scope: :children,
-        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent
-      )
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      # component_complete descend_children → find_actionable finds context has children_designs unsatisfied →
-      # returns component_complete as the parent requirement
-      assert {:ok, req} = NextActionable.call(scope, project)
-      assert req.name == "component_complete"
-    end
-
-    test ":dependencies scope descends through component dependency chain", %{scope: scope} do
-      create_project_requirement(scope, "technical_strategy", :specification, true)
-      create_project_requirement(scope, "architecture_designed", :specification, true)
-      create_project_requirement(scope, "issues_triaged", :review, true)
-      create_project_requirement(scope, "issues_resolved", :review, true)
-      create_project_requirement(scope, "all_stories_complete", :dependencies, false,
-        scope: :dependencies
-      )
-
-      # Build dependency chain: widget depends on helper
-      widget = component_fixture(scope, %{name: "Widget", module_name: "Widget"})
-      helper = component_fixture(scope, %{name: "Helper", module_name: "Helper"})
-      dependency_fixture(scope, widget, helper)
-
-      story = story_fixture(scope, %{component_id: widget.id})
-      create_story_requirement(scope, story, "component_linked", :dependencies, true)
-      create_story_requirement(scope, story, "bdd_specs_exist", :tests, true)
-
-      # Use dependencies_satisfied (scope: :dependencies) on the component level
-      # to test dependency chain descent
-      requirement_fixture(scope, widget, %{
-        name: "spec_file",
-        artifact_type: :specification,
-        satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec
-      })
-
-      requirement_fixture(scope, widget, %{
-        name: "dependencies_satisfied",
-        artifact_type: :dependencies,
-        satisfied: false,
-        scope: :dependencies
-      })
-
-      # Helper has unsatisfied spec_file
-      requirement_fixture(scope, helper, %{
-        name: "spec_file",
-        artifact_type: :specification,
-        satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec
-      })
-
-      # component_complete with :children scope → descend_children finds widget has actionable work
-      create_story_requirement(scope, story, "component_complete", :dependencies, false,
-        scope: :children,
-        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent
-      )
-
-      project = scope.active_project |> Repo.preload(:requirements)
-      assert {:ok, req} = NextActionable.call(scope, project)
-
-      # component_complete returns as the parent :children requirement
-      assert req.name == "component_complete"
-      assert req.scope == :children
-    end
-  end
-
-  # ============================================================================
-  # get_next_actions wrapper
-  # ============================================================================
-
-  describe "ProjectCoordinator.get_next_actions/1" do
-    test "delegates to NextActionable", %{scope: scope} do
+    test "respects depends_on edges — blocked requirement not returned", %{scope: scope} do
       create_project_requirement(scope, "technical_strategy", :specification, false,
         satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy
       )
 
-      assert {:ok, req} = ProjectCoordinator.get_next_actions(scope)
-      assert req.name == "technical_strategy"
-      assert req.project_id == scope.active_project.id
+      # architecture_designed depends on technical_strategy
+      create_project_requirement(scope, "architecture_designed", :specification, false,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign,
+        depends_on: [
+          %{
+            "entity_type" => "project",
+            "entity_id" => scope.active_project_id,
+            "requirement_name" => "technical_strategy"
+          }
+        ]
+      )
+
+      reqs = Requirements.next_actionable_project(scope)
+      # Only technical_strategy is actionable (architecture_designed is blocked)
+      assert length(reqs) == 1
+      assert hd(reqs).name == "technical_strategy"
     end
 
-    test "returns :complete when all requirements satisfied", %{scope: scope} do
-      for {name, artifact_type} <- [
-            {"technical_strategy", :specification},
-            {"architecture_designed", :specification},
-            {"issues_triaged", :review},
-            {"issues_resolved", :review},
-            {"all_stories_complete", :dependencies},
-            {"project_qa", :review}
-          ] do
-        create_project_requirement(scope, name, artifact_type, true)
-      end
+    test "unblocks requirement when dependency is satisfied", %{scope: scope} do
+      create_project_requirement(scope, "technical_strategy", :specification, true,
+        satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy
+      )
 
-      assert :complete = ProjectCoordinator.get_next_actions(scope)
+      create_project_requirement(scope, "architecture_designed", :specification, false,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign,
+        depends_on: [
+          %{
+            "entity_type" => "project",
+            "entity_id" => scope.active_project_id,
+            "requirement_name" => "technical_strategy"
+          }
+        ]
+      )
+
+      reqs = Requirements.next_actionable_project(scope)
+      assert length(reqs) == 1
+      assert hd(reqs).name == "architecture_designed"
+    end
+
+    test "returns empty when all satisfied", %{scope: scope} do
+      create_project_requirement(scope, "technical_strategy", :specification, true,
+        satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy
+      )
+
+      assert [] == Requirements.next_actionable_project(scope)
+    end
+
+    test "cross-entity edges: story blocked by unsatisfied project requirement", %{scope: scope} do
+      create_project_requirement(scope, "architecture_designed", :specification, false,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign
+      )
+
+      story = story_fixture(scope, %{priority: 1})
+
+      create_story_requirement(scope, story, "component_linked", :dependencies, false,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureReview,
+        depends_on: [
+          %{
+            "entity_type" => "project",
+            "entity_id" => scope.active_project_id,
+            "requirement_name" => "architecture_designed"
+          }
+        ]
+      )
+
+      reqs = Requirements.next_actionable_project(scope)
+      # Only project requirement is actionable (story blocked by project dep)
+      assert length(reqs) == 1
+      assert hd(reqs).name == "architecture_designed"
+    end
+
+    test "component requirement actionable when story deps are met", %{scope: scope} do
+      component = component_fixture(scope, %{name: "Blog", module_name: "Blog", type: "schema"})
+      story = story_fixture(scope, %{component_id: component.id, priority: 1})
+
+      create_story_requirement(scope, story, "component_linked", :dependencies, true)
+      create_story_requirement(scope, story, "component_complete", :dependencies, false,
+        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent,
+        scope: :children,
+        depends_on: [
+          %{
+            "entity_type" => "component",
+            "entity_id" => component.id,
+            "requirement_name" => "tests_passing"
+          }
+        ]
+      )
+
+      requirement_fixture(scope, component, %{
+        name: "spec_file",
+        artifact_type: :specification,
+        satisfied: false,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec
+      })
+
+      requirement_fixture(scope, component, %{
+        name: "tests_passing",
+        artifact_type: :tests,
+        satisfied: false,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
+        depends_on: [
+          %{
+            "entity_type" => "component",
+            "entity_id" => component.id,
+            "requirement_name" => "spec_file"
+          }
+        ]
+      })
+
+      reqs = Requirements.next_actionable_project(scope)
+      names = Enum.map(reqs, & &1.name)
+      # spec_file is actionable (no deps), tests_passing is blocked by spec_file
+      assert "spec_file" in names
+      refute "tests_passing" in names
+    end
+  end
+
+  # ============================================================================
+  # Priority ordering
+  # ============================================================================
+
+  describe "priority ordering" do
+    test "project requirements come before story requirements", %{scope: scope} do
+      create_project_requirement(scope, "technical_strategy", :specification, false,
+        satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy
+      )
+
+      story = story_fixture(scope, %{priority: 1})
+
+      create_story_requirement(scope, story, "component_linked", :dependencies, false,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureReview
+      )
+
+      reqs = Requirements.next_actionable_project(scope)
+      assert length(reqs) == 2
+      assert hd(reqs).name == "technical_strategy"
+    end
+
+    test "story requirements ordered by story priority", %{scope: scope} do
+      story_low = story_fixture(scope, %{priority: 5, title: "Low priority"})
+      story_high = story_fixture(scope, %{priority: 1, title: "High priority"})
+
+      create_story_requirement(scope, story_low, "component_linked", :dependencies, false,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureReview
+      )
+
+      create_story_requirement(scope, story_high, "component_linked", :dependencies, false,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureReview
+      )
+
+      reqs = Requirements.next_actionable_project(scope)
+      assert length(reqs) == 2
+      # Higher priority story (lower number) comes first
+      assert Enum.at(reqs, 0).story_id == story_high.id
+      assert Enum.at(reqs, 1).story_id == story_low.id
+    end
+
+    test "component requirements sorted by owning story priority", %{scope: scope} do
+      comp_low = component_fixture(scope, %{name: "Low", module_name: "Low", type: "schema"})
+      comp_high = component_fixture(scope, %{name: "High", module_name: "High", type: "schema"})
+
+      _story_low = story_fixture(scope, %{priority: 5, component_id: comp_low.id})
+      _story_high = story_fixture(scope, %{priority: 1, component_id: comp_high.id})
+
+      requirement_fixture(scope, comp_low, %{
+        name: "spec_file",
+        artifact_type: :specification,
+        satisfied: false,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec
+      })
+
+      requirement_fixture(scope, comp_high, %{
+        name: "spec_file",
+        artifact_type: :specification,
+        satisfied: false,
+        satisfied_by: CodeMySpec.AgentTasks.ComponentSpec
+      })
+
+      reqs = Requirements.next_actionable_project(scope)
+      assert length(reqs) == 2
+      # Higher priority story's component comes first
+      assert Enum.at(reqs, 0).component_id == comp_high.id
+      assert Enum.at(reqs, 1).component_id == comp_low.id
     end
   end
 
@@ -498,6 +257,7 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
       }
       |> maybe_put_opt(opts, :scope)
       |> maybe_put_opt(opts, :satisfied_by)
+      |> maybe_put_opt(opts, :depends_on)
 
     {:ok, _} = RequirementsRepository.create_project_requirement(scope, scope.active_project, attrs)
   end
@@ -515,6 +275,7 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
       }
       |> maybe_put_opt(opts, :scope)
       |> maybe_put_opt(opts, :satisfied_by)
+      |> maybe_put_opt(opts, :depends_on)
 
     {:ok, _} = RequirementsRepository.create_story_requirement(scope, story, attrs)
   end
@@ -523,18 +284,6 @@ defmodule CodeMySpec.ProjectCoordinator.NextActionableTest do
     case Keyword.get(opts, key) do
       nil -> attrs
       value -> Map.put(attrs, key, value)
-    end
-  end
-
-  defp satisfy_all_story_requirements(scope, story) do
-    for {name, artifact_type} <- [
-          {"component_linked", :dependencies},
-          {"bdd_specs_exist", :tests},
-          {"component_complete", :dependencies},
-          {"bdd_specs_passing", :tests},
-          {"qa_complete", :review}
-        ] do
-      create_story_requirement(scope, story, name, artifact_type, true)
     end
   end
 end
