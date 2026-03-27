@@ -13,10 +13,21 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   # Scope resolved from x-working-dir header via merge_transport_assigns.
 
+  # Bootstrap — init, setup, resource installation
+  component(CodeMySpec.McpServers.Bootstrap.Tools.GetInitStatus)
+  component(CodeMySpec.McpServers.Bootstrap.Tools.GetSetupStatus)
+  component(CodeMySpec.McpServers.Bootstrap.Tools.InitProject)
+  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAppResources)
+  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd)
+  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallRules)
+  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks)
+  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd)
+
   # Stories — delegates to remote server API
   component(CodeMySpec.McpServers.Stories.Tools.ListStories)
   component(CodeMySpec.McpServers.Stories.Tools.ListStoryTitles)
   component(CodeMySpec.McpServers.Stories.Tools.SetStoryComponent)
+  component(CodeMySpec.McpServers.Stories.Tools.AnalyzeStoryLinkage)
 
   # Architecture
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
