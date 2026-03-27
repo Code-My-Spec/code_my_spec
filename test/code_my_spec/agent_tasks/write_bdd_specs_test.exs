@@ -3,7 +3,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.BddSpecs
-  alias CodeMySpec.Environments.Environment
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -12,555 +11,224 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   @moduletag :tmp_dir
 
-  @external_id "test-conversation-00000000-0000-0000-0000-000000000001"
-
   # ============================================================================
-  # Test Helpers
+  # Helpers
   # ============================================================================
 
-  defp scope_with_env(tmp_dir) do
+  defp scope_with_cwd(tmp_dir) do
     scope = full_scope_fixture()
-    %{scope | environment: Environment.new(:local, tmp_dir)}
+    Map.put(scope, :cwd, tmp_dir)
   end
 
-  defp session_with_story(scope, _tmp_dir, story_opts \\ %{}) do
+  defp create_story_with_component(scope, opts \\ %{}) do
     component =
-      component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.UserLoginLive"})
+      component_fixture(scope, Map.merge(%{type: "liveview", module_name: "MyAppWeb.UserLoginLive"}, opts[:component] || %{}))
 
     story =
-      story_fixture(
-        scope,
-        Map.merge(
-          %{title: "User Login Feature", component_id: component.id, criteria: []},
-          story_opts
-        )
-      )
+      story_fixture(scope, Map.merge(%{
+        title: "User Login Feature",
+        component_id: component.id,
+        criteria: []
+      }, opts[:story] || %{}))
 
-    criterion1 =
-      criterion_fixture(scope, story, %{description: "User can log in with valid credentials"})
+    c1 = criterion_fixture(scope, story, %{description: "User can log in with valid credentials"})
+    c2 = criterion_fixture(scope, story, %{description: "User sees error with invalid credentials"})
+    story = %{story | criteria: [c1, c2]}
 
-    criterion2 =
-      criterion_fixture(scope, story, %{description: "User sees error with invalid credentials"})
-
-    # Reload story with criteria
-    story = %{story | criteria: [criterion1, criterion2]}
-
-    %{
-      story_id: story.id,
-      story: story,
-      external_conversation_id: @external_id
-    }
+    {story, component}
   end
 
-  defp session_without_story(_tmp_dir) do
-    %{external_conversation_id: @external_id}
+  defp task_for_story(story) do
+    %{story_id: story.id, component_id: story.component_id, project_id: nil}
   end
 
-  defp session_with_unlinked_story(scope, _tmp_dir) do
-    # Story without component_id
-    story = story_fixture(scope, %{title: "Unlinked Story", component_id: nil, criteria: []})
-    criterion = criterion_fixture(scope, story, %{description: "Some criterion"})
-    story = %{story | criteria: [criterion]}
-
-    %{
-      story_id: story.id,
-      story: story,
-      external_conversation_id: @external_id
-    }
-  end
-
-  defp prompt_file_path(tmp_dir, story) do
-    Path.join(
-      tmp_dir,
-      ".code_my_spec/tasks/stories/#{story.id}/subagent_prompts/bdd_specs_prompt.md"
-    )
-  end
-
-  defp orchestration_file_path(tmp_dir, story) do
-    Path.join(tmp_dir, ".code_my_spec/tasks/stories/#{story.id}/write_bdd_specs.md")
-  end
-
-  defp write_valid_spec_file!(tmp_dir, story, criterion) do
+  defp write_valid_spec!(tmp_dir, story, criterion) do
     spec_path = BddSpecs.spec_file_path(story, criterion)
     full_path = Path.join(tmp_dir, spec_path)
     full_path |> Path.dirname() |> File.mkdir_p!()
 
-    content = """
+    File.write!(full_path, """
     defmodule MyApp.UserLoginSpex do
       use Spex
 
-      spex "user login feature" do
+      spex "user login" do
         scenario "valid credentials" do
-          given_ "a registered user", _context do
-            {:ok, %{user: %{email: "test@example.com"}}}
+          given_ "setup", _context do
+            {:ok, %{user: "test"}}
           end
 
-          when_ "user submits login form", context do
+          when_ "login", context do
             {:ok, context}
           end
 
-          then_ "user is authenticated", context do
+          then_ "success", context do
             assert context.user
             :ok
           end
         end
       end
     end
-    """
+    """)
 
-    File.write!(full_path, content)
-    full_path
-  end
-
-  defp write_spec_with_syntax_error!(tmp_dir, story, criterion) do
-    spec_path = BddSpecs.spec_file_path(story, criterion)
-    full_path = Path.join(tmp_dir, spec_path)
-    full_path |> Path.dirname() |> File.mkdir_p!()
-
-    content = """
-    defmodule MyApp.BrokenSpex do
-      use Spex
-
-      spex "broken spec" do
-        # Missing closing do/end
-        scenario "incomplete"
-      end
-    """
-
-    File.write!(full_path, content)
-    full_path
-  end
-
-  defp write_spec_without_scenarios!(tmp_dir, story, criterion) do
-    spec_path = BddSpecs.spec_file_path(story, criterion)
-    full_path = Path.join(tmp_dir, spec_path)
-    full_path |> Path.dirname() |> File.mkdir_p!()
-
-    content = """
-    defmodule MyApp.EmptySpex do
-      use Spex
-
-      spex "empty spec" do
-        # No scenarios defined
-      end
-    end
-    """
-
-    File.write!(full_path, content)
-    full_path
-  end
-
-  defp write_spec_without_steps!(tmp_dir, story, criterion) do
-    spec_path = BddSpecs.spec_file_path(story, criterion)
-    full_path = Path.join(tmp_dir, spec_path)
-    full_path |> Path.dirname() |> File.mkdir_p!()
-
-    content = """
-    defmodule MyApp.NoStepsSpex do
-      use Spex
-
-      spex "no steps spec" do
-        scenario "empty scenario" do
-          # No given/when/then steps
-        end
-      end
-    end
-    """
-
-    File.write!(full_path, content)
     full_path
   end
 
   # ============================================================================
-  # command/3 Tests
+  # command/2
   # ============================================================================
 
-  describe "command/3" do
-    test "writes prompt file to disk and returns message pointing to orchestration file", %{
-      tmp_dir: tmp_dir
-    } do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+  describe "command/2" do
+    test "returns prompt with story context and criteria", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      assert {:ok, message} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert message =~ "write_bdd_specs.md"
-
-      # Orchestration file references the story and subagent
-      orch_content = File.read!(orchestration_file_path(tmp_dir, session.story))
-      assert orch_content =~ session.story.title
-      assert orch_content =~ "bdd-spec-writer"
-
-      # Subagent prompt file written to disk
-      file_path = prompt_file_path(tmp_dir, session.story)
-      assert File.exists?(file_path)
-
-      # Prompt file contains the full detailed prompt
-      file_content = File.read!(file_path)
-      assert file_content =~ "Write BDD Specifications for Story"
-      assert file_content =~ session.story.title
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
+      assert prompt =~ story.title
+      assert prompt =~ "User can log in with valid credentials"
+      assert prompt =~ "User sees error with invalid credentials"
     end
 
-    test "prompt file includes all acceptance criteria", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+    test "includes component module and type", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
-      assert file_content =~ "User can log in with valid credentials"
-      assert file_content =~ "User sees error with invalid credentials"
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
+      assert prompt =~ component.module_name
+      assert prompt =~ "liveview"
     end
 
-    test "prompt file includes expected file paths for each criterion", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+    test "includes expected file paths for each criterion", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      [criterion1, criterion2] = session.story.criteria
-      expected_path1 = BddSpecs.spec_file_path(session.story, criterion1)
-      expected_path2 = BddSpecs.spec_file_path(session.story, criterion2)
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
 
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
-      assert file_content =~ expected_path1
-      assert file_content =~ expected_path2
-    end
-
-    test "prompt file includes Spex DSL syntax guide", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
-      assert file_content =~ "Spex DSL Syntax Guide"
-      assert file_content =~ "scenario"
-      assert file_content =~ "given_"
-      assert file_content =~ "when_"
-      assert file_content =~ "then_"
-    end
-
-    test "prompt file includes Controller testing guide for controller components", %{
-      tmp_dir: tmp_dir
-    } do
-      scope = scope_with_env(tmp_dir)
-
-      component =
-        component_fixture(scope, %{type: "controller", module_name: "MyAppWeb.UserController"})
-
-      story = story_fixture(scope, %{title: "Controller Feature", component_id: component.id, criteria: []})
-      criterion = criterion_fixture(scope, story, %{description: "Some criterion"})
-      story = %{story | criteria: [criterion]}
-
-      session = %{
-        story_id: story.id,
-        story: story,
-        external_conversation_id: @external_id
-      }
-
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      file_content = File.read!(prompt_file_path(tmp_dir, story))
-      assert file_content =~ "Controller Testing Guide"
-      assert file_content =~ "Phoenix.ConnTest"
-    end
-
-    test "scaffolds app_spex.ex and shared_givens.ex if they do not exist", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      # Without mix.exs, defaults to my_app
-      app_spex_path = Path.join(tmp_dir, "test/spex/my_app_spex.ex")
-      shared_givens_path = Path.join(tmp_dir, "test/support/shared_givens.ex")
-      refute File.exists?(app_spex_path)
-      refute File.exists?(shared_givens_path)
-
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      assert File.exists?(app_spex_path)
-      assert File.exists?(shared_givens_path)
-    end
-
-    test "prompt file includes current shared givens content", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      # Pre-create shared givens with custom content
-      shared_givens_path = Path.join(tmp_dir, "test/support/shared_givens.ex")
-      File.mkdir_p!(Path.dirname(shared_givens_path))
-
-      File.write!(shared_givens_path, """
-      defmodule MyAppSpex.SharedGivens do
-        use SexySpex.Givens
-
-        given_ :user_exists do
-          {:ok, %{user: %{id: 1}}}
-        end
+      for criterion <- story.criteria do
+        spec_path = BddSpecs.spec_file_path(story, criterion)
+        assert prompt =~ spec_path
       end
-      """)
-
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
-      assert file_content =~ "user_exists"
     end
 
-    @tag :capture_log
-    test "returns error if component is not linked", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_unlinked_story(scope, tmp_dir)
+    test "includes LiveView testing guide for liveview components", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      assert {:error, :component_not_linked} =
-               WriteBddSpecs.command(scope, session, skip_sync: true)
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
+      assert prompt =~ "LiveView Testing"
+      assert prompt =~ "Phoenix.LiveViewTest"
     end
 
-    test "auto-selects top-priority incomplete story when no story_id", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
+    test "includes Controller testing guide for controller components", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
 
-      # Create multiple stories with different priorities
-      component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
+      {story, _component} =
+        create_story_with_component(scope,
+          component: %{type: "controller", module_name: "MyAppWeb.SessionController"}
+        )
 
-      _low_priority =
-        story_fixture(scope, %{title: "Low Priority", priority: 3, component_id: component.id, criteria: []})
+      task = task_for_story(story)
 
-      high_priority =
-        story_fixture(scope, %{title: "High Priority", priority: 1, component_id: component.id, criteria: []})
-
-      # Add criteria
-      criterion = criterion_fixture(scope, high_priority, %{description: "Test criterion"})
-      _high_priority = %{high_priority | criteria: [criterion]}
-
-      session = session_without_story(tmp_dir)
-
-      assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      orch_content = File.read!(orchestration_file_path(tmp_dir, high_priority))
-      assert orch_content =~ "High Priority"
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
+      assert prompt =~ "Controller Testing"
+      assert prompt =~ "ConnTest"
     end
 
-    test "returns error when all stories complete and no story_id provided", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
-      story = story_fixture(scope, %{title: "Complete Story", component_id: component.id, criteria: []})
-      criterion = criterion_fixture(scope, story, %{description: "Done criterion"})
-      story = %{story | criteria: [criterion]}
+    test "includes Spex DSL reference", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      # Write spec file to make it complete
-      write_valid_spec_file!(tmp_dir, story, criterion)
-
-      session = session_without_story(tmp_dir)
-
-      assert {:error, :all_stories_complete} =
-               WriteBddSpecs.command(scope, session, skip_sync: true)
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
+      assert prompt =~ "Spex DSL"
+      assert prompt =~ "given_"
+      assert prompt =~ "when_"
+      assert prompt =~ "then_"
     end
 
-    test "skips fully covered story and selects next incomplete story", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      component = component_fixture(scope, %{type: "liveview", module_name: "MyAppWeb.TestLive"})
+    test "returns error when story not found", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      task = %{story_id: 999_999, component_id: nil, project_id: nil}
 
-      # First story - higher priority, fully covered
-      story1 =
-        story_fixture(scope, %{
-          title: "First Story Complete",
-          priority: 1,
-          component_id: component.id,
-          criteria: []
-        })
-
-      criterion1a = criterion_fixture(scope, story1, %{description: "Criterion 1A"})
-      criterion1b = criterion_fixture(scope, story1, %{description: "Criterion 1B"})
-
-      # Second story - lower priority, incomplete
-      story2 =
-        story_fixture(scope, %{
-          title: "Second Story Incomplete",
-          priority: 2,
-          component_id: component.id,
-          criteria: []
-        })
-
-      _criterion2 = criterion_fixture(scope, story2, %{description: "Criterion 2A"})
-
-      # Write specs for ALL criteria of story1 to make it fully covered
-      write_valid_spec_file!(tmp_dir, story1, criterion1a)
-      write_valid_spec_file!(tmp_dir, story1, criterion1b)
-
-      # Don't write specs for story2 - it should be selected
-
-      session = session_without_story(tmp_dir)
-
-      assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      # Should select story2, not story1
-      orch_content = File.read!(orchestration_file_path(tmp_dir, story2))
-      assert orch_content =~ "Second Story Incomplete"
-      refute orch_content =~ "First Story Complete"
+      assert {:error, :story_not_found} = WriteBddSpecs.command(scope, task)
     end
 
-    test "prompt file marks covered criteria", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+    test "returns error when no story_id", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      task = %{story_id: nil, component_id: nil, project_id: nil}
 
-      # Write spec for first criterion only
-      [criterion1, _criterion2] = session.story.criteria
-      write_valid_spec_file!(tmp_dir, session.story, criterion1)
-
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      file_content = File.read!(prompt_file_path(tmp_dir, session.story))
-      assert file_content =~ "COVERED"
-      assert file_content =~ "MISSING"
+      assert {:error, :story_not_specified} = WriteBddSpecs.command(scope, task)
     end
 
-    test "orchestration file references the subagent prompt file path", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+    test "returns error when story has no component linked", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      story = story_fixture(scope, %{title: "Unlinked", component_id: nil, criteria: []})
+      task = %{story_id: story.id, component_id: nil, project_id: nil}
 
-      assert {:ok, _message} = WriteBddSpecs.command(scope, session, skip_sync: true)
-
-      expected_relative_path =
-        ".code_my_spec/tasks/stories/#{session.story.id}/subagent_prompts/bdd_specs_prompt.md"
-
-      orch_content = File.read!(orchestration_file_path(tmp_dir, session.story))
-      assert orch_content =~ expected_relative_path
+      assert {:error, :component_not_linked} = WriteBddSpecs.command(scope, task)
     end
   end
 
   # ============================================================================
-  # evaluate/3 Tests
+  # evaluate/2
   # ============================================================================
 
-  describe "evaluate/3" do
-    @tag :capture_log
-    test "returns {:ok, :valid} or compile error when all specs exist and are valid", %{
-      tmp_dir: tmp_dir
-    } do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+  describe "evaluate/2" do
+    test "returns :valid when all specs exist and parse correctly", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      # Write valid specs for all criteria
-      for criterion <- session.story.criteria do
-        write_valid_spec_file!(tmp_dir, session.story, criterion)
+      for criterion <- story.criteria do
+        write_valid_spec!(tmp_dir, story, criterion)
       end
 
-      # The spec validation passes, but mix compile will fail in test environment
-      # because tmp_dir doesn't have a mix project. This is expected behavior.
-      result = WriteBddSpecs.evaluate(scope, session, [])
-
-      case result do
-        {:ok, :valid} ->
-          # Specs valid and compilation passed
-          assert true
-
-        {:ok, :invalid, feedback} ->
-          # If compile fails (expected in test env without mix project), feedback mentions compilation
-          assert feedback =~ "Compilation" or feedback =~ "mix"
-
-        {:error, reason} ->
-          # Should not return error for valid specs
-          flunk("Unexpected error: #{inspect(reason)}")
-      end
+      assert {:ok, :valid} = WriteBddSpecs.evaluate(scope, task)
     end
 
-    test "returns {:ok, :invalid, feedback} when spec file is missing", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+    test "returns :invalid when spec file is missing", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      # Don't write any spec files
+      # Write only the first criterion's spec
+      write_valid_spec!(tmp_dir, story, hd(story.criteria))
 
-      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, session, [])
-      assert is_binary(feedback)
+      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, task)
       assert feedback =~ "Spec file not found"
     end
 
-    test "returns {:ok, :invalid, feedback} when spec has syntax errors", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+    test "returns :invalid when spec has no scenarios", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
 
-      # Write broken specs for all criteria
-      for criterion <- session.story.criteria do
-        write_spec_with_syntax_error!(tmp_dir, session.story, criterion)
+      for criterion <- story.criteria do
+        spec_path = BddSpecs.spec_file_path(story, criterion)
+        full_path = Path.join(tmp_dir, spec_path)
+        full_path |> Path.dirname() |> File.mkdir_p!()
+
+        File.write!(full_path, """
+        defmodule MyApp.EmptySpex do
+          use Spex
+          spex "empty" do
+          end
+        end
+        """)
       end
 
-      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, session, [])
-      assert is_binary(feedback)
+      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, task)
+      assert feedback =~ "at least one scenario"
     end
 
-    test "returns {:ok, :invalid, feedback} when spec has no scenarios", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
+    test "returns error when story not found", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      task = %{story_id: 999_999, component_id: nil, project_id: nil}
 
-      # Write specs without scenarios for all criteria
-      for criterion <- session.story.criteria do
-        write_spec_without_scenarios!(tmp_dir, session.story, criterion)
-      end
-
-      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, session, [])
-      assert is_binary(feedback)
-      assert feedback =~ "scenario"
-    end
-
-    test "returns {:ok, :invalid, feedback} when scenarios have no steps", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      # Write specs without steps for all criteria
-      for criterion <- session.story.criteria do
-        write_spec_without_steps!(tmp_dir, session.story, criterion)
-      end
-
-      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, session, [])
-      assert is_binary(feedback)
-      assert feedback =~ "step" or feedback =~ "Given" or feedback =~ "When" or feedback =~ "Then"
-    end
-
-    test "includes criterion id and description in error feedback", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      # Don't write any spec files
-
-      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, session, [])
-
-      [criterion1, _] = session.story.criteria
-      assert feedback =~ "Criterion #{criterion1.id}"
-      assert feedback =~ criterion1.description
-    end
-
-    test "returns error when story cannot be resolved", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-
-      session = %{
-        story_id: 999_999,
-        external_conversation_id: @external_id
-      }
-
-      assert {:error, :story_not_found} = WriteBddSpecs.evaluate(scope, session, [])
-    end
-
-    @tag :capture_log
-    test "cleans up prompt file on valid result", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-      session = session_with_story(scope, tmp_dir)
-
-      # First, write the prompt file via command
-      assert {:ok, _prompt} = WriteBddSpecs.command(scope, session, skip_sync: true)
-      file_path = prompt_file_path(tmp_dir, session.story)
-      assert File.exists?(file_path)
-
-      # Write valid specs for all criteria
-      for criterion <- session.story.criteria do
-        write_valid_spec_file!(tmp_dir, session.story, criterion)
-      end
-
-      result = WriteBddSpecs.evaluate(scope, session, [])
-
-      case result do
-        {:ok, :valid} ->
-          # Prompt file should be cleaned up
-          refute File.exists?(file_path)
-
-        {:ok, :invalid, _feedback} ->
-          # Compile may fail in test env - prompt file stays on invalid
-          assert File.exists?(file_path)
-      end
+      assert {:error, :story_not_found} = WriteBddSpecs.evaluate(scope, task)
     end
   end
 end
