@@ -33,8 +33,11 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
 
-  # Tasks — draft → start → evaluate lifecycle
-  component(CodeMySpec.McpServers.Tasks.Tools.DraftTask)
+  # Requirements — read-only discovery
+  component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
+  component(CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement)
+
+  # Tasks — start → evaluate lifecycle
   component(CodeMySpec.McpServers.Tasks.Tools.StartTask)
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
 

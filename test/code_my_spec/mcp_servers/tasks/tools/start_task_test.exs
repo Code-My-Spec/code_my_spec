@@ -15,101 +15,199 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  describe "execute/2" do
-    test "activates a prepared task and returns the prompt" do
-      {scope, session, task} = setup_prepared_task()
+  describe "execute/2 — happy path" do
+    test "creates an active task and returns a prompt with Data JSON" do
+      {scope, session, requirement} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{session_id: session.id, task_id: task.id},
+                 %{requirement_id: requirement.id, session_id: session.id},
                  frame
                )
 
-      assert response.isError != true
+      refute response.isError
       content = response_text(response)
-      # Should contain prompt content from the task module
-      assert is_binary(content) and content != ""
-    end
 
-    test "assigns agent_id when provided" do
-      {scope, session, task} = setup_prepared_task()
-      frame = %Frame{assigns: %{current_scope: scope}}
+      # Prompt should come from the task module
+      assert is_binary(content)
+      # Data JSON should be appended
+      assert content =~ "Data: "
+      data = extract_data(content)
+      assert data["task_id"]
+      assert data["requirement_name"] == "test_spec"
+      assert data["task_type"] == "ContextSpec"
 
-      assert {:reply, response, ^frame} =
-               StartTask.execute(
-                 %{session_id: session.id, task_id: task.id, agent_id: "agent-123"},
-                 frame
-               )
-
-      assert response.isError != true
-
-      # Verify agent was assigned
+      # DB state: task is active with correct linkage
       updated_session = Sessions.get_session(scope, session.id)
-      updated_task = Enum.find(updated_session.tasks, &(&1.id == task.id))
-      assert updated_task.agent_id == "agent-123"
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "test_spec"))
+      assert task.status == :active
+      assert task.requirement_id == requirement.id
+      assert task.component_id == requirement.component_id
+      assert task.session_type == CodeMySpec.AgentTasks.ContextSpec
+      assert task.started_at
     end
 
-    test "returns prompt again for already active task" do
-      {scope, session, task} = setup_prepared_task()
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      # Activate the task first
-      {:ok, _} = Sessions.activate_task(scope, session, task.id, nil)
-
-      assert {:reply, response, ^frame} =
-               StartTask.execute(
-                 %{session_id: session.id, task_id: task.id},
-                 frame
-               )
-
-      assert response.isError != true
-    end
-
-    test "returns error for completed task" do
-      {scope, session, task} = setup_prepared_task()
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      {:ok, _} = Sessions.activate_task(scope, session, task.id, nil)
-      {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
-
-      assert {:reply, response, ^frame} =
-               StartTask.execute(
-                 %{session_id: session.id, task_id: task.id},
-                 frame
-               )
-
-      assert response.isError == true
-      assert response_text(response) =~ "cannot start"
-    end
-
-    test "returns error for non-existent session" do
-      scope = full_scope_fixture()
+    test "assigns agent_id to the created task" do
+      {scope, session, requirement} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{session_id: Ecto.UUID.generate(), task_id: Ecto.UUID.generate()},
+                 %{requirement_id: requirement.id, session_id: session.id, agent_id: "agent-42"},
                  frame
                )
 
-      assert response.isError == true
-      assert response_text(response) =~ "Session not found"
+      refute response.isError
+
+      updated_session = Sessions.get_session(scope, session.id)
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "test_spec"))
+      assert task.agent_id == "agent-42"
     end
 
-    test "returns error for non-existent task" do
+    test "resolves session by external_conversation_id" do
+      {scope, _session, requirement} = setup_requirement()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      external_id = "ext-conv-#{System.unique_integer([:positive])}"
+      {:ok, ext_session} = Sessions.find_or_create_session(scope, external_id)
+
+      assert {:reply, response, ^frame} =
+               StartTask.execute(
+                 %{requirement_id: requirement.id, session_id: external_id},
+                 frame
+               )
+
+      refute response.isError
+
+      updated_session = Sessions.get_session(scope, ext_session.id)
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "test_spec"))
+      assert task.status == :active
+    end
+  end
+
+  describe "execute/2 — deduplication" do
+    test "returns prompt for already-active task without creating a duplicate" do
+      {scope, session, requirement} = setup_requirement()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      # First call creates the task
+      {:reply, _, _} =
+        StartTask.execute(%{requirement_id: requirement.id, session_id: session.id}, frame)
+
+      # Reload session for second call
+      updated_session = Sessions.get_session(scope, session.id)
+
+      # Second call should return prompt, not create another task
+      assert {:reply, response, ^frame} =
+               StartTask.execute(
+                 %{requirement_id: requirement.id, session_id: updated_session.id},
+                 frame
+               )
+
+      refute response.isError
+      assert response_text(response) =~ "Data: "
+
+      final_session = Sessions.get_session(scope, session.id)
+      matching = Enum.filter(final_session.tasks, &(&1.requirement_name == "test_spec"))
+      assert length(matching) == 1
+    end
+
+    test "resumes a prepared task by activating it" do
+      {scope, session, requirement} = setup_requirement()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      # Manually prepare a task (simulates leftover from old flow)
+      task_attrs = %{
+        session_type: requirement.satisfied_by,
+        requirement_id: requirement.id,
+        requirement_name: requirement.name,
+        project_id: scope.active_project_id,
+        component_id: requirement.component_id
+      }
+
+      {:ok, session_with_prepared} = Sessions.prepare_task(scope, session, task_attrs)
+      prepared_task = Enum.find(session_with_prepared.tasks, &(&1.status == :prepared))
+
+      assert {:reply, response, ^frame} =
+               StartTask.execute(
+                 %{requirement_id: requirement.id, session_id: session_with_prepared.id},
+                 frame
+               )
+
+      refute response.isError
+
+      # Task should now be active
+      final_session = Sessions.get_session(scope, session.id)
+      task = Enum.find(final_session.tasks, &(&1.id == prepared_task.id))
+      assert task.status == :active
+    end
+  end
+
+  describe "execute/2 — error paths" do
+    test "returns error for non-existent requirement" do
       scope = full_scope_fixture()
       session = session_fixture(scope)
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{session_id: session.id, task_id: Ecto.UUID.generate()},
+                 %{requirement_id: Ecto.UUID.generate(), session_id: session.id},
                  frame
                )
 
-      assert response.isError == true
-      assert response_text(response) =~ "Task not found"
+      assert response.isError
+      assert response_text(response) =~ "Requirement not found"
+    end
+
+    test "returns error for non-existent session" do
+      scope = full_scope_fixture()
+      component = component_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      requirement =
+        requirement_fixture(scope, component, %{
+          name: "test_spec",
+          satisfied: false,
+          satisfied_by: CodeMySpec.AgentTasks.ContextSpec
+        })
+
+      assert {:reply, response, ^frame} =
+               StartTask.execute(
+                 %{requirement_id: requirement.id, session_id: Ecto.UUID.generate()},
+                 frame
+               )
+
+      assert response.isError
+      assert response_text(response) =~ "Session not found"
+    end
+
+    test "returns error when session_id is missing" do
+      scope = full_scope_fixture()
+      component = component_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      requirement =
+        requirement_fixture(scope, component, %{
+          name: "test_spec",
+          satisfied: false,
+          satisfied_by: CodeMySpec.AgentTasks.ContextSpec
+        })
+
+      assert {:reply, response, ^frame} =
+               StartTask.execute(%{requirement_id: requirement.id}, frame)
+
+      assert response.isError
+      assert response_text(response) =~ "No session_id"
+    end
+
+    test "returns error without valid scope" do
+      frame = %Frame{assigns: %{}}
+
+      assert {:reply, response, ^frame} =
+               StartTask.execute(%{requirement_id: "1", session_id: "x"}, frame)
+
+      assert response.isError
     end
   end
 
@@ -117,7 +215,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
-  defp setup_prepared_task do
+  defp setup_requirement do
     scope = full_scope_fixture()
     component = component_fixture(scope)
     session = session_fixture(scope)
@@ -129,26 +227,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
         satisfied_by: CodeMySpec.AgentTasks.ContextSpec
       })
 
-    task_attrs = %{
-      session_type: requirement.satisfied_by,
-      requirement_id: requirement.id,
-      requirement_name: requirement.name,
-      project_id: scope.active_project_id,
-      component_id: component.id,
-      component_module_name: component.module_name
-    }
-
-    {:ok, updated_session} = Sessions.prepare_task(scope, session, task_attrs)
-
-    task =
-      updated_session.tasks
-      |> Enum.find(&(&1.requirement_name == requirement.name and &1.status == :prepared))
-
-    {scope, updated_session, task}
+    {scope, session, requirement}
   end
 
   defp response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
+  end
+
+  defp extract_data(text) do
+    [_, json] = String.split(text, "Data: ", parts: 2)
+    Jason.decode!(json)
   end
 end

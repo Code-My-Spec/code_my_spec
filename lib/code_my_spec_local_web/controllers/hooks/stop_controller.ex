@@ -3,7 +3,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   Handles the Stop hook event.
 
   Validates the session transcript and checks if there's more work to do.
-  Blocks the stop if actionable tasks remain, directing the agent to draft_task.
+  Blocks the stop if actionable tasks remain, directing the agent to get_next_requirement.
   """
   use CodeMySpecLocalWeb, :controller
 
@@ -70,7 +70,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
               "reason" => """
               Task completed successfully. There is more work to do on this project.
 
-              Call `draft_task` to get your next assignment.
+              Call `get_next_requirement` to find your next assignment, then `start_task` to begin.
               """
             }
 

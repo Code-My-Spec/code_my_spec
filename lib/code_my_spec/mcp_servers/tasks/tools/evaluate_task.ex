@@ -10,6 +10,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   Tasks with automatic validation are evaluated by the stop hook — you don't
   need to call this for those.
+
+  The `session_id` is injected automatically by the PreToolUse hook.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -23,24 +25,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :session_id, :string,
-      required: true,
-      doc: "Session ID for the task"
-
     field :task_id, :string,
       required: true,
       doc: "Task ID to evaluate"
+
+    field :session_id, :string,
+      doc: "Injected by hook — do not set manually"
   end
 
   @impl true
-  def execute(%{session_id: session_id, task_id: task_id}, frame) do
+  def execute(%{task_id: task_id} = params, frame) do
+    session_id = Map.get(params, :session_id)
+
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, session} <- get_session(scope, session_id),
+         {:ok, session} <- resolve_session(scope, session_id),
          {:ok, task} <- find_task(session, task_id) do
       handle_evaluate(scope, session, task, frame)
     else
       {:error, :session_not_found} ->
-        {:reply, TasksMapper.session_not_found(session_id), frame}
+        {:reply, TasksMapper.session_not_found(session_id || "unknown"), frame}
 
       {:error, :task_not_found} ->
         {:reply, TasksMapper.task_not_found(task_id), frame}
@@ -50,18 +53,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     end
   end
 
-  defp get_session(scope, session_id) do
+  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     session =
-      try do
-        Sessions.get_session(scope, session_id)
-      rescue
-        Ecto.Query.CastError -> nil
-      end
+      Sessions.get_by_external_id(scope, session_id) ||
+        safe_get_session(scope, session_id)
 
     case session do
       nil -> {:error, :session_not_found}
       session -> {:ok, session}
     end
+  end
+
+  defp resolve_session(_scope, _session_id) do
+    {:error, "No session_id available. The PreToolUse hook should inject it automatically."}
+  end
+
+  defp safe_get_session(scope, id) do
+    Sessions.get_session(scope, id)
+  rescue
+    Ecto.Query.CastError -> nil
   end
 
   defp find_task(session, task_id) do
