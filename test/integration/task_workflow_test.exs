@@ -28,7 +28,7 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
     # Step 2: start_task → all 13 steps unchecked (empty tmp dir)
     start_data = call_start_task!(frame, next_data["requirement_id"], session_id)
     prompt = call_start_task_text!(frame, next_data["requirement_id"], session_id)
-    assert prompt =~ "Project Setup (0/13)"
+    assert prompt =~ "Project Setup (0/12)"
     assert prompt =~ "- [ ] **Claude md**"
 
     task_id = start_data["task_id"]
@@ -43,16 +43,24 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
     claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
     File.write!(claude_md_path, "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
 
-    # Step 4: start_task again → Claude md now shows [x], count is 1/13
+    # Step 4: start_task again → Claude md now shows [x], count is 1/12
     prompt2 = call_start_task_text!(frame, next_data["requirement_id"], session_id)
-    assert prompt2 =~ "Project Setup (1/13)"
+    assert prompt2 =~ "Project Setup (1/12)"
     assert prompt2 =~ "- [x] **Claude md**"
 
-    # Step 5: satisfy the requirement in DB (simulates full sync marking project_setup done)
+    # Step 5: seed all remaining steps in the tmp dir
+    seed_all_setup_steps(tmp_dir)
+
+    # Step 6: start_task again → all 12 steps now satisfied
+    prompt3 = call_start_task_text!(frame, next_data["requirement_id"], session_id)
+    assert prompt3 =~ "Project Setup (12/12)"
+    refute prompt3 =~ "- [ ] "
+
+    # Step 7: satisfy the requirement in DB (simulates full sync marking project_setup done)
     {:ok, _} =
       RequirementsRepository.update_requirement(scope, req1, %{satisfied: true, score: 1.0})
 
-    # Step 6: get_next_requirement → returns technical_strategy (now unblocked)
+    # Step 8: get_next_requirement → returns technical_strategy (now unblocked)
     next_data2 = call_get_next!(frame)
     assert next_data2["requirement_name"] == "technical_strategy"
   end

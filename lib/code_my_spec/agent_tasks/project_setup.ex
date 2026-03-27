@@ -18,7 +18,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   @min_elixir_version {1, 18, 0}
 
   @setup_steps [
-    Setup.ProjectCompiles,
     Setup.ApplicationInWeb,
     Setup.CodemyspecDeps,
     Setup.Compilers,
