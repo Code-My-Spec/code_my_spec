@@ -18,7 +18,6 @@ defmodule CodeMySpecLocalWeb.Router do
 
       live "/init", InitLive, :index
       live "/init/:step", InitLive, :show
-      live "/init/:step/prompt", InitLive, :prompt
 
       live "/projects/:project_name", HomeLive
       live "/projects/:project_name/sync", SyncLive
