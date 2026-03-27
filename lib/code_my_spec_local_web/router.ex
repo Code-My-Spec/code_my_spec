@@ -27,9 +27,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/requirements/:name", RequirementsLive, :show
       live "/projects/:project_name/requirements/:name/:child_id", RequirementsLive, :child
       live "/projects/:project_name/graph", RequirementsLive, :graph
-      live "/projects/:project_name/stories", StoriesLive, :index
       live "/projects/:project_name/stories/requirements", RequirementsLive, :stories
-      live "/projects/:project_name/stories/:story_id", StoriesLive, :show
       live "/projects/:project_name/stories/:story_id/requirements", RequirementsLive, :story_show
 
       live "/projects/:project_name/stories/:story_id/requirements/:name",
@@ -97,23 +95,17 @@ defmodule CodeMySpecLocalWeb.Router do
     pipe_through :project
 
     post "/sync", SyncController, :create
-    # next-task moved to MCP (DraftTask tool); LiveView preview stays
-    get "/next-task", NextTaskController, :show
     get "/requirements", RequirementsController, :index
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt
     get "/requirements/:name/:child_id", RequirementsController, :child
-    get "/graph", RequirementsGraphController, :show
     get "/stories", StoriesController, :index
     get "/stories/:story_id", StoriesController, :show
     post "/stories/:story_id/set-component", StoriesController, :set_component
     get "/stories/requirements", StoriesRequirementsController, :index
     get "/stories/:story_id/requirements", StoriesRequirementsController, :show
     get "/stories/:story_id/requirements/:name", StoriesRequirementsController, :show_requirement
-    get "/sessions", SessionsController, :index
-    get "/sessions/:id", SessionsController, :show
-    get "/sessions/:session_id/tasks/:task_id", SessionsController, :show_task
-    # start-task and evaluate-task moved to MCP (StartTask, EvaluateTask tools)
+    # sessions API removed — use SessionsLive or MCP tools
     get "/knowledge", MarkdownBrowserController, :index
     get "/knowledge/*path", MarkdownBrowserController, :show
     get "/project-knowledge", MarkdownBrowserController, :index
