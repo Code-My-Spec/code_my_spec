@@ -10,7 +10,7 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
   import CodeMySpec.Integration.WorkflowHelpers
 
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.McpServers.Tasks.Tools.{EvaluateTask, StartTask}
   alias CodeMySpec.Requirements.RequirementsRepository
   alias CodeMySpec.Sessions
 
@@ -56,11 +56,18 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
     assert prompt3 =~ "Project Setup (12/12)"
     refute prompt3 =~ "- [ ] "
 
-    # Step 7: satisfy the requirement in DB (simulates full sync marking project_setup done)
+    # Step 7: evaluate_task → all steps pass → task completed
+    call_evaluate_task!(frame, task_id, session_id)
+
+    session2 = Sessions.get_session(scope, session_id)
+    completed_task = Enum.find(session2.tasks, &(&1.id == task_id))
+    assert completed_task.status == :completed
+
+    # Step 8: satisfy the requirement in DB (simulates sync after evaluate passes)
     {:ok, _} =
       RequirementsRepository.update_requirement(scope, req1, %{satisfied: true, score: 1.0})
 
-    # Step 8: get_next_requirement → returns technical_strategy (now unblocked)
+    # Step 9: get_next_requirement → returns technical_strategy (now unblocked)
     next_data2 = call_get_next!(frame)
     assert next_data2["requirement_name"] == "technical_strategy"
   end
@@ -81,6 +88,14 @@ defmodule CodeMySpec.Integration.TaskWorkflowTest do
 
     refute resp.isError, "start_task failed: #{response_text(resp)}"
     extract_data(resp)
+  end
+
+  defp call_evaluate_task!(frame, task_id, session_id) do
+    assert {:reply, resp, ^frame} =
+             EvaluateTask.execute(%{task_id: task_id, session_id: session_id}, frame)
+
+    refute resp.isError, "evaluate_task failed: #{response_text(resp)}"
+    resp
   end
 
   defp call_start_task_text!(frame, requirement_id, session_id) do
