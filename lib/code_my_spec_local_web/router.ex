@@ -80,10 +80,12 @@ defmodule CodeMySpecLocalWeb.Router do
     plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
 
-  scope "/api/hooks", CodeMySpecLocalWeb do
+  scope "/api/hooks", CodeMySpecLocalWeb.Hooks do
     pipe_through :hook
 
-    post "/", HookController, :dispatch
+    post "/session-start", SessionStartController, :handle
+    post "/pre-tool-use", PreToolUseController, :handle
+    post "/post-tool-use", PostToolUseController, :handle
   end
 
   pipeline :project do
@@ -95,8 +97,8 @@ defmodule CodeMySpecLocalWeb.Router do
     pipe_through :project
 
     post "/sync", SyncController, :create
+    # next-task moved to MCP (DraftTask tool); LiveView preview stays
     get "/next-task", NextTaskController, :show
-    get "/next-task/:session_id", NextTaskController, :show
     get "/requirements", RequirementsController, :index
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt
@@ -111,9 +113,7 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/sessions", SessionsController, :index
     get "/sessions/:id", SessionsController, :show
     get "/sessions/:session_id/tasks/:task_id", SessionsController, :show_task
-    get "/sessions/:session_id/tasks/:task_id/start", StartTaskController, :start
-    post "/sessions/:session_id/tasks/:task_id/start", StartTaskController, :start
-    get "/sessions/:session_id/tasks/:task_id/evaluate", EvaluateTaskController, :evaluate
+    # start-task and evaluate-task moved to MCP (StartTask, EvaluateTask tools)
     get "/knowledge", MarkdownBrowserController, :index
     get "/knowledge/*path", MarkdownBrowserController, :show
     get "/project-knowledge", MarkdownBrowserController, :index

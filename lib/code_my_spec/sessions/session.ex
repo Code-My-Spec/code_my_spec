@@ -20,7 +20,6 @@ defmodule CodeMySpec.Sessions.Session do
           id: Ecto.UUID.t() | nil,
           type: SessionType.t() | nil,
           status: atom() | nil,
-          priority: integer() | nil,
           external_conversation_id: String.t() | nil,
           component_module_name: String.t() | nil,
           state: map() | nil,

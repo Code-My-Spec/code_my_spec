@@ -10,11 +10,10 @@ defmodule CodeMySpecLocalWeb.NextTaskLive do
   alias CodeMySpec.Projects
   alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Users.Scope
-  alias CodeMySpecLocalWeb.NextTaskMarkdown
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, project: nil, markdown: nil, error: nil)}
+    {:ok, assign(socket, project: nil, result: nil, error: nil)}
   end
 
   @impl true
@@ -22,9 +21,7 @@ defmodule CodeMySpecLocalWeb.NextTaskLive do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
       result = ProjectCoordinator.get_next_actions(scope)
-      markdown = NextTaskMarkdown.render(result, scope, project)
-
-      {:noreply, assign(socket, project: project, markdown: markdown, error: nil)}
+      {:noreply, assign(socket, project: project, result: result, error: nil)}
     else
       {:error, reason} ->
         {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
@@ -34,13 +31,54 @@ defmodule CodeMySpecLocalWeb.NextTaskLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} class="text-red-400">
-      <h1>Error</h1>
+    <div :if={@error} class="alert alert-error">
       <p>{@error}</p>
     </div>
 
-    <div :if={@markdown} class="prose prose-invert max-w-none">
-      {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
+    <div :if={@result}>
+      {render_result(assigns)}
+    </div>
+
+    <div :if={!@result && !@error} class="text-base-content/50">
+      Loading...
+    </div>
+    """
+  end
+
+  defp render_result(%{result: {:ok, requirement}} = assigns) do
+    assigns = assign(assigns, :requirement, requirement)
+
+    ~H"""
+    <div class="prose prose-invert max-w-none">
+      <h1>Next Task: {@requirement.name}</h1>
+      <p>{@requirement.description}</p>
+      <p :if={@requirement.satisfied_by}>
+        <strong>Task:</strong> {inspect(@requirement.satisfied_by) |> String.split(".") |> List.last()}
+      </p>
+      <p>
+        <strong>Execution:</strong> {to_string(@requirement.execution_type)}
+        | <strong>Validation:</strong> {to_string(@requirement.validation_type)}
+      </p>
+    </div>
+    """
+  end
+
+  defp render_result(%{result: :complete} = assigns) do
+    ~H"""
+    <div class="prose prose-invert max-w-none">
+      <h1>All requirements satisfied</h1>
+      <p>No actionable tasks remain.</p>
+    </div>
+    """
+  end
+
+  defp render_result(%{result: {:error, reason}} = assigns) do
+    assigns = assign(assigns, :reason, reason)
+
+    ~H"""
+    <div class="prose prose-invert max-w-none">
+      <h1>No actionable task</h1>
+      <p>{@reason}</p>
     </div>
     """
   end

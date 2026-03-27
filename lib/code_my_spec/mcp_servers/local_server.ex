@@ -22,6 +22,11 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
 
+  # Tasks — draft → start → evaluate lifecycle
+  component(CodeMySpec.McpServers.Tasks.Tools.DraftTask)
+  component(CodeMySpec.McpServers.Tasks.Tools.StartTask)
+  component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
+
   # Issues — full lifecycle
   component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
   component(CodeMySpec.McpServers.Issues.Tools.ListIssues)
