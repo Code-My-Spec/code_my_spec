@@ -3,11 +3,12 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
   Setup step: .credo.exs configured with custom check paths.
   """
 
-  def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    credo_path = Path.join(dir, ".credo.exs")
+  alias CodeMySpec.Environments
 
-    case File.read(credo_path) do
+  def evaluate(scope, _task) do
+    env = scope.environment
+
+    case Environments.read_file(env, ".credo.exs") do
       {:ok, content} ->
         has_requires =
           String.contains?(content, "credo_checks/framework") and
@@ -17,25 +18,23 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
 
         if has_requires and has_eval,
           do: {:ok, :valid},
-          else: {:ok, :invalid, "`#{credo_path}` missing custom check configuration (requires + eval_file)"}
+          else: {:ok, :invalid, "`.credo.exs` missing custom check configuration (requires + eval_file)"}
 
       _ ->
-        {:ok, :invalid, "`.credo.exs` not found at `#{credo_path}`"}
+        {:ok, :invalid, "`.credo.exs` not found"}
     end
   end
 
-  def command(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-
+  def command(_scope, _task) do
     {:ok, """
     # Configure Credo Custom Checks
 
     Create local checks directory:
     ```bash
-    mkdir -p #{Path.join(dir, ".code_my_spec/credo_checks/local")}
+    mkdir -p .code_my_spec/credo_checks/local
     ```
 
-    Edit `#{Path.join(dir, ".credo.exs")}`:
+    Edit `.credo.exs`:
 
     ```elixir
     requires: [

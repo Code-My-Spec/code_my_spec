@@ -471,7 +471,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Project bootstrap setup is complete",
         prerequisites: [],
-        scope: :children,
+        scope: :local,
         validation_type: :manual,
         execution_type: :main_agent
       })

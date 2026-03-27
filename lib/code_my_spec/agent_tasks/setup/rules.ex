@@ -3,18 +3,22 @@ defmodule CodeMySpec.AgentTasks.Setup.Rules do
   Setup step: default rules installed in .code_my_spec/rules/.
   """
 
+  alias CodeMySpec.Environments
+
   def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    rules_path = Path.join(dir, CodeMySpec.Paths.rules_dir())
+    env = scope.environment
+    rules_path = CodeMySpec.Paths.rules_dir()
 
-    if File.dir?(rules_path) do
-      files = File.ls!(rules_path) |> Enum.filter(&String.ends_with?(&1, ".md"))
+    case Environments.list_directory(env, rules_path) do
+      {:ok, files} ->
+        md_files = Enum.filter(files, &String.ends_with?(&1, ".md"))
 
-      if files != [],
-        do: {:ok, :valid},
-        else: {:ok, :invalid, "No rule files found in `#{rules_path}`"}
-    else
-      {:ok, :invalid, "Rules directory not found at `#{rules_path}`"}
+        if md_files != [],
+          do: {:ok, :valid},
+          else: {:ok, :invalid, "No rule files found in `#{rules_path}`"}
+
+      _ ->
+        {:ok, :invalid, "Rules directory not found at `#{rules_path}`"}
     end
   end
 

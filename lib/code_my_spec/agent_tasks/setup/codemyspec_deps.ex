@@ -3,32 +3,31 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
   Setup step: required CodeMySpec dependencies present in mix.exs.
   """
 
+  alias CodeMySpec.Environments
+
   @required_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
 
   def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    mix_exs = Path.join(dir, "mix.exs")
+    env = scope.environment
 
-    case File.read(mix_exs) do
+    case Environments.read_file(env, "mix.exs") do
       {:ok, content} ->
         missing = Enum.reject(@required_deps, &dep_present?(content, &1))
 
         if Enum.empty?(missing),
           do: {:ok, :valid},
-          else: {:ok, :invalid, "Missing deps in `#{mix_exs}`: #{Enum.map_join(missing, ", ", &":#{&1}")}"}
+          else: {:ok, :invalid, "Missing deps in `mix.exs`: #{Enum.map_join(missing, ", ", &":#{&1}")}"}
 
       _ ->
-        {:ok, :invalid, "Cannot read `#{mix_exs}`"}
+        {:ok, :invalid, "Cannot read `mix.exs`"}
     end
   end
 
-  def command(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-
+  def command(_scope, _task) do
     {:ok, """
     # Add CodeMySpec Dependencies
 
-    Add to `deps/0` in `#{Path.join(dir, "mix.exs")}`:
+    Add to `deps/0` in `mix.exs`:
 
     - `:credo` — static code analysis
     - `:client_utils` — CodeMySpec client utilities

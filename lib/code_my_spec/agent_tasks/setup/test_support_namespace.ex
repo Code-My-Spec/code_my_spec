@@ -3,14 +3,17 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
   Setup step: ConnCase/DataCase use AppTest namespace.
   """
 
+  alias CodeMySpec.AgentTasks.Setup.Helpers
+  alias CodeMySpec.Environments
+
   @test_support_files ["conn_case.ex", "data_case.ex"]
 
   def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
+    env = scope.environment
 
-    case extract_app_name(dir) do
+    case Helpers.extract_app_name(env) do
       nil ->
-        {:ok, :invalid, "Could not determine app name from `#{Path.join(dir, "mix.exs")}`"}
+        {:ok, :invalid, "Could not determine app name from `mix.exs`"}
 
       app_name ->
         mod = Macro.camelize(app_name)
@@ -19,9 +22,9 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
         wrong =
           @test_support_files
           |> Enum.reject(fn file ->
-            path = Path.join([dir, "test", "support", file])
+            path = Path.join(["test", "support", file])
 
-            case File.read(path) do
+            case Environments.read_file(env, path) do
               {:ok, content} -> String.contains?(content, "defmodule #{test_ns}.")
               {:error, :enoent} -> true
               _ -> false
@@ -30,36 +33,25 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
 
         if wrong == [],
           do: {:ok, :valid},
-          else: {:ok, :invalid, "#{Enum.join(wrong, ", ")} not in `#{test_ns}` namespace under `#{Path.join([dir, "test", "support"])}/`"}
+          else: {:ok, :invalid, "#{Enum.join(wrong, ", ")} not in `#{test_ns}` namespace under `test/support/`"}
     end
   end
 
   def command(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    app_name = extract_app_name(dir) || "your_app"
+    env = scope.environment
+    app_name = Helpers.extract_app_name(env) || "your_app"
     mod = Macro.camelize(app_name)
 
     {:ok, """
     # Move Test Support to #{mod}Test Namespace
 
-    Rename in `#{Path.join([dir, "test", "support", "conn_case.ex"])}`:
+    Rename in `test/support/conn_case.ex`:
     `#{mod}Web.ConnCase` → `#{mod}Test.ConnCase`
 
-    Rename in `#{Path.join([dir, "test", "support", "data_case.ex"])}`:
+    Rename in `test/support/data_case.ex`:
     `#{mod}.DataCase` → `#{mod}Test.DataCase`
 
     Update all test files that `use` these modules.
     """}
-  end
-
-  defp extract_app_name(dir) do
-    case File.read(Path.join(dir, "mix.exs")) do
-      {:ok, content} ->
-        case Regex.run(~r/app:\s*:(\w+)/, content) do
-          [_, name] -> name
-          _ -> nil
-        end
-      _ -> nil
-    end
   end
 end

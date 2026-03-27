@@ -3,10 +3,13 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
   Setup step: .code_my_spec/ directory structure exists.
   """
 
+  alias CodeMySpec.AgentTasks.Setup.Helpers
+  alias CodeMySpec.Environments
+
   def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    base = Path.join(dir, CodeMySpec.Paths.base_dir())
-    app_name = extract_app_name(dir)
+    env = scope.environment
+    base = CodeMySpec.Paths.base_dir()
+    app_name = Helpers.extract_app_name(env)
 
     required =
       [base, Path.join(base, "rules"), Path.join(base, "spec")] ++
@@ -18,7 +21,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
           else: []
         )
 
-    missing = Enum.reject(required, &File.dir?/1)
+    missing = Enum.reject(required, &Environments.file_exists?(env, &1))
 
     if missing == [],
       do: {:ok, :valid},
@@ -26,28 +29,16 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
   end
 
   def command(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    app_name = extract_app_name(dir) || "your_app"
+    env = scope.environment
+    app_name = Helpers.extract_app_name(env) || "your_app"
     base = CodeMySpec.Paths.base_dir()
 
     {:ok, """
     # Create Project Structure
 
     ```bash
-    cd #{dir}
     mkdir -p #{base}/rules #{base}/spec/#{app_name} #{base}/spec/#{app_name}_web
     ```
     """}
-  end
-
-  defp extract_app_name(dir) do
-    case File.read(Path.join(dir, "mix.exs")) do
-      {:ok, content} ->
-        case Regex.run(~r/app:\s*:(\w+)/, content) do
-          [_, name] -> name
-          _ -> nil
-        end
-      _ -> nil
-    end
   end
 end

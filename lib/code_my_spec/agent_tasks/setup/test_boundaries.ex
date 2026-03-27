@@ -3,19 +3,22 @@ defmodule CodeMySpec.AgentTasks.Setup.TestBoundaries do
   Setup step: boundary namespace modules exist in test/support/.
   """
 
-  def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
+  alias CodeMySpec.AgentTasks.Setup.Helpers
+  alias CodeMySpec.Environments
 
-    case extract_app_name(dir) do
+  def evaluate(scope, _task) do
+    env = scope.environment
+
+    case Helpers.extract_app_name(env) do
       nil ->
-        {:ok, :invalid, "Could not determine app name from `#{Path.join(dir, "mix.exs")}`"}
+        {:ok, :invalid, "Could not determine app name from `mix.exs`"}
 
       app_name ->
-        spex_path = Path.join([dir, "test", "support", "#{app_name}_spex.ex"])
-        test_path = Path.join([dir, "test", "support", "#{app_name}_test_boundary.ex"])
+        spex_path = Path.join(["test", "support", "#{app_name}_spex.ex"])
+        test_path = Path.join(["test", "support", "#{app_name}_test_boundary.ex"])
 
-        spex_ok = file_contains?(spex_path, "use Boundary")
-        test_ok = file_contains?(test_path, "use Boundary")
+        spex_ok = file_contains?(env, spex_path, "use Boundary")
+        test_ok = file_contains?(env, test_path, "use Boundary")
 
         cond do
           not spex_ok and not test_ok ->
@@ -31,21 +34,21 @@ defmodule CodeMySpec.AgentTasks.Setup.TestBoundaries do
   end
 
   def command(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    app_name = extract_app_name(dir) || "your_app"
+    env = scope.environment
+    app_name = Helpers.extract_app_name(env) || "your_app"
     mod = Macro.camelize(app_name)
 
     {:ok, """
     # Configure Test Boundaries
 
-    Create `#{Path.join([dir, "test", "support", "#{app_name}_spex.ex"])}`:
+    Create `test/support/#{app_name}_spex.ex`:
     ```elixir
     defmodule #{mod}Spex do
       use Boundary, top_level?: true, deps: [#{mod}Test, #{mod}Web]
     end
     ```
 
-    Create `#{Path.join([dir, "test", "support", "#{app_name}_test_boundary.ex"])}`:
+    Create `test/support/#{app_name}_test_boundary.ex`:
     ```elixir
     defmodule #{mod}Test do
       use Boundary, top_level?: true, deps: [#{mod}]
@@ -54,19 +57,8 @@ defmodule CodeMySpec.AgentTasks.Setup.TestBoundaries do
     """}
   end
 
-  defp extract_app_name(dir) do
-    case File.read(Path.join(dir, "mix.exs")) do
-      {:ok, content} ->
-        case Regex.run(~r/app:\s*:(\w+)/, content) do
-          [_, name] -> name
-          _ -> nil
-        end
-      _ -> nil
-    end
-  end
-
-  defp file_contains?(path, needle) do
-    case File.read(path) do
+  defp file_contains?(env, path, needle) do
+    case Environments.read_file(env, path) do
       {:ok, content} -> String.contains?(content, needle)
       _ -> false
     end

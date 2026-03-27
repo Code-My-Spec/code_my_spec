@@ -6,49 +6,50 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   MCP tool chains without filesystem dependencies.
   """
 
-  import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.RequirementsFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.{Frame, Response}
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Sessions
 
   @doc """
   Creates a scope, session, frame, and a two-requirement graph:
 
-  - `spec_file` (actionable, no deps)
-  - `tests_passing` (blocked, depends on spec_file)
+  - `project_setup` (actionable, no deps) — uses ProjectSetup task module
+  - `technical_strategy` (blocked, depends on project_setup) — uses ProjectSetup for simplicity
 
-  Both use RefactorModule (evaluate always returns :valid).
+  Scope includes an environment backed by a tmp directory for filesystem control.
 
-  Returns `%{scope, frame, session_id, component, req1, req2}`.
+  Returns `%{scope, frame, session_id, project, req1, req2, tmp_dir}`.
   """
   def setup_workflow_scenario do
+    {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
-    component = component_fixture(scope)
+    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
     external_id = "workflow-#{System.unique_integer([:positive])}"
     {:ok, session} = Sessions.find_or_create_session(scope, external_id)
     frame = %Frame{assigns: %{current_scope: scope}}
+    project = scope.active_project
 
     req1 =
-      requirement_fixture(scope, component, %{
-        name: "spec_file",
+      project_requirement_fixture(scope, %{
+        name: "project_setup",
         artifact_type: :specification,
         satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.RefactorModule
+        satisfied_by: CodeMySpec.AgentTasks.ProjectSetup
       })
 
     req2 =
-      requirement_fixture(scope, component, %{
-        name: "tests_passing",
-        artifact_type: :tests,
+      project_requirement_fixture(scope, %{
+        name: "technical_strategy",
+        artifact_type: :specification,
         satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.RefactorModule,
+        satisfied_by: CodeMySpec.AgentTasks.ProjectSetup,
         depends_on: [
           %{
-            "entity_type" => "component",
-            "entity_id" => component.id,
-            "requirement_name" => "spec_file"
+            "entity_type" => "project",
+            "entity_id" => project.id,
+            "requirement_name" => "project_setup"
           }
         ]
       })
@@ -57,10 +58,33 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
       scope: scope,
       frame: frame,
       session_id: session.id,
-      component: component,
+      project: project,
       req1: req1,
-      req2: req2
+      req2: req2,
+      tmp_dir: tmp_dir
     }
+  end
+
+  defp project_requirement_fixture(scope, attrs) do
+    attrs =
+      Map.merge(
+        %{
+          description: "test",
+          checker_module: CodeMySpec.Requirements.ArtifactExistenceChecker,
+          score: 0.0,
+          checked_at: DateTime.utc_now()
+        },
+        attrs
+      )
+
+    {:ok, req} =
+      CodeMySpec.Requirements.RequirementsRepository.create_project_requirement(
+        scope,
+        scope.active_project,
+        attrs
+      )
+
+    req
   end
 
   @doc """

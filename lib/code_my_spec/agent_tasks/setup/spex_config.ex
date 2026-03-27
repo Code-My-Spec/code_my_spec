@@ -3,28 +3,27 @@ defmodule CodeMySpec.AgentTasks.Setup.SpexConfig do
   Setup step: spex preferred_envs configured in mix.exs.
   """
 
-  def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    mix_exs = Path.join(dir, "mix.exs")
+  alias CodeMySpec.Environments
 
-    case File.read(mix_exs) do
+  def evaluate(scope, _task) do
+    env = scope.environment
+
+    case Environments.read_file(env, "mix.exs") do
       {:ok, content} ->
         if Regex.match?(~r/spex:\s*:test/, content),
           do: {:ok, :valid},
-          else: {:ok, :invalid, "`spex: :test` not found in preferred_envs in `#{mix_exs}`"}
+          else: {:ok, :invalid, "`spex: :test` not found in preferred_envs in `mix.exs`"}
 
       _ ->
-        {:ok, :invalid, "Cannot read `#{mix_exs}`"}
+        {:ok, :invalid, "Cannot read `mix.exs`"}
     end
   end
 
-  def command(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-
+  def command(_scope, _task) do
     {:ok, """
     # Configure Spex
 
-    Add to `cli/0` in `#{Path.join(dir, "mix.exs")}`:
+    Add to `cli/0` in `mix.exs`:
 
     ```elixir
     def cli do

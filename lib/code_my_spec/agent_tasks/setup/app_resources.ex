@@ -3,18 +3,21 @@ defmodule CodeMySpec.AgentTasks.Setup.AppResources do
   Setup step: framework knowledge, tools, and credo checks installed.
   """
 
+  alias CodeMySpec.Environments
+
   @resource_dirs [:framework_dir, :tools_dir, :credo_checks_dir]
 
   def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
+    env = scope.environment
 
     missing =
       @resource_dirs
       |> Enum.reject(fn path_fn ->
-        Path.join(dir, apply(CodeMySpec.Paths, path_fn, [])) |> File.dir?()
+        path = apply(CodeMySpec.Paths, path_fn, [])
+        Environments.file_exists?(env, path)
       end)
       |> Enum.map(fn path_fn ->
-        "`#{Path.join(dir, apply(CodeMySpec.Paths, path_fn, []))}`"
+        "`#{apply(CodeMySpec.Paths, path_fn, [])}`"
       end)
 
     if missing == [],

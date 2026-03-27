@@ -3,25 +3,28 @@ defmodule CodeMySpec.AgentTasks.Setup.ApplicationInWeb do
   Setup step: Application module lives in the web namespace.
   """
 
-  def evaluate(scope, _task) do
-    dir = scope.cwd || File.cwd!()
+  alias CodeMySpec.AgentTasks.Setup.Helpers
+  alias CodeMySpec.Environments
 
-    case extract_app_name(dir) do
+  def evaluate(scope, _task) do
+    env = scope.environment
+
+    case Helpers.extract_app_name(env) do
       nil ->
-        {:ok, :invalid, "Could not determine app name from `#{Path.join(dir, "mix.exs")}`"}
+        {:ok, :invalid, "Could not determine app name from `mix.exs`"}
 
       app_name ->
-        web_path = Path.join([dir, "lib", "#{app_name}_web", "application.ex"])
+        web_path = Path.join(["lib", "#{app_name}_web", "application.ex"])
 
-        if File.exists?(web_path),
+        if Environments.file_exists?(env, web_path),
           do: {:ok, :valid},
           else: {:ok, :invalid, "Application module not found at `#{web_path}` — still in `lib/#{app_name}/application.ex`"}
     end
   end
 
   def command(scope, _task) do
-    dir = scope.cwd || File.cwd!()
-    app_name = extract_app_name(dir) || "your_app"
+    env = scope.environment
+    app_name = Helpers.extract_app_name(env) || "your_app"
     module_name = Macro.camelize(app_name)
 
     {:ok, """
@@ -34,16 +37,5 @@ defmodule CodeMySpec.AgentTasks.Setup.ApplicationInWeb do
     2. Rename module to `#{module_name}Web.Application`
     3. Update `mix.exs` — `mod: {#{module_name}Web.Application, []}`
     """}
-  end
-
-  defp extract_app_name(dir) do
-    case File.read(Path.join(dir, "mix.exs")) do
-      {:ok, content} ->
-        case Regex.run(~r/app:\s*:(\w+)/, content) do
-          [_, name] -> name
-          _ -> nil
-        end
-      _ -> nil
-    end
   end
 end

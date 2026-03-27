@@ -50,24 +50,58 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   @doc """
-  Generate setup instructions for the agent based on current environment state.
+  Generate setup instructions with inline prompts for incomplete steps.
 
-  Returns a comprehensive prompt containing setup instructions customized to skip
-  completed steps based on check_status results.
+  Evaluates each step, shows completed steps as checked off, and inlines
+  the full command prompt for each incomplete step. One prompt, one agent.
   """
   @spec command(term(), map()) :: {:ok, String.t()}
-  def command(_scope, _task) do
+  def command(scope, _task) do
+    steps = build_step_status(scope)
+    done = Enum.count(steps, & &1.done)
+    total = length(steps)
+
+    checklist =
+      Enum.map_join(steps, "\n\n", fn step ->
+        if step.done do
+          "- [x] **#{step.name}**"
+        else
+          "- [ ] **#{step.name}**\n\n#{step.prompt}"
+        end
+      end)
+
     {:ok, """
-    # Project Setup
+    # Project Setup (#{done}/#{total})
 
     Configure this Phoenix project for CodeMySpec integration.
+    Complete all unchecked steps below. Order does not matter.
 
-    This includes installing dependencies, configuring compilers,
-    setting up project structure, and installing framework resources.
+    #{checklist}
 
-    Fetch instructions for each step from the linked endpoints
-    and complete them in order.
+    When all steps are complete, use `evaluate_task` to validate.
     """}
+  end
+
+  defp build_step_status(scope) do
+    Enum.map(@setup_steps, fn mod ->
+      done =
+        case mod.evaluate(scope, %{}) do
+          {:ok, :valid} -> true
+          _ -> false
+        end
+
+      prompt =
+        if done do
+          nil
+        else
+          case mod.command(scope, %{}) do
+            {:ok, text} -> text
+            _ -> "Run #{step_name(mod)}"
+          end
+        end
+
+      %{name: step_name(mod), done: done, prompt: prompt}
+    end)
   end
 
   @doc """
