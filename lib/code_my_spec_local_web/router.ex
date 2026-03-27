@@ -99,9 +99,7 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt
     get "/requirements/:name/:child_id", RequirementsController, :child
-    get "/stories", StoriesController, :index
-    get "/stories/:story_id", StoriesController, :show
-    post "/stories/:story_id/set-component", StoriesController, :set_component
+    get "/graph", RequirementsGraphController, :show
     get "/stories/requirements", StoriesRequirementsController, :index
     get "/stories/:story_id/requirements", StoriesRequirementsController, :show
     get "/stories/:story_id/requirements/:name", StoriesRequirementsController, :show_requirement
