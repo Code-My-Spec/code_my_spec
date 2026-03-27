@@ -20,20 +20,10 @@ defmodule CodeMySpec.AgentTasks.Init.CliConfig do
     {:ok, """
     # Link Project
 
-    1. List available projects:
-    ```bash
-    curl -s http://localhost:4003/api/bootstrap/projects
-    ```
+    Use the `init_project` tool to link this directory to a CodeMySpec project.
+    Pass the `project_id` for the project you want to link.
 
-    2. Ask the user which project, then init:
-    ```bash
-    curl -s -X POST http://localhost:4003/api/bootstrap/init \\
-      -H "Content-Type: application/json" \\
-      -H "X-Working-Dir: $(pwd)" \\
-      -d '{"project_id": "<PROJECT_ID>"}'
-    ```
-
-    3. Add to `.gitignore`:
+    Then add to `.gitignore`:
     ```
     .code_my_spec/internal/
     /diagnostics.jsonl

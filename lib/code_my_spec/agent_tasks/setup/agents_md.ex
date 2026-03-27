@@ -18,10 +18,7 @@ defmodule CodeMySpec.AgentTasks.Setup.AgentsMd do
     {:ok, """
     # Generate AGENTS.md
 
-    ```bash
-    curl -s -X POST http://localhost:4003/api/bootstrap/install-agents-md \\
-      -H "X-Working-Dir: $(pwd)"
-    ```
+    Use the `install_agents_md` tool to generate the project agent guide.
     """}
   end
 end

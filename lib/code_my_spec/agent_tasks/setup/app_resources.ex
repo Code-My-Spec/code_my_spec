@@ -29,11 +29,7 @@ defmodule CodeMySpec.AgentTasks.Setup.AppResources do
     {:ok, """
     # Install Framework Knowledge + Tools
 
-    ```bash
-    curl -s -X POST http://localhost:4003/api/bootstrap/install-symlinks \\
-      -H "Content-Type: application/json" \\
-      -H "X-Working-Dir: $(pwd)"
-    ```
+    Use the `install_app_resources` tool to install framework reference files.
 
     This installs:
     - `.code_my_spec/framework/` — framework reference

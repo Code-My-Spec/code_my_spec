@@ -15,19 +15,14 @@ defmodule CodeMySpec.AgentTasks.Init.Auth do
     {:ok, """
     # Authenticate with CodeMySpec
 
-    Start the OAuth flow, then have the user open the URL in their browser:
+    Ask the user to authenticate with CodeMySpec. They need to:
 
-    ```bash
-    curl -s -X POST http://localhost:4003/api/bootstrap/auth/start
-    ```
+    1. Open the CodeMySpec web app and sign in
+    2. Run the auth flow from the CLI or visit the auth URL
 
-    The response contains an `auth_url`. Tell the user to open it. Then verify:
+    This step requires user interaction — you cannot complete it automatically.
 
-    ```bash
-    curl -s http://localhost:4003/api/bootstrap/auth/status
-    ```
-
-    Once `authenticated` is `true`, this step is complete.
+    Once authenticated, call `get_next_requirement` to continue.
     """}
   end
 

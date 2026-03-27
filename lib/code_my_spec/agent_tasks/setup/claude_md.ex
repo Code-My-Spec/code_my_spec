@@ -23,10 +23,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ClaudeMd do
     {:ok, """
     # Install CLAUDE.md
 
-    ```bash
-    curl -s -X POST http://localhost:4003/api/bootstrap/install-claude-md \\
-      -H "X-Working-Dir: $(pwd)"
-    ```
+    Use the `install_claude_md` tool to create or update the managed section in CLAUDE.md.
     """}
   end
 end

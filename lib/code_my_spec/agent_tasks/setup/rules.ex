@@ -26,10 +26,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Rules do
     {:ok, """
     # Install Default Rules
 
-    ```bash
-    curl -s -X POST http://localhost:4003/api/bootstrap/install-rules \\
-      -H "X-Working-Dir: $(pwd)"
-    ```
+    Use the `install_rules` tool to copy default rule files into `.code_my_spec/rules/`.
     """}
   end
 end
