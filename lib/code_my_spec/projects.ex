@@ -45,6 +45,15 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
+  Returns all projects that have a local_path set, ordered by name.
+  Does not require a scope — intended for the local web project index.
+  """
+  def list_local_projects do
+    from(p in Project, where: not is_nil(p.local_path), order_by: [asc: p.name])
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a single project.
 
   Returns `{:ok, %Project{}}` if the project exists, `{:error, :not_found}` otherwise.
