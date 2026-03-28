@@ -11,6 +11,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Compile
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments
   alias CodeMySpec.Stories
 
   require Logger
@@ -246,14 +247,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # ============================================================================
 
   defp validate_story_specs(scope, story) do
+    env = scope.environment
     criteria = story.criteria || []
 
     errors =
       criteria
       |> Enum.map(fn criterion ->
         spec_path = BddSpecs.spec_file_path(story, criterion)
-        full_path = resolve_path(scope, spec_path)
-        {criterion, spec_path, validate_single_spec(full_path)}
+        {criterion, spec_path, validate_single_spec(env, spec_path)}
       end)
       |> Enum.reject(fn {_, _, result} -> result == :ok end)
       |> Enum.map(fn {criterion, spec_path, {:error, reason}} ->
@@ -267,9 +268,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     end
   end
 
-  defp validate_single_spec(spec_path) do
-    if File.exists?(spec_path) do
-      case Parser.parse_file(spec_path) do
+  defp validate_single_spec(env, spec_path) do
+    if Environments.file_exists?(env, spec_path) do
+      # Parser.parse_file needs an absolute path
+      abs_path = if env, do: Path.join(env.cwd, spec_path), else: spec_path
+
+      case Parser.parse_file(abs_path) do
         {:ok, spec} -> validate_spec_content(spec)
         {:error, reason} -> {:error, {:parse_error, reason}}
       end
@@ -293,10 +297,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   end
 
   defp validate_compilation(scope) do
-    cwd = scope.cwd || (scope.environment && scope.environment.cwd)
+    env = scope.environment
 
-    if cwd && File.exists?(Path.join(cwd, "mix.exs")) do
-      case Compile.execute(cwd: cwd) do
+    if env && Environments.file_exists?(env, "mix.exs") do
+      case Compile.execute(cwd: env.cwd) do
         %{status: :ok} ->
           {:ok, :valid}
 
@@ -313,24 +317,19 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Helpers
   # ============================================================================
 
-  defp resolve_path(scope, relative_path) do
-    cwd = scope.cwd || (scope.environment && scope.environment.cwd)
-    if cwd, do: Path.join(cwd, relative_path), else: relative_path
-  end
-
   defp derive_app_name(scope) do
-    cwd = scope.cwd || (scope.environment && scope.environment.cwd)
+    env = scope.environment
 
-    if cwd do
-      mix_file = Path.join(cwd, "mix.exs")
+    if env do
+      case Environments.read_file(env, "mix.exs") do
+        {:ok, content} ->
+          case Regex.run(~r/app:\s*:(\w+)/, content) do
+            [_, name] -> name
+            _ -> "my_app"
+          end
 
-      if File.exists?(mix_file) do
-        case Regex.run(~r/app:\s*:(\w+)/, File.read!(mix_file)) do
-          [_, name] -> name
-          _ -> "my_app"
-        end
-      else
-        "my_app"
+        _ ->
+          "my_app"
       end
     else
       "my_app"
