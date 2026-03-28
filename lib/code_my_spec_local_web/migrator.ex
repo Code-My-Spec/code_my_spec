@@ -12,7 +12,7 @@ defmodule CodeMySpecLocalWeb.Migrator do
   end
 
   def run do
-    migrations_path = Application.app_dir(:code_my_spec, "priv/repo/migrations/cli")
+    migrations_path = Application.app_dir(:code_my_spec, "priv/repo/cli_migrations")
 
     if File.exists?(migrations_path) do
       Ecto.Migrator.run(CodeMySpec.Repo, migrations_path, :up, all: true)
