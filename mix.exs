@@ -7,7 +7,7 @@ defmodule CodeMySpec.MixProject do
       version: "0.1.0",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
-      start_permanent: Mix.env() == :prod,
+      start_permanent: Mix.env() in [:prod, :prod_cli],
       aliases: aliases(),
       deps: deps(),
       compilers: compilers(Mix.env()),
@@ -17,11 +17,7 @@ defmodule CodeMySpec.MixProject do
         plt_add_deps: :app_tree,
         ignore_warnings: ".dialyzer_ignore.exs"
       ],
-      releases: [
-        code_my_spec: [
-          overlays: "rel/overlays"
-        ]
-      ]
+      releases: releases()
     ]
   end
 
@@ -36,13 +32,15 @@ defmodule CodeMySpec.MixProject do
   end
 
   defp app_module do
-    if Mix.env() == :dev_cli,
+    if Mix.env() in [:dev_cli, :prod_cli],
       do: {CodeMySpecLocalWeb.Application, []},
       else: {CodeMySpecWeb.Application, []}
   end
 
   # Specifies which paths to compile per environment.
+  # Release modules (Burrito steps) only compile in prod_cli.
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
+  defp elixirc_paths(:prod_cli), do: ["lib", "lib_cli"]
   defp elixirc_paths(_), do: ["lib"]
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
@@ -122,8 +120,45 @@ defmodule CodeMySpec.MixProject do
       {:inflex, "~> 2.1.0"},
       {:oauth2, "~> 2.0"},
       {:web_push_elixir, "~> 0.5"},
-      {:slipstream, "~> 1.1"}
+      {:slipstream, "~> 1.1"},
+
+      # CLI release
+      {:burrito, "~> 1.5", only: :prod_cli, runtime: false},
+      {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli]}
     ]
+  end
+
+  defp releases do
+    [
+      code_my_spec: [
+        overlays: "rel/overlays"
+      ]
+    ] ++ cli_release()
+  end
+
+  defp cli_release do
+    if Mix.env() == :prod_cli do
+      [
+        code_my_spec_cli: [
+          steps: [:assemble, &Burrito.wrap/1],
+          burrito: [
+            targets: [
+              macos_m1: [os: :darwin, cpu: :aarch64]
+              # macos: [os: :darwin, cpu: :x86_64],
+              # linux: [os: :linux, cpu: :x86_64],
+              # linux_aarch64: [os: :linux, cpu: :aarch64],
+              # windows: [os: :windows, cpu: :x86_64]
+            ],
+            extra_steps: [
+              fetch: [pre: [CodeMySpecCli.Release.PatchLauncherStep]],
+              build: [post: [CodeMySpecCli.Release.PackageExtension]]
+            ]
+          ]
+        ]
+      ]
+    else
+      []
+    end
   end
 
   # Aliases are shortcuts or tasks specific to the current project.

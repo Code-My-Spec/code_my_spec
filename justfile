@@ -29,3 +29,7 @@ reset-db:
 # Compile with warnings as errors
 check:
     mix compile --warnings-as-errors
+
+# Build CLI release (Burrito binary)
+build-cli:
+    MIX_ENV=prod_cli mix release code_my_spec_cli

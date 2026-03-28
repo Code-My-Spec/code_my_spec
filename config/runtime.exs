@@ -38,25 +38,34 @@ if tunnel_config[:mode] == :named do
     Keyword.put(tunnel_config, :tunnel_secret, env!("CLOUDFLARE_TUNNEL_SECRET", :string, ""))
 end
 
+# CLI mode — minimal runtime config
+if config_env() in [:dev_cli, :prod_cli] do
+  config :code_my_spec,
+    api_base_url: env!("API_BASE_URL", :string, "https://codemyspec.com"),
+    oauth_base_url: env!("OAUTH_BASE_URL", :string, "https://codemyspec.com")
+end
+
 # Web app mode
-config :code_my_spec,
-  github_client_id: env!("GITHUB_CLIENT_ID"),
-  github_client_secret: env!("GITHUB_CLIENT_SECRET"),
-  google_client_id: env!("GOOGLE_CLIENT_ID"),
-  google_client_secret: env!("GOOGLE_CLIENT_SECRET"),
-  base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
-  deploy_key: env!("DEPLOY_KEY")
+if config_env() not in [:dev_cli, :prod_cli] do
+  config :code_my_spec,
+    github_client_id: env!("GITHUB_CLIENT_ID"),
+    github_client_secret: env!("GITHUB_CLIENT_SECRET"),
+    google_client_id: env!("GOOGLE_CLIENT_ID"),
+    google_client_secret: env!("GOOGLE_CLIENT_SECRET"),
+    base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
+    deploy_key: env!("DEPLOY_KEY")
 
-# Web Push VAPID configuration
-vapid_public_key = env!("VAPID_PUBLIC_KEY", :string, nil)
-vapid_private_key = env!("VAPID_PRIVATE_KEY", :string, nil)
-vapid_subject = env!("VAPID_SUBJECT", :string, "mailto:support@codemyspec.com")
+  # Web Push VAPID configuration
+  vapid_public_key = env!("VAPID_PUBLIC_KEY", :string, nil)
+  vapid_private_key = env!("VAPID_PRIVATE_KEY", :string, nil)
+  vapid_subject = env!("VAPID_SUBJECT", :string, "mailto:support@codemyspec.com")
 
-if vapid_public_key && vapid_private_key do
-  config :web_push_elixir,
-    vapid_public_key: vapid_public_key,
-    vapid_private_key: vapid_private_key,
-    vapid_subject: vapid_subject
+  if vapid_public_key && vapid_private_key do
+    config :web_push_elixir,
+      vapid_public_key: vapid_public_key,
+      vapid_private_key: vapid_private_key,
+      vapid_subject: vapid_subject
+  end
 end
 
 if config_env() == :prod do
