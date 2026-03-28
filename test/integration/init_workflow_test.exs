@@ -74,8 +74,8 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     # Step 7: get_next_requirement now returns project_setup from the graph
     {:reply, graph_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
     refute graph_resp.isError
-    data = extract_data(graph_resp)
-    assert data["requirement_name"] == "project_setup"
+    graph_text = response_text(graph_resp)
+    assert graph_text =~ "Next Requirement: project_setup"
   end
 
   defp project_requirement_fixture(scope, attrs) do

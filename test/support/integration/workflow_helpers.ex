@@ -180,13 +180,4 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     hd(protocol["content"])["text"]
   end
 
-  @doc """
-  Extracts the structured data from an MCP response.
-  """
-  def extract_data(%{structured_content: data}) when is_map(data) do
-    # Normalize atom keys to strings for consistent assertions
-    Jason.decode!(Jason.encode!(data))
-  end
-
-  def extract_data(_), do: %{}
 end

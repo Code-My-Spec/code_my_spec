@@ -30,6 +30,9 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
         _ -> nil
       end
 
+    component_line = if component_name, do: "**Component:** #{component_name}\n", else: ""
+    story_line = if story_title, do: "**Story:** #{story_title}\n", else: ""
+
     summary = """
     # Next Requirement: #{requirement.name}
 
@@ -38,15 +41,12 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     **Task:** `#{task_name}`
     **Execution:** #{execution_label(requirement.execution_type)}
     **Validation:** #{validation_label(requirement.validation_type)}
-    #{if component_name, do: "**Component:** #{component_name}", else: ""}
-    #{if story_title, do: "**Story:** #{story_title}", else: ""}
-
-    Call `start_task` with requirement_id to begin work.
+    #{component_line}#{story_line}
+    Call `start_task` with requirement_id `#{requirement.id}` to begin work.
     """
 
-    data = requirement_data(requirement)
-
-    hybrid_response(String.trim(summary), data)
+    Response.tool()
+    |> Response.text(String.trim(summary))
   end
 
   def sync_required_response do

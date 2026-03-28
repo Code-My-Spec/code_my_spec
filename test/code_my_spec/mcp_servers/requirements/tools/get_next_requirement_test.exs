@@ -35,10 +35,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
 
       assert content =~ "Next Requirement: tests_passing"
       assert content =~ "start_task"
-
-      data = extract_data(response)
-      assert data["requirement_name"] == "tests_passing"
-      assert data["requirement_id"]
+      assert content =~ "requirement_id"
     end
 
     test "returns all-satisfied when no actionable requirements exist" do
@@ -85,9 +82,5 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
   defp response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
-  end
-
-  defp extract_data(%{structured_content: data}) when is_map(data) do
-    Jason.decode!(Jason.encode!(data))
   end
 end
