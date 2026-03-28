@@ -26,7 +26,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :requirement_id, :integer,
+    field :requirement_id, :string,
       required: true,
       doc: "ID of the requirement to work on (from list_requirements or get_next_requirement)"
 
