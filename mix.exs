@@ -30,9 +30,15 @@ defmodule CodeMySpec.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {CodeMySpecWeb.Application, []},
+      mod: app_module(),
       extra_applications: [:logger, :runtime_tools]
     ]
+  end
+
+  defp app_module do
+    if Mix.env() == :dev_cli,
+      do: {CodeMySpecLocalWeb.Application, []},
+      else: {CodeMySpecWeb.Application, []}
   end
 
   # Specifies which paths to compile per environment.
@@ -58,12 +64,12 @@ defmodule CodeMySpec.MixProject do
       {:ecto_sqlite3, "~> 0.18"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
-      {:phoenix_live_reload, "~> 1.2", only: :dev},
+      {:phoenix_live_reload, "~> 1.2", only: [:dev, :dev_cli]},
       {:phoenix_live_view, "~> 1.1"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+      {:esbuild, "~> 0.10", runtime: Mix.env() in [:dev, :dev_cli]},
+      {:tailwind, "~> 0.3", runtime: Mix.env() in [:dev, :dev_cli]},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.2.0",
