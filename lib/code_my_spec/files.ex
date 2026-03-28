@@ -69,7 +69,7 @@ defmodule CodeMySpec.Files do
 
     Repo.insert_all(File, entries,
       on_conflict:
-        {:replace, [:role, :mtime, :size, :component_id, :story_id, :updated_at]},
+        {:replace, [:role, :mtime, :size, :valid, :validation_errors, :component_id, :story_id, :updated_at]},
       conflict_target: [:project_id, :path],
       returning: true
     )
@@ -113,5 +113,47 @@ defmodule CodeMySpec.Files do
     end)
     |> Enum.map(fn path -> Map.get(existing, path) end)
     |> Enum.reject(&is_nil/1)
+  end
+
+  @doc "List files that need validation (valid is nil)."
+  @spec files_needing_validation(Scope.t()) :: [File.t()]
+  def files_needing_validation(%Scope{active_project_id: project_id}) do
+    File
+    |> where([f], f.project_id == ^project_id and is_nil(f.valid))
+    |> Repo.all()
+  end
+
+  @doc "Mark a file as validated (pass or fail)."
+  @spec mark_validated(File.t(), boolean(), map() | nil) ::
+          {:ok, File.t()} | {:error, Ecto.Changeset.t()}
+  def mark_validated(%File{} = file, valid, errors \\ nil) do
+    file
+    |> File.changeset(%{valid: valid, validation_errors: errors})
+    |> Repo.update()
+  end
+
+  @doc """
+  Check if a component has a file with the given role.
+  """
+  @spec has_file?(Scope.t(), Ecto.UUID.t(), atom()) :: boolean()
+  def has_file?(%Scope{active_project_id: project_id}, component_id, role) do
+    File
+    |> where([f], f.project_id == ^project_id and f.component_id == ^component_id and f.role == ^role)
+    |> Repo.exists?()
+  end
+
+  @doc """
+  Check if a component has a valid file with the given role.
+  """
+  @spec has_valid_file?(Scope.t(), Ecto.UUID.t(), atom()) :: boolean()
+  def has_valid_file?(%Scope{active_project_id: project_id}, component_id, role) do
+    File
+    |> where([f],
+      f.project_id == ^project_id and
+        f.component_id == ^component_id and
+        f.role == ^role and
+        f.valid == true
+    )
+    |> Repo.exists?()
   end
 end

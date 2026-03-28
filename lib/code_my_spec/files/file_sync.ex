@@ -48,7 +48,18 @@ defmodule CodeMySpec.Files.FileSync do
       |> Enum.map(& &1.path)
 
     # Resolve owners for entries (component_id, story_id)
-    entries_with_owners = resolve_owners(scope, file_entries)
+    changed_set = MapSet.new(changed_paths)
+
+    entries_with_owners =
+      resolve_owners(scope, file_entries)
+      |> Enum.map(fn entry ->
+        if entry.path in changed_set do
+          # Invalidate — needs revalidation
+          Map.merge(entry, %{valid: nil, validation_errors: nil})
+        else
+          entry
+        end
+      end)
 
     # Upsert all
     {upserted, _} = Files.upsert_files(scope, entries_with_owners)
