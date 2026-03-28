@@ -29,13 +29,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       refute response.isError
       content = response_text(response)
 
-      # Prompt should come from the task module
+      # Prompt should come from the task module with task ID footer
       assert is_binary(content)
-      # Structured data should be on the response
-      data = extract_data(response)
-      assert data["task_id"]
-      assert data["requirement_name"] == "test_spec"
-      assert data["task_type"] == "ContextSpec"
+      assert content =~ "Task ID:"
 
       # DB state: task is active with correct linkage
       updated_session = Sessions.get_session(scope, session.id)
@@ -105,7 +101,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
                )
 
       refute response.isError
-      assert response.structured_content
+      assert response_text(response) =~ "Task ID:"
 
       final_session = Sessions.get_session(scope, session.id)
       matching = Enum.filter(final_session.tasks, &(&1.requirement_name == "test_spec"))
@@ -232,9 +228,5 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   defp response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
-  end
-
-  defp extract_data(%{structured_content: data}) when is_map(data) do
-    Jason.decode!(Jason.encode!(data))
   end
 end

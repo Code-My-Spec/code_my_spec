@@ -7,37 +7,24 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
   alias Anubis.Server.Response
 
   def prompt_response(prompt, task) do
-    task_name =
-      if task.session_type,
-        do: task.session_type |> inspect() |> String.split(".") |> List.last(),
-        else: "Unknown"
-
-    data = %{
-      task_id: task.id,
-      task_type: task_name,
-      requirement_name: task.requirement_name
-    }
+    footer = "\n\n---\nTask ID: `#{task.id}` — when done, stop the session so the hook can validate."
 
     Response.tool()
-    |> Response.text(prompt)
-    |> Map.put(:structured_content, data)
+    |> Response.text(prompt <> footer)
   end
 
   def evaluate_passed_response(task) do
     task_name = task_type_name(task)
 
-    summary = "# #{task_name}: Passed\n\nTask completed successfully.\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin."
-
-    data = %{task_id: task.id, result: :passed}
-
-    hybrid_response(summary, data)
+    Response.tool()
+    |> Response.text("# #{task_name}: Passed\n\nTask completed successfully.\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin.")
   end
 
   def evaluate_needs_work_response(task, feedback) do
     task_name = task_type_name(task)
-    summary = "# #{task_name}: Needs work\n\n#{feedback}"
-    data = %{task_id: task.id, result: :needs_work}
-    hybrid_response(summary, data)
+
+    Response.tool()
+    |> Response.text("# #{task_name}: Needs work\n\n#{feedback}")
   end
 
   def evaluate_error_response(task, reason) do
@@ -72,12 +59,6 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
   # ---------------------------------------------------------------------------
   # Private
   # ---------------------------------------------------------------------------
-
-  defp hybrid_response(summary, data) do
-    Response.tool()
-    |> Response.text(summary)
-    |> Map.put(:structured_content, data)
-  end
 
   defp task_type_name(task) do
     if task.session_type,

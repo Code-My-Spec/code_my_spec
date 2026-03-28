@@ -35,18 +35,16 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     assert next_data["requirement_name"] == "project_setup"
 
     # Step 2: start_task → all 12 steps unchecked (empty tmp dir)
-    start_data = call_start_task!(frame, next_data["requirement_id"], session_id)
     prompt = call_start_task_text!(frame, next_data["requirement_id"], session_id)
     assert prompt =~ "Project Setup (0/12)"
     assert prompt =~ "- [ ] **Claude md**"
+    assert prompt =~ "Task ID:"
 
-    task_id = start_data["task_id"]
-    assert task_id
-
-    # Verify task is active in DB
+    # Get task_id from DB
     session = Sessions.get_session(scope, session_id)
-    task = Enum.find(session.tasks, &(&1.id == task_id))
-    assert task.status == :active
+    task = Enum.find(session.tasks, &(&1.status == :active))
+    assert task
+    task_id = task.id
 
     # Step 3: simulate agent completing one step — write CLAUDE.md with managed section
     claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
@@ -91,14 +89,6 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
   defp call_get_next!(frame) do
     assert {:reply, resp, ^frame} = GetNextRequirement.execute(%{}, frame)
     refute resp.isError, "get_next_requirement failed: #{response_text(resp)}"
-    extract_data(resp)
-  end
-
-  defp call_start_task!(frame, requirement_id, session_id) do
-    assert {:reply, resp, ^frame} =
-             StartTask.execute(%{requirement_id: requirement_id, session_id: session_id}, frame)
-
-    refute resp.isError, "start_task failed: #{response_text(resp)}"
     extract_data(resp)
   end
 
