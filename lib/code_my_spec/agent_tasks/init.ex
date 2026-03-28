@@ -58,12 +58,11 @@ defmodule CodeMySpec.AgentTasks.Init do
     scope = ensure_cwd(scope)
     evaluated = evaluate_all(scope)
     {done, total} = count_progress(evaluated)
-
-    next = find_next_actionable(evaluated)
+    incomplete = incomplete_steps(evaluated)
 
     prompt =
-      case next do
-        nil ->
+      case incomplete do
+        [] ->
           """
           # Project Initialization Complete (#{done}/#{total})
 
@@ -71,8 +70,8 @@ defmodule CodeMySpec.AgentTasks.Init do
           project-level setup.
           """
 
-        {mod, {:not_done, detail}} ->
-          {:ok, step_prompt} = mod.command(scope, %{})
+        _ ->
+          step_sections = render_step_sections(incomplete, scope)
 
           """
           # Project Initialization (#{done}/#{total})
@@ -81,13 +80,7 @@ defmodule CodeMySpec.AgentTasks.Init do
 
           #{render_checklist(evaluated)}
 
-          ## Next Step: #{step_name(mod)}
-
-          #{detail}
-
-          ---
-
-          #{step_prompt}
+          #{step_sections}
           """
       end
 
@@ -145,13 +138,41 @@ defmodule CodeMySpec.AgentTasks.Init do
     {done, length(evaluated)}
   end
 
-  defp render_checklist(evaluated) do
-    Enum.map_join(evaluated, "\n", fn {mod, status} ->
-      case status do
-        :done -> "- [x] #{step_name(mod)}"
-        {:not_done, _} -> "- [ ] #{step_name(mod)} ← next"
-      end
+  defp incomplete_steps(evaluated) do
+    Enum.filter(evaluated, fn {_, status} -> match?({:not_done, _}, status) end)
+  end
+
+  defp render_step_sections(incomplete, scope) do
+    Enum.map_join(incomplete, "\n\n---\n\n", fn {mod, {:not_done, detail}} ->
+      {:ok, step_prompt} = mod.command(scope, %{})
+
+      """
+      ## #{step_name(mod)}
+
+      #{detail}
+
+      #{step_prompt}\
+      """
     end)
+  end
+
+  defp render_checklist(evaluated) do
+    {_, checklist} =
+      Enum.reduce(evaluated, {false, []}, fn {mod, status}, {seen_incomplete, acc} ->
+        line =
+          case status do
+            :done ->
+              "- [x] #{step_name(mod)}"
+
+            {:not_done, _} ->
+              marker = if seen_incomplete, do: "", else: " <- next"
+              "- [ ] #{step_name(mod)}#{marker}"
+          end
+
+        {seen_incomplete || match?({:not_done, _}, status), [line | acc]}
+      end)
+
+    checklist |> Enum.reverse() |> Enum.join("\n")
   end
 
   defp humanize(camel) do
