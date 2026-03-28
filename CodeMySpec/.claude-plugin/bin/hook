@@ -12,6 +12,7 @@ case "$EVENT" in
   SessionStart)  ENDPOINT="/api/hooks/session-start" ;;
   PreToolUse)    ENDPOINT="/api/hooks/pre-tool-use" ;;
   PostToolUse)   ENDPOINT="/api/hooks/post-tool-use" ;;
+  Stop)          ENDPOINT="/api/hooks/stop" ;;
   *)             exit 0 ;;
 esac
 

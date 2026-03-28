@@ -10,32 +10,34 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   require Logger
 
   alias CodeMySpec.Notifications.NotificationClient
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.TaskEvaluator
 
   def handle(conn, params) do
     scope = conn.assigns.current_scope
     session_id = Map.get(params, "session_id")
-    transcript_path = Map.get(params, "transcript_path")
 
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
-    result =
-      Validation.validate_stop(scope,
-        transcript_path: transcript_path,
-        session_id: session_id
-      )
+    # Step 1: Lightweight sync — mtimes, parent relationships, requirements
+    if scope.cwd do
+      ProjectSync.incremental_sync(scope, base_dir: scope.cwd)
+    end
+
+    # Step 2: Evaluate the active task
+    result = TaskEvaluator.evaluate_sessions(scope, session_id)
 
     response =
       case result do
         {:ok, :valid} ->
           maybe_continue_with_next_task(scope, session_id, req_id)
 
-        _ ->
-          Validation.format_output(result)
+        {:error, reason} when is_binary(reason) ->
+          %{"decision" => "block", "reason" => reason}
       end
 
     json(conn, response)
@@ -96,12 +98,10 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   end
 
   defp notify_complete do
-    Task.start(fn ->
-      NotificationClient.notify(%{
-        type: "task_complete",
-        title: "Claude has finished",
-        body: "Claude Code has completed its current task"
-      })
-    end)
+    NotificationClient.notify(%{
+      type: "task_complete",
+      title: "Claude has finished",
+      body: "Claude Code has completed its current task"
+    })
   end
 end

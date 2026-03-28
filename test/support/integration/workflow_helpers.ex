@@ -70,7 +70,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     }
   end
 
-  defp project_requirement_fixture(scope, attrs) do
+  def project_requirement_fixture(scope, attrs) do
     attrs =
       Map.merge(
         %{

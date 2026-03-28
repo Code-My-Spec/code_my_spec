@@ -31,6 +31,10 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       nil ->
         {:ok, :valid}
 
+      %{validation_type: :manual} ->
+        Logger.info("[TaskEvaluator] Skipping manual validation task")
+        {:ok, :valid}
+
       task ->
         evaluate_task(scope, session, task)
     end

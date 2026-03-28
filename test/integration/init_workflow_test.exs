@@ -16,7 +16,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Projects
-  alias CodeMySpec.Requirements.RequirementsRepository
+
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
@@ -78,21 +78,4 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     assert graph_text =~ "Next Requirement: project_setup"
   end
 
-  defp project_requirement_fixture(scope, attrs) do
-    attrs =
-      Map.merge(
-        %{
-          description: "test",
-          checker_module: CodeMySpec.Requirements.ArtifactExistenceChecker,
-          score: 0.0,
-          checked_at: DateTime.utc_now()
-        },
-        attrs
-      )
-
-    {:ok, req} =
-      RequirementsRepository.create_project_requirement(scope, scope.active_project, attrs)
-
-    req
-  end
 end

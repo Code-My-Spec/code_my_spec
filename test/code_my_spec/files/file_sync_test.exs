@@ -1,0 +1,199 @@
+defmodule CodeMySpec.Files.FileSyncTest do
+  use ExUnit.Case, async: true
+
+  import CodeMySpec.UsersFixtures
+
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Projects
+
+  setup do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+  end
+
+  describe "classify/1" do
+    test "classifies implementation files" do
+      assert {:implementation, _} = swap(FileSync.classify("lib/my_app/accounts.ex"))
+    end
+
+    test "classifies test files" do
+      assert {:test, _} = swap(FileSync.classify("test/my_app/accounts_test.exs"))
+    end
+
+    test "classifies spec files" do
+      assert {:spec, _} = swap(FileSync.classify(".code_my_spec/spec/my_app/accounts.spec.md"))
+    end
+
+    test "classifies bdd spec files" do
+      assert {:bdd_spec, _} = swap(FileSync.classify("test/spex/my_app/accounts_spex.exs"))
+    end
+
+    test "classifies rule files" do
+      assert {:rule, _} = swap(FileSync.classify(".code_my_spec/rules/context.md"))
+    end
+
+    test "classifies qa brief files" do
+      assert {:qa_brief, _} = swap(FileSync.classify(".code_my_spec/qa/440/brief.md"))
+    end
+
+    test "classifies qa result files" do
+      assert {:qa_result, _} = swap(FileSync.classify(".code_my_spec/qa/440/result_complete.md"))
+      assert {:qa_result, _} = swap(FileSync.classify(".code_my_spec/qa/440/result_failed_20260318_041104.md"))
+      assert {:qa_result, _} = swap(FileSync.classify(".code_my_spec/qa/440/result.md"))
+    end
+
+    test "does not classify qa screenshots" do
+      assert is_nil(FileSync.classify(".code_my_spec/qa/440/screenshots/01_page.png"))
+    end
+
+    test "classifies CLAUDE.md as config" do
+      assert {:config, _} = swap(FileSync.classify("CLAUDE.md"))
+    end
+
+    test "classifies config.yml as config" do
+      assert {:config, _} = swap(FileSync.classify(".code_my_spec/config.yml"))
+    end
+
+    test "returns nil for unrecognized files" do
+      assert is_nil(FileSync.classify("README.md"))
+      assert is_nil(FileSync.classify("mix.exs"))
+      assert is_nil(FileSync.classify("assets/js/app.js"))
+    end
+
+    test "returns nil for files in ignored dirs" do
+      # These would be filtered by ignored_path? before classify,
+      # but classify itself doesn't match them either
+      assert is_nil(FileSync.classify("deps/phoenix/lib/phoenix.ex"))
+    end
+
+    # Swap {path, role} to {role, path} for pattern matching on role
+    defp swap({path, role}), do: {role, path}
+    defp swap(nil), do: nil
+  end
+
+  describe "sync/2" do
+    test "scans filesystem and creates File records" do
+      {scope, tmp_dir} = setup_project()
+
+      # Seed some files
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", "# MyApp.Accounts\n\n## Type\n\nschema")
+      write_file(tmp_dir, "CLAUDE.md", "# Project")
+
+      {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      assert result.total_files >= 3
+      assert result.upserted >= 3
+
+      files = Files.list_files(scope)
+      paths = Enum.map(files, & &1.path)
+
+      assert "lib/my_app/accounts.ex" in paths
+      assert ".code_my_spec/spec/my_app/accounts.spec.md" in paths
+      assert "CLAUDE.md" in paths
+    end
+
+    test "detects changed files on second sync" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+
+      {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert "lib/my_app/accounts.ex" in result1.changed_paths
+
+      # Second sync without changes — nothing changed
+      {:ok, result2} = FileSync.sync(scope, base_dir: tmp_dir)
+      refute "lib/my_app/accounts.ex" in result2.changed_paths
+
+      # Modify file (need mtime to advance)
+      Process.sleep(1100)
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\n  # changed\nend")
+
+      {:ok, result3} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert "lib/my_app/accounts.ex" in result3.changed_paths
+    end
+
+    test "removes files that no longer exist on disk" do
+      {scope, tmp_dir} = setup_project()
+
+      path = write_file(tmp_dir, "lib/my_app/old.ex", "defmodule MyApp.Old do\nend")
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert Files.get_by_path(scope, "lib/my_app/old.ex")
+
+      # Delete the file
+      File.rm!(path)
+
+      {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert result.removed >= 1
+      refute Files.get_by_path(scope, "lib/my_app/old.ex")
+    end
+
+    test "assigns component_id to implementation files" do
+      {scope, tmp_dir} = setup_project()
+
+      # Create a component in DB
+      {:ok, component} =
+        CodeMySpec.Components.create_component(scope, %{
+          name: "Accounts",
+          type: "schema",
+          module_name: "MyApp.Accounts"
+        })
+
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", "# MyApp.Accounts\n\n## Type\n\nschema")
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
+      assert impl_file.component_id == component.id
+      assert impl_file.role == :implementation
+
+      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
+      assert spec_file.component_id == component.id
+      assert spec_file.role == :spec
+    end
+
+    test "ignores deps, _build, .git directories" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "deps/phoenix/lib/phoenix.ex", "defmodule Phoenix do\nend")
+      write_file(tmp_dir, "_build/dev/lib/my_app.ex", "defmodule MyApp do\nend")
+      write_file(tmp_dir, "lib/my_app/real.ex", "defmodule MyApp.Real do\nend")
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      files = Files.list_files(scope)
+      paths = Enum.map(files, & &1.path)
+
+      assert "lib/my_app/real.ex" in paths
+      refute Enum.any?(paths, &String.starts_with?(&1, "deps/"))
+      refute Enum.any?(paths, &String.starts_with?(&1, "_build/"))
+    end
+  end
+
+  # -- Helpers --
+
+  defp setup_project do
+    {:ok, tmp_dir} = Briefly.create(directory: true)
+    scope = full_scope_fixture()
+    {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
+
+    scope = %{
+      scope
+      | active_project: project,
+        cwd: tmp_dir,
+        environment: Environment.new(:local, tmp_dir)
+    }
+
+    {scope, tmp_dir}
+  end
+
+  defp write_file(tmp_dir, relative_path, content) do
+    full_path = Path.join(tmp_dir, relative_path)
+    File.mkdir_p!(Path.dirname(full_path))
+    File.write!(full_path, content)
+    full_path
+  end
+end
