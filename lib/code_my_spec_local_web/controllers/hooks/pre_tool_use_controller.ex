@@ -35,7 +35,9 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
     session_id = Map.get(params, "session_id")
 
     if session_id do
-      injected = %{"session_id" => session_id}
+      # Merge session_id into existing tool input — don't replace it
+      original_input = Map.get(params, "tool_input", %{})
+      merged = Map.put(original_input, "session_id", session_id)
 
       Logger.debug("[PreToolUse] Enriching MCP tool with session_id")
 
@@ -44,7 +46,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
           "hookEventName" => "PreToolUse",
           "permissionDecision" => "allow",
           "permissionDecisionReason" => "Injected session context into MCP tool",
-          "updatedInput" => injected
+          "updatedInput" => merged
         }
       })
     else
