@@ -13,49 +13,16 @@ defmodule CodeMySpec.BddSpecs.Parser do
   alias CodeMySpec.BddSpecs.Spec
 
   @doc """
-  Parse a Spex DSL file into a Spec struct with all scenarios and steps extracted.
+  Parse Spex DSL content into a Spec struct.
 
-  ## Examples
-
-      iex> parse_file("path/to/spec.exs")
-      {:ok, %Spec{name: "User authentication", scenarios: [...]}}
-
-      iex> parse_file("nonexistent.exs")
-      {:error, :enoent}
+  Takes the file content (string) and the file path (for story_id/criterion_id derivation).
+  Callers are responsible for reading the file (via Environment or otherwise).
   """
-  @spec parse_file(String.t()) :: {:ok, Spec.t()} | {:error, term()}
-  def parse_file(file_path) do
-    with {:ok, content} <- read_file(file_path),
-         {:ok, ast} <- parse_content(content),
+  @spec parse(String.t(), String.t()) :: {:ok, Spec.t()} | {:error, term()}
+  def parse(content, file_path) do
+    with {:ok, ast} <- parse_content(content),
          {:ok, metadata} <- extract_spec_data(ast) do
-      story_id = derive_story_id(file_path)
-      criterion_id = derive_criterion_id(file_path)
-
-      # Convert Scenario structs to plain maps for Spec.new
-      scenario_maps =
-        Enum.map(metadata.scenarios, fn scenario ->
-          %{
-            name: scenario.name,
-            line_number: scenario.line_number,
-            given_steps: scenario.given_steps,
-            when_steps: scenario.when_steps,
-            then_steps: scenario.then_steps,
-            tags: scenario.tags
-          }
-        end)
-
-      spec =
-        Spec.new(%{
-          name: metadata.name,
-          description: metadata.description,
-          tags: metadata.tags,
-          file_path: file_path,
-          story_id: story_id,
-          criterion_id: criterion_id,
-          scenarios: scenario_maps
-        })
-
-      {:ok, spec}
+      build_spec(metadata, file_path)
     else
       {:error, reason} -> {:error, reason}
     end
@@ -129,24 +96,21 @@ defmodule CodeMySpec.BddSpecs.Parser do
       iex> validate_syntax("path/to/valid_spec.exs")
       :ok
 
-      iex> validate_syntax("path/to/invalid_spec.exs")
-      {:error, ["No spex macro found", "No scenarios found"]}
+      iex> validate_syntax("valid spex content")
+      :ok
   """
   @spec validate_syntax(String.t()) :: :ok | {:error, [String.t()]}
-  def validate_syntax(file_path) do
+  def validate_syntax(content) do
     errors =
-      with {:ok, content} <- read_file(file_path),
-           {:ok, ast} <- parse_content(content) do
-        validate_structure(ast)
-      else
-        {:error, :enoent} ->
-          ["File not found: #{file_path}"]
+      case parse_content(content) do
+        {:ok, ast} ->
+          validate_structure(ast)
 
         {:error, {_line, _module, reason}} ->
           ["Syntax error: #{inspect(reason)}"]
 
         {:error, reason} ->
-          ["Failed to parse file: #{inspect(reason)}"]
+          ["Failed to parse: #{inspect(reason)}"]
       end
 
     case errors do
@@ -217,11 +181,37 @@ defmodule CodeMySpec.BddSpecs.Parser do
   end
 
   # ============================================================================
-  # Private Functions - File I/O
+  # Private Functions - Building
   # ============================================================================
 
-  defp read_file(file_path) do
-    File.read(file_path)
+  defp build_spec(metadata, file_path) do
+    story_id = derive_story_id(file_path)
+    criterion_id = derive_criterion_id(file_path)
+
+    scenario_maps =
+      Enum.map(metadata.scenarios, fn scenario ->
+        %{
+          name: scenario.name,
+          line_number: scenario.line_number,
+          given_steps: scenario.given_steps,
+          when_steps: scenario.when_steps,
+          then_steps: scenario.then_steps,
+          tags: scenario.tags
+        }
+      end)
+
+    spec =
+      Spec.new(%{
+        name: metadata.name,
+        description: metadata.description,
+        tags: metadata.tags,
+        file_path: file_path,
+        story_id: story_id,
+        criterion_id: criterion_id,
+        scenarios: scenario_maps
+      })
+
+    {:ok, spec}
   end
 
   defp parse_content(content) do

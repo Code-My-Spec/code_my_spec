@@ -269,16 +269,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   end
 
   defp validate_single_spec(env, spec_path) do
-    if Environments.file_exists?(env, spec_path) do
-      # Parser.parse_file needs an absolute path
-      abs_path = if env, do: Path.join(env.cwd, spec_path), else: spec_path
+    case Environments.read_file(env, spec_path) do
+      {:ok, content} ->
+        case Parser.parse(content, spec_path) do
+          {:ok, spec} -> validate_spec_content(spec)
+          {:error, reason} -> {:error, {:parse_error, reason}}
+        end
 
-      case Parser.parse_file(abs_path) do
-        {:ok, spec} -> validate_spec_content(spec)
-        {:error, reason} -> {:error, {:parse_error, reason}}
-      end
-    else
-      {:error, :file_not_found}
+      _ ->
+        {:error, :file_not_found}
     end
   end
 

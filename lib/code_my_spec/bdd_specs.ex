@@ -34,7 +34,7 @@ defmodule CodeMySpec.BddSpecs do
 
     specs =
       files
-      |> Enum.map(&parse_spec_file/1)
+      |> Enum.map(&parse_spec_file(env, &1))
       |> Enum.reject(&is_nil/1)
 
     specs
@@ -160,8 +160,8 @@ defmodule CodeMySpec.BddSpecs do
 
   """
   @spec validate_spec_syntax(String.t()) :: :ok | {:error, [String.t()]}
-  def validate_spec_syntax(file_path) do
-    Parser.validate_syntax(file_path)
+  def validate_spec_syntax(content) do
+    Parser.validate_syntax(content)
   end
 
   @doc """
@@ -214,8 +214,15 @@ defmodule CodeMySpec.BddSpecs do
   end
 
   # Private helper to parse a spec file, returning nil on error
-  defp parse_spec_file(file_path) do
-    case Parser.parse_file(file_path) do
+  defp parse_spec_file(env, file_path) do
+    case Environments.read_file(env, file_path) do
+      {:ok, content} -> parse_spec_content(content, file_path)
+      {:error, _} -> nil
+    end
+  end
+
+  defp parse_spec_content(content, file_path) do
+    case Parser.parse(content, file_path) do
       {:ok, spec} ->
         spec
 
