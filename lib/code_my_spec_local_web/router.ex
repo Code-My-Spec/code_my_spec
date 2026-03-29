@@ -24,15 +24,17 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/sync", SyncLive
       live "/projects/:project_name/next-task", Tasks.NextTaskLive
       live "/projects/:project_name/requirements", RequirementsLive, :index
+      live "/projects/:project_name/requirements/graph", RequirementsLive, :graph
       live "/projects/:project_name/requirements/:name", RequirementsLive, :show
       live "/projects/:project_name/requirements/:name/:child_id", RequirementsLive, :child
-      live "/projects/:project_name/graph", RequirementsLive, :graph
-      live "/projects/:project_name/stories/requirements", RequirementsLive, :stories
-      live "/projects/:project_name/stories/:story_id/requirements", RequirementsLive, :story_show
 
-      live "/projects/:project_name/stories/:story_id/requirements/:name",
-           RequirementsLive,
-           :story_req_show
+      live "/projects/:project_name/components", RequirementsLive, :components
+      live "/projects/:project_name/components/:component_id", RequirementsLive, :component_show
+      live "/projects/:project_name/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
+
+      live "/projects/:project_name/stories", RequirementsLive, :stories
+      live "/projects/:project_name/stories/:story_id", RequirementsLive, :story_show
+      live "/projects/:project_name/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
 
       live "/projects/:project_name/issues", IssuesLive.Index, :index
       live "/projects/:project_name/issues/:id", IssuesLive.Show, :show
@@ -46,13 +48,6 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/project-knowledge/*path",
            MarkdownBrowserLive,
            :project_knowledge
-
-      live "/projects/:project_name/components", RequirementsLive, :components
-      live "/projects/:project_name/components/:component_id", RequirementsLive, :component_show
-
-      live "/projects/:project_name/components/:component_id/requirements/:name",
-           RequirementsLive,
-           :component_req_show
     end
   end
 
@@ -132,22 +127,19 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/requirements/:name", RequirementsController, :show
     get "/requirements/:name/prompt", RequirementsController, :prompt
     get "/requirements/:name/:child_id", RequirementsController, :child
-    get "/graph", RequirementsGraphController, :show
-    get "/stories/requirements", StoriesRequirementsController, :index
-    get "/stories/:story_id/requirements", StoriesRequirementsController, :show
+
+    get "/components", ComponentsRequirementsController, :index
+    get "/components/:component_id", ComponentsRequirementsController, :show
+    get "/components/:component_id/requirements/:name", ComponentsRequirementsController, :show_requirement
+
+    get "/stories", StoriesRequirementsController, :index
+    get "/stories/:story_id", StoriesRequirementsController, :show
     get "/stories/:story_id/requirements/:name", StoriesRequirementsController, :show_requirement
-    # sessions API removed — use SessionsLive or MCP tools
+
     get "/knowledge", MarkdownBrowserController, :index
     get "/knowledge/*path", MarkdownBrowserController, :show
     get "/project-knowledge", MarkdownBrowserController, :index
     get "/project-knowledge/*path", MarkdownBrowserController, :show
-    # issues API removed — use MCP tools (ListIssues, GetIssue)
-    get "/components/requirements", ComponentsRequirementsController, :index
-    get "/components/:component_id/requirements", ComponentsRequirementsController, :show
-
-    get "/components/:component_id/requirements/:name",
-        ComponentsRequirementsController,
-        :show_requirement
   end
 
   # ── MCP (Streamable HTTP) ──────────────────────────────────────

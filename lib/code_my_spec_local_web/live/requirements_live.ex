@@ -359,7 +359,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   defp append_nav_links(markdown, project) do
     slug = project_slug(project)
-    markdown <> "\n\n---\n\n[View Stories →](/projects/#{slug}/stories) | [View Components →](/projects/#{slug}/components) | [View Graph →](/projects/#{slug}/graph)"
+    markdown <> "\n\n---\n\n[View Stories →](/projects/#{slug}/stories) | [View Components →](/projects/#{slug}/components) | [View Graph →](/projects/#{slug}/requirements/graph)"
   end
 
   # --- Helpers ---
