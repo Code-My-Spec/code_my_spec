@@ -8,8 +8,9 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects
-  alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
 
@@ -43,22 +44,22 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     socket = assign(socket, sync_status: :running, sync_result: nil)
     scope = socket.assigns.scope
 
-    case Sync.incremental_sync(scope, base_dir: scope.cwd, write_status: true) do
-      {:ok, result} ->
-        {:noreply,
-         assign(socket,
-           sync_status: :done,
-           sync_result: summarize_result(result)
-         )}
-
+    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
+         {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
+      {:noreply,
+       assign(socket,
+         sync_status: :done,
+         sync_result: [
+           {"Files", file_result.total_files},
+           {"Changed files", length(file_result.changed_paths)},
+           {"Components", length(comp_result.all_components)},
+           {"Changed components", length(comp_result.changed_component_ids)}
+         ]
+       )}
+    else
       {:error, reason} ->
         Logger.error("[SyncLive] Sync failed: #{inspect(reason)}")
-
-        {:noreply,
-         assign(socket,
-           sync_status: :error,
-           sync_result: %{error: inspect(reason)}
-         )}
+        {:noreply, assign(socket, sync_status: :error, sync_result: %{error: inspect(reason)})}
     end
   end
 
@@ -138,14 +139,6 @@ defmodule CodeMySpecLocalWeb.SyncLive do
       </div>
     </div>
     """
-  end
-
-  defp summarize_result(result) do
-    [
-      {"Components", Map.get(result, :all_components, []) |> length()},
-      {"Changed", Map.get(result, :changed_ids, []) |> length()},
-      {"Requirements updated", Map.get(result, :requirements_updated, 0)}
-    ]
   end
 
   defp project_slug(project) do

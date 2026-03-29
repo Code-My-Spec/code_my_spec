@@ -24,7 +24,8 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   alias CodeMySpec.FrameworkSync
   alias CodeMySpec.ProjectCoordinator.{Dispatch, ImplementationStatus}
-  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Requirement
 
@@ -100,10 +101,12 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   defp sync_project(scope) do
     working_dir = get_working_dir(scope.environment)
-    Logger.info("[StartImplementation] Incremental sync from #{working_dir}")
+    Logger.info("[StartImplementation] File sync from #{working_dir}")
 
-    case ProjectSync.incremental_sync(scope, base_dir: working_dir) do
-      {:ok, _result} -> {:ok, :synced}
+    with {:ok, _} <- FileSync.sync(scope, base_dir: working_dir),
+         {:ok, _} <- FileComponentSync.sync_from_files(scope, base_dir: working_dir) do
+      {:ok, :synced}
+    else
       {:error, reason} -> {:error, {:sync_failed, reason}}
     end
   end

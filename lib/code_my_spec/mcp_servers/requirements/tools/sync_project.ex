@@ -1,10 +1,10 @@
 defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   @moduledoc """
-  Sync project components and requirements.
+  Sync project files and components.
 
-  Triggers an incremental sync that detects changed components and
-  recalculates their requirements. Run this after init, after making
-  changes, or when the requirements graph seems stale.
+  Scans the filesystem, classifies and validates files, creates/updates
+  components, and backfills file ownership. After sync, the computed
+  requirement graph is up to date.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -12,8 +12,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   require Logger
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.ProjectSync.Sync
 
   schema do
   end
@@ -21,31 +22,24 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   @impl true
   def execute(_params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      case Sync.sync_all(scope) do
-        {:ok, result} ->
-          components = length(Map.get(result, :all_components, []))
-          changed = length(Map.get(result, :changed_ids, []))
+      with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
+           {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
+        files = file_result.total_files
+        changed = length(file_result.changed_paths)
+        components = length(comp_result.all_components)
 
-          text = """
-          # Sync Complete
+        text = """
+        # Sync Complete
 
-          - Components: #{components}
-          - Changed: #{changed}
+        - Files: #{files} (#{changed} changed)
+        - Components: #{components}
 
-          Call `get_next_requirement` to find your next task.
-          """
+        Call `get_next_requirement` to find your next task.
+        """
 
-          response =
-            Response.tool()
-            |> Response.text(text)
-            |> Map.put(:structured_content, %{
-              status: :ok,
-              components: components,
-              changed: changed
-            })
-
-          {:reply, response, frame}
-
+        response = Response.tool() |> Response.text(text)
+        {:reply, response, frame}
+      else
         {:error, reason} ->
           {:reply, Response.tool() |> Response.error("Sync failed: #{inspect(reason)}"), frame}
       end

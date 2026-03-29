@@ -23,8 +23,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.ProjectSync.FileWatcherServer
-  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Sessions
 
   # Maps session type names to AgentTask modules
@@ -357,15 +358,18 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # this catches anything it missed (e.g., files changed while Claude wasn't running).
 
   defp sync_project(scope) do
-    opts = if scope.environment, do: [base_dir: scope.environment.cwd], else: []
+    base_dir = scope.environment && scope.environment.cwd
     FileWatcherServer.ensure_watching(scope)
 
-    case ProjectSync.incremental_sync(scope, opts ++ [write_status: true]) do
-      {:ok, result} ->
-        {:ok, %{components: result.all_components, changed: result.changed_ids}}
-
-      {:error, reason} ->
-        {:error, "Sync failed: #{inspect(reason)}"}
+    if base_dir do
+      with {:ok, _file_result} <- FileSync.sync(scope, base_dir: base_dir),
+           {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: base_dir) do
+        {:ok, %{components: comp_result.all_components, changed: comp_result.changed_component_ids}}
+      else
+        {:error, reason} -> {:error, "Sync failed: #{inspect(reason)}"}
+      end
+    else
+      {:ok, %{components: [], changed: []}}
     end
   end
 end
