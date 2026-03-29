@@ -14,10 +14,11 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   use GenServer
   require Logger
 
-  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Users.Scope
 
-  @watched_subdirs [".code_my_spec/spec", "lib", "test"]
+  @watched_subdirs [".code_my_spec/spec", ".code_my_spec/rules", ".code_my_spec/qa", "lib", "test"]
   @debounce_ms 100
 
   # --- Client API ---
@@ -155,18 +156,20 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
         %{scope: scope} = watchers[project_root]
 
         try do
-          case ProjectSync.incremental_sync(scope, base_dir: project_root, write_status: true) do
-            {:ok, result} ->
-              file_count = paths |> Enum.to_list() |> length()
+          start = System.monotonic_time(:millisecond)
+          file_count = paths |> Enum.to_list() |> length()
 
-              Logger.info(
-                "[FileWatcher] Processed #{file_count} file(s) → " <>
-                  "#{length(result.expanded_ids)} component(s) changed"
-              )
+          {:ok, file_result} = FileSync.sync(scope, base_dir: project_root)
+          {:ok, comp_result} = FileComponentSync.sync_from_files(scope, base_dir: project_root)
 
-            {:error, reason} ->
-              Logger.error("[FileWatcher] Sync failed for #{project_root}: #{inspect(reason)}")
-          end
+          ms = System.monotonic_time(:millisecond) - start
+
+          Logger.info(
+            "[FileWatcher] #{file_count} event(s) → " <>
+              "#{length(file_result.changed_paths)} file(s) changed, " <>
+              "#{length(comp_result.changed_component_ids)} component(s) changed " <>
+              "in #{ms}ms"
+          )
         rescue
           e ->
             Logger.error(
