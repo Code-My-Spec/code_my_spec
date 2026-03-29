@@ -50,26 +50,30 @@ defmodule CodeMySpec.Files.FileSync do
       |> Enum.map(& &1.path)
 
     # Resolve owners for entries (component_id, story_id)
-    changed_set = MapSet.new(changed_paths)
+    entries_with_owners = resolve_owners(scope, file_entries)
 
-    # Build component lookup for validation (need type to pick document_type)
+    # Upsert all (without validation — ON CONFLICT preserves existing valid state)
+    {upserted, _} = Files.upsert_files(scope, entries_with_owners)
+
+    # Validate changed files and update their valid/validation_errors
+    changed_set = MapSet.new(changed_paths)
     components = Components.list_components(scope)
     component_by_id = Map.new(components, &{&1.id, &1})
 
-    entries_with_owners =
-      resolve_owners(scope, file_entries)
-      |> Enum.map(fn entry ->
-        if entry.path in changed_set do
-          validate_entry(entry, base_dir, component_by_id)
-        else
-          entry
-        end
-      end)
+    changed_entries =
+      entries_with_owners
+      |> Enum.filter(&(&1.path in changed_set))
+      |> Enum.map(&validate_entry(&1, base_dir, component_by_id))
+
+    # Write validation results for changed files
+    Enum.each(changed_entries, fn entry ->
+      case Files.get_by_path(scope, entry.path) do
+        nil -> :ok
+        file -> Files.mark_validated(file, entry.valid, entry.validation_errors)
+      end
+    end)
 
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
-
-    # Upsert all
-    {upserted, _} = Files.upsert_files(scope, entries_with_owners)
 
     # Remove files no longer on disk
     current_paths = Enum.map(file_entries, & &1.path)
