@@ -27,10 +27,14 @@ defmodule CodeMySpec.Files.FileSync do
     base_dir = Keyword.get(opts, :base_dir, ".")
     start = System.monotonic_time(:millisecond)
 
-    # Stream filesystem, classify, stat
+    # Load ignored components from config
+    ignored_modules = load_ignored_modules(scope)
+    ignored_prefixes = modules_to_path_prefixes(ignored_modules)
+
+    # Stream filesystem, classify, stat — filtering ignored
     file_entries =
       base_dir
-      |> stream_files()
+      |> stream_files(ignored_prefixes)
       |> Enum.to_list()
 
     scan_ms = System.monotonic_time(:millisecond) - start
@@ -101,11 +105,12 @@ defmodule CodeMySpec.Files.FileSync do
 
   Returns a stream of maps with `:path`, `:role`, `:mtime`, `:size`.
   """
-  @spec stream_files(String.t()) :: Enumerable.t()
-  def stream_files(base_dir) do
+  @spec stream_files(String.t(), [String.t()]) :: Enumerable.t()
+  def stream_files(base_dir, ignored_prefixes \\ []) do
     DirWalker.stream(base_dir)
     |> Stream.map(&Path.relative_to(&1, base_dir))
     |> Stream.reject(&ignored_path?/1)
+    |> Stream.reject(&ignored_by_module?(&1, ignored_prefixes))
     |> Stream.map(&classify/1)
     |> Stream.reject(&is_nil/1)
     |> Stream.map(fn {path, role} -> stat_file(base_dir, path, role) end)
@@ -207,6 +212,35 @@ defmodule CodeMySpec.Files.FileSync do
   defp ignored_path?(path) do
     first_segment = path |> String.split("/") |> hd()
     first_segment in @ignored_dirs
+  end
+
+  defp ignored_by_module?(_path, []), do: false
+
+  defp ignored_by_module?(path, ignored_prefixes) do
+    Enum.any?(ignored_prefixes, fn prefix -> String.starts_with?(path, prefix) end)
+  end
+
+  # Convert module names to path prefixes for filtering.
+  # "MyApp.PromEx" → ["lib/my_app/prom_ex", ".code_my_spec/spec/my_app/prom_ex", "test/my_app/prom_ex"]
+  defp modules_to_path_prefixes(module_names) do
+    Enum.flat_map(module_names, fn module_name ->
+      module_path = Macro.underscore(module_name)
+
+      [
+        "lib/#{module_path}",
+        Paths.spec_dir() <> "/#{module_path}",
+        "test/#{module_path}"
+      ]
+    end)
+  end
+
+  defp load_ignored_modules(%Scope{cwd: nil}), do: []
+
+  defp load_ignored_modules(%Scope{cwd: cwd}) do
+    case Scope.read_local_config(cwd) do
+      {:ok, %{"ignored_components" => list}} when is_list(list) -> list
+      _ -> []
+    end
   end
 
   # .code_my_spec/qa/{story_id}/brief.md
