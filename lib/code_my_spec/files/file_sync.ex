@@ -132,7 +132,7 @@ defmodule CodeMySpec.Files.FileSync do
   end
 
   defp validate_entry(%{role: role} = entry, _base_dir, _component_by_id)
-       when role in [:implementation, :test, :rule, :config, :bdd_spec, :qa_brief, :qa_result, :json, :review] do
+       when role in [:implementation, :test, :rule, :config, :bdd_spec, :qa_brief, :qa_result, :json, :review, :architecture] do
     # These roles are valid if they exist (which they do, since FileSync found them)
     Map.merge(entry, %{valid: true, validation_errors: nil})
   end
@@ -194,6 +194,9 @@ defmodule CodeMySpec.Files.FileSync do
 
       match_qa_result?(path) ->
         {path, :qa_result}
+
+      String.starts_with?(path, Paths.architecture_dir() <> "/") and String.ends_with?(path, ".md") ->
+        {path, :architecture}
 
       path == "CLAUDE.md" ->
         {path, :config}

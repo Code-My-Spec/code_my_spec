@@ -18,7 +18,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Users.Scope
 
-  @watched_subdirs [".code_my_spec/spec", ".code_my_spec/rules", ".code_my_spec/qa", "lib", "test"]
+  @watched_subdirs [".code_my_spec/spec", ".code_my_spec/rules", ".code_my_spec/qa", ".code_my_spec/architecture", "lib", "test"]
   @debounce_ms 100
 
   # --- Client API ---
