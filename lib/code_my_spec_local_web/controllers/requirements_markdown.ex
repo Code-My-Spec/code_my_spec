@@ -1,66 +1,55 @@
 defmodule CodeMySpecLocalWeb.RequirementsMarkdown do
   @moduledoc """
-  Markdown rendering for requirements API (LLM interface).
+  Markdown rendering for requirements from computed graph nodes.
   """
 
-  def index(%{project: project, requirements: requirements, actionable: actionable}) do
-    alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.RequirementDefinitionData
 
+  def index(%{project: project, nodes: nodes, actionable: actionable}) do
     name = project.name || "Project"
-    total = length(requirements)
-    satisfied = Enum.count(requirements, & &1.satisfied)
 
-    # Sort by definition order (prerequisite/dependency order)
+    project_nodes = Enum.filter(nodes, &(&1.entity_type == "project"))
+    total = length(project_nodes)
+    satisfied = Enum.count(project_nodes, & &1.satisfied)
+
+    # Sort by definition order
     definition_order =
       RequirementDefinitionData.project_requirements()
       |> Enum.with_index()
       |> Map.new(fn {defn, idx} -> {defn.name, idx} end)
 
-    sorted =
-      requirements
-      |> Enum.sort_by(fn req -> Map.get(definition_order, req.name, 999) end)
+    sorted = Enum.sort_by(project_nodes, fn n -> Map.get(definition_order, n.name, 999) end)
 
-    actionable_names =
-      actionable
-      |> Map.values()
-      |> List.flatten()
-      |> MapSet.new(& &1.name)
+    actionable_names = MapSet.new(actionable, & &1.name)
 
     lines =
-      Enum.map_join(sorted, "\n", fn req ->
-        check = if req.satisfied, do: "[x]", else: "[ ]"
-        actionable_tag = if MapSet.member?(actionable_names, req.name), do: " (actionable)", else: ""
-        "- #{check} **#{req.name}** — #{req.description}#{actionable_tag}"
+      Enum.map_join(sorted, "\n", fn n ->
+        check = if n.satisfied, do: "[x]", else: "[ ]"
+        tag = if MapSet.member?(actionable_names, n.name), do: " (actionable)", else: ""
+        "- #{check} **#{n.name}** — #{n.description}#{tag}"
       end)
 
     "# #{name} — Requirements (#{satisfied}/#{total})\n\n#{lines}\n"
   end
 
-  def show(%{requirement: req}) do
-    status = if req.satisfied, do: "satisfied", else: "not satisfied"
-    score = if req.score, do: " (score: #{Float.round(req.score, 2)})", else: ""
+  def show(%{node: node}) do
+    status = if node.satisfied, do: "satisfied", else: "not satisfied"
 
     details =
-      if req.details != %{} do
-        "\n\n## Details\n\n```json\n#{Jason.encode!(req.details, pretty: true)}\n```"
+      if node.details != %{} do
+        "\n\n## Details\n\n```json\n#{Jason.encode!(node.details, pretty: true)}\n```"
       else
         ""
       end
 
     satisfied_by =
-      if req.satisfied_by do
-        "\n\nSatisfied by: `#{inspect(req.satisfied_by)}`"
+      if node.satisfied_by do
+        task_name = node.satisfied_by |> inspect() |> String.split(".") |> List.last()
+        "\n\nSatisfied by: `#{task_name}`"
       else
         ""
       end
 
-    checked_at =
-      if req.checked_at do
-        "\n\nLast checked: #{Calendar.strftime(req.checked_at, "%Y-%m-%d %H:%M:%S UTC")}"
-      else
-        ""
-      end
-
-    "# #{req.name}\n\n#{req.description}\n\nStatus: #{status}#{score}#{satisfied_by}#{details}#{checked_at}\n"
+    "# #{node.name}\n\n#{node.description}\n\nStatus: #{status}#{satisfied_by}#{details}\n"
   end
 end

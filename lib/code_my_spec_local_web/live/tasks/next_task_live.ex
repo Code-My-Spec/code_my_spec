@@ -7,8 +7,8 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Files.RequirementGraph
   alias CodeMySpec.Projects
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
 
   @impl true
@@ -20,7 +20,7 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   def handle_params(%{"project_name" => name}, _uri, socket) do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
-      result = Requirements.next_actionable_project(scope)
+      result = RequirementGraph.next_actionable(scope)
       {:noreply, assign(socket, project: project, result: result, error: nil)}
     else
       {:error, reason} ->
@@ -45,19 +45,20 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
     """
   end
 
-  defp render_result(%{result: [requirement | _]} = assigns) do
-    assigns = assign(assigns, :requirement, requirement)
+  defp render_result(%{result: [node | _]} = assigns) do
+    assigns = assign(assigns, :node, node)
 
     ~H"""
     <div class="prose prose-invert max-w-none">
-      <h1>Next Task: {@requirement.name}</h1>
-      <p>{@requirement.description}</p>
-      <p :if={@requirement.satisfied_by}>
-        <strong>Task:</strong> {inspect(@requirement.satisfied_by) |> String.split(".") |> List.last()}
+      <h1>Next Task: {@node.name}</h1>
+      <p>{@node.description}</p>
+      <p><strong>Entity:</strong> {@node.entity_type} — {@node.entity_name}</p>
+      <p :if={@node.satisfied_by}>
+        <strong>Task:</strong> {inspect(@node.satisfied_by) |> String.split(".") |> List.last()}
       </p>
       <p>
-        <strong>Execution:</strong> {to_string(@requirement.execution_type)}
-        | <strong>Validation:</strong> {to_string(@requirement.validation_type)}
+        <strong>Execution:</strong> {to_string(@node.execution_type)}
+        | <strong>Validation:</strong> {to_string(@node.validation_type)}
       </p>
     </div>
     """
