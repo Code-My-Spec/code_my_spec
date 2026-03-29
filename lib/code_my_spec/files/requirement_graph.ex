@@ -329,15 +329,24 @@ defmodule CodeMySpec.Files.RequirementGraph do
   end
 
   defp check_project("all_bdd_specs_passing", scope, _project) do
-    spex_problems =
-      Problem
-      |> where([p], p.project_id == ^scope.active_project_id and p.source == "spex")
+    bdd_count =
+      File
+      |> where([f], f.project_id == ^scope.active_project_id and f.role == :bdd_spec)
       |> Repo.aggregate(:count)
 
-    if spex_problems == 0 do
-      {true, %{status: "All BDD specs passing"}}
+    if bdd_count == 0 do
+      {false, %{reason: "No BDD specs exist"}}
     else
-      {false, %{reason: "#{spex_problems} failing BDD specs"}}
+      spex_problems =
+        Problem
+        |> where([p], p.project_id == ^scope.active_project_id and p.source == "spex")
+        |> Repo.aggregate(:count)
+
+      if spex_problems == 0 do
+        {true, %{status: "All #{bdd_count} BDD specs passing"}}
+      else
+        {false, %{reason: "#{spex_problems} failing BDD specs"}}
+      end
     end
   end
 

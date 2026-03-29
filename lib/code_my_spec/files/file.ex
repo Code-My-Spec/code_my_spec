@@ -26,7 +26,9 @@ defmodule CodeMySpec.Files.File do
     :qa_brief,
     :qa_result,
     :config,
-    :architecture
+    :architecture,
+    :integration,
+    :issue
   ]
 
   @type role ::
@@ -41,6 +43,8 @@ defmodule CodeMySpec.Files.File do
           | :qa_result
           | :config
           | :architecture
+          | :integration
+          | :issue
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
