@@ -63,11 +63,8 @@ defmodule CodeMySpec.Files.ComponentSync do
     impl_data = Enum.map(impl_files, &parse_impl_file(&1, base_dir))
 
     # Merge by module name (spec + impl → one component)
+    # No ignored filtering needed — FileSync already excluded ignored paths
     merged = merge_by_module_name(spec_data, impl_data)
-
-    # Filter ignored components
-    ignored = load_ignored(scope)
-    merged = Enum.reject(merged, &(&1.module_name in ignored))
 
     # Upsert components
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -336,14 +333,6 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # -- Ignored components --
 
-  defp load_ignored(%Scope{cwd: nil}), do: MapSet.new()
-
-  defp load_ignored(%Scope{cwd: cwd}) do
-    case Scope.read_local_config(cwd) do
-      {:ok, %{"ignored_components" => list}} when is_list(list) -> MapSet.new(list)
-      _ -> MapSet.new()
-    end
-  end
 
   # -- Spec content extraction (reused from Components.Sync) --
 
