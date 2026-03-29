@@ -1,145 +1,88 @@
 defmodule CodeMySpec.Requirements.GraphProjector do
   @moduledoc """
-  Projects the requirements graph into a Mermaid flowchart string.
+  Projects the computed requirement graph into a Mermaid flowchart string.
+
+  Reads from RequirementGraph.compute_all — no persisted requirements needed.
 
   Nodes are colored by satisfaction status:
   - satisfied → blue
-  - actionable (unsatisfied, all deps met) → green
-  - blocked (unsatisfied, deps not met) → amber
+  - actionable (unsatisfied, all prereqs met) → green
+  - blocked (unsatisfied, prereqs not met) → amber
 
-  Edges show dependency relationships (requirement → depends_on).
+  Edges show prerequisite relationships within the same entity.
   Requirements are grouped into subgraphs by entity (project, story, component).
   """
 
-  alias CodeMySpec.Components.Component
-  alias CodeMySpec.Requirements.Requirement
-  alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Repo
+  alias CodeMySpec.Files.RequirementGraph
   alias CodeMySpec.Users.Scope
 
-  import Ecto.Query
-
   @spec project_graph(Scope.t()) :: String.t()
-  def project_graph(%Scope{active_project_id: project_id} = _scope) do
-    requirements = load_all_requirements(project_id)
-    components = load_components(project_id)
-    stories = load_stories(project_id)
-
-    build_mermaid(requirements, components, stories, project_id)
+  def project_graph(%Scope{} = scope) do
+    nodes = RequirementGraph.compute_all(scope)
+    build_mermaid(nodes)
   end
 
-  defp load_all_requirements(project_id) do
-    component_ids =
-      from(c in Component,
-        where: c.project_id == ^project_id,
-        select: c.id
-      )
-
-    story_ids =
-      from(s in Story,
-        where: s.project_id == ^project_id,
-        select: s.id
-      )
-
-    from(r in Requirement,
-      where:
-        r.component_id in subquery(component_ids) or
-          r.story_id in subquery(story_ids) or
-          r.project_id == ^project_id,
-      order_by: [asc: r.name]
-    )
-    |> Repo.all()
-  end
-
-  defp load_components(project_id) do
-    from(c in Component,
-      where: c.project_id == ^project_id,
-      select: {c.id, c.module_name, c.type}
-    )
-    |> Repo.all()
-    |> Map.new(fn {id, name, type} -> {id, %{module_name: name, type: type}} end)
-  end
-
-  defp load_stories(project_id) do
-    from(s in Story,
-      where: s.project_id == ^project_id,
-      select: {s.id, s.title}
-    )
-    |> Repo.all()
-    |> Map.new(fn {id, title} -> {id, title} end)
-  end
-
-  defp build_mermaid([], _components, _stories, _project_id) do
+  defp build_mermaid([]) do
     "flowchart TD\n  empty[No requirements]"
   end
 
-  defp build_mermaid(requirements, components, stories, _project_id) do
+  defp build_mermaid(nodes) do
     # Build satisfaction map for actionable detection
     satisfaction_map =
-      Map.new(requirements, fn r ->
-        {{entity_type(r), entity_id(r), r.name}, r.satisfied}
+      Map.new(nodes, fn n ->
+        {{n.entity_type, n.entity_id, n.name}, n.satisfied}
       end)
 
     # Group by entity
-    {project_reqs, entity_reqs} =
-      Enum.split_with(requirements, fn r -> not is_nil(r.project_id) end)
-
-    {story_reqs, component_reqs} =
-      Enum.split_with(entity_reqs, fn r -> not is_nil(r.story_id) end)
-
-    component_groups =
-      component_reqs
-      |> Enum.group_by(& &1.component_id)
-      |> Enum.sort_by(fn {comp_id, _} ->
-        case Map.get(components, comp_id) do
-          nil -> ""
-          comp -> comp.module_name
-        end
-      end)
+    project_nodes = Enum.filter(nodes, &(&1.entity_type == "project"))
 
     story_groups =
-      story_reqs
-      |> Enum.group_by(& &1.story_id)
-      |> Enum.sort_by(fn {story_id, _} ->
-        Map.get(stories, story_id, "Story #{story_id}")
-      end)
+      nodes
+      |> Enum.filter(&(&1.entity_type == "story"))
+      |> Enum.group_by(& &1.entity_id)
+      |> Enum.sort_by(fn {_id, [n | _]} -> n.entity_name end)
+
+    component_groups =
+      nodes
+      |> Enum.filter(&(&1.entity_type == "component"))
+      |> Enum.group_by(& &1.entity_id)
+      |> Enum.sort_by(fn {_id, [n | _]} -> n.entity_name end)
 
     lines = ["flowchart TD"]
 
     # Project subgraph
     lines =
-      if project_reqs != [] do
-        lines ++ render_subgraph("project", "Project", project_reqs, satisfaction_map)
+      if project_nodes != [] do
+        lines ++ render_subgraph("project", "Project", project_nodes, satisfaction_map)
       else
         lines
       end
 
     # Story subgraphs
     lines =
-      Enum.reduce(story_groups, lines, fn {story_id, reqs}, acc ->
-        title = Map.get(stories, story_id, "Story #{story_id}")
+      Enum.reduce(story_groups, lines, fn {story_id, story_nodes}, acc ->
+        title = hd(story_nodes).entity_name
         subgraph_id = "story_#{story_id}"
-        acc ++ render_subgraph(subgraph_id, "Story: #{truncate(title, 40)}", reqs, satisfaction_map)
+        acc ++ render_subgraph(subgraph_id, "Story: #{truncate(title, 40)}", story_nodes, satisfaction_map)
       end)
 
     # Component subgraphs
     lines =
-      Enum.reduce(component_groups, lines, fn {comp_id, reqs}, acc ->
-        comp = Map.get(components, comp_id, %{module_name: "Unknown", type: "?"})
+      Enum.reduce(component_groups, lines, fn {comp_id, comp_nodes}, acc ->
+        module_name = hd(comp_nodes).entity_name
         subgraph_id = sanitize_id(comp_id)
-        label = "#{short_module(comp.module_name)} (#{comp.type})"
-        acc ++ render_subgraph(subgraph_id, label, reqs, satisfaction_map)
+        acc ++ render_subgraph(subgraph_id, short_module(module_name), comp_nodes, satisfaction_map)
       end)
 
-    # Render edges from depends_on
+    # Render edges from prerequisites (within same entity)
     edge_lines =
-      requirements
-      |> Enum.flat_map(fn req ->
-        target_id = node_id(req)
+      nodes
+      |> Enum.flat_map(fn node ->
+        target_id = node_id(node)
 
-        (req.depends_on || [])
-        |> Enum.map(fn edge ->
-          source_id = edge_node_id(edge)
+        (node.prerequisites || [])
+        |> Enum.map(fn prereq_name ->
+          source_id = "#{type_prefix(node.entity_type)}_#{sanitize_id(node.entity_id)}_#{prereq_name}"
           "  #{source_id} --> #{target_id}"
         end)
       end)
@@ -155,60 +98,40 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     |> Enum.join("\n")
   end
 
-  defp render_subgraph(subgraph_id, label, requirements, satisfaction_map) do
+  defp render_subgraph(subgraph_id, label, nodes, satisfaction_map) do
     header = ["  subgraph #{subgraph_id}[\"#{escape_mermaid(label)}\"]"]
 
-    nodes =
-      Enum.map(requirements, fn req ->
-        id = node_id(req)
-        status_class = status_class(req, satisfaction_map)
-        "    #{id}[\"#{escape_mermaid(req.name)}\"]:::#{status_class}"
+    node_lines =
+      Enum.map(nodes, fn node ->
+        id = node_id(node)
+        status_class = status_class(node, satisfaction_map)
+        "    #{id}[\"#{escape_mermaid(node.name)}\"]:::#{status_class}"
       end)
 
     footer = ["  end"]
-    header ++ nodes ++ footer
+    header ++ node_lines ++ footer
   end
 
-  defp status_class(%Requirement{satisfied: true}, _), do: "satisfied"
+  defp status_class(%{satisfied: true}, _), do: "satisfied"
 
-  defp status_class(%Requirement{} = req, satisfaction_map) do
+  defp status_class(node, satisfaction_map) do
     deps_met =
-      (req.depends_on || [])
-      |> Enum.all?(fn edge ->
-        key = {edge["entity_type"], edge["entity_id"], edge["requirement_name"]}
+      (node.prerequisites || [])
+      |> Enum.all?(fn prereq_name ->
+        key = {node.entity_type, node.entity_id, prereq_name}
         Map.get(satisfaction_map, key, true)
       end)
 
     if deps_met, do: "actionable", else: "blocked"
   end
 
-  defp node_id(%Requirement{} = req) do
-    case {req.component_id, req.story_id, req.project_id} do
-      {id, _, _} when not is_nil(id) -> "c_#{sanitize_id(id)}_#{req.name}"
-      {_, id, _} when not is_nil(id) -> "s_#{id}_#{req.name}"
-      {_, _, id} when not is_nil(id) -> "p_#{sanitize_id(id)}_#{req.name}"
-    end
+  defp node_id(node) do
+    "#{type_prefix(node.entity_type)}_#{sanitize_id(node.entity_id)}_#{node.name}"
   end
 
-  defp edge_node_id(%{"entity_type" => "component", "entity_id" => id, "requirement_name" => name}) do
-    "c_#{sanitize_id(id)}_#{name}"
-  end
-
-  defp edge_node_id(%{"entity_type" => "story", "entity_id" => id, "requirement_name" => name}) do
-    "s_#{id}_#{name}"
-  end
-
-  defp edge_node_id(%{"entity_type" => "project", "entity_id" => id, "requirement_name" => name}) do
-    "p_#{sanitize_id(id)}_#{name}"
-  end
-
-  defp entity_type(%Requirement{component_id: id}) when not is_nil(id), do: "component"
-  defp entity_type(%Requirement{story_id: id}) when not is_nil(id), do: "story"
-  defp entity_type(%Requirement{project_id: id}) when not is_nil(id), do: "project"
-
-  defp entity_id(%Requirement{component_id: id}) when not is_nil(id), do: id
-  defp entity_id(%Requirement{story_id: id}) when not is_nil(id), do: id
-  defp entity_id(%Requirement{project_id: id}) when not is_nil(id), do: id
+  defp type_prefix("component"), do: "c"
+  defp type_prefix("story"), do: "s"
+  defp type_prefix("project"), do: "p"
 
   defp sanitize_id(id) when is_binary(id), do: String.replace(id, "-", "")
   defp sanitize_id(id) when is_integer(id), do: "#{id}"
