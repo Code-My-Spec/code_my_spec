@@ -1,15 +1,13 @@
 defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   @moduledoc """
-  Singleton GenServer that watches project directories for file changes and
-  runs incremental component sync.
+  Singleton GenServer that watches project directories for file changes
+  and runs FileSync + ComponentSync.
 
-  Manages multiple project watchers keyed by project root directory. New
-  directories are registered lazily via `ensure_watching/1` — typically called
-  from agent task entry points where a scope with `cwd` is available.
+  Auto-watches all linked projects on boot. New directories can also be
+  registered via `ensure_watching/1`.
 
-  On file change: debounces events, runs `ProjectSync.Sync.incremental_sync/2`
-  which syncs component mtimes, fixes parent relationships, clears stale problems,
-  recalculates requirements, and writes status files.
+  On file change: debounces events, runs FileSync (classify + validate)
+  and ComponentSync (upsert components from files).
   """
   use GenServer
   require Logger
