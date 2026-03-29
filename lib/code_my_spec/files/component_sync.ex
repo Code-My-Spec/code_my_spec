@@ -309,14 +309,14 @@ defmodule CodeMySpec.Files.ComponentSync do
   # -- Backfill file ownership --
 
   defp backfill_file_owners(%Scope{active_project_id: project_id}, component_map) do
-    # For each component, update its spec/impl/test files
     Enum.each(component_map, fn {module_name, component} ->
       module_path = module_name_to_path(module_name)
+      source_path = source_path_for_type(module_path, component.type)
 
       patterns = [
         Paths.spec_dir() <> "/#{module_path}.spec.md",
-        "lib/#{module_path}.ex",
-        "test/#{module_path}_test.exs"
+        "lib/#{source_path}.ex",
+        "test/#{source_path}_test.exs"
       ]
 
       File
@@ -329,6 +329,26 @@ defmodule CodeMySpec.Files.ComponentSync do
     module_name
     |> Macro.underscore()
     |> String.replace(".", "/")
+  end
+
+  # Phoenix convention: LiveViews live in `live/`, controllers in `controllers/`
+  defp source_path_for_type(module_path, type) when type in ["liveview", "liveview_component", "live_context"] do
+    inject_dir_segment(module_path, "live")
+  end
+
+  defp source_path_for_type(module_path, type) when type in ["controller", "json"] do
+    inject_dir_segment(module_path, "controllers")
+  end
+
+  defp source_path_for_type(module_path, _type), do: module_path
+
+  # Insert a directory segment after the first path component.
+  # "metric_flow_web/dashboard_live/show" → "metric_flow_web/live/dashboard_live/show"
+  defp inject_dir_segment(path, dir) do
+    case String.split(path, "/", parts: 2) do
+      [first, rest] -> "#{first}/#{dir}/#{rest}"
+      [single] -> "#{single}/#{dir}"
+    end
   end
 
   # -- Ignored components --
