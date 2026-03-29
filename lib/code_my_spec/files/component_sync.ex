@@ -139,8 +139,23 @@ defmodule CodeMySpec.Files.ComponentSync do
     }
   end
 
-  defp parse_impl_file(%File{path: path} = _file, _base_dir) do
-    module_name = module_name_from_path(path, :implementation)
+  # sobelow_skip ["Traversal.FileModule"]
+  defp parse_impl_file(%File{path: path} = _file, base_dir) do
+    abs_path = Path.join(base_dir, path)
+    fallback = module_name_from_path(path, :implementation)
+
+    module_name =
+      case Elixir.File.read(abs_path) do
+        {:ok, content} ->
+          case Regex.run(~r/defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
+            [_, name] -> name
+            _ -> fallback
+          end
+
+        {:error, _} ->
+          fallback
+      end
+
     %{module_name: module_name, type: nil, description: nil, dependencies: []}
   end
 
