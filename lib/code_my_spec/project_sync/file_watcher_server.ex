@@ -52,7 +52,9 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
   @impl true
   def init(_opts) do
-    {:ok, %{watchers: %{}, pending: %{}, debounce_timer: nil}}
+    state = %{watchers: %{}, pending: %{}, debounce_timer: nil}
+    watchers = watch_all_linked_projects(state)
+    {:ok, %{state | watchers: watchers}}
   end
 
   @impl true
@@ -182,6 +184,41 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   defp find_root_by_watcher(watcher_pid, watchers) do
     Enum.find_value(watchers, fn {root, %{watcher_pid: pid}} ->
       if pid == watcher_pid, do: root
+    end)
+  end
+
+  defp watch_all_linked_projects(state) do
+    import Ecto.Query
+
+    alias CodeMySpec.Projects.Project
+
+    projects =
+      Project
+      |> where([p], not is_nil(p.local_path))
+      |> CodeMySpec.Repo.all()
+
+    Enum.reduce(projects, state.watchers, fn project, watchers ->
+      root = project.local_path
+
+      if Map.has_key?(watchers, root) or not File.dir?(root) do
+        watchers
+      else
+        case Scope.for_local_project(project) do
+          {:ok, scope} ->
+            case start_watcher(root) do
+              {:ok, watcher_pid} ->
+                Logger.info("[FileWatcher] Auto-watching #{project.name} at #{root}")
+                Map.put(watchers, root, %{watcher_pid: watcher_pid, scope: scope})
+
+              {:error, reason} ->
+                Logger.warning("[FileWatcher] Could not watch #{root}: #{inspect(reason)}")
+                watchers
+            end
+
+          {:error, _} ->
+            watchers
+        end
+      end
     end)
   end
 end
