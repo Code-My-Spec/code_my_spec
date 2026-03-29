@@ -80,18 +80,21 @@ defmodule CodeMySpec.Files.RequirementCalculatorTest do
       assert valid_req.satisfied
     end
 
-    test "spec_valid unsatisfied when file not yet validated" do
+    test "spec_valid reflects inline validation result from sync" do
       {scope, tmp_dir, component} = setup_component("schema")
 
       write_file(tmp_dir, ".code_my_spec/spec/my_app/widget.spec.md", spec_content())
       sync!(scope, tmp_dir)
 
-      # valid is nil (not yet validated)
+      # FileSync validates inline — check what it produced
+      file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/widget.spec.md")
+      assert not is_nil(file.valid), "sync should validate spec files inline"
+
       results = RequirementCalculator.compute_component(scope, reload(scope, component))
       valid_req = find_req(results, "spec_valid")
 
-      refute valid_req.satisfied
-      assert valid_req.details.reason =~ "not yet validated"
+      # Satisfaction depends on whether the minimal spec passes document validation
+      assert valid_req.satisfied == file.valid
     end
 
     test "spec_valid unsatisfied when file marked invalid" do

@@ -9,6 +9,8 @@ defmodule CodeMySpec.Files.FileSync do
   require Logger
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Documents
   alias CodeMySpec.Files
   alias CodeMySpec.Paths
   alias CodeMySpec.Users.Scope
@@ -50,16 +52,21 @@ defmodule CodeMySpec.Files.FileSync do
     # Resolve owners for entries (component_id, story_id)
     changed_set = MapSet.new(changed_paths)
 
+    # Build component lookup for validation (need type to pick document_type)
+    components = Components.list_components(scope)
+    component_by_id = Map.new(components, &{&1.id, &1})
+
     entries_with_owners =
       resolve_owners(scope, file_entries)
       |> Enum.map(fn entry ->
         if entry.path in changed_set do
-          # Invalidate — needs revalidation
-          Map.merge(entry, %{valid: nil, validation_errors: nil})
+          validate_entry(entry, base_dir, component_by_id)
         else
           entry
         end
       end)
+
+    validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 
     # Upsert all
     {upserted, _} = Files.upsert_files(scope, entries_with_owners)
@@ -72,8 +79,8 @@ defmodule CodeMySpec.Files.FileSync do
 
     Logger.info(
       "[FileSync] #{length(file_entries)} files scanned in #{scan_ms}ms, " <>
-        "#{upserted} upserted, #{removed} removed, " <>
-        "#{length(changed_paths)} changed, total #{total_ms}ms"
+        "validated #{length(changed_paths)} in #{validate_ms}ms, " <>
+        "#{upserted} upserted, #{removed} removed, total #{total_ms}ms"
     )
 
     {:ok,
@@ -99,6 +106,55 @@ defmodule CodeMySpec.Files.FileSync do
     |> Stream.reject(&is_nil/1)
     |> Stream.map(fn {path, role} -> stat_file(base_dir, path, role) end)
     |> Stream.reject(&is_nil/1)
+  end
+
+  # -- Inline validation for changed files --
+
+  defp validate_entry(%{role: :spec} = entry, base_dir, component_by_id) do
+    abs_path = Path.join(base_dir, entry.path)
+
+    case Elixir.File.read(abs_path) do
+      {:ok, content} ->
+        document_type = resolve_document_type(entry, component_by_id)
+        validate_spec_content(entry, content, document_type)
+
+      {:error, reason} ->
+        Map.merge(entry, %{valid: false, validation_errors: %{error: "Read failed: #{inspect(reason)}"}})
+    end
+  end
+
+  defp validate_entry(%{role: role} = entry, _base_dir, _component_by_id)
+       when role in [:implementation, :test, :rule, :config, :bdd_spec, :qa_brief, :qa_result, :json, :review] do
+    # These roles are valid if they exist (which they do, since FileSync found them)
+    Map.merge(entry, %{valid: true, validation_errors: nil})
+  end
+
+  defp validate_entry(entry, _base_dir, _component_by_id) do
+    Map.merge(entry, %{valid: nil, validation_errors: nil})
+  end
+
+  defp validate_spec_content(entry, content, document_type) do
+    case Documents.create_dynamic_document(content, document_type) do
+      {:ok, _document} ->
+        Map.merge(entry, %{valid: true, validation_errors: nil})
+
+      {:error, error} ->
+        Map.merge(entry, %{valid: false, validation_errors: %{error: to_string(error)}})
+    end
+  rescue
+    e ->
+      Map.merge(entry, %{valid: false, validation_errors: %{error: Exception.message(e)}})
+  end
+
+  defp resolve_document_type(%{component_id: nil}, _component_by_id), do: "spec"
+
+  defp resolve_document_type(%{component_id: component_id}, component_by_id) do
+    case Map.get(component_by_id, component_id) do
+      nil -> "spec"
+      component ->
+        type_def = ComponentRegistry.get_type(component.type)
+        Map.get(type_def, :document_type, "spec")
+    end
   end
 
   @doc """
