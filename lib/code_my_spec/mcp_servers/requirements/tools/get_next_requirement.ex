@@ -13,10 +13,11 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.RequirementGraph
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements
 
   schema do
   end
@@ -25,10 +26,15 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        case Requirements.next_actionable_project(scope) do
+        # Sync files + components before computing the graph
+        if scope.cwd do
+          FileSync.sync(scope, base_dir: scope.cwd)
+          FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
+        end
+
+        case RequirementGraph.next_actionable(scope) do
           [] ->
-            # Distinguish "all done" from "nothing synced yet"
-            %{nodes: all} = Requirements.project_graph(scope)
+            all = RequirementGraph.compute_all(scope)
 
             if all == [] do
               {:reply, RequirementsMapper.sync_required_response(), frame}
@@ -36,9 +42,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
               {:reply, RequirementsMapper.all_satisfied_response(), frame}
             end
 
-          [req | _] ->
-            req = Repo.preload(req, [:component, :story, :project])
-            {:reply, RequirementsMapper.next_requirement_response(req), frame}
+          [node | _] ->
+            {:reply, RequirementsMapper.next_requirement_response(node), frame}
         end
 
       {:error, _reason} ->

@@ -9,9 +9,10 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   require Logger
 
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.RequirementGraph
   alias CodeMySpec.Notifications.NotificationClient
-  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation.TaskEvaluator
@@ -23,9 +24,10 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
-    # Step 1: Lightweight sync — mtimes, parent relationships, requirements
+    # Step 1: Sync files and components
     if scope.cwd do
-      ProjectSync.incremental_sync(scope, base_dir: scope.cwd)
+      FileSync.sync(scope, base_dir: scope.cwd)
+      FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
     end
 
     # Step 2: Evaluate the active task
@@ -63,7 +65,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
         %{}
 
       true ->
-        case Requirements.next_actionable_project(scope) do
+        case RequirementGraph.next_actionable(scope) do
           [_ | _] ->
             Logger.info("[StopHook] [#{req_id}] More work available, blocking stop")
 

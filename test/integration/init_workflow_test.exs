@@ -1,11 +1,10 @@
 defmodule CodeMySpec.Integration.InitWorkflowTest do
   @moduledoc """
-  Integration test for the full init → sync → project setup transition.
+  Integration test for the full init → project setup transition.
 
   Verifies that get_next_requirement guides the agent through:
   1. Init checklist (no project)
-  2. Sync required (project linked but no requirements)
-  3. Requirements graph (after sync)
+  2. Link project → computed graph returns project_setup directly
   """
   use ExUnit.Case, async: true
 
@@ -22,7 +21,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  test "full init flow: init checklist → link project → sync required → requirements graph" do
+  test "full init flow: init checklist → link project → computed graph returns project_setup" do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     frame = %Frame{assigns: %{working_dir: tmp_dir}}
 
@@ -57,21 +56,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
     scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
 
-    # Step 5: project linked but no requirements — tells agent to sync
-    {:reply, sync_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
-    refute sync_resp.isError
-    sync_text = response_text(sync_resp)
-    assert sync_text =~ "sync_project"
-
-    # Step 6: seed a requirement (simulates what sync_project does)
-    project_requirement_fixture(scope, %{
-      name: "project_setup",
-      artifact_type: :specification,
-      satisfied: false,
-      satisfied_by: CodeMySpec.AgentTasks.ProjectSetup
-    })
-
-    # Step 7: get_next_requirement now returns project_setup from the graph
+    # Step 5: get_next_requirement computes the graph directly — returns project_setup
     {:reply, graph_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
     refute graph_resp.isError
     graph_text = response_text(graph_resp)

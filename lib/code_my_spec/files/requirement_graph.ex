@@ -29,8 +29,11 @@ defmodule CodeMySpec.Files.RequirementGraph do
           entity_id: Ecto.UUID.t() | integer(),
           entity_name: String.t(),
           name: String.t(),
+          description: String.t(),
           satisfied: boolean(),
           satisfied_by: module() | nil,
+          execution_type: :main_agent | :sub_agent,
+          validation_type: :automatic | :manual,
           prerequisites: [String.t()],
           details: map()
         }
@@ -92,8 +95,11 @@ defmodule CodeMySpec.Files.RequirementGraph do
           entity_id: component.id,
           entity_name: component.module_name,
           name: definition.name,
+          description: definition.description,
           satisfied: result.satisfied,
           satisfied_by: definition.satisfied_by,
+          execution_type: definition.execution_type || :main_agent,
+          validation_type: definition.validation_type || :automatic,
           prerequisites: definition.prerequisites,
           details: result.details
         }
@@ -116,8 +122,11 @@ defmodule CodeMySpec.Files.RequirementGraph do
           entity_id: story.id,
           entity_name: story.title,
           name: definition.name,
+          description: definition.description,
           satisfied: satisfied,
           satisfied_by: definition.satisfied_by,
+          execution_type: definition.execution_type || :main_agent,
+          validation_type: definition.validation_type || :automatic,
           prerequisites: definition.prerequisites,
           details: details
         }
@@ -213,8 +222,11 @@ defmodule CodeMySpec.Files.RequirementGraph do
         entity_id: project.id,
         entity_name: project.name,
         name: definition.name,
+        description: definition.description,
         satisfied: satisfied,
         satisfied_by: definition.satisfied_by,
+        execution_type: definition.execution_type || :main_agent,
+        validation_type: definition.validation_type || :automatic,
         prerequisites: definition.prerequisites,
         details: details
       }

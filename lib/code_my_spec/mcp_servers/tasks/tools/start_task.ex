@@ -18,6 +18,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   require Logger
 
+  alias CodeMySpec.Components
+  alias CodeMySpec.Files.RequirementGraph
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Repo
@@ -26,24 +28,36 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :requirement_id, :string,
+    field :requirement_name, :string,
       required: true,
-      doc: "ID of the requirement to work on (from list_requirements or get_next_requirement)"
+      doc: "Name of the requirement (e.g., spec_file, implementation_file)"
+
+    field :entity_type, :string,
+      required: true,
+      doc: "Entity type: component, story, or project"
+
+    field :entity_id, :string,
+      required: true,
+      doc: "ID of the entity that owns this requirement"
 
     field :session_id, :string,
       doc: "Injected by hook — do not set manually"
 
     field :agent_id, :string,
       doc: "Your agent identifier — claims ownership of the task"
+
+    # Legacy — kept for backwards compatibility
+    field :requirement_id, :string,
+      doc: "Deprecated: use requirement_name + entity_type + entity_id"
   end
 
   @impl true
-  def execute(%{requirement_id: requirement_id} = params, frame) do
+  def execute(params, frame) do
     session_id = Map.get(params, :session_id)
     agent_id = Map.get(params, :agent_id)
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         {:ok, requirement} <- get_requirement(requirement_id),
+         {:ok, requirement} <- resolve_requirement(scope, params),
          {:ok, session} <- resolve_session(scope, session_id) do
       start_or_resume(scope, session, requirement, agent_id, frame)
     else
@@ -52,13 +66,65 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp get_requirement(requirement_id) do
+  defp resolve_requirement(scope, %{requirement_name: name, entity_type: type, entity_id: id})
+       when is_binary(name) and is_binary(type) and is_binary(id) do
+    resolve_from_graph(scope, name, type, id)
+  end
+
+  defp resolve_requirement(_scope, %{requirement_id: requirement_id})
+       when is_binary(requirement_id) and requirement_id != "" do
+    # Legacy path — look up persisted requirement by ID
     case Requirements.get_requirement(requirement_id) do
       nil -> {:error, "Requirement not found: #{requirement_id}"}
-      req -> {:ok, Repo.preload(req, [:component, :story, :project])}
+      req -> {:ok, requirement_to_map(req)}
     end
   rescue
     Ecto.Query.CastError -> {:error, "Requirement not found: #{requirement_id}"}
+  end
+
+  defp resolve_requirement(_scope, _params) do
+    {:error, "Must provide requirement_name + entity_type + entity_id"}
+  end
+
+  defp resolve_from_graph(scope, name, entity_type, entity_id) do
+    # Find the matching node in the computed graph
+    all_nodes = RequirementGraph.compute_all(scope)
+
+    case Enum.find(all_nodes, fn n ->
+           n.name == name and n.entity_type == entity_type and to_string(n.entity_id) == entity_id
+         end) do
+      nil ->
+        {:error, "Requirement #{name} not found for #{entity_type} #{entity_id}"}
+
+      node ->
+        {:ok, node}
+    end
+  end
+
+  defp requirement_to_map(req) do
+    req = CodeMySpec.Repo.preload(req, [:component, :story, :project])
+
+    %{
+      name: req.name,
+      entity_type: cond do
+        req.component_id -> "component"
+        req.story_id -> "story"
+        req.project_id -> "project"
+      end,
+      entity_id: req.component_id || req.story_id || req.project_id,
+      entity_name: cond do
+        req.component && req.component.module_name -> req.component.module_name
+        req.story && req.story.title -> req.story.title
+        req.project && req.project.name -> req.project.name
+        true -> nil
+      end,
+      description: req.description,
+      satisfied: req.satisfied,
+      satisfied_by: req.satisfied_by,
+      execution_type: req.execution_type || :main_agent,
+      validation_type: req.validation_type || :automatic,
+      details: req.details
+    }
   end
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
@@ -121,19 +187,27 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp create_and_activate(scope, session, requirement, agent_id, frame) do
+    {component_id, component_module_name, story_id} =
+      case requirement.entity_type do
+        "component" ->
+          comp = Components.get_component(scope, requirement.entity_id)
+          {requirement.entity_id, comp && comp.module_name, nil}
+
+        "story" ->
+          {nil, nil, requirement.entity_id}
+
+        _ ->
+          {nil, nil, nil}
+      end
+
     task_attrs = %{
       id: Ecto.UUID.generate(),
       session_type: requirement.satisfied_by,
-      requirement_id: requirement.id,
       requirement_name: requirement.name,
       project_id: scope.active_project_id,
-      component_id: requirement.component_id,
-      component_module_name:
-        case requirement.component do
-          %{module_name: name} -> name
-          _ -> nil
-        end,
-      story_id: requirement.story_id,
+      component_id: component_id,
+      component_module_name: component_module_name,
+      story_id: story_id,
       execution_type: requirement.execution_type || :main_agent,
       validation_type: requirement.validation_type || :automatic,
       status: :active,
@@ -165,41 +239,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
           {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
         end
 
-      prompt <> checklist_section(task)
+      prompt
     end
   rescue
     error -> "Error: #{inspect(error)}"
   end
 
-  defp checklist_section(%{requirement_id: nil}), do: ""
-
-  defp checklist_section(%{requirement_id: req_id}) do
-    case Requirements.get_requirement(req_id) do
-      nil -> ""
-      requirement -> render_checklist(requirement)
-    end
-  end
-
-  defp render_checklist(requirement) do
-    checklist = get_in(requirement.details, ["checklist"]) || []
-
-    if checklist == [] do
-      ""
-    else
-      done = Enum.count(checklist, fn item -> item["satisfied"] || false end)
-      total = length(checklist)
-
-      lines =
-        Enum.map_join(checklist, "\n", fn item ->
-          check = if item["satisfied"] || false, do: "[x]", else: "[ ]"
-
-          detail =
-            if item["detail"] && !(item["satisfied"] || false), do: " — #{item["detail"]}", else: ""
-
-          "- #{check} #{item["name"]}#{detail}"
-        end)
-
-      "\n\n## Steps (#{done}/#{total})\n\n#{lines}\n"
-    end
-  end
 end

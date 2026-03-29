@@ -14,7 +14,40 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     hybrid_response(summary, %{requirements: data, count: length(requirements)})
   end
 
+  @doc """
+  Format next requirement response. Accepts either a persisted Requirement
+  or a computed node map from RequirementGraph.
+  """
+  def next_requirement_response(%{entity_type: _} = node) do
+    # Computed node from RequirementGraph
+    task_module = node.satisfied_by
+    task_name = task_module |> inspect() |> String.split(".") |> List.last()
+
+    entity_line =
+      case node.entity_type do
+        "component" -> "**Component:** #{node.entity_name}\n"
+        "story" -> "**Story:** #{node.entity_name}\n"
+        _ -> ""
+      end
+
+    summary = """
+    # Next Requirement: #{node.name}
+
+    #{node.description}
+
+    **Task:** `#{task_name}`
+    **Execution:** #{execution_label(node.execution_type)}
+    **Validation:** #{validation_label(node.validation_type)}
+    #{entity_line}
+    Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}`.
+    """
+
+    Response.tool()
+    |> Response.text(String.trim(summary))
+  end
+
   def next_requirement_response(requirement) do
+    # Legacy: persisted Requirement struct
     task_module = requirement.satisfied_by
     task_name = task_module |> inspect() |> String.split(".") |> List.last()
 
