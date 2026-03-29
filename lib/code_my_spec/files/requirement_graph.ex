@@ -18,6 +18,8 @@ defmodule CodeMySpec.Files.RequirementGraph do
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Files.File
   alias CodeMySpec.Files.RequirementCalculator
+  alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -268,36 +270,26 @@ defmodule CodeMySpec.Files.RequirementGraph do
   end
 
   defp check_project("issues_triaged", scope, _project) do
-    # Check for incoming issues
-    incoming_count =
-      File
-      |> where([f],
-        f.project_id == ^scope.active_project_id and
-          like(f.path, ^".code_my_spec/issues/incoming/%")
-      )
-      |> Repo.aggregate(:count)
+    triageable =
+      Issues.list_by_status(scope, :incoming)
+      |> Enum.filter(&(Issue.severity_index(&1.severity) <= Issue.severity_index(:medium)))
 
-    if incoming_count == 0 do
-      {true, %{status: "No incoming issues"}}
+    if triageable == [] do
+      {true, %{status: "No untriaged issues at medium+ severity"}}
     else
-      {false, %{reason: "#{incoming_count} untriaged issues"}}
+      {false, %{reason: "#{length(triageable)} untriaged medium+ issues"}}
     end
   end
 
   defp check_project("issues_resolved", scope, _project) do
-    # Check for accepted issues
-    accepted_count =
-      File
-      |> where([f],
-        f.project_id == ^scope.active_project_id and
-          like(f.path, ^".code_my_spec/issues/accepted/%")
-      )
-      |> Repo.aggregate(:count)
+    unresolved =
+      Issues.list_by_status(scope, :accepted)
+      |> Enum.filter(&(Issue.severity_index(&1.severity) <= Issue.severity_index(:medium)))
 
-    if accepted_count == 0 do
-      {true, %{status: "No unresolved issues"}}
+    if unresolved == [] do
+      {true, %{status: "No unresolved medium+ issues"}}
     else
-      {false, %{reason: "#{accepted_count} unresolved issues"}}
+      {false, %{reason: "#{length(unresolved)} unresolved medium+ issues"}}
     end
   end
 
