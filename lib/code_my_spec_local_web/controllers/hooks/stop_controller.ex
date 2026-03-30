@@ -64,10 +64,15 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
         notify_complete()
         %{}
 
+      not continuous_mode?(session) ->
+        Logger.info("[StopHook] [#{req_id}] Not in continuous mode, allowing stop")
+        notify_complete()
+        %{}
+
       true ->
         case RequirementGraph.next_actionable(scope) do
           [_ | _] ->
-            Logger.info("[StopHook] [#{req_id}] More work available, blocking stop")
+            Logger.info("[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop")
 
             %{
               "decision" => "block",
@@ -79,7 +84,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
             }
 
           [] ->
-            Logger.info("[StopHook] [#{req_id}] No more work, allowing stop")
+            Logger.info("[StopHook] [#{req_id}] All work complete, allowing stop")
             notify_complete()
             %{}
         end
@@ -91,6 +96,9 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
       task.status == :active and task.execution_type == :sub_agent
     end)
   end
+
+  defp continuous_mode?(%{state: %{"continuous" => true}}), do: true
+  defp continuous_mode?(_), do: false
 
   defp has_active_manual_task?(session) do
     case Session.active_task(session) do

@@ -154,7 +154,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # ============================================================================
 
   describe "stop hook end-to-end" do
-    test "stop hook syncs, evaluates task, and blocks when more work exists" do
+    test "stop hook syncs, evaluates task, allows stop when not in continuous mode" do
       %{
         scope: scope,
         frame: frame,
@@ -179,10 +179,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       # Seed all setup steps so ProjectSetup.evaluate passes
       seed_all_setup_steps(tmp_dir)
 
-      # Call stop hook — should evaluate task, mark completed, block for more work
+      # Call stop hook — evaluates task, marks completed, allows stop (not continuous mode)
       stop_response = call_stop_hook!(scope, external_session_id)
-      assert stop_response["decision"] == "block"
-      assert stop_response["reason"] =~ "get_next_requirement"
+      assert stop_response == %{}
 
       # Verify task was marked completed
       session2 = Sessions.get_session(scope, session_id)

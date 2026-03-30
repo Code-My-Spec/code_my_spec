@@ -63,10 +63,9 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     assert prompt3 =~ "Project Setup (12/12)"
     refute prompt3 =~ "- [ ] "
 
-    # Step 7: stop hook → evaluates task → passes → tells agent to get next task
+    # Step 7: stop hook → evaluates task → passes → allows stop (not in continuous mode)
     stop_response = call_stop_hook!(scope, external_session_id)
-    assert stop_response["decision"] == "block"
-    assert stop_response["reason"] =~ "get_next_requirement"
+    assert stop_response == %{}
 
     # Verify task is completed in DB
     session2 = Sessions.get_session(scope, session_id)

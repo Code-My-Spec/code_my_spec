@@ -1,117 +1,51 @@
 defmodule CodeMySpec.AgentTasks.StartImplementation do
   @moduledoc """
-  Graph-driven orchestrator that queries the requirements graph and uses
-  Dispatch to execute the next actionable requirement for a project.
+  Enables continuous mode on the session.
 
-  ## Flow
+  When continuous mode is active, the stop hook blocks the agent from
+  stopping and directs it to `get_next_requirement` → `start_task`.
+  The agent loop continues until all requirements are satisfied or
+  continuous mode is disabled via `stop_implementation`.
 
-  ### command/3
-  1. Sync framework files
-  2. `Requirements.next_actionable_project` → queries graph for unsatisfied requirements with all deps met
-  3. `Dispatch.command` → generates prompt (handles :local, :orchestrate, :children scope)
-  4. Return prompt (Dispatch records task entries with prompt_path for matching)
+  ## command/2
+  Sets `state["continuous"] = true` on the session and returns a prompt
+  telling the agent to call `get_next_requirement`.
 
-  Caller (`StartAgentTask`) is responsible for syncing before calling command.
-
-  ### evaluate/3
-  1. Sync project (requirements refreshed after agent work)
-  2. Re-walk the graph via `dispatch_or_complete`
-  3. If unsatisfied requirement found → return prompt as feedback
-  4. If all complete → return :valid
+  ## evaluate/2
+  Checks if any actionable requirements remain. If none, returns :valid
+  (continuous mode can be cleared). If work remains, returns :invalid
+  with instructions to continue.
   """
 
   require Logger
 
-  alias CodeMySpec.FrameworkSync
-  alias CodeMySpec.ProjectCoordinator.{Dispatch, ImplementationStatus}
-  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
-  alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.Requirement
+  alias CodeMySpec.Files.RequirementGraph
 
-  # ============================================================================
-  # Public API
-  # ============================================================================
+  @spec command(term(), map()) :: {:ok, String.t()}
+  def command(_scope, _task) do
+    {:ok, """
+    # Continuous Implementation Mode
 
-  @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
-  def command(scope, _task) do
-    sync_framework(scope.environment)
-    dispatch(scope.environment, scope)
+    Continuous mode is now active. The stop hook will keep you working
+    until all requirements are satisfied.
+
+    Call `get_next_requirement` to find your next task, then `start_task` to begin.
+    """}
   end
 
   @spec evaluate(term(), map()) ::
-          {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
+          {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, _task) do
-    env = scope.environment
-
-    with {:ok, _} <- sync_project(scope) do
-      dispatch_or_complete(env, scope)
-    end
-  rescue
-    exception ->
-      Logger.error("[StartImplementation] Error: #{Exception.message(exception)}")
-      {:error, {:execution_error, Exception.message(exception)}}
-  end
-
-  # ============================================================================
-  # Core: dispatch via graph
-  # ============================================================================
-
-  defp dispatch(env, scope) do
-    case Requirements.next_actionable_project(scope) do
-      [%Requirement{} = req | _] ->
-        Logger.info("[StartImplementation] Dispatching: #{req.name} (scope: #{req.scope})")
-        Dispatch.command(req, scope, %{})
-
+    case RequirementGraph.next_actionable(scope) do
       [] ->
-        Logger.info("[StartImplementation] All requirements complete")
-        ImplementationStatus.clear(env)
-        {:ok, "All requirements are satisfied. No further action needed."}
-    end
-  end
-
-  defp dispatch_or_complete(env, scope) do
-    case Requirements.next_actionable_project(scope) do
-      [%Requirement{} = req | _] ->
-        Logger.info("[StartImplementation] Next: #{req.name} (scope: #{req.scope})")
-
-        case Dispatch.command(req, scope, %{}) do
-          {:ok, prompt} ->
-            {:ok, :invalid, prompt}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-
-      [] ->
-        Logger.info("[StartImplementation] All requirements complete")
-        ImplementationStatus.clear(env)
         {:ok, :valid}
+
+      [node | _] ->
+        task_name = node.satisfied_by |> inspect() |> String.split(".") |> List.last()
+
+        {:ok, :invalid,
+         "Work remaining: #{node.name} for #{node.entity_type} #{node.entity_name} (#{task_name}). " <>
+           "Call `get_next_requirement` to continue."}
     end
   end
-
-  # ============================================================================
-  # Sync
-  # ============================================================================
-
-  defp sync_framework(env) do
-    cwd = get_working_dir(env)
-    FrameworkSync.sync(cwd)
-  end
-
-  defp sync_project(scope) do
-    working_dir = get_working_dir(scope.environment)
-    Logger.info("[StartImplementation] File sync from #{working_dir}")
-
-    with {:ok, _} <- FileSync.sync(scope, base_dir: working_dir),
-         {:ok, _} <- FileComponentSync.sync_from_files(scope, base_dir: working_dir) do
-      {:ok, :synced}
-    else
-      {:error, reason} -> {:error, {:sync_failed, reason}}
-    end
-  end
-
-  defp get_working_dir(%{cwd: cwd}) when is_binary(cwd), do: cwd
-  defp get_working_dir(%{ref: %{working_dir: dir}}), do: dir
-  defp get_working_dir(_), do: File.cwd!()
 end

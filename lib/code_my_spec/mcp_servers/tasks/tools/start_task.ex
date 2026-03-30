@@ -215,6 +215,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       agent_id: agent_id
     }
 
+    # Enable continuous mode if starting implementation
+    session =
+      if requirement.satisfied_by == CodeMySpec.AgentTasks.StartImplementation do
+        state = Map.put(session.state || %{}, "continuous", true)
+        {:ok, s} = Sessions.update_session(scope, session, %{state: state})
+        s
+      else
+        session
+      end
+
     case session |> Session.add_task(task_attrs) |> Repo.update() do
       {:ok, updated_session} ->
         task = Session.find_task(updated_session, task_attrs.id)
