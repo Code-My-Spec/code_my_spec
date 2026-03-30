@@ -118,12 +118,12 @@ defmodule CodeMySpec.Files.FileSync do
 
   # -- Inline validation for changed files --
 
-  defp validate_entry(%{role: :spec} = entry, base_dir, component_by_id) do
+  defp validate_entry(%{role: :spec} = entry, base_dir, _component_by_id) do
     abs_path = Path.join(base_dir, entry.path)
 
     case Elixir.File.read(abs_path) do
       {:ok, content} ->
-        document_type = resolve_document_type(entry, component_by_id)
+        document_type = document_type_from_content(content)
         validate_spec_content(entry, content, document_type)
 
       {:error, reason} ->
@@ -154,13 +154,23 @@ defmodule CodeMySpec.Files.FileSync do
       Map.merge(entry, %{valid: false, validation_errors: %{error: Exception.message(e)}})
   end
 
-  defp resolve_document_type(%{component_id: nil}, _component_by_id), do: "spec"
+  # Extract document type from spec content's ## Type section.
+  # Maps component types to document types via the registry.
+  defp document_type_from_content(content) do
+    type_section =
+      content
+      |> String.split("\n")
+      |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
+      |> Enum.drop(1)
+      |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> List.first()
 
-  defp resolve_document_type(%{component_id: component_id}, component_by_id) do
-    case Map.get(component_by_id, component_id) do
+    case type_section do
       nil -> "spec"
-      component ->
-        type_def = ComponentRegistry.get_type(component.type)
+      component_type ->
+        type_def = ComponentRegistry.get_type(component_type)
         Map.get(type_def, :document_type, "spec")
     end
   end
