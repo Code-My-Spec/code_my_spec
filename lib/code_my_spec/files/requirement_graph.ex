@@ -401,6 +401,14 @@ defmodule CodeMySpec.Files.RequirementGraph do
 
   # -- Priority sorting --
 
+  # Early project requirements: prerequisites are all project-level (or none).
+  # Late project requirements: depend on stories/components being done
+  # (e.g., all_stories_complete, qa_preflight, qa_journey_*).
+  @late_project_reqs MapSet.new([
+    "all_stories_complete", "qa_preflight", "all_bdd_specs_passing",
+    "qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby", "project_qa"
+  ])
+
   defp sort_by_priority(nodes, %Scope{active_project_id: project_id}) do
     story_priorities =
       Story
@@ -409,18 +417,27 @@ defmodule CodeMySpec.Files.RequirementGraph do
       |> Repo.all()
       |> Map.new()
 
-    # Map component_id → story priority by walking parent chains
     component_story_map = build_component_story_map(project_id, story_priorities)
-
     definition_orders = build_definition_orders()
 
     Enum.sort_by(nodes, fn node ->
       def_order = Map.get(definition_orders, {node.entity_type, node.name}, 999)
 
       case node.entity_type do
-        "project" -> {0, 0, def_order}
-        "story" -> {1, story_priority(node.entity_id, project_id), def_order}
-        "component" -> {1, Map.get(component_story_map, node.entity_id, 999), def_order}
+        "project" ->
+          if node.name in @late_project_reqs do
+            # Sort after all story/component work
+            {2, 0, def_order}
+          else
+            # Sort before story/component work
+            {0, 0, def_order}
+          end
+
+        "story" ->
+          {1, story_priority(node.entity_id, project_id), def_order}
+
+        "component" ->
+          {1, Map.get(component_story_map, node.entity_id, 999), def_order}
       end
     end)
   end
