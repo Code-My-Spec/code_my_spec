@@ -8,6 +8,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects
@@ -66,6 +67,9 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   def handle_event("purge", _params, socket) do
     scope = socket.assigns.scope
 
+    # Delete files
+    {file_count, _} = Files.delete_removed(scope, [])
+
     # Delete all requirements (project, story, component)
     Requirements.clear_all_project_requirements(scope)
 
@@ -73,12 +77,12 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     components = Components.list_components(scope)
     Enum.each(components, &Components.delete_component(scope, &1))
 
-    Logger.info("[SyncLive] Purged #{length(components)} components and all requirements for #{scope.active_project.name}")
+    Logger.info("[SyncLive] Purged #{file_count} files, #{length(components)} components for #{scope.active_project.name}")
 
     {:noreply,
      assign(socket,
        sync_status: :done,
-       sync_result: [{"Purged", "#{length(components)} components + all requirements deleted"}]
+       sync_result: [{"Purged", "#{file_count} files + #{length(components)} components deleted"}]
      )}
   end
 
