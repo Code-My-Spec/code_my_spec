@@ -20,7 +20,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Requirements.Sync, as: RequirementsSync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
 
@@ -95,11 +94,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
       case call_evaluate(task_module, scope, task) do
         {:ok, :valid} ->
           {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
-
-          if task.requirement_id do
-            Task.start(fn -> RequirementsSync.recheck_requirement(scope, task.requirement_id) end)
-          end
-
           Logger.info("[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed")
           {:reply, TasksMapper.evaluate_passed_response(task), frame}
 

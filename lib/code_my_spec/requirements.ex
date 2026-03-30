@@ -218,25 +218,4 @@ defmodule CodeMySpec.Requirements do
     RequirementsRepository.next_actionable_project(scope)
   end
 
-  # --- Private helpers ---
-
-  defp prerequisite_edges([], _entity), do: []
-
-  defp prerequisite_edges(prerequisites, %Component{id: id}) do
-    Enum.map(prerequisites, fn prereq_name ->
-      %{"entity_type" => "component", "entity_id" => id, "requirement_name" => prereq_name}
-    end)
-  end
-
-  defp prerequisite_edges(prerequisites, %Story{id: id}) do
-    Enum.map(prerequisites, fn prereq_name ->
-      %{"entity_type" => "story", "entity_id" => id, "requirement_name" => prereq_name}
-    end)
-  end
-
-  defp prerequisite_edges(prerequisites, %Project{id: id}) do
-    Enum.map(prerequisites, fn prereq_name ->
-      %{"entity_type" => "project", "entity_id" => id, "requirement_name" => prereq_name}
-    end)
-  end
 end
