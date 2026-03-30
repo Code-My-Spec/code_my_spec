@@ -13,8 +13,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.AgentTasks.Init
-  alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.RequirementGraph
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
@@ -26,12 +24,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        # Sync files + components before computing the graph
-        if scope.cwd do
-          FileSync.sync(scope, base_dir: scope.cwd)
-          FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
-        end
-
         case RequirementGraph.next_actionable(scope) do
           [] ->
             all = RequirementGraph.compute_all(scope)
