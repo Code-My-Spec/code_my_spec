@@ -75,7 +75,6 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
       Map.merge(
         %{
           description: "test",
-          checker_module: CodeMySpec.Requirements.ArtifactExistenceChecker,
           score: 0.0,
           checked_at: DateTime.utc_now()
         },

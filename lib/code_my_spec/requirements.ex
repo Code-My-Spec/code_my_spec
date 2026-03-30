@@ -155,30 +155,8 @@ defmodule CodeMySpec.Requirements do
         ]
   def check_requirements(scope, entity, requirements_or_definitions, opts)
 
-  def check_requirements(scope, entity, [%RequirementDefinition{} | _] = definitions, opts) do
-    # Only create prerequisite edges for requirements that actually exist for this entity type
-    definition_names = MapSet.new(definitions, & &1.name)
-
-    Enum.map(definitions, fn requirement_definition ->
-      checker = requirement_definition.checker
-      result = checker.check(scope, requirement_definition, entity, opts)
-
-      # Compute same-level prerequisite edges (only for prerequisites defined for this entity)
-      prereq_edges =
-        requirement_definition.prerequisites
-        |> Enum.filter(&MapSet.member?(definition_names, &1))
-        |> prerequisite_edges(entity)
-
-      # Merge with any cross-entity edges the checker returned
-      checker_edges = Map.get(result, :depends_on, [])
-
-      result
-      |> Map.put(:scope, requirement_definition.scope)
-      |> Map.put(:validation_type, requirement_definition.validation_type)
-      |> Map.put(:execution_type, requirement_definition.execution_type)
-      |> Map.put(:satisfied_by, requirement_definition.satisfied_by)
-      |> Map.put(:depends_on, prereq_edges ++ checker_edges)
-    end)
+  def check_requirements(_scope, _entity, [%RequirementDefinition{} | _] = _definitions, _opts) do
+    raise "check_requirements with checkers is deprecated — use RequirementCalculator or RequirementGraph"
   end
 
   def check_requirements(_scope, _entity, [] = _empty, _opts), do: []

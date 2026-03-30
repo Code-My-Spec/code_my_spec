@@ -11,7 +11,6 @@ defmodule CodeMySpec.Requirements.Requirement do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Requirements.CheckerType
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.Stories.Story
@@ -44,7 +43,7 @@ defmodule CodeMySpec.Requirements.Requirement do
           name: String.t() | nil,
           artifact_type: artifact_type() | nil,
           description: String.t() | nil,
-          checker_module: CheckerType.t() | nil,
+          checker_module: String.t() | nil,
           satisfied_by: SessionType.t() | nil,
           scope: scope(),
           validation_type: :automatic | :manual,
@@ -70,7 +69,7 @@ defmodule CodeMySpec.Requirements.Requirement do
     field :name, :string
     field :artifact_type, Ecto.Enum, values: @artifact_types
     field :description, :string
-    field :checker_module, CheckerType
+    field :checker_module, :string
     field :satisfied_by, SessionType
     field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
     field :validation_type, Ecto.Enum, values: [:automatic, :manual], default: :automatic
@@ -170,41 +169,8 @@ defmodule CodeMySpec.Requirements.Requirement do
 
   """
   @spec from_spec(RequirementDefinition.t(), Component.t() | Story.t() | Project.t()) :: t()
-  def from_spec(%RequirementDefinition{} = requirement_definition, entity) do
-    checker = requirement_definition.checker
-    check_result = checker.check(requirement_definition, entity, [])
-
-    # Extract score from check result or default based on satisfied
-    score =
-      case Map.get(check_result, :score) do
-        nil -> if check_result.satisfied, do: 1.0, else: 0.0
-        score -> score
-      end
-
-    # Determine satisfied by comparing score to threshold
-    threshold = requirement_definition.threshold
-    satisfied = score >= threshold
-
-    base = %__MODULE__{
-      name: requirement_definition.name,
-      artifact_type: requirement_definition.artifact_type,
-      description: requirement_definition.description,
-      checker_module: requirement_definition.checker,
-      satisfied_by: requirement_definition.satisfied_by,
-      scope: requirement_definition.scope,
-      validation_type: requirement_definition.validation_type,
-      execution_type: requirement_definition.execution_type,
-      satisfied: satisfied,
-      score: score,
-      checked_at: DateTime.utc_now(),
-      details: check_result.details
-    }
-
-    case entity do
-      %Component{id: id} -> %{base | component_id: id}
-      %Story{id: id} -> %{base | story_id: id}
-      %Project{id: id} -> %{base | project_id: id}
-    end
+  def from_spec(%RequirementDefinition{} = _requirement_definition, _entity) do
+    raise "from_spec with checkers is deprecated — use RequirementCalculator or RequirementGraph"
   end
 
   @doc """
@@ -233,7 +199,7 @@ defmodule CodeMySpec.Requirements.Requirement do
       :story_id,
       :project_id
     ])
-    |> validate_required([:name, :artifact_type, :description, :checker_module, :satisfied])
+    |> validate_required([:name, :artifact_type, :description, :satisfied])
     |> validate_score()
     |> unique_constraint([:component_id, :name], name: :requirements_component_id_name_index)
     |> unique_constraint([:story_id, :name], name: :requirements_story_id_name_index)

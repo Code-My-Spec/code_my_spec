@@ -5,38 +5,13 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   and categorization for consistent requirement checking.
   """
 
-  alias CodeMySpec.Requirements.AcceptedIssuesChecker
-  alias CodeMySpec.Requirements.AllBddSpecsPassingChecker
-  alias CodeMySpec.Requirements.AllStoriesCompleteChecker
-  alias CodeMySpec.Requirements.ArtifactExistenceChecker
-  alias CodeMySpec.Requirements.BddSpecExistenceChecker
-  alias CodeMySpec.Requirements.BddSpecPassingChecker
-  alias CodeMySpec.Requirements.ComponentCompleteChecker
-  alias CodeMySpec.Requirements.ComponentLinkedChecker
-  alias CodeMySpec.Requirements.ContextReviewFileChecker
-  alias CodeMySpec.Requirements.ContextReviewValidityChecker
-  alias CodeMySpec.Requirements.DependencyChecker
-  alias CodeMySpec.Requirements.DocumentValidityChecker
-  alias CodeMySpec.Requirements.FileExistenceChecker
-  alias CodeMySpec.Requirements.HierarchicalChecker
-  alias CodeMySpec.Requirements.IncomingIssuesChecker
-  alias CodeMySpec.Requirements.ProjectQaChecker
-  alias CodeMySpec.Requirements.QaIntegrationPlanChecker
-  alias CodeMySpec.Requirements.QaJourneyExecuteChecker
-  alias CodeMySpec.Requirements.QaJourneyPlanChecker
-  alias CodeMySpec.Requirements.QaJourneyWallabyChecker
-  alias CodeMySpec.Requirements.QaPreflightChecker
   alias CodeMySpec.Requirements.RequirementDefinition
-  alias CodeMySpec.Requirements.SpecTestAlignmentChecker
-  alias CodeMySpec.Requirements.StoryQaChecker
-  alias CodeMySpec.Requirements.TestStatusChecker
 
   @spec spec_file() :: RequirementDefinition.t()
   def spec_file do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Component specification file exists",
@@ -51,7 +26,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_valid",
-        checker: DocumentValidityChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Component specification is valid",
@@ -66,7 +40,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "implementation_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component implementation file exists",
@@ -81,7 +54,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "json_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Controller JSON view file exists",
@@ -96,7 +68,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "test_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Component test file exists",
@@ -112,7 +83,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "test_spec_alignment",
-        checker: SpecTestAlignmentChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Test file implements all spec test assertions",
@@ -127,7 +97,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "tests_passing",
-        checker: TestStatusChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component tests are passing",
@@ -142,7 +111,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "dependencies_satisfied",
-        checker: DependencyChecker,
         satisfied_by: nil,
         artifact_type: :dependencies,
         description: "Component dependencies are satisfied",
@@ -158,7 +126,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "children_designs",
-        checker: HierarchicalChecker,
         satisfied_by: CodeMySpec.AgentTasks.ContextComponentSpecs,
         artifact_type: :hierarchy,
         description: "Child component designs are complete",
@@ -174,7 +141,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "children_implementations",
-        checker: HierarchicalChecker,
         satisfied_by: CodeMySpec.AgentTasks.ContextImplementation,
         artifact_type: :hierarchy,
         description: "Child component implementations are complete",
@@ -190,7 +156,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "review_file",
-        checker: ContextReviewFileChecker,
         satisfied_by: CodeMySpec.AgentTasks.ContextDesignReview,
         artifact_type: :review,
         description: "Context design review file exists",
@@ -205,7 +170,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "review_valid",
-        checker: ContextReviewValidityChecker,
         satisfied_by: CodeMySpec.AgentTasks.ContextDesignReview,
         artifact_type: :review,
         description: "Context design review is valid",
@@ -220,7 +184,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification file exists",
@@ -236,7 +199,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_valid",
-        checker: DocumentValidityChecker,
         satisfied_by: CodeMySpec.AgentTasks.ContextSpec,
         artifact_type: :specification,
         description: "Context specification is valid",
@@ -252,7 +214,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "implementation_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Context implementation file exists",
@@ -268,7 +229,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "test_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Context test file exists",
@@ -284,7 +244,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.LiveContextSpec,
         artifact_type: :specification,
         description: "Live context specification file exists",
@@ -300,7 +259,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_valid",
-        checker: DocumentValidityChecker,
         satisfied_by: CodeMySpec.AgentTasks.LiveContextSpec,
         artifact_type: :specification,
         description: "Live context specification is valid",
@@ -316,7 +274,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_file",
-        checker: FileExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.LiveViewSpec,
         artifact_type: :specification,
         description: "LiveView specification file exists",
@@ -331,7 +288,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_valid",
-        checker: DocumentValidityChecker,
         satisfied_by: CodeMySpec.AgentTasks.LiveViewSpec,
         artifact_type: :specification,
         description: "LiveView specification is valid",
@@ -346,7 +302,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "spec_valid",
-        checker: DocumentValidityChecker,
         satisfied_by: CodeMySpec.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Schema specification is valid",
@@ -375,7 +330,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "component_linked",
-        checker: ComponentLinkedChecker,
         satisfied_by: CodeMySpec.AgentTasks.ArchitectureReview,
         artifact_type: :dependencies,
         description: "Story has a linked surface component",
@@ -390,7 +344,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "bdd_specs_exist",
-        checker: BddSpecExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.WriteBddSpecs,
         artifact_type: :tests,
         description: "BDD spec files exist for story",
@@ -405,7 +358,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "bdd_specs_passing",
-        checker: BddSpecPassingChecker,
         satisfied_by: CodeMySpec.AgentTasks.FixBddSpecs,
         artifact_type: :tests,
         description: "BDD specs pass",
@@ -421,7 +373,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "component_complete",
-        checker: ComponentCompleteChecker,
         satisfied_by: CodeMySpec.AgentTasks.DevelopComponent,
         artifact_type: :dependencies,
         description: "Linked component tree is fully implemented",
@@ -437,7 +388,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "qa_complete",
-        checker: StoryQaChecker,
         satisfied_by: CodeMySpec.AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA brief and result artifacts valid",
@@ -484,7 +434,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "technical_strategy",
-        checker: ArtifactExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.TechnicalStrategy,
         artifact_type: :specification,
         description: "Technical strategy decisions file exists",
@@ -500,7 +449,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "qa_integration_plan",
-        checker: QaIntegrationPlanChecker,
         satisfied_by: CodeMySpec.AgentTasks.QaIntegrationPlan,
         artifact_type: :specification,
         description: "Integration specs exist and all verified",
@@ -518,12 +466,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "architecture_designed",
-        checker: ArtifactExistenceChecker,
         satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign,
         artifact_type: :specification,
         description: "Architecture proposal executed",
         prerequisites: ["qa_integration_plan"],
-        config: %{path: ".code_my_spec/architecture/overview.md"}
+        config: %{path: ".code_my_spec/architecture/proposal.md"}
       })
 
     definition
@@ -534,7 +481,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "all_stories_complete",
-        checker: AllStoriesCompleteChecker,
         satisfied_by: nil,
         artifact_type: :dependencies,
         description: "All story requirements satisfied",
@@ -550,7 +496,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "project_qa",
-        checker: ProjectQaChecker,
         satisfied_by: CodeMySpec.AgentTasks.QaApp,
         artifact_type: :review,
         description: "QA summary exists and valid",
@@ -565,7 +510,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "issues_triaged",
-        checker: IncomingIssuesChecker,
         satisfied_by: CodeMySpec.AgentTasks.TriageIssues,
         artifact_type: :review,
         description: "All incoming QA issues have been triaged",
@@ -580,7 +524,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "issues_resolved",
-        checker: AcceptedIssuesChecker,
         satisfied_by: CodeMySpec.AgentTasks.FixIssues,
         artifact_type: :review,
         description: "All medium+ accepted issues have been resolved",
@@ -596,7 +539,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "qa_preflight",
-        checker: QaPreflightChecker,
         satisfied_by: CodeMySpec.AgentTasks.QaPreflight,
         artifact_type: :review,
         description: "App-level integration verification complete",
@@ -612,7 +554,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "all_bdd_specs_passing",
-        checker: AllBddSpecsPassingChecker,
         satisfied_by: CodeMySpec.AgentTasks.FixAllBddSpecs,
         artifact_type: :tests,
         description: "All BDD specs pass across all stories",
@@ -628,7 +569,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "qa_journey_plan",
-        checker: QaJourneyPlanChecker,
         satisfied_by: CodeMySpec.AgentTasks.QaJourneyPlan,
         artifact_type: :review,
         description: "QA journey plan exists and valid",
@@ -644,7 +584,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "qa_journey_execute",
-        checker: QaJourneyExecuteChecker,
         satisfied_by: CodeMySpec.AgentTasks.QaJourneyExecute,
         artifact_type: :review,
         description: "QA journey result exists and valid",
@@ -660,7 +599,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "qa_journey_wallaby",
-        checker: QaJourneyWallabyChecker,
         satisfied_by: CodeMySpec.AgentTasks.QaJourneyWallaby,
         artifact_type: :tests,
         description: "Wallaby journey tests exist",

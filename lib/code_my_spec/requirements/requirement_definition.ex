@@ -9,7 +9,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias CodeMySpec.Requirements.CheckerType
   alias CodeMySpec.Sessions.SessionType
 
   @type artifact_type ::
@@ -27,7 +26,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
 
   @type t :: %__MODULE__{
           name: String.t(),
-          checker: module(),
           satisfied_by: module() | nil,
           artifact_type: artifact_type(),
           description: String.t(),
@@ -51,7 +49,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   @primary_key false
   embedded_schema do
     field :name, :string
-    field :checker, CheckerType
     field :satisfied_by, SessionType
     field :artifact_type, Ecto.Enum, values: @artifact_types
     field :description, :string
@@ -108,7 +105,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     requirement_definition
     |> cast(attrs, [
       :name,
-      :checker,
       :satisfied_by,
       :artifact_type,
       :description,
@@ -121,7 +117,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     ])
     |> validate_required([
       :name,
-      :checker,
       :artifact_type,
       :description
     ])

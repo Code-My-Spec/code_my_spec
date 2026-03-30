@@ -17,9 +17,12 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.RequirementCalculator
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Projects
-  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Sessions
   alias CodeMySpecLocalWeb.Hooks.StopController
 
@@ -32,37 +35,30 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # ============================================================================
 
   describe "mtime tracking" do
-    test "sync_changed detects modified files and updates files_changed_at" do
+    test "FileSync detects modified files via mtime" do
       {scope, tmp_dir} = setup_component_scenario()
 
-      # Write spec + impl for MyApp.Accounts
       write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
       write_impl_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
 
-      # First sync — creates component, records mtimes
-      {:ok, result1} = ProjectSync.incremental_sync(scope, base_dir: tmp_dir)
-      assert length(result1.all_components) >= 1
+      # First sync — records mtimes
+      {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert result1.total_files >= 2
+      assert length(result1.changed_paths) >= 2
 
-      accounts = find_component(result1.all_components, "MyApp.Accounts")
-      assert accounts
-      original_changed_at = accounts.files_changed_at
+      # Second sync without changes — nothing changed
+      {:ok, result2} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert result2.changed_paths == []
 
-      # Wait for filesystem mtime granularity (1 second on HFS+/APFS)
+      # Wait for filesystem mtime granularity
       Process.sleep(1100)
 
       # Modify the spec file
       write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
 
-      # Second sync — detects the change
-      {:ok, result2} = ProjectSync.incremental_sync(scope, base_dir: tmp_dir)
-
-      updated_accounts =
-        Components.list_components(scope)
-        |> Enum.find(&(&1.module_name == "MyApp.Accounts"))
-
-      assert updated_accounts
-      assert DateTime.compare(updated_accounts.files_changed_at, original_changed_at) == :gt
-      assert updated_accounts.id in result2.changed_ids
+      # Third sync — detects the change
+      {:ok, result3} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert ".code_my_spec/spec/my_app/accounts.spec.md" in result3.changed_paths
     end
   end
 
@@ -71,30 +67,30 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # ============================================================================
 
   describe "ignored components" do
-    test "components in ignored_components config are excluded from sync" do
+    test "files matching ignored_paths config are excluded from sync" do
       {scope, tmp_dir} = setup_component_scenario()
 
-      # Write config with ignored components
+      # Write config with ignored paths
       config_dir = Path.join(tmp_dir, ".code_my_spec")
       File.mkdir_p!(config_dir)
 
       File.write!(Path.join(config_dir, "config.yml"), """
-      ignored_components:
-        - "MyApp.Ignored"
+      ignored_paths:
+        - "lib/my_app/ignored.ex"
+        - ".code_my_spec/spec/my_app/ignored.spec.md"
       """)
 
-      # Write files for both tracked and ignored components
+      # Write files for both tracked and ignored
       write_spec_file(tmp_dir, "my_app/tracked", "MyApp.Tracked")
       write_impl_file(tmp_dir, "my_app/tracked", "MyApp.Tracked")
       write_spec_file(tmp_dir, "my_app/ignored", "MyApp.Ignored")
       write_impl_file(tmp_dir, "my_app/ignored", "MyApp.Ignored")
 
-      # Sync
-      {:ok, result} = ProjectSync.incremental_sync(scope, base_dir: tmp_dir)
+      # Sync files + components
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, comp_result} = FileComponentSync.sync_from_files(scope, base_dir: tmp_dir)
 
-      IO.inspect(result)
-
-      module_names = Enum.map(result.all_components, & &1.module_name)
+      module_names = Enum.map(comp_result.all_components, & &1.module_name)
       assert "MyApp.Tracked" in module_names
       refute "MyApp.Ignored" in module_names
     end
@@ -105,47 +101,40 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # ============================================================================
 
   describe "requirement satisfaction" do
-    test "creating files satisfies FileExistence requirements after sync" do
+    test "creating files satisfies requirements computed from File records" do
       {scope, tmp_dir} = setup_component_scenario()
 
       # Write only the spec file (not the impl file)
       write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
 
-      # First sync — spec_file should be satisfied, implementation_file should not
-      {:ok, _} = ProjectSync.incremental_sync(scope, base_dir: tmp_dir)
+      # Sync files + components
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} = FileComponentSync.sync_from_files(scope, base_dir: tmp_dir)
 
-      accounts_id =
+      accounts =
         Components.list_components(scope)
         |> Enum.find(&(&1.module_name == "MyApp.Accounts"))
-        |> Map.fetch!(:id)
 
-      # get_component preloads :requirements
-      accounts = Components.get_component(scope, accounts_id)
       assert accounts
 
-      spec_req = Enum.find(accounts.requirements, &(&1.name == "spec_file"))
-      impl_req = Enum.find(accounts.requirements, &(&1.name == "implementation_file"))
+      # Compute requirements — spec_file satisfied, implementation_file not
+      reqs = RequirementCalculator.compute_component(scope, accounts)
+      spec_req = Enum.find(reqs, &(&1.name == "spec_file"))
+      impl_req = Enum.find(reqs, &(&1.name == "implementation_file"))
 
-      assert spec_req, "spec_file requirement should exist"
-      assert spec_req.satisfied, "spec_file should be satisfied (file exists)"
+      assert spec_req.satisfied, "spec_file should be satisfied"
+      refute impl_req.satisfied, "implementation_file should NOT be satisfied yet"
 
-      if impl_req do
-        refute impl_req.satisfied, "implementation_file should NOT be satisfied yet"
-      end
-
-      # Now write the impl file
+      # Write the impl file and re-sync
       write_impl_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} = FileComponentSync.sync_from_files(scope, base_dir: tmp_dir)
 
-      # Re-sync — implementation_file should now be satisfied
-      {:ok, _} = ProjectSync.incremental_sync(scope, base_dir: tmp_dir)
+      # Re-compute — implementation_file now satisfied
+      reqs2 = RequirementCalculator.compute_component(scope, accounts)
+      impl_req2 = Enum.find(reqs2, &(&1.name == "implementation_file"))
 
-      accounts2 = Components.get_component(scope, accounts_id)
-      impl_req2 = Enum.find(accounts2.requirements, &(&1.name == "implementation_file"))
-
-      assert impl_req2, "implementation_file requirement should exist after impl file created"
-
-      assert impl_req2.satisfied,
-             "implementation_file should be satisfied after impl file created"
+      assert impl_req2.satisfied, "implementation_file should be satisfied after impl file created"
     end
   end
 
