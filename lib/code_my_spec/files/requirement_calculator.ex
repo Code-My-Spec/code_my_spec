@@ -2,11 +2,8 @@ defmodule CodeMySpec.Files.RequirementCalculator do
   @moduledoc """
   Computes requirement satisfaction from File records and Problems.
 
-  No persisted requirements needed. Given a component and its requirement
-  definitions (from the registry), returns computed satisfaction status
-  by querying Files and Problems.
-
-  This replaces the checker → persist → query cycle with direct computation.
+  Accepts an optional preloaded context (from `Preloader.load/1`) to avoid
+  N+1 queries. Falls back to per-component queries when no context is provided.
   """
 
   import Ecto.Query
@@ -14,6 +11,7 @@ defmodule CodeMySpec.Files.RequirementCalculator do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.Preloader
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -27,78 +25,54 @@ defmodule CodeMySpec.Files.RequirementCalculator do
   @doc """
   Compute satisfaction for all requirements of a component.
 
-  Returns a list of `%{name, satisfied, details}` maps — one per requirement
-  definition in the registry for this component's type.
+  Accepts an optional `ctx` (preloaded context from Preloader) to avoid queries.
   """
-  @spec compute_component(Scope.t(), Component.t()) :: [computed_requirement()]
-  def compute_component(%Scope{} = scope, %Component{} = component) do
+  @spec compute_component(Scope.t(), Component.t(), Preloader.context() | nil) :: [computed_requirement()]
+  def compute_component(%Scope{} = scope, %Component{} = component, ctx \\ nil) do
     definitions = ComponentRegistry.get_requirements_for_type(component.type)
-    files = load_component_files(scope, component.id)
+    files = get_files(scope, component.id, ctx)
 
     Enum.map(definitions, fn definition ->
-      compute_one(scope, component, definition, files)
+      compute_one(scope, component, definition, files, ctx)
     end)
   end
 
   @doc """
   Check if all requirements for a component are satisfied.
   """
-  @spec component_satisfied?(Scope.t(), Component.t()) :: boolean()
-  def component_satisfied?(%Scope{} = scope, %Component{} = component) do
+  @spec component_satisfied?(Scope.t(), Component.t(), Preloader.context() | nil) :: boolean()
+  def component_satisfied?(%Scope{} = scope, %Component{} = component, ctx \\ nil) do
     scope
-    |> compute_component(component)
+    |> compute_component(component, ctx)
     |> Enum.all?(& &1.satisfied)
   end
 
   @doc """
   Compute satisfaction for a single named requirement.
   """
-  @spec compute_one(Scope.t(), Component.t(), map(), [File.t()]) :: computed_requirement()
-  def compute_one(scope, component, definition, files) do
-    {satisfied, details} = check(definition.name, scope, component, files)
+  def compute_one(scope, component, definition, files, ctx \\ nil) do
+    {satisfied, details} = check(definition.name, scope, component, files, ctx)
     %{name: definition.name, satisfied: satisfied, details: details}
   end
 
   # -- File existence checks --
 
-  defp check("spec_file", _scope, _component, files) do
-    has_role?(files, :spec)
-  end
-
-  defp check("implementation_file", _scope, _component, files) do
-    has_role?(files, :implementation)
-  end
-
-  defp check("test_file", _scope, _component, files) do
-    has_role?(files, :test)
-  end
-
-  defp check("review_file", _scope, _component, files) do
-    has_role?(files, :review)
-  end
-
-  defp check("json_file", _scope, _component, files) do
-    has_role?(files, :json)
-  end
+  defp check("spec_file", _scope, _component, files, _ctx), do: has_role?(files, :spec)
+  defp check("implementation_file", _scope, _component, files, _ctx), do: has_role?(files, :implementation)
+  defp check("test_file", _scope, _component, files, _ctx), do: has_role?(files, :test)
+  defp check("review_file", _scope, _component, files, _ctx), do: has_role?(files, :review)
+  defp check("json_file", _scope, _component, files, _ctx), do: has_role?(files, :json)
 
   # -- File validity checks --
 
-  defp check("spec_valid", _scope, _component, files) do
-    has_valid_role?(files, :spec)
-  end
-
-  defp check("review_valid", _scope, _component, files) do
-    has_valid_role?(files, :review)
-  end
-
-  defp check("test_spec_alignment", _scope, _component, files) do
-    has_valid_role?(files, :test)
-  end
+  defp check("spec_valid", _scope, _component, files, _ctx), do: has_valid_role?(files, :spec)
+  defp check("review_valid", _scope, _component, files, _ctx), do: has_valid_role?(files, :review)
+  defp check("test_spec_alignment", _scope, _component, files, _ctx), do: has_valid_role?(files, :test)
 
   # -- Problem-based checks --
 
-  defp check("tests_passing", scope, component, _files) do
-    count = count_problems(scope, component.id, "exunit")
+  defp check("tests_passing", scope, component, _files, ctx) do
+    count = get_problem_count(scope, component.id, "exunit", ctx)
 
     if count == 0 do
       {true, %{status: "No test failures"}}
@@ -109,8 +83,8 @@ defmodule CodeMySpec.Files.RequirementCalculator do
 
   # -- Dependency checks --
 
-  defp check("dependencies_satisfied", scope, component, _files) do
-    deps = load_dependencies(scope, component)
+  defp check("dependencies_satisfied", scope, component, _files, ctx) do
+    deps = get_dependencies(component, ctx)
 
     case deps do
       [] ->
@@ -118,7 +92,7 @@ defmodule CodeMySpec.Files.RequirementCalculator do
 
       deps ->
         unsatisfied =
-          Enum.reject(deps, &component_satisfied?(scope, &1))
+          Enum.reject(deps, &component_satisfied?(scope, &1, ctx))
 
         if unsatisfied == [] do
           {true, %{status: "All #{length(deps)} dependencies satisfied"}}
@@ -134,8 +108,8 @@ defmodule CodeMySpec.Files.RequirementCalculator do
 
   # -- Hierarchical checks --
 
-  defp check("children_designs", scope, component, _files) do
-    children = load_children(scope, component)
+  defp check("children_designs", scope, component, _files, ctx) do
+    children = get_children(component, ctx)
 
     case children do
       [] ->
@@ -144,7 +118,7 @@ defmodule CodeMySpec.Files.RequirementCalculator do
       children ->
         unsatisfied =
           Enum.reject(children, fn child ->
-            child_files = load_component_files(scope, child.id)
+            child_files = get_files(scope, child.id, ctx)
             {spec_ok, _} = has_role?(child_files, :spec)
             {valid_ok, _} = has_valid_role?(child_files, :spec)
             spec_ok and valid_ok
@@ -162,8 +136,8 @@ defmodule CodeMySpec.Files.RequirementCalculator do
     end
   end
 
-  defp check("children_implementations", scope, component, _files) do
-    children = load_children(scope, component)
+  defp check("children_implementations", scope, component, _files, ctx) do
+    children = get_children(component, ctx)
 
     case children do
       [] ->
@@ -172,10 +146,10 @@ defmodule CodeMySpec.Files.RequirementCalculator do
       children ->
         unsatisfied =
           Enum.reject(children, fn child ->
-            child_files = load_component_files(scope, child.id)
+            child_files = get_files(scope, child.id, ctx)
             {impl_ok, _} = has_role?(child_files, :implementation)
             {test_ok, _} = has_role?(child_files, :test)
-            test_problems = count_problems(scope, child.id, "exunit")
+            test_problems = get_problem_count(scope, child.id, "exunit", ctx)
             impl_ok and test_ok and test_problems == 0
           end)
 
@@ -191,12 +165,71 @@ defmodule CodeMySpec.Files.RequirementCalculator do
     end
   end
 
-  # Catch-all for unknown requirement names
-  defp check(name, _scope, _component, _files) do
+  defp check(name, _scope, _component, _files, _ctx) do
     {false, %{reason: "Unknown requirement: #{name}"}}
   end
 
-  # -- Private helpers --
+  # -- Data access (preloaded or query) --
+
+  defp get_files(_scope, component_id, %{files_by_component: fbc}) do
+    Map.get(fbc, component_id, [])
+  end
+
+  defp get_files(%Scope{active_project_id: project_id}, component_id, nil) do
+    File
+    |> where([f], f.project_id == ^project_id and f.component_id == ^component_id)
+    |> Repo.all()
+  end
+
+  defp get_problem_count(_scope, component_id, source, %{problems_by_component: pbc}) do
+    pbc
+    |> Map.get(component_id, %{})
+    |> Map.get(source, 0)
+  end
+
+  defp get_problem_count(%Scope{active_project_id: project_id}, component_id, source, nil) do
+    Problem
+    |> where([p], p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source)
+    |> Repo.aggregate(:count)
+  end
+
+  defp get_dependencies(component, %{components: components}) do
+    # Dependencies already preloaded on component
+    case component.dependencies do
+      %Ecto.Association.NotLoaded{} ->
+        # Fallback: find in preloaded components
+        comp = Enum.find(components, &(&1.id == component.id))
+        if comp, do: comp.dependencies || [], else: []
+      deps when is_list(deps) -> deps
+    end
+  end
+
+  defp get_dependencies(component, nil) do
+    component = Repo.preload(component, :dependencies)
+    case component.dependencies do
+      %Ecto.Association.NotLoaded{} -> []
+      deps when is_list(deps) -> deps
+    end
+  end
+
+  defp get_children(component, %{components: components}) do
+    case component.child_components do
+      %Ecto.Association.NotLoaded{} ->
+        comp = Enum.find(components, &(&1.id == component.id))
+        if comp, do: comp.child_components || [], else: []
+      children when is_list(children) -> children
+    end
+  end
+
+  defp get_children(component, nil) do
+    component = Repo.preload(component, :child_components, force: true)
+    case component.child_components do
+      %Ecto.Association.NotLoaded{} -> []
+      children when is_list(children) -> children
+    end
+  end
+
+  # -- Pure helpers --
 
   defp has_role?(files, role) do
     if Enum.any?(files, &(&1.role == role)) do
@@ -208,47 +241,10 @@ defmodule CodeMySpec.Files.RequirementCalculator do
 
   defp has_valid_role?(files, role) do
     case Enum.find(files, &(&1.role == role)) do
-      nil ->
-        {false, %{reason: "#{role} file missing"}}
-
-      %{valid: true} ->
-        {true, %{status: "#{role} file valid"}}
-
-      %{valid: false, validation_errors: errors} ->
-        {false, %{reason: "#{role} file invalid", errors: errors}}
-
-      %{valid: nil} ->
-        {false, %{reason: "#{role} file not yet validated"}}
-    end
-  end
-
-  defp load_component_files(%Scope{active_project_id: project_id}, component_id) do
-    File
-    |> where([f], f.project_id == ^project_id and f.component_id == ^component_id)
-    |> Repo.all()
-  end
-
-  defp count_problems(%Scope{active_project_id: project_id}, component_id, source) do
-    Problem
-    |> where([p], p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source)
-    |> Repo.aggregate(:count)
-  end
-
-  defp load_dependencies(%Scope{} = _scope, %Component{} = component) do
-    component = Repo.preload(component, :dependencies)
-
-    case component.dependencies do
-      %Ecto.Association.NotLoaded{} -> []
-      deps when is_list(deps) -> deps
-    end
-  end
-
-  defp load_children(%Scope{} = _scope, %Component{} = component) do
-    component = Repo.preload(component, :child_components, force: true)
-
-    case component.child_components do
-      %Ecto.Association.NotLoaded{} -> []
-      children when is_list(children) -> children
+      nil -> {false, %{reason: "#{role} file missing"}}
+      %{valid: true} -> {true, %{status: "#{role} file valid"}}
+      %{valid: false, validation_errors: errors} -> {false, %{reason: "#{role} file invalid", errors: errors}}
+      %{valid: nil} -> {false, %{reason: "#{role} file not yet validated"}}
     end
   end
 end

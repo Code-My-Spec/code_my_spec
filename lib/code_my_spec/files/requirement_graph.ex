@@ -13,17 +13,17 @@ defmodule CodeMySpec.Files.RequirementGraph do
 
   import Ecto.Query
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.Preloader
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Files.RequirementCalculator
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementDefinitionData
-  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   @type computed_node :: %{
@@ -73,8 +73,10 @@ defmodule CodeMySpec.Files.RequirementGraph do
   """
   @spec compute_all(Scope.t()) :: [computed_node()]
   def compute_all(%Scope{} = scope) do
-    component_nodes = compute_component_nodes(scope)
-    story_nodes = compute_story_nodes(scope)
+    ctx = Preloader.load(scope)
+
+    component_nodes = compute_component_nodes(scope, ctx)
+    story_nodes = compute_story_nodes(scope, ctx)
     project_nodes = compute_project_nodes(scope)
 
     project_nodes ++ story_nodes ++ component_nodes
@@ -82,15 +84,13 @@ defmodule CodeMySpec.Files.RequirementGraph do
 
   # -- Component requirements --
 
-  defp compute_component_nodes(scope) do
-    components = Components.list_components(scope)
-
-    Enum.flat_map(components, fn component ->
+  defp compute_component_nodes(scope, ctx) do
+    Enum.flat_map(ctx.components, fn component ->
       definitions = ComponentRegistry.get_requirements_for_type(component.type)
-      files = load_component_files(scope, component.id)
+      files = Map.get(ctx.files_by_component, component.id, [])
 
       Enum.map(definitions, fn definition ->
-        result = RequirementCalculator.compute_one(scope, component, definition, files)
+        result = RequirementCalculator.compute_one(scope, component, definition, files, ctx)
 
         %{
           entity_type: "component",
@@ -111,13 +111,13 @@ defmodule CodeMySpec.Files.RequirementGraph do
 
   # -- Story requirements --
 
-  defp compute_story_nodes(scope) do
-    stories = load_stories(scope)
+  defp compute_story_nodes(scope, ctx) do
+    stories = ctx.stories
     definitions = RequirementDefinitionData.story_requirements()
 
     Enum.flat_map(stories, fn story ->
       Enum.map(definitions, fn definition ->
-        {satisfied, details} = check_story(definition.name, scope, story)
+        {satisfied, details} = check_story(definition.name, scope, story, ctx)
 
         %{
           entity_type: "story",
@@ -136,16 +136,19 @@ defmodule CodeMySpec.Files.RequirementGraph do
     end)
   end
 
-  defp check_story("component_linked", _scope, %Story{component_id: nil}) do
+  defp check_story("component_linked", _scope, %Story{component_id: nil}, _ctx) do
     {false, %{reason: "No component linked"}}
   end
 
-  defp check_story("component_linked", _scope, %Story{component_id: cid}) when not is_nil(cid) do
+  defp check_story("component_linked", _scope, %Story{component_id: cid}, _ctx) when not is_nil(cid) do
     {true, %{component_id: cid}}
   end
 
-  defp check_story("bdd_specs_exist", scope, %Story{id: story_id}) do
-    count = count_story_files(scope, story_id, :bdd_spec)
+  defp check_story("bdd_specs_exist", _scope, %Story{id: story_id}, ctx) do
+    count =
+      ctx.files_by_story
+      |> Map.get(story_id, [])
+      |> Enum.count(&(&1.role == :bdd_spec))
 
     if count > 0 do
       {true, %{spec_count: count}}
@@ -154,17 +157,18 @@ defmodule CodeMySpec.Files.RequirementGraph do
     end
   end
 
-  defp check_story("component_complete", _scope, %Story{component_id: nil}) do
+  defp check_story("component_complete", _scope, %Story{component_id: nil}, _ctx) do
     {false, %{reason: "No component linked"}}
   end
 
-  defp check_story("component_complete", scope, %Story{component_id: component_id}) do
-    case Components.get_component(scope, component_id) do
+  defp check_story("component_complete", scope, %Story{component_id: component_id}, ctx) do
+    comp = Enum.find(ctx.components, &(&1.id == component_id))
+    case comp do
       nil ->
         {false, %{reason: "Component not found"}}
 
-      component ->
-        if RequirementCalculator.component_satisfied?(scope, component) do
+      _component ->
+        if RequirementCalculator.component_satisfied?(scope, comp, ctx) do
           {true, %{status: "Component tree satisfied"}}
         else
           {false, %{reason: "Component tree has unsatisfied requirements"}}
@@ -172,23 +176,22 @@ defmodule CodeMySpec.Files.RequirementGraph do
     end
   end
 
-  defp check_story("bdd_specs_passing", scope, %Story{id: story_id}) do
-    count = count_story_problems(scope, story_id, "spex")
+  defp check_story("bdd_specs_passing", scope, %Story{id: story_id}, ctx) do
+    bdd_files = ctx.files_by_story |> Map.get(story_id, []) |> Enum.filter(&(&1.role == :bdd_spec))
 
-    if count == 0 do
-      bdd_count = count_story_files(scope, story_id, :bdd_spec)
+    spex_problems =
+      Problem
+      |> where([p], p.project_id == ^scope.active_project_id and p.source == "spex")
+      |> Repo.aggregate(:count)
 
-      if bdd_count > 0 do
-        {true, %{status: "All BDD specs passing"}}
-      else
-        {false, %{reason: "No BDD specs to check"}}
-      end
-    else
-      {false, %{reason: "#{count} failing BDD spec(s)"}}
+    cond do
+      bdd_files == [] -> {false, %{reason: "No BDD specs to check"}}
+      spex_problems > 0 -> {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
+      true -> {true, %{status: "All BDD specs passing"}}
     end
   end
 
-  defp check_story("qa_complete", scope, %Story{id: story_id}) do
+  defp check_story("qa_complete", scope, %Story{id: story_id}, _ctx) do
     has_result =
       File
       |> where([f],
@@ -206,7 +209,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
     end
   end
 
-  defp check_story(name, _scope, _story) do
+  defp check_story(name, _scope, _story, _ctx) do
     {false, %{reason: "Unknown story requirement: #{name}"}}
   end
 
@@ -249,7 +252,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
   end
 
   defp check_project("architecture_designed", scope, _project) do
-    check_file_exists(scope, ".code_my_spec/architecture/overview.md")
+    check_file_exists(scope, ".code_my_spec/architecture/proposal.md")
   end
 
   defp check_project("qa_integration_plan", scope, _project) do
@@ -294,7 +297,9 @@ defmodule CodeMySpec.Files.RequirementGraph do
   end
 
   defp check_project("all_stories_complete", scope, _project) do
-    stories = load_stories(scope)
+    # Load stories + preloader for story checks
+    ctx = Preloader.load(scope)
+    stories = ctx.stories
     story_defs = RequirementDefinitionData.story_requirements()
 
     if stories == [] do
@@ -303,7 +308,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
       incomplete =
         Enum.reject(stories, fn story ->
           Enum.all?(story_defs, fn def ->
-            {sat, _} = check_story(def.name, scope, story)
+            {sat, _} = check_story(def.name, scope, story, ctx)
             sat
           end)
         end)
@@ -392,31 +397,6 @@ defmodule CodeMySpec.Files.RequirementGraph do
     Enum.all?(prereqs, fn prereq_name ->
       Map.get(satisfaction_map, {type, id, prereq_name}, true)
     end)
-  end
-
-  defp load_component_files(%Scope{active_project_id: project_id}, component_id) do
-    File
-    |> where([f], f.project_id == ^project_id and f.component_id == ^component_id)
-    |> Repo.all()
-  end
-
-  defp load_stories(%Scope{active_project_id: project_id}) do
-    Story
-    |> where([s], s.project_id == ^project_id)
-    |> Repo.all()
-  end
-
-  defp count_story_files(%Scope{active_project_id: project_id}, story_id, role) do
-    File
-    |> where([f], f.project_id == ^project_id and f.story_id == ^story_id and f.role == ^role)
-    |> Repo.aggregate(:count)
-  end
-
-  defp count_story_problems(%Scope{active_project_id: project_id}, _story_id, source) do
-    # Story problems are tracked via component — for now check project-wide spex
-    Problem
-    |> where([p], p.project_id == ^project_id and p.source == ^source)
-    |> Repo.aggregate(:count)
   end
 
   # -- Priority sorting --
