@@ -17,9 +17,10 @@ defmodule CodeMySpecLocalWeb.Application do
       CodeMySpecLocalWeb.Migrator,
       {Phoenix.PubSub, name: CodeMySpec.PubSub},
       CodeMySpec.Auth.AuthState,
-      CodeMySpec.ProjectSync.FileWatcherServer,
       {CodeMySpec.McpServers.LocalServer, transport: {:streamable_http, start: true}},
-      CodeMySpecLocalWeb.Endpoint
+      CodeMySpecLocalWeb.Endpoint,
+      CodeMySpec.ProjectSync.FileWatcherServer,
+      CodeMySpec.Stories.BootSync
     ]
 
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
