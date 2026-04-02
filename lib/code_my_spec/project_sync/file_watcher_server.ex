@@ -160,7 +160,12 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
           file_count = paths |> Enum.to_list() |> length()
 
           {:ok, file_result} = FileSync.sync(scope, base_dir: project_root)
-          {:ok, comp_result} = FileComponentSync.sync_from_files(scope, base_dir: project_root)
+
+          {:ok, comp_result} =
+            FileComponentSync.sync_from_files(scope,
+              base_dir: project_root,
+              changed_paths: file_result.changed_paths
+            )
 
           ms = System.monotonic_time(:millisecond) - start
 

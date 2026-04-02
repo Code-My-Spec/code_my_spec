@@ -42,39 +42,42 @@ defmodule CodeMySpec.Files.FileSync do
     existing_files = Files.list_files(scope)
     existing_map = Map.new(existing_files, &{&1.path, &1.mtime})
 
-    # Detect which files actually changed (new or mtime differs)
-    changed_paths =
+    # Only process files that are new or have a newer mtime
+    changed_entries =
       Enum.filter(file_entries, fn entry ->
         case Map.get(existing_map, entry.path) do
           nil -> true
           db_mtime -> DateTime.compare(entry.mtime, db_mtime) == :gt
         end
       end)
-      |> Enum.map(& &1.path)
 
-    # Resolve owners for entries (component_id, story_id)
-    entries_with_owners = resolve_owners(scope, file_entries)
+    changed_paths = Enum.map(changed_entries, & &1.path)
 
-    # Upsert all (without validation — ON CONFLICT preserves existing valid state)
-    {upserted, _} = Files.upsert_files(scope, entries_with_owners)
+    # Resolve owners and upsert only changed files
+    upserted =
+      case changed_entries do
+        [] ->
+          0
 
-    # Validate changed files and update their valid/validation_errors
-    changed_set = MapSet.new(changed_paths)
-    components = Components.list_components(scope)
-    component_by_id = Map.new(components, &{&1.id, &1})
+        _ ->
+          entries_with_owners = resolve_owners(scope, changed_entries)
+          {count, _} = Files.upsert_files(scope, entries_with_owners)
 
-    changed_entries =
-      entries_with_owners
-      |> Enum.filter(&(&1.path in changed_set))
-      |> Enum.map(&validate_entry(&1, base_dir, component_by_id))
+          # Validate changed files
+          components = Components.list_components(scope)
+          component_by_id = Map.new(components, &{&1.id, &1})
 
-    # Write validation results for changed files
-    Enum.each(changed_entries, fn entry ->
-      case Files.get_by_path(scope, entry.path) do
-        nil -> :ok
-        file -> Files.mark_validated(file, entry.valid, entry.validation_errors)
+          entries_with_owners
+          |> Enum.map(&validate_entry(&1, base_dir, component_by_id))
+          |> Enum.each(fn entry ->
+            case Files.get_by_path(scope, entry.path) do
+              nil -> :ok
+              file -> Files.mark_validated(file, entry.valid, entry.validation_errors)
+            end
+          end)
+
+          count
       end
-    end)
 
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 

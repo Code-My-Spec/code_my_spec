@@ -16,7 +16,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Bootstrap — project linking, resource installation
   component(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InitProject)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAppResources)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallRules)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks)

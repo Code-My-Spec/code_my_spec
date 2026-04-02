@@ -39,77 +39,98 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   ## Options
   - `:base_dir` — project root for reading file content (required for parsing)
+  - `:changed_paths` — when provided, only process files matching these paths (incremental sync)
   """
   @spec sync_from_files(Scope.t(), keyword()) :: {:ok, sync_result()}
   def sync_from_files(%Scope{} = scope, opts \\ []) do
     base_dir = Keyword.fetch!(opts, :base_dir)
+    changed_paths = Keyword.get(opts, :changed_paths)
+    incremental? = is_list(changed_paths)
     start = System.monotonic_time(:millisecond)
 
-    # Get all spec and impl files from DB
     project_id = scope.active_project_id
 
-    spec_files =
-      File
-      |> where([f], f.project_id == ^project_id and f.role == :spec)
-      |> Repo.all()
+    # Query files — scoped to changed_paths when doing incremental sync
+    {spec_files, impl_files} =
+      if incremental? do
+        {
+          File
+          |> where([f], f.project_id == ^project_id and f.role == :spec and f.path in ^changed_paths)
+          |> Repo.all(),
+          File
+          |> where([f], f.project_id == ^project_id and f.role == :implementation and f.path in ^changed_paths)
+          |> Repo.all()
+        }
+      else
+        {
+          File |> where([f], f.project_id == ^project_id and f.role == :spec) |> Repo.all(),
+          File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
+        }
+      end
 
-    impl_files =
-      File
-      |> where([f], f.project_id == ^project_id and f.role == :implementation)
-      |> Repo.all()
-
-    # Parse spec files — only read content for files needing validation (valid is nil)
     spec_data = Enum.map(spec_files, &parse_spec_file(&1, base_dir))
     impl_data = Enum.map(impl_files, &parse_impl_file(&1, base_dir))
-
-    # Merge by module name (spec + impl → one component)
-    # No ignored filtering needed — FileSync already excluded ignored paths
     merged = merge_by_module_name(spec_data, impl_data)
 
-    # Upsert components
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-    existing_components = Components.list_components(scope)
-    existing_map = Map.new(existing_components, &{&1.module_name, &1})
+    if merged == [] do
+      ms = System.monotonic_time(:millisecond) - start
+      Logger.info("[Files.ComponentSync] No components to sync (#{ms}ms)")
+      {:ok, %{all_components: [], changed_component_ids: []}}
+    else
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    synced_components = Enum.map(merged, &upsert_component(scope, &1, now))
-    component_map = Map.new(synced_components, &{&1.module_name, &1})
+      # Load all existing components (needed for parent/dependency resolution)
+      existing_components = Components.list_components(scope)
+      existing_map = Map.new(existing_components, &{&1.module_name, &1})
 
-    # Detect which components changed (new or updated)
-    changed_component_ids =
-      synced_components
-      |> Enum.filter(fn c ->
-        case Map.get(existing_map, c.module_name) do
-          nil -> true
-          existing -> existing.updated_at != c.updated_at
-        end
-      end)
-      |> Enum.map(& &1.id)
+      # Upsert only affected components
+      synced_components = Enum.map(merged, &upsert_component(scope, &1, now))
 
-    # Derive parent relationships
-    update_parent_relationships(scope, synced_components, component_map)
+      # Build full component map: existing merged with freshly synced
+      component_map =
+        existing_map
+        |> Map.merge(Map.new(synced_components, &{&1.module_name, &1}))
 
-    # Sync dependencies from spec declarations
-    sync_dependencies(scope, merged, component_map)
+      # Detect which components changed (new or updated)
+      changed_component_ids =
+        synced_components
+        |> Enum.filter(fn c ->
+          case Map.get(existing_map, c.module_name) do
+            nil -> true
+            existing -> existing.updated_at != c.updated_at
+          end
+        end)
+        |> Enum.map(& &1.id)
 
-    # Clean up removed components
-    all_module_names = MapSet.new(merged, & &1.module_name)
-    cleanup_removed(scope, existing_components, all_module_names)
+      # Derive parent relationships (only for affected components)
+      update_parent_relationships(scope, synced_components, component_map)
 
-    # Backfill component_id on File records
-    backfill_file_owners(scope, component_map)
+      # Sync dependencies from spec declarations (only for affected components)
+      sync_dependencies(scope, merged, component_map)
 
-    ms = System.monotonic_time(:millisecond) - start
+      # Only cleanup removed components on full sync
+      unless incremental? do
+        all_module_names = MapSet.new(merged, & &1.module_name)
+        cleanup_removed(scope, existing_components, all_module_names)
+      end
 
-    Logger.info(
-      "[Files.ComponentSync] #{length(synced_components)} components synced in #{ms}ms " <>
-        "(#{length(changed_component_ids)} changed)"
-    )
+      # Backfill component_id on affected files only
+      affected_map = Map.new(synced_components, &{&1.module_name, &1})
+      backfill_file_owners(scope, affected_map)
 
-    {:ok,
-     %{
-       all_components: synced_components,
-       changed_component_ids: changed_component_ids
-     }}
+      ms = System.monotonic_time(:millisecond) - start
+
+      Logger.info(
+        "[Files.ComponentSync] #{length(synced_components)} components synced in #{ms}ms " <>
+          "(#{length(changed_component_ids)} changed)"
+      )
+
+      {:ok,
+       %{
+         all_components: synced_components,
+         changed_component_ids: changed_component_ids
+       }}
+    end
   end
 
   # -- Spec parsing --
