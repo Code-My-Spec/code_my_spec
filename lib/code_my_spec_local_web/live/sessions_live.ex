@@ -196,25 +196,16 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
 
       <p><strong>Status:</strong> {status_badge(@task.status)} {@task.status}</p>
 
-      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt class="font-semibold">Requirement</dt>
-        <dd>{@task.requirement_name || "—"}</dd>
-
-        <dt class="font-semibold">Component</dt>
-        <dd>{@task.component_module_name || "—"}</dd>
-
-        <dt class="font-semibold">Story ID</dt>
-        <dd>{@task.story_id || "—"}</dd>
-
-        <dt class="font-semibold">Agent ID</dt>
-        <dd class="font-mono">{@task.agent_id || "not assigned"}</dd>
-
-        <dt class="font-semibold">Started</dt>
-        <dd>{if @task.started_at, do: Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</dd>
-
-        <dt class="font-semibold">Completed</dt>
-        <dd>{if @task.completed_at, do: Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</dd>
-      </dl>
+      <table class="text-sm">
+        <tbody>
+          <tr><td class="font-semibold pr-6 py-1 align-top">Requirement</td><td class="py-1">{@task.requirement_name || "—"}</td></tr>
+          <tr><td class="font-semibold pr-6 py-1 align-top">Component</td><td class="py-1">{@task.component_module_name || "—"}</td></tr>
+          <tr><td class="font-semibold pr-6 py-1 align-top">Story ID</td><td class="py-1">{@task.story_id || "—"}</td></tr>
+          <tr><td class="font-semibold pr-6 py-1 align-top">Agent ID</td><td class="py-1 font-mono">{@task.agent_id || "not assigned"}</td></tr>
+          <tr><td class="font-semibold pr-6 py-1 align-top">Started</td><td class="py-1">{if @task.started_at, do: Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
+          <tr><td class="font-semibold pr-6 py-1 align-top">Completed</td><td class="py-1">{if @task.completed_at, do: Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
+        </tbody>
+      </table>
 
       <div :if={has_expected_files?(@task)}>
         <h2>Expected Files</h2>
