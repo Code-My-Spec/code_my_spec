@@ -11,6 +11,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   """
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Users.Scope
@@ -188,8 +189,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   @doc """
-  Single component graph: every requirement for a component and its
-  children, with all edges. Force-layout for natural organization.
+  Single context graph: context requirements as a vertical chain in the center,
+  children fanning out between the container nodes (context_specs, context_implementation).
   """
   @spec component_graph(Scope.t(), String.t()) :: map()
   def component_graph(%Scope{} = scope, component_id) do
@@ -199,59 +200,105 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     actionable_set =
       MapSet.new(actionable, fn n -> {n.entity_type, n.entity_id, n.name} end)
 
-    # Find the component and its children
     components = Components.list_components(scope)
-    target = Enum.find(components, &(&1.id == component_id))
     children = Enum.filter(components, &(&1.parent_component_id == component_id))
     tree_ids = MapSet.new([component_id | Enum.map(children, & &1.id)])
 
-    # Filter to nodes in this tree
     tree_nodes = Enum.filter(nodes, fn n ->
       n.entity_type == "component" and MapSet.member?(tree_ids, n.entity_id)
     end)
 
-    # Layout: context reqs in center column, children in columns to the sides
     comp_reqs_by_id = Enum.group_by(tree_nodes, & &1.entity_id)
-    req_gap = 350
-    child_col_gap = 600
 
-    # Context column at x=0
+    req_gap = 400
+    child_col_gap = 500
+    child_req_gap = 300
+
+    # Context requirements sorted by definition order
     context_reqs = Map.get(comp_reqs_by_id, component_id, [])
-    context_sigma =
-      context_reqs
+    context_type = (Enum.find(components, &(&1.id == component_id)) || %{type: "context"}).type
+    ctx_def_order =
+      ComponentRegistry.get_requirements_for_type(context_type)
       |> Enum.with_index()
-      |> Enum.map(fn {req, idx} ->
-        mk_node(nkey(req), comp_label(req), 0, -(idx * req_gap), 14, cls(req, actionable_set),
+      |> Map.new(fn {d, i} -> {d.name, i} end)
+
+    sorted_ctx_reqs = Enum.sort_by(context_reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
+
+    # Split context reqs into: before context_specs, context_specs,
+    # between, context_implementation, after
+    specs_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "context_specs"))
+    impl_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "context_implementation"))
+
+    # Layout context column at x=0, leaving gaps for children
+    # Children fan out between context_specs and review_file (specs phase)
+    # and between context_implementation and implementation_file (impl phase)
+    child_count = length(children)
+
+    # Calculate Y positions for context reqs, inserting child zones
+    {context_sigma, y_cursor} =
+      sorted_ctx_reqs
+      |> Enum.with_index()
+      |> Enum.reduce({[], 0}, fn {req, idx}, {acc, y} ->
+        node = mk_node(nkey(req), short_req_label(req), 0, -y, 14, cls(req, actionable_set),
           entity_type: "component", entity_id: req.entity_id, name: req.name)
+
+        # Add extra space after container nodes for the child zone
+        extra =
+          cond do
+            idx == specs_idx and child_count > 0 -> child_count * child_req_gap + req_gap
+            idx == impl_idx and child_count > 0 -> child_count * child_req_gap + req_gap
+            true -> 0
+          end
+
+        {acc ++ [node], y + req_gap + extra}
       end)
 
-    # Child columns spread to the sides
-    child_sigma =
-      children
-      |> Enum.sort_by(& &1.module_name)
+    # Position children in the gaps after container nodes
+    # Specs phase children: fan out after context_specs
+    specs_y =
+      if specs_idx do
+        ctx_node = Enum.at(context_sigma, specs_idx)
+        if ctx_node, do: ctx_node.attributes.y, else: 0
+      else
+        0
+      end
+
+    sorted_children = Enum.sort_by(children, & &1.module_name)
+
+    spec_child_sigma =
+      sorted_children
       |> Enum.with_index()
       |> Enum.flat_map(fn {child, col_idx} ->
         child_reqs = Map.get(comp_reqs_by_id, child.id, [])
-        x = (col_idx + 1) * child_col_gap
+        # Sort by definition order for this child's type
+        child_type = child.type
+        child_def_order =
+          ComponentRegistry.get_requirements_for_type(child_type)
+          |> Enum.with_index()
+          |> Map.new(fn {d, i} -> {d.name, i} end)
 
-        child_reqs
+        sorted_child_reqs = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
+        x = (col_idx - (child_count - 1) / 2) * child_col_gap
+
+        sorted_child_reqs
         |> Enum.with_index()
-        |> Enum.map(fn {req, idx} ->
-          mk_node(nkey(req), comp_label(req), x, -(idx * req_gap), 10, cls(req, actionable_set),
+        |> Enum.map(fn {req, req_idx} ->
+          y = specs_y - ((req_idx + 1) * child_req_gap)
+          mk_node(nkey(req), short_req_label(req), x, y, 10, cls(req, actionable_set),
             entity_type: "component", entity_id: req.entity_id, name: req.name)
         end)
       end)
 
-    all_sigma = context_sigma ++ child_sigma
+    all_sigma = context_sigma ++ spec_child_sigma
     all_keys = MapSet.new(all_sigma, & &1.key)
 
-    # Filter edges to this tree
+    # Edges: filter to this tree, both directions
     tree_node_keys = MapSet.new(tree_nodes, fn n -> {n.entity_type, n.entity_id, n.name} end)
 
     sigma_edges =
       edges
       |> Enum.filter(fn e ->
-        MapSet.member?(tree_node_keys, e.from) or MapSet.member?(tree_node_keys, e.to)
+        MapSet.member?(tree_node_keys, e.from) and MapSet.member?(tree_node_keys, e.to)
       end)
       |> Enum.map(fn e ->
         {key_to_string(e.from), key_to_string(e.to), e}
@@ -259,9 +306,9 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and MapSet.member?(all_keys, t) end)
       |> Enum.uniq_by(fn {f, t, _} -> {f, t} end)
       |> Enum.reject(fn {f, t, _} -> f == t end)
-      |> Enum.map(fn {f, t, e} ->
+      |> Enum.map(fn {f, t, _e} ->
         %{key: "#{f}->#{t}", source: f, target: t,
-          attributes: %{size: 2, color: edge_color(e), type: "arrow"}}
+          attributes: %{size: 2, color: "#64748b", type: "arrow"}}
       end)
 
     %{nodes: all_sigma, edges: sigma_edges}
@@ -465,6 +512,12 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   defp comp_label(n) do
     mod = short_module(n.entity_name)
+    name = n.name |> String.replace("_", " ")
+    if n.satisfied, do: "#{mod}: #{name} ✓", else: "#{mod}: #{name}"
+  end
+
+  defp short_req_label(n) do
+    mod = n.entity_name |> String.split(".") |> List.last()
     name = n.name |> String.replace("_", " ")
     if n.satisfied, do: "#{mod}: #{name} ✓", else: "#{mod}: #{name}"
   end

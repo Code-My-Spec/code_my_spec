@@ -70,7 +70,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       not n.satisfied and
         not is_nil(n.satisfied_by) and
         not driven_child?(n, driven_child_ids) and
-        all_incoming_satisfied?(node_key(n), incoming, satisfaction_map)
+        incoming_prereqs_satisfied?(n, incoming, satisfaction_map, driven_child_ids)
     end)
     |> sort_by_priority(scope)
   end
@@ -149,11 +149,62 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  # Context containers drive children (not the other way around).
-  # No incoming edges from children — the calculator checks child satisfaction.
-  # Edges go outward: container → children (for graph visualization only).
-  defp context_container_edges(_ctx) do
-    []
+  # Cross-entity edges between parent contexts and children.
+  # Data-driven: when a child's requirement has a prerequisite that exists
+  # on the parent context but NOT on the child itself, create a cross-entity
+  # edge from parent.prereq → child.req.
+  # Fan-in: child's terminal req → parent's implementation_file.
+  defp context_container_edges(ctx) do
+    context_types = MapSet.new(["context", "coordination_context"])
+
+    ctx.components
+    |> Enum.filter(fn c -> c.type in context_types end)
+    |> Enum.flat_map(fn context ->
+      parent_defs = ComponentRegistry.get_requirements_for_type(context.type)
+      parent_req_names = MapSet.new(parent_defs, & &1.name)
+      children = Enum.filter(ctx.components, &(&1.parent_component_id == context.id))
+
+      Enum.flat_map(children, fn child ->
+        child_defs = ComponentRegistry.get_requirements_for_type(child.type)
+        child_req_names = MapSet.new(child_defs, & &1.name)
+        child_terminal = List.last(child_defs)
+
+        # Fan-out: child prereqs that reference parent requirements
+        fan_out =
+          Enum.flat_map(child_defs, fn child_def ->
+            Enum.flat_map(child_def.prerequisites, fn prereq_name ->
+              if not MapSet.member?(child_req_names, prereq_name) and
+                   MapSet.member?(parent_req_names, prereq_name) do
+                [%{from: {"component", context.id, prereq_name},
+                   to: {"component", child.id, child_def.name}}]
+              else
+                []
+              end
+            end)
+          end)
+
+        # Fan-in: child phases feed back into parent
+        spec_terminal = Enum.find(child_defs, &(&1.name == "spec_valid"))
+
+        spec_fan_in =
+          if spec_terminal do
+            [%{from: {"component", child.id, spec_terminal.name},
+               to: {"component", context.id, "review_file"}}]
+          else
+            []
+          end
+
+        impl_fan_in =
+          if child_terminal do
+            [%{from: {"component", child.id, child_terminal.name},
+               to: {"component", context.id, "implementation_file"}}]
+          else
+            []
+          end
+
+        fan_out ++ spec_fan_in ++ impl_fan_in
+      end)
+    end)
   end
 
   # Cross-entity: project.issues_resolved → story.component_linked
@@ -184,10 +235,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Actionability --
 
-  defp all_incoming_satisfied?(key, incoming, satisfaction_map) do
-    sources = Map.get(incoming, key, [])
+  # For container nodes (scope: :children), ignore incoming edges from
+  # driven children — those are fan-in edges that represent completion,
+  # not prerequisites. The container is actionable based on its same-entity
+  # prereqs; its evaluate/2 checks child completion.
+  defp incoming_prereqs_satisfied?(node, incoming, satisfaction_map, driven_child_ids) do
+    sources = Map.get(incoming, node_key(node), [])
 
-    Enum.all?(sources, fn source_key ->
+    sources
+    |> Enum.reject(fn {_type, source_id, _name} ->
+      node.scope == :children and MapSet.member?(driven_child_ids, source_id)
+    end)
+    |> Enum.all?(fn source_key ->
       Map.get(satisfaction_map, source_key, true)
     end)
   end
