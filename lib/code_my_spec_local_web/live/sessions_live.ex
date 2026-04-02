@@ -206,8 +206,8 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
         <dt :if={@task.story_id} class="font-semibold">Story ID</dt>
         <dd :if={@task.story_id}>{@task.story_id}</dd>
 
-        <dt :if={@task.agent_id} class="font-semibold">Agent ID</dt>
-        <dd :if={@task.agent_id} class="font-mono">{@task.agent_id}</dd>
+        <dt class="font-semibold">Agent ID</dt>
+        <dd class="font-mono">{@task.agent_id || "not assigned"}</dd>
 
         <dt :if={@task.started_at} class="font-semibold">Started</dt>
         <dd :if={@task.started_at}>{Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
