@@ -33,6 +33,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/components/:component_id", RequirementsLive, :component_show
       live "/projects/:project_name/components/:component_id/graph", RequirementsLive, :component_graph
       live "/projects/:project_name/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
+      live "/projects/:project_name/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
 
       live "/projects/:project_name/stories", RequirementsLive, :stories
       live "/projects/:project_name/stories/:story_id", RequirementsLive, :story_show

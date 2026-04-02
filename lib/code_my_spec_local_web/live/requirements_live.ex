@@ -85,6 +85,37 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end
   end
 
+  def handle_params(%{"project_name" => name, "component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_prompt}} = socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      component = Components.get_component!(scope, component_id)
+      nodes = Requirements.compute_all(scope)
+
+      node = Enum.find(nodes, fn n ->
+        n.entity_type == "component" and n.entity_id == component.id and n.name == req_name
+      end)
+
+      slug = project_slug(project)
+
+      if node && node.satisfied_by do
+        task = %{component_id: component_id, component_module_name: component.module_name}
+        prompt_text =
+          case node.satisfied_by.command(scope, task) do
+            {:ok, text} -> text
+            {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
+          end
+
+        back = "[← Back to #{req_name}](/projects/#{slug}/components/#{component_id}/requirements/#{req_name})\n\n"
+        markdown = back <> "# Prompt: #{component.module_name} / #{req_name}\n\n" <> prompt_text
+
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+      else
+        {:noreply, assign(socket, error: "Requirement #{req_name} has no task module")}
+      end
+    else
+      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+    end
+  end
+
   def handle_params(%{"project_name" => name, "component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       component = Components.get_component!(scope, component_id)
@@ -98,7 +129,13 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
       if node do
         back = "[← Back to #{component.module_name}](/projects/#{slug}/components/#{component_id})\n\n"
-        markdown = back <> RequirementsMarkdown.show(%{node: node})
+        prompt_link =
+          if node.satisfied_by do
+            "\n\n[View Prompt →](/projects/#{slug}/components/#{component_id}/requirements/#{req_name}/prompt)\n"
+          else
+            ""
+          end
+        markdown = back <> RequirementsMarkdown.show(%{node: node}) <> prompt_link
         {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
       else
         {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
