@@ -115,6 +115,11 @@ Hooks.SigmaGraph = {
       defaultNodeColor: "#64748b",
     })
 
+    // Run simple force layout if requested
+    if (data.layout === "force") {
+      this.runForceLayout(graph)
+    }
+
     // Zoom out a bit from the default auto-fit so nodes have breathing room
     const camera = this.sigma.getCamera()
     camera.setState({ ratio: 1.3 })
@@ -132,6 +137,66 @@ Hooks.SigmaGraph = {
     // Hover cursor
     this.sigma.on("enterNode", () => { container.style.cursor = "pointer" })
     this.sigma.on("leaveNode", () => { container.style.cursor = "default" })
+  },
+  runForceLayout(graph) {
+    // Simple spring-electric force layout — runs 200 iterations
+    const iterations = 300
+    const repulsion = 50000
+    const attraction = 0.005
+    const damping = 0.85
+
+    const nodes = graph.nodes()
+    const vel = {}
+    nodes.forEach(n => { vel[n] = { vx: 0, vy: 0 } })
+
+    for (let i = 0; i < iterations; i++) {
+      // Repulsion between all node pairs
+      for (let a = 0; a < nodes.length; a++) {
+        const na = nodes[a]
+        const pa = graph.getNodeAttributes(na)
+        for (let b = a + 1; b < nodes.length; b++) {
+          const nb = nodes[b]
+          const pb = graph.getNodeAttributes(nb)
+          const dx = pa.x - pb.x
+          const dy = pa.y - pb.y
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1
+          const force = repulsion / (dist * dist)
+          const fx = (dx / dist) * force
+          const fy = (dy / dist) * force
+          vel[na].vx += fx
+          vel[na].vy += fy
+          vel[nb].vx -= fx
+          vel[nb].vy -= fy
+        }
+      }
+
+      // Attraction along edges
+      graph.forEachEdge((edge, attrs, source, target) => {
+        const pa = graph.getNodeAttributes(source)
+        const pb = graph.getNodeAttributes(target)
+        const dx = pb.x - pa.x
+        const dy = pb.y - pa.y
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1
+        const force = dist * attraction
+        const fx = (dx / dist) * force
+        const fy = (dy / dist) * force
+        vel[source].vx += fx
+        vel[source].vy += fy
+        vel[target].vx -= fx
+        vel[target].vy -= fy
+      })
+
+      // Apply velocities with damping
+      nodes.forEach(n => {
+        vel[n].vx *= damping
+        vel[n].vy *= damping
+        const attrs = graph.getNodeAttributes(n)
+        graph.setNodeAttribute(n, "x", attrs.x + vel[n].vx)
+        graph.setNodeAttribute(n, "y", attrs.y + vel[n].vy)
+      })
+    }
+
+    this.sigma.refresh()
   }
 }
 

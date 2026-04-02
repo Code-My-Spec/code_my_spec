@@ -234,24 +234,19 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       end)
 
     all_groups = (groups ++ standalone) |> Enum.sort_by(fn {_id, g} -> g.component.module_name end)
-    count = length(all_groups)
-    cols = max(ceil(:math.sqrt(count)), 1)
 
+    # Random initial positions — sigma + force layout will organize naturally
     sigma_nodes =
       all_groups
-      |> Enum.with_index()
-      |> Enum.map(fn {{comp_id, group}, idx} ->
-        col = rem(idx, cols)
-        row = div(idx, cols)
-        x = (col - (cols - 1) / 2) * 600
-        y = -(row * 500)
-
+      |> Enum.map(fn {comp_id, group} ->
         reqs = group.reqs
         sat = Enum.count(reqs, & &1.satisfied)
         total = length(reqs)
         name = short_module(group.component.module_name)
+        size = 8
 
-        mk_node(summary_key(comp_id), "#{name} #{sat}/#{total}", x, y, 16,
+        mk_node(summary_key(comp_id), "#{name} #{sat}/#{total}",
+          :rand.uniform(5000) - 2500, :rand.uniform(5000) - 2500, size,
           summary_status(reqs, actionable_set),
           entity_type: "component", entity_id: comp_id)
       end)
@@ -278,7 +273,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       end)
       |> Enum.uniq_by(& &1.key)
 
-    %{nodes: sigma_nodes, edges: dep_edges}
+    %{nodes: sigma_nodes, edges: dep_edges, layout: "force"}
   end
 
   # -- Context groups --

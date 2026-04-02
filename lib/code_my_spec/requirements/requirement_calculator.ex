@@ -38,16 +38,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   @doc """
-  Check if all requirements for a component are satisfied.
-  """
-  @spec component_satisfied?(Scope.t(), Component.t(), Preloader.context() | nil) :: boolean()
-  def component_satisfied?(%Scope{} = scope, %Component{} = component, ctx \\ nil) do
-    scope
-    |> compute_component(component, ctx)
-    |> Enum.all?(& &1.satisfied)
-  end
-
-  @doc """
   Compute satisfaction for a single named requirement.
   """
   def compute_one(scope, component, definition, files, ctx \\ nil) do
@@ -81,90 +71,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # -- Dependency checks --
-
-  defp check("dependencies_satisfied", scope, component, _files, ctx) do
-    deps = get_dependencies(component, ctx)
-
-    case deps do
-      [] ->
-        {true, %{status: "No dependencies"}}
-
-      deps ->
-        unsatisfied =
-          Enum.reject(deps, &component_satisfied?(scope, &1, ctx))
-
-        if unsatisfied == [] do
-          {true, %{status: "All #{length(deps)} dependencies satisfied"}}
-        else
-          {false,
-           %{
-             reason: "#{length(unsatisfied)} unsatisfied dependencies",
-             unsatisfied: Enum.map(unsatisfied, & &1.module_name)
-           }}
-        end
-    end
-  end
-
-  # -- Hierarchical checks --
-
-  defp check("children_designs", scope, component, _files, ctx) do
-    children = get_children(component, ctx)
-
-    case children do
-      [] ->
-        {true, %{status: "No children"}}
-
-      children ->
-        unsatisfied =
-          Enum.reject(children, fn child ->
-            child_files = get_files(scope, child.id, ctx)
-            {spec_ok, _} = has_role?(child_files, :spec)
-            {valid_ok, _} = has_valid_role?(child_files, :spec)
-            spec_ok and valid_ok
-          end)
-
-        if unsatisfied == [] do
-          {true, %{status: "All #{length(children)} children designed"}}
-        else
-          {false,
-           %{
-             reason: "#{length(unsatisfied)} children missing specs",
-             unsatisfied: Enum.map(unsatisfied, & &1.module_name)
-           }}
-        end
-    end
-  end
-
-  defp check("children_implementations", scope, component, _files, ctx) do
-    children = get_children(component, ctx)
-
-    case children do
-      [] ->
-        {true, %{status: "No children"}}
-
-      children ->
-        unsatisfied =
-          Enum.reject(children, fn child ->
-            child_files = get_files(scope, child.id, ctx)
-            {impl_ok, _} = has_role?(child_files, :implementation)
-            {test_ok, _} = has_role?(child_files, :test)
-            test_problems = get_problem_count(scope, child.id, "exunit", ctx)
-            impl_ok and test_ok and test_problems == 0
-          end)
-
-        if unsatisfied == [] do
-          {true, %{status: "All #{length(children)} children implemented"}}
-        else
-          {false,
-           %{
-             reason: "#{length(unsatisfied)} children incomplete",
-             unsatisfied: Enum.map(unsatisfied, & &1.module_name)
-           }}
-        end
-    end
-  end
-
   defp check(name, _scope, _component, _files, _ctx) do
     {false, %{reason: "Unknown requirement: #{name}"}}
   end
@@ -191,40 +97,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     Problem
     |> where([p], p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source)
     |> Repo.aggregate(:count)
-  end
-
-  defp get_dependencies(component, %{components: components}) do
-    case component.dependencies do
-      %Ecto.Association.NotLoaded{} ->
-        comp = Enum.find(components, &(&1.id == component.id))
-        if comp, do: comp.dependencies || [], else: []
-      deps when is_list(deps) -> deps
-    end
-  end
-
-  defp get_dependencies(component, nil) do
-    component = Repo.preload(component, :dependencies)
-    case component.dependencies do
-      %Ecto.Association.NotLoaded{} -> []
-      deps when is_list(deps) -> deps
-    end
-  end
-
-  defp get_children(component, %{components: components}) do
-    case component.child_components do
-      %Ecto.Association.NotLoaded{} ->
-        comp = Enum.find(components, &(&1.id == component.id))
-        if comp, do: comp.child_components || [], else: []
-      children when is_list(children) -> children
-    end
-  end
-
-  defp get_children(component, nil) do
-    component = Repo.preload(component, :child_components, force: true)
-    case component.child_components do
-      %Ecto.Association.NotLoaded{} -> []
-      children when is_list(children) -> children
-    end
   end
 
   # -- Pure helpers --

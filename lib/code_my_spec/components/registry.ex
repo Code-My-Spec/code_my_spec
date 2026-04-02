@@ -30,11 +30,8 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.context_spec_file(),
         RequirementDefinitionData.context_spec_valid(),
-        RequirementDefinitionData.children_designs(),
         RequirementDefinitionData.review_file(),
         RequirementDefinitionData.review_valid(),
-        RequirementDefinitionData.children_implementations(),
-        RequirementDefinitionData.dependencies_satisfied(),
         RequirementDefinitionData.context_implementation_file(),
         RequirementDefinitionData.context_test_file(),
         RequirementDefinitionData.test_spec_alignment(),
@@ -50,11 +47,8 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.context_spec_file(),
         RequirementDefinitionData.context_spec_valid(),
-        RequirementDefinitionData.children_designs(),
         RequirementDefinitionData.review_file(),
         RequirementDefinitionData.review_valid(),
-        RequirementDefinitionData.children_implementations(),
-        RequirementDefinitionData.dependencies_satisfied(),
         RequirementDefinitionData.context_implementation_file(),
         RequirementDefinitionData.context_test_file(),
         RequirementDefinitionData.test_spec_alignment(),
@@ -118,7 +112,6 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.spec_file(),
         RequirementDefinitionData.spec_valid(),
-        RequirementDefinitionData.dependencies_satisfied(),
         RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
         RequirementDefinitionData.test_spec_alignment(),
@@ -144,10 +137,7 @@ defmodule CodeMySpec.Components.Registry do
     "live_context" => %{
       requirements: [
         RequirementDefinitionData.live_context_spec_file(),
-        RequirementDefinitionData.live_context_spec_valid(),
-        RequirementDefinitionData.children_designs(),
-        RequirementDefinitionData.children_implementations(),
-        RequirementDefinitionData.dependencies_satisfied()
+        RequirementDefinitionData.live_context_spec_valid()
       ],
       document_type: "live_context_spec",
       display_name: "Live Context",
@@ -159,7 +149,6 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.liveview_spec_file(),
         RequirementDefinitionData.liveview_spec_valid(),
-        RequirementDefinitionData.dependencies_satisfied(),
         RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
         RequirementDefinitionData.test_spec_alignment(),
@@ -175,7 +164,6 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.liveview_spec_file(),
         RequirementDefinitionData.liveview_spec_valid(),
-        RequirementDefinitionData.dependencies_satisfied(),
         RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
         RequirementDefinitionData.test_spec_alignment(),

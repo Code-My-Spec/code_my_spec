@@ -43,7 +43,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component implementation file exists",
-        prerequisites: ["spec_valid", "dependencies_satisfied"]
+        prerequisites: ["spec_valid"]
       })
 
     definition
@@ -106,51 +106,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
-  @spec dependencies_satisfied() :: RequirementDefinition.t()
-  def dependencies_satisfied do
-    {:ok, definition} =
-      RequirementDefinition.new(%{
-        name: "dependencies_satisfied",
-        satisfied_by: nil,
-        artifact_type: :dependencies,
-        description: "Component dependencies are satisfied",
-        prerequisites: [],
-        scope: :dependencies
-      })
-
-    definition
-  end
-
-  @spec children_designs() :: RequirementDefinition.t()
-  def children_designs do
-    {:ok, definition} =
-      RequirementDefinition.new(%{
-        name: "children_designs",
-        satisfied_by: CodeMySpec.AgentTasks.ContextComponentSpecs,
-        artifact_type: :hierarchy,
-        description: "Child component designs are complete",
-        prerequisites: ["spec_valid"],
-        scope: :children
-      })
-
-    definition
-  end
-
-  @spec children_implementations() :: RequirementDefinition.t()
-  def children_implementations do
-    {:ok, definition} =
-      RequirementDefinition.new(%{
-        name: "children_implementations",
-        satisfied_by: CodeMySpec.AgentTasks.ContextImplementation,
-        artifact_type: :hierarchy,
-        description: "Child component implementations are complete",
-        prerequisites: ["children_designs", "review_valid"],
-        scope: :children
-      })
-
-    definition
-  end
-
   @spec review_file() :: RequirementDefinition.t()
   def review_file do
     {:ok, definition} =
@@ -159,7 +114,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ContextDesignReview,
         artifact_type: :review,
         description: "Context design review file exists",
-        prerequisites: ["children_designs"]
+        prerequisites: ["spec_valid"]
       })
 
     definition
@@ -217,7 +172,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Context implementation file exists",
-        prerequisites: ["children_implementations", "dependencies_satisfied"],
+        prerequisites: ["review_valid"],
         scope: :orchestrate
       })
 
@@ -232,7 +187,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Context test file exists",
-        prerequisites: ["children_implementations"],
+        prerequisites: ["review_valid"],
         scope: :orchestrate
       })
 
