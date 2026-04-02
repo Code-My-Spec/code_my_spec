@@ -49,21 +49,27 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
-    {nodes, edges} = compute_graph(scope)
+    ctx = Preloader.load(scope)
+    nodes = compute_all_from_ctx(scope, ctx)
+    edges = compute_edges(nodes, ctx)
 
     satisfaction_map =
       Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
 
-    # Build incoming edges per node: node_key => [source_key, ...]
     incoming =
       Enum.reduce(edges, %{}, fn edge, acc ->
         Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
       end)
 
+    # Children of contexts are driven by container tasks (context_specs,
+    # context_implementation) — not independently actionable.
+    driven_child_ids = driven_component_ids(ctx)
+
     nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
+        not driven_child?(n, driven_child_ids) and
         all_incoming_satisfied?(node_key(n), incoming, satisfaction_map)
     end)
     |> sort_by_priority(scope)
@@ -84,6 +90,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     same_entity_edges(nodes) ++
       project_to_story_edges(ctx) ++
       component_tree_edges(nodes, ctx) ++
+      context_container_edges(ctx) ++
       story_to_project_edges(nodes, ctx)
   end
 
@@ -142,6 +149,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
+  # Context containers drive children (not the other way around).
+  # No incoming edges from children — the calculator checks child satisfaction.
+  # Edges go outward: container → children (for graph visualization only).
+  defp context_container_edges(_ctx) do
+    []
+  end
+
   # Cross-entity: project.issues_resolved → story.component_linked
   defp project_to_story_edges(ctx) do
     project_id = ctx.stories |> List.first() |> then(fn s -> s && s.project_id end)
@@ -177,6 +191,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Map.get(satisfaction_map, source_key, true)
     end)
   end
+
+  # Components whose parent context has :children scope containers
+  defp driven_component_ids(ctx) do
+    context_types = MapSet.new(["context", "coordination_context"])
+
+    context_ids =
+      ctx.components
+      |> Enum.filter(fn c -> c.type in context_types end)
+      |> MapSet.new(& &1.id)
+
+    ctx.components
+    |> Enum.filter(fn c ->
+      c.parent_component_id && MapSet.member?(context_ids, c.parent_component_id)
+    end)
+    |> MapSet.new(& &1.id)
+  end
+
+  defp driven_child?(%{entity_type: "component", entity_id: id}, driven_ids) do
+    MapSet.member?(driven_ids, id)
+  end
+
+  defp driven_child?(_, _), do: false
 
   defp node_key(n), do: {n.entity_type, n.entity_id, n.name}
 

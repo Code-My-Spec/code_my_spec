@@ -30,8 +30,10 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.context_spec_file(),
         RequirementDefinitionData.context_spec_valid(),
+        RequirementDefinitionData.context_specs(),
         RequirementDefinitionData.review_file(),
         RequirementDefinitionData.review_valid(),
+        RequirementDefinitionData.context_implementation(),
         RequirementDefinitionData.context_implementation_file(),
         RequirementDefinitionData.context_test_file(),
         RequirementDefinitionData.test_spec_alignment(),
@@ -47,8 +49,10 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.context_spec_file(),
         RequirementDefinitionData.context_spec_valid(),
+        RequirementDefinitionData.context_specs(),
         RequirementDefinitionData.review_file(),
         RequirementDefinitionData.review_valid(),
+        RequirementDefinitionData.context_implementation(),
         RequirementDefinitionData.context_implementation_file(),
         RequirementDefinitionData.context_test_file(),
         RequirementDefinitionData.test_spec_alignment(),

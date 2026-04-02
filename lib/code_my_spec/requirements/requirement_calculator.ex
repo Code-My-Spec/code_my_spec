@@ -71,6 +71,54 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  # Container requirements — check children's file state directly.
+  defp check("context_specs", scope, component, _files, ctx) do
+    children = get_children(component, ctx)
+
+    if children == [] do
+      {true, %{status: "No children"}}
+    else
+      incomplete =
+        Enum.reject(children, fn child ->
+          child_files = get_files(scope, child.id, ctx)
+          {spec_ok, _} = has_role?(child_files, :spec)
+          {valid_ok, _} = has_valid_role?(child_files, :spec)
+          spec_ok and valid_ok
+        end)
+
+      if incomplete == [] do
+        {true, %{status: "All #{length(children)} child specs complete"}}
+      else
+        {false, %{reason: "#{length(incomplete)} children need specs",
+                  unsatisfied: Enum.map(incomplete, & &1.module_name)}}
+      end
+    end
+  end
+
+  defp check("context_implementation", scope, component, _files, ctx) do
+    children = get_children(component, ctx)
+
+    if children == [] do
+      {true, %{status: "No children"}}
+    else
+      incomplete =
+        Enum.reject(children, fn child ->
+          child_files = get_files(scope, child.id, ctx)
+          {impl_ok, _} = has_role?(child_files, :implementation)
+          {test_ok, _} = has_role?(child_files, :test)
+          test_problems = get_problem_count(scope, child.id, "exunit", ctx)
+          impl_ok and test_ok and test_problems == 0
+        end)
+
+      if incomplete == [] do
+        {true, %{status: "All #{length(children)} child implementations complete"}}
+      else
+        {false, %{reason: "#{length(incomplete)} children need implementation",
+                  unsatisfied: Enum.map(incomplete, & &1.module_name)}}
+      end
+    end
+  end
+
   defp check(name, _scope, _component, _files, _ctx) do
     {false, %{reason: "Unknown requirement: #{name}"}}
   end
@@ -97,6 +145,20 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     Problem
     |> where([p], p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source)
     |> Repo.aggregate(:count)
+  end
+
+  # -- Data access: children --
+
+  defp get_children(component, %{components: components}) do
+    Enum.filter(components, &(&1.parent_component_id == component.id))
+  end
+
+  defp get_children(component, nil) do
+    component = Repo.preload(component, :child_components, force: true)
+    case component.child_components do
+      %Ecto.Association.NotLoaded{} -> []
+      children when is_list(children) -> children
+    end
   end
 
   # -- Pure helpers --

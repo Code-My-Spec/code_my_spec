@@ -106,6 +106,36 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec context_specs() :: RequirementDefinition.t()
+  def context_specs do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "context_specs",
+        satisfied_by: CodeMySpec.AgentTasks.ContextComponentSpecs,
+        artifact_type: :hierarchy,
+        description: "Child component specifications are complete",
+        prerequisites: ["spec_valid"],
+        scope: :children
+      })
+
+    definition
+  end
+
+  @spec context_implementation() :: RequirementDefinition.t()
+  def context_implementation do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "context_implementation",
+        satisfied_by: CodeMySpec.AgentTasks.ContextImplementation,
+        artifact_type: :hierarchy,
+        description: "Child component implementations are complete",
+        prerequisites: ["review_valid"],
+        scope: :children
+      })
+
+    definition
+  end
+
   @spec review_file() :: RequirementDefinition.t()
   def review_file do
     {:ok, definition} =
@@ -114,7 +144,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ContextDesignReview,
         artifact_type: :review,
         description: "Context design review file exists",
-        prerequisites: ["spec_valid"]
+        prerequisites: ["context_specs"]
       })
 
     definition
@@ -172,7 +202,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Context implementation file exists",
-        prerequisites: ["review_valid"],
+        prerequisites: ["context_implementation"],
         scope: :orchestrate
       })
 
@@ -187,7 +217,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Context test file exists",
-        prerequisites: ["review_valid"],
+        prerequisites: ["context_implementation"],
         scope: :orchestrate
       })
 

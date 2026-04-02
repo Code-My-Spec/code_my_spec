@@ -149,6 +149,23 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end
   end
 
+  def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_graph}} = socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      graph_data = GraphProjector.component_graph(scope, component_id)
+
+      {:noreply,
+       assign(socket,
+         project: project,
+         scope: scope,
+         markdown: nil,
+         graph_data: graph_data,
+         error: nil
+       )}
+    else
+      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+    end
+  end
+
   def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       component = Components.get_component!(scope, component_id)

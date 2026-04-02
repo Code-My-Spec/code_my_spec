@@ -188,6 +188,86 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   @doc """
+  Single component graph: every requirement for a component and its
+  children, with all edges. Force-layout for natural organization.
+  """
+  @spec component_graph(Scope.t(), String.t()) :: map()
+  def component_graph(%Scope{} = scope, component_id) do
+    %{nodes: nodes, edges: edges} = Requirements.project_graph(scope)
+    actionable = Requirements.next_actionable_project(scope)
+
+    actionable_set =
+      MapSet.new(actionable, fn n -> {n.entity_type, n.entity_id, n.name} end)
+
+    # Find the component and its children
+    components = Components.list_components(scope)
+    target = Enum.find(components, &(&1.id == component_id))
+    children = Enum.filter(components, &(&1.parent_component_id == component_id))
+    tree_ids = MapSet.new([component_id | Enum.map(children, & &1.id)])
+
+    # Filter to nodes in this tree
+    tree_nodes = Enum.filter(nodes, fn n ->
+      n.entity_type == "component" and MapSet.member?(tree_ids, n.entity_id)
+    end)
+
+    # Layout: context reqs in center column, children in columns to the sides
+    comp_reqs_by_id = Enum.group_by(tree_nodes, & &1.entity_id)
+    req_gap = 350
+    child_col_gap = 600
+
+    # Context column at x=0
+    context_reqs = Map.get(comp_reqs_by_id, component_id, [])
+    context_sigma =
+      context_reqs
+      |> Enum.with_index()
+      |> Enum.map(fn {req, idx} ->
+        mk_node(nkey(req), comp_label(req), 0, -(idx * req_gap), 14, cls(req, actionable_set),
+          entity_type: "component", entity_id: req.entity_id, name: req.name)
+      end)
+
+    # Child columns spread to the sides
+    child_sigma =
+      children
+      |> Enum.sort_by(& &1.module_name)
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {child, col_idx} ->
+        child_reqs = Map.get(comp_reqs_by_id, child.id, [])
+        x = (col_idx + 1) * child_col_gap
+
+        child_reqs
+        |> Enum.with_index()
+        |> Enum.map(fn {req, idx} ->
+          mk_node(nkey(req), comp_label(req), x, -(idx * req_gap), 10, cls(req, actionable_set),
+            entity_type: "component", entity_id: req.entity_id, name: req.name)
+        end)
+      end)
+
+    all_sigma = context_sigma ++ child_sigma
+    all_keys = MapSet.new(all_sigma, & &1.key)
+
+    # Filter edges to this tree
+    tree_node_keys = MapSet.new(tree_nodes, fn n -> {n.entity_type, n.entity_id, n.name} end)
+
+    sigma_edges =
+      edges
+      |> Enum.filter(fn e ->
+        MapSet.member?(tree_node_keys, e.from) or MapSet.member?(tree_node_keys, e.to)
+      end)
+      |> Enum.map(fn e ->
+        {key_to_string(e.from), key_to_string(e.to), e}
+      end)
+      |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and MapSet.member?(all_keys, t) end)
+      |> Enum.uniq_by(fn {f, t, _} -> {f, t} end)
+      |> Enum.reject(fn {f, t, _} -> f == t end)
+      |> Enum.map(fn {f, t, e} ->
+        %{key: "#{f}->#{t}", source: f, target: t,
+          attributes: %{size: 2, color: edge_color(e), type: "arrow"}}
+      end)
+
+    %{nodes: all_sigma, edges: sigma_edges}
+  end
+
+  @doc """
   Components-only graph: one summary node per bounded context with
   dependency edges between them.
   """
