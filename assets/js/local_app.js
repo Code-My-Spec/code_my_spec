@@ -113,6 +113,8 @@ Hooks.SigmaGraph = {
       zoomToSizeRatioFunction: () => 1,
       itemSizesReference: "positions",
       defaultNodeColor: "#64748b",
+      enableEdgeClickEvents: true,
+      enableEdgeHoverEvents: true,
     })
 
     // Run simple force layout if requested
@@ -167,9 +169,25 @@ ${inHtml || "  (none)"}
 ${outHtml || "  (none)"}</pre>`
     })
 
+    // Click edge → show edge details
+    this.sigma.on("clickEdge", ({ edge }) => {
+      const source = graph.source(edge)
+      const target = graph.target(edge)
+      const sourceLabel = graph.getNodeAttributes(source).label || source
+      const targetLabel = graph.getNodeAttributes(target).label || target
+
+      let panel = document.getElementById("graph-debug")
+      if (!panel) return
+      panel.open = true
+      const content = document.getElementById("graph-debug-content")
+      content.textContent = `EDGE: ${edge}\n\n  FROM: ${source}\n        (${sourceLabel})\n\n  TO:   ${target}\n        (${targetLabel})`
+    })
+
     // Hover cursor
     this.sigma.on("enterNode", () => { container.style.cursor = "pointer" })
     this.sigma.on("leaveNode", () => { container.style.cursor = "default" })
+    this.sigma.on("enterEdge", () => { container.style.cursor = "pointer" })
+    this.sigma.on("leaveEdge", () => { container.style.cursor = "default" })
   },
   runForceLayout(graph) {
     // Simple spring-electric force layout — runs 200 iterations

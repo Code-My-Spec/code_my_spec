@@ -43,7 +43,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component implementation file exists",
-        prerequisites: ["context_implementation"]
+        prerequisites: ["spec_valid", "context_implementation"]
       })
 
     definition
@@ -71,7 +71,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Component test file exists",
-        prerequisites: [],
+        prerequisites: ["spec_valid"],
         scope: :orchestrate
       })
 
@@ -217,7 +217,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentTest,
         artifact_type: :tests,
         description: "Context test file exists",
-        prerequisites: ["context_implementation"],
+        prerequisites: [],
         scope: :orchestrate
       })
 

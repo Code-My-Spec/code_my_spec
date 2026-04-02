@@ -224,37 +224,53 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     sorted_ctx_reqs = Enum.sort_by(context_reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
 
-    # Split context reqs into: before context_specs, context_specs,
-    # between, context_implementation, after
+    child_count = length(children)
+    sorted_children = Enum.sort_by(children, & &1.module_name)
+
+    # Split child reqs into spec phase (spec_file, spec_valid) and impl phase (rest)
+    spec_phase_names = MapSet.new(["spec_file", "spec_valid"])
+
+    children_with_reqs =
+      Enum.map(sorted_children, fn child ->
+        child_defs = ComponentRegistry.get_requirements_for_type(child.type)
+        child_def_order =
+          child_defs |> Enum.with_index() |> Map.new(fn {d, i} -> {d.name, i} end)
+
+        child_reqs = Map.get(comp_reqs_by_id, child.id, [])
+        sorted = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
+
+        spec_reqs = Enum.filter(sorted, fn r -> r.name in spec_phase_names end)
+        impl_reqs = Enum.reject(sorted, fn r -> r.name in spec_phase_names end)
+
+        %{child: child, spec_reqs: spec_reqs, impl_reqs: impl_reqs}
+      end)
+
+    # Count max rows per phase for gap sizing
+    max_spec_rows = children_with_reqs |> Enum.map(fn c -> length(c.spec_reqs) end) |> Enum.max(fn -> 0 end)
+    max_impl_rows = children_with_reqs |> Enum.map(fn c -> length(c.impl_reqs) end) |> Enum.max(fn -> 0 end)
+
     specs_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "context_specs"))
     impl_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "context_implementation"))
 
-    # Layout context column at x=0, leaving gaps for children
-    # Children fan out between context_specs and review_file (specs phase)
-    # and between context_implementation and implementation_file (impl phase)
-    child_count = length(children)
-
-    # Calculate Y positions for context reqs, inserting child zones
-    {context_sigma, y_cursor} =
+    # Layout context column at x=0, inserting gaps for child zones
+    {context_sigma, _y_cursor} =
       sorted_ctx_reqs
       |> Enum.with_index()
       |> Enum.reduce({[], 0}, fn {req, idx}, {acc, y} ->
         node = mk_node(nkey(req), short_req_label(req), 0, -y, 14, cls(req, actionable_set),
           entity_type: "component", entity_id: req.entity_id, name: req.name)
 
-        # Add extra space after container nodes for the child zone
         extra =
           cond do
-            idx == specs_idx and child_count > 0 -> child_count * child_req_gap + req_gap
-            idx == impl_idx and child_count > 0 -> child_count * child_req_gap + req_gap
+            idx == specs_idx and child_count > 0 -> (max_spec_rows + 1) * child_req_gap
+            idx == impl_idx and child_count > 0 -> (max_impl_rows + 1) * child_req_gap
             true -> 0
           end
 
         {acc ++ [node], y + req_gap + extra}
       end)
 
-    # Position children in the gaps after container nodes
-    # Specs phase children: fan out after context_specs
+    # Position spec-phase children after context_specs
     specs_y =
       if specs_idx do
         ctx_node = Enum.at(context_sigma, specs_idx)
@@ -263,24 +279,13 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         0
       end
 
-    sorted_children = Enum.sort_by(children, & &1.module_name)
-
     spec_child_sigma =
-      sorted_children
+      children_with_reqs
       |> Enum.with_index()
-      |> Enum.flat_map(fn {child, col_idx} ->
-        child_reqs = Map.get(comp_reqs_by_id, child.id, [])
-        # Sort by definition order for this child's type
-        child_type = child.type
-        child_def_order =
-          ComponentRegistry.get_requirements_for_type(child_type)
-          |> Enum.with_index()
-          |> Map.new(fn {d, i} -> {d.name, i} end)
-
-        sorted_child_reqs = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
+      |> Enum.flat_map(fn {cwr, col_idx} ->
         x = (col_idx - (child_count - 1) / 2) * child_col_gap
 
-        sorted_child_reqs
+        cwr.spec_reqs
         |> Enum.with_index()
         |> Enum.map(fn {req, req_idx} ->
           y = specs_y - ((req_idx + 1) * child_req_gap)
@@ -289,7 +294,31 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         end)
       end)
 
-    all_sigma = context_sigma ++ spec_child_sigma
+    # Position impl-phase children after context_implementation
+    impl_y =
+      if impl_idx do
+        ctx_node = Enum.at(context_sigma, impl_idx)
+        if ctx_node, do: ctx_node.attributes.y, else: 0
+      else
+        0
+      end
+
+    impl_child_sigma =
+      children_with_reqs
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {cwr, col_idx} ->
+        x = (col_idx - (child_count - 1) / 2) * child_col_gap
+
+        cwr.impl_reqs
+        |> Enum.with_index()
+        |> Enum.map(fn {req, req_idx} ->
+          y = impl_y - ((req_idx + 1) * child_req_gap)
+          mk_node(nkey(req), short_req_label(req), x, y, 10, cls(req, actionable_set),
+            entity_type: "component", entity_id: req.entity_id, name: req.name)
+        end)
+      end)
+
+    all_sigma = context_sigma ++ spec_child_sigma ++ impl_child_sigma
     all_keys = MapSet.new(all_sigma, & &1.key)
 
     # Edges: filter to this tree, both directions
