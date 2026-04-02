@@ -124,14 +124,47 @@ Hooks.SigmaGraph = {
     const camera = this.sigma.getCamera()
     camera.setState({ ratio: 1.3 })
 
-    // Click → navigate to requirement detail
+    // Debug panel — dump full graph data
+    console.log("Graph data:", data)
+    let debugPanel = document.getElementById("graph-debug")
+    if (!debugPanel) {
+      debugPanel = document.createElement("details")
+      debugPanel.id = "graph-debug"
+      debugPanel.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:50vh;overflow-y:auto;background:#1e293b;color:#e2e8f0;padding:8px 16px;font-family:monospace;font-size:11px;z-index:9999;border-top:2px solid #475569;"
+      debugPanel.innerHTML = `<summary style="cursor:pointer;color:#94a3b8;margin-bottom:8px">Graph Debug (${data.nodes.length} nodes, ${data.edges.length} edges)</summary><pre id="graph-debug-content" style="margin:0"></pre>`
+      document.body.appendChild(debugPanel)
+    }
+    const debugContent = document.getElementById("graph-debug-content")
+    const edgeList = data.edges.map(e => `${e.source}  →  ${e.target}`).join("\n")
+    debugContent.textContent = `EDGES:\n${edgeList}\n\nNODES:\n${data.nodes.map(n => `${n.key}  (${n.attributes.label})`).join("\n")}`
+
+    // Click → show node edges
     this.sigma.on("clickNode", ({ node }) => {
       const attrs = graph.getNodeAttributes(node)
-      if (attrs.entity_type && attrs.name) {
-        this.pushEvent("node_clicked", { name: attrs.name, entity_type: attrs.entity_type })
-      } else if (attrs.entity_type === "story" && attrs.entity_id) {
-        this.pushEvent("node_clicked", { entity_type: "story", entity_id: attrs.entity_id })
+      const inEdges = []
+      const outEdges = []
+
+      graph.forEachEdge((edge, edgeAttrs, source, target) => {
+        if (target === node) inEdges.push({ edge, from: source })
+        if (source === node) outEdges.push({ edge, to: target })
+      })
+
+      let panel = document.getElementById("graph-debug")
+      if (!panel) {
+        panel = document.createElement("div")
+        panel.id = "graph-debug"
+        panel.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:#1e293b;color:#e2e8f0;padding:12px 16px;font-family:monospace;font-size:12px;z-index:9999;border-top:2px solid #475569;"
+        document.body.appendChild(panel)
       }
+
+      const inHtml = inEdges.map(e => `  ← ${e.from}`).join("\n")
+      const outHtml = outEdges.map(e => `  → ${e.to}`).join("\n")
+
+      panel.innerHTML = `<pre style="margin:0"><strong>${node}</strong>  (${attrs.label || ""})
+<span style="color:#60a5fa">IN (${inEdges.length}):</span>
+${inHtml || "  (none)"}
+<span style="color:#4ade80">OUT (${outEdges.length}):</span>
+${outHtml || "  (none)"}</pre>`
     })
 
     // Hover cursor
