@@ -197,23 +197,23 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
       <p><strong>Status:</strong> {status_badge(@task.status)} {@task.status}</p>
 
       <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt :if={@task.requirement_name} class="font-semibold">Requirement</dt>
-        <dd :if={@task.requirement_name}>{@task.requirement_name}</dd>
+        <dt class="font-semibold">Requirement</dt>
+        <dd>{@task.requirement_name || "—"}</dd>
 
-        <dt :if={@task.component_module_name} class="font-semibold">Component</dt>
-        <dd :if={@task.component_module_name}>{@task.component_module_name}</dd>
+        <dt class="font-semibold">Component</dt>
+        <dd>{@task.component_module_name || "—"}</dd>
 
-        <dt :if={@task.story_id} class="font-semibold">Story ID</dt>
-        <dd :if={@task.story_id}>{@task.story_id}</dd>
+        <dt class="font-semibold">Story ID</dt>
+        <dd>{@task.story_id || "—"}</dd>
 
         <dt class="font-semibold">Agent ID</dt>
         <dd class="font-mono">{@task.agent_id || "not assigned"}</dd>
 
-        <dt :if={@task.started_at} class="font-semibold">Started</dt>
-        <dd :if={@task.started_at}>{Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
+        <dt class="font-semibold">Started</dt>
+        <dd>{if @task.started_at, do: Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</dd>
 
-        <dt :if={@task.completed_at} class="font-semibold">Completed</dt>
-        <dd :if={@task.completed_at}>{Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
+        <dt class="font-semibold">Completed</dt>
+        <dd>{if @task.completed_at, do: Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</dd>
       </dl>
 
       <div :if={has_expected_files?(@task)}>
