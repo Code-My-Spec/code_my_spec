@@ -1,14 +1,16 @@
-defmodule CodeMySpec.Files.RequirementGraph do
+defmodule CodeMySpec.Requirements.RequirementGraph do
   @moduledoc """
   Computes the full requirement graph from Files + Problems without persisting.
-
-  Replaces `RequirementsRepository.next_actionable_project` with a version that
-  computes satisfaction on the fly from File records and Problems.
 
   Three entity levels:
   - **Components**: satisfaction from File existence/validity + Problems
   - **Stories**: satisfaction from Files (bdd_specs, qa) + component tree state
   - **Projects**: satisfaction from Files (architecture, config) + story/component state
+
+  The output is a flat list of computed nodes. Each node carries its entity_type
+  and entity_id but the graph structure (edges, actionability) is entity-agnostic:
+  edges are same-entity prerequisite links, and cross-entity gates only affect
+  whether a node is actionable — they are not represented as edges.
   """
 
   import Ecto.Query
@@ -16,9 +18,10 @@ defmodule CodeMySpec.Files.RequirementGraph do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Files.Preloader
+  alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Requirement
+  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Files.RequirementCalculator
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Problems.Problem
@@ -26,31 +29,23 @@ defmodule CodeMySpec.Files.RequirementGraph do
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Users.Scope
 
-  @type computed_node :: %{
-          entity_type: String.t(),
-          entity_id: Ecto.UUID.t() | integer(),
-          entity_name: String.t(),
-          name: String.t(),
-          description: String.t(),
-          satisfied: boolean(),
-          satisfied_by: module() | nil,
-          execution_type: :main_agent | :sub_agent,
-          validation_type: :automatic | :manual,
-          prerequisites: [String.t()],
-          details: map()
-        }
-
   @doc """
   Returns the next actionable requirements across the entire project.
 
   Computes satisfaction for all requirements at all levels (project, story, component),
   then finds unsatisfied requirements whose prerequisites are all met.
 
+  Cross-entity gates prevent work from being actionable until dependencies in other
+  entity levels are satisfied:
+  - `bdd_specs_passing` (story) waits for the linked component tree to be fully implemented
+  - `project_qa`/`qa_preflight` (project) wait for all stories to be complete
+
   Sorted by priority: project first, then stories by priority, then components.
   """
-  @spec next_actionable(Scope.t()) :: [computed_node()]
+  @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
-    all_nodes = compute_all(scope)
+    ctx = Preloader.load(scope)
+    all_nodes = compute_all_from_ctx(scope, ctx)
 
     # Build satisfaction lookup
     satisfaction_map =
@@ -58,12 +53,13 @@ defmodule CodeMySpec.Files.RequirementGraph do
         {{n.entity_type, n.entity_id, n.name}, n.satisfied}
       end)
 
-    # Find actionable: unsatisfied, has satisfied_by, all prereqs met
+    # Find actionable: unsatisfied, has satisfied_by, all prereqs met, cross-entity gates met
     all_nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
-        all_prereqs_met?(n, satisfaction_map)
+        all_prereqs_met?(n, satisfaction_map) and
+        cross_entity_gates_met?(n, satisfaction_map, ctx)
     end)
     |> sort_by_priority(scope)
   end
@@ -71,10 +67,13 @@ defmodule CodeMySpec.Files.RequirementGraph do
   @doc """
   Compute all requirement nodes across the project.
   """
-  @spec compute_all(Scope.t()) :: [computed_node()]
+  @spec compute_all(Scope.t()) :: [Requirement.t()]
   def compute_all(%Scope{} = scope) do
     ctx = Preloader.load(scope)
+    compute_all_from_ctx(scope, ctx)
+  end
 
+  defp compute_all_from_ctx(scope, ctx) do
     component_nodes = compute_component_nodes(scope, ctx)
     story_nodes = compute_story_nodes(scope, ctx)
     project_nodes = compute_project_nodes(scope)
@@ -92,7 +91,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
       Enum.map(definitions, fn definition ->
         result = RequirementCalculator.compute_one(scope, component, definition, files, ctx)
 
-        %{
+        %Requirement{
           entity_type: "component",
           entity_id: component.id,
           entity_name: component.module_name,
@@ -100,6 +99,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
           description: definition.description,
           satisfied: result.satisfied,
           satisfied_by: definition.satisfied_by,
+          scope: definition.scope || :local,
           execution_type: definition.execution_type || :main_agent,
           validation_type: definition.validation_type || :automatic,
           prerequisites: definition.prerequisites,
@@ -119,7 +119,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
       Enum.map(definitions, fn definition ->
         {satisfied, details} = check_story(definition.name, scope, story, ctx)
 
-        %{
+        %Requirement{
           entity_type: "story",
           entity_id: story.id,
           entity_name: story.title,
@@ -127,6 +127,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
           description: definition.description,
           satisfied: satisfied,
           satisfied_by: definition.satisfied_by,
+          scope: definition.scope || :local,
           execution_type: definition.execution_type || :main_agent,
           validation_type: definition.validation_type || :automatic,
           prerequisites: definition.prerequisites,
@@ -154,25 +155,6 @@ defmodule CodeMySpec.Files.RequirementGraph do
       {true, %{spec_count: count}}
     else
       {false, %{reason: "No BDD spec files"}}
-    end
-  end
-
-  defp check_story("component_complete", _scope, %Story{component_id: nil}, _ctx) do
-    {false, %{reason: "No component linked"}}
-  end
-
-  defp check_story("component_complete", scope, %Story{component_id: component_id}, ctx) do
-    comp = Enum.find(ctx.components, &(&1.id == component_id))
-    case comp do
-      nil ->
-        {false, %{reason: "Component not found"}}
-
-      _component ->
-        if RequirementCalculator.component_satisfied?(scope, comp, ctx) do
-          {true, %{status: "Component tree satisfied"}}
-        else
-          {false, %{reason: "Component tree has unsatisfied requirements"}}
-        end
     end
   end
 
@@ -222,7 +204,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
     Enum.map(definitions, fn definition ->
       {satisfied, details} = check_project(definition.name, scope, project)
 
-      %{
+      %Requirement{
         entity_type: "project",
         entity_id: project.id,
         entity_name: project.name,
@@ -230,6 +212,7 @@ defmodule CodeMySpec.Files.RequirementGraph do
         description: definition.description,
         satisfied: satisfied,
         satisfied_by: definition.satisfied_by,
+        scope: definition.scope || :local,
         execution_type: definition.execution_type || :main_agent,
         validation_type: definition.validation_type || :automatic,
         prerequisites: definition.prerequisites,
@@ -239,7 +222,6 @@ defmodule CodeMySpec.Files.RequirementGraph do
   end
 
   defp check_project("project_setup", scope, _project) do
-    # Delegate to ProjectSetup step evaluation
     case CodeMySpec.AgentTasks.ProjectSetup.evaluate(scope, %{}) do
       {:ok, :valid} -> {true, %{status: "All setup steps complete"}}
       {:ok, :invalid, _} -> {false, %{reason: "Setup steps incomplete"}}
@@ -256,7 +238,6 @@ defmodule CodeMySpec.Files.RequirementGraph do
   end
 
   defp check_project("qa_integration_plan", scope, _project) do
-    # Check if integrations directory has specs
     count =
       File
       |> where([f],
@@ -296,31 +277,6 @@ defmodule CodeMySpec.Files.RequirementGraph do
     end
   end
 
-  defp check_project("all_stories_complete", scope, _project) do
-    # Load stories + preloader for story checks
-    ctx = Preloader.load(scope)
-    stories = ctx.stories
-    story_defs = RequirementDefinitionData.story_requirements()
-
-    if stories == [] do
-      {true, %{status: "No stories"}}
-    else
-      incomplete =
-        Enum.reject(stories, fn story ->
-          Enum.all?(story_defs, fn def ->
-            {sat, _} = check_story(def.name, scope, story, ctx)
-            sat
-          end)
-        end)
-
-      if incomplete == [] do
-        {true, %{status: "All #{length(stories)} stories complete"}}
-      else
-        {false, %{reason: "#{length(incomplete)} incomplete stories"}}
-      end
-    end
-  end
-
   defp check_project("qa_preflight", scope, _project) do
     check_file_exists(scope, ".code_my_spec/qa/preflight.md")
   end
@@ -356,7 +312,6 @@ defmodule CodeMySpec.Files.RequirementGraph do
   end
 
   defp check_project("qa_journey_wallaby", scope, _project) do
-    # Check for wallaby test files
     count =
       File
       |> where([f],
@@ -374,6 +329,77 @@ defmodule CodeMySpec.Files.RequirementGraph do
 
   defp check_project(name, _scope, _project) do
     {false, %{reason: "Unknown project requirement: #{name}"}}
+  end
+
+  # -- Cross-entity gates --
+  # These prevent requirements from becoming actionable until work in other
+  # entity levels is complete, replacing the old rollup nodes.
+
+  # bdd_specs_passing waits for the story's linked component tree to be fully implemented
+  defp cross_entity_gates_met?(
+         %{entity_type: "story", entity_id: story_id, name: "bdd_specs_passing"},
+         satisfaction_map,
+         ctx
+       ) do
+    story = Enum.find(ctx.stories, &(&1.id == story_id))
+
+    case story do
+      %{component_id: component_id} when not is_nil(component_id) ->
+        component_tree_satisfied?(component_id, satisfaction_map, ctx)
+
+      _ ->
+        false
+    end
+  end
+
+  # qa_preflight waits for all stories to be complete
+  defp cross_entity_gates_met?(
+         %{entity_type: "project", name: "qa_preflight"},
+         satisfaction_map,
+         ctx
+       ) do
+    all_stories_satisfied?(satisfaction_map, ctx)
+  end
+
+  defp cross_entity_gates_met?(_node, _satisfaction_map, _ctx), do: true
+
+  defp component_tree_satisfied?(component_id, satisfaction_map, ctx) do
+    tree_ids = collect_component_tree_ids(component_id, ctx.components)
+
+    Enum.all?(tree_ids, fn comp_id ->
+      component = Enum.find(ctx.components, &(&1.id == comp_id))
+
+      case component do
+        nil ->
+          true
+
+        comp ->
+          definitions = ComponentRegistry.get_requirements_for_type(comp.type)
+
+          Enum.all?(definitions, fn d ->
+            Map.get(satisfaction_map, {"component", comp_id, d.name}, true)
+          end)
+      end
+    end)
+  end
+
+  defp collect_component_tree_ids(component_id, components) do
+    children = Enum.filter(components, &(&1.parent_component_id == component_id))
+    [component_id | Enum.flat_map(children, &collect_component_tree_ids(&1.id, components))]
+  end
+
+  defp all_stories_satisfied?(satisfaction_map, ctx) do
+    if ctx.stories == [] do
+      true
+    else
+      story_defs = RequirementDefinitionData.story_requirements()
+
+      Enum.all?(ctx.stories, fn story ->
+        Enum.all?(story_defs, fn d ->
+          Map.get(satisfaction_map, {"story", story.id, d.name}, true)
+        end)
+      end)
+    end
   end
 
   # -- Helpers --
@@ -402,11 +428,10 @@ defmodule CodeMySpec.Files.RequirementGraph do
   # -- Priority sorting --
 
   # Early project requirements: prerequisites are all project-level (or none).
-  # Late project requirements: depend on stories/components being done
-  # (e.g., all_stories_complete, qa_preflight, qa_journey_*).
+  # Late project requirements: depend on stories/components being done.
   @late_project_reqs MapSet.new([
-    "all_stories_complete", "qa_preflight", "all_bdd_specs_passing",
-    "qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby", "project_qa"
+    "qa_preflight", "all_bdd_specs_passing",
+    "qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby"
   ])
 
   defp sort_by_priority(nodes, %Scope{active_project_id: project_id}) do
@@ -426,10 +451,8 @@ defmodule CodeMySpec.Files.RequirementGraph do
       case node.entity_type do
         "project" ->
           if node.name in @late_project_reqs do
-            # Sort after all story/component work
             {2, 0, def_order}
           else
-            # Sort before story/component work
             {0, 0, def_order}
           end
 

@@ -107,7 +107,7 @@ end
 print_stories = fn scope ->
   stories =
     Stories.list_project_stories_by_priority(scope)
-    |> Repo.preload(:requirements)
+   
 
   IO.puts("  #{bold.("Stories")} (#{length(stories)}):")
 
@@ -428,7 +428,7 @@ walk = fn walk, step ->
         # Full re-sync: components → stories → project
         all_components = Components.list_components(scope)
         RequirementsSync.sync_all_requirements(all_components, scope)
-        stories = Stories.list_project_stories_by_priority(scope) |> Repo.preload(:requirements)
+        stories = Stories.list_project_stories_by_priority(scope)
         RequirementsSync.sync_story_requirements(stories, scope)
         RequirementsSync.sync_project_requirements(scope)
 
@@ -510,7 +510,7 @@ walk = fn walk, step ->
         IO.puts("  Attempting full re-sync...")
         components = Components.list_components(scope)
         RequirementsSync.sync_all_requirements(components, scope)
-        stories = Stories.list_project_stories_by_priority(scope) |> Repo.preload(:requirements)
+        stories = Stories.list_project_stories_by_priority(scope)
         RequirementsSync.sync_story_requirements(stories, scope)
         RequirementsSync.sync_project_requirements(scope)
 

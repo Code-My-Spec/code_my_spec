@@ -17,7 +17,6 @@ defmodule CodeMySpec.Components.Component do
   alias CodeMySpec.Components.SimilarComponent
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories.Story
 
   @type t :: %__MODULE__{
@@ -42,7 +41,6 @@ defmodule CodeMySpec.Components.Component do
           similar_components: [t()] | Ecto.Association.NotLoaded.t(),
           referenced_by_components: [t()] | Ecto.Association.NotLoaded.t(),
           stories: [CodeMySpec.Stories.Story.t()] | Ecto.Association.NotLoaded.t(),
-          requirements: [Requirement.t()] | Ecto.Association.NotLoaded.t(),
           component_status: ComponentStatus.t() | nil,
           files_changed_at: DateTime.t() | nil,
           last_analyzed_at: DateTime.t() | nil,
@@ -79,7 +77,6 @@ defmodule CodeMySpec.Components.Component do
 
     has_many :problems, Problem
     has_many :stories, Story
-    has_many :requirements, Requirement
 
     embeds_one :component_status, ComponentStatus
 

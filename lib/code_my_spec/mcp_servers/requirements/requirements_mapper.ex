@@ -6,12 +6,12 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   alias Anubis.Server.Response
 
-  def list_requirements_response(requirements) do
-    grouped = group_by_entity(requirements)
+  def list_requirements_response(nodes) do
+    grouped = group_by_entity(nodes)
     summary = format_grouped_summary(grouped)
-    data = Enum.map(requirements, &requirement_data/1)
+    data = Enum.map(nodes, &node_data/1)
 
-    hybrid_response(summary, %{requirements: data, count: length(requirements)})
+    hybrid_response(summary, %{requirements: data, count: length(nodes)})
   end
 
   @doc """
@@ -111,44 +111,26 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   # Private
   # ---------------------------------------------------------------------------
 
-  defp requirement_data(req) do
+  defp node_data(node) do
     %{
-      requirement_id: req.id,
-      requirement_name: req.name,
-      description: req.description,
-      satisfied: req.satisfied,
-      artifact_type: req.artifact_type,
-      execution_type: req.execution_type,
-      validation_type: req.validation_type,
-      component_id: req.component_id,
-      component_module_name:
-        case req.component do
-          %{module_name: name} -> name
-          _ -> nil
-        end,
-      story_id: req.story_id,
-      story_title:
-        case req.story do
-          %{title: title} -> title
-          _ -> nil
-        end,
-      project_id: req.project_id,
+      requirement_name: node.name,
+      description: node.description,
+      satisfied: node.satisfied,
+      execution_type: node.execution_type,
+      validation_type: node.validation_type,
+      entity_type: node.entity_type,
+      entity_id: node.entity_id,
+      entity_name: node.entity_name,
       satisfied_by:
-        if req.satisfied_by do
-          req.satisfied_by |> inspect() |> String.split(".") |> List.last()
+        if node.satisfied_by do
+          node.satisfied_by |> inspect() |> String.split(".") |> List.last()
         end
     }
   end
 
-  defp group_by_entity(requirements) do
-    requirements
-    |> Enum.group_by(fn req ->
-      cond do
-        req.component_id -> {:component, req.component}
-        req.story_id -> {:story, req.story}
-        req.project_id -> {:project, req.project}
-        true -> {:unknown, nil}
-      end
+  defp group_by_entity(nodes) do
+    Enum.group_by(nodes, fn node ->
+      {String.to_existing_atom(node.entity_type), node.entity_name}
     end)
   end
 
@@ -163,9 +145,9 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
           _ -> 3
         end
       end)
-      |> Enum.map_join("\n\n", fn {{type, entity}, reqs} ->
-        label = entity_label(type, entity)
-        items = Enum.map_join(reqs, "\n", &format_requirement_line/1)
+      |> Enum.map_join("\n\n", fn {{type, name}, nodes} ->
+        label = entity_label(type, name)
+        items = Enum.map_join(nodes, "\n", &format_node_line/1)
         "## #{label}\n\n#{items}"
       end)
 
@@ -173,18 +155,13 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   defp entity_label(:project, _), do: "Project"
-
-  defp entity_label(:story, %{title: title}), do: "Story: #{title}"
-  defp entity_label(:story, _), do: "Story"
-
-  defp entity_label(:component, %{module_name: name}), do: "Component: #{name}"
-  defp entity_label(:component, _), do: "Component"
-
+  defp entity_label(:story, name), do: "Story: #{name}"
+  defp entity_label(:component, name), do: "Component: #{name}"
   defp entity_label(_, _), do: "Other"
 
-  defp format_requirement_line(req) do
-    status = if req.satisfied, do: "[x]", else: "[ ]"
-    "- #{status} **#{req.name}** — #{req.description || "no description"}"
+  defp format_node_line(node) do
+    status = if node.satisfied, do: "[x]", else: "[ ]"
+    "- #{status} **#{node.name}** — #{node.description || "no description"}"
   end
 
   defp hybrid_response(summary, data) do

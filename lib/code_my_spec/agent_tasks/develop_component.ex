@@ -1,20 +1,18 @@
 defmodule CodeMySpec.AgentTasks.DevelopComponent do
   @moduledoc """
-  Container task for the `component_complete` story requirement.
+  Container task for developing a story's component tree.
 
   `command/3` returns static instructions — the orchestration layer (Dispatch)
   handles component collection, actionable discovery, and prompt file generation
   via `ProjectCoordinator.find_actionable/2` and each child's `orchestrate/3`.
 
   `evaluate/3` checks whether ALL components in the linked tree have all
-  requirements satisfied (same logic as ComponentCompleteChecker).
-
-  This module is only used as `satisfied_by` for `:children` scope, which goes
-  through Dispatch, not through default_orchestrate.
+  requirements satisfied.
   """
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
+  alias CodeMySpec.Files
 
   def command(scope, task) do
     component = Components.get_component!(scope, task.component_id)
@@ -45,22 +43,29 @@ defmodule CodeMySpec.AgentTasks.DevelopComponent do
     descendants = ComponentRepository.list_all_descendants(scope, root.id)
     all_components = [root | descendants]
 
-    all_requirements =
-      all_components
-      |> Enum.flat_map(fn c -> c.requirements || [] end)
+    missing =
+      Enum.reject(all_components, fn c ->
+        Enum.all?([:spec, :implementation, :test], fn role ->
+          Files.has_file?(scope, c.id, role)
+        end)
+      end)
 
-    unsatisfied = Enum.reject(all_requirements, & &1.satisfied)
-
-    if unsatisfied == [] do
+    if missing == [] do
       {:ok, :valid}
     else
       names =
-        unsatisfied
-        |> Enum.map(fn r -> "- #{r.name} (component_id: #{r.component_id})" end)
-        |> Enum.uniq()
+        missing
+        |> Enum.map(fn c ->
+          missing_roles =
+            [:spec, :implementation, :test]
+            |> Enum.reject(fn role -> Files.has_file?(scope, c.id, role) end)
+            |> Enum.map_join(", ", &to_string/1)
+
+          "- #{c.module_name || c.name} (component_id: #{c.id}) missing: #{missing_roles}"
+        end)
         |> Enum.join("\n")
 
-      {:ok, :invalid, "Requirements still unsatisfied:\n#{names}"}
+      {:ok, :invalid, "Files still missing:\n#{names}"}
     end
   end
 end

@@ -12,7 +12,7 @@ defmodule CodeMySpec.StepThrough.FileStager do
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Components.HierarchicalTree
-  alias CodeMySpec.{Environments, Issues, Paths, Problems}
+  alias CodeMySpec.{Issues, Problems}
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -119,15 +119,6 @@ defmodule CodeMySpec.StepThrough.FileStager do
 
       "bdd_specs_passing" ->
         run_spex_for_story(story, scope)
-
-      "component_complete" ->
-        # Descend into the component tree and copy all missing files,
-        # then run spex to populate the problems table
-        with {:ok, action} <- satisfy_component_tree(story, scope, golden_dir) do
-          spex_result = run_spex_for_story(story, scope)
-          IO.puts("    Spex after component_complete: #{inspect(elem(spex_result, 1))}")
-          {:ok, action}
-        end
 
       "qa_complete" ->
         create_story_qa_result(story, scope)
@@ -291,9 +282,6 @@ defmodule CodeMySpec.StepThrough.FileStager do
       "issues_resolved" ->
         resolve_all_accepted_issues(scope)
 
-      "all_stories_complete" ->
-        {:ok, {:no_op, "all_stories_complete: satisfied when sub-requirements are met"}}
-
       "all_bdd_specs_passing" ->
         # Clear stale spex problems (from previous runs with different working dirs)
         Problems.clear_problems_for_source(scope, [source: "spex"], :all)
@@ -404,62 +392,29 @@ defmodule CodeMySpec.StepThrough.FileStager do
   # ============================================================================
 
   defp triage_all_incoming_issues(scope) do
-    env = scope.environment
     incoming = Issues.list_by_status(scope, :incoming)
 
     if incoming == [] do
       {:ok, {:no_op, "issues_triaged: no incoming issues"}}
     else
-      # Edit each projected file: change ## Status from incoming → accepted
       Enum.each(incoming, fn issue ->
-        filename = Issues.projected_filename(issue)
-        path = Path.join(Paths.issues_incoming_dir(), filename)
-
-        case Environments.read_file(env, path) do
-          {:ok, content} ->
-            updated = String.replace(content, ~r/^(## Status\s*\n\s*)incoming/m, "\\1accepted")
-            Environments.write_file(env, path, updated)
-
-          {:error, _} ->
-            :skip
-        end
+        Issues.accept_issue(scope, issue)
       end)
-
-      # Reconcile reads the status field, updates DB, re-projects (moves files)
-      Issues.reconcile_triage(scope)
 
       {:ok, {:db_op, "Triaged #{length(incoming)} incoming issues → accepted"}}
     end
   end
 
   defp resolve_all_accepted_issues(scope) do
-    env = scope.environment
     accepted = Issues.list_by_status(scope, :accepted)
-    # Only resolve medium+ (matching what the checker looks at)
     actionable = Enum.filter(accepted, &(&1.severity in [:critical, :high, :medium]))
 
     if actionable == [] do
       {:ok, {:no_op, "issues_resolved: no medium+ accepted issues"}}
     else
-      # Edit each projected file: add ## Resolution section
       Enum.each(actionable, fn issue ->
-        filename = Issues.projected_filename(issue)
-        path = Path.join(Paths.issues_accepted_dir(), filename)
-
-        case Environments.read_file(env, path) do
-          {:ok, content} ->
-            unless String.contains?(content, "## Resolution") do
-              updated = content <> "\n## Resolution\n\nResolved via step-through auto-walker.\n"
-              Environments.write_file(env, path, updated)
-            end
-
-          {:error, _} ->
-            :skip
-        end
+        Issues.resolve_issue(scope, issue, "Resolved via step-through auto-walker.")
       end)
-
-      # Reconcile reads resolution sections, updates DB
-      Issues.reconcile_resolutions(scope)
 
       {:ok, {:db_op, "Resolved #{length(actionable)} accepted issues"}}
     end

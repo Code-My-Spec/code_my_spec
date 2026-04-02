@@ -5,7 +5,7 @@ defmodule CodeMySpecLocalWeb.ComponentsRequirementsController do
   use CodeMySpecLocalWeb, :controller
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
 
   def index(conn, _params) do
     scope = conn.assigns.current_scope

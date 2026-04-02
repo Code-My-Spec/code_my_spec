@@ -52,7 +52,6 @@ defmodule CodeMySpec.Stories.Story do
     field :account_id, :binary_id
 
     has_many :criteria, CodeMySpec.AcceptanceCriteria.Criterion, on_replace: :delete
-    has_many :requirements, CodeMySpec.Requirements.Requirement
 
     many_to_many :tags, CodeMySpec.Tags.Tag,
       join_through: CodeMySpec.Tags.StoryTag,

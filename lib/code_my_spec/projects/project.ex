@@ -47,7 +47,6 @@ defmodule CodeMySpec.Projects.Project do
     field :local_path, :string
     field :account_id, :binary_id
 
-    has_many :requirements, CodeMySpec.Requirements.Requirement
 
     field :status, Ecto.Enum,
       values: [

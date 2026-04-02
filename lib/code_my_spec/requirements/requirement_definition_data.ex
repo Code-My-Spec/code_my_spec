@@ -361,23 +361,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.FixBddSpecs,
         artifact_type: :tests,
         description: "BDD specs pass",
-        prerequisites: ["component_complete"],
-        scope: :orchestrate
-      })
-
-    definition
-  end
-
-  @spec component_complete() :: RequirementDefinition.t()
-  def component_complete do
-    {:ok, definition} =
-      RequirementDefinition.new(%{
-        name: "component_complete",
-        satisfied_by: CodeMySpec.AgentTasks.DevelopComponent,
-        artifact_type: :dependencies,
-        description: "Linked component tree is fully implemented",
         prerequisites: ["bdd_specs_exist"],
-        scope: :children
+        scope: :orchestrate
       })
 
     definition
@@ -403,7 +388,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     [
       component_linked(),
       bdd_specs_exist(),
-      component_complete(),
       bdd_specs_passing(),
       qa_complete()
     ]
@@ -476,35 +460,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
-  @spec all_stories_complete() :: RequirementDefinition.t()
-  def all_stories_complete do
-    {:ok, definition} =
-      RequirementDefinition.new(%{
-        name: "all_stories_complete",
-        satisfied_by: nil,
-        artifact_type: :dependencies,
-        description: "All story requirements satisfied",
-        prerequisites: ["issues_resolved"],
-        scope: :dependencies
-      })
-
-    definition
-  end
-
-  @spec project_qa() :: RequirementDefinition.t()
-  def project_qa do
-    {:ok, definition} =
-      RequirementDefinition.new(%{
-        name: "project_qa",
-        satisfied_by: CodeMySpec.AgentTasks.QaApp,
-        artifact_type: :review,
-        description: "QA summary exists and valid",
-        prerequisites: ["all_stories_complete"]
-      })
-
-    definition
-  end
-
   @spec issues_triaged() :: RequirementDefinition.t()
   def issues_triaged do
     {:ok, definition} =
@@ -542,7 +497,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.QaPreflight,
         artifact_type: :review,
         description: "App-level integration verification complete",
-        prerequisites: ["all_stories_complete"],
+        prerequisites: ["issues_resolved"],
         scope: :orchestrate
       })
 
@@ -618,7 +573,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       architecture_designed(),
       issues_triaged(),
       issues_resolved(),
-      all_stories_complete(),
       qa_preflight(),
       all_bdd_specs_passing(),
       qa_journey_plan(),

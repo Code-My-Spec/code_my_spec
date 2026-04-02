@@ -13,32 +13,9 @@ defmodule CodeMySpec.ProjectCoordinator do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments
-  alias CodeMySpec.ProjectCoordinator.ComponentAnalyzer
-  alias CodeMySpec.Tests.TestRun
   alias CodeMySpec.Users.Scope
 
-  @type component_list :: [Component.t()]
-  @type file_list :: [String.t()]
-
   @tasks_dir CodeMySpec.Paths.tasks_dir()
-
-  @spec sync_project_requirements(Scope.t(), file_list(), TestRun.t(), keyword()) ::
-          component_list()
-  def sync_project_requirements(
-        %Scope{} = scope,
-        file_list,
-        %TestRun{failures: failures},
-        opts \\ []
-      )
-      when is_list(file_list) and is_list(failures) and is_list(opts) do
-    scope
-    |> Components.list_components_with_dependencies()
-    |> ComponentAnalyzer.analyze_components(
-      file_list,
-      failures,
-      Keyword.put(opts, :scope, scope)
-    )
-  end
 
   # ============================================================================
   # Prompt File Generation & Orchestration

@@ -19,11 +19,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
 
@@ -71,17 +70,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     resolve_from_graph(scope, name, type, id)
   end
 
-  defp resolve_requirement(_scope, %{requirement_id: requirement_id})
-       when is_binary(requirement_id) and requirement_id != "" do
-    # Legacy path — look up persisted requirement by ID
-    case Requirements.get_requirement(requirement_id) do
-      nil -> {:error, "Requirement not found: #{requirement_id}"}
-      req -> {:ok, requirement_to_map(req)}
-    end
-  rescue
-    Ecto.Query.CastError -> {:error, "Requirement not found: #{requirement_id}"}
-  end
-
   defp resolve_requirement(_scope, _params) do
     {:error, "Must provide requirement_name + entity_type + entity_id"}
   end
@@ -99,32 +87,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       node ->
         {:ok, node}
     end
-  end
-
-  defp requirement_to_map(req) do
-    req = CodeMySpec.Repo.preload(req, [:component, :story, :project])
-
-    %{
-      name: req.name,
-      entity_type: cond do
-        req.component_id -> "component"
-        req.story_id -> "story"
-        req.project_id -> "project"
-      end,
-      entity_id: req.component_id || req.story_id || req.project_id,
-      entity_name: cond do
-        req.component && req.component.module_name -> req.component.module_name
-        req.story && req.story.title -> req.story.title
-        req.project && req.project.name -> req.project.name
-        true -> nil
-      end,
-      description: req.description,
-      satisfied: req.satisfied,
-      satisfied_by: req.satisfied_by,
-      execution_type: req.execution_type || :main_agent,
-      validation_type: req.validation_type || :automatic,
-      details: req.details
-    }
   end
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do

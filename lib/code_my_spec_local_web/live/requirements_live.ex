@@ -1,13 +1,16 @@
 defmodule CodeMySpecLocalWeb.RequirementsLive do
   @moduledoc """
-  Human interface for project requirements.
+  Human interface for the requirements graph.
 
-  Renders computed requirement graph as markdown via MDEx.
+  All data comes through the `Requirements` context which computes
+  nodes on the fly from Files + Problems. The graph view uses
+  `GraphProjector` for Mermaid rendering.
   """
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Projects
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Stories
@@ -16,7 +19,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, project: nil, scope: nil, markdown: nil, mermaid: nil, error: nil)}
+    {:ok, assign(socket, project: nil, scope: nil, markdown: nil, graph_data: nil, error: nil)}
   end
 
   # --- Handle params ---
@@ -42,7 +45,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   def handle_params(%{"project_name" => name, "name" => req_name}, _uri, %{assigns: %{live_action: :show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
-      nodes = RequirementGraph.compute_all(scope)
+      nodes = Requirements.compute_all(scope)
 
       node = Enum.find(nodes, fn n ->
         n.entity_type == "project" and n.name == req_name
@@ -62,7 +65,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name, "story_id" => story_id, "name" => req_name}, _uri, %{assigns: %{live_action: :story_req_show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       story = Stories.get_story!(scope, story_id)
-      nodes = RequirementGraph.compute_all(scope)
+      nodes = Requirements.compute_all(scope)
 
       node = Enum.find(nodes, fn n ->
         n.entity_type == "story" and n.entity_id == story.id and n.name == req_name
@@ -73,7 +76,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       if node do
         back = "[← Back to #{story.title}](/projects/#{slug}/stories/#{story_id})\n\n"
         markdown = back <> RequirementsMarkdown.show(%{node: node})
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, mermaid: nil, error: nil)}
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
       else
         {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
       end
@@ -85,7 +88,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name, "component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       component = Components.get_component!(scope, component_id)
-      nodes = RequirementGraph.compute_all(scope)
+      nodes = Requirements.compute_all(scope)
 
       node = Enum.find(nodes, fn n ->
         n.entity_type == "component" and n.entity_id == component.id and n.name == req_name
@@ -96,19 +99,19 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       if node do
         back = "[← Back to #{component.module_name}](/projects/#{slug}/components/#{component_id})\n\n"
         markdown = back <> RequirementsMarkdown.show(%{node: node})
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, mermaid: nil, error: nil)}
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
       else
         {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
       end
     else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
+      {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       components = Components.list_components(scope)
-      nodes = RequirementGraph.compute_all(scope)
+      nodes = Requirements.compute_all(scope)
       slug = project_slug(project)
 
       lines =
@@ -123,7 +126,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       back = "[← Back to project](/projects/#{slug})\n\n"
       markdown = back <> "# Components\n\n#{lines}\n"
 
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, mermaid: nil, error: nil)}
+      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
@@ -132,9 +135,9 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       component = Components.get_component!(scope, component_id)
-      nodes = RequirementGraph.compute_all(scope)
+      nodes = Requirements.compute_all(scope)
       markdown = build_component_show_markdown(component, project, nodes)
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, mermaid: nil, error: nil)}
+      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
@@ -143,9 +146,9 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name, "story_id" => story_id}, _uri, %{assigns: %{live_action: :story_show}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       story = Stories.get_story!(scope, story_id)
-      nodes = RequirementGraph.compute_all(scope)
+      nodes = Requirements.compute_all(scope)
       markdown = build_story_show_markdown(story, project, nodes)
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, mermaid: nil, error: nil)}
+      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
@@ -154,7 +157,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :stories}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       {:ok, stories} = Stories.list_project_stories(scope)
-      nodes = RequirementGraph.compute_all(scope)
+      nodes = Requirements.compute_all(scope)
       slug = project_slug(project)
 
       lines =
@@ -169,7 +172,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
       markdown = back <> "# Stories\n\n#{lines}\n"
 
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, mermaid: nil, error: nil)}
+      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
     else
       {:error, msg} -> {:noreply, assign(socket, error: msg)}
     end
@@ -177,15 +180,14 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :graph}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
-      # Graph projector still uses persisted requirements — keep for now
-      mermaid = CodeMySpec.Requirements.GraphProjector.project_graph(scope)
+      graph_data = GraphProjector.project_graph(scope)
 
       {:noreply,
        assign(socket,
          project: project,
          scope: scope,
          markdown: nil,
-         mermaid: mermaid,
+         graph_data: graph_data,
          error: nil
        )}
     else
@@ -195,8 +197,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   def handle_params(%{"project_name" => name}, _uri, socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
-      nodes = RequirementGraph.compute_all(scope)
-      actionable = RequirementGraph.next_actionable(scope)
+      nodes = Requirements.compute_all(scope)
+      actionable = Requirements.next_actionable_project(scope)
 
       markdown =
         RequirementsMarkdown.index(%{project: project, nodes: nodes, actionable: actionable})
@@ -209,6 +211,23 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end
   end
 
+  # --- Events ---
+
+  @impl true
+  def handle_event("node_clicked", %{"name" => name, "entity_type" => "project"}, socket) do
+    slug = project_slug(socket.assigns.project)
+    {:noreply, push_navigate(socket, to: "/projects/#{slug}/requirements/#{name}")}
+  end
+
+  def handle_event("node_clicked", %{"entity_type" => "story", "entity_id" => id}, socket) do
+    slug = project_slug(socket.assigns.project)
+    {:noreply, push_navigate(socket, to: "/projects/#{slug}/stories/#{id}")}
+  end
+
+  def handle_event("node_clicked", _params, socket) do
+    {:noreply, socket}
+  end
+
   # --- Render ---
 
   @impl true
@@ -219,15 +238,25 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       <p>{@error}</p>
     </div>
 
-    <div :if={@mermaid} id="graph-page">
+    <div :if={@graph_data} id="graph-page">
       <div class="mb-4">
         <.link navigate={"/projects/#{project_slug(@project)}/requirements"} class="text-blue-400 hover:underline">
           ← Back to requirements
         </.link>
       </div>
       <h1 class="text-xl font-bold mb-6">Requirements Graph</h1>
-      <div id="mermaid-graph" phx-hook="Mermaid" data-graph={@mermaid} phx-update="ignore">
-        <pre class="mermaid">{@mermaid}</pre>
+      <div class="flex gap-4 text-sm mb-4">
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#60a5fa] inline-block"></span> Satisfied</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#4ade80] inline-block"></span> Actionable</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#fbbf24] inline-block"></span> Blocked</span>
+      </div>
+      <div
+        id="sigma-graph"
+        phx-hook="SigmaGraph"
+        data-graph={Jason.encode!(@graph_data)}
+        phx-update="ignore"
+        style="width: 95vw; height: 85vh; margin-left: calc(-50vw + 50%); background: #0f172a; border-radius: 8px;"
+      >
       </div>
     </div>
 
@@ -243,13 +272,12 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     slug = project_slug(project)
     back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
 
-    status = if node.satisfied, do: "✓ Satisfied", else: "Not satisfied"
+    status = if node.satisfied, do: "Satisfied", else: "Not satisfied"
     header = "# #{node.name}\n\n#{node.description}\n\n**#{status}**\n"
 
     body =
       case node.name do
         "project_setup" ->
-          # Show checklist from ProjectSetup steps
           build_setup_checklist(scope, slug, node.name)
 
         _ ->
@@ -264,19 +292,19 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     project_nodes = Enum.filter(all_nodes, &(&1.entity_type == "project"))
 
     prereq_links =
-      (node.prerequisites || [])
+      node.prerequisites
       |> Enum.map(fn prereq_name ->
         prereq = Enum.find(project_nodes, &(&1.name == prereq_name))
-        status_icon = if prereq && prereq.satisfied, do: "✓", else: "○"
-        "#{status_icon} [#{prereq_name}](/projects/#{slug}/requirements/#{prereq_name})"
+        status_icon = if prereq && prereq.satisfied, do: "x", else: " "
+        "[#{status_icon}] [#{prereq_name}](/projects/#{slug}/requirements/#{prereq_name})"
       end)
 
     dependent_links =
       project_nodes
-      |> Enum.filter(fn n -> node.name in (n.prerequisites || []) end)
+      |> Enum.filter(fn n -> node.name in n.prerequisites end)
       |> Enum.map(fn n ->
-        status_icon = if n.satisfied, do: "✓", else: "○"
-        "#{status_icon} [#{n.name}](/projects/#{slug}/requirements/#{n.name})"
+        status_icon = if n.satisfied, do: "x", else: " "
+        "[#{status_icon}] [#{n.name}](/projects/#{slug}/requirements/#{n.name})"
       end)
 
     nav = ""
@@ -359,7 +387,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   defp append_nav_links(markdown, project) do
     slug = project_slug(project)
-    markdown <> "\n\n---\n\n[View Stories →](/projects/#{slug}/stories) | [View Components →](/projects/#{slug}/components) | [View Graph →](/projects/#{slug}/requirements/graph)"
+    markdown <> "\n\n---\n\n[View Stories ->](/projects/#{slug}/stories) | [View Components ->](/projects/#{slug}/components) | [View Graph ->](/projects/#{slug}/requirements/graph)"
   end
 
   # --- Helpers ---

@@ -133,7 +133,6 @@ defmodule CodeMySpec.Components do
     Component.changeset(component, attrs, scope)
   end
 
-  defdelegate components_with_unsatisfied_requirements(scope), to: ComponentRepository
   defdelegate list_dependencies(scope), to: DependencyRepository
   defdelegate list_component_dependencies(scope, component_id), to: DependencyRepository
   defdelegate get_dependency!(scope, id), to: DependencyRepository

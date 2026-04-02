@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Files.RequirementCalculator do
+defmodule CodeMySpec.Requirements.RequirementCalculator do
   @moduledoc """
   Computes requirement satisfaction from File records and Problems.
 
@@ -11,7 +11,7 @@ defmodule CodeMySpec.Files.RequirementCalculator do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Files.Preloader
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -194,10 +194,8 @@ defmodule CodeMySpec.Files.RequirementCalculator do
   end
 
   defp get_dependencies(component, %{components: components}) do
-    # Dependencies already preloaded on component
     case component.dependencies do
       %Ecto.Association.NotLoaded{} ->
-        # Fallback: find in preloaded components
         comp = Enum.find(components, &(&1.id == component.id))
         if comp, do: comp.dependencies || [], else: []
       deps when is_list(deps) -> deps

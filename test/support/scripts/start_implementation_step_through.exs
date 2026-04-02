@@ -107,7 +107,7 @@ end
 show_stories = fn ->
   stories =
     Stories.list_project_stories_by_priority(scope)
-    |> Repo.preload(:requirements)
+   
 
   IO.puts("--- stories (#{length(stories)}) ---")
 
@@ -137,7 +137,7 @@ show_stories = fn ->
 end
 
 show_project_requirements = fn ->
-  project = scope.active_project |> Repo.preload(:requirements)
+  project = scope.active_project
   reqs = project.requirements || []
 
   IO.puts("--- project requirements (#{length(reqs)}) ---")

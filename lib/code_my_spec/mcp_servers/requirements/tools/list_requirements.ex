@@ -13,7 +13,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
 
   schema do
@@ -22,10 +21,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   @impl true
   def execute(_params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      %{nodes: requirements} = Requirements.project_graph(scope)
-      requirements = Repo.preload(requirements, [:component, :story, :project])
+      %{nodes: nodes} = Requirements.project_graph(scope)
 
-      {:reply, RequirementsMapper.list_requirements_response(requirements), frame}
+      {:reply, RequirementsMapper.list_requirements_response(nodes), frame}
     else
       {:error, reason} ->
         {:reply, RequirementsMapper.error(reason), frame}

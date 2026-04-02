@@ -4,7 +4,7 @@ defmodule CodeMySpecLocalWeb.StoriesRequirementsController do
   """
   use CodeMySpecLocalWeb, :controller
 
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
 
   def index(conn, _params) do

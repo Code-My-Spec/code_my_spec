@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
 

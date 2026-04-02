@@ -11,7 +11,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session

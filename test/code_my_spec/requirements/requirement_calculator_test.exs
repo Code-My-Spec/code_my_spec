@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Files.RequirementCalculatorTest do
+defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.UsersFixtures
@@ -7,7 +7,7 @@ defmodule CodeMySpec.Files.RequirementCalculatorTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Files.RequirementCalculator
+  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Projects
 
   setup do

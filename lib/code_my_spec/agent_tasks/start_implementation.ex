@@ -19,7 +19,7 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
 
   require Logger
 
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
 
   @spec command(term(), map()) :: {:ok, String.t()}
   def command(_scope, _task) do

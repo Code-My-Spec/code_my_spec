@@ -154,7 +154,7 @@ defmodule CodeMySpec.ProjectCoordinator.ImplementationStatusTest do
 
     test "builds entry without component" do
       req = %Requirement{
-        name: "all_stories_complete",
+        name: "project_qa",
         component_id: nil,
         story_id: nil,
         project_id: "proj-1",
@@ -163,7 +163,7 @@ defmodule CodeMySpec.ProjectCoordinator.ImplementationStatusTest do
 
       entry = ImplementationStatus.build_task_entry(req, nil, %Project{id: "proj-1"})
 
-      assert entry["requirement"] == "all_stories_complete"
+      assert entry["requirement"] == "project_qa"
       assert entry["component_id"] == nil
       refute Map.has_key?(entry, "expected_files")
     end

@@ -7,7 +7,7 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
 

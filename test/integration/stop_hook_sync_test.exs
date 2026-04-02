@@ -20,7 +20,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Files.RequirementCalculator
+  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Projects
   alias CodeMySpec.Sessions

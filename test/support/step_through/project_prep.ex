@@ -61,7 +61,7 @@ defmodule CodeMySpec.StepThrough.ProjectPrep do
     end
 
     # 7. Re-sync story requirements after linking
-    stories = Stories.list_project_stories_by_priority(scope) |> Repo.preload(:requirements)
+    stories = Stories.list_project_stories_by_priority(scope)
     RequirementsSync.sync_story_requirements(stories, scope)
     RequirementsSync.sync_project_requirements(scope)
 

@@ -6,7 +6,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   """
   use CodeMySpecLocalWeb, :controller
 
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpecLocalWeb.RequirementsMarkdown
 
   def index(conn, _params) do

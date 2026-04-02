@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Files.Preloader do
+defmodule CodeMySpec.Requirements.Preloader do
   @moduledoc """
   Bulk-loads all data needed for requirement computation in minimal queries.
 
@@ -13,7 +13,6 @@ defmodule CodeMySpec.Files.Preloader do
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.Scope
 
   @type context :: %{

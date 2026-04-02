@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Files.RequirementGraphTest do
+defmodule CodeMySpec.Requirements.RequirementGraphTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.UsersFixtures
@@ -7,7 +7,7 @@ defmodule CodeMySpec.Files.RequirementGraphTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Files.RequirementGraph
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories
 
