@@ -79,14 +79,18 @@ Hooks.SigmaGraph = {
     const data = JSON.parse(raw)
     const graph = new window.graphology.Graph()
 
-    // Add nodes
+    // Add nodes (skip duplicates — shared components across stories)
     data.nodes.forEach(n => {
-      graph.addNode(n.key, n.attributes)
+      if (!graph.hasNode(n.key)) {
+        graph.addNode(n.key, n.attributes)
+      }
     })
 
-    // Add edges
+    // Add edges (deduplicate by key — shared components across stories)
+    const seenEdges = new Set()
     data.edges.forEach(e => {
-      if (graph.hasNode(e.source) && graph.hasNode(e.target)) {
+      if (!seenEdges.has(e.key) && graph.hasNode(e.source) && graph.hasNode(e.target)) {
+        seenEdges.add(e.key)
         graph.addEdge(e.source, e.target, e.attributes)
       }
     })

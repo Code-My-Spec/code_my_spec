@@ -1,16 +1,14 @@
 defmodule CodeMySpec.Requirements.RequirementGraph do
   @moduledoc """
-  Computes the full requirement graph from Files + Problems without persisting.
+  Computes the full requirement graph — nodes AND edges — from Files + Problems.
 
-  Three entity levels:
-  - **Components**: satisfaction from File existence/validity + Problems
-  - **Stories**: satisfaction from Files (bdd_specs, qa) + component tree state
-  - **Projects**: satisfaction from Files (architecture, config) + story/component state
+  The graph is entity-agnostic: edges represent real dependencies regardless of
+  whether they cross entity boundaries. There are three kinds of edges:
 
-  The output is a flat list of computed nodes. Each node carries its entity_type
-  and entity_id but the graph structure (edges, actionability) is entity-agnostic:
-  edges are same-entity prerequisite links, and cross-entity gates only affect
-  whether a node is actionable — they are not represented as edges.
+  1. **Same-entity prerequisites**: spec_file → spec_valid (within a component)
+  2. **Story → component tree**: bdd_specs_exist → component's first req;
+     component's terminal req → bdd_specs_passing
+  3. **Stories → project**: each story's qa_complete → qa_preflight
   """
 
   import Ecto.Query
@@ -29,37 +27,44 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Users.Scope
 
+  @type node_key :: {String.t(), any(), String.t()}
+  @type edge :: %{from: node_key(), to: node_key()}
+
   @doc """
-  Returns the next actionable requirements across the entire project.
+  Compute all nodes and edges for the project.
 
-  Computes satisfaction for all requirements at all levels (project, story, component),
-  then finds unsatisfied requirements whose prerequisites are all met.
+  Returns `{nodes, edges}` where edges include cross-entity dependencies.
+  """
+  @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]}
+  def compute_graph(%Scope{} = scope) do
+    ctx = Preloader.load(scope)
+    nodes = compute_all_from_ctx(scope, ctx)
+    edges = compute_edges(nodes, ctx)
+    {nodes, edges}
+  end
 
-  Cross-entity gates prevent work from being actionable until dependencies in other
-  entity levels are satisfied:
-  - `bdd_specs_passing` (story) waits for the linked component tree to be fully implemented
-  - `project_qa`/`qa_preflight` (project) wait for all stories to be complete
-
-  Sorted by priority: project first, then stories by priority, then components.
+  @doc """
+  Returns the next actionable requirements — unsatisfied nodes where
+  every incoming edge is satisfied.
   """
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
-    all_nodes = compute_all_from_ctx(scope, ctx)
+    {nodes, edges} = compute_graph(scope)
 
-    # Build satisfaction lookup
     satisfaction_map =
-      Map.new(all_nodes, fn n ->
-        {{n.entity_type, n.entity_id, n.name}, n.satisfied}
+      Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
+
+    # Build incoming edges per node: node_key => [source_key, ...]
+    incoming =
+      Enum.reduce(edges, %{}, fn edge, acc ->
+        Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
       end)
 
-    # Find actionable: unsatisfied, has satisfied_by, all prereqs met, cross-entity gates met
-    all_nodes
+    nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
-        all_prereqs_met?(n, satisfaction_map) and
-        cross_entity_gates_met?(n, satisfaction_map, ctx)
+        all_incoming_satisfied?(node_key(n), incoming, satisfaction_map)
     end)
     |> sort_by_priority(scope)
   end
@@ -73,6 +78,110 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     compute_all_from_ctx(scope, ctx)
   end
 
+  # -- Edge computation --
+
+  defp compute_edges(nodes, ctx) do
+    same_entity_edges(nodes) ++
+      project_to_story_edges(ctx) ++
+      component_tree_edges(nodes, ctx) ++
+      story_to_project_edges(nodes, ctx)
+  end
+
+  # Same-entity prerequisite edges (e.g. spec_file → spec_valid within one component)
+  defp same_entity_edges(nodes) do
+    Enum.flat_map(nodes, fn node ->
+      Enum.map(node.prerequisites, fn prereq_name ->
+        %{
+          from: {node.entity_type, node.entity_id, prereq_name},
+          to: node_key(node)
+        }
+      end)
+    end)
+  end
+
+  # Cross-entity: story.bdd_specs_exist → full component graph → story.bdd_specs_passing
+  # The component graph includes hierarchical children AND dependencies (recursively).
+  defp component_tree_edges(_nodes, ctx) do
+    ctx.stories
+    |> Enum.filter(&(&1.component_id != nil))
+    |> Enum.flat_map(fn story ->
+      all_ids = collect_all_component_ids(story.component_id, ctx.components, MapSet.new())
+
+      component_endpoints =
+        all_ids
+        |> Enum.map(fn comp_id ->
+          comp = Enum.find(ctx.components, &(&1.id == comp_id))
+          if comp do
+            defs = ComponentRegistry.get_requirements_for_type(comp.type)
+            first = List.first(defs)
+            terminal = List.last(defs)
+            {comp_id, first && first.name, terminal && terminal.name}
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+
+      # Edge: bdd_specs_exist → root component's first req
+      root_comp = Enum.find(component_endpoints, fn {id, _, _} -> id == story.component_id end)
+
+      entry_edges =
+        case root_comp do
+          {comp_id, first_name, _} when not is_nil(first_name) ->
+            [%{from: {"story", story.id, "bdd_specs_exist"}, to: {"component", comp_id, first_name}}]
+          _ -> []
+        end
+
+      # Edges: each component's terminal req → bdd_specs_passing
+      exit_edges =
+        Enum.flat_map(component_endpoints, fn
+          {comp_id, _, terminal_name} when not is_nil(terminal_name) ->
+            [%{from: {"component", comp_id, terminal_name}, to: {"story", story.id, "bdd_specs_passing"}}]
+          _ -> []
+        end)
+
+      entry_edges ++ exit_edges
+    end)
+  end
+
+  # Cross-entity: project.issues_resolved → story.component_linked
+  defp project_to_story_edges(ctx) do
+    project_id = ctx.stories |> List.first() |> then(fn s -> s && s.project_id end)
+
+    if project_id && ctx.stories != [] do
+      Enum.map(ctx.stories, fn story ->
+        %{from: {"project", project_id, "issues_resolved"}, to: {"story", story.id, "component_linked"}}
+      end)
+    else
+      []
+    end
+  end
+
+  # Cross-entity: story.qa_complete → project.qa_preflight
+  defp story_to_project_edges(_nodes, ctx) do
+    project_id = hd(ctx.stories ++ [nil]) && List.first(ctx.stories) && List.first(ctx.stories).project_id
+
+    if project_id && ctx.stories != [] do
+      Enum.map(ctx.stories, fn story ->
+        %{from: {"story", story.id, "qa_complete"}, to: {"project", project_id, "qa_preflight"}}
+      end)
+    else
+      []
+    end
+  end
+
+  # -- Actionability --
+
+  defp all_incoming_satisfied?(key, incoming, satisfaction_map) do
+    sources = Map.get(incoming, key, [])
+
+    Enum.all?(sources, fn source_key ->
+      Map.get(satisfaction_map, source_key, true)
+    end)
+  end
+
+  defp node_key(n), do: {n.entity_type, n.entity_id, n.name}
+
+  # -- Node computation --
+
   defp compute_all_from_ctx(scope, ctx) do
     component_nodes = compute_component_nodes(scope, ctx)
     story_nodes = compute_story_nodes(scope, ctx)
@@ -80,8 +189,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     project_nodes ++ story_nodes ++ component_nodes
   end
-
-  # -- Component requirements --
 
   defp compute_component_nodes(scope, ctx) do
     Enum.flat_map(ctx.components, fn component ->
@@ -109,13 +216,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  # -- Story requirements --
-
   defp compute_story_nodes(scope, ctx) do
-    stories = ctx.stories
     definitions = RequirementDefinitionData.story_requirements()
 
-    Enum.flat_map(stories, fn story ->
+    Enum.flat_map(ctx.stories, fn story ->
       Enum.map(definitions, fn definition ->
         {satisfied, details} = check_story(definition.name, scope, story, ctx)
 
@@ -137,25 +241,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp check_story("component_linked", _scope, %Story{component_id: nil}, _ctx) do
-    {false, %{reason: "No component linked"}}
-  end
+  defp check_story("component_linked", _scope, %Story{component_id: nil}, _ctx),
+    do: {false, %{reason: "No component linked"}}
 
-  defp check_story("component_linked", _scope, %Story{component_id: cid}, _ctx) when not is_nil(cid) do
-    {true, %{component_id: cid}}
-  end
+  defp check_story("component_linked", _scope, %Story{component_id: cid}, _ctx) when not is_nil(cid),
+    do: {true, %{component_id: cid}}
 
   defp check_story("bdd_specs_exist", _scope, %Story{id: story_id}, ctx) do
-    count =
-      ctx.files_by_story
-      |> Map.get(story_id, [])
-      |> Enum.count(&(&1.role == :bdd_spec))
-
-    if count > 0 do
-      {true, %{spec_count: count}}
-    else
-      {false, %{reason: "No BDD spec files"}}
-    end
+    count = ctx.files_by_story |> Map.get(story_id, []) |> Enum.count(&(&1.role == :bdd_spec))
+    if count > 0, do: {true, %{spec_count: count}}, else: {false, %{reason: "No BDD spec files"}}
   end
 
   defp check_story("bdd_specs_passing", scope, %Story{id: story_id}, ctx) do
@@ -184,18 +278,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       )
       |> Repo.exists?()
 
-    if has_result do
-      {true, %{status: "QA complete"}}
-    else
-      {false, %{reason: "result_complete.md missing"}}
-    end
+    if has_result, do: {true, %{status: "QA complete"}}, else: {false, %{reason: "result_complete.md missing"}}
   end
 
-  defp check_story(name, _scope, _story, _ctx) do
-    {false, %{reason: "Unknown story requirement: #{name}"}}
-  end
-
-  # -- Project requirements --
+  defp check_story(name, _scope, _story, _ctx),
+    do: {false, %{reason: "Unknown story requirement: #{name}"}}
 
   defp compute_project_nodes(scope) do
     project = scope.active_project
@@ -229,28 +316,19 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp check_project("technical_strategy", scope, _project) do
-    check_file_exists(scope, ".code_my_spec/architecture/decisions.md")
-  end
+  defp check_project("technical_strategy", scope, _project),
+    do: check_file_exists(scope, ".code_my_spec/architecture/decisions.md")
 
-  defp check_project("architecture_designed", scope, _project) do
-    check_file_exists(scope, ".code_my_spec/architecture/proposal.md")
-  end
+  defp check_project("architecture_designed", scope, _project),
+    do: check_file_exists(scope, ".code_my_spec/architecture/proposal.md")
 
   defp check_project("qa_integration_plan", scope, _project) do
     count =
       File
-      |> where([f],
-        f.project_id == ^scope.active_project_id and
-          like(f.path, ^".code_my_spec/integrations/%")
-      )
+      |> where([f], f.project_id == ^scope.active_project_id and like(f.path, ^".code_my_spec/integrations/%"))
       |> Repo.aggregate(:count)
 
-    if count > 0 do
-      {true, %{status: "Integration specs exist"}}
-    else
-      {false, %{reason: "No integration specs"}}
-    end
+    if count > 0, do: {true, %{status: "Integration specs exist"}}, else: {false, %{reason: "No integration specs"}}
   end
 
   defp check_project("issues_triaged", scope, _project) do
@@ -258,11 +336,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Issues.list_by_status(scope, :incoming)
       |> Enum.filter(&(Issue.severity_index(&1.severity) <= Issue.severity_index(:medium)))
 
-    if triageable == [] do
-      {true, %{status: "No untriaged issues at medium+ severity"}}
-    else
-      {false, %{reason: "#{length(triageable)} untriaged medium+ issues"}}
-    end
+    if triageable == [],
+      do: {true, %{status: "No untriaged issues at medium+ severity"}},
+      else: {false, %{reason: "#{length(triageable)} untriaged medium+ issues"}}
   end
 
   defp check_project("issues_resolved", scope, _project) do
@@ -270,16 +346,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Issues.list_by_status(scope, :accepted)
       |> Enum.filter(&(Issue.severity_index(&1.severity) <= Issue.severity_index(:medium)))
 
-    if unresolved == [] do
-      {true, %{status: "No unresolved medium+ issues"}}
-    else
-      {false, %{reason: "#{length(unresolved)} unresolved medium+ issues"}}
-    end
+    if unresolved == [],
+      do: {true, %{status: "No unresolved medium+ issues"}},
+      else: {false, %{reason: "#{length(unresolved)} unresolved medium+ issues"}}
   end
 
-  defp check_project("qa_preflight", scope, _project) do
-    check_file_exists(scope, ".code_my_spec/qa/preflight.md")
-  end
+  defp check_project("qa_preflight", scope, _project),
+    do: check_file_exists(scope, ".code_my_spec/qa/preflight.md")
 
   defp check_project("all_bdd_specs_passing", scope, _project) do
     bdd_count =
@@ -295,114 +368,59 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         |> where([p], p.project_id == ^scope.active_project_id and p.source == "spex")
         |> Repo.aggregate(:count)
 
-      if spex_problems == 0 do
-        {true, %{status: "All #{bdd_count} BDD specs passing"}}
-      else
-        {false, %{reason: "#{spex_problems} failing BDD specs"}}
-      end
+      if spex_problems == 0,
+        do: {true, %{status: "All #{bdd_count} BDD specs passing"}},
+        else: {false, %{reason: "#{spex_problems} failing BDD specs"}}
     end
   end
 
-  defp check_project("qa_journey_plan", scope, _project) do
-    check_file_exists(scope, ".code_my_spec/qa/journey_plan.md")
-  end
+  defp check_project("qa_journey_plan", scope, _project),
+    do: check_file_exists(scope, ".code_my_spec/qa/journey_plan.md")
 
-  defp check_project("qa_journey_execute", scope, _project) do
-    check_file_exists(scope, ".code_my_spec/qa/journey_result.md")
-  end
+  defp check_project("qa_journey_execute", scope, _project),
+    do: check_file_exists(scope, ".code_my_spec/qa/journey_result.md")
 
   defp check_project("qa_journey_wallaby", scope, _project) do
     count =
       File
-      |> where([f],
-        f.project_id == ^scope.active_project_id and
-          like(f.path, ^"test/e2e/%")
-      )
+      |> where([f], f.project_id == ^scope.active_project_id and like(f.path, ^"test/e2e/%"))
       |> Repo.aggregate(:count)
 
-    if count > 0 do
-      {true, %{status: "#{count} wallaby test files"}}
-    else
-      {false, %{reason: "No wallaby tests"}}
-    end
+    if count > 0, do: {true, %{status: "#{count} wallaby test files"}}, else: {false, %{reason: "No wallaby tests"}}
   end
 
-  defp check_project(name, _scope, _project) do
-    {false, %{reason: "Unknown project requirement: #{name}"}}
-  end
-
-  # -- Cross-entity gates --
-  # These prevent requirements from becoming actionable until work in other
-  # entity levels is complete, replacing the old rollup nodes.
-
-  # bdd_specs_passing waits for the story's linked component tree to be fully implemented
-  defp cross_entity_gates_met?(
-         %{entity_type: "story", entity_id: story_id, name: "bdd_specs_passing"},
-         satisfaction_map,
-         ctx
-       ) do
-    story = Enum.find(ctx.stories, &(&1.id == story_id))
-
-    case story do
-      %{component_id: component_id} when not is_nil(component_id) ->
-        component_tree_satisfied?(component_id, satisfaction_map, ctx)
-
-      _ ->
-        false
-    end
-  end
-
-  # qa_preflight waits for all stories to be complete
-  defp cross_entity_gates_met?(
-         %{entity_type: "project", name: "qa_preflight"},
-         satisfaction_map,
-         ctx
-       ) do
-    all_stories_satisfied?(satisfaction_map, ctx)
-  end
-
-  defp cross_entity_gates_met?(_node, _satisfaction_map, _ctx), do: true
-
-  defp component_tree_satisfied?(component_id, satisfaction_map, ctx) do
-    tree_ids = collect_component_tree_ids(component_id, ctx.components)
-
-    Enum.all?(tree_ids, fn comp_id ->
-      component = Enum.find(ctx.components, &(&1.id == comp_id))
-
-      case component do
-        nil ->
-          true
-
-        comp ->
-          definitions = ComponentRegistry.get_requirements_for_type(comp.type)
-
-          Enum.all?(definitions, fn d ->
-            Map.get(satisfaction_map, {"component", comp_id, d.name}, true)
-          end)
-      end
-    end)
-  end
-
-  defp collect_component_tree_ids(component_id, components) do
-    children = Enum.filter(components, &(&1.parent_component_id == component_id))
-    [component_id | Enum.flat_map(children, &collect_component_tree_ids(&1.id, components))]
-  end
-
-  defp all_stories_satisfied?(satisfaction_map, ctx) do
-    if ctx.stories == [] do
-      true
-    else
-      story_defs = RequirementDefinitionData.story_requirements()
-
-      Enum.all?(ctx.stories, fn story ->
-        Enum.all?(story_defs, fn d ->
-          Map.get(satisfaction_map, {"story", story.id, d.name}, true)
-        end)
-      end)
-    end
-  end
+  defp check_project(name, _scope, _project),
+    do: {false, %{reason: "Unknown project requirement: #{name}"}}
 
   # -- Helpers --
+
+  # Walk hierarchical children AND dependencies to collect all component IDs
+  # that must be satisfied for a story's component tree.
+  defp collect_all_component_ids(component_id, components, visited) do
+    if MapSet.member?(visited, component_id) do
+      []
+    else
+      visited = MapSet.put(visited, component_id)
+      comp = Enum.find(components, &(&1.id == component_id))
+
+      if comp do
+        # Hierarchical children
+        children = Enum.filter(components, &(&1.parent_component_id == component_id))
+        child_ids = Enum.flat_map(children, &collect_all_component_ids(&1.id, components, visited))
+
+        # Dependencies
+        deps = case comp.dependencies do
+          %Ecto.Association.NotLoaded{} -> []
+          deps when is_list(deps) -> deps
+        end
+        dep_ids = Enum.flat_map(deps, &collect_all_component_ids(&1.id, components, visited))
+
+        [component_id | child_ids ++ dep_ids] |> Enum.uniq()
+      else
+        []
+      end
+    end
+  end
 
   defp check_file_exists(scope, path) do
     exists =
@@ -410,25 +428,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> where([f], f.project_id == ^scope.active_project_id and f.path == ^path)
       |> Repo.exists?()
 
-    if exists do
-      {true, %{path: path}}
-    else
-      {false, %{reason: "File missing: #{path}"}}
-    end
-  end
-
-  defp all_prereqs_met?(%{prerequisites: []}, _satisfaction_map), do: true
-
-  defp all_prereqs_met?(%{prerequisites: prereqs, entity_type: type, entity_id: id}, satisfaction_map) do
-    Enum.all?(prereqs, fn prereq_name ->
-      Map.get(satisfaction_map, {type, id, prereq_name}, true)
-    end)
+    if exists, do: {true, %{path: path}}, else: {false, %{reason: "File missing: #{path}"}}
   end
 
   # -- Priority sorting --
 
-  # Early project requirements: prerequisites are all project-level (or none).
-  # Late project requirements: depend on stories/components being done.
   @late_project_reqs MapSet.new([
     "qa_preflight", "all_bdd_specs_passing",
     "qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby"
@@ -450,11 +454,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       case node.entity_type do
         "project" ->
-          if node.name in @late_project_reqs do
-            {2, 0, def_order}
-          else
-            {0, 0, def_order}
-          end
+          if node.name in @late_project_reqs, do: {2, 0, def_order}, else: {0, 0, def_order}
 
         "story" ->
           {1, story_priority(node.entity_id, project_id), def_order}
@@ -469,11 +469,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     Story
     |> where([s], s.id == ^story_id and s.project_id == ^project_id)
     |> select([s], s.priority)
-    |> Repo.one()
-    |> case do
-      nil -> 999
-      p -> p || 999
-    end
+    |> Repo.one() || 999
   end
 
   defp build_component_story_map(project_id, story_priorities) do
@@ -497,12 +493,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     case Map.get(story_priorities, component_id) do
       nil ->
         parent_id = Map.get(parent_map, component_id)
-
-        if parent_id do
-          find_story_priority(parent_id, parent_map, story_priorities)
-        else
-          999
-        end
+        if parent_id, do: find_story_priority(parent_id, parent_map, story_priorities), else: 999
 
       priority ->
         priority || 999
@@ -514,20 +505,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     story_defs = RequirementDefinitionData.story_requirements()
     project_defs = RequirementDefinitionData.project_requirements()
 
-    orders = %{}
+    %{}
+    |> add_orders(component_defs, "component")
+    |> add_orders(story_defs, "story")
+    |> add_orders(project_defs, "project")
+  end
 
-    orders =
-      component_defs
-      |> Enum.with_index()
-      |> Enum.reduce(orders, fn {d, i}, acc -> Map.put(acc, {"component", d.name}, i) end)
-
-    orders =
-      story_defs
-      |> Enum.with_index()
-      |> Enum.reduce(orders, fn {d, i}, acc -> Map.put(acc, {"story", d.name}, i) end)
-
-    project_defs
+  defp add_orders(orders, defs, type) do
+    defs
     |> Enum.with_index()
-    |> Enum.reduce(orders, fn {d, i}, acc -> Map.put(acc, {"project", d.name}, i) end)
+    |> Enum.reduce(orders, fn {d, i}, acc -> Map.put(acc, {type, d.name}, i) end)
   end
 end

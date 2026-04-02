@@ -159,7 +159,6 @@ defmodule CodeMySpec.Components.ComponentRepository do
       :dependencies,
       :dependents,
       :stories,
-      :requirements,
       outgoing_dependencies: :target_component,
       incoming_dependencies: :source_component
     ])

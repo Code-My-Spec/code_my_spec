@@ -361,7 +361,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.FixBddSpecs,
         artifact_type: :tests,
         description: "BDD specs pass",
-        prerequisites: ["bdd_specs_exist"],
+        prerequisites: [],
         scope: :orchestrate
       })
 
@@ -497,7 +497,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.QaPreflight,
         artifact_type: :review,
         description: "App-level integration verification complete",
-        prerequisites: ["issues_resolved"],
+        prerequisites: [],
         scope: :orchestrate
       })
 

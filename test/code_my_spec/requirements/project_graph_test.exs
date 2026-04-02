@@ -47,19 +47,26 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       refute MapSet.member?(names, "all_stories_complete")
     end
 
-    test "edges are same-entity prerequisite relationships only" do
+    test "edges include cross-entity dependencies" do
       {scope, _tmp_dir} = setup_full_project()
 
       %{nodes: _nodes, edges: edges} = Requirements.project_graph(scope)
 
-      Enum.each(edges, fn edge ->
-        # Every edge connects nodes within the same entity
-        assert edge.from.entity_type == edge.to.entity_type,
-               "cross-entity edge found: #{edge.from.entity_type} -> #{edge.to.entity_type}"
+      edge_types = Enum.map(edges, fn e ->
+        {elem(e.from, 0), elem(e.to, 0)}
+      end) |> Enum.uniq()
 
-        assert edge.from.entity_id == edge.to.entity_id,
-               "cross-entity edge found: #{inspect(edge.from.entity_id)} -> #{inspect(edge.to.entity_id)}"
-      end)
+      # Same-entity edges exist (project prereqs)
+      assert {"project", "project"} in edge_types
+
+      # Cross-entity: story → component (bdd_specs_exist → component first req)
+      assert {"story", "component"} in edge_types
+
+      # Cross-entity: component → story (component terminal → bdd_specs_passing)
+      assert {"component", "story"} in edge_types
+
+      # Cross-entity: story → project (qa_complete → qa_preflight)
+      assert {"story", "project"} in edge_types
     end
 
     test "component nodes include context, its children, and dependencies" do

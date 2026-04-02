@@ -108,6 +108,23 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end
   end
 
+  def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components_graph}} = socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      graph_data = GraphProjector.components_graph(scope)
+
+      {:noreply,
+       assign(socket,
+         project: project,
+         scope: scope,
+         markdown: nil,
+         graph_data: graph_data,
+         error: nil
+       )}
+    else
+      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+    end
+  end
+
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components}} = socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
       components = Components.list_components(scope)
@@ -387,7 +404,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   defp append_nav_links(markdown, project) do
     slug = project_slug(project)
-    markdown <> "\n\n---\n\n[View Stories ->](/projects/#{slug}/stories) | [View Components ->](/projects/#{slug}/components) | [View Graph ->](/projects/#{slug}/requirements/graph)"
+    markdown <> "\n\n---\n\n[View Stories ->](/projects/#{slug}/stories) | [View Components ->](/projects/#{slug}/components) | [View Graph ->](/projects/#{slug}/requirements/graph) | [Components Graph ->](/projects/#{slug}/components/graph)"
   end
 
   # --- Helpers ---
