@@ -15,6 +15,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Problems
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
@@ -102,7 +103,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
         false
 
       component ->
-        Enum.any?(component.requirements, fn req ->
+        Requirements.compute_component_requirements(scope, component)
+        |> Enum.any?(fn req ->
           req.name == "implementation_file" && req.satisfied == true
         end)
     end

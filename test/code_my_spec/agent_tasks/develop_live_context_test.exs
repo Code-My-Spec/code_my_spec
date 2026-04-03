@@ -97,14 +97,14 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContextTest do
       assert feedback =~ "ChartComponent"
     end
 
-    test "returns :valid when no children have tracked requirements (vacuously satisfied)" do
+    test "returns :invalid when no files exist" do
       scope = full_scope_fixture()
       {live_context, _children} = create_live_context_with_children(scope)
 
       live_context = Components.get_component(scope, live_context.id)
       task = create_task(scope, live_context)
 
-      assert {:ok, :valid} = DevelopLiveContext.evaluate(scope, task)
+      assert {:ok, :invalid, _feedback} = DevelopLiveContext.evaluate(scope, task)
     end
   end
 end

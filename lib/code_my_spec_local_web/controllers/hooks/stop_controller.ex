@@ -9,6 +9,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   require Logger
 
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements.RequirementGraph
@@ -26,17 +27,46 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
     # Step 1: Sync files and components
     if scope.cwd do
-      FileSync.sync(scope, base_dir: scope.cwd)
-      FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
+      {:ok, file_result} = FileSync.sync(scope, base_dir: scope.cwd)
+
+      FileComponentSync.sync_from_files(scope,
+        base_dir: scope.cwd,
+        changed_paths: file_result.changed_paths
+      )
     end
 
-    # Step 2: Evaluate the active task
+    # Step 2: Resolve session + active task
+    session = session_id && Sessions.get_by_external_id(scope, session_id)
+    active_task = session && Session.active_task(session)
+
+    # Step 3: Log files changed during the active task
+    if active_task && active_task.started_at do
+      changed = Files.changed_since(scope, active_task.started_at)
+
+      if changed != [] do
+        by_role = Enum.group_by(changed, & &1.role)
+
+        summary =
+          Enum.map_join(by_role, ", ", fn {role, files} ->
+            "#{role}(#{length(files)})"
+          end)
+
+        Logger.info(
+          "[StopHook] [#{req_id}] Files changed during task: #{summary} — " <>
+            Enum.map_join(changed, ", ", & &1.path)
+        )
+      else
+        Logger.info("[StopHook] [#{req_id}] No files changed during task")
+      end
+    end
+
+    # Step 4: Evaluate the active task
     result = TaskEvaluator.evaluate_sessions(scope, session_id)
 
     response =
       case result do
         {:ok, :valid} ->
-          maybe_continue_with_next_task(scope, session_id, req_id)
+          maybe_continue_with_next_task(scope, session, req_id)
 
         {:error, reason} when is_binary(reason) ->
           %{"decision" => "block", "reason" => reason}
@@ -45,9 +75,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     json(conn, response)
   end
 
-  defp maybe_continue_with_next_task(scope, session_id, req_id) do
-    session = session_id && Sessions.get_by_external_id(scope, session_id)
-
+  defp maybe_continue_with_next_task(scope, session, req_id) do
     cond do
       is_nil(session) ->
         Logger.info("[StopHook] [#{req_id}] No session, allowing stop")

@@ -2,7 +2,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.RequirementsFixtures
   import CodeMySpec.SessionsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -72,17 +71,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
       external_id = "ext-eval-#{System.unique_integer([:positive])}"
       {:ok, ext_session} = Sessions.find_or_create_session(scope, external_id)
 
-      requirement =
-        requirement_fixture(scope, component, %{
-          name: "test_spec",
-          satisfied: false,
-          satisfied_by: CodeMySpec.AgentTasks.ContextSpec
-        })
-
       task_attrs = %{
-        session_type: requirement.satisfied_by,
-        requirement_id: requirement.id,
-        requirement_name: requirement.name,
+        session_type: CodeMySpec.AgentTasks.ComponentSpec,
+        requirement_name: "spec_file",
         project_id: scope.active_project_id,
         component_id: component.id
       }
@@ -156,22 +147,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
-  defp setup_active_task(task_module \\ CodeMySpec.AgentTasks.ContextSpec) do
+  defp setup_active_task(task_module \\ CodeMySpec.AgentTasks.ComponentSpec) do
     scope = full_scope_fixture()
     component = component_fixture(scope)
     session = session_fixture(scope)
 
-    requirement =
-      requirement_fixture(scope, component, %{
-        name: "test_spec",
-        satisfied: false,
-        satisfied_by: task_module
-      })
-
     task_attrs = %{
-      session_type: requirement.satisfied_by,
-      requirement_id: requirement.id,
-      requirement_name: requirement.name,
+      session_type: task_module,
+      requirement_name: "spec_file",
       project_id: scope.active_project_id,
       component_id: component.id,
       component_module_name: component.module_name
@@ -181,7 +164,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
 
     task =
       session_with_task.tasks
-      |> Enum.find(&(&1.requirement_name == requirement.name and &1.status == :prepared))
+      |> Enum.find(&(&1.requirement_name == "spec_file" and &1.status == :prepared))
 
     {:ok, active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
 

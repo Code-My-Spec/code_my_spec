@@ -2,7 +2,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.RequirementsFixtures
   import CodeMySpec.SessionsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -16,52 +15,49 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   end
 
   describe "execute/2 — happy path" do
-    test "creates an active task and returns a prompt with Data JSON" do
-      {scope, session, requirement} = setup_requirement()
+    test "creates an active task and returns a prompt" do
+      {scope, session, component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_id: requirement.id, session_id: session.id},
+                 Map.put(req_params, :session_id, session.id),
                  frame
                )
 
       refute response.isError
       content = response_text(response)
 
-      # Prompt should come from the task module with task ID footer
       assert is_binary(content)
       assert content =~ "Task ID:"
 
       # DB state: task is active with correct linkage
       updated_session = Sessions.get_session(scope, session.id)
-      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "test_spec"))
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
       assert task.status == :active
-      assert task.requirement_id == requirement.id
-      assert task.component_id == requirement.component_id
-      assert task.session_type == CodeMySpec.AgentTasks.ContextSpec
+      assert task.component_id == component.id
       assert task.started_at
     end
 
     test "assigns agent_id to the created task" do
-      {scope, session, requirement} = setup_requirement()
+      {scope, session, _component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_id: requirement.id, session_id: session.id, agent_id: "agent-42"},
+                 req_params |> Map.put(:session_id, session.id) |> Map.put(:agent_id, "agent-42"),
                  frame
                )
 
       refute response.isError
 
       updated_session = Sessions.get_session(scope, session.id)
-      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "test_spec"))
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
       assert task.agent_id == "agent-42"
     end
 
     test "resolves session by external_conversation_id" do
-      {scope, _session, requirement} = setup_requirement()
+      {scope, _session, _component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
       external_id = "ext-conv-#{System.unique_integer([:positive])}"
@@ -69,56 +65,49 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_id: requirement.id, session_id: external_id},
+                 Map.put(req_params, :session_id, external_id),
                  frame
                )
 
       refute response.isError
 
       updated_session = Sessions.get_session(scope, ext_session.id)
-      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "test_spec"))
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
       assert task.status == :active
     end
   end
 
   describe "execute/2 — deduplication" do
     test "returns prompt for already-active task without creating a duplicate" do
-      {scope, session, requirement} = setup_requirement()
+      {scope, session, _component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      # First call creates the task
-      {:reply, _, _} =
-        StartTask.execute(%{requirement_id: requirement.id, session_id: session.id}, frame)
+      params = Map.put(req_params, :session_id, session.id)
 
-      # Reload session for second call
-      updated_session = Sessions.get_session(scope, session.id)
+      # First call creates the task
+      {:reply, _, _} = StartTask.execute(params, frame)
 
       # Second call should return prompt, not create another task
-      assert {:reply, response, ^frame} =
-               StartTask.execute(
-                 %{requirement_id: requirement.id, session_id: updated_session.id},
-                 frame
-               )
+      assert {:reply, response, ^frame} = StartTask.execute(params, frame)
 
       refute response.isError
       assert response_text(response) =~ "Task ID:"
 
       final_session = Sessions.get_session(scope, session.id)
-      matching = Enum.filter(final_session.tasks, &(&1.requirement_name == "test_spec"))
+      matching = Enum.filter(final_session.tasks, &(&1.requirement_name == "spec_file"))
       assert length(matching) == 1
     end
 
     test "resumes a prepared task by activating it" do
-      {scope, session, requirement} = setup_requirement()
+      {scope, session, component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
       # Manually prepare a task (simulates leftover from old flow)
       task_attrs = %{
-        session_type: requirement.satisfied_by,
-        requirement_id: requirement.id,
-        requirement_name: requirement.name,
+        session_type: CodeMySpec.AgentTasks.ComponentSpec,
+        requirement_name: "spec_file",
         project_id: scope.active_project_id,
-        component_id: requirement.component_id
+        component_id: component.id
       }
 
       {:ok, session_with_prepared} = Sessions.prepare_task(scope, session, task_attrs)
@@ -126,7 +115,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_id: requirement.id, session_id: session_with_prepared.id},
+                 Map.put(req_params, :session_id, session_with_prepared.id),
                  frame
                )
 
@@ -147,29 +136,26 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_id: Ecto.UUID.generate(), session_id: session.id},
+                 %{
+                   requirement_name: "nonexistent",
+                   entity_type: "component",
+                   entity_id: Ecto.UUID.generate(),
+                   session_id: session.id
+                 },
                  frame
                )
 
       assert response.isError
-      assert response_text(response) =~ "Requirement not found"
+      assert response_text(response) =~ "not found"
     end
 
     test "returns error for non-existent session" do
-      scope = full_scope_fixture()
-      component = component_fixture(scope)
+      {scope, _session, _component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
-
-      requirement =
-        requirement_fixture(scope, component, %{
-          name: "test_spec",
-          satisfied: false,
-          satisfied_by: CodeMySpec.AgentTasks.ContextSpec
-        })
 
       assert {:reply, response, ^frame} =
                StartTask.execute(
-                 %{requirement_id: requirement.id, session_id: Ecto.UUID.generate()},
+                 Map.put(req_params, :session_id, Ecto.UUID.generate()),
                  frame
                )
 
@@ -178,19 +164,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
     end
 
     test "returns error when session_id is missing" do
-      scope = full_scope_fixture()
-      component = component_fixture(scope)
+      {scope, _session, _component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      requirement =
-        requirement_fixture(scope, component, %{
-          name: "test_spec",
-          satisfied: false,
-          satisfied_by: CodeMySpec.AgentTasks.ContextSpec
-        })
-
-      assert {:reply, response, ^frame} =
-               StartTask.execute(%{requirement_id: requirement.id}, frame)
+      assert {:reply, response, ^frame} = StartTask.execute(req_params, frame)
 
       assert response.isError
       assert response_text(response) =~ "No session_id"
@@ -200,7 +177,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       frame = %Frame{assigns: %{}}
 
       assert {:reply, response, ^frame} =
-               StartTask.execute(%{requirement_id: "1", session_id: "x"}, frame)
+               StartTask.execute(
+                 %{requirement_name: "spec_file", entity_type: "component", entity_id: "x", session_id: "x"},
+                 frame
+               )
 
       assert response.isError
     end
@@ -215,14 +195,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
     component = component_fixture(scope)
     session = session_fixture(scope)
 
-    requirement =
-      requirement_fixture(scope, component, %{
-        name: "test_spec",
-        satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ContextSpec
-      })
+    req_params = %{
+      requirement_name: "spec_file",
+      entity_type: "component",
+      entity_id: component.id
+    }
 
-    {scope, session, requirement}
+    {scope, session, component, req_params}
   end
 
   defp response_text(response) do

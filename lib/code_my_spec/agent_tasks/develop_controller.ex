@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Utils.Paths
 
   @implementation_reqs [
@@ -61,10 +62,10 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
     controller = Components.get_component!(scope, task.component_id)
     controller = ComponentRepository.get_component(scope, controller.id)
 
-    if all_requirements_satisfied?(controller) do
+    if all_requirements_satisfied?(scope, controller) do
       {:ok, :valid}
     else
-      reqs = controller.requirements || []
+      reqs = Requirements.compute_component_requirements(scope, controller)
 
       unsatisfied =
         reqs
@@ -128,8 +129,8 @@ defmodule CodeMySpec.AgentTasks.DevelopController do
     end
   end
 
-  defp all_requirements_satisfied?(component) do
-    reqs = component.requirements || []
+  defp all_requirements_satisfied?(scope, component) do
+    reqs = Requirements.compute_component_requirements(scope, component)
 
     Enum.all?(@implementation_reqs, fn req_name ->
       not Enum.any?(reqs, fn r -> r.name == req_name and not r.satisfied end)

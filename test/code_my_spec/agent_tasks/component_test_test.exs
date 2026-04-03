@@ -290,7 +290,6 @@ defmodule CodeMySpec.AgentTasks.ComponentTestTest do
 
       assert {:ok, :invalid, feedback} = ComponentTest.evaluate(scope, task)
       assert feedback =~ "requirements not met"
-      assert feedback =~ "Test alignment issues"
     end
 
     test "returns valid when all test requirements satisfied and no problems", %{

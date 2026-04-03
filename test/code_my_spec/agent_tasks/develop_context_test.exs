@@ -62,13 +62,17 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       scope = full_scope_fixture()
       {context, children} = create_context_with_children(scope)
 
+      # Seed files for all components (context gets review_file too)
+      base_reqs = ["spec_file", "spec_valid", "implementation_file", "test_file"]
+
       for component <- [context | children] do
-        for name <- ["spec_file", "spec_valid", "implementation_file", "test_file", "tests_passing"] do
-          requirement_fixture(scope, component, %{
-            name: name,
-            artifact_type: :specification,
-            satisfied: true
-          })
+        reqs =
+          if component.type == "context",
+            do: base_reqs ++ ["review_file", "review_valid"],
+            else: base_reqs
+
+        for name <- reqs do
+          requirement_fixture(scope, component, %{name: name, satisfied: true})
         end
       end
 
@@ -106,14 +110,14 @@ defmodule CodeMySpec.AgentTasks.DevelopContextTest do
       assert feedback =~ "TestRepository"
     end
 
-    test "returns :valid when no tracked requirements exist (vacuously satisfied)" do
+    test "returns :invalid when no files exist" do
       scope = full_scope_fixture()
       {context, _children} = create_context_with_children(scope)
 
       context = Components.get_component(scope, context.id)
       task = create_task(scope, context)
 
-      assert {:ok, :valid} = DevelopContext.evaluate(scope, task)
+      assert {:ok, :invalid, _feedback} = DevelopContext.evaluate(scope, task)
     end
   end
 end

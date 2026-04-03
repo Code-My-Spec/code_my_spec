@@ -115,6 +115,29 @@ defmodule CodeMySpec.Files do
     |> Enum.reject(&is_nil/1)
   end
 
+  @doc """
+  List files updated since a given timestamp.
+
+  Useful for finding what changed during a task: pass `task.started_at`.
+  Optionally filter by component_id or story_id.
+  """
+  @spec changed_since(Scope.t(), DateTime.t(), keyword()) :: [File.t()]
+  def changed_since(%Scope{active_project_id: project_id}, since, opts \\ []) do
+    component_id = Keyword.get(opts, :component_id)
+    story_id = Keyword.get(opts, :story_id)
+
+    File
+    |> where([f], f.project_id == ^project_id and f.updated_at >= ^since)
+    |> then(fn q ->
+      if component_id, do: where(q, [f], f.component_id == ^component_id), else: q
+    end)
+    |> then(fn q ->
+      if story_id, do: where(q, [f], f.story_id == ^story_id), else: q
+    end)
+    |> order_by([f], asc: f.path)
+    |> Repo.all()
+  end
+
   @doc "List files that need validation (valid is nil)."
   @spec files_needing_validation(Scope.t()) :: [File.t()]
   def files_needing_validation(%Scope{active_project_id: project_id}) do

@@ -9,6 +9,7 @@ defmodule CodeMySpec.Requirements do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Files
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementGraph
@@ -48,18 +49,27 @@ defmodule CodeMySpec.Requirements do
   # --- Legacy shims (TODO: move evaluation criteria onto agent tasks) ---
 
   @doc """
+  Compute all requirements for a component with satisfaction status.
+  Returns a list of maps with requirement definition fields plus `:satisfied`.
+  """
+  def compute_component_requirements(scope, %Component{} = component) do
+    definitions = ComponentRegistry.get_requirements_for_type(component.type)
+    files = Files.list_component_files(scope, component.id)
+
+    Enum.map(definitions, fn definition ->
+      result = RequirementCalculator.compute_one(scope, component, definition, files)
+      Map.merge(result, Map.from_struct(definition))
+    end)
+  end
+
+  @doc """
   Check component requirements filtered by artifact_type.
   Bridges old agent task evaluate functions to the computed model.
   """
   def check_artifact_requirements(scope, %Component{} = component, artifact_type) do
-    definitions = ComponentRegistry.get_requirements_for_type(component.type)
-
-    definitions
+    scope
+    |> compute_component_requirements(component)
     |> Enum.filter(&(&1.artifact_type == artifact_type))
-    |> Enum.map(fn definition ->
-      result = RequirementCalculator.compute_one(scope, component, definition, nil, nil)
-      Map.merge(result, Map.from_struct(definition))
-    end)
   end
 
   @doc false

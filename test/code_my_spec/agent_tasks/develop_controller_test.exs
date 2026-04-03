@@ -108,14 +108,14 @@ defmodule CodeMySpec.AgentTasks.DevelopControllerTest do
       assert feedback =~ "spec_file"
     end
 
-    test "returns :valid when no tracked requirements exist (vacuously satisfied)", %{tmp_dir: tmp_dir} do
+    test "returns :invalid when no files exist", %{tmp_dir: tmp_dir} do
       scope = create_scope_with_env(tmp_dir)
       controller = create_controller_component(scope)
 
       controller = Components.get_component(scope, controller.id)
       task = create_task(scope, controller)
 
-      assert {:ok, :valid} = DevelopController.evaluate(scope, task)
+      assert {:ok, :invalid, _feedback} = DevelopController.evaluate(scope, task)
     end
   end
 end

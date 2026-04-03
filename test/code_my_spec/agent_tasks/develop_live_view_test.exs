@@ -94,14 +94,14 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
       assert feedback =~ "Components still need work"
     end
 
-    test "returns :valid when no tracked requirements exist (vacuously satisfied)" do
+    test "returns :invalid when no files exist" do
       scope = full_scope_fixture()
       {liveview, _children} = create_liveview_with_children(scope)
 
       liveview = Components.get_component(scope, liveview.id)
       task = create_task(scope, liveview)
 
-      assert {:ok, :valid} = DevelopLiveView.evaluate(scope, task)
+      assert {:ok, :invalid, _feedback} = DevelopLiveView.evaluate(scope, task)
     end
   end
 end

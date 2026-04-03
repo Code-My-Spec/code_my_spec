@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
 
   alias CodeMySpec.Components
   alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Requirements
 
   def command(scope, task) do
     context = Components.get_component!(scope, task.component_id)
@@ -46,7 +47,7 @@ defmodule CodeMySpec.AgentTasks.ContextComponentSpecs do
 
     missing =
       Enum.reject(children, fn child ->
-        (child.requirements || [])
+        Requirements.compute_component_requirements(scope, child)
         |> Enum.any?(fn r -> r.name == "spec_file" and r.satisfied end)
       end)
 

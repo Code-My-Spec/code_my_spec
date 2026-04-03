@@ -155,7 +155,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
       # Start task for project_setup
       {:reply, resp, ^frame} =
-        StartTask.execute(%{requirement_id: to_string(req1.id), session_id: session_id}, frame)
+        StartTask.execute(Map.put(req1, :session_id, session_id), frame)
 
       refute resp.isError
 
@@ -196,21 +196,18 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       external_id = "manual-test-#{System.unique_integer([:positive])}"
       {:ok, session} = Sessions.find_or_create_session(scope, external_id)
 
-      # Create a requirement with validation_type: :manual
-      req =
-        project_requirement_fixture(scope, %{
-          name: "qa_integration_plan",
-          artifact_type: :specification,
-          satisfied: false,
-          satisfied_by: CodeMySpec.AgentTasks.QaIntegrationPlan,
-          validation_type: :manual
-        })
+      # qa_integration_plan is computed from the graph with validation_type: :manual
+      req_ref = %{
+        requirement_name: "qa_integration_plan",
+        entity_type: "project",
+        entity_id: to_string(scope.active_project_id)
+      }
 
       # Start task for this requirement
       frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
 
       {:reply, resp, ^frame} =
-        StartTask.execute(%{requirement_id: to_string(req.id), session_id: session.id}, frame)
+        StartTask.execute(Map.put(req_ref, :session_id, session.id), frame)
 
       refute resp.isError
 

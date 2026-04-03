@@ -17,6 +17,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContext do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Requirements
 
   @implementation_reqs [
     "spec_file",
@@ -62,7 +63,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContext do
     # Only check children — parent live_context has no code
     children = Components.list_child_components(scope, live_context.id)
 
-    missing = Enum.reject(children, &all_requirements_satisfied?/1)
+    missing = Enum.reject(children, &all_requirements_satisfied?(scope, &1))
 
     if Enum.empty?(missing) do
       {:ok, :valid}
@@ -80,8 +81,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveContext do
     ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
   end
 
-  defp all_requirements_satisfied?(component) do
-    reqs = component.requirements || []
+  defp all_requirements_satisfied?(scope, component) do
+    reqs = Requirements.compute_component_requirements(scope, component)
 
     Enum.all?(@implementation_reqs, fn req_name ->
       not Enum.any?(reqs, fn r -> r.name == req_name and not r.satisfied end)

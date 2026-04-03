@@ -173,14 +173,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   end
 
   defp implementation_exists?(scope, component) do
-    component = ComponentRepository.get_component(scope, component.id)
-    requirements = component.requirements || []
-
-    code_reqs =
-      Requirements.check_requirements(scope, component, requirements,
-        artifact_types: [:code],
-        include: ["implementation_file"]
-      )
+    code_reqs = Requirements.check_artifact_requirements(scope, component, :code)
 
     Enum.any?(code_reqs, & &1.satisfied)
   end

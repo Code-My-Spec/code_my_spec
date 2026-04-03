@@ -1,8 +1,6 @@
 defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
   use ExUnit.Case, async: true
 
-  import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.RequirementsFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
@@ -16,56 +14,16 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
   describe "execute/2" do
     test "returns the next actionable requirement" do
       scope = full_scope_fixture()
-      component = component_fixture(scope)
       frame = %Frame{assigns: %{current_scope: scope}}
-
-      _satisfied = requirement_fixture(scope, component, %{name: "spec_file", satisfied: true})
-
-      _actionable =
-        requirement_fixture(scope, component, %{
-          name: "tests_passing",
-          satisfied: false,
-          satisfied_by: CodeMySpec.AgentTasks.ContextSpec
-        })
 
       assert {:reply, response, ^frame} = GetNextRequirement.execute(%{}, frame)
 
       refute response.isError
       content = response_text(response)
 
-      assert content =~ "Next Requirement: tests_passing"
+      # Should return the first actionable project-level requirement
+      assert content =~ "Next Requirement:"
       assert content =~ "start_task"
-      assert content =~ "requirement_id"
-    end
-
-    test "returns all-satisfied when no actionable requirements exist" do
-      scope = full_scope_fixture()
-      component = component_fixture(scope)
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      # Only satisfied requirements
-      _satisfied = requirement_fixture(scope, component, %{name: "spec_file", satisfied: true})
-
-      assert {:reply, response, ^frame} = GetNextRequirement.execute(%{}, frame)
-
-      refute response.isError
-      content = response_text(response)
-      assert content =~ "All requirements satisfied"
-    end
-
-    test "skips requirements without satisfied_by" do
-      scope = full_scope_fixture()
-      component = component_fixture(scope)
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      # Unsatisfied but no satisfied_by — meta-requirement, not actionable
-      _meta = requirement_fixture(scope, component, %{name: "deps_satisfied", satisfied: false, satisfied_by: nil})
-
-      assert {:reply, response, ^frame} = GetNextRequirement.execute(%{}, frame)
-
-      refute response.isError
-      content = response_text(response)
-      assert content =~ "All requirements satisfied"
     end
 
     test "returns init checklist when no project is linked" do

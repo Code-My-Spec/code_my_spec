@@ -35,28 +35,8 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     {:ok, session} = Sessions.find_or_create_session(scope, external_id)
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    req1 =
-      project_requirement_fixture(scope, %{
-        name: "project_setup",
-        artifact_type: :specification,
-        satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ProjectSetup
-      })
-
-    req2 =
-      project_requirement_fixture(scope, %{
-        name: "technical_strategy",
-        artifact_type: :specification,
-        satisfied: false,
-        satisfied_by: CodeMySpec.AgentTasks.ProjectSetup,
-        depends_on: [
-          %{
-            "entity_type" => "project",
-            "entity_id" => project.id,
-            "requirement_name" => "project_setup"
-          }
-        ]
-      })
+    req1 = project_requirement_ref(scope, "project_setup")
+    req2 = project_requirement_ref(scope, "technical_strategy")
 
     %{
       scope: scope,
@@ -70,25 +50,18 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     }
   end
 
-  def project_requirement_fixture(scope, attrs) do
-    attrs =
-      Map.merge(
-        %{
-          description: "test",
-          score: 0.0,
-          checked_at: DateTime.utc_now()
-        },
-        attrs
-      )
+  @doc """
+  Returns a map matching the shape expected by StartTask for a project-level requirement.
 
-    {:ok, req} =
-      CodeMySpec.Requirements.RequirementsRepository.create_project_requirement(
-        scope,
-        scope.active_project,
-        attrs
-      )
-
-    req
+  Since requirements are now computed (not persisted), this just returns
+  the params needed to start a task via the graph.
+  """
+  def project_requirement_ref(scope, name) do
+    %{
+      requirement_name: name,
+      entity_type: "project",
+      entity_id: to_string(scope.active_project_id)
+    }
   end
 
   @doc """

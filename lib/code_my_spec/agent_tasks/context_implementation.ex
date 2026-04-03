@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
 
   alias CodeMySpec.Components
   alias CodeMySpec.ProjectCoordinator
+  alias CodeMySpec.Requirements
 
   @implementation_reqs ["implementation_file", "test_file", "tests_passing"]
 
@@ -52,7 +53,7 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
     context = Components.get_component!(scope, task.component_id)
     children = Components.list_child_components(scope, context.id)
 
-    missing = Enum.reject(children, &implementation_complete?/1)
+    missing = Enum.reject(children, &implementation_complete?(scope, &1))
 
     if Enum.empty?(missing) do
       {:ok, :valid}
@@ -70,8 +71,8 @@ defmodule CodeMySpec.AgentTasks.ContextImplementation do
     ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
   end
 
-  defp implementation_complete?(child) do
-    reqs = child.requirements || []
+  defp implementation_complete?(scope, child) do
+    reqs = Requirements.compute_component_requirements(scope, child)
 
     Enum.all?(@implementation_reqs, fn req_name ->
       Enum.any?(reqs, fn r -> r.name == req_name and r.satisfied end)
