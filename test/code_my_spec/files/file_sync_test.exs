@@ -155,6 +155,67 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert spec_file.role == :spec
     end
 
+    test "validates spec files during sync" do
+      {scope, tmp_dir} = setup_project()
+
+      # Valid liveview spec with required sections
+      spec_content = """
+      # MyApp.UserLive.Index
+
+      A page listing users.
+
+      ## Type
+
+      liveview
+
+      ## Route
+
+      `/users`
+
+      ## User Interactions
+
+      - **phx-click=delete**: Deletes a user
+
+      ## Dependencies
+
+      - MyApp.Users
+
+      ## Design
+
+      Layout: Table of users.
+
+      ## Test Assertions
+
+      - renders user list
+      - deletes user on click
+      """
+
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/user_live/index.spec.md", spec_content)
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/user_live/index.spec.md")
+      assert spec_file.valid == true
+      assert spec_file.validation_errors == nil
+
+      impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
+      assert impl_file.valid == true
+    end
+
+    test "sets valid false for invalid spec files" do
+      {scope, tmp_dir} = setup_project()
+
+      # Spec missing required sections
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\n\n## Type\n\nschema\n")
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
+      assert spec_file.valid == false
+      assert spec_file.validation_errors != nil
+    end
+
     test "ignores deps, _build, .git directories" do
       {scope, tmp_dir} = setup_project()
 

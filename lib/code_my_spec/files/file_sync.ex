@@ -61,21 +61,15 @@ defmodule CodeMySpec.Files.FileSync do
 
         _ ->
           entries_with_owners = resolve_owners(scope, changed_entries)
-          {count, _} = Files.upsert_files(scope, entries_with_owners)
 
-          # Validate changed files
+          # Validate before upsert so valid/validation_errors are part of the insert
           components = Components.list_components(scope)
           component_by_id = Map.new(components, &{&1.id, &1})
 
-          entries_with_owners
-          |> Enum.map(&validate_entry(&1, base_dir, component_by_id))
-          |> Enum.each(fn entry ->
-            case Files.get_by_path(scope, entry.path) do
-              nil -> :ok
-              file -> Files.mark_validated(file, entry.valid, entry.validation_errors)
-            end
-          end)
+          validated_entries =
+            Enum.map(entries_with_owners, &validate_entry(&1, base_dir, component_by_id))
 
+          {count, _} = Files.upsert_files(scope, validated_entries)
           count
       end
 
@@ -412,10 +406,22 @@ defmodule CodeMySpec.Files.FileSync do
   defp path_segments_to_module(path) do
     path
     |> String.split("/")
+    |> strip_convention_dirs()
     |> Enum.map_join(".", fn segment ->
       segment
       |> String.split("_")
       |> Enum.map_join(&String.capitalize/1)
     end)
   end
+
+  # Phoenix convention: `live/` and `controllers/` are directory-only conventions
+  # that don't map to module namespace segments.
+  # e.g. "metric_flow_web/live/user_live/login" → "metric_flow_web/user_live/login"
+  # Only strip when the convention dir is the second segment (directly under the web root).
+  defp strip_convention_dirs([root, convention | rest])
+       when convention in ["live", "controllers"] do
+    [root | rest]
+  end
+
+  defp strip_convention_dirs(segments), do: segments
 end

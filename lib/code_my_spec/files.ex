@@ -69,7 +69,7 @@ defmodule CodeMySpec.Files do
 
     Repo.insert_all(File, entries,
       on_conflict:
-        {:replace, [:role, :mtime, :size, :component_id, :story_id, :updated_at]},
+        {:replace, [:role, :mtime, :size, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
       conflict_target: [:project_id, :path],
       returning: true
     )
