@@ -10,15 +10,13 @@ defmodule CodeMySpecWeb.SitemapController do
     documentation: "/documentation/"
   }
 
-  @static_routes [
-    %{loc: "/", changefreq: "weekly", priority: "1.0"},
-    %{loc: "/blog", changefreq: "daily", priority: "0.8"},
-    %{loc: "/methodology", changefreq: "monthly", priority: "0.7"},
-    %{loc: "/case-studies/metric-flow", changefreq: "monthly", priority: "0.7"}
-  ]
+  @static_locs ["/", "/blog", "/methodology", "/case-studies/metric-flow", "/author/john-davenport"]
+  @deploy_date Date.utc_today() |> Date.to_iso8601()
 
   def index(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
+
+    static_entries = Enum.map(@static_locs, &%{loc: &1, lastmod: @deploy_date})
 
     content_entries =
       @content_types
@@ -27,14 +25,12 @@ defmodule CodeMySpecWeb.SitemapController do
         |> Enum.map(fn content ->
           %{
             loc: prefix <> content.slug,
-            lastmod: format_date(content.updated_at),
-            changefreq: changefreq_for(type),
-            priority: priority_for(type)
+            lastmod: format_date(content.publish_at) || format_date(content.updated_at)
           }
         end)
       end)
 
-    entries = @static_routes ++ content_entries
+    entries = static_entries ++ content_entries
 
     conn
     |> put_resp_content_type("application/xml")
@@ -52,8 +48,6 @@ defmodule CodeMySpecWeb.SitemapController do
         """
           <url>
             <loc>#{base_url}#{entry.loc}</loc>#{lastmod}
-            <changefreq>#{entry.changefreq}</changefreq>
-            <priority>#{entry.priority}</priority>
           </url>\
         """
       end)
@@ -68,11 +62,4 @@ defmodule CodeMySpecWeb.SitemapController do
 
   defp format_date(%DateTime{} = dt), do: DateTime.to_date(dt) |> Date.to_iso8601()
   defp format_date(_), do: nil
-
-  defp changefreq_for(:blog), do: "weekly"
-  defp changefreq_for(_), do: "monthly"
-
-  defp priority_for(:blog), do: "0.7"
-  defp priority_for(:landing), do: "0.8"
-  defp priority_for(_), do: "0.5"
 end

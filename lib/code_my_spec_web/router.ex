@@ -36,6 +36,7 @@ defmodule CodeMySpecWeb.Router do
 
     get "/", PageController, :home
     get "/sitemap.xml", SitemapController, :index
+    get "/llms.txt", LlmsTxtController, :index
 
     # Public content routes (CLIENT APP FUNCTIONALITY)
     live_session :public_content,
@@ -47,6 +48,7 @@ defmodule CodeMySpecWeb.Router do
       live "/documentation/:slug", ContentLive.Public, :documentation
       live "/methodology", ContentLive.Pages.Methodology, :methodology
       live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
+      live "/author/john-davenport", AuthorLive, :author
     end
   end
 

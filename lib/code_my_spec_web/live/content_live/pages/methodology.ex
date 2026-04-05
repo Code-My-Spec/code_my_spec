@@ -50,10 +50,77 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
 
   @impl true
   def mount(_params, _session, socket) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+
+    json_ld =
+      Jason.encode!([
+        %{
+          "@context" => "https://schema.org",
+          "@type" => "TechArticle",
+          "headline" => @copy.metadata.meta_title,
+          "description" => @copy.metadata.meta_description,
+          "url" => "#{base_url}/methodology",
+          "image" => %{
+            "@type" => "ImageObject",
+            "url" => "#{base_url}/images/og-methodology.png"
+          },
+          "author" => %{
+            "@type" => "Person",
+            "@id" => "#{base_url}/author/john-davenport",
+            "name" => "John Davenport",
+            "url" => "#{base_url}/author/john-davenport"
+          },
+          "publisher" => %{
+            "@type" => "Organization",
+            "@id" => "#{base_url}/#organization",
+            "name" => "CodeMySpec",
+            "logo" => %{
+              "@type" => "ImageObject",
+              "url" => "#{base_url}/images/logo.svg"
+            }
+          },
+          "mainEntityOfPage" => %{
+            "@type" => "WebPage",
+            "@id" => "#{base_url}/methodology"
+          },
+          "datePublished" => "2026-03-01T00:00:00Z",
+          "dateModified" => "2026-04-04T00:00:00Z",
+          "proficiencyLevel" => "Expert",
+          "articleSection" => "Methodology"
+        },
+        %{
+          "@context" => "https://schema.org",
+          "@type" => "BreadcrumbList",
+          "itemListElement" => [
+            %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+            %{"@type" => "ListItem", "position" => 2, "name" => "Methodology"}
+          ]
+        },
+        %{
+          "@context" => "https://schema.org",
+          "@type" => "FAQPage",
+          "mainEntity" =>
+            Enum.map(@copy.faq, fn item ->
+              %{
+                "@type" => "Question",
+                "name" => item.question,
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" => item.answer
+                }
+              }
+            end)
+        }
+      ])
+
     {:ok,
      socket
      |> assign(:copy, @copy)
-     |> assign(@copy.metadata)}
+     |> assign(@copy.metadata)
+     |> assign(:canonical_url, "#{base_url}/methodology")
+     |> assign(:og_image, "#{base_url}/images/og-methodology.png")
+     |> assign(:og_type, "article")
+     |> assign(:json_ld, json_ld)}
   end
 
   # Hero Section
@@ -68,18 +135,16 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
           <p class="text-2xl md:text-3xl font-bold mb-6 text-base-content">
             {@copy.hero.tagline}
           </p>
-          <p class="text-xl mb-8 text-base-content/70 max-w-2xl mx-auto">
+          <p class="text-xl mb-6 text-base-content/70 max-w-2xl mx-auto">
             {@copy.hero.description}
           </p>
+          <p class="text-sm text-base-content/50 mb-8">
+            By <a href="/author/john-davenport" class="hover:text-primary transition-colors">John Davenport</a>
+          </p>
 
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="/content/managing_user_stories" class="btn btn-primary btn-lg gap-2">
-              <.icon name="hero-book-open" class="w-5 h-5" /> Start with Manual Process
-            </a>
-            <a href="/users/register" class="btn btn-secondary btn-lg gap-2">
-              <.icon name="hero-rocket-launch" class="w-5 h-5" /> See the Automation
-            </a>
-          </div>
+          <a href="/users/register" class="btn btn-primary btn-lg gap-2">
+            <.icon name="hero-rocket-launch" class="w-5 h-5" /> Try CodeMySpec
+          </a>
         </div>
       </div>
     </div>
@@ -92,15 +157,22 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
     <div class="mb-20" id="methodology-diagram">
       <div class="flex flex-col items-center gap-6">
         <%= for phase <- @copy.phases do %>
-          <div class="card bg-base-100 shadow-xl border border-base-300 w-full max-w-md hover:shadow-2xl transition-all">
-            <div class="card-body items-center text-center">
-              <div class="badge badge-primary badge-lg">Phase {phase.number}</div>
-              <h3 class="card-title text-2xl">{phase.icon} {phase.title}</h3>
-              <p class="text-base-content/70">{phase.tagline}</p>
+          <a
+            href={"#phase-#{phase.number}"}
+            class="card bg-base-100 shadow-xl border border-base-300 w-full max-w-md hover:shadow-2xl transition-all hover:-translate-y-1"
+          >
+            <div class="card-body items-center text-center py-4">
+              <div class="flex items-center gap-3">
+                <div class="badge badge-primary">Phase {phase.number}</div>
+                <h3 class="font-bold text-lg">
+                  <.icon name={phase.icon} class="w-5 h-5 inline" /> {phase.title}
+                </h3>
+              </div>
+              <p class="text-sm text-base-content/70">{phase.tagline}</p>
             </div>
-          </div>
+          </a>
           <%= if phase.number < length(@copy.phases) do %>
-            <div class="text-3xl text-primary">↓</div>
+            <div class="text-2xl text-primary">↓</div>
           <% end %>
         <% end %>
       </div>
@@ -154,7 +226,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
           <div class="space-y-4 mb-6">
             <%= for item <- @copy.solution.approach do %>
               <div class="flex gap-3 items-start">
-                <.icon name="hero-check-circle-solid" class="w-6 h-6 text-success flex-shrink-0 mt-1" />
+                <.icon
+                  name="hero-check-circle-solid"
+                  class="w-6 h-6 text-success flex-shrink-0 mt-1"
+                />
                 <p class="text-lg">{item}</p>
               </div>
             <% end %>
@@ -180,71 +255,39 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
 
       <div class="space-y-8">
         <%= for phase <- @copy.phases do %>
-          <div class="card bg-base-100 shadow-xl border border-base-300" id={"phase-#{phase.number}"}>
+          <div
+            class="card bg-base-100 shadow-xl border border-base-300"
+            id={"phase-#{phase.number}"}
+          >
             <div class="card-body">
-              <div class="flex items-center gap-3 mb-4">
+              <div class="flex items-center gap-3 mb-2">
                 <div class="badge badge-primary badge-lg">Phase {phase.number}</div>
-                <h3 class="card-title text-2xl">{phase.icon} {phase.title}</h3>
+                <h3 class="card-title text-2xl">
+                  <.icon name={phase.icon} class="w-6 h-6" /> {phase.title}
+                </h3>
               </div>
               <p class="text-lg text-base-content/70 mb-4">{phase.tagline}</p>
 
-              <div class="divider"></div>
+              <p class="text-base-content/80 mb-4">{phase.description}</p>
 
-              <div class="mb-4">
-                <h4 class="font-bold text-lg mb-2">What You Create</h4>
-                <div class="text-base-content/70">{raw(phase.creates)}</div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <%= for highlight <- phase.highlights do %>
+                  <div class="flex gap-2 items-start">
+                    <.icon
+                      name="hero-check-circle-solid"
+                      class="w-5 h-5 text-success flex-shrink-0 mt-0.5"
+                    />
+                    <span class="text-sm text-base-content/70">{highlight}</span>
+                  </div>
+                <% end %>
               </div>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div class="card bg-base-200 border border-base-300">
-                  <div class="card-body">
-                    <h4 class="card-title text-base">
-                      <.icon name="hero-hand-raised" class="w-5 h-5" /> Manual
-                    </h4>
-                    <p class="text-sm mb-3">{phase.manual.description}</p>
-                    <ul class="list-disc list-inside text-sm space-y-1 text-base-content/70">
-                      <%= for step <- phase.manual.steps do %>
-                        <li>{step}</li>
-                      <% end %>
-                    </ul>
-                    <div class="mt-3">
-                      <.render_guide_link guide={phase.manual.guide} />
-                    </div>
-                  </div>
+              <div class="flex items-center justify-between">
+                <div class="badge badge-outline gap-2">
+                  <.icon name="hero-document-text" class="w-3 h-3" />
+                  Creates: {phase.creates}
                 </div>
-
-                <div class="card bg-primary/5 border border-primary/20">
-                  <div class="card-body">
-                    <h4 class="card-title text-base">
-                      <.icon name="hero-bolt" class="w-5 h-5 text-primary" /> Automated
-                    </h4>
-                    <p class="text-sm mb-3">{phase.automated.description}</p>
-                    <%= if Map.has_key?(phase.automated, :steps) do %>
-                      <ul class="list-disc list-inside text-sm space-y-1 text-base-content/70">
-                        <%= for step <- phase.automated.steps do %>
-                          <li>{step}</li>
-                        <% end %>
-                      </ul>
-                    <% end %>
-                    <div class="mt-3">
-                      <.render_guide_link guide={phase.automated.guide} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="alert alert-info">
-                <.icon name="hero-code-bracket" class="w-5 h-5" />
-                <div>
-                  <div class="font-bold">Example from CodeMySpec</div>
-                  <div class="text-sm">
-                    <strong>{phase.example.title}:</strong>
-                    {phase.example.description}
-                    <code class="text-xs bg-base-300 px-2 py-1 rounded ml-2">
-                      {phase.example.file}
-                    </code>
-                  </div>
-                </div>
+                <.render_guide_link guide={phase.guide} />
               </div>
             </div>
           </div>
@@ -269,7 +312,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
           <ul class="space-y-3 mb-6">
             <%= for item <- @copy.proof.evidence do %>
               <li class="flex gap-3 items-start">
-                <.icon name="hero-check-circle-solid" class="w-6 h-6 text-success flex-shrink-0 mt-1" />
+                <.icon
+                  name="hero-check-circle-solid"
+                  class="w-6 h-6 text-success flex-shrink-0 mt-1"
+                />
                 <span class="text-lg">{item}</span>
               </li>
             <% end %>
@@ -291,45 +337,29 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
     <div class="mb-20">
       <div class="text-center mb-12">
         <h2 class="text-4xl font-bold">{@copy.getting_started.title}</h2>
+        <p class="text-xl text-base-content/70 max-w-2xl mx-auto mt-4">
+          {@copy.getting_started.description}
+        </p>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <%= for path <- @copy.getting_started.paths do %>
-          <div class="card bg-base-100 shadow-xl border border-base-300 hover:shadow-2xl transition-all">
-            <div class="card-body">
-              <h3 class="card-title text-2xl">{path.name}</h3>
-              <p class="text-base-content/70">{path.description}</p>
-              <div class="badge badge-outline">{path.time}</div>
+      <div class="card bg-base-100 shadow-xl border border-base-300 max-w-3xl mx-auto">
+        <div class="card-body">
+          <ol class="space-y-4">
+            <%= for {step, idx} <- Enum.with_index(@copy.getting_started.steps, 1) do %>
+              <li class="flex gap-4 items-start">
+                <div class="badge badge-primary badge-lg flex-shrink-0">{idx}</div>
+                <span class="text-lg pt-0.5">{step}</span>
+              </li>
+            <% end %>
+          </ol>
 
-              <div class="divider"></div>
-
-              <div class="mb-4">
-                <h4 class="font-bold mb-2">Best for:</h4>
-                <ul class="list-disc list-inside space-y-1 text-sm text-base-content/70">
-                  <%= for item <- path.best_for do %>
-                    <li>{item}</li>
-                  <% end %>
-                </ul>
-              </div>
-
-              <div class="mb-4">
-                <h4 class="font-bold mb-2">Steps:</h4>
-                <ol class="list-decimal list-inside space-y-1 text-sm text-base-content/70">
-                  <%= for step <- path.steps do %>
-                    <li>{step}</li>
-                  <% end %>
-                </ol>
-              </div>
-
-              <div class="card-actions justify-end mt-4">
-                <a href={path.cta.url} class="btn btn-primary gap-2">
-                  <.icon name="hero-arrow-right" class="w-5 h-5" />
-                  {path.cta.text}
-                </a>
-              </div>
-            </div>
+          <div class="card-actions justify-center mt-8">
+            <a href={@copy.getting_started.cta.url} class="btn btn-primary btn-lg gap-2">
+              <.icon name="hero-rocket-launch" class="w-5 h-5" />
+              {@copy.getting_started.cta.text}
+            </a>
           </div>
-        <% end %>
+        </div>
       </div>
     </div>
     """
@@ -368,32 +398,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
         <h2 class="text-4xl font-bold">Related Content</h2>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-        <div class="card bg-base-100 shadow-xl border border-base-300">
-          <div class="card-body">
-            <h3 class="card-title">
-              <.icon name="hero-map" class="w-6 h-6 text-primary" /> Main Quest
-            </h3>
-            <ul class="menu menu-compact">
-              <%= for item <- @copy.related_content.main_quest do %>
-                <.render_content_link item={item} />
-              <% end %>
-            </ul>
-          </div>
-        </div>
-
-        <div class="card bg-base-100 shadow-xl border border-base-300">
-          <div class="card-body">
-            <h3 class="card-title">
-              <.icon name="hero-sparkles" class="w-6 h-6 text-secondary" /> Side Quest
-            </h3>
-            <ul class="menu menu-compact">
-              <%= for item <- @copy.related_content.side_quest do %>
-                <.render_content_link item={item} />
-              <% end %>
-            </ul>
-          </div>
-        </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
+        <%= for item <- @copy.related_content do %>
+          <.render_content_link item={item} />
+        <% end %>
       </div>
     </div>
     """
@@ -404,7 +412,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
 
   defp render_guide_link(%{guide: %{status: :published}} = assigns) do
     ~H"""
-    <a href={@guide.url} class="btn btn-sm btn-link gap-2">
+    <a href={@guide.url} class="btn btn-sm btn-ghost gap-2">
       {@guide.title}
       <.icon name="hero-arrow-right" class="w-4 h-4" />
     </a>
@@ -414,9 +422,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
   defp render_guide_link(%{guide: %{status: status}} = assigns)
        when status in [:draft, :planned] do
     ~H"""
-    <div class="badge badge-outline gap-2">
+    <div class="badge badge-outline badge-sm gap-2">
       <.icon name="hero-clock" class="w-3 h-3" />
-      {@guide.title} (Coming Soon)
+      Coming Soon
     </div>
     """
   end
@@ -425,24 +433,31 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
 
   defp render_content_link(%{item: %{status: :published}} = assigns) do
     ~H"""
-    <li>
-      <a href={@item.url} class="flex items-center gap-2">
-        <.icon name="hero-document-text" class="w-4 h-4" />
-        {@item.title}
-      </a>
-    </li>
+    <a
+      href={@item.url}
+      class="card bg-base-100 border border-base-300 hover:shadow-lg transition-shadow"
+    >
+      <div class="card-body py-4 px-5">
+        <div class="flex items-center gap-2">
+          <.icon name="hero-document-text" class="w-4 h-4 text-primary flex-shrink-0" />
+          <span class="font-medium text-sm">{@item.title}</span>
+        </div>
+      </div>
+    </a>
     """
   end
 
   defp render_content_link(%{item: %{status: status}} = assigns)
        when status in [:draft, :planned] do
     ~H"""
-    <li class="opacity-60">
-      <span class="flex items-center gap-2">
-        <.icon name="hero-clock" class="w-4 h-4" />
-        {@item.title} (Coming Soon)
-      </span>
-    </li>
+    <div class="card bg-base-200 border border-base-300 opacity-60">
+      <div class="card-body py-4 px-5">
+        <div class="flex items-center gap-2">
+          <.icon name="hero-clock" class="w-4 h-4 flex-shrink-0" />
+          <span class="text-sm">{@item.title} (Coming Soon)</span>
+        </div>
+      </div>
+    </div>
     """
   end
 end

@@ -1,6 +1,6 @@
 %{
   meta: %{
-    page_title: "CodeMySpec — Keep Your Architecture, Let AI Do the Typing",
+    page_title: "CodeMySpec — AI-Assisted Phoenix Development That Actually Ships",
     meta_description:
       "Build production Phoenix apps with AI through structured workflows, clear component boundaries, and human oversight. Stop drowning in LLM-generated slop.",
     og_title: "CodeMySpec — AI-Assisted Phoenix Development That Actually Ships",

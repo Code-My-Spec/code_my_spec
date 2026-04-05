@@ -18,7 +18,7 @@
     <div class="grid md:grid-cols-3 gap-8 mb-16">
       <div class="card bg-base-200">
         <div class="card-body">
-          <h2 class="card-title">LLMs invent architecture</h2>
+          <p class="font-bold text-lg">LLMs invent architecture</p>
           <p>
             Give an LLM a vague brief and it happily makes up its own layers inside your app. It compiles. It passes tests. And it quietly ignores your Phoenix contexts.
           </p>
@@ -26,7 +26,7 @@
       </div>
       <div class="card bg-base-200">
         <div class="card-body">
-          <h2 class="card-title">The manual process works</h2>
+          <p class="font-bold text-lg">The manual process works</p>
           <p>
             With Markdown, Git, and a good model you can keep things under control: one design doc per file, strict context boundaries, tests first. It's just a lot to juggle by hand.
           </p>
@@ -34,7 +34,7 @@
       </div>
       <div class="card bg-base-200">
         <div class="card-body">
-          <h2 class="card-title">CodeMySpec automates the boring parts</h2>
+          <p class="font-bold text-lg">CodeMySpec automates the boring parts</p>
           <p>
             CodeMySpec turns that manual workflow into a workspace. Stories, contexts, designs, tests, and sessions all live in one place, with AI running inside the guardrails.
           </p>
@@ -42,22 +42,83 @@
       </div>
     </div>
 
-    <div class="text-center mb-16">
-      <h2 class="text-3xl font-heading font-bold mb-8">How It Works</h2>
+    <div class="mb-16">
+      <h2 class="text-3xl font-heading font-bold mb-8 text-center">How It Works</h2>
       <div class="grid md:grid-cols-3 gap-8">
-        <div>
-          <h3 class="text-xl font-semibold mb-2">Step 1: Stories</h3>
-          <p>Capture what the app needs to do in plain language.</p>
+        <div class="card bg-base-100 border border-base-300">
+          <div class="card-body">
+            <div class="badge badge-primary mb-2">Step 1</div>
+            <h3 class="text-xl font-semibold mb-2">Stories & Requirements</h3>
+            <p>
+              The Product Manager MCP interviews you about what you're building and generates user stories with testable acceptance criteria. Each criterion becomes a contract: if the acceptance criteria pass, the feature is done.
+            </p>
+          </div>
         </div>
-        <div>
-          <h3 class="text-xl font-semibold mb-2">Step 2: Contexts & design docs</h3>
-          <p>Map stories to Phoenix contexts. Write one small design doc per file.</p>
+        <div class="card bg-base-100 border border-base-300">
+          <div class="card-body">
+            <div class="badge badge-primary mb-2">Step 2</div>
+            <h3 class="text-xl font-semibold mb-2">Architecture & Design</h3>
+            <p>
+              The Architect MCP maps stories to Phoenix contexts with validated dependencies. Each context gets a design document that defines its schemas, repositories, and services. The dependency graph catches circular references before a single line of code is written.
+            </p>
+          </div>
         </div>
-        <div>
-          <h3 class="text-xl font-semibold mb-2">Step 3: Tests & code</h3>
-          <p>Let AI generate tests and implementations that match the design.</p>
+        <div class="card bg-base-100 border border-base-300">
+          <div class="card-body">
+            <div class="badge badge-primary mb-2">Step 3</div>
+            <h3 class="text-xl font-semibold mb-2">BDD Specs, Tests & Code</h3>
+            <p>
+              AI generates BDD scenarios from acceptance criteria, writes tests from specs, and implements code that passes them. The QA agent then tests each story against the running application with browser automation, filing structured issues for anything that doesn't match.
+            </p>
+          </div>
         </div>
       </div>
+    </div>
+
+    <div class="mb-16">
+      <div class="card bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
+        <div class="card-body p-8 lg:p-10">
+          <h2 class="text-2xl font-heading font-bold mb-4 text-center">Proven with MetricFlow</h2>
+          <p class="text-center text-base-content/70 mb-6 max-w-2xl mx-auto">
+            We built a full-stack Phoenix analytics platform using this method.
+            Zero human-written code. Here's what happened.
+          </p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="text-center">
+              <div class="text-2xl font-bold text-primary">40</div>
+              <div class="text-sm text-base-content/60">Commits</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-primary">13</div>
+              <div class="text-sm text-base-content/60">Working days</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-primary">0</div>
+              <div class="text-sm text-base-content/60">Human-written lines</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-primary">5</div>
+              <div class="text-sm text-base-content/60">Platform integrations</div>
+            </div>
+          </div>
+          <div class="text-center">
+            <a href="/case-studies/metric-flow" class="btn btn-ghost gap-2">
+              Read the honest case study &rarr;
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mb-16">
+      <h2 class="text-3xl font-heading font-bold mb-8 text-center">Built by a Phoenix Developer</h2>
+      <p class="text-center text-base-content/70 max-w-2xl mx-auto mb-4">
+        CodeMySpec is built by <a href="/author/john-davenport" class="text-primary hover:underline">John Davenport</a> — 15 years in enterprise systems, 2 years deep in LLM-assisted development.
+        Every feature went through the same six-phase method. The methodology isn't theoretical. It's how this product was built.
+      </p>
+      <p class="text-center text-base-content/50 text-sm">
+        Read the <a href="/pages/founder-story" class="hover:text-primary">founder story</a> or check the <a href="/blog" class="hover:text-primary">blog</a> for technical deep dives.
+      </p>
     </div>
 
     <div class="text-center">
@@ -65,9 +126,9 @@
         Want LLMs in your workflow without letting them design your system?
       </h2>
       <div class="flex gap-4 justify-center">
-        <a href={~p"/app"} class="btn btn-primary">Open the workspace</a>
+        <a href={~p"/users/register"} class="btn btn-primary">Get Started</a>
         <a href={~p"/methodology"} class="btn btn-ghost">
-          Or read the long-form methodology
+          Read the methodology
         </a>
       </div>
     </div>

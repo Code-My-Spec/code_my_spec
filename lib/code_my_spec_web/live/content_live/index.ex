@@ -92,14 +92,49 @@ defmodule CodeMySpecWeb.ContentLive.Index do
         {:desc, DateTime}
       )
 
+    base_url = CodeMySpecWeb.Endpoint.url()
+
+    item_list = %{
+      "@context" => "https://schema.org",
+      "@type" => "ItemList",
+      "name" => "CodeMySpec Blog",
+      "description" => "Insights on structured AI development and Phoenix applications",
+      "url" => "#{base_url}/blog",
+      "itemListElement" =>
+        sorted_posts
+        |> Enum.with_index(1)
+        |> Enum.map(fn {post, idx} ->
+          %{
+            "@type" => "ListItem",
+            "position" => idx,
+            "url" => "#{base_url}/blog/#{post.slug}",
+            "name" => post.title || post.slug
+          }
+        end)
+    }
+
+    breadcrumb = %{
+      "@context" => "https://schema.org",
+      "@type" => "BreadcrumbList",
+      "itemListElement" => [
+        %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+        %{"@type" => "ListItem", "position" => 2, "name" => "Blog"}
+      ]
+    }
+
     {:ok,
      socket
      |> assign(:posts, sorted_posts)
-     |> assign(:page_title, "CodeMySpec Blog")
+     |> assign(:page_title, "Phoenix AI Development Blog — CodeMySpec")
      |> assign(
        :meta_description,
-       "Insights on structured AI development and Phoenix applications"
-     )}
+       "Insights on structured AI development, avoiding LLM-generated technical debt, and building production-ready Phoenix applications."
+     )
+     |> assign(:og_title, "Phoenix AI Development Blog — CodeMySpec")
+     |> assign(:og_description, "Insights on structured AI development and building production-ready Phoenix applications.")
+     |> assign(:og_image, "#{base_url}/images/og-blog.png")
+     |> assign(:canonical_url, "#{base_url}/blog")
+     |> assign(:json_ld, Jason.encode!([item_list, breadcrumb]))}
   end
 
   defp format_date(nil), do: "Draft"

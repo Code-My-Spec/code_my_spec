@@ -8,7 +8,8 @@ defmodule CodeMySpecWeb.Endpoint do
     store: :cookie,
     key: "_code_my_spec_key",
     signing_salt: "raJaHDhc",
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: true
   ]
 
   socket("/live", Phoenix.LiveView.Socket,
@@ -58,6 +59,7 @@ defmodule CodeMySpecWeb.Endpoint do
 
   plug(Plug.MethodOverride)
   plug(Plug.Head)
+  plug(CodeMySpecWeb.Plugs.TrailingSlashRedirect)
   plug(Plug.Session, @session_options)
   plug(CodeMySpecWeb.Router)
 end

@@ -191,7 +191,7 @@ defmodule CodeMySpecWeb.Layouts do
         <nav class="navbar max-w-7xl mx-auto">
           <div class="flex-1">
             <a href={~p"/"} class="btn btn-ghost text-xl">
-              <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-8 w-8" /> CodeMySpec
+              <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-8 w-8" width="32" height="32" /> CodeMySpec
             </a>
           </div>
           <div class="flex-none">
@@ -219,9 +219,45 @@ defmodule CodeMySpecWeb.Layouts do
       </main>
 
       <footer class="border-t border-base-300">
-        <div class="max-w-7xl mx-auto px-6 py-6 text-sm text-base-content/70">
-          <div>© {Date.utc_today().year} CodeMySpec</div>
-          <div>Built for Phoenix devs who actually care about architecture.</div>
+        <div class="max-w-7xl mx-auto px-6 py-10">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+            <div>
+              <h4 class="font-bold text-sm mb-3 text-base-content">Product</h4>
+              <ul class="space-y-2 text-sm text-base-content/70">
+                <li><a href="/methodology" class="hover:text-primary transition-colors">Methodology</a></li>
+                <li><a href="/case-studies/metric-flow" class="hover:text-primary transition-colors">Case Study</a></li>
+                <li><a href="/users/register" class="hover:text-primary transition-colors">Get Started</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 class="font-bold text-sm mb-3 text-base-content">Content</h4>
+              <ul class="space-y-2 text-sm text-base-content/70">
+                <li><a href="/blog" class="hover:text-primary transition-colors">Blog</a></li>
+                <li><a href="/pages/founder-story" class="hover:text-primary transition-colors">Founder Story</a></li>
+                <li><a href="/author/john-davenport" class="hover:text-primary transition-colors">About</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 class="font-bold text-sm mb-3 text-base-content">Legal</h4>
+              <ul class="space-y-2 text-sm text-base-content/70">
+                <li><a href="/pages/privacy-policy" class="hover:text-primary transition-colors">Privacy Policy</a></li>
+                <li><a href="/pages/terms-of-service" class="hover:text-primary transition-colors">Terms of Service</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 class="font-bold text-sm mb-3 text-base-content">Connect</h4>
+              <ul class="space-y-2 text-sm text-base-content/70">
+                <li><a href="https://github.com/code-my-spec" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">GitHub</a></li>
+                <li><a href="https://www.linkedin.com/in/john-davenport-software/" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">LinkedIn</a></li>
+                <li><a href="https://x.com/johns10d" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">X / Twitter</a></li>
+                <li><a href="https://www.youtube.com/@codemyspec" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">YouTube</a></li>
+              </ul>
+            </div>
+          </div>
+          <div class="border-t border-base-300 pt-6 flex flex-col sm:flex-row justify-between items-center gap-2 text-sm text-base-content/50">
+            <div>© {Date.utc_today().year} CodeMySpec</div>
+            <div>Built for Phoenix devs who actually care about architecture.</div>
+          </div>
         </div>
       </footer>
 

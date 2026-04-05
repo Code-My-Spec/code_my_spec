@@ -46,6 +46,10 @@ defmodule CodeMySpecWeb.ContentLive.Public do
         tags = []
         template = Map.get(content.metadata, "template", "default")
 
+        base_url = CodeMySpecWeb.Endpoint.url()
+        canonical = base_url <> build_canonical_url(content, is_protected)
+        is_article = content.content_type == :blog
+
         {:ok,
          socket
          |> assign(:current_scope, scope)
@@ -59,8 +63,10 @@ defmodule CodeMySpecWeb.ContentLive.Public do
          |> assign(:meta_description, content.meta_description)
          |> assign(:og_title, content.og_title)
          |> assign(:og_description, content.og_description)
-         |> assign(:og_image, content.og_image)
-         |> assign(:canonical_url, build_canonical_url(content, is_protected))
+         |> assign(:og_image, content.og_image || blog_og_image(content, base_url))
+         |> assign(:og_type, if(is_article, do: "article", else: "website"))
+         |> assign(:article_published_time, if(is_article, do: format_iso8601(content.publish_at)))
+         |> assign(:canonical_url, canonical)
          |> assign(:json_ld, build_json_ld(content, is_protected))}
 
       {:error, :not_found} ->
@@ -111,6 +117,21 @@ defmodule CodeMySpecWeb.ContentLive.Public do
       (is_nil(content.expires_at) || DateTime.compare(content.expires_at, now) == :gt)
   end
 
+  defp blog_og_image(%{content_type: :blog, slug: slug}, base_url) do
+    "#{base_url}/images/og-blog-#{slug}.png"
+  end
+
+  defp blog_og_image(_, _), do: nil
+
+  defp blog_hero_image(%{content_type: :blog, slug: slug}) do
+    path = "images/hero-#{slug}.png"
+    if File.exists?(Application.app_dir(:code_my_spec, "priv/static/#{path}")),
+      do: "/#{path}",
+      else: nil
+  end
+
+  defp blog_hero_image(_), do: nil
+
   @content_type_paths %{
     blog: "blog",
     page: "pages",
@@ -134,12 +155,25 @@ defmodule CodeMySpecWeb.ContentLive.Public do
   end
 
   defp default_template(assigns) do
+    assigns = assign(assigns, :hero_image, blog_hero_image(assigns.content))
+
     ~H"""
     <article class="max-w-4xl mx-auto px-4 py-8">
+      <img
+        :if={@hero_image}
+        src={@hero_image}
+        alt={@content.title || @content.slug}
+        class="w-full rounded-lg mb-8"
+        width="1024"
+        height="576"
+        loading="eager"
+      />
       <header class="mb-8">
         <h1 class="text-4xl font-bold mb-4">{@content.title || @content.slug}</h1>
-        <div :if={@content.content_type == :blog} class="opacity-60 mb-4">
-          {format_publish_date(@content.publish_at)}
+        <div :if={@content.content_type == :blog} class="flex items-center gap-3 opacity-60 mb-4">
+          <a href="/author/john-davenport" class="hover:text-primary transition-colors">By John Davenport</a>
+          <span>&middot;</span>
+          <span>{format_publish_date(@content.publish_at)}</span>
         </div>
         <div :if={!Enum.empty?(@tags)} class="flex gap-2 flex-wrap">
           <span :for={tag <- @tags} class="badge badge-primary">
@@ -182,8 +216,10 @@ defmodule CodeMySpecWeb.ContentLive.Public do
         <article class="lg:col-span-3 order-1 lg:order-2">
           <header class="mb-8">
             <h1 class="text-4xl font-bold mb-4">{@content.title || @content.slug}</h1>
-            <div class="opacity-60 mb-4">
-              {format_publish_date(@content.publish_at)}
+            <div class="flex items-center gap-3 opacity-60 mb-4">
+              <a href="/author/john-davenport" class="hover:text-primary transition-colors">By John Davenport</a>
+              <span>&middot;</span>
+              <span>{format_publish_date(@content.publish_at)}</span>
             </div>
           </header>
 
@@ -266,21 +302,41 @@ defmodule CodeMySpecWeb.ContentLive.Public do
   defp build_json_ld(content, is_protected) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = build_canonical_url(content, is_protected)
-    url = "#{base_url}#{canonical}"
+    url = base_url <> canonical
+    og_image = content.og_image || blog_og_image(content, base_url) || "#{base_url}/images/og-default.png"
 
-    schema =
+    article =
       case content.content_type do
         :blog ->
           %{
             "@context" => "https://schema.org",
-            "@type" => "Article",
+            "@type" => "BlogPosting",
             "headline" => content.title || content.slug,
             "url" => url,
+            "image" => %{
+              "@type" => "ImageObject",
+              "url" => og_image
+            },
             "datePublished" => format_iso8601(content.publish_at),
             "dateModified" => format_iso8601(content.updated_at),
+            "author" => %{
+              "@type" => "Person",
+              "@id" => "#{base_url}/author/john-davenport",
+              "name" => "John Davenport",
+              "url" => "#{base_url}/author/john-davenport"
+            },
             "publisher" => %{
               "@type" => "Organization",
-              "name" => "CodeMySpec"
+              "@id" => "#{base_url}/#organization",
+              "name" => "CodeMySpec",
+              "logo" => %{
+                "@type" => "ImageObject",
+                "url" => "#{base_url}/images/logo.svg"
+              }
+            },
+            "mainEntityOfPage" => %{
+              "@type" => "WebPage",
+              "@id" => url
             }
           }
 
@@ -293,12 +349,43 @@ defmodule CodeMySpecWeb.ContentLive.Public do
           }
       end
 
-    schema =
+    article =
       if content.meta_description,
-        do: Map.put(schema, "description", content.meta_description),
-        else: schema
+        do: Map.put(article, "description", content.meta_description),
+        else: article
 
-    Jason.encode!(schema)
+    breadcrumb = build_breadcrumb(content, base_url)
+
+    Jason.encode!([article, breadcrumb])
+  end
+
+  defp build_breadcrumb(content, base_url) do
+    type_label = content.content_type |> to_string() |> String.capitalize()
+    type_path = Map.fetch!(@content_type_paths, content.content_type)
+
+    %{
+      "@context" => "https://schema.org",
+      "@type" => "BreadcrumbList",
+      "itemListElement" => [
+        %{
+          "@type" => "ListItem",
+          "position" => 1,
+          "name" => "Home",
+          "item" => base_url
+        },
+        %{
+          "@type" => "ListItem",
+          "position" => 2,
+          "name" => type_label,
+          "item" => "#{base_url}/#{type_path}"
+        },
+        %{
+          "@type" => "ListItem",
+          "position" => 3,
+          "name" => content.title || content.slug
+        }
+      ]
+    }
   end
 
   defp format_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
