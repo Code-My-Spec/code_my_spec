@@ -142,13 +142,7 @@ defmodule CodeMySpec.MixProject do
         code_my_spec_cli: [
           steps: [:assemble, &Burrito.wrap/1],
           burrito: [
-            targets: [
-              macos_m1: [os: :darwin, cpu: :aarch64]
-              # macos: [os: :darwin, cpu: :x86_64],
-              # linux: [os: :linux, cpu: :x86_64],
-              # linux_aarch64: [os: :linux, cpu: :aarch64],
-              # windows: [os: :windows, cpu: :x86_64]
-            ],
+            targets: burrito_targets(),
             extra_steps: [
               fetch: [pre: [CodeMySpecCli.Release.PatchLauncherStep]],
               build: [post: [CodeMySpecCli.Release.PackageExtension]]
@@ -158,6 +152,18 @@ defmodule CodeMySpec.MixProject do
       ]
     else
       []
+    end
+  end
+
+  # When BURRITO_TARGET is set (CI), build only that target.
+  # Otherwise build all targets for local dev.
+  defp burrito_targets do
+    case System.get_env("BURRITO_TARGET") do
+      "macos_m1" -> [macos_m1: [os: :darwin, cpu: :aarch64]]
+      "macos" -> [macos: [os: :darwin, cpu: :x86_64]]
+      "linux" -> [linux: [os: :linux, cpu: :x86_64]]
+      "linux_aarch64" -> [linux_aarch64: [os: :linux, cpu: :aarch64]]
+      _ -> [macos_m1: [os: :darwin, cpu: :aarch64]]
     end
   end
 

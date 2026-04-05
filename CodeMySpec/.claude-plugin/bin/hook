@@ -2,6 +2,8 @@
 # Handle Claude Code hooks via HTTP
 # Reads JSON from stdin, routes to event-specific endpoint
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Read stdin
 STDIN_DATA=$(cat)
 
@@ -15,6 +17,12 @@ case "$EVENT" in
   Stop)          ENDPOINT="/api/hooks/stop" ;;
   *)             exit 0 ;;
 esac
+
+# Auto-update binary check on SessionStart (background, non-blocking)
+if [ "$EVENT" = "SessionStart" ]; then
+  "$SCRIPT_DIR/auto-update" &>/dev/null &
+  disown
+fi
 
 curl -s -X POST "http://localhost:4003${ENDPOINT}" \
   -H "Content-Type: application/json" \

@@ -1,0 +1,159 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  MIX_ENV: prod_cli
+  ELIXIR_VERSION: '1.19.5'
+  OTP_VERSION: '27'
+  EXTENSION_REPO: Code-My-Spec/code_my_spec_claude_code_extension
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS ARM64
+            runner: macos-latest
+            target: macos_m1
+            binary: cms-darwin-arm64
+          - name: macOS x64
+            runner: macos-13
+            target: macos
+            binary: cms-darwin-x64
+          - name: Linux x64
+            runner: ubuntu-latest
+            target: linux
+            binary: cms-linux-x64
+          - name: Linux ARM64
+            runner: ubuntu-latest
+            target: linux_aarch64
+            binary: cms-linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Install Zig (Linux cross-compile)
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ env.MIX_ENV }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-${{ env.MIX_ENV }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Build release
+        run: mix release code_my_spec_cli
+        env:
+          BURRITO_TARGET: ${{ matrix.target }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: release/binaries/${{ matrix.binary }}
+
+      - name: Upload extension artifact
+        if: matrix.target == 'macos_m1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: release/codemyspec-extension/
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          for dir in artifacts/cms-*; do
+            binary=$(basename "$dir")
+            cp "$dir/$binary" "release-assets/$binary"
+            chmod +x "release-assets/$binary"
+          done
+          ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### Plugin Marketplace (recommended)
+            ```bash
+            /plugin marketplace add Code-My-Spec/code_my_spec_claude_code_extension
+            /plugin install codemyspec@codemyspec
+            ```
+
+            ### Manual Install
+            ```bash
+            git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension.git
+            cd code_my_spec_claude_code_extension
+            bash install.sh
+            claude plugin install ./
+            ```
+
+  publish-extension:
+    name: Publish Extension Repo
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download extension artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: extension
+          path: extension
+
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Push to extension repo
+        env:
+          GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
+        run: |
+          cd extension
+          git init -b main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${EXTENSION_REPO}.git"
+          git add .
+          git commit -m "Release ${{ steps.version.outputs.tag }}"
+          git tag -f "${{ steps.version.outputs.tag }}"
+          git push -f origin main
+          git push -f origin "${{ steps.version.outputs.tag }}"
