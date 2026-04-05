@@ -13,6 +13,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Documents
   alias CodeMySpec.Files
   alias CodeMySpec.Paths
+  alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
   alias CodeMySpec.Users.Scope
 
   @ignored_dirs ~w(deps _build .git node_modules .elixir_ls .lexical)
@@ -39,17 +40,22 @@ defmodule CodeMySpec.Files.FileSync do
     scan_ms = System.monotonic_time(:millisecond) - start
 
     # Build path→mtime map from current DB state for change detection
+    force? = Keyword.get(opts, :force, false)
     existing_files = Files.list_files(scope)
     existing_map = Map.new(existing_files, &{&1.path, &1.mtime})
 
-    # Only process files that are new or have a newer mtime
+    # Only process files that are new or have a newer mtime (unless force)
     changed_entries =
-      Enum.filter(file_entries, fn entry ->
-        case Map.get(existing_map, entry.path) do
-          nil -> true
-          db_mtime -> DateTime.compare(entry.mtime, db_mtime) == :gt
-        end
-      end)
+      if force? do
+        file_entries
+      else
+        Enum.filter(file_entries, fn entry ->
+          case Map.get(existing_map, entry.path) do
+            nil -> true
+            db_mtime -> DateTime.compare(entry.mtime, db_mtime) == :gt
+          end
+        end)
+      end
 
     changed_paths = Enum.map(changed_entries, & &1.path)
 
@@ -128,6 +134,29 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
+  defp validate_entry(%{role: :review} = entry, base_dir, _component_by_id) do
+    abs_path = Path.join(base_dir, entry.path)
+
+    case Elixir.File.read(abs_path) do
+      {:ok, content} ->
+        validate_spec_content(entry, content, "design_review")
+
+      {:error, reason} ->
+        Map.merge(entry, %{valid: false, validation_errors: %{error: "Read failed: #{inspect(reason)}"}})
+    end
+  end
+
+  defp validate_entry(%{role: :test, component_id: component_id} = entry, base_dir, component_by_id)
+       when not is_nil(component_id) do
+    component = Map.get(component_by_id, component_id)
+
+    if component do
+      validate_test_alignment(entry, base_dir, component)
+    else
+      Map.merge(entry, %{valid: true, validation_errors: nil})
+    end
+  end
+
   defp validate_entry(%{role: role} = entry, _base_dir, _component_by_id)
        when role in [:implementation, :test, :rule, :config, :bdd_spec, :qa_brief, :qa_result, :json, :review, :architecture, :integration] do
     # These roles are valid if they exist (which they do, since FileSync found them)
@@ -136,6 +165,27 @@ defmodule CodeMySpec.Files.FileSync do
 
   defp validate_entry(entry, _base_dir, _component_by_id) do
     Map.merge(entry, %{valid: nil, validation_errors: nil})
+  end
+
+  defp validate_test_alignment(entry, base_dir, component) do
+    module_path = Macro.underscore(component.module_name) |> String.replace(".", "/")
+    spec_path = Path.join(base_dir, Paths.spec_file(module_path))
+    test_path = Path.join(base_dir, entry.path)
+
+    with {:ok, spec_content} <- Elixir.File.read(spec_path),
+         {:ok, test_content} <- Elixir.File.read(test_path) do
+      case SpecAlignment.check_test_alignment(spec_content, test_content) do
+        {:ok, :aligned} ->
+          Map.merge(entry, %{valid: true, validation_errors: nil})
+
+        {:ok, :misaligned, errors} ->
+          Map.merge(entry, %{valid: false, validation_errors: errors})
+      end
+    else
+      {:error, _} ->
+        # No spec file or can't read test — valid by default
+        Map.merge(entry, %{valid: true, validation_errors: nil})
+    end
   end
 
   defp validate_spec_content(entry, content, document_type) do
@@ -183,6 +233,10 @@ defmodule CodeMySpec.Files.FileSync do
       match?(<<_::binary-size(1), _::binary>>, path) and String.ends_with?(path, ".spec.md") and
           String.starts_with?(path, Paths.spec_dir() <> "/") ->
         {path, :spec}
+
+      String.starts_with?(path, Paths.spec_dir() <> "/") and
+          String.ends_with?(path, "/design_review.md") ->
+        {path, :review}
 
       String.starts_with?(path, "lib/") and String.ends_with?(path, ".ex") ->
         {path, :implementation}
@@ -324,6 +378,17 @@ defmodule CodeMySpec.Files.FileSync do
     # .code_my_spec/qa/{story_id}/brief.md → story
     story_id = extract_story_id_from_qa_path(path)
     {nil, story_by_id[story_id]}
+  end
+
+  defp owner_for(path, :review, component_by_module, _story_by_id) do
+    # .code_my_spec/spec/metric_flow/integrations/design_review.md → MetricFlow.Integrations
+    module_name =
+      path
+      |> String.replace_prefix(Paths.spec_dir() <> "/", "")
+      |> Path.dirname()
+      |> path_segments_to_module()
+
+    {Map.get(component_by_module, module_name), nil}
   end
 
   defp owner_for(_path, _role, _component_by_module, _story_by_id), do: {nil, nil}

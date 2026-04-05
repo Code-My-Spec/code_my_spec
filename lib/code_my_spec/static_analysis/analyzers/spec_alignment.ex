@@ -89,7 +89,16 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       # Only analyze if implementation exists
       if File.exists?(impl_path) do
         functions = Map.get(sections, "functions", [])
-        analyze_module_alignment(functions, impl_path, test_path, spec_file_path, project_id)
+        function_problems = analyze_module_alignment(functions, impl_path, test_path, spec_file_path, project_id)
+
+        # Also check top-level Test Assertions (used by LiveView/component specs)
+        top_level_problems =
+          case Map.get(sections, "test assertions") do
+            nil -> []
+            assertions_text -> check_top_level_test_assertions(assertions_text, test_path, project_id)
+          end
+
+        function_problems ++ top_level_problems
       else
         # No problems for modules that don't exist yet (TDD mode)
         []
@@ -494,4 +503,124 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
     if min_size == 0, do: 0.0, else: intersection_size / min_size
   end
+
+  # -- Top-level Test Assertions (LiveView/component specs) --
+
+  @doc """
+  Check a test file against its spec's Test Assertions section.
+
+  Returns `{:ok, :aligned}` or `{:ok, :misaligned, errors}` where errors
+  is a map with `:missing` and `:extra` lists.
+
+  Used by FileSync to validate test files during sync.
+  """
+  @spec check_test_alignment(String.t(), String.t()) :: {:ok, :aligned} | {:ok, :misaligned, map()}
+  def check_test_alignment(spec_content, test_content) do
+    spec_assertions = extract_top_level_assertions(spec_content)
+
+    if spec_assertions == [] do
+      {:ok, :aligned}
+    else
+      case Code.string_to_quoted(test_content) do
+        {:ok, ast} ->
+          describe_names = extract_describe_names(ast)
+          missing = Enum.reject(spec_assertions, &assertion_has_matching_test?(&1, describe_names))
+          extra = Enum.reject(describe_names, &test_has_matching_assertion?(&1, spec_assertions))
+
+          if missing == [] and extra == [] do
+            {:ok, :aligned}
+          else
+            {:ok, :misaligned, %{missing: missing, extra: extra}}
+          end
+
+        {:error, _} ->
+          {:ok, :aligned}
+      end
+    end
+  end
+
+  defp check_top_level_test_assertions(assertions_text, test_path, project_id) do
+    spec_assertions = parse_assertion_list(assertions_text)
+
+    if spec_assertions == [] or not File.exists?(test_path) do
+      []
+    else
+      case ElixirAst.get_test_assertions(test_path) do
+        {:ok, test_assertions} ->
+          describe_names =
+            test_assertions
+            |> Enum.map(fn t -> List.first(t.describe_blocks) end)
+            |> Enum.reject(&is_nil/1)
+            |> Enum.uniq()
+
+          missing =
+            spec_assertions
+            |> Enum.reject(&assertion_has_matching_test?(&1, describe_names))
+            |> Enum.map(fn assertion ->
+              %Problem{
+                severity: :warning,
+                source_type: :static_analysis,
+                source: "spec_alignment",
+                file_path: test_path,
+                line: 1,
+                message: "Missing test for spec assertion: '#{assertion}'",
+                category: "missing_test",
+                project_id: project_id
+              }
+            end)
+
+          extra =
+            describe_names
+            |> Enum.reject(&test_has_matching_assertion?(&1, spec_assertions))
+            |> Enum.map(fn describe ->
+              %Problem{
+                severity: :warning,
+                source_type: :static_analysis,
+                source: "spec_alignment",
+                file_path: test_path,
+                line: 1,
+                message: "Test describe '#{describe}' has no matching spec assertion",
+                category: "extra_test",
+                project_id: project_id
+              }
+            end)
+
+          missing ++ extra
+
+        {:error, _} ->
+          []
+      end
+    end
+  end
+
+  @doc false
+  def extract_top_level_assertions(spec_content) do
+    spec_content
+    |> String.split("\n")
+    |> Enum.drop_while(&(!String.match?(&1, ~r/^## Test Assertions/i)))
+    |> Enum.drop(1)
+    |> Enum.take_while(&(!String.match?(&1, ~r/^##/)))
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.starts_with?(&1, "- "))
+    |> Enum.map(&String.replace_prefix(&1, "- ", ""))
+  end
+
+  defp parse_assertion_list(text) when is_binary(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.starts_with?(&1, "- "))
+    |> Enum.map(&String.replace_prefix(&1, "- ", ""))
+  end
+
+  defp parse_assertion_list(_), do: []
+
+  defp extract_describe_names(ast) do
+    extract_describes(ast, []) |> Enum.reverse() |> Enum.uniq()
+  end
+
+  defp extract_describes({:defmodule, _, [_, [do: body]]}, acc), do: extract_describes(body, acc)
+  defp extract_describes({:__block__, _, exprs}, acc), do: Enum.reduce(exprs, acc, &extract_describes/2)
+  defp extract_describes({:describe, _, [name | _]}, acc) when is_binary(name), do: [name | acc]
+  defp extract_describes(_, acc), do: acc
 end

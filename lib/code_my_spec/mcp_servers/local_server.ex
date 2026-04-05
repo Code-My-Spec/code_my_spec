@@ -38,7 +38,9 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   # Tasks — start → evaluate lifecycle
   component(CodeMySpec.McpServers.Tasks.Tools.StartTask)
+  component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
+  component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
 
   # Issues — full lifecycle
   component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)

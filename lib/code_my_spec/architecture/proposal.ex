@@ -782,7 +782,9 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   defp generate_spec_template(attrs) do
-    """
+    deps = attrs[:dependencies] || []
+
+    base = """
     # #{attrs.module_name}
 
     #{attrs.description || "No description provided"}
@@ -790,14 +792,18 @@ defmodule CodeMySpec.Architecture.Proposal do
     ## Type
 
     #{attrs.type}
-
-    ## Dependencies
-
-    #{format_spec_dependencies(attrs[:dependencies] || [])}
-
-    ## Functions
-
     """
+
+    if deps != [] do
+      base <> """
+
+      ## Dependencies
+
+      #{format_spec_dependencies(deps)}
+      """
+    else
+      base
+    end
   end
 
   defp format_spec_dependencies([]), do: "- None"

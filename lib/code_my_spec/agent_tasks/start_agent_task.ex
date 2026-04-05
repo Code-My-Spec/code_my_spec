@@ -87,7 +87,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "qa_integration_plan",
     "qa_journey_wallaby",
     "qa_preflight",
-    "qa_setup"
+    "qa_setup",
+    "sync"
   ]
 
   # Tasks that take a topic name (passed as module_name arg) instead of a component lookup

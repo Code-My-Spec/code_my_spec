@@ -216,6 +216,143 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert spec_file.validation_errors != nil
     end
 
+    test "validates test files against spec test assertions" do
+      {scope, tmp_dir} = setup_project()
+
+      spec_content = """
+      # MyApp.UserLive.Index
+
+      A page listing users.
+
+      ## Type
+
+      liveview
+
+      ## Route
+
+      `/users`
+
+      ## User Interactions
+
+      - **phx-click=delete**: Deletes a user
+
+      ## Dependencies
+
+      - MyApp.Users
+
+      ## Design
+
+      Layout: Table of users.
+
+      ## Test Assertions
+
+      - renders user list
+      - deletes user on click
+      """
+
+      # Test covers both assertions — should be valid
+      aligned_test = """
+      defmodule MyApp.UserLive.IndexTest do
+        use ExUnit.Case
+
+        describe "renders user list" do
+          test "shows users" do
+            assert true
+          end
+        end
+
+        describe "deletes user on click" do
+          test "removes user" do
+            assert true
+          end
+        end
+      end
+      """
+
+      # Create component so test file gets component_id
+      {:ok, component} =
+        CodeMySpec.Components.create_component(scope, %{
+          name: "Index",
+          type: "liveview",
+          module_name: "MyApp.UserLive.Index"
+        })
+
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/user_live/index.spec.md", spec_content)
+      write_file(tmp_dir, "test/my_app/user_live/index_test.exs", aligned_test)
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      test_file = Files.get_by_path(scope, "test/my_app/user_live/index_test.exs")
+      assert test_file.component_id == component.id
+      assert test_file.valid == true
+    end
+
+    test "marks test file invalid when spec assertions are missing" do
+      {scope, tmp_dir} = setup_project()
+
+      spec_content = """
+      # MyApp.UserLive.Show
+
+      Shows a user.
+
+      ## Type
+
+      liveview
+
+      ## Route
+
+      `/users/:id`
+
+      ## User Interactions
+
+      - **phx-click=edit**: Opens edit form
+
+      ## Dependencies
+
+      - MyApp.Users
+
+      ## Design
+
+      Layout: Detail view.
+
+      ## Test Assertions
+
+      - renders user details
+      - opens edit form on click
+      - handles missing user
+      """
+
+      # Test only covers one of three assertions
+      partial_test = """
+      defmodule MyApp.UserLive.ShowTest do
+        use ExUnit.Case
+
+        describe "renders user details" do
+          test "shows user" do
+            assert true
+          end
+        end
+      end
+      """
+
+      {:ok, _component} =
+        CodeMySpec.Components.create_component(scope, %{
+          name: "Show",
+          type: "liveview",
+          module_name: "MyApp.UserLive.Show"
+        })
+
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/user_live/show.spec.md", spec_content)
+      write_file(tmp_dir, "test/my_app/user_live/show_test.exs", partial_test)
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      test_file = Files.get_by_path(scope, "test/my_app/user_live/show_test.exs")
+      assert test_file.valid == false
+      assert "opens edit form on click" in test_file.validation_errors["missing"]
+      assert "handles missing user" in test_file.validation_errors["missing"]
+    end
+
     test "ignores deps, _build, .git directories" do
       {scope, tmp_dir} = setup_project()
 

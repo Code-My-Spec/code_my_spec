@@ -336,6 +336,7 @@ defmodule CodeMySpec.Files.ComponentSync do
 
       patterns = [
         Paths.spec_dir() <> "/#{module_path}.spec.md",
+        Paths.spec_dir() <> "/#{module_path}/design_review.md",
         "lib/#{source_path}.ex",
         "test/#{source_path}_test.exs"
       ]

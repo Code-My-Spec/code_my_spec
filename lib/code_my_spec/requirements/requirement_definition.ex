@@ -24,10 +24,13 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   @type validation_type :: :automatic | :manual
   @type execution_type :: :main_agent | :sub_agent
 
+  @type check_type :: :file_exists | :file_valid | :path_exists | :field_present | :no_problems | :tests_passing | :spex_passing
+
   @type t :: %__MODULE__{
           name: String.t(),
           satisfied_by: module() | nil,
           artifact_type: artifact_type(),
+          check_type: check_type(),
           description: String.t(),
           threshold: float(),
           config: map(),
@@ -46,11 +49,22 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     :hierarchy
   ]
 
+  @check_types [
+    :file_exists,
+    :file_valid,
+    :path_exists,
+    :field_present,
+    :no_problems,
+    :tests_passing,
+    :spex_passing
+  ]
+
   @primary_key false
   embedded_schema do
     field :name, :string
     field :satisfied_by, SessionType
     field :artifact_type, Ecto.Enum, values: @artifact_types
+    field :check_type, Ecto.Enum, values: @check_types
     field :description, :string
     field :threshold, :float, default: 1.0
     field :config, :map, default: %{}
@@ -107,6 +121,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :name,
       :satisfied_by,
       :artifact_type,
+      :check_type,
       :description,
       :threshold,
       :config,

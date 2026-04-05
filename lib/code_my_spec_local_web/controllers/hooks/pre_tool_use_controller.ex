@@ -35,11 +35,23 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
     session_id = Map.get(params, "session_id")
 
     if session_id do
-      # Merge session_id into existing tool input — don't replace it
+      # Merge session_id and agent_id into existing tool input — don't replace
+      agent_id = Map.get(params, "agent_id")
       original_input = Map.get(params, "tool_input", %{})
-      merged = Map.put(original_input, "session_id", session_id)
 
-      Logger.debug("[PreToolUse] Enriching MCP tool with session_id")
+      merged =
+        original_input
+        |> Map.put("session_id", session_id)
+        |> then(fn input ->
+          # Only inject agent_id from hook if not already set in tool input
+          cond do
+            Map.has_key?(original_input, "agent_id") -> input
+            agent_id -> Map.put(input, "agent_id", agent_id)
+            true -> input
+          end
+        end)
+
+      Logger.debug("[PreToolUse] Enriching MCP tool with session_id#{if agent_id, do: " + agent_id=#{agent_id}", else: ""}")
 
       json(conn, %{
         "hookSpecificOutput" => %{

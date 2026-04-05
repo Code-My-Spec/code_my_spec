@@ -36,8 +36,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       doc: "Entity type: component, story, or project"
 
     field :entity_id, :string,
-      required: true,
       doc: "ID of the entity that owns this requirement"
+
+    field :module_name, :string,
+      doc: "Component module name (alternative to entity_id for component requirements)"
 
     field :session_id, :string,
       doc: "Injected by hook — do not set manually"
@@ -70,8 +72,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     resolve_from_graph(scope, name, type, id)
   end
 
+  defp resolve_requirement(scope, %{requirement_name: name, module_name: module_name})
+       when is_binary(name) and is_binary(module_name) do
+    case Components.get_component_by_module_name(scope, module_name) do
+      nil -> {:error, "Component not found: #{module_name}"}
+      component -> resolve_from_graph(scope, name, "component", component.id)
+    end
+  end
+
   defp resolve_requirement(_scope, _params) do
-    {:error, "Must provide requirement_name + entity_type + entity_id"}
+    {:error, "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
   end
 
   defp resolve_from_graph(scope, name, entity_type, entity_id) do
