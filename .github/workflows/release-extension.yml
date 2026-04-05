@@ -48,11 +48,18 @@ jobs:
           elixir-version: ${{ env.ELIXIR_VERSION }}
           otp-version: ${{ env.OTP_VERSION }}
 
-      - name: Install Zig (Linux cross-compile)
-        if: runner.os == 'Linux'
+      - name: Install Zig
         uses: mlugg/setup-zig@v1
         with:
           version: 0.13.0
+
+      - name: Install xz (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xz-utils
+
+      - name: Install xz (macOS)
+        if: runner.os == 'macOS'
+        run: brew install xz || true
 
       - name: Cache deps
         uses: actions/cache@v4
