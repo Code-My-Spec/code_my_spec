@@ -111,6 +111,14 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         "We need a reliable service for sending transactional emails (account confirmation, password reset, notifications).",
       decision:
         "Use Resend for transactional email delivery. It provides a clean API, good deliverability, and an Elixir-friendly HTTP interface. Pair with Swoosh (`swoosh`) as the Elixir mailer abstraction for testability and local development with Swoosh's built-in mailbox preview."
+    },
+    %{
+      topic: "pow-assent-integrations",
+      title: "Use PowAssent and CodeMySpec generators for integrations, multi-tenancy, and feedback",
+      context:
+        "We need OAuth/third-party integrations, multi-tenant account isolation, and an embeddable feedback widget — all scaffolded consistently and wired into the standard stack.",
+      decision:
+        "Use PowAssent (`pow_assent`) for OAuth provider integrations and the `code_my_spec_generators` package to scaffold the integration layer (`cms_gen.integrations`, `cms_gen.integration_provider`), multi-tenant accounts (`cms_gen.accounts`), and the feedback widget (`cms_gen.feedback_widget`). The generators produce code that lives in the project, keeping everything customizable while following CodeMySpec conventions."
     }
   ]
 

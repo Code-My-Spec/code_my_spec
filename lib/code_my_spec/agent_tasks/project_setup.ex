@@ -20,6 +20,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Setup.TestBoundaries,
     Setup.TestSupportNamespace,
     Setup.ProjectStructure,
+    Setup.IgnoredPaths,
     Setup.AgentsMd,
     Setup.Rules,
     Setup.CredoChecks,

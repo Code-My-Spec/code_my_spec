@@ -10,6 +10,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ComponentCode,
     AgentTasks.ComponentSpec,
     AgentTasks.ComponentTest,
+    AgentTasks.CodeGeneration,
     AgentTasks.ContextComponentSpecs,
     AgentTasks.ContextDesignReview,
     AgentTasks.ContextImplementation,

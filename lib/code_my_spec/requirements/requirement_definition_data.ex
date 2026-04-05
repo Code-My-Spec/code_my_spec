@@ -362,7 +362,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "component_linked",
         check_type: :field_present,
         config: %{field: :component_id},
-        satisfied_by: CodeMySpec.AgentTasks.ArchitectureReview,
+        satisfied_by: CodeMySpec.AgentTasks.ArchitectureDesign,
         artifact_type: :dependencies,
         description: "Story has a linked surface component",
         prerequisites: []
@@ -466,6 +466,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     definition
   end
 
+  @spec code_generation() :: RequirementDefinition.t()
+  def code_generation do
+    {:ok, definition} =
+      RequirementDefinition.new(%{
+        name: "code_generation",
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/tasks/code_generation.sh"},
+        satisfied_by: CodeMySpec.AgentTasks.CodeGeneration,
+        artifact_type: :code,
+        description: "Code generators have been run and recorded",
+        prerequisites: ["technical_strategy"],
+        scope: :local,
+        execution_type: :main_agent
+      })
+
+    definition
+  end
+
   @spec qa_integration_plan() :: RequirementDefinition.t()
   def qa_integration_plan do
     {:ok, definition} =
@@ -476,7 +494,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.QaIntegrationPlan,
         artifact_type: :specification,
         description: "Integration specs exist and all verified",
-        prerequisites: ["technical_strategy"],
+        prerequisites: ["code_generation"],
         scope: :orchestrate,
         validation_type: :manual,
         execution_type: :main_agent
@@ -621,6 +639,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     [
       project_setup(),
       technical_strategy(),
+      code_generation(),
       qa_integration_plan(),
       architecture_designed(),
       issues_triaged(),
