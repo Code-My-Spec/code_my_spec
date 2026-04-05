@@ -45,7 +45,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
         search_term = "%#{search}%"
 
         from(s in base_query,
-          where: ilike(s.title, ^search_term) or ilike(s.description, ^search_term)
+          where: like(s.title, ^search_term) or like(s.description, ^search_term)
         )
       else
         base_query
@@ -93,7 +93,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     query =
       if search && search != "" do
         search_term = "%#{search}%"
-        from(s in base_query, where: ilike(s.title, ^search_term))
+        from(s in base_query, where: like(s.title, ^search_term))
       else
         base_query
       end
@@ -205,7 +205,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     search_term = "%#{text}%"
 
     from(s in query,
-      where: ilike(s.title, ^search_term) or ilike(s.description, ^search_term)
+      where: like(s.title, ^search_term) or like(s.description, ^search_term)
     )
   end
 

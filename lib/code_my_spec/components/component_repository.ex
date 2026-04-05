@@ -199,7 +199,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
 
     Component
     |> where([c], c.project_id == ^project_id)
-    |> where([c], ilike(c.name, ^search_term))
+    |> where([c], like(c.name, ^search_term))
     |> Repo.all()
   end
 
@@ -209,7 +209,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
 
     Component
     |> where([c], c.project_id == ^project_id)
-    |> where([c], ilike(c.module_name, ^search_term))
+    |> where([c], like(c.module_name, ^search_term))
     |> Repo.all()
   end
 

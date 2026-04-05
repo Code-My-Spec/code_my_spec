@@ -35,6 +35,53 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
   @impl true
   def mount(_params, _session, socket) do
     stories = load_metric_flow_stories()
+    base_url = CodeMySpecWeb.Endpoint.url()
+
+    json_ld =
+      Jason.encode!([
+        %{
+          "@context" => "https://schema.org",
+          "@type" => "Article",
+          "headline" => @copy.metadata.meta_title,
+          "description" => @copy.metadata.meta_description,
+          "url" => "#{base_url}/case-studies/metric-flow",
+          "image" => %{
+            "@type" => "ImageObject",
+            "url" => "#{base_url}/images/og-metricflow.png"
+          },
+          "datePublished" => "2026-03-20T00:00:00Z",
+          "dateModified" => "2026-04-04T00:00:00Z",
+          "author" => %{
+            "@type" => "Person",
+            "@id" => "#{base_url}/author/john-davenport",
+            "name" => "John Davenport",
+            "url" => "#{base_url}/author/john-davenport"
+          },
+          "publisher" => %{
+            "@type" => "Organization",
+            "@id" => "#{base_url}/#organization",
+            "name" => "CodeMySpec",
+            "logo" => %{
+              "@type" => "ImageObject",
+              "url" => "#{base_url}/images/logo.svg"
+            }
+          },
+          "mainEntityOfPage" => %{
+            "@type" => "WebPage",
+            "@id" => "#{base_url}/case-studies/metric-flow"
+          },
+          "articleSection" => "Case Studies"
+        },
+        %{
+          "@context" => "https://schema.org",
+          "@type" => "BreadcrumbList",
+          "itemListElement" => [
+            %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+            %{"@type" => "ListItem", "position" => 2, "name" => "Case Studies", "item" => "#{base_url}/case-studies"},
+            %{"@type" => "ListItem", "position" => 3, "name" => "MetricFlow"}
+          ]
+        }
+      ])
 
     {:ok,
      socket
@@ -42,7 +89,12 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
      |> assign(@copy.metadata)
      |> assign(:stories, stories)
      |> assign(:show_stories_modal, false)
-     |> assign(:active_tab, "good")}
+     |> assign(:active_tab, "good")
+     |> assign(:canonical_url, "#{base_url}/case-studies/metric-flow")
+     |> assign(:og_image, "#{base_url}/images/og-metricflow.png")
+     |> assign(:og_type, "article")
+     |> assign(:article_published_time, "2026-03-20T00:00:00Z")
+     |> assign(:json_ld, json_ld)}
   end
 
   @impl true
@@ -65,7 +117,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
       from s in Story,
         join: p in Project,
         on: s.project_id == p.id,
-        where: ilike(p.name, "metric flow") or ilike(p.name, "metricflow"),
+        where: like(p.name, "metric flow") or like(p.name, "metricflow"),
         order_by: [asc: s.priority, asc: s.title],
         preload: [:criteria, :tags]
 
