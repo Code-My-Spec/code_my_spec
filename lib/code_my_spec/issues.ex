@@ -8,10 +8,8 @@ defmodule CodeMySpec.Issues do
   """
 
   alias CodeMySpec.Documents.QaIssue
-  alias CodeMySpec.{Environments, Paths}
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository
-  alias CodeMySpec.Issues.Projector
   alias CodeMySpec.Users.Scope
 
   # -- Reads ------------------------------------------------------------------
@@ -32,7 +30,7 @@ defmodule CodeMySpec.Issues do
 
   def create_issue(%Scope{} = scope, attrs) do
     with {:ok, issue} <- IssuesRepository.create_issue(scope, attrs) do
-      Projector.project_issue(scope.environment, issue)
+      broadcast(scope, {:created, issue})
       {:ok, issue}
     end
   end
@@ -60,15 +58,8 @@ defmodule CodeMySpec.Issues do
         }
 
         case IssuesRepository.upsert_issue(scope, attrs) do
-          {:ok, issue, :created} ->
-            Projector.project_issue(scope.environment, issue)
-            issue
-
-          {:ok, issue, :existing} ->
-            issue
-
-          {:error, _} ->
-            nil
+          {:ok, issue, _status} -> issue
+          {:error, _} -> nil
         end
       end)
       |> Enum.reject(&is_nil/1)
@@ -96,128 +87,33 @@ defmodule CodeMySpec.Issues do
         attrs
       )
 
-    with {:ok, issue} <- IssuesRepository.create_issue(scope, merged) do
-      Projector.project_issue(scope.environment, issue)
-      {:ok, issue}
-    end
+    IssuesRepository.create_issue(scope, merged)
   end
 
   # -- Status transitions -----------------------------------------------------
 
-  def accept_issue(%Scope{} = scope, %Issue{} = issue) do
-    with {:ok, issue} <- IssuesRepository.update_status(issue, :accepted) do
-      Projector.project_issue(scope.environment, issue)
+  def accept_issue(%Scope{} = scope, %Issue{} = issue, opts \\ []) do
+    with {:ok, issue} <- IssuesRepository.update_status(issue, :accepted, nil, opts) do
+      broadcast(scope, {:accepted, issue})
       {:ok, issue}
     end
   end
 
   def dismiss_issue(%Scope{} = scope, %Issue{} = issue, reason) do
     with {:ok, issue} <- IssuesRepository.update_status(issue, :dismissed, reason) do
-      Projector.remove_projection(scope.environment, issue)
+      broadcast(scope, {:dismissed, issue})
       {:ok, issue}
     end
   end
 
   def resolve_issue(%Scope{} = scope, %Issue{} = issue, resolution) do
     with {:ok, issue} <- IssuesRepository.update_status(issue, :resolved, resolution) do
-      Projector.project_issue(scope.environment, issue)
+      broadcast(scope, {:resolved, issue})
+      sync_resolution_to_remote(scope, issue)
       {:ok, issue}
     end
   end
 
-  # -- Projection -------------------------------------------------------------
-
-  @doc "Re-project all active issues to filesystem. Idempotent."
-  def project_all(%Scope{} = scope) do
-    issues = IssuesRepository.list_issues(scope)
-    Projector.project_all(scope.environment, issues)
-  end
-
-  # -- Triage reconciliation --------------------------------------------------
-
-  @doc """
-  Reconciles filesystem triage state back to the database.
-
-  Reads the `## Status` field from each projected issue file in incoming/.
-  Updates the DB status accordingly, then re-projects the issue which
-  automatically moves the file to the correct directory (accepted/).
-
-  - `incoming` → no change
-  - `accepted` → accept in DB, re-project moves file to accepted/
-  - `dismissed` → dismiss in DB, re-project removes file
-  - File missing → dismiss in DB
-  """
-  def reconcile_triage(%Scope{} = scope) do
-    incoming = IssuesRepository.list_by_status(scope, :incoming)
-    env = scope.environment
-
-    Enum.each(incoming, fn issue ->
-      filename = Projector.build_filename(issue)
-      incoming_path = Path.join(Paths.issues_incoming_dir(), filename)
-
-      case Environments.read_file(env, incoming_path) do
-        {:ok, content} ->
-          case extract_status(content) do
-            {:ok, "accepted"} ->
-              accept_issue(scope, issue)
-              Projector.project_issue(env, %{issue | status: :accepted})
-
-            {:ok, "dismissed"} ->
-              dismiss_issue(scope, issue, "Dismissed during triage")
-              Projector.remove_projection(env, issue)
-
-            _ ->
-              :noop
-          end
-
-        {:error, _} ->
-          # File not found — don't auto-dismiss, just skip.
-          # The file may not have been projected yet or the environment
-          # doesn't match where it was written.
-          :noop
-      end
-    end)
-
-    :ok
-  end
-
-  @doc """
-  Reconciles agent-written resolutions from projected files back to the database.
-
-  The fix-issues agent adds `## Resolution` sections to projected issue files.
-  This function reads each :accepted issue's projected file and, if a resolution
-  section is found, transitions the issue to :resolved in the database.
-  """
-  def reconcile_resolutions(%Scope{} = scope) do
-    accepted = IssuesRepository.list_by_status(scope, :accepted)
-    env = scope.environment
-
-    Enum.each(accepted, fn issue ->
-      filename = Projector.build_filename(issue)
-      path = Path.join(Paths.issues_accepted_dir(), filename)
-
-      with {:ok, content} <- Environments.read_file(env, path),
-           {:ok, resolution} <- extract_resolution(content) do
-        resolve_issue(scope, issue, resolution)
-      end
-    end)
-
-    :ok
-  end
-
-  @doc "Returns the projected filename for an issue."
-  def projected_filename(%Issue{} = issue), do: Projector.build_filename(issue)
-
-  @doc "Returns the projected file path for an issue based on its current status."
-  def projected_path(%Issue{} = issue) do
-    dir =
-      case issue.status do
-        :incoming -> Paths.issues_incoming_dir()
-        _ -> Paths.issues_accepted_dir()
-      end
-
-    Path.join(dir, Projector.build_filename(issue))
-  end
 
   # -- Query helpers ----------------------------------------------------------
 
@@ -254,23 +150,6 @@ defmodule CodeMySpec.Issues do
   end
   defp parse_scope(nil), do: :app
 
-  defp extract_status(content) do
-    case Regex.run(~r/^## Status\s*\n\s*(\S+)/m, content) do
-      [_, status] -> {:ok, String.downcase(String.trim(status))}
-      _ -> :error
-    end
-  end
-
-  defp extract_resolution(content) do
-    case Regex.run(~r/^## Resolution\s*\n([\s\S]*?)(?=\n## |\z)/m, content) do
-      [_, text] ->
-        trimmed = String.trim(text)
-        if trimmed == "", do: :error, else: {:ok, trimmed}
-
-      _ ->
-        :error
-    end
-  end
 
   defp parse_braindump(content) do
     case Regex.run(~r/^#\s+(.+)$/m, content) do
@@ -288,5 +167,34 @@ defmodule CodeMySpec.Issues do
         description = Enum.at(lines, 1, "") |> String.trim()
         {title, description}
     end
+  end
+
+  def subscribe(%Scope{active_account_id: account_id}) when is_binary(account_id) do
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{account_id}:issues")
+  end
+
+  defp broadcast(%Scope{active_account_id: account_id}, message) when is_binary(account_id) do
+    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{account_id}:issues", message)
+  end
+
+  defp broadcast(_scope, _message), do: :ok
+
+  defp sync_resolution_to_remote(scope, %Issue{} = issue) do
+    alias CodeMySpec.Issues.RemoteClient
+
+    Task.start(fn ->
+      try do
+        client = RemoteClient.new(scope)
+
+        RemoteClient.update_issue(client, issue.id, %{
+          status: "resolved",
+          resolution: issue.resolution
+        })
+      rescue
+        e ->
+          require Logger
+          Logger.warning("[Issues] Failed to sync resolution to remote: #{Exception.message(e)}")
+      end
+    end)
   end
 end

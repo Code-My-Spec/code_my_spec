@@ -9,7 +9,11 @@ defmodule CodeMySpecWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {CodeMySpecWeb.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+    plug :put_secure_browser_headers, %{
+      "strict-transport-security" => "max-age=63072000; includeSubDomains; preload",
+      "permissions-policy" => "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+      "x-frame-options" => "SAMEORIGIN"
+    }
     plug :fetch_current_scope_for_user
   end
 
@@ -111,6 +115,10 @@ defmodule CodeMySpecWeb.Router do
 
     get "/me", UserController, :me
     get "/projects", ProjectController, :index
+
+    resources "/issues", IssuesController, only: [:index, :show, :create, :update]
+
+    post "/uploads/presign", UploadController, :create
 
     resources "/stories", StoriesController, except: [:new, :edit] do
       post "/set-component", StoriesController, :set_component
@@ -236,6 +244,9 @@ defmodule CodeMySpecWeb.Router do
 
       live "/content_admin", ContentAdminLive.Index, :index
       live "/content_admin/:id", ContentAdminLive.Show, :show
+
+      live "/issues", IssuesLive.Index, :index
+      live "/issues/:id", IssuesLive.Show, :show
 
       live "/architecture", ArchitectureLive.Index, :index
     end
