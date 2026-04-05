@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureGraph do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_project_scope(frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
       components = Components.list_components_with_dependencies(scope)
       mermaid = Architecture.generate_dependency_graph(components)
 

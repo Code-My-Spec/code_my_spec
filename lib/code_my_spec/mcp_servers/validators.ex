@@ -78,17 +78,6 @@ defmodule CodeMySpec.McpServers.Validators do
   end
 
   @doc """
-  Validates that the current scope has an active project set (no account required).
-  Use this for local/CLI operations that don't need account context.
-  Returns {:ok, scope} if valid, {:error, reason} if not.
-  """
-  def validate_project_scope(frame) do
-    with {:ok, frame} <- require_active_project(frame) do
-      {:ok, frame.assigns.current_scope}
-    end
-  end
-
-  @doc """
   Returns the MCP working directory from the frame context.
 
   For HTTP transport, this comes from the X-Working-Dir header.

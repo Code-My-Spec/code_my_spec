@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_project_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, stories} <- Stories.list_project_stories(scope) do
       if stories == [] do
         {:reply,
