@@ -79,7 +79,7 @@ defmodule CodeMySpecWeb.AuthorLive do
           "description" => "Founder of CodeMySpec. 15 years in enterprise systems, building structured AI-assisted development workflows for Phoenix applications.",
           "image" => %{
             "@type" => "ImageObject",
-            "url" => "#{base_url}/images/og-default.png"
+            "url" => "#{base_url}/images/john-davenport.jpg"
           },
           "worksFor" => %{
             "@type" => "Organization",
@@ -117,6 +117,7 @@ defmodule CodeMySpecWeb.AuthorLive do
      |> assign(:meta_description, "Founder of CodeMySpec. 15 years in enterprise systems, building AI-assisted development tooling for Phoenix.")
      |> assign(:og_title, "John Davenport — Founder, CodeMySpec")
      |> assign(:og_description, "Building tools that help developers ship production software with AI.")
+     |> assign(:og_image, "#{base_url}/images/john-davenport.jpg")
      |> assign(:canonical_url, @author_url)
      |> assign(:json_ld, json_ld)}
   end
