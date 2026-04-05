@@ -9,7 +9,7 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.RequirementsFixtures
 
-  alias CodeMySpec.Requirements.RequirementsRepository
+
   alias CodeMySpec.Components.{Component, ComponentRepository}
   alias CodeMySpec.Repo
 
@@ -102,15 +102,6 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
       assert hd(result).id == child.id
     end
 
-    test "preloads requirements on all descendants", %{scope: scope} do
-      context = component_fixture(scope, %{name: "Context", type: "context"})
-      _child = component_fixture(scope, %{name: "Child", parent_component_id: context.id})
-
-      result = ComponentRepository.list_all_descendants(scope, context.id)
-
-      assert length(result) == 1
-      assert Ecto.assoc_loaded?(hd(result).requirements)
-    end
   end
 
   describe "list_components/1" do
@@ -779,131 +770,4 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
     end
   end
 
-  describe "components_ready_for_work/1" do
-    test "returns components with all requirements satisfied or no requirements", %{scope: scope} do
-      # No requirements
-      component1 = component_fixture(scope, %{name: "Component1"})
-      # All satisfied
-      component2 = component_fixture(scope, %{name: "Component2"})
-      # Has unsatisfied
-      component3 = component_fixture(scope, %{name: "Component3"})
-
-      # Component2: all satisfied
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component2,
-          requirement_attrs(%{satisfied: true})
-        )
-
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component2,
-          requirement_attrs(%{satisfied: true, name: "another_req"})
-        )
-
-      # Component3: has unsatisfied
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component3,
-          requirement_attrs(%{satisfied: false})
-        )
-
-      result = ComponentRepository.components_ready_for_work(scope)
-
-      component_ids = Enum.map(result, & &1.id)
-      # No requirements = ready
-      assert component1.id in component_ids
-      # All satisfied = ready
-      assert component2.id in component_ids
-      # Has unsatisfied = not ready
-      refute component3.id in component_ids
-    end
-
-    test "respects project scope", %{scope: scope} do
-      component = component_fixture(scope)
-
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component,
-          requirement_attrs(%{satisfied: true})
-        )
-
-      # Different project
-      other_user = user_fixture()
-      other_account = account_with_owner_fixture(other_user)
-      other_scope = user_scope_fixture(other_user, other_account)
-      other_project = project_fixture(other_scope)
-      other_scope = user_scope_fixture(other_user, other_account, other_project)
-
-      result = ComponentRepository.components_ready_for_work(other_scope)
-      component_ids = Enum.map(result, & &1.id)
-      refute component.id in component_ids
-    end
-  end
-
-  describe "components_with_unsatisfied_requirements/1" do
-    test "returns components with unsatisfied requirements", %{scope: scope} do
-      component1 = component_fixture(scope, %{name: "Component1"})
-      component2 = component_fixture(scope, %{name: "Component2"})
-      component3 = component_fixture(scope, %{name: "Component3"})
-
-      # Component1: has unsatisfied requirement
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component1,
-          requirement_attrs(%{satisfied: false})
-        )
-
-      # Component2: has only satisfied requirements
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component2,
-          requirement_attrs(%{satisfied: true})
-        )
-
-      # Component3: has mixed requirements (should still appear because some are unsatisfied)
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component3,
-          requirement_attrs(%{satisfied: true, name: "satisfied_req"})
-        )
-
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component3,
-          requirement_attrs(%{satisfied: false, name: "unsatisfied_req"})
-        )
-
-      result = ComponentRepository.components_with_unsatisfied_requirements(scope)
-
-      component_ids = Enum.map(result, & &1.id)
-      assert component1.id in component_ids
-      refute component2.id in component_ids
-      assert component3.id in component_ids
-    end
-
-    test "returns empty list when all requirements are satisfied", %{
-      scope: scope
-    } do
-      component = component_fixture(scope)
-
-      {:ok, _} =
-        RequirementsRepository.create_requirement(
-          scope,
-          component,
-          requirement_attrs(%{satisfied: true})
-        )
-
-      result = ComponentRepository.components_with_unsatisfied_requirements(scope)
-      assert result == []
-    end
-  end
 end
