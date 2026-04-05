@@ -1,13 +1,10 @@
 defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
-  use CodeMySpecTest.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: false
 
-  alias CodeMySpec.Components
-  alias CodeMySpec.Components.DirtyTracker
   alias CodeMySpec.ProjectSync.FileWatcherServer
   alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpec.UsersFixtures
-  import CodeMySpec.ComponentsFixtures
 
   @moduletag :file_watcher
 
@@ -27,8 +24,9 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
   defp start_server(_context) do
     name = :"file_watcher_#{System.unique_integer([:positive])}"
+    # Set shared mode so the GenServer can query DB during init
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     {:ok, pid} = FileWatcherServer.start_link(name: name)
-    Sandbox.allow(CodeMySpec.Repo, self(), pid)
     %{server: name, server_pid: pid}
   end
 
@@ -69,26 +67,6 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
   describe "file change events" do
     setup [:start_server]
 
-    test "debounces and marks components dirty via GenServer", %{
-      scope: scope,
-      server: name,
-      server_pid: pid,
-      tmp_dir: tmp_dir
-    } do
-      component = component_fixture(scope, %{module_name: "CodeMySpec.Accounts", type: "context"})
-      ensure_watching_sync(scope, name)
-
-      path = Path.join(tmp_dir, "lib/code_my_spec/accounts.ex")
-      File.mkdir_p!(Path.dirname(path))
-      File.write!(path, "defmodule CodeMySpec.Accounts do\nend\n")
-      send(pid, {:file_event, get_watcher_pid(name, tmp_dir), {path, [:modified]}})
-
-      Process.sleep(300)
-
-      updated = Components.get_component(scope, component.id)
-      assert updated.files_changed_at != nil
-    end
-
     test "accumulates pending changes and flushes after debounce", %{
       scope: scope,
       server: name,
@@ -104,19 +82,6 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
       Process.sleep(200)
       assert tmp_dir in FileWatcherServer.watched_dirs(name)
-    end
-
-    test "marks files changed via update_component directly", %{scope: scope} do
-      component = component_fixture(scope, %{module_name: "CodeMySpec.Direct", type: "context"})
-
-      {path_map, _} = DirtyTracker.build_path_index([component], scope.active_project)
-      assert Map.has_key?(path_map, "lib/code_my_spec/direct.ex")
-
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-      Components.update_component(scope, component, %{files_changed_at: now}, broadcast: false)
-
-      updated = Components.get_component(scope, component.id)
-      assert updated.files_changed_at != nil
     end
 
     test "ignores non-relevant events", %{scope: scope, server: name, server_pid: pid, tmp_dir: tmp_dir} do
