@@ -165,7 +165,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
   defp format_issue_line(issue) do
     status = if issue.status == :incoming, do: "incoming", else: "accepted"
-    "- `#{status}/#{Issues.projected_filename(issue)}`"
+    "- `#{status}/issue-#{issue.id}` — #{issue.title}"
   end
 
   defp summary_exists?(env) do

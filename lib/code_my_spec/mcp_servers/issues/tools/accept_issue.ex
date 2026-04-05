@@ -13,13 +13,16 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AcceptIssue do
 
   schema do
     field :issue_id, :string, required: true, doc: "Issue ID to accept"
+    field :story_id, :integer, doc: "Optional story ID to link this issue to"
   end
 
   @impl true
   def execute(params, frame) do
+    opts = if params[:story_id], do: [story_id: params.story_id], else: []
+
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
-         {:ok, updated} <- Issues.accept_issue(scope, issue) do
+         {:ok, updated} <- Issues.accept_issue(scope, issue, opts) do
       {:reply, IssuesMapper.issue_updated_response(updated, "accepted"), frame}
     else
       nil -> {:reply, IssuesMapper.not_found_error(), frame}

@@ -11,6 +11,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
   alias CodeMySpec.Stories.RemoteSync
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
@@ -46,14 +47,20 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     socket = assign(socket, sync_status: :running, sync_result: nil)
     scope = socket.assigns.scope
 
-    # Sync stories from remote API
+    # Sync stories and issues from remote API
     story_result = RemoteSync.sync(scope)
+    issues_result = IssuesRemoteSync.sync(scope)
 
-    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
+    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd, force: true),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       story_line = case story_result do
         :ok -> {"Stories", "synced from remote"}
         {:error, reason} -> {"Stories", "sync failed: #{inspect(reason)}"}
+      end
+
+      issues_line = case issues_result do
+        :ok -> {"Issues", "synced from remote"}
+        {:error, reason} -> {"Issues", "sync failed: #{inspect(reason)}"}
       end
 
       {:noreply,
@@ -61,6 +68,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
          sync_status: :done,
          sync_result: [
            story_line,
+           issues_line,
            {"Files", file_result.total_files},
            {"Changed files", length(file_result.changed_paths)},
            {"Components", length(comp_result.all_components)},

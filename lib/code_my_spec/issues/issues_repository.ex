@@ -89,9 +89,17 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     end
   end
 
-  def update_status(%Issue{} = issue, status, resolution \\ nil) do
+  def update_status(%Issue{} = issue, status, resolution \\ nil, opts \\ []) do
+    attrs = %{status: status, resolution: resolution}
+
+    attrs =
+      case Keyword.get(opts, :story_id) do
+        nil -> attrs
+        story_id -> Map.put(attrs, :story_id, story_id)
+      end
+
     issue
-    |> Issue.status_changeset(%{status: status, resolution: resolution})
+    |> Issue.status_changeset(attrs)
     |> Repo.update()
   end
 

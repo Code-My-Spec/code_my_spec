@@ -12,6 +12,7 @@ defmodule CodeMySpec.Issues.Issue do
           description: String.t(),
           status: :incoming | :accepted | :dismissed | :resolved,
           resolution: String.t() | nil,
+          source: String.t() | nil,
           story_id: integer() | nil,
           source_path: String.t() | nil,
           project_id: Ecto.UUID.t() | nil,
@@ -54,6 +55,7 @@ defmodule CodeMySpec.Issues.Issue do
     field :description, :string
     field :status, Ecto.Enum, values: @statuses, default: :incoming
     field :resolution, :string
+    field :source, :string
     field :story_id, :integer
     field :source_path, :string
     field :project_id, :binary_id
@@ -65,7 +67,7 @@ defmodule CodeMySpec.Issues.Issue do
   @doc false
   def changeset(issue, attrs) do
     issue
-    |> cast(attrs, [:title, :severity, :scope, :description, :status, :resolution, :story_id, :source_path])
+    |> cast(attrs, [:title, :severity, :scope, :description, :status, :resolution, :source, :story_id, :source_path])
     |> validate_required([:title, :severity, :description])
     |> unique_constraint([:title, :story_id, :project_id])
   end
@@ -75,7 +77,7 @@ defmodule CodeMySpec.Issues.Issue do
     new_status = attrs[:status] || attrs["status"]
 
     issue
-    |> cast(attrs, [:status, :resolution])
+    |> cast(attrs, [:status, :resolution, :story_id])
     |> validate_required([:status])
     |> validate_transition(issue.status, new_status)
     |> maybe_require_resolution(new_status)

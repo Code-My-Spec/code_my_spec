@@ -36,6 +36,39 @@ defmodule CodeMySpecWeb.IssuesController do
     end
   end
 
+  def update(conn, %{"id" => id, "issue" => issue_params}) do
+    scope = conn.assigns.current_scope
+
+    case Issues.get_issue(scope, id) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{status: "not_found", error: "Issue not found"})
+
+      issue ->
+        with {:ok, updated} <- dispatch_update(scope, issue, issue_params) do
+          render(conn, :show, issue: updated)
+        end
+    end
+  end
+
+  defp dispatch_update(scope, issue, %{"status" => "resolved", "resolution" => resolution}) do
+    Issues.resolve_issue(scope, issue, resolution)
+  end
+
+  defp dispatch_update(scope, issue, %{"status" => "accepted"} = params) do
+    opts = if params["story_id"], do: [story_id: params["story_id"]], else: []
+    Issues.accept_issue(scope, issue, opts)
+  end
+
+  defp dispatch_update(scope, issue, %{"status" => "dismissed", "resolution" => reason}) do
+    Issues.dismiss_issue(scope, issue, reason)
+  end
+
+  defp dispatch_update(_scope, _issue, _params) do
+    {:error, :invalid_update}
+  end
+
   defp build_filters(params) do
     %{}
     |> maybe_put(:status, atomize(params["status"]))

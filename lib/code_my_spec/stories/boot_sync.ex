@@ -13,6 +13,7 @@ defmodule CodeMySpec.Stories.BootSync do
 
   import Ecto.Query
 
+  alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.RemoteSync
@@ -39,6 +40,14 @@ defmodule CodeMySpec.Stories.BootSync do
 
             {:error, reason} ->
               Logger.warning("[BootSync] Story sync failed for #{project.name}: #{inspect(reason)}")
+          end
+
+          case IssuesRemoteSync.sync(scope) do
+            :ok ->
+              Logger.info("[BootSync] Issues synced for #{project.name}")
+
+            {:error, reason} ->
+              Logger.warning("[BootSync] Issues sync failed for #{project.name}: #{inspect(reason)}")
           end
 
         {:error, _} ->

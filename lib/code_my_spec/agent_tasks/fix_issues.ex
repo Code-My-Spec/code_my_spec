@@ -46,9 +46,6 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   - `{:ok, :invalid, feedback}` when unresolved blocking issues exist
   """
   def evaluate(scope, _task) do
-    # Fallback: reconcile any file-based resolutions the agent wrote directly
-    Issues.reconcile_resolutions(scope)
-
     remaining = list_unresolved_at_severity(scope, :medium)
 
     case remaining do
@@ -156,7 +153,6 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
   defp format_issue_items(issues) do
     Enum.map_join(issues, "\n\n", fn issue ->
-      filename = Issues.projected_filename(issue)
       source_ref = if issue.source_path, do: "**Source:** `#{issue.source_path}`\n", else: ""
 
       qa_dir_ref =
@@ -165,7 +161,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
           else: ""
 
       """
-      ### `#{filename}` (ID: #{issue.id})
+      ### Issue #{issue.id}: #{issue.title}
 
       #{source_ref}#{qa_dir_ref}\
       - **Title:** #{issue.title}

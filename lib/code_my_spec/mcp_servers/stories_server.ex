@@ -24,4 +24,13 @@ defmodule CodeMySpec.McpServers.StoriesServer do
 
   # Session tools
   component(CodeMySpec.McpServers.Stories.Tools.StartStorySession)
+
+  # Issue tools (for triage workflow)
+  component(CodeMySpec.McpServers.Issues.Tools.ListIssues)
+  component(CodeMySpec.McpServers.Issues.Tools.GetIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.DismissIssue)
+
+  # Triage
+  component(CodeMySpec.McpServers.Stories.Tools.TriageIssues)
 end
