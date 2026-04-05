@@ -27,7 +27,7 @@ jobs:
             target: macos_m1
             binary: cms-darwin-arm64
           - name: macOS x64
-            runner: macos-13
+            runner: macos-latest
             target: macos
             binary: cms-darwin-x64
           - name: Linux x64
