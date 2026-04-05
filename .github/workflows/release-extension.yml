@@ -95,7 +95,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: extension
-          path: release/codemyspec-extension/
+          path: CodeMySpec/
 
   release:
     name: Create Release
