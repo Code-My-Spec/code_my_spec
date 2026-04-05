@@ -112,10 +112,17 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
+          echo "Artifact structure:"
+          find artifacts -type f | head -20
           for dir in artifacts/cms-*; do
+            [ -d "$dir" ] || continue
             binary=$(basename "$dir")
-            cp "$dir/$binary" "release-assets/$binary"
-            chmod +x "release-assets/$binary"
+            # download-artifact v4 may flatten or preserve paths
+            file=$(find "$dir" -type f | head -1)
+            if [ -n "$file" ]; then
+              cp "$file" "release-assets/$binary"
+              chmod +x "release-assets/$binary"
+            fi
           done
           ls -la release-assets/
 
