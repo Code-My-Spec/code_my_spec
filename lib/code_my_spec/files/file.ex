@@ -27,7 +27,8 @@ defmodule CodeMySpec.Files.File do
     :qa_result,
     :config,
     :architecture,
-    :integration
+    :integration,
+    :task_artifact
   ]
 
   @type role ::

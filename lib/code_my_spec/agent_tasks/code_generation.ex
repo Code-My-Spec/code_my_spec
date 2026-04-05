@@ -85,10 +85,8 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   def evaluate(scope, _task) do
     env = scope.environment
 
-    with :ok <- check_artifact(env),
-         :ok <- check_auth_generated(env) do
-      {:ok, :valid}
-    else
+    case check_artifact(env) do
+      :ok -> {:ok, :valid}
       {:error, feedback} -> {:ok, :invalid, feedback}
     end
   end
@@ -145,26 +143,13 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   defp check_artifact(env) do
     case Environments.read_file(env, @artifact_path) do
       {:ok, content} when byte_size(content) > 0 ->
-        if String.contains?(content, "mix ") do
-          :ok
-        else
-          {:error, "Generation script at `#{@artifact_path}` exists but contains no mix commands."}
-        end
+        :ok
 
       {:ok, _} ->
         {:error, "Generation script at `#{@artifact_path}` is empty."}
 
       _ ->
         {:error, "Generation script not found at `#{@artifact_path}`. Record the commands you ran."}
-    end
-  end
-
-  defp check_auth_generated(env) do
-    # Can't check app-specific paths without reading mix.exs, so check for
-    # the presence of any users directory under lib/
-    case Environments.glob(env, "lib/*/users/scope.ex") do
-      [_ | _] -> :ok
-      _ -> {:error, "phx.gen.auth has not been run — no `users/scope.ex` found."}
     end
   end
 
@@ -344,6 +329,16 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     mix cms_gen.accounts
 
     # ... etc
+    ```
+
+    ### No Generators Needed?
+
+    If no generators are needed for this project (no ADRs reference generated code),
+    write an empty script with just the shebang and a comment:
+
+    ```bash
+    #!/bin/bash
+    # No generators needed for this project.
     ```
 
     ### Step 6: Stop

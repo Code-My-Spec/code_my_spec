@@ -268,6 +268,9 @@ defmodule CodeMySpec.Files.FileSync do
       path == Path.join(Paths.base_dir(), "config.yml") ->
         {path, :config}
 
+      path == Path.join(Paths.tasks_dir(), "code_generation.sh") ->
+        {path, :task_artifact}
+
       true ->
         nil
     end
