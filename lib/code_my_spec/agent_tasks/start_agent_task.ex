@@ -45,7 +45,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "component_test" => AgentTasks.ComponentTest,
     "project_setup" => AgentTasks.ProjectSetup,
     "architecture_design" => AgentTasks.ArchitectureDesign,
-    "architecture_review" => AgentTasks.ArchitectureReview,
     "write_bdd_specs" => AgentTasks.WriteBddSpecs,
 
     "design_ui" => AgentTasks.DesignUi,
@@ -75,7 +74,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @componentless_tasks [
     "project_setup",
     "architecture_design",
-    "architecture_review",
     "write_bdd_specs",
     "manage_implementation",
     "design_ui",

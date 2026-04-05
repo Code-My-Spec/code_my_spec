@@ -11,7 +11,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
   defp valid_module_atoms do
     [
       AgentTasks.ArchitectureDesign,
-      AgentTasks.ArchitectureReview,
       AgentTasks.ComponentCode,
       AgentTasks.ComponentSpec,
       AgentTasks.ComponentTest,
@@ -52,7 +51,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
   defp valid_string_names do
     [
       "ArchitectureDesign",
-      "ArchitectureReview",
       "ComponentCode",
       "ComponentSpec",
       "ComponentTest",
@@ -119,7 +117,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.ContextImplementation} = SessionType.cast("ContextImplementation")
       assert {:ok, AgentTasks.ContextDesignReview} = SessionType.cast("ContextDesignReview")
       assert {:ok, AgentTasks.ArchitectureDesign} = SessionType.cast("ArchitectureDesign")
-      assert {:ok, AgentTasks.ArchitectureReview} = SessionType.cast("ArchitectureReview")
       assert {:ok, AgentTasks.ProjectSetup} = SessionType.cast("ProjectSetup")
       assert {:ok, AgentTasks.WriteBddSpecs} = SessionType.cast("WriteBddSpecs")
       assert {:ok, AgentTasks.FixAllBddSpecs} = SessionType.cast("FixAllBddSpecs")

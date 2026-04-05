@@ -230,6 +230,17 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     BIN_DIR="$SCRIPT_DIR/bin"
 
+    # Colors
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
+    BOLD='\033[1m'
+    NC='\033[0m'
+
+    info()  { echo -e "${BLUE}${BOLD}>>>${NC} $1"; }
+    ok()    { echo -e "${GREEN}${BOLD}>>>${NC} $1"; }
+    err()   { echo -e "${RED}${BOLD}>>>${NC} $1"; }
+
     # Detect OS and architecture
     detect_platform() {
       OS="$(uname -s)"
@@ -239,13 +250,13 @@ defmodule CodeMySpecCli.Release.PackageExtension do
         Darwin) OS="darwin" ;;
         Linux) OS="linux" ;;
         MINGW*|MSYS*|CYGWIN*) OS="windows" ;;
-        *) echo "Unsupported OS: $OS"; exit 1 ;;
+        *) err "Unsupported OS: $OS"; exit 1 ;;
       esac
 
       case "$ARCH" in
         arm64|aarch64) ARCH="arm64" ;;
         x86_64|amd64) ARCH="x64" ;;
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+        *) err "Unsupported architecture: $ARCH"; exit 1 ;;
       esac
 
       if [ "$OS" = "windows" ]; then
@@ -266,34 +277,30 @@ defmodule CodeMySpecCli.Release.PackageExtension do
       DOWNLOAD_URL=$(curl -s "$RELEASE_URL" | grep "browser_download_url.*${BINARY_FILE}" | cut -d '"' -f 4)
 
       if [ -z "$DOWNLOAD_URL" ]; then
-        echo "Error: Could not find binary for ${BINARY_FILE}"
-        echo "Available binaries at: https://github.com/${REPO}/releases"
+        err "Could not find binary for ${BINARY_FILE}"
+        echo "  Available binaries at: https://github.com/${REPO}/releases"
         exit 1
       fi
     }
 
     # Download and install binary
     install_binary() {
-      echo "Creating bin directory..."
       mkdir -p "$BIN_DIR"
 
-      echo "Downloading ${BINARY_FILE}..."
-      curl -L -o "$BIN_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
+      info "Downloading ${BINARY_FILE}..."
+      curl -fSL --progress-bar -o "$BIN_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
 
-      echo "Making binary executable..."
       chmod +x "$BIN_DIR/$BINARY_NAME"
     }
 
     # Main
     main() {
-      echo "CodeMySpec CLI Installer"
-      echo "========================"
+      echo ""
+      echo -e "${BOLD}CodeMySpec CLI Installer${NC}"
       echo ""
 
       detect_platform
-      echo "Detected platform: ${OS}-${ARCH}"
-      echo "Binary: ${BINARY_FILE}"
-      echo ""
+      info "Platform: ${OS}-${ARCH}"
 
       if [ "$1" = "--dry-run" ]; then
         get_download_url
@@ -306,15 +313,16 @@ defmodule CodeMySpecCli.Release.PackageExtension do
       install_binary
 
       echo ""
-      echo "Installation complete!"
+      ok "Installation complete!"
       echo ""
-      echo "Binary installed to: $BIN_DIR/$BINARY_NAME"
+      echo "  Next steps:"
       echo ""
-      echo "To add the extension to Claude Code:"
-      echo "  claude extension add $SCRIPT_DIR"
+      echo "  1. Install the plugin in Claude Code:"
+      echo "     claude plugin install $SCRIPT_DIR"
       echo ""
-      echo "To verify installation:"
-      echo "  $BIN_DIR/$BINARY_NAME --help"
+      echo "  2. Open Claude Code in your Phoenix project and run:"
+      echo "     /codemyspec:authenticate"
+      echo ""
     }
 
     main "$@"
@@ -346,37 +354,35 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
     ## Installation
 
-    ### 1. Clone this repository
+    ### Option A: Plugin Marketplace (recommended)
+
+    In Claude Code:
+    ```
+    /plugin marketplace add Code-My-Spec/code_my_spec_claude_code_extension
+    /plugin install codemyspec@codemyspec
+    ```
+
+    Then download the CLI binary:
+    ```bash
+    bash ~/.claude/plugins/cache/codemyspec/install.sh
+    ```
+
+    ### Option B: Manual Install
 
     ```bash
     git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension.git
     cd code_my_spec_claude_code_extension
+    bash install.sh
+    claude plugin install ./
     ```
 
-    ### 2. Run the installer
+    ### Getting Started
 
-    ```bash
-    ./install.sh
-    ```
-
-    This detects your platform and downloads the appropriate binary from GitHub Releases.
-
-    ### 3. Add extension to Claude Code
-
-    ```bash
-    claude extension add /path/to/code_my_spec_claude_code_extension
-    ```
-
-    ### 4. Initialize your project
-
-    Inside Claude Code, in your Phoenix project directory:
+    Open Claude Code in your Phoenix project directory and run:
 
     ```
-    /codemyspec:setup-project
+    /codemyspec:authenticate
     ```
-
-    This verifies your Elixir, Phoenix, and PostgreSQL setup and creates the
-    required docs structure.
 
     ## Skills
 
@@ -387,7 +393,6 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     | Skill | Description |
     |-------|-------------|
     | `design-architecture` | Guided session to map user stories to bounded contexts and components |
-    | `review-architecture` | Audit surface-to-domain separation, dependency health, circular deps, story coverage |
     | `review-context` | Validate a context design and child specs against best practices |
     | `design-ui` | Interactive design system builder with DaisyUI, theme switcher, and live preview |
 

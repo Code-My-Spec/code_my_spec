@@ -7,7 +7,6 @@ defmodule CodeMySpec.Sessions.SessionType do
 
   @valid_types [
     AgentTasks.ArchitectureDesign,
-    AgentTasks.ArchitectureReview,
     AgentTasks.ComponentCode,
     AgentTasks.ComponentSpec,
     AgentTasks.ComponentTest,
