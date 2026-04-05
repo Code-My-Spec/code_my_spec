@@ -51,7 +51,43 @@ defmodule CodeMySpec.Requirements.RequirementsFormatter do
     "#{reason} — #{Enum.join(problems, "; ")}"
   end
 
+  def format_details(%{"reason" => reason, "errors" => errors}) when is_map(errors) do
+    "#{reason} — #{format_errors(errors)}"
+  end
+
+  def format_details(%{reason: reason, errors: errors}) when is_map(errors) do
+    "#{reason} — #{format_errors(errors)}"
+  end
+
+  def format_details(%{"reason" => reason, "errors" => errors}) when is_list(errors) do
+    "#{reason} — #{Enum.join(errors, "; ")}"
+  end
+
+  def format_details(%{reason: reason, errors: errors}) when is_list(errors) do
+    "#{reason} — #{Enum.join(errors, "; ")}"
+  end
+
+  def format_details(%{"reason" => reason, "expected_path" => path}), do: "#{reason} (expected at #{path})"
+  def format_details(%{reason: reason, expected_path: path}), do: "#{reason} (expected at #{path})"
   def format_details(%{"reason" => reason}), do: reason
   def format_details(%{reason: reason}), do: reason
   def format_details(_), do: "unsatisfied"
+
+  defp format_errors(%{missing: missing, extra: extra}) do
+    parts = []
+    parts = if missing != [], do: parts ++ ["missing: #{Enum.join(missing, ", ")}"], else: parts
+    parts = if extra != [], do: parts ++ ["extra: #{Enum.join(extra, ", ")}"], else: parts
+    Enum.join(parts, "; ")
+  end
+
+  defp format_errors(%{"missing" => missing, "extra" => extra}) do
+    format_errors(%{missing: missing, extra: extra})
+  end
+
+  defp format_errors(%{error: error}), do: to_string(error)
+  defp format_errors(%{"error" => error}), do: to_string(error)
+
+  defp format_errors(errors) when is_map(errors) do
+    Enum.map_join(errors, "; ", fn {k, v} -> "#{k}: #{inspect(v)}" end)
+  end
 end

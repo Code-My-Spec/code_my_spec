@@ -86,7 +86,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     value = Map.get(entity, field)
 
     if not is_nil(value) do
-      {true, %{status: "#{field} is set", value: value}}
+      {true, %{status: "#{field} is set"} |> Map.put(field, value)}
     else
       {false, %{reason: "#{field} is not set"}}
     end
