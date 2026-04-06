@@ -89,36 +89,44 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         end)
       end)
 
-    # --- Layer 3: Expanded component zone ---
+    # --- Layer 3: Expanded component zone (layered by dependency depth) ---
     comp_zone_y = story_start_y - (length(@pre_component_reqs) * @story_row_gap) - @row_gap
 
-    # Group components into trees: contexts + children, standalones
-    context_ids = components |> Enum.filter(&(&1.type in @context_types)) |> MapSet.new(& &1.id)
-    child_ids = components
-      |> Enum.filter(&(&1.parent_component_id && MapSet.member?(context_ids, &1.parent_component_id)))
-      |> MapSet.new(& &1.id)
+    # Identify top-level groups: parent components (with children) and standalones
+    parent_ids = components |> Enum.map(& &1.parent_component_id) |> MapSet.new() |> MapSet.delete(nil)
+    child_ids = components |> Enum.filter(&(&1.parent_component_id && MapSet.member?(parent_ids, &1.parent_component_id))) |> MapSet.new(& &1.id)
 
-    context_trees =
+    # Top-level = parents + standalones (not children)
+    top_level =
       components
-      |> Enum.filter(&MapSet.member?(context_ids, &1.id))
+      |> Enum.filter(fn c -> !MapSet.member?(child_ids, c.id) end)
       |> Enum.sort_by(& &1.module_name)
 
-    standalone =
-      components
-      |> Enum.filter(fn c -> !MapSet.member?(context_ids, c.id) and !MapSet.member?(child_ids, c.id) end)
-      |> Enum.sort_by(& &1.module_name)
+    # Compute dependency depth for each top-level component
+    dep_depth = compute_dependency_depths(top_level)
 
-    # Layout each tree at relative (0,0)
-    tree_layouts =
-      Enum.map(context_trees, fn ctx ->
-        layout_context_tree_nodes(ctx, components, comp_reqs_by_id, actionable_set)
-      end) ++
-      Enum.map(standalone, fn comp ->
-        layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set)
+    # Group by depth tier, sort tiers deepest-first (depth 0 = no deps = rendered first/top)
+    tiers =
+      top_level
+      |> Enum.group_by(fn c -> Map.get(dep_depth, c.id, 0) end)
+      |> Enum.sort_by(fn {depth, _} -> depth end)
+
+    # Layout each tier as a horizontal band, stacking downward
+    {comp_sigma, comp_zone_total_height} =
+      Enum.reduce(tiers, {[], comp_zone_y}, fn {_depth, tier_components}, {all_nodes, tier_y} ->
+        tree_layouts =
+          Enum.map(tier_components, fn comp ->
+            if MapSet.member?(parent_ids, comp.id) do
+              layout_context_tree_nodes(comp, components, comp_reqs_by_id, actionable_set)
+            else
+              layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set)
+            end
+          end)
+
+        {tier_nodes, tier_height} = place_component_trees(tree_layouts, tier_y)
+        {all_nodes ++ tier_nodes, tier_y - tier_height - @row_gap}
       end)
-
-    # Place trees side by side, centered around x=0
-    {comp_sigma, comp_zone_total_height} = place_component_trees(tree_layouts, comp_zone_y)
+      |> then(fn {nodes, final_y} -> {nodes, comp_zone_y - final_y} end)
 
     # --- Layer 4: Post-component story reqs ---
     post_zone_y = comp_zone_y - comp_zone_total_height - @row_gap
@@ -549,6 +557,54 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     height = max(length(sorted) - 1, 0) * @ctx_req_gap
     {nodes, 0, height}
+  end
+
+  # Compute dependency depth for top-level components.
+  # Depth 0 = no dependencies (or deps are all children, not top-level).
+  # Depth N = max(dep depths) + 1.
+  defp compute_dependency_depths(top_level) do
+    top_level_ids = MapSet.new(top_level, & &1.id)
+
+    # Build adjacency: component_id → list of dependency component_ids (only top-level deps)
+    dep_graph =
+      Map.new(top_level, fn comp ->
+        deps = case comp.dependencies do
+          %Ecto.Association.NotLoaded{} -> []
+          deps when is_list(deps) -> deps
+          _ -> []
+        end
+
+        dep_ids = deps |> Enum.map(& &1.id) |> Enum.filter(&MapSet.member?(top_level_ids, &1))
+        {comp.id, dep_ids}
+      end)
+
+    # Iterative depth computation (handles DAGs)
+    initial = Map.new(top_level, fn c -> {c.id, if(dep_graph[c.id] == [], do: 0, else: nil)} end)
+    resolve_depths(initial, dep_graph)
+  end
+
+  defp resolve_depths(depths, dep_graph) do
+    updated =
+      Enum.reduce(depths, depths, fn {id, depth}, acc ->
+        if is_nil(depth) do
+          dep_depths = Enum.map(dep_graph[id] || [], &Map.get(acc, &1))
+
+          if Enum.all?(dep_depths, &(not is_nil(&1))) do
+            Map.put(acc, id, Enum.max(dep_depths, fn -> 0 end) + 1)
+          else
+            acc
+          end
+        else
+          acc
+        end
+      end)
+
+    if updated == depths do
+      # No progress — remaining nils get depth 0 (circular deps or missing)
+      Map.new(updated, fn {id, d} -> {id, d || 0} end)
+    else
+      resolve_depths(updated, dep_graph)
+    end
   end
 
   # Arrange tree layouts side by side, centered around x=0, offset to comp_zone_y.
