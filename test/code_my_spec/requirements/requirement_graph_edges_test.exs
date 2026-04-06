@@ -474,17 +474,16 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       sync!(scope, tmp_dir)
       mark_valid!(scope, ".code_my_spec/spec/my_app/accounts/design_review.md")
 
+      # After review, children should write TESTS first (TDD), not impl
       actionable = actionable_component_names(scope)
-      assert {"MyApp.Accounts.User", "implementation_file"} in actionable,
-        "child1 impl should be actionable after review_valid. Got: #{inspect(actionable)}"
-      assert {"MyApp.Accounts.Token", "implementation_file"} in actionable,
-        "child2 impl should be actionable after review_valid"
-      refute {"MyApp.Accounts", "implementation_file"} in actionable,
-        "parent impl should NOT be actionable until all children are done"
+      assert {"MyApp.Accounts.User", "test_file"} in actionable,
+        "child1 test_file should be actionable after review_valid (TDD). Got: #{inspect(actionable)}"
+      assert {"MyApp.Accounts.Token", "test_file"} in actionable,
+        "child2 test_file should be actionable after review_valid (TDD)"
+      refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
+        "child impl should NOT be actionable before tests are written"
 
-      # === STEP 5: Implement children + tests → parent can implement ===
-      write_file(tmp_dir, "lib/my_app/accounts/user.ex", impl_content("MyApp.Accounts.User"))
-      write_file(tmp_dir, "lib/my_app/accounts/token.ex", impl_content("MyApp.Accounts.Token"))
+      # === STEP 5: Write + validate tests → children can implement ===
       write_file(tmp_dir, "test/my_app/accounts/user_test.exs",
         "defmodule MyApp.Accounts.UserTest do\n  use ExUnit.Case\nend")
       write_file(tmp_dir, "test/my_app/accounts/token_test.exs",
@@ -492,6 +491,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       sync!(scope, tmp_dir)
       mark_valid!(scope, "test/my_app/accounts/user_test.exs")
       mark_valid!(scope, "test/my_app/accounts/token_test.exs")
+
+      actionable = actionable_component_names(scope)
+      assert {"MyApp.Accounts.User", "implementation_file"} in actionable,
+        "child1 impl should be actionable after tests written. Got: #{inspect(actionable)}"
+
+      # === STEP 6: Implement children → parent can implement ===
+      write_file(tmp_dir, "lib/my_app/accounts/user.ex", impl_content("MyApp.Accounts.User"))
+      write_file(tmp_dir, "lib/my_app/accounts/token.ex", impl_content("MyApp.Accounts.Token"))
+      sync!(scope, tmp_dir)
 
       actionable = actionable_component_names(scope)
       assert {"MyApp.Accounts", "implementation_file"} in actionable,

@@ -51,7 +51,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component implementation file exists",
-        prerequisites: ["spec_valid"]
+        prerequisites: ["test_spec_alignment"]
       })
 
     definition
@@ -115,7 +115,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component tests are passing",
-        prerequisites: ["test_spec_alignment", "implementation_file"]
+        prerequisites: ["implementation_file"]
       })
 
     definition
