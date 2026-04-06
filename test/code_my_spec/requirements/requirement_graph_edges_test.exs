@@ -231,7 +231,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   end
 
   describe "container edges" do
-    test "live_context creates container edges to liveview children" do
+    test "live_context creates parent-child edges to liveview children" do
       {scope, tmp_dir} = setup_project()
 
       parent = create_component(scope, "MyApp.TodoListLive", "live_context")
@@ -241,12 +241,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      # Fan-out: parent.context_specs → child.spec_file
+      # Fan-out: parent.spec_valid → child.spec_file
       fan_out = Enum.find(edges, fn e ->
-        e.from == {"component", parent.id, "context_specs"} and
+        e.from == {"component", parent.id, "spec_valid"} and
         e.to == {"component", child.id, "spec_file"}
       end)
-      assert fan_out, "live_context should create fan-out edge to liveview child spec_file"
+      assert fan_out, "live_context should create fan-out edge from spec_valid to liveview child spec_file"
 
       # Fan-in: child.spec_valid → parent.review_file
       fan_in = Enum.find(edges, fn e ->
@@ -256,7 +256,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert fan_in, "liveview child should create fan-in edge to live_context review_file"
     end
 
-    test "context creates container edges to schema children" do
+    test "context creates parent-child edges to schema children" do
       {scope, tmp_dir} = setup_project()
 
       parent = create_component(scope, "MyApp.Accounts", "context")
@@ -266,12 +266,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      # Fan-out: parent.context_specs → child.spec_file
+      # Fan-out: parent.spec_valid → child.spec_file (children wait for parent design)
       fan_out = Enum.find(edges, fn e ->
-        e.from == {"component", parent.id, "context_specs"} and
+        e.from == {"component", parent.id, "spec_valid"} and
         e.to == {"component", child.id, "spec_file"}
       end)
-      assert fan_out, "context should create fan-out edge to schema child spec_file"
+      assert fan_out, "context should create fan-out edge from spec_valid to schema child spec_file"
 
       # Fan-in: child.terminal (implementation_file for schema) → parent.implementation_file
       fan_in = Enum.find(edges, fn e ->
@@ -282,26 +282,46 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
   end
 
-  describe "container vs child actionability" do
-    test "container nodes are actionable when their prereqs are met" do
+  describe "parent-child actionability" do
+    test "children become actionable after parent spec is valid" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
       parent = create_component(scope, "MyApp.Accounts", "context")
-      _child = create_child_component(scope, "MyApp.Accounts.User", "schema", parent.id)
+      child = create_child_component(scope, "MyApp.Accounts.User", "schema", parent.id)
 
+      # Write parent AND child spec files (child must exist for sync to track it)
       write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", spec_content("MyApp.Accounts", "context"))
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/user.spec.md", spec_content("MyApp.Accounts.User", "schema"))
       sync!(scope, tmp_dir)
 
-      actionable = RequirementGraph.next_actionable(scope)
+      # Validate the parent spec (mark valid)
+      parent_spec = CodeMySpec.Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
+      if parent_spec, do: CodeMySpec.Files.mark_validated(parent_spec, true)
 
-      # context_specs should be actionable (its prereq spec_valid is on the parent)
-      container_nodes = Enum.filter(actionable, fn n ->
-        n.entity_type == "component" and n.entity_id == parent.id and n.scope == :children
+      # Compute the graph
+      {nodes, edges} = RequirementGraph.compute_graph(scope)
+
+      # Verify parent spec_valid is satisfied
+      parent_spec_valid = Enum.find(nodes, fn n ->
+        n.entity_type == "component" and n.entity_id == parent.id and n.name == "spec_valid"
       end)
 
-      # Container is actionable — it will orchestrate child work
-      assert length(container_nodes) >= 0, "container nodes follow normal actionability rules"
+      assert parent_spec_valid, "parent spec_valid node should exist"
+      assert parent_spec_valid.satisfied, "parent spec_valid should be satisfied after validation"
+
+      # Verify fan-out edge exists: parent.spec_valid → child.spec_file
+      fan_out = Enum.find(edges, fn e ->
+        e.from == {"component", parent.id, "spec_valid"} and
+        e.to == {"component", child.id, "spec_file"}
+      end)
+      assert fan_out, "fan-out edge should exist from parent.spec_valid to child.spec_file"
+
+      # Child spec_file node should exist and be satisfied (file was written)
+      child_spec = Enum.find(nodes, fn n ->
+        n.entity_type == "component" and n.entity_id == child.id and n.name == "spec_file"
+      end)
+      assert child_spec, "child spec_file node should exist in graph"
     end
   end
 
@@ -377,7 +397,127 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
   end
 
+  describe "full context lifecycle sequencing" do
+    @tag :lifecycle
+    test "parent-child phases are correctly gated end-to-end" do
+      {scope, tmp_dir} = setup_project()
+      seed_setup(tmp_dir)
+
+      # Write ALL spec files upfront so ComponentSync doesn't delete our components.
+      # The graph gates work via file validation (valid: true/false), not file existence.
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md",
+        spec_content("MyApp.Accounts", "context"))
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/user.spec.md",
+        spec_content("MyApp.Accounts.User", "repository"))
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/token.spec.md",
+        spec_content("MyApp.Accounts.Token", "repository"))
+
+      # Sync to create components from files, then set up parent-child relationships
+      sync!(scope, tmp_dir)
+
+      parent = Components.get_component_by_module_name(scope, "MyApp.Accounts")
+      child1 = Components.get_component_by_module_name(scope, "MyApp.Accounts.User")
+      child2 = Components.get_component_by_module_name(scope, "MyApp.Accounts.Token")
+
+      assert parent, "parent component should exist after sync"
+      assert child1, "child1 component should exist after sync"
+      assert child2, "child2 component should exist after sync"
+
+      # ComponentSync derives parent relationships from module names, but let's
+      # ensure the parent-child links are set
+      {:ok, _} = Components.update_component(scope, child1, %{parent_component_id: parent.id})
+      {:ok, _} = Components.update_component(scope, child2, %{parent_component_id: parent.id})
+
+      # === STEP 1: Spec files exist but are NOT validated ===
+      # Parent spec_file is satisfied (file exists), but spec_valid is not (valid != true)
+      # Children spec_files are satisfied too, but gated by parent.spec_valid (fan-out)
+      actionable = actionable_component_names(scope)
+
+      # Parent spec_valid should be actionable (spec_file satisfied, spec_valid not yet)
+      # But actually spec_file is already satisfied. The first unsatisfied is spec_valid.
+      # spec_valid needs the file to be validated (valid: true).
+      # spec_file is satisfied because the file exists.
+      # So we should see spec_valid as the first actionable for parent.
+      # But since spec_file check is file_exists and the file exists, it's satisfied.
+      # spec_valid needs file_valid — file exists but valid is nil.
+
+      # Children can't start because parent.spec_valid is unsatisfied (fan-out gate)
+      refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
+        "child impl should NOT be actionable"
+
+      # === STEP 2: Validate parent spec → children spec_valid becomes unblocked ===
+      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
+
+      actionable = actionable_component_names(scope)
+      # Now parent.spec_valid is satisfied → fan-out unblocks children
+      # Children's spec_files are satisfied (files exist). spec_valid is next.
+      # But children's spec_valid needs valid: true on their spec files
+      refute {"MyApp.Accounts", "review_file"} in actionable,
+        "review should NOT be actionable until all children have valid specs"
+
+        IO.inspect(actionable)
+
+      # === STEP 3: Validate children's specs → review becomes actionable ===
+      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts/user.spec.md")
+      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts/token.spec.md")
+
+      actionable = actionable_component_names(scope)
+      assert {"MyApp.Accounts", "review_file"} in actionable,
+        "review should be actionable after all children spec_valid. Got: #{inspect(actionable)}"
+      refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
+        "child impl should NOT be actionable before review_valid"
+
+      # === STEP 4: Write + validate review → children can implement ===
+      # Review files live at .code_my_spec/spec/{module_path}/design_review.md
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/design_review.md",
+        "# Design Review\n\nApproved.")
+      sync!(scope, tmp_dir)
+      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts/design_review.md")
+
+      actionable = actionable_component_names(scope)
+      assert {"MyApp.Accounts.User", "implementation_file"} in actionable,
+        "child1 impl should be actionable after review_valid. Got: #{inspect(actionable)}"
+      assert {"MyApp.Accounts.Token", "implementation_file"} in actionable,
+        "child2 impl should be actionable after review_valid"
+      refute {"MyApp.Accounts", "implementation_file"} in actionable,
+        "parent impl should NOT be actionable until all children are done"
+
+      # === STEP 5: Implement children + tests → parent can implement ===
+      write_file(tmp_dir, "lib/my_app/accounts/user.ex", impl_content("MyApp.Accounts.User"))
+      write_file(tmp_dir, "lib/my_app/accounts/token.ex", impl_content("MyApp.Accounts.Token"))
+      write_file(tmp_dir, "test/my_app/accounts/user_test.exs",
+        "defmodule MyApp.Accounts.UserTest do\n  use ExUnit.Case\nend")
+      write_file(tmp_dir, "test/my_app/accounts/token_test.exs",
+        "defmodule MyApp.Accounts.TokenTest do\n  use ExUnit.Case\nend")
+      sync!(scope, tmp_dir)
+      mark_valid!(scope, "test/my_app/accounts/user_test.exs")
+      mark_valid!(scope, "test/my_app/accounts/token_test.exs")
+
+      actionable = actionable_component_names(scope)
+      assert {"MyApp.Accounts", "implementation_file"} in actionable,
+        "parent impl should be actionable after all children reach terminal. Got: #{inspect(actionable)}"
+    end
+  end
+
   # -- Helpers --
+
+  defp actionable_names(scope) do
+    RequirementGraph.next_actionable(scope)
+    |> Enum.map(fn n -> {n.entity_name, n.name} end)
+    |> MapSet.new()
+  end
+
+  defp actionable_component_names(scope) do
+    RequirementGraph.next_actionable(scope)
+    |> Enum.filter(fn n -> n.entity_type == "component" end)
+    |> Enum.map(fn n -> {n.entity_name, n.name} end)
+    |> MapSet.new()
+  end
+
+  defp mark_valid!(scope, path) do
+    file = CodeMySpec.Files.get_by_path(scope, path)
+    if file, do: CodeMySpec.Files.mark_validated(file, true)
+  end
 
   defp setup_project do
     {:ok, tmp_dir} = Briefly.create(directory: true)

@@ -24,7 +24,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   @type validation_type :: :automatic | :manual
   @type execution_type :: :main_agent | :sub_agent
 
-  @type check_type :: :file_exists | :file_valid | :path_exists | :field_present | :no_problems | :tests_passing | :spex_passing
+  @type check_type :: :file_exists | :file_valid | :path_exists | :field_present | :no_problems | :tests_passing | :spex_passing | :delegate
 
   @type t :: %__MODULE__{
           name: String.t(),
@@ -56,7 +56,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     :field_present,
     :no_problems,
     :tests_passing,
-    :spex_passing
+    :spex_passing,
+    :delegate
   ]
 
   @primary_key false

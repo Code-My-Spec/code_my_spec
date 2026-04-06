@@ -55,15 +55,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
       end)
 
-    # Children of contexts are driven by container tasks (context_specs,
-    # context_implementation) — not independently actionable.
-    driven_child_ids = driven_component_ids(ctx)
-
     nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
-        incoming_prereqs_satisfied?(n, incoming, satisfaction_map, driven_child_ids)
+        incoming_prereqs_satisfied?(n, incoming, satisfaction_map)
     end)
     |> sort_by_story_priority(ctx)
   end
@@ -124,7 +120,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     same_entity_edges(nodes) ++
       project_to_story_edges(ctx) ++
       component_tree_edges(nodes, ctx) ++
-      context_container_edges(ctx) ++
+      parent_child_edges(ctx) ++
       component_dependency_edges(ctx) ++
       story_to_project_edges(nodes, ctx)
   end
@@ -190,63 +186,82 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     entry ++ exit
   end
 
-  # Cross-entity edges between parent components and children.
-  # Data-driven: when a child's requirement has a prerequisite that exists
-  # on the parent but NOT on the child itself, create a cross-entity
-  # edge from parent.prereq → child.req.
-  # Fan-in: child's terminal req → parent's implementation_file.
-  # Applies to any component with children (contexts, live_contexts, live_views).
-  defp context_container_edges(ctx) do
-    parent_ids = ctx.components |> Enum.map(& &1.parent_component_id) |> MapSet.new() |> MapSet.delete(nil)
+  # Explicit parent-child edges for component hierarchies (contexts, live_contexts).
+  #
+  # Fan-out: parent phase gates → children can start
+  #   parent.spec_valid → child.first_req (children wait for parent design)
+  #   parent.review_valid → child.implementation_file (children wait for review)
+  #
+  # Fan-in: children completion → parent can advance
+  #   child.spec_valid → parent.review_file (review after all children specced)
+  #   child.terminal_req → parent.implementation_file (parent impl after all children done)
+  defp parent_child_edges(ctx) do
+    parent_ids =
+      ctx.components
+      |> Enum.map(& &1.parent_component_id)
+      |> MapSet.new()
+      |> MapSet.delete(nil)
 
     ctx.components
     |> Enum.filter(fn c -> MapSet.member?(parent_ids, c.id) end)
-    |> Enum.flat_map(fn context ->
-      parent_defs = ComponentRegistry.get_requirements_for_type(context.type)
-      parent_req_names = MapSet.new(parent_defs, & &1.name)
-      children = Enum.filter(ctx.components, &(&1.parent_component_id == context.id))
+    |> Enum.flat_map(fn parent ->
+      parent_defs = ComponentRegistry.get_requirements_for_type(parent.type)
+      children = Enum.filter(ctx.components, &(&1.parent_component_id == parent.id))
+
+      parent_spec_valid = find_def(parent_defs, "spec_valid")
+      parent_review_valid = find_def(parent_defs, "review_valid")
+      parent_impl_file = find_def(parent_defs, "implementation_file")
 
       Enum.flat_map(children, fn child ->
         child_defs = ComponentRegistry.get_requirements_for_type(child.type)
-        child_req_names = MapSet.new(child_defs, & &1.name)
+        child_first = List.first(child_defs)
         child_terminal = List.last(child_defs)
+        child_spec_valid = find_def(child_defs, "spec_valid")
+        child_impl_file = find_def(child_defs, "implementation_file")
 
-        # Fan-out: child prereqs that reference parent requirements
-        fan_out =
-          Enum.flat_map(child_defs, fn child_def ->
-            Enum.flat_map(child_def.prerequisites, fn prereq_name ->
-              if not MapSet.member?(child_req_names, prereq_name) and
-                   MapSet.member?(parent_req_names, prereq_name) do
-                [%{from: {"component", context.id, prereq_name},
-                   to: {"component", child.id, child_def.name}}]
-              else
-                []
-              end
-            end)
-          end)
+        # Fan-out: parent spec done → children can start specs
+        spec_gate =
+          if parent_spec_valid && child_first do
+            [%{from: {"component", parent.id, parent_spec_valid.name},
+               to: {"component", child.id, child_first.name}}]
+          else
+            []
+          end
 
-        # Fan-in: child phases feed back into parent
-        spec_terminal = Enum.find(child_defs, &(&1.name == "spec_valid"))
+        # Fan-out: parent review done → children can implement
+        impl_gate =
+          if parent_review_valid && child_impl_file do
+            [%{from: {"component", parent.id, parent_review_valid.name},
+               to: {"component", child.id, child_impl_file.name}}]
+          else
+            []
+          end
 
+        # Fan-in: child spec done → parent can review
         spec_fan_in =
-          if spec_terminal do
-            [%{from: {"component", child.id, spec_terminal.name},
-               to: {"component", context.id, "review_file"}}]
+          if child_spec_valid && find_def(parent_defs, "review_file") do
+            [%{from: {"component", child.id, child_spec_valid.name},
+               to: {"component", parent.id, "review_file"}}]
           else
             []
           end
 
+        # Fan-in: child fully done → parent can implement
         impl_fan_in =
-          if child_terminal do
+          if child_terminal && parent_impl_file do
             [%{from: {"component", child.id, child_terminal.name},
-               to: {"component", context.id, "implementation_file"}}]
+               to: {"component", parent.id, parent_impl_file.name}}]
           else
             []
           end
 
-        fan_out ++ spec_fan_in ++ impl_fan_in
+        spec_gate ++ impl_gate ++ spec_fan_in ++ impl_fan_in
       end)
     end)
+  end
+
+  defp find_def(definitions, name) do
+    Enum.find(definitions, &(&1.name == name))
   end
 
   # Component dependency edges: dep.terminal → dependent.first_req.
@@ -310,71 +325,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Actionability --
 
-  # For container nodes (scope: :children), ignore incoming edges from
-  # driven children — those are fan-in edges that represent completion,
-  # not prerequisites. The container is actionable based on its same-entity
-  # prereqs; its evaluate/2 checks child completion.
-  defp incoming_prereqs_satisfied?(node, incoming, satisfaction_map, driven_child_ids) do
+  # A node is actionable when all its incoming edge sources are satisfied.
+  defp incoming_prereqs_satisfied?(node, incoming, satisfaction_map) do
     sources = Map.get(incoming, node_key(node), [])
 
-    sources
-    |> Enum.reject(fn {_type, source_id, _name} ->
-      # Container nodes (scope: :children) ignore fan-in edges from their
-      # driven children — those represent completion, not prerequisites.
-      node.scope == :children and MapSet.member?(driven_child_ids, source_id)
-    end)
-    |> Enum.all?(fn source_key ->
+    Enum.all?(sources, fn source_key ->
       Map.get(satisfaction_map, source_key, true)
     end)
-  end
-
-  # Components whose parent has :children scope containers.
-  # Matches any component with children, consistent with context_container_edges.
-  defp driven_component_ids(ctx) do
-    parent_ids =
-      ctx.components
-      |> Enum.map(& &1.parent_component_id)
-      |> MapSet.new()
-      |> MapSet.delete(nil)
-
-    ctx.components
-    |> Enum.filter(fn c ->
-      c.parent_component_id && MapSet.member?(parent_ids, c.parent_component_id)
-    end)
-    |> MapSet.new(& &1.id)
-  end
-
-  # A child is only "driven" (suppressed from actionable) if its parent's
-  # container node (context_specs or context_implementation) is still unsatisfied
-  # and actionable — meaning the container task will handle it. If the container
-  # is already satisfied, the child should surface independently.
-  defp driven_by_active_container?(
-         %{entity_type: "component", entity_id: id} = _node,
-         driven_child_ids,
-         active_parents,
-         ctx
-       ) do
-    if MapSet.member?(driven_child_ids, id) do
-      comp = Enum.find(ctx.components, &(&1.id == id))
-      parent_id = comp && comp.parent_component_id
-      parent_id && MapSet.member?(active_parents, parent_id)
-    else
-      false
-    end
-  end
-
-  defp driven_by_active_container?(_, _, _, _), do: false
-
-  # Parents whose container nodes (context_specs or context_implementation) are
-  # still unsatisfied — meaning the container task should drive the children.
-  defp active_container_parent_ids(nodes, _ctx) do
-    nodes
-    |> Enum.filter(fn n ->
-      n.entity_type == "component" and
-        n.name in ["context_specs", "context_implementation"] and
-        not n.satisfied
-    end)
-    |> MapSet.new(& &1.entity_id)
   end
 
   defp node_key(n), do: {n.entity_type, n.entity_id, n.name}

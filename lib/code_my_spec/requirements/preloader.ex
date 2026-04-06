@@ -19,7 +19,9 @@ defmodule CodeMySpec.Requirements.Preloader do
           files_by_component: %{Ecto.UUID.t() => [File.t()]},
           files_by_story: %{integer() => [File.t()]},
           files_by_project: [File.t()],
+          files_by_path: %{String.t() => File.t()},
           problems_by_component: %{Ecto.UUID.t() => %{String.t() => integer()}},
+          problems_by_source: %{String.t() => integer()},
           components: [Component.t()],
           stories: [Story.t()]
         }
@@ -71,11 +73,22 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> where([s], s.project_id == ^project_id)
       |> Repo.all()
 
+    # Global problem counts by source (for story/project-level checks)
+    global_problem_counts =
+      Problem
+      |> where([p], p.project_id == ^project_id)
+      |> group_by([p], p.source)
+      |> select([p], {p.source, count(p.id)})
+      |> Repo.all()
+      |> Map.new()
+
     %{
       files_by_component: files_by_component,
       files_by_story: files_by_story,
       files_by_project: all_files,
+      files_by_path: Map.new(all_files, &{&1.path, &1}),
       problems_by_component: problems_by_component,
+      problems_by_source: global_problem_counts,
       components: components,
       stories: stories
     }

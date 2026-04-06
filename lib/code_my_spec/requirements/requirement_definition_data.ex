@@ -19,7 +19,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentSpec,
         artifact_type: :specification,
         description: "Component specification file exists",
-        prerequisites: ["context_specs"]
+        prerequisites: []
       })
 
     definition
@@ -51,7 +51,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Component implementation file exists",
-        prerequisites: ["spec_valid", "context_implementation"]
+        prerequisites: ["spec_valid"]
       })
 
     definition
@@ -233,8 +233,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Context implementation file exists",
-        prerequisites: ["context_implementation"],
-        scope: :orchestrate
+        prerequisites: ["review_valid"]
       })
 
     definition
@@ -303,7 +302,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.LiveViewSpec,
         artifact_type: :specification,
         description: "LiveView specification file exists",
-        prerequisites: ["context_specs"]
+        prerequisites: []
       })
 
     definition
@@ -437,7 +436,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "project_setup",
-        # Special case — delegates to ProjectSetup.evaluate
+        check_type: :delegate,
+        config: %{module: CodeMySpec.AgentTasks.ProjectSetup, function: :check},
         satisfied_by: CodeMySpec.AgentTasks.ProjectSetup,
         artifact_type: :specification,
         description: "Project bootstrap setup is complete",
@@ -524,7 +524,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "issues_triaged",
-        # Special case — queries Issues context directly
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :triaged?},
         satisfied_by: CodeMySpec.AgentTasks.TriageIssues,
         artifact_type: :review,
         description: "All incoming QA issues have been triaged",
@@ -539,12 +540,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     {:ok, definition} =
       RequirementDefinition.new(%{
         name: "issues_resolved",
-        # Special case — queries Issues context directly
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :resolved?},
         satisfied_by: CodeMySpec.AgentTasks.FixIssues,
         artifact_type: :review,
         description: "All medium+ accepted issues have been resolved",
-        prerequisites: ["issues_triaged"],
-        scope: :orchestrate
+        prerequisites: ["issues_triaged"]
       })
 
     definition

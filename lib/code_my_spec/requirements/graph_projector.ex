@@ -179,7 +179,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   @doc """
   Single context graph: context requirements as a vertical chain in the center,
-  children fanning out between the container nodes (context_specs, context_implementation).
+  children fanning out between the phase gate nodes (spec_valid, review_valid).
   """
   @spec component_graph(Scope.t(), String.t()) :: map()
   def component_graph(%Scope{} = scope, component_id) do
@@ -238,8 +238,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     max_spec_rows = children_with_reqs |> Enum.map(fn c -> length(c.spec_reqs) end) |> Enum.max(fn -> 0 end)
     max_impl_rows = children_with_reqs |> Enum.map(fn c -> length(c.impl_reqs) end) |> Enum.max(fn -> 0 end)
 
-    specs_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "context_specs"))
-    impl_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "context_implementation"))
+    specs_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "spec_valid"))
+    impl_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "review_valid"))
 
     # Layout context column at x=0, inserting gaps for child zones
     {context_sigma, _y_cursor} =
@@ -259,7 +259,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         {acc ++ [node], y + req_gap + extra}
       end)
 
-    # Position spec-phase children after context_specs
+    # Position spec-phase children after spec_valid
     specs_y =
       if specs_idx do
         ctx_node = Enum.at(context_sigma, specs_idx)
@@ -283,7 +283,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         end)
       end)
 
-    # Position impl-phase children after context_implementation
+    # Position impl-phase children after review_valid
     impl_y =
       if impl_idx do
         ctx_node = Enum.at(context_sigma, impl_idx)
@@ -463,8 +463,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     max_spec_rows = children_with_reqs |> Enum.map(&length(&1.spec_reqs)) |> Enum.max(fn -> 0 end)
     max_impl_rows = children_with_reqs |> Enum.map(&length(&1.impl_reqs)) |> Enum.max(fn -> 0 end)
 
-    specs_idx = Enum.find_index(sorted_ctx, &(&1.name == "context_specs"))
-    impl_idx = Enum.find_index(sorted_ctx, &(&1.name == "context_implementation"))
+    specs_idx = Enum.find_index(sorted_ctx, &(&1.name == "spec_valid"))
+    impl_idx = Enum.find_index(sorted_ctx, &(&1.name == "review_valid"))
 
     # Context column at x=0, gaps inserted for child fan-out zones
     {ctx_nodes, y_cursor} =
@@ -484,7 +484,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         {acc ++ [node], y + @ctx_req_gap + extra}
       end)
 
-    # Spec-phase children fan out after context_specs
+    # Spec-phase children fan out after spec_valid
     specs_y =
       if specs_idx do
         ctx_node = Enum.at(ctx_nodes, specs_idx)
@@ -508,7 +508,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         end)
       end)
 
-    # Impl-phase children fan out after context_implementation
+    # Impl-phase children fan out after review_valid
     impl_y =
       if impl_idx do
         ctx_node = Enum.at(ctx_nodes, impl_idx)

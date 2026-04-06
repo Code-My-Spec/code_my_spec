@@ -8,6 +8,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Users.Scope
@@ -50,7 +51,9 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
       Logger.info("[TaskEvaluator] Evaluating task #{task.id} (#{type_name})")
 
-      case call_evaluate(module, scope, task) do
+      result = dispatch_evaluate(module, scope, task)
+
+      case result do
         {:ok, :valid} ->
           Sessions.complete_task(scope, session, task.id, :completed)
           {:ok, :valid}
@@ -64,8 +67,12 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     end
   end
 
-  defp call_evaluate(module, scope, task) do
-    module.evaluate(scope, task)
+  defp dispatch_evaluate(module, scope, task) do
+    if Evaluator.has_custom_evaluate?(module) do
+      module.evaluate(scope, task)
+    else
+      Evaluator.evaluate(scope, task)
+    end
   rescue
     e ->
       {:error, "Task evaluation failed: #{Exception.message(e)}"}

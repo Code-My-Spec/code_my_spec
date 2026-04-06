@@ -1,0 +1,217 @@
+defmodule CodeMySpec.AgentTasks.Evaluator do
+  @moduledoc """
+  Unified evaluation entry point for agent tasks.
+
+  Both `EvaluateTask` (MCP tool) and `TaskEvaluator` (StopHook) delegate here.
+  The flow:
+
+  1. Sync files from filesystem → DB (safety net; FileWatcherServer handles real-time)
+  2. Run optional `before_evaluate/2` callback on the task module (side effects)
+  3. Check requirement satisfaction via RequirementCalculator (single source of truth)
+  4. Format feedback from unsatisfied requirement details + problem feedback
+
+  Task modules that need custom evaluation logic (StartImplementation, ProjectSetup)
+  can still implement `evaluate/2` — the caller falls back to that when present.
+  """
+
+  require Logger
+
+  alias CodeMySpec.AgentTasks.ProblemFeedback
+  alias CodeMySpec.Components
+  alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Requirements.RequirementCalculator
+  alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.RequirementsFormatter
+  alias CodeMySpec.Stories.StoriesRepository
+  alias CodeMySpec.Users.Scope
+
+  @doc """
+  Evaluate a task: sync files, run side effects, check requirement.
+
+  Returns `{:ok, :valid}` or `{:ok, :invalid, feedback}`.
+  """
+  @spec evaluate(Scope.t(), map()) :: {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, String.t()}
+  def evaluate(%Scope{} = scope, task) do
+    task_module = task.session_type
+
+    # Step 1: Sync files
+    sync_files(scope)
+
+    # Step 2: Optional before_evaluate callback (side effects like proposal execution)
+    run_before_evaluate(task_module, scope, task)
+
+    # Step 3: Check requirement via RequirementCalculator
+    check_requirement(scope, task)
+  rescue
+    e ->
+      {:error, "Evaluation failed: #{Exception.message(e)}"}
+  end
+
+  @doc """
+  Check whether a task module should use the unified evaluator or its own evaluate/2.
+
+  Returns true for task modules that have custom evaluate logic that can't be
+  expressed as a RequirementCalculator check (e.g., StartImplementation checks
+  next_actionable; ProjectSetup runs setup steps).
+  """
+  @spec has_custom_evaluate?(module()) :: boolean()
+  def has_custom_evaluate?(module) do
+    # These modules have evaluate/2 that does something the calculator can't
+    module in custom_evaluate_modules()
+  end
+
+  # Modules with genuinely custom evaluation logic
+  defp custom_evaluate_modules do
+    [
+      CodeMySpec.AgentTasks.StartImplementation,
+      CodeMySpec.AgentTasks.ProjectSetup,
+      CodeMySpec.AgentTasks.QaApp,
+      CodeMySpec.AgentTasks.QaSetup,
+      CodeMySpec.AgentTasks.Init,
+      CodeMySpec.AgentTasks.ProjectBootstrap,
+      CodeMySpec.AgentTasks.RefactorModule,
+      CodeMySpec.AgentTasks.DesignUi,
+      CodeMySpec.AgentTasks.ResearchTopic,
+      CodeMySpec.AgentTasks.ResearchTopics
+    ]
+  end
+
+  # -- File Sync --
+
+  defp sync_files(%Scope{cwd: nil}), do: :ok
+
+  defp sync_files(%Scope{cwd: cwd} = scope) do
+    case FileSync.sync(scope, base_dir: cwd) do
+      {:ok, file_result} ->
+        FileComponentSync.sync_from_files(scope,
+          base_dir: cwd,
+          changed_paths: file_result.changed_paths
+        )
+
+      {:error, reason} ->
+        Logger.warning("[Evaluator] FileSync failed: #{inspect(reason)}")
+    end
+
+    :ok
+  end
+
+  # -- Before Evaluate --
+
+  defp run_before_evaluate(nil, _scope, _task), do: :ok
+
+  defp run_before_evaluate(module, scope, task) do
+    if function_exported?(module, :before_evaluate, 2) do
+      Logger.info("[Evaluator] Running before_evaluate for #{inspect(module)}")
+      module.before_evaluate(scope, task)
+    end
+
+    :ok
+  end
+
+  # -- Requirement Check --
+
+  defp check_requirement(scope, task) do
+    with {:ok, {entity, entity_type}} <- resolve_entity(scope, task),
+         {:ok, definition} <- find_definition(entity_type, task.requirement_name, entity) do
+      files = load_files(scope, entity, entity_type)
+      result = RequirementCalculator.compute_one(scope, entity, definition, files)
+
+      if result.satisfied do
+        {:ok, :valid}
+      else
+        feedback = format_feedback(scope, entity, entity_type, result, definition)
+        {:ok, :invalid, feedback}
+      end
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp resolve_entity(scope, task) do
+    cond do
+      task.component_id ->
+        component = Components.get_component!(scope, task.component_id)
+        {:ok, {component, :component}}
+
+      task.story_id ->
+        story = StoriesRepository.get_story!(scope, task.story_id)
+        {:ok, {story, :story}}
+
+      task.project_id || scope.active_project ->
+        {:ok, {scope.active_project, :project}}
+
+      true ->
+        {:error, "Cannot resolve entity from task — no component_id, story_id, or project"}
+    end
+  end
+
+  defp find_definition(:component, requirement_name, entity) do
+    definitions = ComponentRegistry.get_requirements_for_type(entity.type)
+    find_by_name(definitions, requirement_name)
+  end
+
+  defp find_definition(:story, requirement_name, _entity) do
+    find_by_name(RequirementDefinitionData.story_requirements(), requirement_name)
+  end
+
+  defp find_definition(:project, requirement_name, _entity) do
+    find_by_name(RequirementDefinitionData.project_requirements(), requirement_name)
+  end
+
+  defp find_by_name(definitions, name) do
+    case Enum.find(definitions, &(&1.name == name)) do
+      nil -> {:error, "No requirement definition found with name: #{name}"}
+      definition -> {:ok, definition}
+    end
+  end
+
+  defp load_files(scope, entity, :component) do
+    CodeMySpec.Files.list_component_files(scope, entity.id)
+  end
+
+  defp load_files(scope, entity, :story) do
+    CodeMySpec.Files.list_story_files(scope, entity.id)
+  end
+
+  defp load_files(scope, _entity, :project) do
+    CodeMySpec.Files.list_files(scope)
+  end
+
+  # -- Feedback Formatting --
+
+  defp format_feedback(scope, entity, :component, result, _definition) do
+    req_feedback = RequirementsFormatter.format_unsatisfied(
+      [struct(CodeMySpec.Requirements.Requirement, Map.merge(result, %{description: result.details[:reason] || "unsatisfied"}))],
+      context: "Requirement not met:"
+    )
+
+    project = scope.active_project
+    problem_feedback = problem_feedback_for(scope, entity, :component, project)
+    join_feedback(req_feedback, problem_feedback)
+  end
+
+  defp format_feedback(_scope, _entity, _type, result, _definition) do
+    reason = result.details[:reason] || result.details["reason"] || "Requirement not satisfied"
+    "Requirement not met: #{reason}"
+  end
+
+  defp problem_feedback_for(scope, component, :component, project) do
+    # Determine which problem feedback to use based on the task artifact type
+    # For now, include all problems for the component
+    code_feedback = ProblemFeedback.for_code_task(scope, component, project)
+    spec_feedback = ProblemFeedback.for_spec_task(scope, component, project)
+
+    case {code_feedback, spec_feedback} do
+      {nil, nil} -> nil
+      {code, nil} -> code
+      {nil, spec} -> spec
+      {code, spec} -> "#{code}\n\n#{spec}"
+    end
+  end
+
+  defp join_feedback(req, nil), do: req
+  defp join_feedback(nil, problem), do: problem
+  defp join_feedback(req, problem), do: "#{req}\n\n#{problem}"
+end

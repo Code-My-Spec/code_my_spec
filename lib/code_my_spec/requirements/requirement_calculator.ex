@@ -20,8 +20,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Issues
-  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
@@ -137,34 +135,23 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # Special case: project_setup delegates to its evaluate function
-  defp check(%{name: "project_setup"}, scope, _entity, _files, _ctx) do
-    case CodeMySpec.AgentTasks.ProjectSetup.evaluate(scope, %{}) do
-      {:ok, :valid} -> {true, %{status: "All setup steps complete"}}
-      {:ok, :invalid, _} -> {false, %{reason: "Setup steps incomplete"}}
-      _ -> {false, %{reason: "Setup evaluation failed"}}
+  defp check(%{check_type: :delegate, config: config}, scope, entity, _files, _ctx) do
+    module = config[:module] || config["module"]
+    function = config[:function] || config["function"] || :check
+
+    if is_nil(module) do
+      {false, %{reason: "delegate check missing :module in config"}}
+    else
+      case apply(module, function, [scope, entity]) do
+        {true, details} -> {true, details}
+        {false, details} -> {false, details}
+        {:ok, :valid} -> {true, %{status: "delegate check passed"}}
+        {:ok, :invalid, reason} -> {false, %{reason: reason}}
+        _ -> {false, %{reason: "delegate check returned unexpected result"}}
+      end
     end
-  end
-
-  # Issues checks — special cases until we model issues as problems
-  defp check(%{name: "issues_triaged"}, scope, _entity, _files, _ctx) do
-    triageable =
-      Issues.list_by_status(scope, :incoming)
-      |> Enum.filter(&(Issue.severity_index(&1.severity) <= Issue.severity_index(:medium)))
-
-    if triageable == [],
-      do: {true, %{status: "No untriaged issues at medium+ severity"}},
-      else: {false, %{reason: "#{length(triageable)} untriaged medium+ issues"}}
-  end
-
-  defp check(%{name: "issues_resolved"}, scope, _entity, _files, _ctx) do
-    unresolved =
-      Issues.list_by_status(scope, :accepted)
-      |> Enum.filter(&(Issue.severity_index(&1.severity) <= Issue.severity_index(:medium)))
-
-    if unresolved == [],
-      do: {true, %{status: "No unresolved medium+ issues"}},
-      else: {false, %{reason: "#{length(unresolved)} unresolved medium+ issues"}}
+  rescue
+    e -> {false, %{reason: "delegate check failed: #{Exception.message(e)}"}}
   end
 
   # Fallback for definitions without check_type (legacy or unknown)
@@ -208,7 +195,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp role_to_file_key(:implementation), do: :code_file
   defp role_to_file_key(:test), do: :test_file
   defp role_to_file_key(:review), do: :review_file
-  defp role_to_file_key(:json), do: :json_file
   defp role_to_file_key(_), do: nil
 
   # -- Path checks (project-level) --

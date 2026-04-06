@@ -130,50 +130,19 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
     end
   end
 
-  describe "context_specs container" do
-    test "satisfied when all children have valid specs" do
-      {scope, tmp_dir} = setup_project()
+  describe "context requirements (no container nodes)" do
+    test "context type has no context_specs or context_implementation requirements" do
+      {scope, _tmp_dir} = setup_project()
 
       parent = create_component(scope, "MyApp.Accounts", "context")
-      child = create_component(scope, "MyApp.Accounts.User", "schema")
-      Components.update_component(scope, child, %{parent_component_id: parent.id})
-
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", context_spec_content())
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/user.spec.md", spec_content("MyApp.Accounts.User"))
-      sync!(scope, tmp_dir)
-
-      child_spec = Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts/user.spec.md")
-      {:ok, _} = Files.mark_validated(child_spec, true)
-
-      results = RequirementCalculator.compute_component(scope, reload(scope, parent))
-      container = find_req(results, "context_specs")
-
-      assert container.satisfied
-    end
-
-    @tag :skip
-    test "unsatisfied when child spec missing" do
-      {scope, tmp_dir} = setup_project()
-
-      parent = create_component(scope, "MyApp.Accounts", "context")
-      child = create_component(scope, "MyApp.Accounts.User", "schema")
-      {:ok, _} = Components.update_component(scope, child, %{parent_component_id: parent.id})
-
-      # Only parent spec, no child spec
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", context_spec_content())
-      sync!(scope, tmp_dir)
-
-      parent = reload(scope, parent)
-
-      # Verify child exists under parent
-      children = CodeMySpec.Repo.preload(parent, :child_components, force: true).child_components
-      assert length(children) == 1, "Expected 1 child, got #{length(children)}"
-
       results = RequirementCalculator.compute_component(scope, parent)
-      container = find_req(results, "context_specs")
+      names = Enum.map(results, & &1.name)
 
-      refute container.satisfied
-      assert container.details.reason =~ "need specs"
+      refute "context_specs" in names, "context_specs should not exist — replaced by graph edges"
+      refute "context_implementation" in names, "context_implementation should not exist — replaced by graph edges"
+      assert "spec_file" in names
+      assert "review_file" in names
+      assert "implementation_file" in names
     end
   end
 

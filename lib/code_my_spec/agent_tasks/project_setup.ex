@@ -122,4 +122,14 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     end
   end
 
+  @doc "Delegate check for RequirementCalculator."
+  @spec check(term(), term()) :: {boolean(), map()}
+  def check(scope, _entity) do
+    case evaluate(scope, %{}) do
+      {:ok, :valid} -> {true, %{status: "All setup steps complete"}}
+      {:ok, :invalid, _} -> {false, %{reason: "Setup steps incomplete"}}
+      _ -> {false, %{reason: "Setup evaluation failed"}}
+    end
+  end
+
 end

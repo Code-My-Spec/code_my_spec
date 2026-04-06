@@ -18,6 +18,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
 
   require Logger
 
+  alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Sessions
@@ -91,7 +92,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     if is_nil(task_module) do
       {:reply, TasksMapper.error("No task module configured for this task"), frame}
     else
-      case call_evaluate(task_module, scope, task) do
+      result = dispatch_evaluate(task_module, scope, task)
+
+      case result do
         {:ok, :valid} ->
           {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
           Logger.info("[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed")
@@ -108,8 +111,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     end
   end
 
-  defp call_evaluate(module, scope, task) do
-    module.evaluate(scope, task)
+  # Modules with custom evaluate logic bypass the unified Evaluator.
+  # Everything else goes through the Evaluator (FileSync + RequirementCalculator).
+  defp dispatch_evaluate(module, scope, task) do
+    if Evaluator.has_custom_evaluate?(module) do
+      module.evaluate(scope, task)
+    else
+      Evaluator.evaluate(scope, task)
+    end
   rescue
     e -> {:error, "Evaluation failed: #{Exception.message(e)}"}
   end
