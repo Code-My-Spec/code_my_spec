@@ -345,9 +345,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     [
       spec_file(),
       spec_valid(),
-      implementation_file(),
       test_file(),
       test_spec_alignment(),
+      implementation_file(),
       tests_passing()
     ]
   end

@@ -112,9 +112,9 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.spec_file(),
         RequirementDefinitionData.spec_valid(),
-        RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
         RequirementDefinitionData.test_spec_alignment(),
+        RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.tests_passing()
       ],
       document_type: "spec",
@@ -151,9 +151,9 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.liveview_spec_file(),
         RequirementDefinitionData.liveview_spec_valid(),
-        RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
         RequirementDefinitionData.test_spec_alignment(),
+        RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.tests_passing()
       ],
       document_type: "liveview",
@@ -166,9 +166,9 @@ defmodule CodeMySpec.Components.Registry do
       requirements: [
         RequirementDefinitionData.liveview_spec_file(),
         RequirementDefinitionData.liveview_spec_valid(),
-        RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.test_file(),
         RequirementDefinitionData.test_spec_alignment(),
+        RequirementDefinitionData.implementation_file(),
         RequirementDefinitionData.tests_passing()
       ],
       document_type: "liveview_component",
