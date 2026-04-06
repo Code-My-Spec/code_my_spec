@@ -59,14 +59,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # context_implementation) — not independently actionable.
     driven_child_ids = driven_component_ids(ctx)
 
-    # Build map of parent_id → whether container nodes (context_specs/context_implementation) are still active
-    active_container_parents = active_container_parent_ids(nodes, ctx)
-
     nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
-        not driven_by_active_container?(n, driven_child_ids, active_container_parents, ctx) and
         incoming_prereqs_satisfied?(n, incoming, satisfaction_map, driven_child_ids)
     end)
     |> sort_by_story_priority(ctx)
