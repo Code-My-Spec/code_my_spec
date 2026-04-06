@@ -473,14 +473,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The graph edges already encode execution order.
   defp sort_by_story_priority(nodes, ctx) do
     story_by_id = Map.new(ctx.stories, &{&1.id, &1})
-
-    # Map component_id → story priority (for components linked to stories)
-    story_priority_by_component =
-      ctx.stories
-      |> Enum.filter(& &1.component_id)
-      |> Map.new(&{&1.component_id, &1.priority || 999})
-
-    parent_map = Map.new(ctx.components, &{&1.id, &1.parent_component_id})
+    component_priority = build_component_priority_map(ctx)
 
     Enum.sort_by(nodes, fn node ->
       case node.entity_type do
@@ -488,7 +481,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           (story_by_id[node.entity_id] && story_by_id[node.entity_id].priority) || 999
 
         "component" ->
-          find_story_priority(node.entity_id, parent_map, story_priority_by_component)
+          Map.get(component_priority, node.entity_id, 999)
 
         "project" ->
           999
@@ -496,16 +489,71 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp find_story_priority(nil, _parent_map, _story_priorities), do: 999
+  # Build a map of component_id → best (lowest) story priority.
+  # A component inherits priority from:
+  # 1. Stories that directly link to it (story.component_id)
+  # 2. Stories that link to components that depend on it
+  # 3. Parent components (via parent_component_id chain)
+  defp build_component_priority_map(ctx) do
+    # Direct: story.component_id → component
+    direct =
+      ctx.stories
+      |> Enum.filter(& &1.component_id)
+      |> Enum.reduce(%{}, fn story, acc ->
+        priority = story.priority || 999
+        Map.update(acc, story.component_id, priority, &min(&1, priority))
+      end)
 
-  defp find_story_priority(component_id, parent_map, story_priorities) do
-    case Map.get(story_priorities, component_id) do
+    # Spread priority to dependencies of surface components
+    with_deps =
+      ctx.stories
+      |> Enum.filter(& &1.component_id)
+      |> Enum.reduce(direct, fn story, acc ->
+        surface = Enum.find(ctx.components, &(&1.id == story.component_id))
+        priority = story.priority || 999
+
+        deps = case surface && surface.dependencies do
+          %Ecto.Association.NotLoaded{} -> []
+          deps when is_list(deps) -> deps
+          _ -> []
+        end
+
+        Enum.reduce(deps, acc, fn dep, inner_acc ->
+          Map.update(inner_acc, dep.id, priority, &min(&1, priority))
+        end)
+      end)
+
+    # Spread priority down parent_component_id chains
+    parent_map = Map.new(ctx.components, &{&1.id, &1.parent_component_id})
+
+    Enum.reduce(ctx.components, with_deps, fn comp, acc ->
+      if Map.has_key?(acc, comp.id) do
+        acc
+      else
+        # Walk up parent chain looking for a component with priority
+        find_priority_from_parent(comp.id, parent_map, acc)
+      end
+    end)
+  end
+
+  defp find_priority_from_parent(nil, _parent_map, acc), do: acc
+
+  defp find_priority_from_parent(component_id, parent_map, acc) do
+    case Map.get(acc, component_id) do
       nil ->
         parent_id = Map.get(parent_map, component_id)
-        if parent_id, do: find_story_priority(parent_id, parent_map, story_priorities), else: 999
+        if parent_id do
+          acc = find_priority_from_parent(parent_id, parent_map, acc)
+          case Map.get(acc, parent_id) do
+            nil -> acc
+            priority -> Map.put(acc, component_id, priority)
+          end
+        else
+          acc
+        end
 
-      priority ->
-        priority || 999
+      _priority ->
+        acc
     end
   end
 end
