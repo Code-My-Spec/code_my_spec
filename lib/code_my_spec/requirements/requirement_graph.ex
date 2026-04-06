@@ -264,8 +264,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     Enum.find(definitions, &(&1.name == name))
   end
 
-  # Component dependency edges: dep.terminal → dependent.first_req.
-  # Ensures dependencies are completed before the components that depend on them.
+  # Component dependency edges: dep.terminal → dependent.implementation_file.
+  # Dependencies must be complete before the dependent can IMPLEMENT, but
+  # specs can be written in parallel (dependency order is an impl concern).
   defp component_dependency_edges(ctx) do
     ctx.components
     |> Enum.flat_map(fn comp ->
@@ -282,11 +283,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           dep_defs = ComponentRegistry.get_requirements_for_type(dep_comp.type)
           comp_defs = ComponentRegistry.get_requirements_for_type(comp.type)
           dep_terminal = List.last(dep_defs)
-          comp_first = List.first(comp_defs)
+          comp_impl = find_def(comp_defs, "implementation_file")
 
-          if dep_terminal && comp_first do
+          if dep_terminal && comp_impl do
             [%{from: {"component", dep_comp.id, dep_terminal.name},
-               to: {"component", comp.id, comp_first.name}}]
+               to: {"component", comp.id, comp_impl.name}}]
           else
             []
           end
