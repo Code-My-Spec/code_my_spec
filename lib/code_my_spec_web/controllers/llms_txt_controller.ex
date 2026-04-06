@@ -30,6 +30,24 @@ defmodule CodeMySpecWeb.LlmsTxtController do
     |> send_resp(200, text)
   end
 
+  def full(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+
+    content_by_type =
+      @content_types
+      |> Enum.map(fn type ->
+        entries = ContentRepository.list_published_content(nil, type)
+        {type, entries}
+      end)
+      |> Enum.reject(fn {_type, entries} -> entries == [] end)
+
+    text = render_llms_full_txt(base_url, content_by_type)
+
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(200, text)
+  end
+
   defp render_llms_txt(base_url, content_by_type) do
     sections = [
       header(),
@@ -99,5 +117,60 @@ defmodule CodeMySpecWeb.LlmsTxtController do
       "- Author: John Davenport (https://www.linkedin.com/in/john-davenport-software/)",
       ""
     ]
+  end
+
+  defp render_llms_full_txt(base_url, content_by_type) do
+    sections = [
+      header(),
+      static_pages_section(base_url),
+      full_content_sections(base_url, content_by_type),
+      footer()
+    ]
+
+    sections
+    |> List.flatten()
+    |> Enum.join("\n")
+  end
+
+  defp full_content_sections(base_url, content_by_type) do
+    Enum.flat_map(content_by_type, fn {type, entries} ->
+      section_title = type |> to_string() |> String.capitalize()
+      prefix = content_prefix(type)
+
+      header_lines = ["## #{section_title}", ""]
+
+      entry_lines =
+        entries
+        |> Enum.sort_by(& &1.publish_at, {:desc, DateTime})
+        |> Enum.flat_map(fn content ->
+          title = content.title || content.slug
+          url = "#{base_url}#{prefix}#{content.slug}"
+          body = strip_html(content.processed_content || "")
+
+          [
+            "### [#{title}](#{url})",
+            "",
+            body,
+            "",
+            "---",
+            ""
+          ]
+        end)
+
+      header_lines ++ entry_lines
+    end)
+  end
+
+  defp strip_html(html) do
+    html
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.replace(~r/&amp;/, "&")
+    |> String.replace(~r/&lt;/, "<")
+    |> String.replace(~r/&gt;/, ">")
+    |> String.replace(~r/&quot;/, "\"")
+    |> String.replace(~r/&#39;/, "'")
+    |> String.replace(~r/&nbsp;/, " ")
+    |> String.replace(~r/\n{3,}/, "\n\n")
+    |> String.trim()
   end
 end

@@ -37,6 +37,7 @@ defmodule CodeMySpecWeb.Router do
     get "/", PageController, :home
     get "/sitemap.xml", SitemapController, :index
     get "/llms.txt", LlmsTxtController, :index
+    get "/llms-full.txt", LlmsTxtController, :full
 
     # Public content routes (CLIENT APP FUNCTIONALITY)
     live_session :public_content,

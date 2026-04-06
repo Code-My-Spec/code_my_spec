@@ -167,6 +167,7 @@ defmodule CodeMySpecWeb.ContentLive.Public do
         width="1024"
         height="576"
         loading="eager"
+        fetchpriority="high"
       />
       <header class="mb-8">
         <h1 class="text-4xl font-bold mb-4">{@content.title || @content.slug}</h1>
@@ -305,62 +306,151 @@ defmodule CodeMySpecWeb.ContentLive.Public do
     url = base_url <> canonical
     og_image = content.og_image || blog_og_image(content, base_url) || "#{base_url}/images/og-default.png"
 
-    article =
+    author = %{
+      "@type" => "Person",
+      "@id" => "#{base_url}/author/john-davenport",
+      "name" => "John Davenport",
+      "url" => "#{base_url}/author/john-davenport"
+    }
+
+    publisher = %{
+      "@type" => "Organization",
+      "@id" => "#{base_url}/#organization",
+      "name" => "CodeMySpec",
+      "logo" => %{
+        "@type" => "ImageObject",
+        "url" => "#{base_url}/images/logo.svg",
+        "width" => 512,
+        "height" => 512
+      }
+    }
+
+    image = %{
+      "@type" => "ImageObject",
+      "url" => og_image,
+      "width" => 1200,
+      "height" => 630
+    }
+
+    schemas =
       case content.content_type do
         :blog ->
-          %{
-            "@context" => "https://schema.org",
-            "@type" => "BlogPosting",
-            "headline" => content.title || content.slug,
-            "url" => url,
-            "image" => %{
-              "@type" => "ImageObject",
-              "url" => og_image
-            },
-            "datePublished" => format_iso8601(content.publish_at),
-            "dateModified" => format_iso8601(content.updated_at),
-            "author" => %{
-              "@type" => "Person",
-              "@id" => "#{base_url}/author/john-davenport",
-              "name" => "John Davenport",
-              "url" => "#{base_url}/author/john-davenport"
-            },
-            "publisher" => %{
-              "@type" => "Organization",
-              "@id" => "#{base_url}/#organization",
-              "name" => "CodeMySpec",
-              "logo" => %{
-                "@type" => "ImageObject",
-                "url" => "#{base_url}/images/logo.svg"
-              }
-            },
-            "mainEntityOfPage" => %{
-              "@type" => "WebPage",
-              "@id" => url
+          [
+            %{
+              "@context" => "https://schema.org",
+              "@type" => "BlogPosting",
+              "@id" => url,
+              "headline" => content.title || content.slug,
+              "url" => url,
+              "image" => image,
+              "datePublished" => format_iso8601(content.publish_at),
+              "dateModified" => format_iso8601(content.updated_at),
+              "author" => author,
+              "publisher" => publisher,
+              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url}
             }
-          }
+          ]
+
+        :documentation ->
+          [
+            %{
+              "@context" => "https://schema.org",
+              "@type" => "TechArticle",
+              "@id" => url,
+              "headline" => content.title || content.slug,
+              "url" => url,
+              "image" => image,
+              "datePublished" => format_iso8601(content.publish_at),
+              "dateModified" => format_iso8601(content.updated_at),
+              "author" => author,
+              "publisher" => publisher,
+              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url}
+            }
+          ]
+
+        :page ->
+          if String.contains?(content.slug || "", "review") do
+            # Tool review pages get Review + SoftwareApplication schema
+            tool_name = extract_tool_name(content.title)
+
+            [
+              %{
+                "@context" => "https://schema.org",
+                "@type" => "Review",
+                "@id" => url,
+                "name" => content.title || content.slug,
+                "url" => url,
+                "datePublished" => format_iso8601(content.publish_at),
+                "dateModified" => format_iso8601(content.updated_at),
+                "author" => author,
+                "publisher" => publisher,
+                "itemReviewed" => %{
+                  "@type" => "SoftwareApplication",
+                  "name" => tool_name,
+                  "applicationCategory" => "DeveloperApplication"
+                }
+              }
+            ]
+          else
+            [
+              %{
+                "@context" => "https://schema.org",
+                "@type" => "WebPage",
+                "@id" => url,
+                "name" => content.title || content.slug,
+                "url" => url,
+                "datePublished" => format_iso8601(content.publish_at),
+                "dateModified" => format_iso8601(content.updated_at),
+                "author" => author,
+                "publisher" => publisher
+              }
+            ]
+          end
 
         _ ->
-          %{
-            "@context" => "https://schema.org",
-            "@type" => "WebPage",
-            "name" => content.title || content.slug,
-            "url" => url
-          }
+          [
+            %{
+              "@context" => "https://schema.org",
+              "@type" => "WebPage",
+              "@id" => url,
+              "name" => content.title || content.slug,
+              "url" => url
+            }
+          ]
       end
 
-    article =
-      if content.meta_description,
-        do: Map.put(article, "description", content.meta_description),
-        else: article
+    schemas =
+      Enum.map(schemas, fn schema ->
+        if content.meta_description,
+          do: Map.put(schema, "description", content.meta_description),
+          else: schema
+      end)
 
     breadcrumb = build_breadcrumb(content, base_url)
 
-    Jason.encode!([article, breadcrumb])
+    Jason.encode!(schemas ++ [breadcrumb])
   end
 
+  defp extract_tool_name(nil), do: "Software"
+
+  defp extract_tool_name(title) do
+    # "Claude Code in 2026: ..." -> "Claude Code"
+    # "Aider in 2026: ..." -> "Aider"
+    case Regex.run(~r/^(.+?)\s+in\s+\d{4}/, title) do
+      [_, name] -> name
+      _ -> title |> String.split(":") |> List.first() |> String.trim()
+    end
+  end
+
+  @type_labels %{
+    blog: "Blog",
+    page: "Pages",
+    landing: "Landing",
+    documentation: "Documentation"
+  }
+
   defp build_breadcrumb(content, base_url) do
-    type_label = content.content_type |> to_string() |> String.capitalize()
+    type_label = Map.get(@type_labels, content.content_type, content.content_type |> to_string() |> String.capitalize())
     type_path = Map.fetch!(@content_type_paths, content.content_type)
 
     %{
@@ -382,7 +472,8 @@ defmodule CodeMySpecWeb.ContentLive.Public do
         %{
           "@type" => "ListItem",
           "position" => 3,
-          "name" => content.title || content.slug
+          "name" => content.title || content.slug,
+          "item" => "#{base_url}/#{type_path}/#{content.slug}"
         }
       ]
     }

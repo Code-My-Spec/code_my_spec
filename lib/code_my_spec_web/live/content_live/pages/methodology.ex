@@ -62,7 +62,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
           "url" => "#{base_url}/methodology",
           "image" => %{
             "@type" => "ImageObject",
-            "url" => "#{base_url}/images/og-methodology.png"
+            "url" => "#{base_url}/images/og-methodology.png",
+            "width" => 1200,
+            "height" => 630
           },
           "author" => %{
             "@type" => "Person",
@@ -76,7 +78,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
             "name" => "CodeMySpec",
             "logo" => %{
               "@type" => "ImageObject",
-              "url" => "#{base_url}/images/logo.svg"
+              "url" => "#{base_url}/images/logo.svg",
+              "width" => 512,
+              "height" => 512
             }
           },
           "mainEntityOfPage" => %{

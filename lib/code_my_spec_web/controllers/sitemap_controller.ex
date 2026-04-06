@@ -10,7 +10,7 @@ defmodule CodeMySpecWeb.SitemapController do
     documentation: "/documentation/"
   }
 
-  @static_locs ["/", "/blog", "/methodology", "/case-studies/metric-flow", "/author/john-davenport"]
+  @static_locs ["/", "/blog", "/methodology", "/case-studies/metric-flow", "/author/john-davenport", "/pages/founder-story", "/pages/about"]
   @deploy_date Date.utc_today() |> Date.to_iso8601()
 
   def index(conn, _params) do

@@ -39,8 +39,14 @@
     <meta name="twitter:title" content={assigns[:og_title] || assigns[:page_title] || "CodeMySpec"} />
     <meta name="twitter:description" content={assigns[:og_description] || assigns[:meta_description] || "AI-assisted Phoenix development that actually ships"} />
     <meta name="twitter:image" content={assigns[:og_image] || "#{CodeMySpecWeb.Endpoint.url()}/images/og-default.png"} />
-    <%= if assigns[:json_ld] do %>
-      <script type="application/ld+json"><%= raw(assigns[:json_ld]) %></script>
+    <%= if assigns[:json_ld_list] do %>
+      <%= for item <- assigns[:json_ld_list] do %>
+        <script type="application/ld+json"><%= raw(item) %></script>
+      <% end %>
+    <% else %>
+      <%= if assigns[:json_ld] do %>
+        <script type="application/ld+json"><%= raw(assigns[:json_ld]) %></script>
+      <% end %>
     <% end %>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -57,11 +63,9 @@
       onload="this.media='all'"
     />
     <noscript>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
-        rel="stylesheet"
-      />
+      <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     </noscript>
+    <meta name="author" content="John Davenport" />
 
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>

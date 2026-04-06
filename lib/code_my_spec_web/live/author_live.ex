@@ -79,7 +79,9 @@ defmodule CodeMySpecWeb.AuthorLive do
           "description" => "Founder of CodeMySpec. 15 years in enterprise systems, building structured AI-assisted development workflows for Phoenix applications.",
           "image" => %{
             "@type" => "ImageObject",
-            "url" => "#{base_url}/images/john-davenport.jpg"
+            "url" => "#{base_url}/images/john-davenport.jpg",
+            "width" => 400,
+            "height" => 400
           },
           "worksFor" => %{
             "@type" => "Organization",

@@ -47,7 +47,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
           "url" => "#{base_url}/case-studies/metric-flow",
           "image" => %{
             "@type" => "ImageObject",
-            "url" => "#{base_url}/images/og-metricflow.png"
+            "url" => "#{base_url}/images/og-metricflow.png",
+            "width" => 1200,
+            "height" => 630
           },
           "datePublished" => "2026-03-20T00:00:00Z",
           "dateModified" => "2026-04-04T00:00:00Z",
@@ -63,7 +65,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
             "name" => "CodeMySpec",
             "logo" => %{
               "@type" => "ImageObject",
-              "url" => "#{base_url}/images/logo.svg"
+              "url" => "#{base_url}/images/logo.svg",
+              "width" => 512,
+              "height" => 512
             }
           },
           "mainEntityOfPage" => %{
