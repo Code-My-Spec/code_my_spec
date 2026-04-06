@@ -19,6 +19,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Problems.Problem
@@ -66,13 +67,13 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     has_valid_role?(files, role)
   end
 
-  defp check(%{check_type: :path_exists, config: config}, _scope, _entity, _files, ctx) do
+  defp check(%{check_type: :path_exists, config: config}, scope, _entity, _files, ctx) do
     cond do
       path = config["path"] || config[:path] ->
-        check_path_exists(ctx, path)
+        check_path_exists(scope, ctx, path)
 
       prefix = config["path_prefix"] || config[:path_prefix] ->
-        check_path_prefix(ctx, prefix)
+        check_path_prefix(scope, ctx, prefix)
 
       true ->
         {false, %{reason: "path_exists check missing path or path_prefix config"}}
@@ -199,27 +200,54 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   # -- Path checks (project-level) --
 
-  defp check_path_exists(%{files_by_path: fbp}, path) when is_map(fbp) do
-    if Map.has_key?(fbp, path) do
+  # Check if path exists: try File records first, fall back to filesystem.
+  # Many project-level paths (qa/preflight.md, journey_plan.md, etc.) aren't
+  # classified by FileSync, so the DB won't have them — filesystem is authoritative.
+  defp check_path_exists(scope, ctx, path) do
+    in_db = ctx[:files_by_path] && Map.has_key?(ctx.files_by_path, path)
+
+    if in_db do
+      {true, %{path: path}}
+    else
+      check_path_on_disk(scope, path)
+    end
+  end
+
+  defp check_path_prefix(scope, ctx, prefix) do
+    db_count =
+      case ctx[:files_by_project] do
+        files when is_list(files) -> Enum.count(files, &String.starts_with?(&1.path, prefix))
+        _ -> 0
+      end
+
+    if db_count > 0 do
+      {true, %{status: "#{db_count} file(s) at #{prefix}"}}
+    else
+      check_prefix_on_disk(scope, prefix)
+    end
+  end
+
+  defp check_path_on_disk(%Scope{environment: env}, path) when not is_nil(env) do
+    if Environments.file_exists?(env, path) do
       {true, %{path: path}}
     else
       {false, %{reason: "File missing: #{path}"}}
     end
   end
 
-  defp check_path_exists(_, path), do: {false, %{reason: "File missing: #{path}"}}
+  defp check_path_on_disk(_, path), do: {false, %{reason: "File missing: #{path}"}}
 
-  defp check_path_prefix(%{files_by_project: files}, prefix) when is_list(files) do
-    count = Enum.count(files, &String.starts_with?(&1.path, prefix))
+  defp check_prefix_on_disk(%Scope{environment: env}, prefix) when not is_nil(env) do
+    case Environments.list_directory(env, prefix) do
+      {:ok, entries} when entries != [] ->
+        {true, %{status: "#{length(entries)} file(s) at #{prefix}"}}
 
-    if count > 0 do
-      {true, %{status: "#{count} file(s) at #{prefix}"}}
-    else
-      {false, %{reason: "No files at #{prefix}"}}
+      _ ->
+        {false, %{reason: "No files at #{prefix}"}}
     end
   end
 
-  defp check_path_prefix(_, prefix), do: {false, %{reason: "No files at #{prefix}"}}
+  defp check_prefix_on_disk(_, prefix), do: {false, %{reason: "No files at #{prefix}"}}
 
   # -- File checks --
 
