@@ -103,23 +103,37 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  defp check(%{check_type: :tests_passing}, scope, entity, _files, ctx) do
-    count = get_problem_count(scope, entity_id(entity), "exunit", ctx)
+  defp check(%{check_type: :tests_passing}, scope, entity, files, ctx) do
+    # Must have a test file before declaring tests passing
+    has_test_file = Enum.any?(files, &(&1.role == :test))
 
-    if count == 0 do
-      {true, %{status: "No test failures"}}
+    if not has_test_file do
+      {false, %{reason: "No test file exists yet"}}
     else
-      {false, %{reason: "#{count} test failure(s)", count: count}}
+      count = get_problem_count(scope, entity_id(entity), "exunit", ctx)
+
+      if count == 0 do
+        {true, %{status: "No test failures"}}
+      else
+        {false, %{reason: "#{count} test failure(s)", count: count}}
+      end
     end
   end
 
-  defp check(%{check_type: :spex_passing}, _scope, _entity, _files, ctx) do
-    spex_problems = get_global_problem_count(ctx, "spex")
+  defp check(%{check_type: :spex_passing}, _scope, entity, files, ctx) do
+    # For stories, check that BDD spec files exist before declaring passing
+    bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
 
-    if spex_problems == 0 do
-      {true, %{status: "All BDD specs passing"}}
+    if bdd_files == [] do
+      {false, %{reason: "No BDD spec files exist yet"}}
     else
-      {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
+      spex_problems = get_global_problem_count(ctx, "spex")
+
+      if spex_problems == 0 do
+        {true, %{status: "All BDD specs passing"}}
+      else
+        {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
+      end
     end
   end
 

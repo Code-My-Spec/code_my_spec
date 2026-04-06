@@ -32,6 +32,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     ctx = Preloader.load(scope)
     nodes = compute_all_from_ctx(scope, ctx)
     edges = compute_edges(nodes, ctx)
+    nodes = clamp_satisfaction(nodes, edges)
     {nodes, edges}
   end
 
@@ -44,6 +45,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     ctx = Preloader.load(scope)
     nodes = compute_all_from_ctx(scope, ctx)
     edges = compute_edges(nodes, ctx)
+    nodes = clamp_satisfaction(nodes, edges)
 
     satisfaction_map =
       Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
@@ -73,7 +75,48 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_all(Scope.t()) :: [Requirement.t()]
   def compute_all(%Scope{} = scope) do
     ctx = Preloader.load(scope)
-    compute_all_from_ctx(scope, ctx)
+    nodes = compute_all_from_ctx(scope, ctx)
+    edges = compute_edges(nodes, ctx)
+    clamp_satisfaction(nodes, edges)
+  end
+
+  # -- Satisfaction clamping --
+  # A node cannot be satisfied if any of its incoming edge sources are unsatisfied.
+  # This prevents vacuous truth (e.g. "zero problems" when nothing has been built).
+  # Iterates until stable since clamping one node may cascade to its dependents.
+  defp clamp_satisfaction(nodes, edges) do
+    incoming =
+      Enum.reduce(edges, %{}, fn edge, acc ->
+        Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
+      end)
+
+    do_clamp(nodes, incoming)
+  end
+
+  defp do_clamp(nodes, incoming) do
+    satisfaction_map = Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
+
+    {updated_nodes, changed?} =
+      Enum.map_reduce(nodes, false, fn node, any_changed ->
+        if node.satisfied do
+          sources = Map.get(incoming, node_key(node), [])
+
+          any_unsatisfied =
+            Enum.any?(sources, fn source_key ->
+              Map.get(satisfaction_map, source_key, true) == false
+            end)
+
+          if any_unsatisfied do
+            {%{node | satisfied: false, details: Map.put(node.details || %{}, :reason, "prerequisites not yet satisfied")}, true}
+          else
+            {node, any_changed}
+          end
+        else
+          {node, any_changed}
+        end
+      end)
+
+    if changed?, do: do_clamp(updated_nodes, incoming), else: updated_nodes
   end
 
   # -- Edge computation --
@@ -250,18 +293,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  # Components whose parent context has :children scope containers
+  # Components whose parent has :children scope containers.
+  # Matches any component with children, consistent with context_container_edges.
   defp driven_component_ids(ctx) do
-    context_types = MapSet.new(["context", "coordination_context"])
-
-    context_ids =
+    parent_ids =
       ctx.components
-      |> Enum.filter(fn c -> c.type in context_types end)
-      |> MapSet.new(& &1.id)
+      |> Enum.map(& &1.parent_component_id)
+      |> MapSet.new()
+      |> MapSet.delete(nil)
 
     ctx.components
     |> Enum.filter(fn c ->
-      c.parent_component_id && MapSet.member?(context_ids, c.parent_component_id)
+      c.parent_component_id && MapSet.member?(parent_ids, c.parent_component_id)
     end)
     |> MapSet.new(& &1.id)
   end
