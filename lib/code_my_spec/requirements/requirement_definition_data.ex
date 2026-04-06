@@ -303,7 +303,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.LiveViewSpec,
         artifact_type: :specification,
         description: "LiveView specification file exists",
-        prerequisites: []
+        prerequisites: ["context_specs"]
       })
 
     definition

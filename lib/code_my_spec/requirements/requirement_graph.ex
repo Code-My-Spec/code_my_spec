@@ -98,59 +98,66 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  # Cross-entity: story.bdd_specs_exist → full component graph → story.bdd_specs_passing
-  # The component graph includes hierarchical children AND dependencies (recursively).
+  # Cross-entity: story ↔ surface component + its direct context dependencies.
+  # Gives fan-out: story → surface + each context dep → back to story.
+  # Context trees are internally connected via context_container_edges.
   defp component_tree_edges(_nodes, ctx) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
     |> Enum.flat_map(fn story ->
-      all_ids = collect_all_component_ids(story.component_id, ctx.components, MapSet.new())
+      surface = Enum.find(ctx.components, &(&1.id == story.component_id))
 
-      component_endpoints =
-        all_ids
-        |> Enum.map(fn comp_id ->
-          comp = Enum.find(ctx.components, &(&1.id == comp_id))
-          if comp do
-            defs = ComponentRegistry.get_requirements_for_type(comp.type)
-            first = List.first(defs)
-            terminal = List.last(defs)
-            {comp_id, first && first.name, terminal && terminal.name}
+      if surface do
+        # Surface component edges
+        surface_edges = edges_for_component(surface, story)
+
+        # Direct dependency edges (contexts the surface depends on)
+        dep_edges =
+          case surface.dependencies do
+            %Ecto.Association.NotLoaded{} -> []
+            deps when is_list(deps) ->
+              Enum.flat_map(deps, fn dep ->
+                dep_comp = Enum.find(ctx.components, &(&1.id == dep.id))
+                if dep_comp, do: edges_for_component(dep_comp, story), else: []
+              end)
           end
-        end)
-        |> Enum.reject(&is_nil/1)
 
-      # Edge: bdd_specs_exist → root component's first req
-      root_comp = Enum.find(component_endpoints, fn {id, _, _} -> id == story.component_id end)
-
-      entry_edges =
-        case root_comp do
-          {comp_id, first_name, _} when not is_nil(first_name) ->
-            [%{from: {"story", story.id, "bdd_specs_exist"}, to: {"component", comp_id, first_name}}]
-          _ -> []
-        end
-
-      # Edges: each component's terminal req → bdd_specs_passing
-      exit_edges =
-        Enum.flat_map(component_endpoints, fn
-          {comp_id, _, terminal_name} when not is_nil(terminal_name) ->
-            [%{from: {"component", comp_id, terminal_name}, to: {"story", story.id, "bdd_specs_passing"}}]
-          _ -> []
-        end)
-
-      entry_edges ++ exit_edges
+        surface_edges ++ dep_edges
+      else
+        []
+      end
     end)
   end
 
-  # Cross-entity edges between parent contexts and children.
+  defp edges_for_component(comp, story) do
+    defs = ComponentRegistry.get_requirements_for_type(comp.type)
+    first = List.first(defs)
+    terminal = List.last(defs)
+
+    entry =
+      if first,
+        do: [%{from: {"story", story.id, "bdd_specs_exist"}, to: {"component", comp.id, first.name}}],
+        else: []
+
+    exit =
+      if terminal,
+        do: [%{from: {"component", comp.id, terminal.name}, to: {"story", story.id, "bdd_specs_passing"}}],
+        else: []
+
+    entry ++ exit
+  end
+
+  # Cross-entity edges between parent components and children.
   # Data-driven: when a child's requirement has a prerequisite that exists
-  # on the parent context but NOT on the child itself, create a cross-entity
+  # on the parent but NOT on the child itself, create a cross-entity
   # edge from parent.prereq → child.req.
   # Fan-in: child's terminal req → parent's implementation_file.
+  # Applies to any component with children (contexts, live_contexts, live_views).
   defp context_container_edges(ctx) do
-    context_types = MapSet.new(["context", "coordination_context"])
+    parent_ids = ctx.components |> Enum.map(& &1.parent_component_id) |> MapSet.new() |> MapSet.delete(nil)
 
     ctx.components
-    |> Enum.filter(fn c -> c.type in context_types end)
+    |> Enum.filter(fn c -> MapSet.member?(parent_ids, c.id) end)
     |> Enum.flat_map(fn context ->
       parent_defs = ComponentRegistry.get_requirements_for_type(context.type)
       parent_req_names = MapSet.new(parent_defs, & &1.name)

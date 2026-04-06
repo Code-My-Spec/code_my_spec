@@ -141,7 +141,13 @@ defmodule CodeMySpec.Components.Registry do
     "live_context" => %{
       requirements: [
         RequirementDefinitionData.live_context_spec_file(),
-        RequirementDefinitionData.live_context_spec_valid()
+        RequirementDefinitionData.live_context_spec_valid(),
+        RequirementDefinitionData.context_specs(),
+        RequirementDefinitionData.review_file(),
+        RequirementDefinitionData.review_valid(),
+        RequirementDefinitionData.context_implementation(),
+        RequirementDefinitionData.context_implementation_file(),
+        RequirementDefinitionData.context_test_file()
       ],
       document_type: "live_context_spec",
       display_name: "Live Context",
