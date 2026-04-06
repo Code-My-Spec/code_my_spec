@@ -69,7 +69,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         not driven_by_active_container?(n, driven_child_ids, active_container_parents, ctx) and
         incoming_prereqs_satisfied?(n, incoming, satisfaction_map, driven_child_ids)
     end)
-    |> sort_by_priority(ctx)
+    |> sort_by_story_priority(ctx)
   end
 
   @doc """
@@ -468,45 +468,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
 
-  # -- Priority sorting --
+  # -- Sorting --
+  # Actionable nodes sorted by story priority only.
+  # The graph edges already encode execution order.
+  defp sort_by_story_priority(nodes, ctx) do
+    story_by_id = Map.new(ctx.stories, &{&1.id, &1})
 
-  @late_project_reqs MapSet.new([
-    "qa_preflight", "all_bdd_specs_passing",
-    "qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby"
-  ])
-
-  defp sort_by_priority(nodes, ctx) do
-    story_priorities =
+    # Map component_id → story priority (for components linked to stories)
+    story_priority_by_component =
       ctx.stories
       |> Enum.filter(& &1.component_id)
-      |> Map.new(&{&1.component_id, &1.priority})
+      |> Map.new(&{&1.component_id, &1.priority || 999})
 
-    story_by_id = Map.new(ctx.stories, &{&1.id, &1})
     parent_map = Map.new(ctx.components, &{&1.id, &1.parent_component_id})
-    component_story_map = build_component_story_map(ctx.components, story_priorities, parent_map)
-    definition_orders = build_definition_orders()
 
     Enum.sort_by(nodes, fn node ->
-      def_order = Map.get(definition_orders, {node.entity_type, node.name}, 999)
-
       case node.entity_type do
-        "project" ->
-          if node.name in @late_project_reqs, do: {2, 0, def_order}, else: {0, 0, def_order}
-
         "story" ->
-          priority = (story_by_id[node.entity_id] && story_by_id[node.entity_id].priority) || 999
-          {1, priority, def_order}
+          (story_by_id[node.entity_id] && story_by_id[node.entity_id].priority) || 999
 
         "component" ->
-          {1, Map.get(component_story_map, node.entity_id, 999), def_order}
-      end
-    end)
-  end
+          find_story_priority(node.entity_id, parent_map, story_priority_by_component)
 
-  defp build_component_story_map(components, story_priorities, parent_map) do
-    Map.new(components, fn comp ->
-      priority = find_story_priority(comp.id, parent_map, story_priorities)
-      {comp.id, priority}
+        "project" ->
+          999
+      end
     end)
   end
 
@@ -521,22 +507,5 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       priority ->
         priority || 999
     end
-  end
-
-  defp build_definition_orders do
-    component_defs = RequirementDefinitionData.default_requirements()
-    story_defs = RequirementDefinitionData.story_requirements()
-    project_defs = RequirementDefinitionData.project_requirements()
-
-    %{}
-    |> add_orders(component_defs, "component")
-    |> add_orders(story_defs, "story")
-    |> add_orders(project_defs, "project")
-  end
-
-  defp add_orders(orders, defs, type) do
-    defs
-    |> Enum.with_index()
-    |> Enum.reduce(orders, fn {d, i}, acc -> Map.put(acc, {type, d.name}, i) end)
   end
 end
