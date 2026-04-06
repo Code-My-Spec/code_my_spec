@@ -113,8 +113,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
       Use Phoenix.LiveViewTest to mount the view via live/2, test handle_event callbacks,
       and validate rendered HTML structure.
 
-      Tests should be grouped by describe blocks that match the function signature EXACTLY.
-      Any blocks that don't match the test assertions in the spec will be rejected and you'll have to redo them.
+      Use a single describe block for the LiveView action (e.g., describe "Show" or describe "Index").
+      Each test assertion from the spec should be a separate test block inside that describe.
+      Test names must match the spec's Test Assertions section — mismatches will be rejected.
 
       Project: #{project.name}
       Project Description: #{project.description}

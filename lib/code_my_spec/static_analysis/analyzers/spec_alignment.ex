@@ -523,9 +523,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     else
       case Code.string_to_quoted(test_content) do
         {:ok, ast} ->
-          describe_names = extract_describe_names(ast)
-          missing = Enum.reject(spec_assertions, &assertion_has_matching_test?(&1, describe_names))
-          extra = Enum.reject(describe_names, &test_has_matching_assertion?(&1, spec_assertions))
+          test_names = extract_test_names(ast)
+          missing = Enum.reject(spec_assertions, &assertion_has_matching_test?(&1, test_names))
+          extra = Enum.reject(test_names, &test_has_matching_assertion?(&1, spec_assertions))
 
           if missing == [] and extra == [] do
             {:ok, :aligned}
@@ -547,15 +547,14 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     else
       case ElixirAst.get_test_assertions(test_path) do
         {:ok, test_assertions} ->
-          describe_names =
+          test_names =
             test_assertions
-            |> Enum.map(fn t -> List.first(t.describe_blocks) end)
-            |> Enum.reject(&is_nil/1)
+            |> Enum.map(fn t -> t.test_name end)
             |> Enum.uniq()
 
           missing =
             spec_assertions
-            |> Enum.reject(&assertion_has_matching_test?(&1, describe_names))
+            |> Enum.reject(&assertion_has_matching_test?(&1, test_names))
             |> Enum.map(fn assertion ->
               %Problem{
                 severity: :warning,
@@ -570,16 +569,16 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
             end)
 
           extra =
-            describe_names
+            test_names
             |> Enum.reject(&test_has_matching_assertion?(&1, spec_assertions))
-            |> Enum.map(fn describe ->
+            |> Enum.map(fn test_name ->
               %Problem{
                 severity: :warning,
                 source_type: :static_analysis,
                 source: "spec_alignment",
                 file_path: test_path,
                 line: 1,
-                message: "Test describe '#{describe}' has no matching spec assertion",
+                message: "Test '#{test_name}' has no matching spec assertion",
                 category: "extra_test",
                 project_id: project_id
               }
@@ -615,12 +614,13 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   defp parse_assertion_list(_), do: []
 
-  defp extract_describe_names(ast) do
-    extract_describes(ast, []) |> Enum.reverse() |> Enum.uniq()
+  defp extract_test_names(ast) do
+    extract_tests_from_ast(ast, []) |> Enum.reverse() |> Enum.uniq()
   end
 
-  defp extract_describes({:defmodule, _, [_, [do: body]]}, acc), do: extract_describes(body, acc)
-  defp extract_describes({:__block__, _, exprs}, acc), do: Enum.reduce(exprs, acc, &extract_describes/2)
-  defp extract_describes({:describe, _, [name | _]}, acc) when is_binary(name), do: [name | acc]
-  defp extract_describes(_, acc), do: acc
+  defp extract_tests_from_ast({:defmodule, _, [_, [do: body]]}, acc), do: extract_tests_from_ast(body, acc)
+  defp extract_tests_from_ast({:__block__, _, exprs}, acc), do: Enum.reduce(exprs, acc, &extract_tests_from_ast/2)
+  defp extract_tests_from_ast({:describe, _, [_name, [do: body]]}, acc), do: extract_tests_from_ast(body, acc)
+  defp extract_tests_from_ast({:test, _, [name | _]}, acc) when is_binary(name), do: [name | acc]
+  defp extract_tests_from_ast(_, acc), do: acc
 end
