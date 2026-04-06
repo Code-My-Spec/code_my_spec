@@ -104,6 +104,27 @@ Hooks.SigmaGraph = {
       labelFont: "Inter, system-ui, sans-serif",
       labelSize: 16,
       labelWeight: "bold",
+      hoverRenderer: (context, data, settings) => {
+        const size = data.size + 4
+        const label = data.label || ""
+        context.font = `bold 14px Inter, system-ui, sans-serif`
+        const textWidth = context.measureText(label).width
+        const padding = 6
+        const boxWidth = textWidth + padding * 2
+        const boxHeight = 20
+
+        // Dark background with high-contrast white text
+        context.fillStyle = "#1e293b"
+        context.strokeStyle = "#60a5fa"
+        context.lineWidth = 1.5
+        context.fillRect(data.x - boxWidth / 2, data.y - size - boxHeight - 4, boxWidth, boxHeight)
+        context.strokeRect(data.x - boxWidth / 2, data.y - size - boxHeight - 4, boxWidth, boxHeight)
+
+        context.fillStyle = "#ffffff"
+        context.textAlign = "center"
+        context.textBaseline = "middle"
+        context.fillText(label, data.x, data.y - size - boxHeight / 2 - 4)
+      },
       defaultEdgeType: "arrow",
       defaultEdgeColor: "#64748b",
       stagePadding: 80,
