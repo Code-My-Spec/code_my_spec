@@ -129,6 +129,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       project_to_story_edges(ctx) ++
       component_tree_edges(nodes, ctx) ++
       context_container_edges(ctx) ++
+      component_dependency_edges(ctx) ++
       story_to_project_edges(nodes, ctx)
   end
 
@@ -248,6 +249,39 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           end
 
         fan_out ++ spec_fan_in ++ impl_fan_in
+      end)
+    end)
+  end
+
+  # Component dependency edges: dep.terminal → dependent.first_req.
+  # Ensures dependencies are completed before the components that depend on them.
+  defp component_dependency_edges(ctx) do
+    ctx.components
+    |> Enum.flat_map(fn comp ->
+      deps = case comp.dependencies do
+        %Ecto.Association.NotLoaded{} -> []
+        deps when is_list(deps) -> deps
+        _ -> []
+      end
+
+      Enum.flat_map(deps, fn dep ->
+        dep_comp = Enum.find(ctx.components, &(&1.id == dep.id))
+
+        if dep_comp do
+          dep_defs = ComponentRegistry.get_requirements_for_type(dep_comp.type)
+          comp_defs = ComponentRegistry.get_requirements_for_type(comp.type)
+          dep_terminal = List.last(dep_defs)
+          comp_first = List.first(comp_defs)
+
+          if dep_terminal && comp_first do
+            [%{from: {"component", dep_comp.id, dep_terminal.name},
+               to: {"component", comp.id, comp_first.name}}]
+          else
+            []
+          end
+        else
+          []
+        end
       end)
     end)
   end
