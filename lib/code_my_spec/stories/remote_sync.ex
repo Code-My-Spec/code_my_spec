@@ -58,9 +58,7 @@ defmodule CodeMySpec.Stories.RemoteSync do
            conflict_target: :id
          ) do
       {:ok, _} ->
-        criteria = story.criteria || []
-        :ok
-        upsert_criteria(criteria, project_id)
+        upsert_criteria(story.criteria || [], project_id)
 
       {:error, changeset} ->
         Logger.warning("[RemoteSync] Failed to upsert story #{story.id}: #{inspect(changeset.errors)}")
