@@ -396,7 +396,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: CodeMySpec.AgentTasks.FixBddSpecs,
         artifact_type: :tests,
         description: "BDD specs pass",
-        prerequisites: [],
+        prerequisites: ["bdd_specs_exist"],
         scope: :orchestrate
       })
 

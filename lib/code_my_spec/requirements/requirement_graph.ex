@@ -59,11 +59,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # context_implementation) — not independently actionable.
     driven_child_ids = driven_component_ids(ctx)
 
+    # Build map of parent_id → whether container nodes (context_specs/context_implementation) are still active
+    active_container_parents = active_container_parent_ids(nodes, ctx)
+
     nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
-        not driven_child?(n, driven_child_ids) and
+        not driven_by_active_container?(n, driven_child_ids, active_container_parents, ctx) and
         incoming_prereqs_satisfied?(n, incoming, satisfaction_map, driven_child_ids)
     end)
     |> sort_by_priority(ctx)
@@ -286,6 +289,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     sources
     |> Enum.reject(fn {_type, source_id, _name} ->
+      # Container nodes (scope: :children) ignore fan-in edges from their
+      # driven children — those represent completion, not prerequisites.
       node.scope == :children and MapSet.member?(driven_child_ids, source_id)
     end)
     |> Enum.all?(fn source_key ->
@@ -309,11 +314,38 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> MapSet.new(& &1.id)
   end
 
-  defp driven_child?(%{entity_type: "component", entity_id: id}, driven_ids) do
-    MapSet.member?(driven_ids, id)
+  # A child is only "driven" (suppressed from actionable) if its parent's
+  # container node (context_specs or context_implementation) is still unsatisfied
+  # and actionable — meaning the container task will handle it. If the container
+  # is already satisfied, the child should surface independently.
+  defp driven_by_active_container?(
+         %{entity_type: "component", entity_id: id} = _node,
+         driven_child_ids,
+         active_parents,
+         ctx
+       ) do
+    if MapSet.member?(driven_child_ids, id) do
+      comp = Enum.find(ctx.components, &(&1.id == id))
+      parent_id = comp && comp.parent_component_id
+      parent_id && MapSet.member?(active_parents, parent_id)
+    else
+      false
+    end
   end
 
-  defp driven_child?(_, _), do: false
+  defp driven_by_active_container?(_, _, _, _), do: false
+
+  # Parents whose container nodes (context_specs or context_implementation) are
+  # still unsatisfied — meaning the container task should drive the children.
+  defp active_container_parent_ids(nodes, _ctx) do
+    nodes
+    |> Enum.filter(fn n ->
+      n.entity_type == "component" and
+        n.name in ["context_specs", "context_implementation"] and
+        not n.satisfied
+    end)
+    |> MapSet.new(& &1.entity_id)
+  end
 
   defp node_key(n), do: {n.entity_type, n.entity_id, n.name}
 

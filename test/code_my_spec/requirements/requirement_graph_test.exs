@@ -56,7 +56,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       assert "spec_file" in names
     end
 
-    test "story component_linked is actionable when story has no component" do
+    test "story component_linked is blocked when project prerequisites are unsatisfied" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -72,7 +72,9 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       actionable = RequirementGraph.next_actionable(scope)
       story_reqs = Enum.filter(actionable, &(&1.entity_type == "story"))
 
-      assert Enum.any?(story_reqs, &(&1.name == "component_linked"))
+      # component_linked is blocked by issues_resolved which depends on the
+      # full project prerequisite chain (technical_strategy, architecture_designed, etc.)
+      refute Enum.any?(story_reqs, &(&1.name == "component_linked"))
     end
   end
 
