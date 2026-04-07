@@ -62,11 +62,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "qa_preflight" => AgentTasks.QaPreflight,
     "qa_setup" => AgentTasks.QaSetup,
     "qa_story" => AgentTasks.QaStory,
-    "start_implementation" => AgentTasks.StartImplementation
+    "start_implementation" => AgentTasks.StartImplementation,
+    "init" => AgentTasks.Init
   }
 
   # Tasks that run without a project or config.yml
-  @bootstrap_tasks ["project_setup"]
+  @bootstrap_tasks ["project_setup", "init"]
 
   # Tasks that run a project-wide validation step (e.g. batch spex) before session creation
   @project_tasks ["start_implementation"]
