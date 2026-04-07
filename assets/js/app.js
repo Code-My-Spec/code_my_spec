@@ -29,11 +29,24 @@ import Sortable from "../vendor/Sortable.min.js"
 // Make Sortable available globally for colocated hooks
 window.Sortable = Sortable
 
+let Hooks = {
+  Copy: {
+    mounted() {
+      let { to } = this.el.dataset;
+      this.el.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        let text = document.querySelector(to).value;
+        navigator.clipboard.writeText(text);
+      });
+    },
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: { _csrf_token: csrfToken },
-  hooks: { ...colocatedHooks },
+  hooks: { ...colocatedHooks, ...Hooks },
 })
 
 // Show progress bar on live navigation and form submits

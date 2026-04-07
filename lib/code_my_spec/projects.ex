@@ -174,6 +174,107 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
+  Returns the OAuth application for a project, creating one if it doesn't exist.
+  Returns `{:ok, project, plaintext_secret}` on creation or `{:error, reason}`.
+  """
+  def get_or_create_oauth_app(%Scope{} = scope, %Project{} = project) do
+    true = project.account_id == scope.active_account_id
+
+    project = Repo.preload(project, :oauth_application)
+
+    case project.oauth_application do
+      nil -> create_oauth_app(scope, project)
+      _app -> {:ok, project, nil}
+    end
+  end
+
+  defp create_oauth_app(%Scope{} = scope, %Project{} = project) do
+    alias CodeMySpec.Oauth.Application
+
+    plaintext_secret = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+    attrs = %{
+      name: "#{project.name} MCP Client",
+      redirect_uri: "http://localhost:0/callback",
+      scopes: "read write",
+      uid: "mcp_" <> (:crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)),
+      secret: plaintext_secret
+    }
+
+    case Repo.transaction(fn ->
+           case %Application{} |> Application.changeset(attrs) |> Repo.insert() do
+             {:ok, oauth_app} ->
+               case update_project(scope, project, %{oauth_application_id: oauth_app.id}) do
+                 {:ok, updated_project} ->
+                   Repo.preload(updated_project, :oauth_application, force: true)
+
+                 {:error, changeset} ->
+                   Repo.rollback(changeset)
+               end
+
+             {:error, changeset} ->
+               Repo.rollback(changeset)
+           end
+         end) do
+      {:ok, project} -> {:ok, project, plaintext_secret}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Regenerates the client secret for a project's OAuth application.
+  Returns `{:ok, project, plaintext_secret}` or `{:error, reason}`.
+  """
+  def regenerate_oauth_secret(%Scope{} = scope, %Project{} = project) do
+    true = project.account_id == scope.active_account_id
+    alias CodeMySpec.Oauth.Application
+
+    project = Repo.preload(project, :oauth_application, force: true)
+
+    case project.oauth_application do
+      nil ->
+        {:error, :no_oauth_app}
+
+      oauth_app ->
+        plaintext_secret = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+        case oauth_app |> Application.changeset(%{secret: plaintext_secret}) |> Repo.update() do
+          {:ok, _updated_app} ->
+            {:ok, Repo.preload(project, :oauth_application, force: true), plaintext_secret}
+
+          {:error, changeset} ->
+            {:error, changeset}
+        end
+    end
+  end
+
+  @doc """
+  Removes the OAuth application from a project and deletes the application record.
+  """
+  def delete_oauth_app(%Scope{} = scope, %Project{} = project) do
+    true = project.account_id == scope.active_account_id
+
+    project = Repo.preload(project, :oauth_application, force: true)
+
+    case project.oauth_application do
+      nil ->
+        {:ok, project}
+
+      oauth_app ->
+        Repo.transaction(fn ->
+          case update_project(scope, project, %{oauth_application_id: nil}) do
+            {:ok, updated_project} ->
+              Repo.delete!(oauth_app)
+              %{updated_project | oauth_application: nil}
+
+            {:error, changeset} ->
+              Repo.rollback(changeset)
+          end
+        end)
+    end
+  end
+
+  @doc """
   Returns an `%Ecto.Changeset{}` for tracking project changes.
 
   ## Examples

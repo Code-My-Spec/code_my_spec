@@ -224,7 +224,6 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/new", ProjectLive.Form, :new
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
-      live "/projects/:id/setup", ProjectLive.SetupWizard, :show
     end
 
     live_session :require_active_project,

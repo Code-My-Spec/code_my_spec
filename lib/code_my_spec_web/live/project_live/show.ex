@@ -1,6 +1,8 @@
 defmodule CodeMySpecWeb.ProjectLive.Show do
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.ProjectLive.Components.OauthCredentials
+
   alias CodeMySpec.Projects
 
   @impl true
@@ -13,9 +15,6 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
         <:actions>
           <.button navigate={~p"/app/projects"}>
             <.icon name="hero-arrow-left" />
-          </.button>
-          <.button navigate={~p"/app/projects/#{@project}/setup?return_to=show"}>
-            <.icon name="hero-cog-6-tooth" /> Setup project
           </.button>
           <.button navigate={~p"/app/projects/#{@project}/edit?return_to=show"}>
             <.icon name="hero-pencil-square" /> Edit project
@@ -30,6 +29,12 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
         <:item title="Status">{@project.status}</:item>
         <:item title="Setup error">{@project.setup_error}</:item>
       </.list>
+
+      <.oauth_credentials
+        project={@project}
+        oauth_app={@oauth_app}
+        plaintext_secret={@plaintext_secret}
+      />
     </Layouts.app>
     """
   end
@@ -40,10 +45,70 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
       Projects.subscribe_projects(socket.assigns.current_scope)
     end
 
+    project = Projects.get_project!(socket.assigns.current_scope, id)
+    project = CodeMySpec.Repo.preload(project, :oauth_application)
+
     {:ok,
      socket
      |> assign(:page_title, "Show Project")
-     |> assign(:project, Projects.get_project!(socket.assigns.current_scope, id))}
+     |> assign(:project, project)
+     |> assign(:oauth_app, project.oauth_application)
+     |> assign(:plaintext_secret, nil)}
+  end
+
+  @impl true
+  def handle_event("generate_oauth_app", _params, socket) do
+    case Projects.get_or_create_oauth_app(
+           socket.assigns.current_scope,
+           socket.assigns.project
+         ) do
+      {:ok, project, plaintext_secret} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:oauth_app, project.oauth_application)
+         |> assign(:plaintext_secret, plaintext_secret)
+         |> put_flash(:info, "OAuth credentials generated. Copy the secret now — it won't be shown again.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to generate OAuth credentials.")}
+    end
+  end
+
+  def handle_event("regenerate_oauth_secret", _params, socket) do
+    case Projects.regenerate_oauth_secret(
+           socket.assigns.current_scope,
+           socket.assigns.project
+         ) do
+      {:ok, project, plaintext_secret} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:oauth_app, project.oauth_application)
+         |> assign(:plaintext_secret, plaintext_secret)
+         |> put_flash(:info, "Secret regenerated. Copy the new secret now.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to regenerate secret.")}
+    end
+  end
+
+  def handle_event("delete_oauth_app", _params, socket) do
+    case Projects.delete_oauth_app(
+           socket.assigns.current_scope,
+           socket.assigns.project
+         ) do
+      {:ok, project} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:oauth_app, nil)
+         |> assign(:plaintext_secret, nil)
+         |> put_flash(:info, "OAuth credentials deleted.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete OAuth credentials.")}
+    end
   end
 
   @impl true
@@ -51,7 +116,13 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
         {:updated, %CodeMySpec.Projects.Project{id: id} = project},
         %{assigns: %{project: %{id: id}}} = socket
       ) do
-    {:noreply, assign(socket, :project, project)}
+    project = CodeMySpec.Repo.preload(project, :oauth_application, force: true)
+
+    {:noreply,
+     assign(socket,
+       project: project,
+       oauth_app: project.oauth_application
+     )}
   end
 
   def handle_info(
