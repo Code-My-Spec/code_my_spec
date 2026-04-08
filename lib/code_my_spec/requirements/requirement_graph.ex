@@ -321,7 +321,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
               List.first(comp_defs)
             end
 
-          if dep_terminal && target do
+          # Skip cross-context edges for child components — parent_child_edges
+          # propagates ordering from the parent context to its children.
+          skip? = not siblings? and comp.parent_component_id != nil
+
+          if dep_terminal && target && not skip? do
             [%{from: {"component", dep_comp.id, dep_terminal.name},
                to: {"component", comp.id, target.name}}]
           else
