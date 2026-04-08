@@ -43,6 +43,10 @@ if config_env() in [:dev_cli, :prod_cli] do
   config :code_my_spec,
     api_base_url: env!("API_BASE_URL", :string, "https://codemyspec.com"),
     oauth_base_url: env!("OAUTH_BASE_URL", :string, "https://codemyspec.com")
+
+  # Load sqlite_vec extension for vector search
+  repo_config = Application.get_env(:code_my_spec, CodeMySpec.Repo, [])
+  config :code_my_spec, CodeMySpec.Repo, Keyword.put(repo_config, :load_extensions, [SqliteVec.path()])
 end
 
 # Web app mode

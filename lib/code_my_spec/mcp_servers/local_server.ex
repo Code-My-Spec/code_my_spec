@@ -50,7 +50,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Knowledge.Tools.EmbedDocs)
   component(CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge)
   component(CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge)
-  component(CodeMySpec.McpServers.Knowledge.Tools.SearchKnowledge)
   component(CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch)
 
   # Issues — full lifecycle

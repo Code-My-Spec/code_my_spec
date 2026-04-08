@@ -17,6 +17,7 @@ defmodule CodeMySpecLocalWeb.Application do
       CodeMySpecLocalWeb.Migrator,
       {Phoenix.PubSub, name: CodeMySpec.PubSub},
       CodeMySpec.Auth.AuthState,
+      CodeMySpec.Embeddings.Serving,
       {CodeMySpec.McpServers.LocalServer, transport: {:streamable_http, start: true}},
       CodeMySpecLocalWeb.Endpoint,
       CodeMySpec.ProjectSync.FileWatcherServer,

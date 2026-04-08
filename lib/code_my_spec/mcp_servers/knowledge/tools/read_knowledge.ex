@@ -25,7 +25,7 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge do
   end
 
   @impl true
-  def execute(%{"path" => path} = params, frame) do
+  def execute(%{path: path} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
       library = library_atom(params)
       path_segments = String.split(path, "/", trim: true)
@@ -50,7 +50,7 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge do
     end
   end
 
-  defp library_atom(%{"library" => "project_knowledge"}), do: :project_knowledge
+  defp library_atom(%{library: "project_knowledge"}), do: :project_knowledge
   defp library_atom(_), do: :knowledge
 
   defp text_response(content) do

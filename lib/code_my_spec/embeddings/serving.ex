@@ -32,35 +32,13 @@ defmodule CodeMySpec.Embeddings.Serving do
 
   @impl true
   def init(_opts) do
-    # Load model in a separate task to avoid blocking app boot
-    send(self(), :load_model)
-    {:ok, %{model: nil, tokenizer: nil}}
+    {:ok, model, tokenizer} = load_pipeline()
+    {:ok, %{model: model, tokenizer: tokenizer}}
   end
 
   @impl true
-  def handle_info(:load_model, state) do
-    case load_pipeline() do
-      {:ok, model, tokenizer} ->
-        {:noreply, %{state | model: model, tokenizer: tokenizer}}
-
-      {:error, reason} ->
-        require Logger
-        Logger.warning("[Embeddings.Serving] Failed to load: #{inspect(reason)}")
-        {:noreply, state}
-    end
-  end
-
-  @impl true
-  def handle_call({:embed, _text}, _from, %{model: nil} = state) do
-    {:reply, {:error, :model_not_loaded}, state}
-  end
-
   def handle_call({:embed, text}, _from, state) do
     {:reply, run_single(state, text), state}
-  end
-
-  def handle_call({:embed_batch, _texts}, _from, %{model: nil} = state) do
-    {:reply, {:error, :model_not_loaded}, state}
   end
 
   def handle_call({:embed_batch, texts}, _from, state) do
@@ -79,8 +57,6 @@ defmodule CodeMySpec.Embeddings.Serving do
       {:ok, tokenizer} = Tokenizers.Tokenizer.from_pretrained(@tokenizer_id)
       {:ok, model, tokenizer}
     end
-  rescue
-    e -> {:error, Exception.message(e)}
   end
 
   defp resolve_model_path do
@@ -132,8 +108,6 @@ defmodule CodeMySpec.Embeddings.Serving do
     normalized = l2_normalize(pooled)
 
     {:ok, Nx.to_list(normalized)}
-  rescue
-    e -> {:error, Exception.message(e)}
   end
 
   defp mean_pooling(hidden_state, attention_mask) do

@@ -21,16 +21,16 @@ defmodule CodeMySpec.McpServers.Hexdocs.Tools.SearchHexdocs do
   end
 
   @impl true
-  def execute(%{"query" => query} = params, frame) do
+  def execute(%{query: query} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
       source =
-        case params["package"] do
+        case params[:package] do
           pkg when is_binary(pkg) and pkg != "" -> "hexdocs:#{pkg}"
           _ -> nil
         end
 
       opts =
-        [limit: params["limit"] || 10]
+        [limit: params[:limit] || 10]
         |> then(fn opts -> if source, do: Keyword.put(opts, :source, source), else: opts end)
 
       case Embeddings.search(scope, query, opts) do

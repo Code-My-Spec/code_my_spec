@@ -25,12 +25,12 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
   end
 
   @impl true
-  def execute(%{"query" => query} = params, frame) do
+  def execute(%{query: query} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
       opts =
         []
-        |> maybe_add(:source, params["source"])
-        |> maybe_add(:limit, params["limit"])
+        |> maybe_add(:source, params[:source])
+        |> maybe_add(:limit, params[:limit])
 
       case Embeddings.search(scope, query, opts) do
         {:ok, results} ->

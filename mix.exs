@@ -122,8 +122,14 @@ defmodule CodeMySpec.MixProject do
       {:web_push_elixir, "~> 0.5"},
       {:slipstream, "~> 1.1"},
 
+      # Embeddings
+      {:ortex, "~> 0.1", only: [:dev_cli, :prod_cli]},
+      {:tokenizers, "~> 0.5", only: [:dev_cli, :prod_cli]},
+      {:nx, "~> 0.9", only: [:dev_cli, :prod_cli]},
+      {:sqlite_vec, "~> 0.1.0", only: [:dev_cli, :prod_cli]},
+
       # CLI release
-      {:burrito, "~> 1.5", only: :prod_cli, runtime: false},
+      {:burrito, "~> 1.5", only: [:dev_cli, :prod_cli], runtime: false},
       {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli]}
     ]
   end
