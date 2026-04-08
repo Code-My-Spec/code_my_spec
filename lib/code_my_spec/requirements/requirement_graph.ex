@@ -31,7 +31,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def compute_graph(%Scope{} = scope) do
     ctx = Preloader.load(scope)
     nodes = compute_all_from_ctx(scope, ctx)
-    edges = compute_edges(nodes, ctx)
+    edges = compute_edges(nodes, ctx, scope.active_project)
     nodes = clamp_satisfaction(nodes, edges)
     {nodes, edges}
   end
@@ -44,7 +44,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def next_actionable(%Scope{} = scope) do
     ctx = Preloader.load(scope)
     nodes = compute_all_from_ctx(scope, ctx)
-    edges = compute_edges(nodes, ctx)
+    edges = compute_edges(nodes, ctx, scope.active_project)
     nodes = clamp_satisfaction(nodes, edges)
 
     satisfaction_map =
@@ -71,7 +71,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def compute_all(%Scope{} = scope) do
     ctx = Preloader.load(scope)
     nodes = compute_all_from_ctx(scope, ctx)
-    edges = compute_edges(nodes, ctx)
+    edges = compute_edges(nodes, ctx, scope.active_project)
     clamp_satisfaction(nodes, edges)
   end
 
@@ -116,12 +116,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Edge computation --
 
-  defp compute_edges(nodes, ctx) do
+  defp compute_edges(nodes, ctx, project) do
     same_entity_edges(nodes) ++
       project_to_story_edges(ctx) ++
-      component_tree_edges(nodes, ctx) ++
-      parent_child_edges(ctx) ++
-      component_dependency_edges(ctx) ++
+      component_tree_edges(nodes, ctx, project) ++
+      parent_child_edges(ctx, project) ++
+      component_dependency_edges(ctx, project) ++
       story_to_project_edges(nodes, ctx)
   end
 
@@ -140,7 +140,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Cross-entity: story ↔ surface component + its direct context dependencies.
   # Gives fan-out: story → surface + each context dep → back to story.
   # Context trees are internally connected via context_container_edges.
-  defp component_tree_edges(_nodes, ctx) do
+  defp component_tree_edges(_nodes, ctx, project) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
     |> Enum.flat_map(fn story ->
@@ -148,7 +148,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       if surface do
         # Surface component edges
-        surface_edges = edges_for_component(surface, story)
+        surface_edges = edges_for_component(surface, story, project)
 
         # Direct dependency edges (contexts the surface depends on)
         dep_edges =
@@ -157,7 +157,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             deps when is_list(deps) ->
               Enum.flat_map(deps, fn dep ->
                 dep_comp = Enum.find(ctx.components, &(&1.id == dep.id))
-                if dep_comp, do: edges_for_component(dep_comp, story), else: []
+                if dep_comp, do: edges_for_component(dep_comp, story, project), else: []
               end)
           end
 
@@ -168,8 +168,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp edges_for_component(comp, story) do
-    defs = ComponentRegistry.get_requirements_for_type(comp.type)
+  defp edges_for_component(comp, story, project) do
+    defs =
+      ComponentRegistry.get_requirements_for_type(comp.type)
+      |> filter_definitions_by_project_settings(project)
+
     first = List.first(defs)
     terminal = List.last(defs)
 
@@ -195,7 +198,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Fan-in: children completion → parent can advance
   #   child.spec_valid → parent.review_file (review after all children specced)
   #   child.terminal_req → parent.implementation_file (parent impl after all children done)
-  defp parent_child_edges(ctx) do
+  defp parent_child_edges(ctx, project) do
     parent_ids =
       ctx.components
       |> Enum.map(& &1.parent_component_id)
@@ -205,24 +208,35 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     ctx.components
     |> Enum.filter(fn c -> MapSet.member?(parent_ids, c.id) end)
     |> Enum.flat_map(fn parent ->
-      parent_defs = ComponentRegistry.get_requirements_for_type(parent.type)
+      parent_defs =
+        ComponentRegistry.get_requirements_for_type(parent.type)
+        |> filter_definitions_by_project_settings(project)
+
       children = Enum.filter(ctx.components, &(&1.parent_component_id == parent.id))
 
-      parent_spec_valid = find_def(parent_defs, "spec_valid")
+      # Fallback: when spec_valid/review_valid are filtered out, use first def as gate
+      parent_gate =
+        find_def(parent_defs, "spec_valid") ||
+          find_def(parent_defs, "review_valid") ||
+          List.first(parent_defs)
+
       parent_review_valid = find_def(parent_defs, "review_valid")
       parent_impl_file = find_def(parent_defs, "implementation_file")
 
       Enum.flat_map(children, fn child ->
-        child_defs = ComponentRegistry.get_requirements_for_type(child.type)
+        child_defs =
+          ComponentRegistry.get_requirements_for_type(child.type)
+          |> filter_definitions_by_project_settings(project)
+
         child_first = List.first(child_defs)
         child_terminal = List.last(child_defs)
         child_spec_valid = find_def(child_defs, "spec_valid")
         child_impl_file = find_def(child_defs, "implementation_file")
 
-        # Fan-out: parent spec done → children can start specs
+        # Fan-out: parent gate → children can start
         spec_gate =
-          if parent_spec_valid && child_first do
-            [%{from: {"component", parent.id, parent_spec_valid.name},
+          if parent_gate && child_first do
+            [%{from: {"component", parent.id, parent_gate.name},
                to: {"component", child.id, child_first.name}}]
           else
             []
@@ -237,7 +251,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             []
           end
 
-        # Fan-in: child spec done → parent can review
+        # Fan-in: child spec done → parent can review (only if review exists)
         spec_fan_in =
           if child_spec_valid && find_def(parent_defs, "review_file") do
             [%{from: {"component", child.id, child_spec_valid.name},
@@ -264,10 +278,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     Enum.find(definitions, &(&1.name == name))
   end
 
-  # Component dependency edges: dep.terminal → dependent.implementation_file.
-  # Dependencies must be complete before the dependent can IMPLEMENT, but
-  # specs can be written in parallel (dependency order is an impl concern).
-  defp component_dependency_edges(ctx) do
+  # Component dependency edges.
+  #
+  # Two modes based on whether the components are siblings (same parent):
+  # - Siblings (e.g., Identity depends on User within Accounts):
+  #   dep.terminal → dependent.implementation_file
+  #   Specs can be written in parallel; only implementation respects order.
+  #
+  # - Cross-context (e.g., Todos depends on Accounts):
+  #   dep.terminal → dependent.first_req
+  #   The dependent bounded context waits entirely for its dependency.
+  defp component_dependency_edges(ctx, project) do
     ctx.components
     |> Enum.flat_map(fn comp ->
       deps = case comp.dependencies do
@@ -280,14 +301,29 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         dep_comp = Enum.find(ctx.components, &(&1.id == dep.id))
 
         if dep_comp do
-          dep_defs = ComponentRegistry.get_requirements_for_type(dep_comp.type)
-          comp_defs = ComponentRegistry.get_requirements_for_type(comp.type)
-          dep_terminal = List.last(dep_defs)
-          comp_impl = find_def(comp_defs, "implementation_file")
+          dep_defs =
+            ComponentRegistry.get_requirements_for_type(dep_comp.type)
+            |> filter_definitions_by_project_settings(project)
 
-          if dep_terminal && comp_impl do
+          comp_defs =
+            ComponentRegistry.get_requirements_for_type(comp.type)
+            |> filter_definitions_by_project_settings(project)
+
+          dep_terminal = List.last(dep_defs)
+          siblings? = comp.parent_component_id != nil and
+                      comp.parent_component_id == dep_comp.parent_component_id
+
+          # Siblings: gate implementation only. Cross-context: gate everything.
+          target =
+            if siblings? do
+              find_def(comp_defs, "implementation_file")
+            else
+              List.first(comp_defs)
+            end
+
+          if dep_terminal && target do
             [%{from: {"component", dep_comp.id, dep_terminal.name},
-               to: {"component", comp.id, comp_impl.name}}]
+               to: {"component", comp.id, target.name}}]
           else
             []
           end
@@ -349,7 +385,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp compute_component_nodes(scope, ctx) do
     Enum.flat_map(ctx.components, fn component ->
-      definitions = ComponentRegistry.get_requirements_for_type(component.type)
+      definitions =
+        ComponentRegistry.get_requirements_for_type(component.type)
+        |> filter_definitions_by_project_settings(scope.active_project)
+
       files = Map.get(ctx.files_by_component, component.id, [])
 
       Enum.map(definitions, fn definition ->
@@ -544,4 +583,29 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         acc
     end
   end
+
+  # -- Fast mode filtering --
+
+  # Filters component requirement definitions based on project settings.
+  # require_specs: false → removes :specification and :review artifact types
+  # require_unit_tests: false → removes :tests artifact type + tests_passing
+  defp filter_definitions_by_project_settings(definitions, project) do
+    definitions
+    |> maybe_filter_specs(project)
+    |> maybe_filter_tests(project)
+  end
+
+  defp maybe_filter_specs(definitions, %{require_specs: false}) do
+    Enum.reject(definitions, &(&1.artifact_type in [:specification, :review]))
+  end
+
+  defp maybe_filter_specs(definitions, _project), do: definitions
+
+  defp maybe_filter_tests(definitions, %{require_unit_tests: false}) do
+    Enum.reject(definitions, fn def ->
+      def.artifact_type == :tests or def.name == "tests_passing"
+    end)
+  end
+
+  defp maybe_filter_tests(definitions, _project), do: definitions
 end
