@@ -71,7 +71,7 @@ defmodule CodeMySpecWeb.ProjectLive.Picker do
           {:noreply,
            socket
            |> put_flash(:info, "Project selected successfully")
-           |> push_navigate(to: socket.assigns.return_to)}
+           |> push_navigate(to: ~p"/app")}
 
         {:error, _changeset} ->
           {:noreply,
