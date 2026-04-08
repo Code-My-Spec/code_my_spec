@@ -42,6 +42,17 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
 
+  # Hexdocs — embed and search hex dependency docs
+  component(CodeMySpec.McpServers.Hexdocs.Tools.EmbedHexdocs)
+  component(CodeMySpec.McpServers.Hexdocs.Tools.SearchHexdocs)
+
+  # Knowledge — browse, read, search, and embed project docs
+  component(CodeMySpec.McpServers.Knowledge.Tools.EmbedDocs)
+  component(CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge)
+  component(CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge)
+  component(CodeMySpec.McpServers.Knowledge.Tools.SearchKnowledge)
+  component(CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch)
+
   # Issues — full lifecycle
   component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
   component(CodeMySpec.McpServers.Issues.Tools.ListIssues)
