@@ -46,7 +46,8 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
         end
 
       _ ->
-        {:ok, :invalid, "`.code_my_spec/config.yml` not found. Framework modules will pollute task graphs."}
+        {:ok, :invalid,
+         "`.code_my_spec/config.yml` not found. Framework modules will pollute task graphs."}
     end
   end
 
@@ -58,23 +59,24 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
       |> Enum.map(&String.replace(&1, "APP", app_name))
       |> Enum.map_join("\n", &"  - #{&1}")
 
-    {:ok, """
-    # Configure Ignored Paths
+    {:ok,
+     """
+     # Configure Ignored Paths
 
-    Create `.code_my_spec/config.yml` with an `ignored_paths` list to exclude framework
-    and infrastructure modules from task graphs. These are Phoenix-generated modules that
-    should not be treated as project requirements.
+     Create `.code_my_spec/config.yml` with an `ignored_paths` list to exclude framework
+     and infrastructure modules from task graphs. These are Phoenix-generated modules that
+     should not be treated as project requirements.
 
-    Start with these standard ignores and add any other generated/infrastructure modules
-    (auth controllers from `phx.gen.auth`, health checks, PubSub, Vault, etc.):
+     Start with these standard ignores and add any other generated/infrastructure modules
+     (auth controllers from `phx.gen.auth`, health checks, PubSub, Vault, etc.):
 
-    ```yaml
-    ignored_paths:
-    #{example_paths}
-    ```
+     ```yaml
+     ignored_paths:
+     #{example_paths}
+     ```
 
-    Write this file to `#{@config_file}`. Review the project's `lib/` directory and add
-    any additional framework or infrastructure modules that were generated, not authored.
-    """}
+     Write this file to `#{@config_file}`. Review the project's `lib/` directory and add
+     any additional framework or infrastructure modules that were generated, not authored.
+     """}
   end
 end

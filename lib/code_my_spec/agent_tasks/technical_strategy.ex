@@ -113,6 +113,14 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         "Use Resend for transactional email delivery. It provides a clean API, good deliverability, and an Elixir-friendly HTTP interface. Pair with Swoosh (`swoosh`) as the Elixir mailer abstraction for testability and local development with Swoosh's built-in mailbox preview."
     },
     %{
+      topic: "hetzner-deployment",
+      title: "Use Hetzner Cloud with Docker Compose for deployment",
+      context:
+        "We need a deployment target that is cost-effective, performant, and supports multi-environment hosting (prod + UAT) on a single server.",
+      decision:
+        "Deploy to a Hetzner cax11 ARM64 server running Docker Compose with Caddy as the reverse proxy. Use the internal DevOps knowledge base for implementation guidance — run `search_knowledge` with query \"hetzner\" or `read_knowledge` with path \"devops/hetzner-docker-deploy.md\" for the full deployment playbook covering server provisioning, Docker Compose stack, Caddy config, Postgres backups, and zero-downtime deploys via docker-rollout."
+    },
+    %{
       topic: "pow-assent-integrations",
       title: "Use PowAssent and CodeMySpec generators for integrations, multi-tenancy, and feedback",
       context:

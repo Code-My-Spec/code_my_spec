@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   # Ordered list of generators with their detection heuristics.
   # Each entry: {id, command, description, prerequisite_id, detection_glob}
   @generators [
-    {"phx_gen_auth", "mix phx.gen.auth Users User users",
+    {"phx_gen_auth", "mix phx.gen.auth Users User users --live",
      "Authentication with registration, login, session management",
      nil, "lib/APP/users/scope.ex"},
     {"cms_gen_accounts", "mix cms_gen.accounts",
@@ -322,8 +322,8 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
 
     set -e
 
-    # Authentication
-    mix phx.gen.auth Users User users
+    # Authentication (LiveView)
+    mix phx.gen.auth Users User users --live
 
     # Multi-tenant accounts
     mix cms_gen.accounts

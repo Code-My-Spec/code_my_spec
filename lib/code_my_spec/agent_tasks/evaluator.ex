@@ -74,7 +74,8 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       CodeMySpec.AgentTasks.RefactorModule,
       CodeMySpec.AgentTasks.DesignUi,
       CodeMySpec.AgentTasks.ResearchTopic,
-      CodeMySpec.AgentTasks.ResearchTopics
+      CodeMySpec.AgentTasks.ResearchTopics,
+      CodeMySpec.AgentTasks.ArchitectureDesign
     ]
   end
 
