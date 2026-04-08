@@ -130,7 +130,6 @@ defmodule CodeMySpec.Architecture.Proposal do
       []
       |> check_naming_conventions(proposal)
       |> check_naming_hierarchy(proposal)
-      |> check_consecutive_capitals(proposal)
       |> check_invalid_types(proposal)
       |> check_story_surface_mapping(proposal, all_story_ids)
       |> check_dependency_cycles(proposal)
@@ -476,52 +475,6 @@ defmodule CodeMySpec.Architecture.Proposal do
         | errors
       ]
     end
-  end
-
-  defp check_consecutive_capitals(errors, proposal) do
-    # Consecutive capitals like "LLM" become "l_l_m" via Macro.underscore/1
-    # If you want "llm", name it "Llm" instead
-    all_names = collect_all_component_names(proposal)
-
-    with_consecutive =
-      all_names
-      |> Enum.filter(&has_consecutive_capitals?/1)
-
-    if with_consecutive == [] do
-      errors
-    else
-      [
-        %{
-          type: :consecutive_capitals,
-          message:
-            "Module names with consecutive capitals will underscore each letter (e.g., LLM -> l_l_m.ex). Use Llm for llm.ex",
-          details: %{names: with_consecutive}
-        }
-        | errors
-      ]
-    end
-  end
-
-  defp collect_all_component_names(proposal) do
-    context_names = Enum.map(proposal.contexts, & &1.name)
-
-    child_names =
-      proposal.contexts
-      |> Enum.flat_map(fn ctx -> Enum.map(ctx.children, & &1.name) end)
-
-    surface_names = Enum.map(proposal.surface_components, & &1.name)
-
-    context_names ++ child_names ++ surface_names
-  end
-
-  defp has_consecutive_capitals?(name) do
-    # Check each segment of the module name for consecutive capitals
-    name
-    |> String.split(".")
-    |> Enum.any?(fn segment ->
-      # Match 2+ consecutive uppercase letters
-      Regex.match?(~r/[A-Z]{2,}/, segment)
-    end)
   end
 
   @valid_types ~w(context schema module liveview liveview_component live_context controller component channel plug)

@@ -265,9 +265,7 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert Enum.any?(errors, &(&1.type == :invalid_naming_hierarchy))
     end
 
-    test "returns error for consecutive capital letters in module names" do
-      # LLM -> l_l_m.ex (Elixir convention via Macro.underscore/1)
-      # If you want llm.ex, name it Llm not LLM
+    test "allows consecutive capitals in module names (Macro.underscore handles them)" do
       proposal =
         Proposal.new(%{
           app_name: "MetricFlow",
@@ -285,12 +283,7 @@ defmodule CodeMySpec.Architecture.ProposalTest do
           ]
         })
 
-      assert {:error, errors} = Proposal.validate(proposal)
-      error = Enum.find(errors, &(&1.type == :consecutive_capitals))
-      assert error != nil
-      assert "MetricFlow.AI" in error.details.names
-      assert "MetricFlow.AI.LLMClient" in error.details.names
-      assert "MetricFlowWeb.AILive" in error.details.names
+      assert {:ok, _} = Proposal.validate(proposal)
     end
 
     test "returns error for invalid component types" do
