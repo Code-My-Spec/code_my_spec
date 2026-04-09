@@ -33,9 +33,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @session_type_map %{
     "component_spec" => AgentTasks.ComponentSpec,
     "context_spec" => AgentTasks.ContextSpec,
+    "context_component_specs" => AgentTasks.ContextComponentSpecs,
     "context_design_review" => AgentTasks.ContextDesignReview,
+    "develop_context" => AgentTasks.DevelopContext,
     "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
     "fix_bdd_specs" => AgentTasks.FixBddSpecs,
+    "develop_controller" => AgentTasks.DevelopController,
     "develop_live_view" => AgentTasks.DevelopLiveView,
     "implement_context" => AgentTasks.ContextImplementation,
     "component_code" => AgentTasks.ComponentCode,
@@ -47,6 +50,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
     "design_ui" => AgentTasks.DesignUi,
     "liveview_spec" => AgentTasks.LiveViewSpec,
+    "develop_live_context" => AgentTasks.DevelopLiveContext,
     "live_context_spec" => AgentTasks.LiveContextSpec,
     "technical_strategy" => AgentTasks.TechnicalStrategy,
     "research_topic" => AgentTasks.ResearchTopic,

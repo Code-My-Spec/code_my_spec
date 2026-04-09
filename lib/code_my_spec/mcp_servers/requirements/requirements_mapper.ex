@@ -18,19 +18,30 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   def format_next_requirements(nodes) do
     {orchestrated, standalone} = Enum.split_with(nodes, & &1.orchestrated_by)
 
-    orchestrated_sections =
-      orchestrated
-      |> Enum.group_by(& &1.orchestrated_by)
-      |> Enum.map_join("\n\n", fn {orchestrator, group_nodes} ->
-        header = orchestration_prompt(orchestrator)
-        inner = format_satisfied_by_groups(group_nodes)
+    # Only show the first (highest-priority) orchestration group,
+    # scoped to a specific parent entity (e.g., one context at a time).
+    orchestrated_section =
+      case orchestrated do
+        [] ->
+          ""
 
-        "## #{Atom.to_string(orchestrator) |> Recase.TitleCase.convert()}\n\n#{header}\n\n#{inner}"
-      end)
+        [first | _] ->
+          key = {first.orchestrated_by, first.parent_entity_id}
+
+          group_nodes =
+            Enum.filter(orchestrated, &({&1.orchestrated_by, &1.parent_entity_id} == key))
+
+          orchestrator = first.orchestrated_by
+          parent_name = first.parent_entity_name || "unknown"
+          header = orchestration_prompt(orchestrator)
+          inner = format_satisfied_by_groups(group_nodes)
+
+          "## #{parent_name}\n\n#{header}\n\n#{inner}"
+      end
 
     standalone_sections = format_satisfied_by_groups(standalone)
 
-    [orchestrated_sections, standalone_sections]
+    [orchestrated_section, standalone_sections]
     |> Enum.reject(&(&1 == ""))
     |> Enum.join("\n\n")
   end

@@ -24,7 +24,9 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
         entity_id: "comp_1",
         entity_name: "Accounts",
         satisfied_by: FakeTaskWithOrchestrate,
-        orchestrated_by: nil
+        orchestrated_by: nil,
+        parent_entity_id: nil,
+        parent_entity_name: nil
       },
       overrides
     )
@@ -86,16 +88,20 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       assert text =~ "component `comp_2`"
     end
 
-    test "orchestrated nodes grouped under orchestration header" do
+    test "orchestrated nodes grouped under parent entity header" do
       nodes = [
         build_node(%{
           orchestrated_by: :develop_context,
+          parent_entity_id: "ctx_1",
+          parent_entity_name: "Todo.Accounts",
           satisfied_by: FakeTaskWithOrchestrate,
           name: "test_file",
           entity_id: "comp_1"
         }),
         build_node(%{
           orchestrated_by: :develop_context,
+          parent_entity_id: "ctx_1",
+          parent_entity_name: "Todo.Accounts",
           satisfied_by: FakeTaskNoSummary,
           name: "implementation_file",
           entity_id: "comp_1"
@@ -105,8 +111,8 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       response = RequirementsMapper.next_requirements_response(nodes)
       [%{"text" => text}] = response.content
 
-      # Orchestration header
-      assert text =~ "## Develop Context"
+      # Header uses parent entity name
+      assert text =~ "## Todo.Accounts"
       assert text =~ "Implement the child components in dependency order"
 
       # Nested satisfied_by groups
@@ -115,13 +121,20 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
     end
 
     test "orchestrated and standalone nodes render separately" do
-      orchestrated = build_node(%{orchestrated_by: :develop_context, name: "test_file"})
+      orchestrated =
+        build_node(%{
+          orchestrated_by: :develop_context,
+          parent_entity_id: "ctx_1",
+          parent_entity_name: "Todo.Accounts",
+          name: "test_file"
+        })
+
       standalone = build_node(%{orchestrated_by: nil, name: "setup", entity_id: "proj_1"})
 
       response = RequirementsMapper.next_requirements_response([orchestrated, standalone])
       [%{"text" => text}] = response.content
 
-      assert text =~ "## Develop Context"
+      assert text =~ "## Todo.Accounts"
       assert text =~ "### FakeTaskWithOrchestrate"
       # Standalone section also present
       assert text =~ "requirement `setup`"

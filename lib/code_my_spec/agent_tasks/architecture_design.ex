@@ -18,6 +18,11 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   @proposal_path Paths.proposal_path()
 
+
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   @doc """
   Generate the command/prompt for Claude to start architecture design.
 
@@ -72,11 +77,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
          {:ok, _validated} <- Proposal.validate(proposal, story_ids: story_ids),
          {:ok, result} <- Proposal.execute(proposal, scope, working_dir: working_dir) do
       IO.puts("\n✓ Proposal validated and executed successfully!")
-
-      IO.puts(
-        "  Created #{result.created_contexts} contexts, #{result.created_components} components"
-      )
-
+      IO.puts("  Created #{result.created_contexts} contexts, #{result.created_components} components")
       IO.puts("  Linked #{result.linked_stories} stories")
       IO.puts("  Spec files written to .code_my_spec/spec/")
       {:ok, :valid}

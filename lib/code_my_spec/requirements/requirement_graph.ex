@@ -335,11 +335,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         build_node(scope, ctx, def, component)
       end)
 
-    # Instantiate child nodes (once per child per child_def)
+    # Instantiate child nodes (once per child per child_def),
+    # filtering to only defs the child's type supports and
+    # threading the parent entity for orchestration grouping.
     child_nodes =
       Enum.flat_map(children, fn child ->
-        Enum.map(child_defs, fn def ->
-          build_node(scope, ctx, def, child)
+        child_defs
+        |> filter_defs_for_child_type(child.type)
+        |> Enum.map(fn def ->
+          build_node(scope, ctx, def, child, component)
         end)
       end)
 
@@ -409,7 +413,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp build_node(scope, ctx, definition, entity) do
+  defp build_node(scope, ctx, definition, entity, parent \\ nil) do
     files = Map.get(ctx.files_by_component, entity.id, [])
     result = RequirementCalculator.compute_one(scope, entity, definition, files, ctx)
 
@@ -425,9 +429,21 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       execution_type: definition.execution_type || :main_agent,
       validation_type: definition.validation_type || :automatic,
       orchestrated_by: definition.orchestrated_by,
+      parent_entity_id: parent && parent.id,
+      parent_entity_name: parent && parent.module_name,
       prerequisites: [],
       details: result.details
     }
+  end
+
+  # Only stamp child_defs whose names exist in the child's own graph template.
+  defp filter_defs_for_child_type(defs, child_type) do
+    allowed =
+      child_type
+      |> RequirementDefinitionData.graph_for_type()
+      |> MapSet.new(& &1.name)
+
+    Enum.filter(defs, &(&1.name in allowed))
   end
 
   defp compute_story_nodes(scope, ctx) do

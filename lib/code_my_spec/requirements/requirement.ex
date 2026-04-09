@@ -21,6 +21,8 @@ defmodule CodeMySpec.Requirements.Requirement do
           validation_type: :automatic | :manual,
           prerequisites: [String.t()],
           orchestrated_by: atom() | nil,
+          parent_entity_id: Ecto.UUID.t() | nil,
+          parent_entity_name: String.t() | nil,
           details: map()
         }
 
@@ -37,6 +39,8 @@ defmodule CodeMySpec.Requirements.Requirement do
     execution_type: :main_agent,
     validation_type: :automatic,
     orchestrated_by: nil,
+    parent_entity_id: nil,
+    parent_entity_name: nil,
     prerequisites: [],
     details: %{}
   ]

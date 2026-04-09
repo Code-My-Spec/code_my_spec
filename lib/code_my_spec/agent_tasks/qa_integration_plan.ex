@@ -17,6 +17,11 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   - `evaluate/3` — State machine checking integration spec completeness and verification status
   """
 
+
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.{Environments, Paths}
 
@@ -276,15 +281,9 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
 
   defp check_index(env) do
     case Environments.read_file(env, @integrations_index) do
-      {:ok, content} when byte_size(content) > 0 ->
-        :ok
-
-      {:ok, _} ->
-        {:error, "Integration index is empty. Write `#{@integrations_index}` and stop again."}
-
-      _ ->
-        {:error,
-         "Integration index not found at `#{@integrations_index}`. Write it and stop again."}
+      {:ok, content} when byte_size(content) > 0 -> :ok
+      {:ok, _} -> {:error, "Integration index is empty. Write `#{@integrations_index}` and stop again."}
+      _ -> {:error, "Integration index not found at `#{@integrations_index}`. Write it and stop again."}
     end
   end
 
@@ -302,19 +301,12 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
       case read_verify_script_path(env, file) do
         {:ok, script_path} ->
           case Environments.file_exists?(env, script_path) do
-            true ->
-              {:cont, :ok}
-
-            _ ->
-              {:halt,
-               {:error,
-                "Verify script `#{script_path}` missing (referenced by `#{file}`). Create it and stop again."}}
+            true -> {:cont, :ok}
+            _ -> {:halt, {:error, "Verify script `#{script_path}` missing (referenced by `#{file}`). Create it and stop again."}}
           end
 
         {:error, _} ->
-          {:halt,
-           {:error,
-            "Integration spec `#{file}` has no verify script path. Add a `## Verify Script` section."}}
+          {:halt, {:error, "Integration spec `#{file}` has no verify script path. Add a `## Verify Script` section."}}
       end
     end)
   end
@@ -328,9 +320,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
           if String.contains?(String.downcase(content), "verified") do
             {:cont, :ok}
           else
-            {:halt,
-             {:error,
-              "Integration `#{file}` is not yet verified. Run the verify script and update the status."}}
+            {:halt, {:error, "Integration `#{file}` is not yet verified. Run the verify script and update the status."}}
           end
 
         _ ->
