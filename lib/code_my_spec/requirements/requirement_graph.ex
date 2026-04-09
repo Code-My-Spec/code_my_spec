@@ -374,21 +374,39 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # Build edges by resolving template prerequisite IDs to real node keys.
-  # When a node depends on a :child ID, it creates fan-in edges (one per child).
-  # When a :child node depends on a :parent ID, it creates fan-out edges.
+  #
+  # Edge semantics depend on the node_scope of source and target:
+  # - child → child (same scope): zip by child (each child's node depends on its OWN prereq)
+  # - parent → child: fan-out (one parent node → each child's node)
+  # - child → parent: fan-in (each child's node → one parent node)
+  # - same scope single: direct edge
   defp build_template_edges(template, id_map) do
+    scope_by_id = Map.new(template, &{&1.id, &1.node_scope})
+
     Enum.flat_map(template, fn def ->
       to_keys = Map.get(id_map, def.id, [])
 
       Enum.flat_map(def.prerequisites, fn prereq_id ->
         from_keys = Map.get(id_map, prereq_id, [])
+        from_scope = Map.get(scope_by_id, prereq_id)
+        to_scope = def.node_scope
 
-        # Create edges: every from_key → every to_key
-        for from_key <- from_keys, to_key <- to_keys, from_key != to_key do
-          %{from: from_key, to: to_key}
-        end
+        build_edges_for_scopes(from_scope, to_scope, from_keys, to_keys)
       end)
     end)
+  end
+
+  # Both child: pair by position (each child connects to itself)
+  defp build_edges_for_scopes(:child, :child, from_keys, to_keys) do
+    Enum.zip(from_keys, to_keys)
+    |> Enum.map(fn {from, to} -> %{from: from, to: to} end)
+  end
+
+  # Cross-scope or single: cartesian product (fan-in, fan-out, or direct)
+  defp build_edges_for_scopes(_from_scope, _to_scope, from_keys, to_keys) do
+    for from_key <- from_keys, to_key <- to_keys, from_key != to_key do
+      %{from: from_key, to: to_key}
+    end
   end
 
   defp build_node(scope, ctx, definition, entity) do
