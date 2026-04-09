@@ -273,12 +273,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       end)
       assert fan_out, "context should create fan-out edge from spec_valid to schema child spec_file"
 
-      # Fan-in: child.terminal (implementation_file for schema) → parent.implementation_file
+      # Fan-in: child.tests_passing (child terminal in context template) → parent.implementation_file
       fan_in = Enum.find(edges, fn e ->
-        e.from == {"component", child.id, "implementation_file"} and
+        e.from == {"component", child.id, "tests_passing"} and
         e.to == {"component", parent.id, "implementation_file"}
       end)
-      assert fan_in, "schema child terminal should fan-in to context implementation_file"
+      assert fan_in, "child terminal should fan-in to context implementation_file"
     end
   end
 

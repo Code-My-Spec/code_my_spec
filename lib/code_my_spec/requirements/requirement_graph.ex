@@ -30,7 +30,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]}
   def compute_graph(%Scope{} = scope) do
     ctx = Preloader.load(scope)
-    nodes = compute_all_from_ctx(scope, ctx)
+    {nodes, ctx} = compute_all_from_ctx(scope, ctx)
     edges = compute_edges(nodes, ctx, scope.active_project)
     nodes = clamp_satisfaction(nodes, edges)
     {nodes, edges}
@@ -43,7 +43,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
     ctx = Preloader.load(scope)
-    nodes = compute_all_from_ctx(scope, ctx)
+    {nodes, ctx} = compute_all_from_ctx(scope, ctx)
     edges = compute_edges(nodes, ctx, scope.active_project)
     nodes = clamp_satisfaction(nodes, edges)
 
@@ -70,7 +70,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_all(Scope.t()) :: [Requirement.t()]
   def compute_all(%Scope{} = scope) do
     ctx = Preloader.load(scope)
-    nodes = compute_all_from_ctx(scope, ctx)
+    {nodes, ctx} = compute_all_from_ctx(scope, ctx)
     edges = compute_edges(nodes, ctx, scope.active_project)
     clamp_satisfaction(nodes, edges)
   end
@@ -116,31 +116,21 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Edge computation --
 
-  defp compute_edges(nodes, ctx, project) do
-    same_entity_edges(nodes) ++
-      project_to_story_edges(ctx) ++
-      component_tree_edges(nodes, ctx, project) ++
-      parent_child_edges(ctx, project) ++
-      component_dependency_edges(ctx, project) ++
-      story_to_project_edges(nodes, ctx)
-  end
+  defp compute_edges(_nodes, ctx, project) do
+    # Template edges are computed during instantiation (stored in ctx)
+    template_edges = ctx[:template_edges] || []
 
-  # Same-entity prerequisite edges (e.g. spec_file → spec_valid within one component)
-  defp same_entity_edges(nodes) do
-    Enum.flat_map(nodes, fn node ->
-      Enum.map(node.prerequisites, fn prereq_name ->
-        %{
-          from: {node.entity_type, node.entity_id, prereq_name},
-          to: node_key(node)
-        }
-      end)
-    end)
+    template_edges ++
+      project_to_story_edges(ctx) ++
+      component_tree_edges(ctx, project) ++
+      cross_context_dependency_edges(ctx, project) ++
+      story_to_project_edges(ctx)
   end
 
   # Cross-entity: story ↔ surface component + its direct context dependencies.
   # Gives fan-out: story → surface + each context dep → back to story.
   # Context trees are internally connected via context_container_edges.
-  defp component_tree_edges(_nodes, ctx, project) do
+  defp component_tree_edges(ctx, project) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
     |> Enum.flat_map(fn story ->
@@ -189,106 +179,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     entry ++ exit
   end
 
-  # Explicit parent-child edges for component hierarchies (contexts, live_contexts).
-  #
-  # Fan-out: parent phase gates → children can start
-  #   parent.spec_valid → child.first_req (children wait for parent design)
-  #   parent.review_valid → child.implementation_file (children wait for review)
-  #
-  # Fan-in: children completion → parent can advance
-  #   child.spec_valid → parent.review_file (review after all children specced)
-  #   child.terminal_req → parent.implementation_file (parent impl after all children done)
-  defp parent_child_edges(ctx, project) do
-    parent_ids =
-      ctx.components
-      |> Enum.map(& &1.parent_component_id)
-      |> MapSet.new()
-      |> MapSet.delete(nil)
-
-    ctx.components
-    |> Enum.filter(fn c -> MapSet.member?(parent_ids, c.id) end)
-    |> Enum.flat_map(fn parent ->
-      parent_defs =
-        ComponentRegistry.get_requirements_for_type(parent.type)
-        |> filter_definitions_by_project_settings(project)
-
-      children = Enum.filter(ctx.components, &(&1.parent_component_id == parent.id))
-
-      # Fallback: when spec_valid/review_valid are filtered out, use first def as gate
-      parent_gate =
-        find_def(parent_defs, "spec_valid") ||
-          find_def(parent_defs, "review_valid") ||
-          List.first(parent_defs)
-
-      parent_review_valid = find_def(parent_defs, "review_valid")
-      parent_impl_file = find_def(parent_defs, "implementation_file")
-
-      Enum.flat_map(children, fn child ->
-        child_defs =
-          ComponentRegistry.get_requirements_for_type(child.type)
-          |> filter_definitions_by_project_settings(project)
-
-        child_first = List.first(child_defs)
-        child_terminal = List.last(child_defs)
-        child_spec_valid = find_def(child_defs, "spec_valid")
-        child_impl_file = find_def(child_defs, "implementation_file")
-
-        # Fan-out: parent gate → children can start
-        spec_gate =
-          if parent_gate && child_first do
-            [%{from: {"component", parent.id, parent_gate.name},
-               to: {"component", child.id, child_first.name}}]
-          else
-            []
-          end
-
-        # Fan-out: parent review done → children can implement
-        impl_gate =
-          if parent_review_valid && child_impl_file do
-            [%{from: {"component", parent.id, parent_review_valid.name},
-               to: {"component", child.id, child_impl_file.name}}]
-          else
-            []
-          end
-
-        # Fan-in: child spec done → parent can review (only if review exists)
-        spec_fan_in =
-          if child_spec_valid && find_def(parent_defs, "review_file") do
-            [%{from: {"component", child.id, child_spec_valid.name},
-               to: {"component", parent.id, "review_file"}}]
-          else
-            []
-          end
-
-        # Fan-in: child fully done → parent can implement
-        impl_fan_in =
-          if child_terminal && parent_impl_file do
-            [%{from: {"component", child.id, child_terminal.name},
-               to: {"component", parent.id, parent_impl_file.name}}]
-          else
-            []
-          end
-
-        spec_gate ++ impl_gate ++ spec_fan_in ++ impl_fan_in
-      end)
-    end)
-  end
-
   defp find_def(definitions, name) do
     Enum.find(definitions, &(&1.name == name))
   end
 
-  # Component dependency edges.
-  #
-  # Two modes based on whether the components are siblings (same parent):
-  # - Siblings (e.g., Identity depends on User within Accounts):
-  #   dep.terminal → dependent.implementation_file
-  #   Specs can be written in parallel; only implementation respects order.
-  #
-  # - Cross-context (e.g., Todos depends on Accounts):
-  #   dep.terminal → dependent.first_req
-  #   The dependent bounded context waits entirely for its dependency.
-  defp component_dependency_edges(ctx, project) do
+  # Cross-context dependency edges.
+  # Sibling deps (same parent) are handled by template instantiation.
+  # Cross-context deps gate the dependent's first requirement.
+  defp cross_context_dependency_edges(ctx, project) do
     ctx.components
     |> Enum.flat_map(fn comp ->
       deps = case comp.dependencies do
@@ -352,7 +250,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # Cross-entity: story.qa_complete → project.qa_preflight
-  defp story_to_project_edges(_nodes, ctx) do
+  defp story_to_project_edges(ctx) do
     project_id = hd(ctx.stories ++ [nil]) && List.first(ctx.stories) && List.first(ctx.stories).project_id
 
     if project_id && ctx.stories != [] do
@@ -380,75 +278,183 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # -- Node computation --
 
   defp compute_all_from_ctx(scope, ctx) do
-    component_nodes = compute_component_nodes(scope, ctx)
-    story_nodes = compute_story_nodes(scope, ctx)
-    project_nodes = compute_project_nodes(scope, ctx)
+    {component_nodes, component_edges} = instantiate_component_graphs(scope, ctx)
+    {story_nodes, story_edges} = compute_story_nodes(scope, ctx)
+    {project_nodes, project_edges} = compute_project_nodes(scope, ctx)
 
-    project_nodes ++ story_nodes ++ component_nodes
+    all_nodes = project_nodes ++ story_nodes ++ component_nodes
+    all_template_edges = component_edges ++ story_edges ++ project_edges
+
+    ctx = Map.put(ctx, :template_edges, all_template_edges)
+
+    {all_nodes, ctx}
   end
 
-  defp compute_component_nodes(scope, ctx) do
-    Enum.flat_map(ctx.components, fn component ->
-      definitions =
-        ComponentRegistry.get_requirements_for_type(component.type)
-        |> filter_definitions_by_project_settings(scope.active_project)
+  # Instantiate graph templates for all components.
+  # For components with children (contexts), stamps out :child nodes per child.
+  # Returns {nodes, edges} where edges are resolved from template IDs.
+  defp instantiate_component_graphs(scope, ctx) do
+    # Build parent→children map
+    children_by_parent =
+      ctx.components
+      |> Enum.filter(& &1.parent_component_id)
+      |> Enum.group_by(& &1.parent_component_id)
 
-      files = Map.get(ctx.files_by_component, component.id, [])
+    # Components that ARE children (handled by their parent's template)
+    child_ids = ctx.components |> Enum.filter(& &1.parent_component_id) |> MapSet.new(& &1.id)
 
-      Enum.map(definitions, fn definition ->
-        result = RequirementCalculator.compute_one(scope, component, definition, files, ctx)
+    ctx.components
+    |> Enum.reject(fn c -> MapSet.member?(child_ids, c.id) end)
+    |> Enum.flat_map_reduce([], fn component, all_edges ->
+      children = Map.get(children_by_parent, component.id, [])
+      template = RequirementDefinitionData.graph_for_type(component.type)
 
-        %Requirement{
-          entity_type: "component",
-          entity_id: component.id,
-          entity_name: component.module_name,
-          name: definition.name,
-          description: definition.description,
-          satisfied: result.satisfied,
-          satisfied_by: definition.satisfied_by,
-          scope: definition.scope || :local,
-          execution_type: definition.execution_type || :main_agent,
-          validation_type: definition.validation_type || :automatic,
-          prerequisites: definition.prerequisites,
-          details: result.details
-        }
+      {nodes, edges} = instantiate_template(scope, ctx, template, component, children)
+      {nodes, all_edges ++ edges}
+    end)
+  end
+
+  # Instantiate a single graph template for a component + its children.
+  defp instantiate_template(scope, ctx, template, component, children) do
+    parent_defs = Enum.filter(template, &(&1.node_scope == :parent))
+    child_defs = Enum.filter(template, &(&1.node_scope == :child))
+    self_defs = Enum.filter(template, &(&1.node_scope == :self))
+
+    # Build ID → node_key map for edge resolution
+    id_map = build_id_map(template, component, children)
+
+    # Instantiate parent nodes (once for the component)
+    parent_nodes =
+      Enum.map(parent_defs, fn def ->
+        build_node(scope, ctx, def, component)
+      end)
+
+    # Instantiate self nodes (standalone, no parent/child)
+    self_nodes =
+      Enum.map(self_defs, fn def ->
+        build_node(scope, ctx, def, component)
+      end)
+
+    # Instantiate child nodes (once per child per child_def)
+    child_nodes =
+      Enum.flat_map(children, fn child ->
+        Enum.map(child_defs, fn def ->
+          build_node(scope, ctx, def, child)
+        end)
+      end)
+
+    all_nodes = parent_nodes ++ self_nodes ++ child_nodes
+
+    # Build edges from template prerequisites
+    edges = build_template_edges(template, id_map)
+
+    {all_nodes, edges}
+  end
+
+  # Map template IDs to real node keys.
+  # :parent and :self nodes map to the component itself.
+  # :child nodes map to EACH child — one key per child per template ID.
+  defp build_id_map(template, component, children) do
+    Enum.flat_map(template, fn def ->
+      case def.node_scope do
+        :parent ->
+          [{def.id, [{"component", component.id, def.name}]}]
+
+        :self ->
+          [{def.id, [{"component", component.id, def.name}]}]
+
+        :child ->
+          keys = Enum.map(children, fn child ->
+            {"component", child.id, def.name}
+          end)
+          [{def.id, keys}]
+      end
+    end)
+    |> Map.new()
+  end
+
+  # Build edges by resolving template prerequisite IDs to real node keys.
+  # When a node depends on a :child ID, it creates fan-in edges (one per child).
+  # When a :child node depends on a :parent ID, it creates fan-out edges.
+  defp build_template_edges(template, id_map) do
+    Enum.flat_map(template, fn def ->
+      to_keys = Map.get(id_map, def.id, [])
+
+      Enum.flat_map(def.prerequisites, fn prereq_id ->
+        from_keys = Map.get(id_map, prereq_id, [])
+
+        # Create edges: every from_key → every to_key
+        for from_key <- from_keys, to_key <- to_keys, from_key != to_key do
+          %{from: from_key, to: to_key}
+        end
       end)
     end)
+  end
+
+  defp build_node(scope, ctx, definition, entity) do
+    files = Map.get(ctx.files_by_component, entity.id, [])
+    result = RequirementCalculator.compute_one(scope, entity, definition, files, ctx)
+
+    %Requirement{
+      entity_type: "component",
+      entity_id: entity.id,
+      entity_name: entity.module_name,
+      name: definition.name,
+      description: definition.description,
+      satisfied: result.satisfied,
+      satisfied_by: definition.satisfied_by,
+      scope: definition.scope || :local,
+      execution_type: definition.execution_type || :main_agent,
+      validation_type: definition.validation_type || :automatic,
+      prerequisites: [],
+      details: result.details
+    }
   end
 
   defp compute_story_nodes(scope, ctx) do
-    definitions = RequirementDefinitionData.story_requirements()
+    template = RequirementDefinitionData.story_graph()
+    id_to_name = Map.new(template, &{&1.id, &1.name})
 
-    Enum.flat_map(ctx.stories, fn story ->
-      files = Map.get(ctx.files_by_story, story.id, [])
+    {nodes, edges} =
+      Enum.flat_map_reduce(ctx.stories, [], fn story, all_edges ->
+        files = Map.get(ctx.files_by_story, story.id, [])
+        id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
 
-      Enum.map(definitions, fn definition ->
-        result = RequirementCalculator.compute_one(scope, story, definition, files, ctx)
+        nodes = Enum.map(template, fn definition ->
+          result = RequirementCalculator.compute_one(scope, story, definition, files, ctx)
 
-        %Requirement{
-          entity_type: "story",
-          entity_id: story.id,
-          entity_name: story.title,
-          name: definition.name,
-          description: definition.description,
-          satisfied: result.satisfied,
-          satisfied_by: definition.satisfied_by,
-          scope: definition.scope || :local,
-          execution_type: definition.execution_type || :main_agent,
-          validation_type: definition.validation_type || :automatic,
-          prerequisites: definition.prerequisites,
-          details: result.details
-        }
+          %Requirement{
+            entity_type: "story",
+            entity_id: story.id,
+            entity_name: story.title,
+            name: definition.name,
+            description: definition.description,
+            satisfied: result.satisfied,
+            satisfied_by: definition.satisfied_by,
+            scope: definition.scope || :local,
+            execution_type: definition.execution_type || :main_agent,
+            validation_type: definition.validation_type || :automatic,
+            prerequisites: [],
+            details: result.details
+          }
+        end)
+
+        edges = build_template_edges(template, id_map)
+        {nodes, all_edges ++ edges}
       end)
-    end)
+
+    # Stash edges — they'll be merged into template_edges
+    {nodes, edges}
   end
 
   defp compute_project_nodes(scope, ctx) do
     project = scope.active_project
-    definitions = RequirementDefinitionData.project_requirements()
+    template = RequirementDefinitionData.project_graph()
     files = ctx.files_by_project || []
 
-    Enum.map(definitions, fn definition ->
+    id_map = Map.new(template, fn d -> {d.id, [{"project", project.id, d.name}]} end)
+
+    nodes = Enum.map(template, fn definition ->
       result = RequirementCalculator.compute_one(scope, project, definition, files, ctx)
 
       %Requirement{
@@ -462,10 +468,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         scope: definition.scope || :local,
         execution_type: definition.execution_type || :main_agent,
         validation_type: definition.validation_type || :automatic,
-        prerequisites: definition.prerequisites,
+        prerequisites: [],
         details: result.details
       }
     end)
+
+    edges = build_template_edges(template, id_map)
+    {nodes, edges}
   end
 
   # -- Helpers --

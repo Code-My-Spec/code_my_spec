@@ -26,7 +26,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
 
   @type check_type :: :file_exists | :file_valid | :path_exists | :field_present | :no_problems | :tests_passing | :spex_passing | :delegate
 
+  @type node_scope :: :parent | :child | :self
+
   @type t :: %__MODULE__{
+          id: integer() | nil,
           name: String.t(),
           satisfied_by: module() | nil,
           artifact_type: artifact_type(),
@@ -34,7 +37,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           description: String.t(),
           threshold: float(),
           config: map(),
-          prerequisites: [String.t()],
+          prerequisites: [integer()],
+          node_scope: node_scope(),
           scope: scope(),
           validation_type: validation_type(),
           execution_type: execution_type()
@@ -62,6 +66,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
 
   @primary_key false
   embedded_schema do
+    field :id, :integer
     field :name, :string
     field :satisfied_by, SessionType
     field :artifact_type, Ecto.Enum, values: @artifact_types
@@ -69,7 +74,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     field :description, :string
     field :threshold, :float, default: 1.0
     field :config, :map, default: %{}
-    field :prerequisites, {:array, :string}, default: []
+    field :prerequisites, {:array, :integer}, default: []
+    field :node_scope, Ecto.Enum, values: [:parent, :child, :self], default: :self
     field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
     field :validation_type, Ecto.Enum, values: [:automatic, :manual], default: :automatic
     field :execution_type, Ecto.Enum, values: [:main_agent, :sub_agent], default: :main_agent
@@ -119,6 +125,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   def changeset(requirement_definition, attrs) do
     requirement_definition
     |> cast(attrs, [
+      :id,
       :name,
       :satisfied_by,
       :artifact_type,
@@ -127,6 +134,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :threshold,
       :config,
       :prerequisites,
+      :node_scope,
       :scope,
       :validation_type,
       :execution_type

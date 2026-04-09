@@ -9,7 +9,7 @@ defmodule CodeMySpec.Components.Registry do
   alias CodeMySpec.Requirements.RequirementDefinitionData
 
   @type type_definition :: %{
-          requirements: [RequirementDefinition.t()],
+          graph: [RequirementDefinition.t()],
           display_name: String.t(),
           description: String.t(),
           document_type: String.t(),
@@ -19,7 +19,7 @@ defmodule CodeMySpec.Components.Registry do
 
   @type_definitions %{
     "genserver" => %{
-      requirements: RequirementDefinitionData.default_requirements(),
+      graph: :default_graph,
       display_name: "GenServer",
       document_type: "spec",
       description: "Stateful process that handles requests and maintains state",
@@ -27,16 +27,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "green"
     },
     "context" => %{
-      requirements: [
-        RequirementDefinitionData.context_spec_file(),
-        RequirementDefinitionData.context_spec_valid(),
-        RequirementDefinitionData.review_file(),
-        RequirementDefinitionData.review_valid(),
-        RequirementDefinitionData.context_implementation_file(),
-        RequirementDefinitionData.context_test_file(),
-        RequirementDefinitionData.test_spec_alignment(),
-        RequirementDefinitionData.tests_passing()
-      ],
+      graph: :context_graph,
       document_type: "context_spec",
       display_name: "Context",
       description: "Application domain boundary providing public API",
@@ -44,16 +35,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "purple"
     },
     "coordination_context" => %{
-      requirements: [
-        RequirementDefinitionData.context_spec_file(),
-        RequirementDefinitionData.context_spec_valid(),
-        RequirementDefinitionData.review_file(),
-        RequirementDefinitionData.review_valid(),
-        RequirementDefinitionData.context_implementation_file(),
-        RequirementDefinitionData.context_test_file(),
-        RequirementDefinitionData.test_spec_alignment(),
-        RequirementDefinitionData.tests_passing()
-      ],
+      graph: :context_graph,
       document_type: "context_spec",
       display_name: "Coordination Context",
       description: "Context that coordinates between multiple domains",
@@ -61,11 +43,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "orange"
     },
     "schema" => %{
-      requirements: [
-        RequirementDefinitionData.spec_file(),
-        RequirementDefinitionData.schema_spec_valid(),
-        RequirementDefinitionData.implementation_file()
-      ],
+      graph: :schema_graph,
       document_type: "schema",
       display_name: "Schema",
       description: "Data structure definition with validation rules",
@@ -73,7 +51,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "blue"
     },
     "repository" => %{
-      requirements: RequirementDefinitionData.default_requirements(),
+      graph: :default_graph,
       document_type: "spec",
       display_name: "Repository",
       description: "Data access layer abstracting database operations",
@@ -81,7 +59,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "indigo"
     },
     "task" => %{
-      requirements: RequirementDefinitionData.default_requirements(),
+      graph: :default_graph,
       document_type: "spec",
       display_name: "Task",
       description: "Background job or one-time operation",
@@ -89,7 +67,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "yellow"
     },
     "registry" => %{
-      requirements: RequirementDefinitionData.default_requirements(),
+      graph: :default_graph,
       document_type: "spec",
       display_name: "Registry",
       description: "Process registry for dynamic process lookup",
@@ -97,11 +75,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "teal"
     },
     "behaviour" => %{
-      requirements: [
-        RequirementDefinitionData.spec_file(),
-        RequirementDefinitionData.spec_valid(),
-        RequirementDefinitionData.implementation_file()
-      ],
+      graph: :behaviour_graph,
       document_type: "spec",
       display_name: "Behaviour",
       description: "Behaviour that defines callbacks for other modules",
@@ -109,14 +83,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "teal"
     },
     "controller" => %{
-      requirements: [
-        RequirementDefinitionData.spec_file(),
-        RequirementDefinitionData.spec_valid(),
-        RequirementDefinitionData.test_file(),
-        RequirementDefinitionData.test_spec_alignment(),
-        RequirementDefinitionData.implementation_file(),
-        RequirementDefinitionData.tests_passing()
-      ],
+      graph: :default_graph,
       document_type: "spec",
       display_name: "Controller",
       description: "Phoenix controller handling HTTP requests and JSON responses",
@@ -124,10 +91,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "cyan"
     },
     "json" => %{
-      requirements: [
-        RequirementDefinitionData.spec_file(),
-        RequirementDefinitionData.implementation_file()
-      ],
+      graph: :json_graph,
       document_type: "json",
       display_name: "JSON View",
       description: "Phoenix JSON view rendering structured responses for a controller",
@@ -135,12 +99,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "cyan"
     },
     "live_context" => %{
-      requirements: [
-        RequirementDefinitionData.live_context_spec_file(),
-        RequirementDefinitionData.live_context_spec_valid(),
-        RequirementDefinitionData.review_file(),
-        RequirementDefinitionData.review_valid()
-      ],
+      graph: :live_context_graph,
       document_type: "live_context_spec",
       display_name: "Live Context",
       description: "UI grouping of related LiveViews and LiveComponents under a shared namespace",
@@ -148,14 +107,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "emerald"
     },
     "liveview" => %{
-      requirements: [
-        RequirementDefinitionData.liveview_spec_file(),
-        RequirementDefinitionData.liveview_spec_valid(),
-        RequirementDefinitionData.test_file(),
-        RequirementDefinitionData.test_spec_alignment(),
-        RequirementDefinitionData.implementation_file(),
-        RequirementDefinitionData.tests_passing()
-      ],
+      graph: :liveview_graph,
       document_type: "liveview",
       display_name: "LiveView",
       description: "Phoenix LiveView page with real-time UI interactions",
@@ -163,14 +115,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "emerald"
     },
     "liveview_component" => %{
-      requirements: [
-        RequirementDefinitionData.liveview_spec_file(),
-        RequirementDefinitionData.liveview_spec_valid(),
-        RequirementDefinitionData.test_file(),
-        RequirementDefinitionData.test_spec_alignment(),
-        RequirementDefinitionData.implementation_file(),
-        RequirementDefinitionData.tests_passing()
-      ],
+      graph: :liveview_graph,
       document_type: "liveview_component",
       display_name: "LiveView Component",
       description: "Reusable Phoenix LiveView component",
@@ -178,7 +123,7 @@ defmodule CodeMySpec.Components.Registry do
       color: "teal"
     },
     "other" => %{
-      requirements: RequirementDefinitionData.default_requirements(),
+      graph: :default_graph,
       display_name: "Other",
       document_type: "spec",
       description: "Custom component type",
@@ -187,13 +132,12 @@ defmodule CodeMySpec.Components.Registry do
     }
   }
 
-  @spec get_type(String.t()) :: type_definition()
+  @spec get_type(String.t()) :: map()
   def get_type(component_type) do
     case Map.get(@type_definitions, component_type, nil) do
       nil ->
-        # Return default requirements for components without a type
         %{
-          requirements: RequirementDefinitionData.default_requirements(),
+          graph: :default_graph,
           display_name: "Unknown",
           description: "Component type not yet defined",
           document_type: "spec",
@@ -206,8 +150,23 @@ defmodule CodeMySpec.Components.Registry do
     end
   end
 
+  @doc "Returns the full graph template for a component type."
+  @spec get_graph_template(String.t()) :: [RequirementDefinition.t()]
+  def get_graph_template(component_type) do
+    RequirementDefinitionData.graph_for_type(component_type)
+  end
+
+  @doc """
+  Returns requirement definitions for a component type.
+
+  For types with parent/child graphs, returns only the definitions
+  relevant to the entity itself — `:parent` defs for parent components,
+  `:child` defs for child components, `:self` defs for standalone.
+  """
   @spec get_requirements_for_type(String.t()) :: [RequirementDefinition.t()]
   def get_requirements_for_type(component_type) do
-    get_type(component_type).requirements
+    # Return all definitions from the graph template.
+    # The graph instantiation code handles parent/child scoping.
+    RequirementDefinitionData.graph_for_type(component_type)
   end
 end
