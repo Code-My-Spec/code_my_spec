@@ -197,122 +197,55 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   # command/3 Tests
   # ============================================================================
 
-  describe "command/3 — plan phase (no plan.md)" do
+  describe "command/3 — combined prompt" do
     setup [:create_scope, :create_story, :create_task]
 
-    test "returns plan-phase prompt when no plan exists", %{scope: scope, task: task} do
+    test "returns a combined prompt with all three phases", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "Write the QA Plan"
-      assert prompt =~ "qa_seeds"
+      assert prompt =~ "Complete QA Session"
+      assert prompt =~ "Phase 1: QA Plan"
+      assert prompt =~ "Phase 2: Testing Brief"
+      assert prompt =~ "Phase 3: Execute Tests"
     end
 
-    test "plan prompt includes story context", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "User Authentication"
-      assert prompt =~ "Acceptance Criteria"
-    end
-
-    test "plan prompt includes plan format spec", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "QA Plan Format"
-      assert prompt =~ "App Overview"
-      assert prompt =~ "Tools Registry"
-    end
-
-    test "plan prompt does not include brief or test content", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      refute prompt =~ "Brief Format"
-      refute prompt =~ "Result Format"
-      refute prompt =~ "Testing Approach"
-    end
-
-  end
-
-  describe "command/3 — brief phase (plan exists)" do
-    setup [:create_scope, :create_story, :create_task, :create_qa_plan]
-
-    test "returns brief-phase prompt when plan exists", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "Write the Brief"
-    end
-
-    test "brief prompt includes story context", %{scope: scope, task: task} do
+    test "includes story context", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ "User Authentication"
       assert prompt =~ "Users can log in and out"
       assert prompt =~ "Acceptance Criteria"
     end
 
-    test "brief prompt lists available tools", %{scope: scope, task: task} do
+    test "includes all format specs", %{scope: scope, task: task} do
+      assert {:ok, prompt} = QaStory.command(scope, task)
+      assert prompt =~ "App Overview"
+      assert prompt =~ "Tools Registry"
+      assert prompt =~ "Seed Strategy"
+    end
+
+    test "includes tool rules and testing approach", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ "MCP browser tools"
       assert prompt =~ "curl"
-    end
-
-    test "brief prompt includes brief format spec", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "Brief Format"
-      refute prompt =~ "Result Format"
-    end
-
-    test "brief prompt references plan.md", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ ".code_my_spec/qa/plan.md"
-    end
-
-    test "brief prompt references brief output path", %{scope: scope, task: task, story: story} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
-    end
-
-    test "brief prompt tells agent to stop after brief", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "Stop the session after writing the brief"
-    end
-
-    test "brief prompt does not include test-phase content", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      refute prompt =~ "Testing Approach"
-      refute prompt =~ "Result Format"
-    end
-
-  end
-
-  describe "command/3 — test phase (plan + brief exist)" do
-    setup [:create_scope, :create_story, :create_task, :create_qa_plan]
-
-    setup %{scope: scope, story: story} do
-      write_story_brief(scope.environment, story.id)
-      :ok
-    end
-
-    test "returns test-phase prompt when brief exists", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "Execute Tests"
-    end
-
-    test "test prompt includes tool rules and testing approach", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "MCP browser tools"
       assert prompt =~ "Testing Approach"
       assert prompt =~ "screenshot"
     end
 
-    test "test prompt includes result format spec", %{scope: scope, task: task} do
+    test "references all artifact paths", %{scope: scope, task: task, story: story} do
       assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "Result Format"
-      refute prompt =~ "Brief Format"
-    end
-
-    test "test prompt references brief path", %{scope: scope, task: task, story: story} do
-      assert {:ok, prompt} = QaStory.command(scope, task)
+      assert prompt =~ ".code_my_spec/qa/plan.md"
       assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
+      assert prompt =~ ".code_my_spec/qa/#{story.id}/result.md"
     end
 
-  end
+    test "same prompt regardless of existing artifacts", %{scope: scope, task: task, story: story} do
+      assert {:ok, prompt_before} = QaStory.command(scope, task)
 
-  describe "command/3 — shared" do
-    setup [:create_scope, :create_story, :create_task]
+      write_qa_plan(scope.environment)
+      write_story_brief(scope.environment, story.id)
+
+      assert {:ok, prompt_after} = QaStory.command(scope, task)
+      assert prompt_before == prompt_after
+    end
 
     test "accepts string story ID", %{scope: scope, story: story} do
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: to_string(story.id)}
