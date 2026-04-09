@@ -39,12 +39,16 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         ""
       end
 
+    criteria_lines = format_criteria_text(story.criteria)
+
     summary = """
     ## #{story.title} (ID: #{story.id})
 
     #{story.description || "No description"}
 
     **Acceptance Criteria:** #{criteria_count} total, #{verified_count} verified#{tags_line}
+
+    #{criteria_lines}
     """
 
     hybrid_response(String.trim(summary), data)
@@ -431,6 +435,15 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
         story.acceptance_criteria || []
     end
   end
+
+  defp format_criteria_text(criteria) when is_list(criteria) and criteria != [] do
+    Enum.map_join(criteria, "\n", fn c ->
+      status = if c.verified, do: "[x]", else: "[ ]"
+      "- #{status} #{c.description} (criterion #{c.id})"
+    end)
+  end
+
+  defp format_criteria_text(_), do: "_No criteria defined._"
 
   defp format_criteria(criteria) when is_list(criteria) do
     Enum.map(criteria, &criterion_data/1)

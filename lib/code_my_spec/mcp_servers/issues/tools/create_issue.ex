@@ -67,8 +67,15 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
 
   defp maybe_atomize(map, key) do
     case Map.get(map, key) do
-      val when is_binary(val) -> Map.put(map, key, String.to_existing_atom(val))
-      _ -> map
+      val when is_binary(val) ->
+        try do
+          Map.put(map, key, String.to_existing_atom(val))
+        rescue
+          ArgumentError -> map
+        end
+
+      _ ->
+        map
     end
   end
 end
