@@ -75,7 +75,8 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       CodeMySpec.AgentTasks.DesignUi,
       CodeMySpec.AgentTasks.ResearchTopic,
       CodeMySpec.AgentTasks.ResearchTopics,
-      CodeMySpec.AgentTasks.ArchitectureDesign
+      CodeMySpec.AgentTasks.ArchitectureDesign,
+      CodeMySpec.AgentTasks.QaStory
     ]
   end
 
@@ -115,7 +116,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   defp check_requirement(scope, task) do
     with {:ok, {entity, entity_type}} <- resolve_entity(scope, task),
-         {:ok, definition} <- find_definition(entity_type, task.requirement_name, entity) do
+         {:ok, definition} <- find_definition(scope, entity_type, task.requirement_name, entity) do
       files = load_files(scope, entity, entity_type)
       result = RequirementCalculator.compute_one(scope, entity, definition, files)
 
@@ -148,16 +149,33 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
     end
   end
 
-  defp find_definition(:component, requirement_name, entity) do
+  defp find_definition(scope, :component, requirement_name, entity) do
+    # First try the component's own type template
     definitions = ComponentRegistry.get_requirements_for_type(entity.type)
-    find_by_name(definitions, requirement_name)
+
+    case find_by_name(definitions, requirement_name) do
+      {:ok, _} = found ->
+        found
+
+      {:error, _} ->
+        # If not found and component has a parent, check parent template's :child nodes.
+        # A schema child of a context gets :child requirements from the context template.
+        if entity.parent_component_id do
+          parent = Components.get_component!(scope, entity.parent_component_id)
+          parent_template = ComponentRegistry.get_graph_template(parent.type)
+          child_defs = Enum.filter(parent_template, &(&1.node_scope == :child))
+          find_by_name(child_defs, requirement_name)
+        else
+          {:error, "No requirement definition found with name: #{requirement_name}"}
+        end
+    end
   end
 
-  defp find_definition(:story, requirement_name, _entity) do
+  defp find_definition(_scope, :story, requirement_name, _entity) do
     find_by_name(RequirementDefinitionData.story_requirements(), requirement_name)
   end
 
-  defp find_definition(:project, requirement_name, _entity) do
+  defp find_definition(_scope, :project, requirement_name, _entity) do
     find_by_name(RequirementDefinitionData.project_requirements(), requirement_name)
   end
 

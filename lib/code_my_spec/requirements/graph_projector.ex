@@ -31,6 +31,17 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @pre_component_reqs ["component_linked", "bdd_specs_exist"]
   @post_component_reqs ["bdd_specs_passing", "qa_complete"]
 
+  # Type priority for dependency ordering: lower = rendered first (no deps)
+  @type_priority %{
+    "schema" => 0,
+    "behaviour" => 1,
+    "repository" => 2,
+    "service" => 3,
+    "liveview" => 4,
+    "liveview_component" => 4,
+    "json" => 4
+  }
+
   @spec project_graph(Scope.t()) :: map()
   def project_graph(%Scope{} = scope) do
     %{nodes: nodes, edges: edges} = Requirements.project_graph(scope)
@@ -213,18 +224,18 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     sorted_ctx_reqs = Enum.sort_by(context_reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
 
-    child_count = length(children)
-    sorted_children = Enum.sort_by(children, & &1.module_name)
+    # Sort children by dependency depth: schemas first, then repos, etc.
+    sorted_children = sort_children_by_dependency(children, components)
+    child_count = length(sorted_children)
+
+    # Build child requirement order from context template's :child nodes
+    child_def_order = context_child_definition_order(context_type)
 
     # Split child reqs into spec phase (spec_file, spec_valid) and impl phase (rest)
     spec_phase_names = MapSet.new(["spec_file", "spec_valid"])
 
     children_with_reqs =
       Enum.map(sorted_children, fn child ->
-        child_defs = ComponentRegistry.get_requirements_for_type(child.type)
-        child_def_order =
-          child_defs |> Enum.with_index() |> Map.new(fn {d, i} -> {d.name, i} end)
-
         child_reqs = Map.get(comp_reqs_by_id, child.id, [])
         sorted = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
 
@@ -435,7 +446,9 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     children =
       components
       |> Enum.filter(&(&1.parent_component_id == context.id))
-      |> Enum.sort_by(& &1.module_name)
+
+    # Sort children by dependency depth: schemas first, then repos, etc.
+    children = sort_children_by_dependency(children, components)
 
     ctx_reqs = Map.get(comp_reqs_by_id, context.id, [])
     ctx_def_order =
@@ -446,10 +459,11 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     sorted_ctx = Enum.sort_by(ctx_reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
     child_count = length(children)
 
+    # Use context template's :child node order for consistent Y alignment
+    child_def_order = context_child_definition_order(context.type)
+
     children_with_reqs =
       Enum.map(children, fn child ->
-        child_defs = ComponentRegistry.get_requirements_for_type(child.type)
-        child_def_order = child_defs |> Enum.with_index() |> Map.new(fn {d, i} -> {d.name, i} end)
         child_reqs = Map.get(comp_reqs_by_id, child.id, [])
         sorted = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
 
@@ -632,6 +646,50 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
       {all_nodes, max_height}
     end
+  end
+
+  # Sort children by dependency depth within their sibling group.
+  # Uses explicit dependency edges when available, falls back to type priority.
+  defp sort_children_by_dependency(children, all_components) do
+    child_ids = MapSet.new(children, & &1.id)
+
+    # Build sibling dependency graph: child_id → [dep_child_ids]
+    sibling_deps =
+      Map.new(children, fn child ->
+        deps = case child do
+          %{dependencies: deps} when is_list(deps) ->
+            deps |> Enum.map(& &1.id) |> Enum.filter(&MapSet.member?(child_ids, &1))
+          _ ->
+            # No deps loaded — check if any sibling has edges via all_components
+            case Enum.find(all_components, &(&1.id == child.id)) do
+              %{dependencies: deps} when is_list(deps) ->
+                deps |> Enum.map(& &1.id) |> Enum.filter(&MapSet.member?(child_ids, &1))
+              _ -> []
+            end
+        end
+        {child.id, deps}
+      end)
+
+    # Compute depth: 0 = no sibling deps, N = max(dep depths) + 1
+    initial = Map.new(children, fn c ->
+      {c.id, if(sibling_deps[c.id] == [], do: 0, else: nil)}
+    end)
+    depths = resolve_depths(initial, sibling_deps)
+
+    Enum.sort_by(children, fn c ->
+      {Map.get(depths, c.id, 0), Map.get(@type_priority, c.type, 5), c.module_name}
+    end)
+  end
+
+  # Build a definition order map for :child nodes from the context template.
+  # This ensures all children use the same phase→index mapping regardless of
+  # their own component type, so Y levels are consistent across columns.
+  defp context_child_definition_order(context_type) do
+    RequirementDefinitionData.graph_for_type(context_type)
+    |> Enum.filter(fn d -> d.node_scope == :child end)
+    |> Enum.uniq_by(& &1.name)
+    |> Enum.with_index()
+    |> Map.new(fn {d, i} -> {d.name, i} end)
   end
 
   # -- Node builders --
