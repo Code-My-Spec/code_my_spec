@@ -88,6 +88,9 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
             </button>
           </div>
         </div>
+        <div class="divider">Requirement Settings</div>
+        <.input field={@form[:require_specs]} type="checkbox" label="Require Specs & Reviews" />
+        <.input field={@form[:require_unit_tests]} type="checkbox" label="Require Unit Tests" />
         <footer>
           <.button phx-disable-with="Saving...">Save Project</.button>
           <.button navigate={return_path(@current_scope, @return_to, @project)}>Cancel</.button>
