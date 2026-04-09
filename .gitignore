@@ -52,5 +52,16 @@ vpn.conf
 /release/
 diagnostics.jsonl
 
+# Local CLI dev database
+/priv/repo/cli_dev.db
+
+# Digested/gzipped build artifacts (mix phx.digest output)
+/priv/static/**/*.gz
+/priv/static/manifest-*.json
+/priv/static/robots-*.txt
+/priv/static/sw-*.js
+/priv/static/local/assets/css/local_app-*.css
+/priv/static/local/assets/js/*-*.js
+
 # CodeMySpec - ephemeral
 .code_my_spec/internal/
