@@ -10,6 +10,11 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   from any point and provides flexibility for the agent to adapt to different starting states.
   """
 
+
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   alias CodeMySpec.AgentTasks.Setup
 
   @setup_steps [

@@ -16,10 +16,10 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.{Rules, Stories, Utils}
+
 
   @doc """
   Generate the command/prompt for Claude to implement a LiveView.
@@ -86,12 +86,8 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
     end
   end
 
-  def orchestrate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
-  end
-
-  def orchestrate_evaluate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  def orchestrate(node) do
+    "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
 
   # Private functions - BDD specs

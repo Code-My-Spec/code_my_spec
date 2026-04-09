@@ -14,6 +14,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   within the template — cross-boundary edges are explicit.
   """
 
+  alias CodeMySpec.AgentTasks
   alias CodeMySpec.Requirements.RequirementDefinition
 
   # ═══════════════════════════════════════════════════════════════════════
@@ -25,65 +26,178 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   def context_graph do
     [
       # Parent spec phase
-      def_node(1, "spec_file", :parent, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.ContextSpec, :specification,
-        "Context specification file exists", []),
-
-      def_node(2, "spec_valid", :parent, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.ContextSpec, :specification,
-        "Context specification is valid", [1]),
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :parent,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ContextSpec,
+        artifact_type: :specification,
+        description: "Context specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "spec_valid",
+        node_scope: :parent,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ContextSpec,
+        artifact_type: :specification,
+        description: "Context specification is valid",
+        prerequisites: [1]
+      }),
 
       # Child spec phase (stamped per child)
-      def_node(3, "spec_file", :child, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Component specification file exists", [2]),
-
-      def_node(4, "spec_valid", :child, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Component specification is valid", [3]),
+      new!(%{
+        id: 3,
+        name: "spec_file",
+        node_scope: :child,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Component specification file exists",
+        prerequisites: [2],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 4,
+        name: "spec_valid",
+        node_scope: :child,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Component specification is valid",
+        prerequisites: [3],
+        orchestrated_by: :develop_context
+      }),
 
       # Parent review phase (fan-in: all children spec_valid → review)
-      def_node(5, "review_file", :parent, :file_exists, %{role: :review},
-        CodeMySpec.AgentTasks.ContextDesignReview, :review,
-        "Context design review file exists", [4]),
-
-      def_node(6, "review_valid", :parent, :file_valid, %{role: :review},
-        CodeMySpec.AgentTasks.ContextDesignReview, :review,
-        "Context design review is valid", [5]),
+      new!(%{
+        id: 5,
+        name: "review_file",
+        node_scope: :parent,
+        check_type: :file_exists,
+        config: %{role: :review},
+        satisfied_by: AgentTasks.ContextDesignReview,
+        artifact_type: :review,
+        description: "Context design review file exists",
+        prerequisites: [4],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 6,
+        name: "review_valid",
+        node_scope: :parent,
+        check_type: :file_valid,
+        config: %{role: :review},
+        satisfied_by: AgentTasks.ContextDesignReview,
+        artifact_type: :review,
+        description: "Context design review is valid",
+        prerequisites: [5],
+        orchestrated_by: :develop_context
+      }),
 
       # Child test + implementation phase (after review)
-      def_node(7, "test_file", :child, :file_exists, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Component test file exists", [6, 4]),
-
-      def_node(8, "test_spec_alignment", :child, :file_valid, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Test file implements all spec test assertions", [7]),
-
-      def_node(9, "implementation_file", :child, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component implementation file exists", [8]),
-
-      def_node(10, "tests_passing", :child, :tests_passing, nil,
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component tests are passing", [9]),
+      new!(%{
+        id: 7,
+        name: "test_file",
+        node_scope: :child,
+        check_type: :file_exists,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Component test file exists",
+        prerequisites: [6],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 8,
+        name: "test_spec_alignment",
+        node_scope: :child,
+        check_type: :file_valid,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions",
+        prerequisites: [7],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 9,
+        name: "implementation_file",
+        node_scope: :child,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component implementation file exists",
+        prerequisites: [6],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 10,
+        name: "tests_passing",
+        node_scope: :child,
+        check_type: :tests_passing,
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component tests are passing",
+        prerequisites: [9],
+        orchestrated_by: :develop_context
+      }),
 
       # Parent implementation phase (fan-in: all children done → parent impl)
-      def_node(11, "implementation_file", :parent, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Context implementation file exists", [10, 6]),
-
-      def_node(12, "test_file", :parent, :file_exists, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Context test file exists", [11]),
-
-      def_node(13, "test_spec_alignment", :parent, :file_valid, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Test file implements all spec test assertions", [12]),
-
-      def_node(14, "tests_passing", :parent, :tests_passing, nil,
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Context tests are passing", [13])
+      new!(%{
+        id: 11,
+        name: "implementation_file",
+        node_scope: :parent,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Context implementation file exists",
+        prerequisites: [8, 10, 6],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 12,
+        name: "test_file",
+        node_scope: :parent,
+        check_type: :file_exists,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Context test file exists",
+        prerequisites: [11],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 13,
+        name: "test_spec_alignment",
+        node_scope: :parent,
+        check_type: :file_valid,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions",
+        prerequisites: [12],
+        orchestrated_by: :develop_context
+      }),
+      new!(%{
+        id: 14,
+        name: "tests_passing",
+        node_scope: :parent,
+        check_type: :tests_passing,
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Context tests are passing",
+        prerequisites: [13],
+        orchestrated_by: :develop_context
+      })
     ]
   end
 
@@ -93,48 +207,130 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
 
   def live_context_graph do
     [
-      def_node(1, "spec_file", :parent, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.LiveContextSpec, :specification,
-        "Live context specification file exists", []),
-
-      def_node(2, "spec_valid", :parent, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.LiveContextSpec, :specification,
-        "Live context specification is valid", [1]),
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :parent,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.LiveContextSpec,
+        artifact_type: :specification,
+        description: "Live context specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "spec_valid",
+        node_scope: :parent,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.LiveContextSpec,
+        artifact_type: :specification,
+        description: "Live context specification is valid",
+        prerequisites: [1]
+      }),
 
       # Child spec phase
-      def_node(3, "spec_file", :child, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.LiveViewSpec, :specification,
-        "Component specification file exists", [2]),
-
-      def_node(4, "spec_valid", :child, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.LiveViewSpec, :specification,
-        "Component specification is valid", [3]),
+      new!(%{
+        id: 3,
+        name: "spec_file",
+        node_scope: :child,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.LiveViewSpec,
+        artifact_type: :specification,
+        description: "Component specification file exists",
+        prerequisites: [2],
+        orchestrated_by: :develop_live_context
+      }),
+      new!(%{
+        id: 4,
+        name: "spec_valid",
+        node_scope: :child,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.LiveViewSpec,
+        artifact_type: :specification,
+        description: "Component specification is valid",
+        prerequisites: [3],
+        orchestrated_by: :develop_live_context
+      }),
 
       # Parent review
-      def_node(5, "review_file", :parent, :file_exists, %{role: :review},
-        CodeMySpec.AgentTasks.ContextDesignReview, :review,
-        "Design review file exists", [4]),
-
-      def_node(6, "review_valid", :parent, :file_valid, %{role: :review},
-        CodeMySpec.AgentTasks.ContextDesignReview, :review,
-        "Design review is valid", [5]),
+      new!(%{
+        id: 5,
+        name: "review_file",
+        node_scope: :parent,
+        check_type: :file_exists,
+        config: %{role: :review},
+        satisfied_by: AgentTasks.ContextDesignReview,
+        artifact_type: :review,
+        description: "Design review file exists",
+        prerequisites: [4],
+        orchestrated_by: :develop_live_context
+      }),
+      new!(%{
+        id: 6,
+        name: "review_valid",
+        node_scope: :parent,
+        check_type: :file_valid,
+        config: %{role: :review},
+        satisfied_by: AgentTasks.ContextDesignReview,
+        artifact_type: :review,
+        description: "Design review is valid",
+        prerequisites: [5],
+        orchestrated_by: :develop_live_context
+      }),
 
       # Child test + implementation (after review)
-      def_node(7, "test_file", :child, :file_exists, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Component test file exists", [6, 4]),
-
-      def_node(8, "test_spec_alignment", :child, :file_valid, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Test file implements all spec test assertions", [7]),
-
-      def_node(9, "implementation_file", :child, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component implementation file exists", [8]),
-
-      def_node(10, "tests_passing", :child, :tests_passing, nil,
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component tests are passing", [9])
+      new!(%{
+        id: 7,
+        name: "test_file",
+        node_scope: :child,
+        check_type: :file_exists,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Component test file exists",
+        prerequisites: [6, 4],
+        orchestrated_by: :develop_live_context
+      }),
+      new!(%{
+        id: 8,
+        name: "test_spec_alignment",
+        node_scope: :child,
+        check_type: :file_valid,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions",
+        prerequisites: [7],
+        execution_type: :main_agent,
+        orchestrated_by: :develop_live_context
+      }),
+      new!(%{
+        id: 9,
+        name: "implementation_file",
+        node_scope: :child,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component implementation file exists",
+        prerequisites: [6],
+        orchestrated_by: :develop_live_context
+      }),
+      new!(%{
+        id: 10,
+        name: "tests_passing",
+        node_scope: :child,
+        check_type: :tests_passing,
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component tests are passing",
+        prerequisites: [9],
+        orchestrated_by: :develop_live_context
+      })
     ]
   end
 
@@ -144,101 +340,245 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
 
   def default_graph do
     [
-      def_node(1, "spec_file", :self, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Component specification file exists", []),
-
-      def_node(2, "spec_valid", :self, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Component specification is valid", [1]),
-
-      def_node(3, "test_file", :self, :file_exists, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Component test file exists", [2]),
-
-      def_node(4, "test_spec_alignment", :self, :file_valid, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Test file implements all spec test assertions", [3]),
-
-      def_node(5, "implementation_file", :self, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component implementation file exists", [4]),
-
-      def_node(6, "tests_passing", :self, :tests_passing, nil,
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component tests are passing", [5])
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Component specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "spec_valid",
+        node_scope: :self,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Component specification is valid",
+        prerequisites: [1]
+      }),
+      new!(%{
+        id: 3,
+        name: "test_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Component test file exists",
+        prerequisites: [2]
+      }),
+      new!(%{
+        id: 4,
+        name: "test_spec_alignment",
+        node_scope: :self,
+        check_type: :file_valid,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions",
+        prerequisites: [3]
+      }),
+      new!(%{
+        id: 5,
+        name: "implementation_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component implementation file exists",
+        prerequisites: [2]
+      }),
+      new!(%{
+        id: 6,
+        name: "tests_passing",
+        node_scope: :self,
+        check_type: :tests_passing,
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component tests are passing",
+        prerequisites: [5]
+      })
     ]
   end
 
   def schema_graph do
     [
-      def_node(1, "spec_file", :self, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Schema specification file exists", []),
-
-      def_node(2, "spec_valid", :self, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Schema specification is valid", [1]),
-
-      def_node(3, "implementation_file", :self, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Schema implementation file exists", [2])
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Schema specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "spec_valid",
+        node_scope: :self,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Schema specification is valid",
+        prerequisites: [1]
+      }),
+      new!(%{
+        id: 3,
+        name: "implementation_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Schema implementation file exists",
+        prerequisites: [2]
+      })
     ]
   end
 
   def behaviour_graph do
     [
-      def_node(1, "spec_file", :self, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Behaviour specification file exists", []),
-
-      def_node(2, "spec_valid", :self, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "Behaviour specification is valid", [1]),
-
-      def_node(3, "implementation_file", :self, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Behaviour implementation file exists", [2])
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Behaviour specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "spec_valid",
+        node_scope: :self,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "Behaviour specification is valid",
+        prerequisites: [1]
+      }),
+      new!(%{
+        id: 3,
+        name: "implementation_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Behaviour implementation file exists",
+        prerequisites: [2]
+      })
     ]
   end
 
   def json_graph do
     [
-      def_node(1, "spec_file", :self, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.ComponentSpec, :specification,
-        "JSON view specification file exists", []),
-
-      def_node(2, "implementation_file", :self, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "JSON view implementation file exists", [1])
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ComponentSpec,
+        artifact_type: :specification,
+        description: "JSON view specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "implementation_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "JSON view implementation file exists",
+        prerequisites: [1]
+      })
     ]
   end
 
   def liveview_graph do
     [
-      def_node(1, "spec_file", :self, :file_exists, %{role: :spec},
-        CodeMySpec.AgentTasks.LiveViewSpec, :specification,
-        "LiveView specification file exists", []),
-
-      def_node(2, "spec_valid", :self, :file_valid, %{role: :spec},
-        CodeMySpec.AgentTasks.LiveViewSpec, :specification,
-        "LiveView specification is valid", [1]),
-
-      def_node(3, "test_file", :self, :file_exists, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Component test file exists", [2]),
-
-      def_node(4, "test_spec_alignment", :self, :file_valid, %{role: :test},
-        CodeMySpec.AgentTasks.ComponentTest, :tests,
-        "Test file implements all spec test assertions", [3]),
-
-      def_node(5, "implementation_file", :self, :file_exists, %{role: :implementation},
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component implementation file exists", [4]),
-
-      def_node(6, "tests_passing", :self, :tests_passing, nil,
-        CodeMySpec.AgentTasks.ComponentCode, :code,
-        "Component tests are passing", [5])
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.LiveViewSpec,
+        artifact_type: :specification,
+        description: "LiveView specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "spec_valid",
+        node_scope: :self,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.LiveViewSpec,
+        artifact_type: :specification,
+        description: "LiveView specification is valid",
+        prerequisites: [1]
+      }),
+      new!(%{
+        id: 3,
+        name: "test_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Component test file exists",
+        prerequisites: [2]
+      }),
+      new!(%{
+        id: 4,
+        name: "test_spec_alignment",
+        node_scope: :self,
+        check_type: :file_valid,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Test file implements all spec test assertions",
+        prerequisites: [3],
+        execution_type: :sub_agent
+      }),
+      new!(%{
+        id: 5,
+        name: "implementation_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component implementation file exists",
+        prerequisites: [4]
+      }),
+      new!(%{
+        id: 6,
+        name: "tests_passing",
+        node_scope: :self,
+        check_type: :tests_passing,
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Component tests are passing",
+        prerequisites: [5]
+      })
     ]
   end
 
@@ -248,21 +588,49 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
 
   def story_graph do
     [
-      def_node(1, "component_linked", :self, :field_present, %{field: :component_id},
-        CodeMySpec.AgentTasks.ArchitectureDesign, :dependencies,
-        "Story has a linked surface component", []),
-
-      def_node(2, "bdd_specs_exist", :self, :file_exists, %{role: :bdd_spec},
-        CodeMySpec.AgentTasks.WriteBddSpecs, :tests,
-        "BDD spec files exist for story", [1]),
-
-      def_node(3, "bdd_specs_passing", :self, :spex_passing, nil,
-        CodeMySpec.AgentTasks.FixBddSpecs, :tests,
-        "BDD specs pass", [2]),
-
-      def_node(4, "qa_complete", :self, :file_exists, %{role: :qa_result},
-        CodeMySpec.AgentTasks.QaStory, :review,
-        "QA brief and result artifacts valid", [3])
+      new!(%{
+        id: 1,
+        name: "component_linked",
+        node_scope: :self,
+        check_type: :field_present,
+        config: %{field: :component_id},
+        satisfied_by: AgentTasks.ArchitectureDesign,
+        artifact_type: :dependencies,
+        description: "Story has a linked surface component",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "bdd_specs_exist",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :bdd_spec},
+        satisfied_by: AgentTasks.WriteBddSpecs,
+        artifact_type: :tests,
+        description: "BDD spec files exist for story",
+        prerequisites: [1]
+      }),
+      new!(%{
+        id: 3,
+        name: "bdd_specs_passing",
+        node_scope: :self,
+        check_type: :spex_passing,
+        satisfied_by: AgentTasks.FixBddSpecs,
+        artifact_type: :tests,
+        description: "BDD specs pass",
+        prerequisites: [2]
+      }),
+      new!(%{
+        id: 4,
+        name: "qa_complete",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :qa_result},
+        satisfied_by: AgentTasks.QaStory,
+        artifact_type: :review,
+        description: "QA brief and result artifacts valid",
+        prerequisites: [3]
+      })
     ]
   end
 
@@ -272,66 +640,140 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
 
   def project_graph do
     [
-      def_node(1, "project_setup", :self, :delegate,
-        %{module: CodeMySpec.AgentTasks.ProjectSetup, function: :check},
-        CodeMySpec.AgentTasks.ProjectSetup, :specification,
-        "Project bootstrap setup is complete", []),
-
-      def_node(2, "technical_strategy", :self, :path_exists,
-        %{path: ".code_my_spec/architecture/decisions.md"},
-        CodeMySpec.AgentTasks.TechnicalStrategy, :specification,
-        "Technical strategy decisions file exists", [1]),
-
-      def_node(3, "code_generation", :self, :path_exists,
-        %{path: ".code_my_spec/tasks/code_generation.sh"},
-        CodeMySpec.AgentTasks.CodeGeneration, :code,
-        "Code generators have been run and recorded", [2]),
-
-      def_node(4, "qa_integration_plan", :self, :path_exists,
-        %{path_prefix: ".code_my_spec/integrations/"},
-        CodeMySpec.AgentTasks.QaIntegrationPlan, :specification,
-        "Integration specs exist and all verified", [3],
-        validation_type: :manual),
-
-      def_node(5, "architecture_designed", :self, :path_exists,
-        %{path: ".code_my_spec/architecture/proposal.md"},
-        CodeMySpec.AgentTasks.ArchitectureDesign, :specification,
-        "Architecture proposal executed", [4]),
-
-      def_node(6, "issues_triaged", :self, :delegate,
-        %{module: CodeMySpec.Requirements.IssuesChecker, function: :triaged?},
-        CodeMySpec.AgentTasks.TriageIssues, :review,
-        "All incoming QA issues have been triaged", [5]),
-
-      def_node(7, "issues_resolved", :self, :delegate,
-        %{module: CodeMySpec.Requirements.IssuesChecker, function: :resolved?},
-        CodeMySpec.AgentTasks.FixIssues, :review,
-        "All medium+ accepted issues have been resolved", [6]),
+      new!(%{
+        id: 1,
+        name: "project_setup",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: AgentTasks.ProjectSetup, function: :check},
+        satisfied_by: AgentTasks.ProjectSetup,
+        artifact_type: :specification,
+        description: "Project bootstrap setup is complete",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "technical_strategy",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/architecture/decisions.md"},
+        satisfied_by: AgentTasks.TechnicalStrategy,
+        artifact_type: :specification,
+        description: "Technical strategy decisions file exists",
+        prerequisites: [1]
+      }),
+      new!(%{
+        id: 3,
+        name: "code_generation",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/tasks/code_generation.sh"},
+        satisfied_by: AgentTasks.CodeGeneration,
+        artifact_type: :code,
+        description: "Code generators have been run and recorded",
+        prerequisites: [2]
+      }),
+      new!(%{
+        id: 4,
+        name: "qa_integration_plan",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path_prefix: ".code_my_spec/integrations/"},
+        satisfied_by: AgentTasks.QaIntegrationPlan,
+        artifact_type: :specification,
+        description: "Integration specs exist and all verified",
+        prerequisites: [3],
+        validation_type: :manual
+      }),
+      new!(%{
+        id: 5,
+        name: "architecture_designed",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/architecture/proposal.md"},
+        satisfied_by: AgentTasks.ArchitectureDesign,
+        artifact_type: :specification,
+        description: "Architecture proposal executed",
+        prerequisites: [4]
+      }),
+      new!(%{
+        id: 6,
+        name: "issues_triaged",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :triaged?},
+        satisfied_by: AgentTasks.TriageIssues,
+        artifact_type: :review,
+        description: "All incoming QA issues have been triaged",
+        prerequisites: [5]
+      }),
+      new!(%{
+        id: 7,
+        name: "issues_resolved",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :resolved?},
+        satisfied_by: AgentTasks.FixIssues,
+        artifact_type: :review,
+        description: "All medium+ accepted issues have been resolved",
+        prerequisites: [6]
+      }),
 
       # QA chain (separate from main — qa_preflight has no prereqs in this chain)
-      def_node(8, "qa_preflight", :self, :path_exists,
-        %{path: ".code_my_spec/qa/preflight.md"},
-        CodeMySpec.AgentTasks.QaPreflight, :review,
-        "App-level integration verification complete", []),
-
-      def_node(9, "all_bdd_specs_passing", :self, :spex_passing, nil,
-        CodeMySpec.AgentTasks.FixAllBddSpecs, :tests,
-        "All BDD specs pass across all stories", [8]),
-
-      def_node(10, "qa_journey_plan", :self, :path_exists,
-        %{path: ".code_my_spec/qa/journey_plan.md"},
-        CodeMySpec.AgentTasks.QaJourneyPlan, :review,
-        "QA journey plan exists and valid", [9]),
-
-      def_node(11, "qa_journey_execute", :self, :path_exists,
-        %{path: ".code_my_spec/qa/journey_result.md"},
-        CodeMySpec.AgentTasks.QaJourneyExecute, :review,
-        "QA journey result exists and valid", [10]),
-
-      def_node(12, "qa_journey_wallaby", :self, :path_exists,
-        %{path_prefix: "test/e2e/"},
-        CodeMySpec.AgentTasks.QaJourneyWallaby, :tests,
-        "Wallaby journey tests exist", [11])
+      new!(%{
+        id: 8,
+        name: "qa_preflight",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/qa/preflight.md"},
+        satisfied_by: AgentTasks.QaPreflight,
+        artifact_type: :review,
+        description: "App-level integration verification complete",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 9,
+        name: "all_bdd_specs_passing",
+        node_scope: :self,
+        check_type: :spex_passing,
+        satisfied_by: AgentTasks.FixAllBddSpecs,
+        artifact_type: :tests,
+        description: "All BDD specs pass across all stories",
+        prerequisites: [8]
+      }),
+      new!(%{
+        id: 10,
+        name: "qa_journey_plan",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/qa/journey_plan.md"},
+        satisfied_by: AgentTasks.QaJourneyPlan,
+        artifact_type: :review,
+        description: "QA journey plan exists and valid",
+        prerequisites: [9]
+      }),
+      new!(%{
+        id: 11,
+        name: "qa_journey_execute",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/qa/journey_result.md"},
+        satisfied_by: AgentTasks.QaJourneyExecute,
+        artifact_type: :review,
+        description: "QA journey result exists and valid",
+        prerequisites: [10]
+      }),
+      new!(%{
+        id: 12,
+        name: "qa_journey_wallaby",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path_prefix: "test/e2e/"},
+        satisfied_by: AgentTasks.QaJourneyWallaby,
+        artifact_type: :tests,
+        description: "Wallaby journey tests exist",
+        prerequisites: [11]
+      })
     ]
   end
 
@@ -363,22 +805,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   # Node builder
   # ═══════════════════════════════════════════════════════════════════════
 
-  defp def_node(id, name, node_scope, check_type, config, satisfied_by, artifact_type, description, prerequisites, opts \\ []) do
-    {:ok, definition} =
-      RequirementDefinition.new(%{
-        id: id,
-        name: name,
-        node_scope: node_scope,
-        check_type: check_type,
-        config: config || %{},
-        satisfied_by: satisfied_by,
-        artifact_type: artifact_type,
-        description: description,
-        prerequisites: prerequisites,
-        validation_type: Keyword.get(opts, :validation_type, :automatic),
-        execution_type: Keyword.get(opts, :execution_type, :main_agent)
-      })
-
+  defp new!(attrs) do
+    {:ok, definition} = RequirementDefinition.new(attrs)
     definition
   end
 end

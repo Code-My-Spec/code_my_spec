@@ -13,7 +13,6 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
 
   @implementation_reqs [
@@ -67,12 +66,8 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     end
   end
 
-  def orchestrate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
-  end
-
-  def orchestrate_evaluate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  def orchestrate(node) do
+    "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
 
   defp all_requirements_satisfied?(scope, component) do

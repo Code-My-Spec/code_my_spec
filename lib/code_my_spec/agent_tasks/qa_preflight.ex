@@ -219,9 +219,14 @@ defmodule CodeMySpec.AgentTasks.QaPreflight do
 
   defp check_report(env) do
     case Environments.read_file(env, @preflight_report) do
-      {:ok, content} when byte_size(content) > 0 -> :ok
-      {:ok, _} -> {:error, "Preflight report is empty. Write `#{@preflight_report}` and stop again."}
-      _ -> {:error, "Preflight report not found at `#{@preflight_report}`. Write it and stop again."}
+      {:ok, content} when byte_size(content) > 0 ->
+        :ok
+
+      {:ok, _} ->
+        {:error, "Preflight report is empty. Write `#{@preflight_report}` and stop again."}
+
+      _ ->
+        {:error, "Preflight report not found at `#{@preflight_report}`. Write it and stop again."}
     end
   end
 
@@ -248,7 +253,9 @@ defmodule CodeMySpec.AgentTasks.QaPreflight do
               if String.contains?(String.downcase(content), "verified") do
                 {:cont, :ok}
               else
-                {:halt, {:error, "Integration `#{file}` is not verified. Run the verify script against the app."}}
+                {:halt,
+                 {:error,
+                  "Integration `#{file}` is not verified. Run the verify script against the app."}}
               end
 
             _ ->

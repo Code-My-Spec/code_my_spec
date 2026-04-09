@@ -15,6 +15,11 @@ defmodule CodeMySpec.AgentTasks.QaJourneyWallaby do
   @wallaby_dir Paths.qa_journey_wallaby_dir()
   @wallaby_glob Path.join(@wallaby_dir, "*_test.exs")
 
+
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   @doc """
   Generate the prompt for the Wallaby test writing session.
 

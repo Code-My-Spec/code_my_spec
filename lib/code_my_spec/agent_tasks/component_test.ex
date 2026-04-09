@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
 
+
   @doc """
   Generate the command/prompt for Claude to write component tests.
 
@@ -75,12 +76,8 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
-  def orchestrate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
-  end
-
-  def orchestrate_evaluate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  def orchestrate(node) do
+    "Spawn a @test-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
 
   # Private functions - command

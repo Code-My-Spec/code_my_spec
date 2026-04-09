@@ -1,7 +1,7 @@
 ---
 name: test-writer
 description: Writes tests for components following spec file test assertions
-tools: Read, Write, Glob, Grep, Bash, Bash(mix test *), Bash(mix spex *), mcp__plugin_codemyspec_codemyspec__start_task, mcp__plugin_codemyspec_codemyspec__evaluate_task
+tools: Read, Write, Glob, Grep, Bash, Bash(mix test *), Bash(mix spex *), mcp__plugin_codemyspec_codemyspec__start_task, mcp__plugin_codemyspec_codemyspec__evaluate_task, mcp__plugin_codemyspec_*
 mcpServers: codemyspec
 model: sonnet
 color: green

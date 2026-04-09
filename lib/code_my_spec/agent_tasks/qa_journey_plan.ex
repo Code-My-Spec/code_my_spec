@@ -16,6 +16,11 @@ defmodule CodeMySpec.AgentTasks.QaJourneyPlan do
 
   @required_sections ["journeys", "prerequisites"]
 
+
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   @doc """
   Generate the planning prompt for the QA journey plan session.
 

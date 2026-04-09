@@ -424,6 +424,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       scope: definition.scope || :local,
       execution_type: definition.execution_type || :main_agent,
       validation_type: definition.validation_type || :automatic,
+      orchestrated_by: definition.orchestrated_by,
       prerequisites: [],
       details: result.details
     }
@@ -452,6 +453,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             scope: definition.scope || :local,
             execution_type: definition.execution_type || :main_agent,
             validation_type: definition.validation_type || :automatic,
+            orchestrated_by: definition.orchestrated_by,
             prerequisites: [],
             details: result.details
           }
@@ -486,6 +488,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         scope: definition.scope || :local,
         execution_type: definition.execution_type || :main_agent,
         validation_type: definition.validation_type || :automatic,
+        orchestrated_by: definition.orchestrated_by,
         prerequisites: [],
         details: result.details
       }

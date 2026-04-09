@@ -15,11 +15,11 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
+
 
   @doc """
   Generate the command/prompt for Claude to create a component spec.
@@ -67,12 +67,8 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     end
   end
 
-  def orchestrate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
-  end
-
-  def orchestrate_evaluate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  def orchestrate(node) do
+    "Spawn a @spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
 
   defp evaluate_component(scope, component, project) do

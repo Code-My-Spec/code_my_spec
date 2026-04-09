@@ -12,6 +12,11 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   - `evaluate/3` — Checks that no relevant spex failures remain
   """
 
+
+  def orchestrate(node) do
+    "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Problems

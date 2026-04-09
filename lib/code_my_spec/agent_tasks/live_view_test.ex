@@ -14,11 +14,11 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
+
 
   def command(scope, task) do
     component = Components.get_component!(scope, task.component_id)
@@ -53,12 +53,8 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
-  def orchestrate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
-  end
-
-  def orchestrate_evaluate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  def orchestrate(node) do
+    "Spawn a @test-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
 
   # Private functions

@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.Requirement do
           execution_type: :main_agent | :sub_agent,
           validation_type: :automatic | :manual,
           prerequisites: [String.t()],
+          orchestrated_by: atom() | nil,
           details: map()
         }
 
@@ -35,6 +36,7 @@ defmodule CodeMySpec.Requirements.Requirement do
     scope: :local,
     execution_type: :main_agent,
     validation_type: :automatic,
+    orchestrated_by: nil,
     prerequisites: [],
     details: %{}
   ]

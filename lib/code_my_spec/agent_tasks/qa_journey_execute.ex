@@ -15,6 +15,11 @@ defmodule CodeMySpec.AgentTasks.QaJourneyExecute do
 
   @required_sections ["status", "journey results"]
 
+
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   @doc """
   Generate the execution prompt for the QA journey execute session.
 

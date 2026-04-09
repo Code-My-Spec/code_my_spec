@@ -42,8 +42,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
               {:reply, RequirementsMapper.all_satisfied_response(), frame}
             end
 
-          [node | _] ->
-            {:reply, RequirementsMapper.next_requirement_response(node), frame}
+          nodes ->
+            {:reply, RequirementsMapper.next_requirements_response(nodes), frame}
         end
 
       {:error, _reason} ->

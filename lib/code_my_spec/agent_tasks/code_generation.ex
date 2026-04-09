@@ -16,6 +16,11 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   - `.code_my_spec/tasks/code_generation.sh` — reproducible script of all generator commands run
   """
 
+
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   alias CodeMySpec.{Environments, Paths}
   alias CodeMySpec.AgentTasks.Setup.Helpers
 

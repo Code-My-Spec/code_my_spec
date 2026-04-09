@@ -1,92 +1,62 @@
 defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   @moduledoc """
-  Maps requirements data to MCP responses using a hybrid format:
-  human-readable markdown + JSON data for programmatic access.
+  Maps requirements data to MCP tool responses.
   """
 
   alias Anubis.Server.Response
 
+  # ---------------------------------------------------------------------------
+  # Public — response builders
+  # ---------------------------------------------------------------------------
+
+  def next_requirements_response(nodes) do
+    nodes
+    |> format_next_requirements()
+    |> tool_text()
+  end
+
+  def format_next_requirements(nodes) do
+    {orchestrated, standalone} = Enum.split_with(nodes, & &1.orchestrated_by)
+
+    orchestrated_sections =
+      orchestrated
+      |> Enum.group_by(& &1.orchestrated_by)
+      |> Enum.map_join("\n\n", fn {orchestrator, group_nodes} ->
+        header = orchestration_prompt(orchestrator)
+        inner = format_satisfied_by_groups(group_nodes)
+
+        "## #{Atom.to_string(orchestrator) |> Recase.TitleCase.convert()}\n\n#{header}\n\n#{inner}"
+      end)
+
+    standalone_sections = format_satisfied_by_groups(standalone)
+
+    [orchestrated_sections, standalone_sections]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n\n")
+  end
+
   def list_requirements_response(nodes) do
-    grouped = group_by_entity(nodes)
-    summary = format_grouped_summary(grouped)
+    summary =
+      nodes
+      |> group_by_entity()
+      |> format_grouped_summary()
+
     data = Enum.map(nodes, &node_data/1)
 
-    hybrid_response(summary, %{requirements: data, count: length(nodes)})
-  end
-
-  @doc """
-  Format next requirement response. Accepts either a persisted Requirement
-  or a computed node map from RequirementGraph.
-  """
-  def next_requirement_response(%{entity_type: _} = node) do
-    # Computed node from RequirementGraph
-    task_module = node.satisfied_by
-    task_name = task_module |> inspect() |> String.split(".") |> List.last()
-
-    entity_line =
-      case node.entity_type do
-        "component" -> "**Component:** #{node.entity_name}\n"
-        "story" -> "**Story:** #{node.entity_name}\n"
-        _ -> ""
-      end
-
-    summary = """
-    # Next Requirement: #{node.name}
-
-    #{node.description}
-
-    **Task:** `#{task_name}`
-    **Execution:** #{execution_label(node.execution_type)}
-    **Validation:** #{validation_label(node.validation_type)}
-    #{entity_line}
-    Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}`.
-    """
-
-    Response.tool()
-    |> Response.text(String.trim(summary))
-  end
-
-  def next_requirement_response(requirement) do
-    # Legacy: persisted Requirement struct
-    task_module = requirement.satisfied_by
-    task_name = task_module |> inspect() |> String.split(".") |> List.last()
-
-    component_name =
-      case requirement.component do
-        %{module_name: name} -> name
-        _ -> nil
-      end
-
-    story_title =
-      case requirement.story do
-        %{title: title} -> title
-        _ -> nil
-      end
-
-    component_line = if component_name, do: "**Component:** #{component_name}\n", else: ""
-    story_line = if story_title, do: "**Story:** #{story_title}\n", else: ""
-
-    summary = """
-    # Next Requirement: #{requirement.name}
-
-    #{requirement.description}
-
-    **Task:** `#{task_name}`
-    **Execution:** #{execution_label(requirement.execution_type)}
-    **Validation:** #{validation_label(requirement.validation_type)}
-    #{component_line}#{story_line}
-    Call `start_task` with requirement_id `#{requirement.id}` to begin work.
-    """
-
-    Response.tool()
-    |> Response.text(String.trim(summary))
+    hybrid_response("# Project Requirements\n\n#{summary}", %{
+      requirements: data,
+      count: length(nodes)
+    })
   end
 
   def sync_required_response do
-    Response.tool()
-    |> Response.text(
-      "# Project Needs Sync\n\nThe project is linked but has no requirements yet.\n\nCall `sync_project` to sync components and requirements, then `get_next_requirement` again."
-    )
+    tool_text("""
+    # Project Needs Sync
+
+    The project is linked but has no requirements yet.
+
+    Call `sync_project` to sync components and requirements, then `get_next_requirement` again.\
+    """)
   end
 
   def all_satisfied_response do
@@ -96,19 +66,97 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   def init_required_response(prompt) do
-    Response.tool()
-    |> Response.text(prompt <> "\n\nWhen all steps are complete, call `get_next_requirement` again.")
+    tool_text(prompt <> "\n\nWhen all steps are complete, call `get_next_requirement` again.")
   end
 
   def error(reason) when is_atom(reason), do: reason |> to_string() |> error()
-
-  def error(reason) when is_binary(reason) do
-    Response.tool()
-    |> Response.error(reason)
-  end
+  def error(reason) when is_binary(reason), do: Response.tool() |> Response.error(reason)
 
   # ---------------------------------------------------------------------------
-  # Private
+  # Actionable requirements — grouped by task module
+  # ---------------------------------------------------------------------------
+
+  defp format_satisfied_by_groups(nodes) do
+    nodes
+    |> Enum.group_by(& &1.satisfied_by)
+    |> Enum.map_join("\n\n", fn {mod, group_nodes} ->
+      name = short_module_name(mod)
+      items = Enum.map_join(group_nodes, "\n", &orchestrate_node/1)
+
+      "### #{name}\n\n#{items}"
+    end)
+  end
+
+  defp orchestration_prompt(:develop_context) do
+    """
+    You are developing a bounded context.
+    Implement the child components in dependency order.
+    Develop schemas first, then fixtures and tests (if required), then code.
+    """
+  end
+
+  defp orchestration_prompt(:develop_live_context) do
+    "Develop Live Context — implement child LiveViews and LiveComponents"
+  end
+
+  defp orchestration_prompt(:develop_controller) do
+    "Develop Controller — implement controller actions and views"
+  end
+
+  defp orchestration_prompt(other) do
+    "#{other}"
+  end
+
+  defp orchestrate_node(node) do
+    mod = node.satisfied_by
+
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :orchestrate, 1) do
+      "- " <> mod.orchestrate(node)
+    else
+      "- Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+    end
+  end
+
+
+  # ---------------------------------------------------------------------------
+  # List requirements — grouped by entity
+  # ---------------------------------------------------------------------------
+
+  defp format_grouped_summary(grouped) do
+    grouped
+    |> Enum.sort_by(fn {{type, _}, _} -> entity_sort_key(type) end)
+    |> Enum.map_join("\n\n", fn {{type, name}, nodes} ->
+      items = Enum.map_join(nodes, "\n", &format_node_line/1)
+      "## #{entity_label(type, name)}\n\n#{items}"
+    end)
+  end
+
+  defp group_by_entity(nodes) do
+    Enum.group_by(nodes, fn node ->
+      {String.to_existing_atom(node.entity_type), node.entity_name}
+    end)
+  end
+
+  defp format_node_line(%{satisfied: true} = node) do
+    "- [x] **#{node.name}** — #{node.description || "no description"}"
+  end
+
+  defp format_node_line(node) do
+    "- [ ] **#{node.name}** — #{node.description || "no description"}"
+  end
+
+  defp entity_sort_key(:project), do: 0
+  defp entity_sort_key(:story), do: 1
+  defp entity_sort_key(:component), do: 2
+  defp entity_sort_key(_), do: 3
+
+  defp entity_label(:project, _), do: "Project"
+  defp entity_label(:story, name), do: "Story: #{name}"
+  defp entity_label(:component, name), do: "Component: #{name}"
+  defp entity_label(_, _), do: "Other"
+
+  # ---------------------------------------------------------------------------
+  # Node data (for structured content)
   # ---------------------------------------------------------------------------
 
   defp node_data(node) do
@@ -121,59 +169,21 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
       entity_type: node.entity_type,
       entity_id: node.entity_id,
       entity_name: node.entity_name,
-      satisfied_by:
-        if node.satisfied_by do
-          node.satisfied_by |> inspect() |> String.split(".") |> List.last()
-        end
+      satisfied_by: node.satisfied_by && short_module_name(node.satisfied_by)
     }
   end
 
-  defp group_by_entity(nodes) do
-    Enum.group_by(nodes, fn node ->
-      {String.to_existing_atom(node.entity_type), node.entity_name}
-    end)
-  end
+  # ---------------------------------------------------------------------------
+  # Helpers
+  # ---------------------------------------------------------------------------
 
-  defp format_grouped_summary(grouped) do
-    sections =
-      grouped
-      |> Enum.sort_by(fn {{type, _}, _} ->
-        case type do
-          :project -> 0
-          :story -> 1
-          :component -> 2
-          _ -> 3
-        end
-      end)
-      |> Enum.map_join("\n\n", fn {{type, name}, nodes} ->
-        label = entity_label(type, name)
-        items = Enum.map_join(nodes, "\n", &format_node_line/1)
-        "## #{label}\n\n#{items}"
-      end)
+  defp tool_text(text), do: Response.tool() |> Response.text(text)
 
-    "# Project Requirements\n\n#{sections}"
-  end
-
-  defp entity_label(:project, _), do: "Project"
-  defp entity_label(:story, name), do: "Story: #{name}"
-  defp entity_label(:component, name), do: "Component: #{name}"
-  defp entity_label(_, _), do: "Other"
-
-  defp format_node_line(node) do
-    status = if node.satisfied, do: "[x]", else: "[ ]"
-    "- #{status} **#{node.name}** — #{node.description || "no description"}"
-  end
-
-  defp hybrid_response(summary, data) do
+  defp hybrid_response(text, data) do
     Response.tool()
-    |> Response.text(summary)
+    |> Response.text(text)
     |> Map.put(:structured_content, data)
   end
 
-  defp execution_label(:sub_agent), do: "Delegate to a sub-agent"
-  defp execution_label(_), do: "You are the agent responsible"
-
-  defp validation_label(:manual), do: "Manual — use `evaluate_task` when done"
-  defp validation_label(:automatic), do: "Automatic — the stop hook will evaluate"
-  defp validation_label(_), do: "Unknown"
+  defp short_module_name(mod), do: mod |> inspect() |> String.split(".") |> List.last()
 end

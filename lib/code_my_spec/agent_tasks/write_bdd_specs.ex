@@ -7,6 +7,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   for the component type, and per-criterion file paths.
   """
 
+  def orchestrate(node) do
+    "Spawn a @bdd-spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  end
+
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Compile

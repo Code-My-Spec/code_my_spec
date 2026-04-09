@@ -41,7 +41,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           node_scope: node_scope(),
           scope: scope(),
           validation_type: validation_type(),
-          execution_type: execution_type()
+          execution_type: execution_type(),
+          orchestrated_by: atom() | nil
         }
 
   @artifact_types [
@@ -79,6 +80,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     field :scope, Ecto.Enum, values: [:local, :children, :dependencies, :orchestrate, :pipeline], default: :local
     field :validation_type, Ecto.Enum, values: [:automatic, :manual], default: :automatic
     field :execution_type, Ecto.Enum, values: [:main_agent, :sub_agent], default: :main_agent
+    field :orchestrated_by, Ecto.Enum,
+      values: [:develop_context, :develop_live_context, :develop_controller],
+      default: nil
   end
 
   @doc """
@@ -137,7 +141,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :node_scope,
       :scope,
       :validation_type,
-      :execution_type
+      :execution_type,
+      :orchestrated_by
     ])
     |> validate_required([
       :name,

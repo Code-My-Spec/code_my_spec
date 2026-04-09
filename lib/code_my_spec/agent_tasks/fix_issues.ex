@@ -15,7 +15,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
   alias CodeMySpec.{Issues, Paths}
   alias CodeMySpec.Issues.Issue
-  alias CodeMySpec.ProjectCoordinator
+
 
   @doc """
   Read accepted unresolved issues and build a fix prompt.
@@ -60,12 +60,8 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     end
   end
 
-  def orchestrate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate(__MODULE__, scope, session, opts)
-  end
-
-  def orchestrate_evaluate(scope, session, opts \\ []) do
-    ProjectCoordinator.default_orchestrate_evaluate(__MODULE__, scope, session, opts)
+  def orchestrate(node) do
+    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
 
   # ============================================================================
