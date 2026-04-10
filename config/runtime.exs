@@ -57,7 +57,8 @@ if config_env() not in [:dev_cli, :prod_cli] do
     google_client_id: env!("GOOGLE_CLIENT_ID"),
     google_client_secret: env!("GOOGLE_CLIENT_SECRET"),
     base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
-    deploy_key: env!("DEPLOY_KEY")
+    deploy_key: env!("DEPLOY_KEY"),
+    indexnow_key: env!("BING_SITEMASTER_INDEXNOW_KEY", :string, nil)
 
   # Web Push VAPID configuration
   vapid_public_key = env!("VAPID_PUBLIC_KEY", :string, nil)

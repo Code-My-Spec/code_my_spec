@@ -44,7 +44,8 @@ defmodule CodeMySpecWeb.PageController do
               "https://x.com/johns10d",
               "https://www.facebook.com/johns10davenport",
               "https://www.facebook.com/profile.php?id=61574278441856",
-              "https://www.youtube.com/@codemyspec"
+              "https://www.youtube.com/@codemyspec",
+              "https://www.reddit.com/user/johns10davenport/"
             ]
           },
           %{

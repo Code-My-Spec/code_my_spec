@@ -490,6 +490,7 @@ defmodule CodeMySpec.ContentSync do
     case CodeMySpec.Content.sync_content(valid_content) do
       {:ok, content_list} ->
         Logger.info("Successfully synced #{length(content_list)} items to Content")
+        CodeMySpec.IndexNow.notify_content_sync(content_list)
         {:ok, content_list}
 
       {:error, reason} ->

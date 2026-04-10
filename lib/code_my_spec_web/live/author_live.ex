@@ -92,7 +92,8 @@ defmodule CodeMySpecWeb.AuthorLive do
             "https://www.linkedin.com/in/john-davenport-software/",
             "https://x.com/johns10d",
             "https://github.com/code-my-spec",
-            "https://www.youtube.com/@codemyspec"
+            "https://www.youtube.com/@codemyspec",
+            "https://www.reddit.com/user/johns10davenport/"
           ],
           "knowsAbout" => [
             "Elixir",

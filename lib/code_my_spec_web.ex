@@ -17,7 +17,7 @@ defmodule CodeMySpecWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt sw.js manifest.json)
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt sw.js manifest.json 2b3072f808084089a59fa6ee3a6555b3.txt)
 
   def router do
     quote do
