@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
         %{
           "@context" => "https://schema.org",
           "@type" => "Article",
+          "@id" => "#{base_url}/case-studies/metric-flow",
           "headline" => @copy.metadata.meta_title,
           "description" => @copy.metadata.meta_description,
           "url" => "#{base_url}/case-studies/metric-flow",
@@ -65,9 +66,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
             "name" => "CodeMySpec",
             "logo" => %{
               "@type" => "ImageObject",
-              "url" => "#{base_url}/images/logo.svg",
-              "width" => 512,
-              "height" => 512
+              "url" => "#{base_url}/images/logo-300.png",
+              "width" => 300,
+              "height" => 300
             }
           },
           "mainEntityOfPage" => %{

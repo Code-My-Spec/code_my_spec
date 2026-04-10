@@ -86,6 +86,25 @@ defmodule CodeMySpecWeb.ContentController do
       ]
     }
 
+    # Add Blog entity for blog index to provide publisher linkage
+    schemas =
+      if content_type == :blog do
+        blog_entity = %{
+          "@context" => "https://schema.org",
+          "@type" => "Blog",
+          "@id" => "#{base_url}/blog#blog",
+          "url" => "#{base_url}/blog",
+          "name" => config.schema_name,
+          "description" => config.description,
+          "publisher" => %{"@id" => "#{base_url}/#organization"},
+          "inLanguage" => "en-US"
+        }
+
+        [item_list, blog_entity, breadcrumb]
+      else
+        [item_list, breadcrumb]
+      end
+
     render(conn, :index,
       posts: posts,
       config: config,
@@ -95,7 +114,7 @@ defmodule CodeMySpecWeb.ContentController do
       og_description: config.description,
       og_image: "#{base_url}/images/og-#{config.og_image_suffix}.png",
       canonical_url: "#{base_url}#{config.item_path_prefix}",
-      json_ld: Jason.encode!([item_list, breadcrumb])
+      json_ld: Jason.encode!(schemas)
     )
   end
 
@@ -257,9 +276,9 @@ defmodule CodeMySpecWeb.ContentController do
       "name" => "CodeMySpec",
       "logo" => %{
         "@type" => "ImageObject",
-        "url" => "#{base_url}/images/logo.svg",
-        "width" => 512,
-        "height" => 512
+        "url" => "#{base_url}/images/logo-300.png",
+        "width" => 300,
+        "height" => 300
       }
     }
 
@@ -315,7 +334,9 @@ defmodule CodeMySpecWeb.ContentController do
               "dateModified" => format_iso8601(content.updated_at),
               "author" => author,
               "publisher" => publisher,
-              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url}
+              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
+              "proficiencyLevel" => "Beginner",
+              "articleSection" => "Documentation"
             }
           ]
 

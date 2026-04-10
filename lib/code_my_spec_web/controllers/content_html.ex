@@ -16,11 +16,19 @@ defmodule CodeMySpecWeb.ContentHTML do
   end
 
   def blog_hero_image(%{content_type: :blog, slug: slug}) do
-    path = "images/hero-#{slug}.png"
+    webp_path = "images/hero-#{slug}.webp"
+    png_path = "images/hero-#{slug}.png"
 
-    if File.exists?(Application.app_dir(:code_my_spec, "priv/static/#{path}")),
-      do: "/#{path}",
-      else: nil
+    cond do
+      File.exists?(Application.app_dir(:code_my_spec, "priv/static/#{webp_path}")) ->
+        "/#{webp_path}"
+
+      File.exists?(Application.app_dir(:code_my_spec, "priv/static/#{png_path}")) ->
+        "/#{png_path}"
+
+      true ->
+        nil
+    end
   end
 
   def blog_hero_image(_), do: nil

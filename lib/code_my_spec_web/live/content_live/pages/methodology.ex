@@ -79,9 +79,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
             "name" => "CodeMySpec",
             "logo" => %{
               "@type" => "ImageObject",
-              "url" => "#{base_url}/images/logo.svg",
-              "width" => 512,
-              "height" => 512
+              "url" => "#{base_url}/images/logo-300.png",
+              "width" => 300,
+              "height" => 300
             }
           },
           "mainEntityOfPage" => %{

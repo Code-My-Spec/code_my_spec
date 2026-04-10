@@ -6,8 +6,9 @@
     <meta name="csrf-token" content={get_csrf_token()} />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" href={~p"/favicon.ico"} sizes="any" />
     <link rel="manifest" href={~p"/manifest.json"} />
-    <link rel="apple-touch-icon" href={~p"/images/logo.svg"} />
+    <link rel="apple-touch-icon" href={~p"/images/logo-300.png"} />
     <.live_title default="CodeMySpec">
       {assigns[:page_title] || assigns[:meta_title]}
     </.live_title>
@@ -28,6 +29,7 @@
     <meta property="og:image" content={assigns[:og_image] || "#{CodeMySpecWeb.Endpoint.url()}/images/og-default.png"} />
     <meta property="og:type" content={assigns[:og_type] || "website"} />
     <meta property="og:url" content={assigns[:canonical_url] || CodeMySpecWeb.Endpoint.url()} />
+    <meta property="og:site_name" content="CodeMySpec" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta :if={assigns[:og_type] == "article" and assigns[:article_published_time]} property="article:published_time" content={assigns[:article_published_time]} />

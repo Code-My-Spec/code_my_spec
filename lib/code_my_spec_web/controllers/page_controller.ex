@@ -24,9 +24,9 @@ defmodule CodeMySpecWeb.PageController do
             "url" => "https://codemyspec.com",
             "logo" => %{
               "@type" => "ImageObject",
-              "url" => "https://codemyspec.com/images/logo.svg",
-              "width" => 512,
-              "height" => 512
+              "url" => "https://codemyspec.com/images/logo-300.png",
+              "width" => 300,
+              "height" => 300
             },
             "description" => meta.meta_description,
             "founder" => %{

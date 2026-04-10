@@ -106,6 +106,14 @@ defmodule CodeMySpecWeb.AuthorLive do
         },
         %{
           "@context" => "https://schema.org",
+          "@type" => "ProfilePage",
+          "@id" => "#{@author_url}#profilepage",
+          "url" => @author_url,
+          "name" => "John Davenport — Author Profile",
+          "mainEntity" => %{"@id" => @author_url}
+        },
+        %{
+          "@context" => "https://schema.org",
           "@type" => "BreadcrumbList",
           "itemListElement" => [
             %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},

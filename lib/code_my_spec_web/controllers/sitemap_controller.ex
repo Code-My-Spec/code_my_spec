@@ -11,17 +11,35 @@ defmodule CodeMySpecWeb.SitemapController do
   }
 
   @static_locs ["/", "/blog", "/methodology", "/case-studies/metric-flow", "/author/john-davenport", "/pages/founder-story", "/pages/about", "/pages", "/documentation"]
-  @deploy_date Date.utc_today() |> Date.to_iso8601()
 
   def index(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
 
-    static_entries = Enum.map(@static_locs, &%{loc: &1, lastmod: @deploy_date})
+    # Use the most recent content date as fallback for static pages
+    all_content =
+      @content_types
+      |> Enum.flat_map(fn {type, _prefix} ->
+        ContentRepository.list_published_content(nil, type)
+      end)
+
+    latest_date =
+      all_content
+      |> Enum.map(fn c -> c.updated_at || c.publish_at end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.max(DateTime, fn -> DateTime.utc_now() end)
+      |> format_date()
+
+    static_entries = Enum.map(@static_locs, &%{loc: &1, lastmod: latest_date})
 
     content_entries =
       @content_types
       |> Enum.flat_map(fn {type, prefix} ->
-        ContentRepository.list_published_content(nil, type)
+        all_content
+        |> Enum.filter(fn c -> c.content_type == type end)
+        |> Enum.filter(fn c ->
+          # Verify content is actually accessible at its public URL
+          ContentRepository.get_content_by_slug(nil, c.slug, type) != nil
+        end)
         |> Enum.map(fn content ->
           %{
             loc: prefix <> content.slug,
