@@ -37,6 +37,17 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     session = session_id && Sessions.get_by_external_id(scope, session_id)
     task = resolve_task(session, agent_id)
 
+    # Step 2.5: If this is a main agent stop and subagents are still working,
+    # skip evaluation — let the subagents finish first.
+    if is_nil(agent_id) && session && has_active_subagent_task?(session) do
+      Logger.info("[TaskEvaluator] Active subagent task(s), skipping evaluation")
+      {:ok, :valid}
+    else
+      do_evaluate_stop(scope, session, task)
+    end
+  end
+
+  defp do_evaluate_stop(scope, session, task) do
     # Step 3: Run analysis pipeline (compile + role-based analyzers)
     case run_analysis(scope, task) do
       {:error, reason} ->
@@ -125,6 +136,12 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   end
 
   # -- evaluate_stop helpers --
+
+  defp has_active_subagent_task?(session) do
+    Enum.any?(session.tasks || [], fn task ->
+      task.status == :active and task.execution_type == :sub_agent
+    end)
+  end
 
   defp resolve_task(nil, _agent_id), do: nil
   defp resolve_task(session, nil), do: Session.active_task(session)
