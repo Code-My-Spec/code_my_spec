@@ -199,6 +199,7 @@ defmodule CodeMySpecWeb.Layouts do
               <li><.link href={~p"/"}>Product</.link></li>
               <li><.link href={~p"/methodology"}>Method</.link></li>
               <li><.link href={~p"/blog"}>Blog</.link></li>
+              <li><.link href={~p"/documentation"}>Docs</.link></li>
             </ul>
           </div>
           <div class="flex-none">
@@ -233,6 +234,8 @@ defmodule CodeMySpecWeb.Layouts do
               <h4 class="font-bold text-sm mb-3 text-base-content">Content</h4>
               <ul class="space-y-2 text-sm text-base-content/70">
                 <li><a href="/blog" class="hover:text-primary transition-colors">Blog</a></li>
+                <li><a href="/documentation" class="hover:text-primary transition-colors">Documentation</a></li>
+                <li><a href="/pages" class="hover:text-primary transition-colors">Pages</a></li>
                 <li><a href="/pages/founder-story" class="hover:text-primary transition-colors">Founder Story</a></li>
                 <li><a href="/author/john-davenport" class="hover:text-primary transition-colors">About</a></li>
               </ul>
