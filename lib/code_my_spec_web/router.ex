@@ -39,28 +39,30 @@ defmodule CodeMySpecWeb.Router do
     get "/llms.txt", LlmsTxtController, :index
     get "/llms-full.txt", LlmsTxtController, :full
 
-    # Public content routes (CLIENT APP FUNCTIONALITY)
+    # Public content routes (dead views — static content, no WebSocket)
+    get "/blog/:slug", ContentController, :blog
+    get "/pages/:slug", ContentController, :page
+    get "/landing/:slug", ContentController, :landing
+    get "/documentation/:slug", ContentController, :documentation
+
+    # Content routes that remain as LiveViews (have interactivity)
     live_session :public_content,
       on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
       live "/blog", ContentLive.Index, :blog_index
-      live "/blog/:slug", ContentLive.Public, :blog
-      live "/pages/:slug", ContentLive.Public, :page
-      live "/landing/:slug", ContentLive.Public, :landing
-      live "/documentation/:slug", ContentLive.Public, :documentation
       live "/methodology", ContentLive.Pages.Methodology, :methodology
       live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
       live "/author/john-davenport", AuthorLive, :author
     end
   end
 
-  # Protected content routes (CLIENT APP FUNCTIONALITY)
+  # Protected content routes (dead views)
   scope "/private", CodeMySpecWeb do
     pipe_through [:browser, :require_authenticated_user]
 
-    live "/blog/:slug", ContentLive.Public, :private_blog
-    live "/pages/:slug", ContentLive.Public, :private_page
-    live "/landing/:slug", ContentLive.Public, :private_landing
-    live "/documentation/:slug", ContentLive.Public, :private_documentation
+    get "/blog/:slug", ContentController, :private_blog
+    get "/pages/:slug", ContentController, :private_page
+    get "/landing/:slug", ContentController, :private_landing
+    get "/documentation/:slug", ContentController, :private_documentation
   end
 
   # OAuth2 routes

@@ -1,0 +1,59 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope}>
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <aside class="lg:col-span-1 order-2 lg:order-1">
+        <div class="sticky top-4">
+          <h3 class="font-semibold text-lg mb-2">Tags</h3>
+          <div :if={!Enum.empty?(@tags)} class="flex flex-col gap-2">
+            <span :for={tag <- @tags} class="badge badge-primary">
+              {tag.name}
+            </span>
+          </div>
+          <div :if={Enum.empty?(@tags)} class="opacity-60 text-sm">
+            No tags
+          </div>
+        </div>
+      </aside>
+
+      <article class="lg:col-span-3 order-1 lg:order-2">
+        <header class="mb-8">
+          <h1 class="text-4xl font-bold mb-4">{@content.title || @content.slug}</h1>
+          <div class="flex items-center gap-3 opacity-60 mb-4">
+            <a href="/author/john-davenport" class="hover:text-primary transition-colors">By John Davenport</a>
+            <span>&middot;</span>
+            <span>{format_publish_date(@content.publish_at)}</span>
+          </div>
+        </header>
+
+        <div class="prose prose-lg max-w-none">
+          <%= if @content.processed_content do %>
+            {raw(strip_leading_h1(@content.processed_content))}
+          <% else %>
+            <div class="opacity-60 italic">
+              Content not available
+            </div>
+          <% end %>
+        </div>
+
+        <footer class="mt-12 pt-8 border-t border-base-300">
+          <div class="flex gap-4">
+            <button class="btn btn-primary">
+              Share
+            </button>
+          </div>
+        </footer>
+      </article>
+    </div>
+  </div>
+
+  <script>
+    setTimeout(function() {
+      if (typeof gtag === "function") {
+        gtag("event", "deep_content_read", {
+          content_category: document.title,
+          page_path: window.location.pathname
+        });
+      }
+    }, 60000);
+  </script>
+</Layouts.marketing>
