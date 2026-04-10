@@ -27,6 +27,16 @@
       <%= for post <- @posts do %>
         <a href={"#{@config.item_path_prefix}/#{post.slug}"} class="group">
           <article class="card bg-base-100 shadow-xl hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 border border-base-300 h-full">
+            <figure :if={@config.item_path_prefix == "/blog"} class="px-4 pt-4">
+              <img
+                src={"/images/og-blog-#{post.slug}.png"}
+                alt={post.title || post.slug}
+                class="rounded-xl w-full aspect-[1200/630] object-cover"
+                loading="lazy"
+                width="1200"
+                height="630"
+              />
+            </figure>
             <div class="card-body gap-4">
               <!-- Date Badge -->
               <div class="flex items-center gap-2 text-sm text-base-content/60">
