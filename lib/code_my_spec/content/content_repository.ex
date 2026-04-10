@@ -66,6 +66,7 @@ defmodule CodeMySpec.Content.ContentRepository do
     |> by_content_type(content_type)
     |> where([c], is_nil(c.publish_at) or c.publish_at <= ^now)
     |> where([c], is_nil(c.expires_at) or c.expires_at > ^now)
+    |> preload(:tags)
     |> Repo.one()
   end
 
@@ -78,6 +79,7 @@ defmodule CodeMySpec.Content.ContentRepository do
     |> where([c], is_nil(c.publish_at) or c.publish_at <= ^now)
     |> where([c], is_nil(c.expires_at) or c.expires_at > ^now)
     |> where([c], c.protected == false)
+    |> preload(:tags)
     |> Repo.one()
   end
 
