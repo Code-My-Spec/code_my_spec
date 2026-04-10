@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
         %{
           "@context" => "https://schema.org",
           "@type" => "TechArticle",
+          "@id" => "#{base_url}/methodology",
           "headline" => @copy.metadata.meta_title,
           "description" => @copy.metadata.meta_description,
           "url" => "#{base_url}/methodology",

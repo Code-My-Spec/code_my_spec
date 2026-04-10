@@ -67,6 +67,10 @@ defmodule CodeMySpecWeb.LlmsTxtController do
       "",
       "> AI-assisted Phoenix development that actually ships. Structured workflows guide AI through design, testing, and implementation with human oversight.",
       "",
+      "license: CC-BY-SA-4.0",
+      "allow: search, citation, summarization",
+      "disallow: training",
+      "",
       "## What is CodeMySpec?",
       "",
       "CodeMySpec is a development platform that uses structured workflows, clear component boundaries, and human-in-the-loop oversight to build production-ready Phoenix (Elixir) applications with AI agents. It enforces a six-phase process: user stories, architecture design, BDD specifications, implementation, verification, and application QA.",
@@ -86,7 +90,7 @@ defmodule CodeMySpecWeb.LlmsTxtController do
 
   defp content_sections(base_url, content_by_type) do
     Enum.flat_map(content_by_type, fn {type, entries} ->
-      section_title = type |> to_string() |> String.capitalize()
+      section_title = section_label(type)
       prefix = content_prefix(type)
 
       lines =
@@ -102,6 +106,11 @@ defmodule CodeMySpecWeb.LlmsTxtController do
       ["## #{section_title}", ""] ++ lines ++ [""]
     end)
   end
+
+  defp section_label(:blog), do: "Blog"
+  defp section_label(:page), do: "Feature Pages & Comparisons"
+  defp section_label(:documentation), do: "Documentation"
+  defp section_label(:landing), do: "Landing Pages"
 
   defp content_prefix(:blog), do: "/blog/"
   defp content_prefix(:page), do: "/pages/"
@@ -134,10 +143,9 @@ defmodule CodeMySpecWeb.LlmsTxtController do
 
   defp full_content_sections(base_url, content_by_type) do
     Enum.flat_map(content_by_type, fn {type, entries} ->
-      section_title = type |> to_string() |> String.capitalize()
       prefix = content_prefix(type)
 
-      header_lines = ["## #{section_title}", ""]
+      header_lines = ["## #{section_label(type)}", ""]
 
       entry_lines =
         entries

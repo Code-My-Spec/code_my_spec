@@ -59,6 +59,7 @@ defmodule CodeMySpecWeb.Endpoint do
 
   plug(Plug.MethodOverride)
   plug(Plug.Head)
+  plug(CodeMySpecWeb.Plugs.LowercasePathRedirect)
   plug(CodeMySpecWeb.Plugs.TrailingSlashRedirect)
   plug(Plug.Session, @session_options)
   plug(CodeMySpecWeb.Router)
