@@ -6,7 +6,7 @@ defmodule CodeMySpecWeb.ContentHTML do
   def strip_leading_h1(nil), do: nil
 
   def strip_leading_h1(html) do
-    String.replace(html, ~r/\A\s*<h1[^>]*>.*?<\/h1>\s*/s, "", global: false)
+    String.replace(html, ~r/<h1[^>]*>.*?<\/h1>\s*/s, "", global: false)
   end
 
   def format_publish_date(nil), do: ""
