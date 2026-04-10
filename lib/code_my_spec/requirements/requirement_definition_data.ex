@@ -49,7 +49,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [1]
       }),
 
-      # Child spec phase (stamped per child)
+      # Child spec phase (stamped per child, executed by sub-agents)
       new!(%{
         id: 3,
         name: "spec_file",
@@ -60,6 +60,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Component specification file exists",
         prerequisites: [2],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_context
       }),
       new!(%{
@@ -72,6 +73,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Component specification is valid",
         prerequisites: [3],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_context
       }),
 
@@ -101,7 +103,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         orchestrated_by: :develop_context
       }),
 
-      # Child test + implementation phase (after review)
+      # Child test + implementation phase (after review, executed by sub-agents)
       new!(%{
         id: 7,
         name: "test_file",
@@ -112,6 +114,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "Component test file exists",
         prerequisites: [6],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_context
       }),
       new!(%{
@@ -124,6 +127,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "Test file implements all spec test assertions",
         prerequisites: [7],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_context
       }),
       new!(%{
@@ -136,6 +140,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :code,
         description: "Component implementation file exists",
         prerequisites: [6],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_context
       }),
       new!(%{
@@ -147,6 +152,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :code,
         description: "Component tests are passing",
         prerequisites: [9],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_context
       }),
 
@@ -243,6 +249,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Component specification file exists",
         prerequisites: [2],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_live_context
       }),
       new!(%{
@@ -255,6 +262,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description: "Component specification is valid",
         prerequisites: [3],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_live_context
       }),
 
@@ -284,7 +292,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         orchestrated_by: :develop_live_context
       }),
 
-      # Child test + implementation (after review)
+      # Child test + implementation (after review, executed by sub-agents)
       new!(%{
         id: 7,
         name: "test_file",
@@ -295,6 +303,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "Component test file exists",
         prerequisites: [6, 4],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_live_context
       }),
       new!(%{
@@ -307,7 +316,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "Test file implements all spec test assertions",
         prerequisites: [7],
-        execution_type: :main_agent,
+        execution_type: :sub_agent,
         orchestrated_by: :develop_live_context
       }),
       new!(%{
@@ -320,6 +329,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :code,
         description: "Component implementation file exists",
         prerequisites: [6],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_live_context
       }),
       new!(%{
@@ -331,6 +341,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :code,
         description: "Component tests are passing",
         prerequisites: [9],
+        execution_type: :sub_agent,
         orchestrated_by: :develop_live_context
       })
     ]

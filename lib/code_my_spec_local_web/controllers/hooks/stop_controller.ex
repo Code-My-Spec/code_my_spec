@@ -115,7 +115,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   defp has_active_subagent_task?(session) do
     Enum.any?(session.tasks || [], fn task ->
-      task.status == :active and task.agent_id != nil
+      task.status == :active and task.execution_type == :sub_agent
     end)
   end
 
