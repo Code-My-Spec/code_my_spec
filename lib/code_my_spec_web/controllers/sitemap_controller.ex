@@ -25,7 +25,7 @@ defmodule CodeMySpecWeb.SitemapController do
         |> Enum.map(fn content ->
           %{
             loc: prefix <> content.slug,
-            lastmod: format_date(content.publish_at) || format_date(content.updated_at)
+            lastmod: format_date(content.updated_at) || format_date(content.publish_at)
           }
         end)
       end)
