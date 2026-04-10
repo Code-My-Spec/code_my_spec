@@ -24,4 +24,23 @@ defmodule CodeMySpecWeb.ContentHTML do
   end
 
   def blog_hero_image(_), do: nil
+
+  def format_date(nil), do: "Draft"
+
+  def format_date(datetime) do
+    Calendar.strftime(datetime, "%B %d, %Y")
+  end
+
+  def extract_excerpt(%{meta_description: meta}) when is_binary(meta) and meta != "", do: meta
+
+  def extract_excerpt(%{processed_content: content}) when is_binary(content) do
+    content
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+    |> String.slice(0..200)
+    |> Kernel.<>("...")
+  end
+
+  def extract_excerpt(_), do: "No excerpt available"
 end

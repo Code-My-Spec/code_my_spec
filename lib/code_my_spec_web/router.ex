@@ -39,7 +39,12 @@ defmodule CodeMySpecWeb.Router do
     get "/llms.txt", LlmsTxtController, :index
     get "/llms-full.txt", LlmsTxtController, :full
 
-    # Public content routes (dead views — static content, no WebSocket)
+    # Content index pages (dead views)
+    get "/blog", ContentController, :blog_index
+    get "/documentation", ContentController, :documentation_index
+    get "/pages", ContentController, :pages_index
+
+    # Content detail pages (dead views — static content, no WebSocket)
     get "/blog/:slug", ContentController, :blog
     get "/pages/:slug", ContentController, :page
     get "/landing/:slug", ContentController, :landing
@@ -48,7 +53,6 @@ defmodule CodeMySpecWeb.Router do
     # Content routes that remain as LiveViews (have interactivity)
     live_session :public_content,
       on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
-      live "/blog", ContentLive.Index, :blog_index
       live "/methodology", ContentLive.Pages.Methodology, :methodology
       live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
       live "/author/john-davenport", AuthorLive, :author

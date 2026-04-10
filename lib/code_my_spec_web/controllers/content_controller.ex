@@ -3,6 +3,110 @@ defmodule CodeMySpecWeb.ContentController do
 
   alias CodeMySpec.Content
 
+  @index_config %{
+    blog: %{
+      badge: "Blog",
+      title: "Latest Articles",
+      description: "Insights on structured AI development, avoiding LLM-generated technical debt, and building production-ready Phoenix applications.",
+      icon: "hero-document-text",
+      empty_message: "No posts yet",
+      page_title: "Phoenix AI Development Blog — CodeMySpec",
+      og_image_suffix: "blog",
+      item_path_prefix: "/blog",
+      schema_name: "CodeMySpec Blog"
+    },
+    documentation: %{
+      badge: "Documentation",
+      title: "Documentation",
+      description: "Technical guides, API references, and tutorials for getting the most out of CodeMySpec.",
+      icon: "hero-book-open",
+      empty_message: "No documentation yet",
+      page_title: "Documentation — CodeMySpec",
+      og_image_suffix: "docs",
+      item_path_prefix: "/documentation",
+      schema_name: "CodeMySpec Documentation"
+    },
+    page: %{
+      badge: "Pages",
+      title: "Pages",
+      description: "Reviews, comparisons, and resources for AI-assisted development tools and workflows.",
+      icon: "hero-squares-2x2",
+      empty_message: "No pages yet",
+      page_title: "Pages — CodeMySpec",
+      og_image_suffix: "pages",
+      item_path_prefix: "/pages",
+      schema_name: "CodeMySpec Pages"
+    }
+  }
+
+  def index(conn, _params) do
+    content_type = index_content_type(conn.private.phoenix_action)
+    config = Map.fetch!(@index_config, content_type)
+    scope = conn.assigns[:current_scope]
+    base_url = CodeMySpecWeb.Endpoint.url()
+
+    posts =
+      scope
+      |> Content.list_published_content(content_type)
+      |> Enum.sort_by(
+        fn post ->
+          case post.publish_at do
+            nil -> ~U[1970-01-01 00:00:00Z]
+            datetime -> datetime
+          end
+        end,
+        {:desc, DateTime}
+      )
+
+    item_list = %{
+      "@context" => "https://schema.org",
+      "@type" => "ItemList",
+      "name" => config.schema_name,
+      "description" => config.description,
+      "url" => "#{base_url}#{config.item_path_prefix}",
+      "itemListElement" =>
+        posts
+        |> Enum.with_index(1)
+        |> Enum.map(fn {post, idx} ->
+          %{
+            "@type" => "ListItem",
+            "position" => idx,
+            "url" => "#{base_url}#{config.item_path_prefix}/#{post.slug}",
+            "name" => post.title || post.slug
+          }
+        end)
+    }
+
+    breadcrumb = %{
+      "@context" => "https://schema.org",
+      "@type" => "BreadcrumbList",
+      "itemListElement" => [
+        %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+        %{"@type" => "ListItem", "position" => 2, "name" => config.badge}
+      ]
+    }
+
+    render(conn, :index,
+      posts: posts,
+      config: config,
+      page_title: config.page_title,
+      meta_description: config.description,
+      og_title: config.page_title,
+      og_description: config.description,
+      og_image: "#{base_url}/images/og-#{config.og_image_suffix}.png",
+      canonical_url: "#{base_url}#{config.item_path_prefix}",
+      json_ld: Jason.encode!([item_list, breadcrumb])
+    )
+  end
+
+  def blog_index(conn, params), do: index(conn, params)
+  def documentation_index(conn, params), do: index(conn, params)
+  def pages_index(conn, params), do: index(conn, params)
+
+  defp index_content_type(:blog_index), do: :blog
+  defp index_content_type(:documentation_index), do: :documentation
+  defp index_content_type(:pages_index), do: :page
+
   def show(conn, %{"slug" => slug}) do
     content_type = content_type_from_action(conn.private.phoenix_action)
     is_protected = is_protected_action?(conn.private.phoenix_action)
