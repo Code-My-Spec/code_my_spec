@@ -82,7 +82,7 @@ defmodule CodeMySpecWeb.ContentController do
       "@type" => "BreadcrumbList",
       "itemListElement" => [
         %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
-        %{"@type" => "ListItem", "position" => 2, "name" => config.badge}
+        %{"@type" => "ListItem", "position" => 2, "name" => config.badge, "item" => "#{base_url}#{config.item_path_prefix}"}
       ]
     }
 
@@ -213,6 +213,15 @@ defmodule CodeMySpecWeb.ContentController do
   defp format_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   defp format_iso8601(_), do: nil
 
+  defp word_count(nil), do: 0
+
+  defp word_count(html) when is_binary(html) do
+    html
+    |> String.replace(~r/<[^>]+>/, " ")
+    |> String.split(~r/\s+/, trim: true)
+    |> length()
+  end
+
   defp extract_tool_name(nil), do: "Software"
 
   defp extract_tool_name(title) do
@@ -264,7 +273,11 @@ defmodule CodeMySpecWeb.ContentController do
     schemas =
       case content.content_type do
         :blog ->
-          [
+          tag_names = Enum.map(content.tags || [], & &1.name)
+          word_count = word_count(content.processed_content)
+          category = Map.get(content.metadata || %{}, "category")
+
+          blog_posting =
             %{
               "@context" => "https://schema.org",
               "@type" => "BlogPosting",
@@ -276,9 +289,18 @@ defmodule CodeMySpecWeb.ContentController do
               "dateModified" => format_iso8601(content.updated_at),
               "author" => author,
               "publisher" => publisher,
-              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url}
+              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
+              "inLanguage" => "en-US",
+              "wordCount" => word_count
             }
-          ]
+            |> then(fn schema ->
+              if tag_names != [], do: Map.put(schema, "keywords", Enum.join(tag_names, ", ")), else: schema
+            end)
+            |> then(fn schema ->
+              if category, do: Map.put(schema, "articleSection", category), else: schema
+            end)
+
+          [blog_posting]
 
         :documentation ->
           [

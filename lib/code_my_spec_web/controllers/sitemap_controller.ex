@@ -10,7 +10,7 @@ defmodule CodeMySpecWeb.SitemapController do
     documentation: "/documentation/"
   }
 
-  @static_locs ["/", "/blog", "/methodology", "/case-studies/metric-flow", "/author/john-davenport", "/pages/founder-story", "/pages/about"]
+  @static_locs ["/", "/blog", "/methodology", "/case-studies/metric-flow", "/author/john-davenport", "/pages/founder-story", "/pages/about", "/pages", "/documentation"]
   @deploy_date Date.utc_today() |> Date.to_iso8601()
 
   def index(conn, _params) do
@@ -30,7 +30,11 @@ defmodule CodeMySpecWeb.SitemapController do
         end)
       end)
 
-    entries = static_entries ++ content_entries
+    static_paths = MapSet.new(@static_locs)
+
+    entries =
+      static_entries ++
+        Enum.reject(content_entries, fn entry -> MapSet.member?(static_paths, entry.loc) end)
 
     conn
     |> put_resp_content_type("application/xml")
@@ -60,6 +64,6 @@ defmodule CodeMySpecWeb.SitemapController do
     """
   end
 
-  defp format_date(%DateTime{} = dt), do: DateTime.to_date(dt) |> Date.to_iso8601()
+  defp format_date(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   defp format_date(_), do: nil
 end

@@ -97,7 +97,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
           "@type" => "BreadcrumbList",
           "itemListElement" => [
             %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
-            %{"@type" => "ListItem", "position" => 2, "name" => "Methodology"}
+            %{"@type" => "ListItem", "position" => 2, "name" => "Methodology", "item" => "#{base_url}/methodology"}
           ]
         },
         %{
@@ -124,6 +124,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
      |> assign(:canonical_url, "#{base_url}/methodology")
      |> assign(:og_image, "#{base_url}/images/og-methodology.png")
      |> assign(:og_type, "article")
+     |> assign(:article_published_time, "2026-03-01T00:00:00Z")
      |> assign(:json_ld, json_ld)}
   end
 

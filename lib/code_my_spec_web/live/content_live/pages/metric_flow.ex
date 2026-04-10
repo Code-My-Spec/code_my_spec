@@ -82,7 +82,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
           "itemListElement" => [
             %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
             %{"@type" => "ListItem", "position" => 2, "name" => "Case Studies", "item" => "#{base_url}/case-studies"},
-            %{"@type" => "ListItem", "position" => 3, "name" => "MetricFlow"}
+            %{"@type" => "ListItem", "position" => 3, "name" => "MetricFlow", "item" => "#{base_url}/case-studies/metric-flow"}
           ]
         }
       ])
