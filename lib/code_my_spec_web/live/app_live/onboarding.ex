@@ -2,13 +2,19 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
   use CodeMySpecWeb, :live_view
 
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Welcome")}
+    just_confirmed = Phoenix.Flash.get(socket.assigns.flash, :info) == "User confirmed successfully."
+    {:ok, assign(socket, page_title: "Welcome", just_confirmed: just_confirmed)}
   end
 
   def render(assigns) do
     ~H"""
     <Layouts.marketing flash={@flash} current_scope={@current_scope}>
-      <div class="max-w-xl mx-auto px-6 py-16">
+      <div
+        id="onboarding-page"
+        phx-hook=".SignUpTracking"
+        data-just-confirmed={to_string(@just_confirmed)}
+        class="max-w-xl mx-auto px-6 py-16"
+      >
         <h1 class="text-3xl font-heading font-bold mb-6">Welcome to CodeMySpec</h1>
 
         <div class="text-base-content/80 space-y-3 mb-10">
@@ -54,6 +60,15 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
           </.link>
         </div>
       </div>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
+        export default {
+          mounted() {
+            if (this.el.dataset.justConfirmed === "true" && typeof gtag === "function") {
+              gtag("event", "sign_up");
+            }
+          }
+        }
+      </script>
     </Layouts.marketing>
     """
   end
