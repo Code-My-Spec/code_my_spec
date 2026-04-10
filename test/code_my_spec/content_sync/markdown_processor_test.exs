@@ -508,7 +508,9 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessorTest do
     test "preserves code content" do
       assert {:ok, result} = MarkdownProcessor.process(valid_markdown_with_code_blocks())
       assert String.contains?(result.processed_content, "const x")
-      assert String.contains?(result.processed_content, "function hello")
+      # MDEx syntax highlights code, so "function" and "hello" are in separate spans
+      assert String.contains?(result.processed_content, "hello")
+      assert String.contains?(result.processed_content, "function")
     end
   end
 
@@ -966,6 +968,66 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessorTest do
       assert {:ok, result} = MarkdownProcessor.process(markdown)
       assert result.parse_status == :success
       assert String.contains?(result.processed_content, "<code")
+    end
+  end
+
+  # ============================================================================
+  # process/1 - Mermaid Diagram Support
+  # ============================================================================
+
+  describe "process/1 - mermaid diagrams" do
+    test "converts mermaid code blocks to renderable pre elements" do
+      markdown = """
+      # Architecture
+
+      ```mermaid
+      graph TD;
+          A-->B;
+          A-->C;
+      ```
+      """
+
+      assert {:ok, result} = MarkdownProcessor.process(markdown)
+      assert result.parse_status == :success
+      assert String.contains?(result.processed_content, "class=\"mermaid\"")
+      assert String.contains?(result.processed_content, "A-->B")
+    end
+
+    test "injects mermaid initialization script" do
+      markdown = """
+      ```mermaid
+      graph LR; A-->B;
+      ```
+      """
+
+      assert {:ok, result} = MarkdownProcessor.process(markdown)
+      assert result.parse_status == :success
+      assert String.contains?(result.processed_content, "mermaid")
+      assert String.contains?(result.processed_content, "<script")
+    end
+
+    test "handles mermaid alongside regular code blocks" do
+      markdown = """
+      ```elixir
+      IO.puts("hello")
+      ```
+
+      ```mermaid
+      graph TD; A-->B;
+      ```
+
+      ```javascript
+      console.log("hi")
+      ```
+      """
+
+      assert {:ok, result} = MarkdownProcessor.process(markdown)
+      assert result.parse_status == :success
+      # Mermaid block rendered as pre.mermaid
+      assert String.contains?(result.processed_content, "class=\"mermaid\"")
+      # Regular code blocks still syntax highlighted
+      assert String.contains?(result.processed_content, "language-elixir")
+      assert String.contains?(result.processed_content, "language-javascript")
     end
   end
 

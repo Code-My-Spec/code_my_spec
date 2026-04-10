@@ -104,6 +104,7 @@ defmodule CodeMySpec.MixProject do
       {:ex_oauth2_provider, "~> 0.5.7"},
       {:earmark, "~> 1.4"},
       {:mdex, "~> 0.5"},
+      {:mdex_mermaid, "~> 0.3"},
       {:floki, "~> 0.38"},
       {:yaml_elixir, "~> 2.11"},
       {:faker, "~> 0.18"},
