@@ -128,6 +128,54 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
     end
   end
 
+  describe "execute/2 — entity scoping" do
+    test "two components with the same requirement_name get separate tasks" do
+      scope = full_scope_fixture()
+      component_a = component_fixture(scope, %{name: "List", module_name: "MyApp.List"})
+      component_b = component_fixture(scope, %{name: "Item", module_name: "MyApp.Item"})
+      session = session_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      params_a = %{
+        requirement_name: "spec_file",
+        entity_type: "component",
+        entity_id: component_a.id,
+        session_id: session.id,
+        agent_id: "agent-a"
+      }
+
+      params_b = %{
+        requirement_name: "spec_file",
+        entity_type: "component",
+        entity_id: component_b.id,
+        session_id: session.id,
+        agent_id: "agent-b"
+      }
+
+      # Agent A starts a task for component A
+      {:reply, response_a, _} = StartTask.execute(params_a, frame)
+      refute response_a.isError
+
+      # Agent B starts a task for component B — should NOT get A's task
+      {:reply, response_b, _} = StartTask.execute(params_b, frame)
+      refute response_b.isError
+
+      # Verify: two separate tasks exist, each linked to the correct component
+      final_session = Sessions.get_session(scope, session.id)
+      spec_tasks = Enum.filter(final_session.tasks, &(&1.requirement_name == "spec_file"))
+
+      assert length(spec_tasks) == 2
+
+      task_a = Enum.find(spec_tasks, &(&1.component_id == component_a.id))
+      task_b = Enum.find(spec_tasks, &(&1.component_id == component_b.id))
+
+      assert task_a, "Expected a task for component A"
+      assert task_b, "Expected a task for component B"
+      assert task_a.agent_id == "agent-a"
+      assert task_b.agent_id == "agent-b"
+    end
+  end
+
   describe "execute/2 — error paths" do
     test "returns error for non-existent requirement" do
       scope = full_scope_fixture()

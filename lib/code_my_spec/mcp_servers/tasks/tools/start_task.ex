@@ -124,11 +124,17 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp start_or_resume(scope, session, requirement, agent_id, frame) do
-    # Check for existing task for this requirement
+    # Check for existing task for this exact requirement + entity.
+    # Must match on entity ID too — multiple subagents may have tasks
+    # with the same requirement_name for different components.
+    entity_id = to_string(requirement.entity_id)
+
     existing =
       (session.tasks || [])
       |> Enum.find(fn t ->
-        t.requirement_name == requirement.name and t.status in [:prepared, :active]
+        t.requirement_name == requirement.name and
+          t.status in [:prepared, :active] and
+          matches_entity?(t, requirement.entity_type, entity_id)
       end)
 
     case existing do
@@ -208,6 +214,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
         {:reply, TasksMapper.error("Failed to create task: #{inspect(reason)}"), frame}
     end
   end
+
+  defp matches_entity?(task, "component", entity_id) do
+    to_string(task.component_id) == entity_id
+  end
+
+  defp matches_entity?(task, "story", entity_id) do
+    to_string(task.story_id) == entity_id
+  end
+
+  defp matches_entity?(task, "project", entity_id) do
+    to_string(task.project_id) == entity_id
+  end
+
+  defp matches_entity?(_task, _type, _id), do: true
 
   defp generate_prompt(task, scope) do
     task_module = task.session_type
