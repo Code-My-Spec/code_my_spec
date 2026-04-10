@@ -2,18 +2,17 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   @moduledoc """
   Handles the Stop hook event.
 
-  Validates the session transcript and checks if there's more work to do.
-  Blocks the stop if actionable tasks remain, directing the agent to get_next_requirement.
+  Delegates to TaskEvaluator.evaluate_stop/3 for the full evaluation pipeline
+  (file sync, compilation, static analysis, requirement checks), then decides
+  whether to block the stop if actionable tasks remain.
   """
   use CodeMySpecLocalWeb, :controller
 
   require Logger
 
   alias CodeMySpec.Files
-  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
-  alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Notifications.NotificationClient
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation.TaskEvaluator
@@ -25,54 +24,49 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
-    # Step 1: Sync files and components
-    if scope.cwd do
-      {:ok, file_result} = FileSync.sync(scope, base_dir: scope.cwd)
+    # Step 1: Full evaluation pipeline (sync + compile + analyze + requirements)
+    eval_result = TaskEvaluator.evaluate_stop(scope, session_id)
 
-      FileComponentSync.sync_from_files(scope,
-        base_dir: scope.cwd,
-        changed_paths: file_result.changed_paths
-      )
-    end
-
-    # Step 2: Resolve session + active task
+    # Step 2: Log files changed during the active task
     session = session_id && Sessions.get_by_external_id(scope, session_id)
     active_task = session && Session.active_task(session)
+    log_changed_files(scope, active_task, req_id)
 
-    # Step 3: Log files changed during the active task
-    if active_task && active_task.started_at do
-      changed = Files.changed_since(scope, active_task.started_at)
-
-      if changed != [] do
-        by_role = Enum.group_by(changed, & &1.role)
-
-        summary =
-          Enum.map_join(by_role, ", ", fn {role, files} ->
-            "#{role}(#{length(files)})"
-          end)
-
-        Logger.info(
-          "[StopHook] [#{req_id}] Files changed during task: #{summary} — " <>
-            Enum.map_join(changed, ", ", & &1.path)
-        )
-      else
-        Logger.info("[StopHook] [#{req_id}] No files changed during task")
-      end
-    end
-
-    # Step 4: Evaluate the active task
-    result = TaskEvaluator.evaluate_sessions(scope, session_id)
-
+    # Step 3: Decide response
     response =
-      case result do
-        {:ok, :valid} ->
-          maybe_continue_with_next_task(scope, session, req_id)
-
-        {:error, reason} when is_binary(reason) ->
+      case eval_result do
+        {:error, reason} ->
           %{"decision" => "block", "reason" => reason}
+
+        result ->
+          response = maybe_continue_with_next_task(scope, session, req_id)
+          maybe_append_advisory(response, result)
       end
 
     json(conn, response)
+  end
+
+  defp log_changed_files(_scope, nil, _req_id), do: :ok
+  defp log_changed_files(_scope, %{started_at: nil}, _req_id), do: :ok
+
+  defp log_changed_files(scope, active_task, req_id) do
+    changed = Files.changed_since(scope, active_task.started_at)
+
+    if changed != [] do
+      by_role = Enum.group_by(changed, & &1.role)
+
+      summary =
+        Enum.map_join(by_role, ", ", fn {role, files} ->
+          "#{role}(#{length(files)})"
+        end)
+
+      Logger.info(
+        "[StopHook] [#{req_id}] Files changed during task: #{summary} — " <>
+          Enum.map_join(changed, ", ", & &1.path)
+      )
+    else
+      Logger.info("[StopHook] [#{req_id}] No files changed during task")
+    end
   end
 
   defp maybe_continue_with_next_task(scope, session, req_id) do
@@ -134,6 +128,18 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
       _ -> false
     end
   end
+
+  defp maybe_append_advisory(response, {:ok, :valid, advisory}) do
+    case response do
+      %{"decision" => "block", "reason" => reason} ->
+        %{response | "reason" => reason <> "\n\n" <> advisory}
+
+      _ ->
+        response
+    end
+  end
+
+  defp maybe_append_advisory(response, _), do: response
 
   defp notify_complete do
     NotificationClient.notify(%{

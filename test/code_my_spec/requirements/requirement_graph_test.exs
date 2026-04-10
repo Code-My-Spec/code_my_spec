@@ -141,6 +141,136 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     end
   end
 
+  describe "parent resolution" do
+    test "context parent-scope nodes are parented by the context itself" do
+      {scope, tmp_dir} = setup_project()
+      seed_setup(tmp_dir)
+
+      # Create spec files so ComponentSync creates and retains the components
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/todos.spec.md", "# MyApp.Todos\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Todos.Todo")
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/todos/todo.spec.md", "# MyApp.Todos.Todo\n\n## Type\n\nschema\n\n## Fields\n\n- title: string")
+
+      sync!(scope, tmp_dir)
+
+      # Find the components created by sync
+      all_components = Components.list_components(scope)
+      context = Enum.find(all_components, &(&1.module_name == "MyApp.Todos"))
+      schema = Enum.find(all_components, &(&1.module_name == "MyApp.Todos.Todo"))
+
+      assert context, "Context component should exist"
+      assert schema, "Schema component should exist"
+
+      nodes = RequirementGraph.compute_all(scope)
+
+      # Child schema nodes should be parented by the context
+      child_nodes =
+        Enum.filter(nodes, fn n ->
+          n.entity_type == "component" and n.entity_id == schema.id
+        end)
+
+      assert child_nodes != [], "Expected child nodes for schema #{schema.id}"
+
+      for node <- child_nodes do
+        assert node.parent_entity_id == context.id,
+               "Child node #{node.name} should be parented by context, got #{inspect(node.parent_entity_id)}"
+
+        assert node.parent_entity_name == "MyApp.Todos",
+               "Child node #{node.name} should have context name as parent_entity_name"
+      end
+
+      # Context parent-scope nodes (review_file, etc.) should also be parented by the context
+      context_nodes =
+        Enum.filter(nodes, fn n ->
+          n.entity_type == "component" and n.entity_id == context.id and n.orchestrated_by != nil
+        end)
+
+      assert context_nodes != []
+
+      for node <- context_nodes do
+        assert node.parent_entity_id == context.id,
+               "Context node #{node.name} should self-parent, got #{inspect(node.parent_entity_id)}"
+
+        assert node.parent_entity_name == "MyApp.Todos",
+               "Context node #{node.name} should have context name as parent_entity_name"
+      end
+    end
+
+    test "story nodes are parented by the project" do
+      {scope, tmp_dir} = setup_project()
+
+      {:ok, _story} =
+        Stories.create_story(scope, %{
+          title: "User Login",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"]
+        })
+
+      seed_setup(tmp_dir)
+      sync!(scope, tmp_dir)
+
+      nodes = RequirementGraph.compute_all(scope)
+
+      story_nodes = Enum.filter(nodes, &(&1.entity_type == "story"))
+      assert story_nodes != []
+
+      for node <- story_nodes do
+        assert node.parent_entity_id == scope.active_project.id,
+               "Story node #{node.name} should be parented by project"
+
+        assert node.parent_entity_name == scope.active_project.name,
+               "Story node #{node.name} should have project name as parent_entity_name"
+      end
+    end
+
+    test "project nodes have no parent" do
+      {scope, tmp_dir} = setup_project()
+      seed_setup(tmp_dir)
+      sync!(scope, tmp_dir)
+
+      nodes = RequirementGraph.compute_all(scope)
+      project_nodes = Enum.filter(nodes, &(&1.entity_type == "project"))
+
+      assert project_nodes != []
+
+      for node <- project_nodes do
+        assert node.parent_entity_id == nil,
+               "Project node #{node.name} should have no parent"
+
+        assert node.parent_entity_name == nil,
+               "Project node #{node.name} should have no parent name"
+      end
+    end
+
+    test "no orchestrated node has nil parent_entity_name" do
+      {scope, tmp_dir} = setup_project()
+
+      {:ok, _story} =
+        Stories.create_story(scope, %{
+          title: "Registration",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"]
+        })
+
+      seed_setup(tmp_dir)
+
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", "# MyApp.Accounts\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Accounts.User")
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/user.spec.md", "# MyApp.Accounts.User\n\n## Type\n\nschema\n\n## Fields\n\n- email: string")
+
+      sync!(scope, tmp_dir)
+
+      nodes = RequirementGraph.compute_all(scope)
+
+      orchestrated = Enum.filter(nodes, & &1.orchestrated_by)
+
+      assert orchestrated != []
+
+      unknown_nodes = Enum.filter(orchestrated, &is_nil(&1.parent_entity_name))
+
+      assert unknown_nodes == [],
+             "Found orchestrated nodes with nil parent_entity_name: #{inspect(Enum.map(unknown_nodes, &{&1.entity_type, &1.entity_id, &1.name}))}"
+    end
+  end
+
   # -- Helpers --
 
   defp setup_project do

@@ -10,9 +10,11 @@ defmodule CodeMySpec.StaticAnalysis do
   Separate from compilation and testing, which remain distinct concepts.
   """
 
-  alias CodeMySpec.StaticAnalysis.Runner
+  alias CodeMySpec.StaticAnalysis.{Pipeline, Runner}
 
   defdelegate list_analyzers(), to: Runner
   defdelegate run(scope, analyzer_name, opts \\ []), to: Runner
   defdelegate run_all(scope, opts \\ []), to: Runner
+
+  defdelegate run_pipeline(scope, task, opts \\ []), to: Pipeline
 end

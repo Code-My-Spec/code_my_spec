@@ -9,9 +9,55 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   require Logger
 
   alias CodeMySpec.AgentTasks.Evaluator
+  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Users.Scope
+
+  @doc """
+  Full stop evaluation: sync files, run analysis pipeline, then check requirements.
+
+  Used by both StopController and SubagentStopController as the single entry point.
+
+  ## Options
+
+  - `:agent_id` — for subagent stops, resolves the subagent's task instead of active task
+  """
+  @spec evaluate_stop(Scope.t(), String.t() | nil, keyword()) ::
+          {:ok, :valid} | {:ok, :valid, String.t()} | {:error, String.t()}
+  def evaluate_stop(%Scope{} = scope, session_id, opts \\ []) do
+    agent_id = Keyword.get(opts, :agent_id)
+
+    # Step 1: Sync files
+    sync_files(scope)
+
+    # Step 2: Resolve session + task
+    session = session_id && Sessions.get_by_external_id(scope, session_id)
+    task = resolve_task(session, agent_id)
+
+    # Step 3: Run analysis pipeline (compile + role-based analyzers)
+    case run_analysis(scope, task) do
+      {:error, reason} ->
+        {:error, reason}
+
+      pipeline_result ->
+        # Step 4: Evaluate task requirements
+        req_result =
+          if session do
+            evaluate_session(scope, session)
+          else
+            {:ok, :valid}
+          end
+
+        case {req_result, pipeline_result} do
+          {{:error, reason}, _} -> {:error, reason}
+          {{:ok, :valid}, {:ok, :continue, advisory}} -> {:ok, :valid, advisory}
+          {{:ok, :valid}, _} -> {:ok, :valid}
+        end
+    end
+  end
 
   @doc """
   Look up session by external conversation ID, evaluate the active task.
@@ -76,5 +122,32 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   rescue
     e ->
       {:error, "Task evaluation failed: #{Exception.message(e)}"}
+  end
+
+  # -- evaluate_stop helpers --
+
+  defp resolve_task(nil, _agent_id), do: nil
+  defp resolve_task(session, nil), do: Session.active_task(session)
+  defp resolve_task(session, agent_id), do: Session.find_task_by_agent(session, agent_id)
+
+  defp run_analysis(scope, task) do
+    if task && task.started_at do
+      StaticAnalysis.run_pipeline(scope, task)
+    else
+      {:ok, :continue}
+    end
+  end
+
+  defp sync_files(%Scope{cwd: nil}), do: :ok
+
+  defp sync_files(%Scope{cwd: cwd} = scope) do
+    {:ok, file_result} = FileSync.sync(scope, base_dir: cwd)
+
+    FileComponentSync.sync_from_files(scope,
+      base_dir: cwd,
+      changed_paths: file_result.changed_paths
+    )
+
+    :ok
   end
 end

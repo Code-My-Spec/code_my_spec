@@ -39,7 +39,14 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
           "## #{parent_name}\n\n#{header}\n\n#{inner}"
       end
 
-    standalone_sections = format_satisfied_by_groups(standalone)
+    # When an orchestration group is active, focus on it — don't show
+    # unrelated standalone items that distract from the current context.
+    standalone_sections =
+      if orchestrated_section == "" do
+        format_satisfied_by_groups(standalone)
+      else
+        ""
+      end
 
     [orchestrated_section, standalone_sections]
     |> Enum.reject(&(&1 == ""))

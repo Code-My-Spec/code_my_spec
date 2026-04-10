@@ -417,6 +417,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     files = Map.get(ctx.files_by_component, entity.id, [])
     result = RequirementCalculator.compute_one(scope, entity, definition, files, ctx)
 
+    # Parent resolution: child nodes use the explicit parent.
+    # Parent/self-scope nodes self-parent when orchestrated (so they group
+    # with child nodes under the same context header).
+    {parent_id, parent_name} =
+      cond do
+        parent -> {parent.id, parent.module_name}
+        definition.orchestrated_by -> {entity.id, entity.module_name}
+        true -> {nil, nil}
+      end
+
     %Requirement{
       entity_type: "component",
       entity_id: entity.id,
@@ -429,8 +439,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       execution_type: definition.execution_type || :main_agent,
       validation_type: definition.validation_type || :automatic,
       orchestrated_by: definition.orchestrated_by,
-      parent_entity_id: parent && parent.id,
-      parent_entity_name: parent && parent.module_name,
+      parent_entity_id: parent_id,
+      parent_entity_name: parent_name,
       prerequisites: [],
       details: result.details
     }
@@ -448,7 +458,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp compute_story_nodes(scope, ctx) do
     template = RequirementDefinitionData.story_graph()
-    id_to_name = Map.new(template, &{&1.id, &1.name})
+    project = scope.active_project
 
     {nodes, edges} =
       Enum.flat_map_reduce(ctx.stories, [], fn story, all_edges ->
@@ -470,6 +480,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             execution_type: definition.execution_type || :main_agent,
             validation_type: definition.validation_type || :automatic,
             orchestrated_by: definition.orchestrated_by,
+            parent_entity_id: project && project.id,
+            parent_entity_name: project && project.name,
             prerequisites: [],
             details: result.details
           }

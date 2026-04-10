@@ -151,6 +151,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       }),
 
       # Parent implementation phase (fan-in: all children done → parent impl)
+      # Prerequisites include child implementation_file (9) so schemas (which lack
+      # test_file/tests_passing) still gate the parent correctly.
       new!(%{
         id: 11,
         name: "implementation_file",
@@ -160,7 +162,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.ComponentCode,
         artifact_type: :code,
         description: "Context implementation file exists",
-        prerequisites: [8, 10, 6],
+        prerequisites: [8, 9, 10, 6],
         orchestrated_by: :develop_context
       }),
       new!(%{

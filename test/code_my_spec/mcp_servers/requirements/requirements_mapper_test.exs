@@ -120,7 +120,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       assert text =~ "### FakeTaskNoSummary"
     end
 
-    test "orchestrated and standalone nodes render separately" do
+    test "standalone items are suppressed when orchestrated group is active" do
       orchestrated =
         build_node(%{
           orchestrated_by: :develop_context,
@@ -136,7 +136,16 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
 
       assert text =~ "## Todo.Accounts"
       assert text =~ "### FakeTaskWithOrchestrate"
-      # Standalone section also present
+      # Standalone items suppressed — agent focuses on orchestrated work
+      refute text =~ "requirement `setup`"
+    end
+
+    test "standalone items render when no orchestrated group exists" do
+      standalone = build_node(%{orchestrated_by: nil, name: "setup", entity_id: "proj_1"})
+
+      response = RequirementsMapper.next_requirements_response([standalone])
+      [%{"text" => text}] = response.content
+
       assert text =~ "requirement `setup`"
     end
 
