@@ -115,6 +115,25 @@ defmodule CodeMySpec.Content.ContentRepository do
     Repo.preload(content_or_list, :tags)
   end
 
+  @doc """
+  Returns published content in the same series, ordered by series_part.
+  Uses the metadata JSONB field to match on series name.
+  """
+  @spec list_series_posts(String.t()) :: [Content.t()]
+  def list_series_posts(series_name) when is_binary(series_name) do
+    now = DateTime.utc_now()
+
+    Content
+    |> where([c], fragment("?->>'series' = ?", c.metadata, ^series_name))
+    |> where([c], c.protected == false)
+    |> where([c], is_nil(c.publish_at) or c.publish_at <= ^now)
+    |> where([c], is_nil(c.expires_at) or c.expires_at > ^now)
+    |> order_by([c], fragment("(?->>'series_part')::integer", c.metadata))
+    |> Repo.all()
+  end
+
+  def list_series_posts(_), do: []
+
   defp by_content_type(query, content_type) do
     where(query, [c], c.content_type == ^content_type)
   end

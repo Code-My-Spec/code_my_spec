@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.AuthorLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpecWeb.Layouts
+  alias CodeMySpec.Content.ContentRepository
 
   @author_url "https://codemyspec.com/author/john-davenport"
 
@@ -18,30 +19,56 @@ defmodule CodeMySpecWeb.AuthorLive do
 
           <div class="prose prose-lg max-w-none">
             <p>
-              I build tools that help developers ship production software with AI. CodeMySpec is my current project — a structured development platform for Phoenix applications that enforces the full loop from user stories through BDD specs, implementation, and QA.
+              Full-stack engineer with 20 years of experience spanning enterprise systems, manufacturing IT, fintech, and AI-assisted development tooling. I build tools that help developers ship production software with AI — not by replacing architects, but by giving AI agents the structured workflows they need to write code that actually works.
             </p>
 
-            <h2>Background</h2>
             <p>
-              15 years in enterprise systems and software development. Deep expertise in Elixir, Phoenix, and OTP. The last 2 years have been focused exclusively on LLM-assisted development tooling — building, testing, and iterating on workflows that produce code that actually works in production.
+              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built two production applications with it — <a href="/case-studies/metric-flow">MetricFlow</a> (40 commits, 13 days, zero human-written code) and Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration) — to prove the methodology works before asking anyone else to use it.
+            </p>
+
+            <h2>Career Path</h2>
+            <p>
+              I started in hardware design at GE Intelligent Platforms (2005-2010), designing embedded computing solutions — VME and CompactPCI single board computers for military, aerospace, and industrial customers. That gave me a foundation in systems thinking that's shaped everything since.
+            </p>
+            <p>
+              From there I moved into manufacturing IT at Enova Premier, managing production systems across 4 automotive plants for a tier-one supplier assembling wheels and tires for Toyota, GM, and Hyundai. I built an industrial IoT platform combining OPC UA, real-time PLC data, and GraphQL APIs into operator-facing Vue.js applications — and hired and trained the first software development team the company ever had.
+            </p>
+            <p>
+              I spent three years at FunnelCloud as Head of Implementations, leading technical operations for an MES vendor serving 50-60 automotive plants. Then three years at Openforce as a software engineer on IC Insure — an insurance marketplace built on an Elixir/Phoenix monolith with CQRS, Event Sourcing (Commanded), and GraphQL (Absinthe), serving clients including American Express and Hudson Insurance Group.
+            </p>
+            <p>
+              Along the way I founded several products that taught me more than they earned: <strong>UserDocs</strong> (documentation automation, three major architectural rewrites, secured a pilot with Chef), <strong>Discussit</strong> (conversation intelligence with LLM-powered topic analysis), and <strong>Desert First Cleaning</strong> (which actually did work — $252K+ revenue, 150% YoY growth).
             </p>
 
             <h2>What I've Built</h2>
             <ul>
-              <li><strong>CodeMySpec</strong> — Structured AI development platform for Phoenix. MCP servers for product management and architecture, BDD spec generation, session orchestration, and automated QA.</li>
-              <li><strong>MetricFlow</strong> — Full-stack Phoenix analytics platform built with zero human-written code. <a href="/case-studies/metric-flow">40 commits, 13 days, honest assessment</a>.</li>
-              <li><strong>UserDocs</strong> — Browser automation tool for web application documentation. Phoenix LiveView.</li>
-              <li><strong>Discussit</strong> — LLM-powered communication analysis platform.</li>
+              <li><strong>CodeMySpec</strong> — AI development harness for Phoenix. 368 modules, 46 bounded contexts, compile-time dependency enforcement. MCP servers for product management and architecture, BDD spec generation, session orchestration, and automated QA. Ships as a Claude Code extension.</li>
+              <li><strong>Fuellytics</strong> — Fleet fuel card fraud detection platform. 5-validator pipeline, Claude Vision OCR, Stripe Issuing/Treasury/Connect, Twilio SMS. Built with CodeMySpec in 55 commits, zero human-written code.</li>
+              <li><strong>MetricFlow</strong> — Cross-platform ad analytics correlating Google Ads, Facebook Ads, and GA4 with QuickBooks revenue. Pearson correlation engine, Claude-powered insights. <a href="/case-studies/metric-flow">40 commits, 13 days, honest assessment</a>.</li>
+              <li><strong>IC Insure</strong> — Insurance marketplace for independent contractors. Elixir/Phoenix, CQRS/Event Sourcing, 11 bounded contexts, 20+ supervised processes. One of two engineers.</li>
+              <li><strong>UserDocs</strong> — Browser automation for documentation. Phoenix LiveView, Chrome DevTools Protocol, multi-tenant architecture. Three major rewrites.</li>
+              <li><strong>Discussit</strong> — Conversation intelligence platform with Zoom/OpenPhone ingestion, transcription, and LLM-powered topic clustering.</li>
             </ul>
 
             <h2>Technical Focus</h2>
-            <ul>
-              <li>Elixir, Phoenix, LiveView, OTP</li>
-              <li>MCP (Model Context Protocol) server development</li>
-              <li>BDD with Gherkin scenarios and automated verification</li>
-              <li>Bounded context architecture and dependency graphs</li>
-              <li>Claude Code, agentic workflows, structured AI development</li>
-            </ul>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 not-prose mb-6">
+              <div>
+                <h3 class="font-semibold text-base mt-4 mb-2">Languages & Frameworks</h3>
+                <p class="text-base-content/70 text-sm">Elixir, Phoenix, LiveView, OTP, Python, TypeScript, C#, Blazor, Vue.js, React</p>
+              </div>
+              <div>
+                <h3 class="font-semibold text-base mt-4 mb-2">AI & LLM Engineering</h3>
+                <p class="text-base-content/70 text-sm">Claude API, MCP servers, agentic workflows, BDD spec generation, embedding pipelines, RAG</p>
+              </div>
+              <div>
+                <h3 class="font-semibold text-base mt-4 mb-2">Architecture</h3>
+                <p class="text-base-content/70 text-sm">CQRS, Event Sourcing, DDD, bounded contexts, dependency graphs, multi-tenant systems</p>
+              </div>
+              <div>
+                <h3 class="font-semibold text-base mt-4 mb-2">Data & Infrastructure</h3>
+                <p class="text-base-content/70 text-sm">PostgreSQL, Snowflake, SQLite, Docker, Fly.io, GitHub Actions, OPC UA, industrial IoT</p>
+              </div>
+            </div>
 
             <h2>Connect</h2>
             <ul>
@@ -49,6 +76,8 @@ defmodule CodeMySpecWeb.AuthorLive do
               <li><a href="https://x.com/johns10d" target="_blank" rel="noopener noreferrer">X / Twitter</a></li>
               <li><a href="https://www.youtube.com/@codemyspec" target="_blank" rel="noopener noreferrer">YouTube</a></li>
               <li><a href="https://github.com/code-my-spec" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+              <li><a href="https://www.reddit.com/user/johns10davenport/" target="_blank" rel="noopener noreferrer">Reddit</a></li>
+              <li><a href="https://john.davenport.rocks" target="_blank" rel="noopener noreferrer">Full Resume</a></li>
             </ul>
           </div>
 
@@ -58,6 +87,27 @@ defmodule CodeMySpecWeb.AuthorLive do
             </a>
           </div>
         </article>
+
+        <!-- Published Articles -->
+        <section :if={@blog_posts != []} class="mt-16">
+          <h2 class="text-3xl font-bold mb-8">Published Articles</h2>
+          <div class="space-y-4">
+            <a
+              :for={post <- @blog_posts}
+              href={"/blog/#{post.slug}"}
+              class="block card bg-base-100 border border-base-300 hover:shadow-lg transition-shadow"
+            >
+              <div class="card-body py-4 px-5">
+                <div class="flex items-center justify-between gap-4">
+                  <span class="font-medium">{post.title || post.slug}</span>
+                  <span :if={post.publish_at} class="text-sm text-base-content/50 whitespace-nowrap">
+                    {Calendar.strftime(post.publish_at, "%b %d, %Y")}
+                  </span>
+                </div>
+              </div>
+            </a>
+          </div>
+        </section>
       </div>
     </Layouts.marketing>
     """
@@ -66,6 +116,18 @@ defmodule CodeMySpecWeb.AuthorLive do
   @impl true
   def mount(_params, _session, socket) do
     base_url = CodeMySpecWeb.Endpoint.url()
+
+    blog_posts =
+      ContentRepository.list_published_content(nil, :blog)
+      |> Enum.sort_by(
+        fn post ->
+          case post.publish_at do
+            nil -> ~U[1970-01-01 00:00:00Z]
+            datetime -> datetime
+          end
+        end,
+        {:desc, DateTime}
+      )
 
     json_ld =
       Jason.encode!([
@@ -76,7 +138,8 @@ defmodule CodeMySpecWeb.AuthorLive do
           "name" => "John Davenport",
           "jobTitle" => "Founder",
           "url" => @author_url,
-          "description" => "Founder of CodeMySpec. 15 years in enterprise systems, building structured AI-assisted development workflows for Phoenix applications.",
+          "description" =>
+            "Full-stack engineer with 20 years of experience. Founder of CodeMySpec. Background in hardware engineering (GE), manufacturing IT, enterprise insurance systems (Elixir/Phoenix), and AI-assisted development tooling.",
           "image" => %{
             "@type" => "ImageObject",
             "url" => "#{base_url}/images/john-davenport.jpg",
@@ -93,15 +156,25 @@ defmodule CodeMySpecWeb.AuthorLive do
             "https://x.com/johns10d",
             "https://github.com/code-my-spec",
             "https://www.youtube.com/@codemyspec",
-            "https://www.reddit.com/user/johns10davenport/"
+            "https://www.reddit.com/user/johns10davenport/",
+            "https://john.davenport.rocks"
           ],
           "knowsAbout" => [
             "Elixir",
             "Phoenix Framework",
-            "AI-assisted development",
+            "Phoenix LiveView",
+            "OTP",
+            "AI-assisted software development",
             "Model Context Protocol",
             "BDD testing",
-            "Software architecture"
+            "Software architecture",
+            "CQRS and Event Sourcing",
+            "Domain-Driven Design",
+            "Manufacturing IT",
+            "Industrial IoT",
+            "PostgreSQL",
+            "Embedded systems",
+            "Enterprise insurance systems"
           ]
         },
         %{
@@ -124,10 +197,14 @@ defmodule CodeMySpecWeb.AuthorLive do
 
     {:ok,
      socket
+     |> assign(:blog_posts, blog_posts)
      |> assign(:page_title, "John Davenport — Founder, CodeMySpec")
-     |> assign(:meta_description, "Founder of CodeMySpec. 15 years in enterprise systems, building AI-assisted development tooling for Phoenix.")
+     |> assign(
+       :meta_description,
+       "Full-stack engineer with 20 years of experience. Founder of CodeMySpec. Background in hardware engineering, manufacturing IT, enterprise systems, and AI-assisted development."
+     )
      |> assign(:og_title, "John Davenport — Founder, CodeMySpec")
-     |> assign(:og_description, "Building tools that help developers ship production software with AI.")
+     |> assign(:og_description, "20 years of experience from hardware design to AI-assisted development. Building tools that help developers ship production software with AI.")
      |> assign(:og_image, "#{base_url}/images/john-davenport.jpg")
      |> assign(:canonical_url, @author_url)
      |> assign(:json_ld, json_ld)}

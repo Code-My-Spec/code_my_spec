@@ -2,20 +2,45 @@
   <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
       <aside class="lg:col-span-1 order-2 lg:order-1">
-        <div class="sticky top-4">
-          <h3 class="font-semibold text-lg mb-2">Tags</h3>
-          <div :if={!Enum.empty?(@tags)} class="flex flex-col gap-2">
-            <span :for={tag <- @tags} class="badge badge-primary">
-              {tag.name}
-            </span>
+        <div class="sticky top-4 space-y-6">
+          <div>
+            <h3 class="font-semibold text-lg mb-2">Tags</h3>
+            <div :if={!Enum.empty?(@tags)} class="flex flex-col gap-2">
+              <span :for={tag <- @tags} class="badge badge-primary">
+                {tag.name}
+              </span>
+            </div>
+            <div :if={Enum.empty?(@tags)} class="opacity-60 text-sm">
+              No tags
+            </div>
           </div>
-          <div :if={Enum.empty?(@tags)} class="opacity-60 text-sm">
-            No tags
+
+          <!-- Series Navigation (sidebar) -->
+          <div :if={@series_info}>
+            <h3 class="font-semibold text-lg mb-2">{@series_info.name}</h3>
+            <nav class="flex flex-col gap-1">
+              <a
+                :for={post <- @series_info.posts}
+                href={"/blog/#{post.slug}"}
+                class={"block text-sm px-3 py-2 rounded-lg transition-colors #{if post.slug == @series_info.current_slug, do: "bg-primary/10 text-primary font-medium", else: "hover:bg-base-200 text-base-content/70"}"}
+              >
+                <span :if={post.metadata["series_part"]} class="font-mono text-xs opacity-60 mr-1">
+                  {post.metadata["series_part"]}.
+                </span>
+                {post.title || post.slug}
+              </a>
+            </nav>
           </div>
         </div>
       </aside>
 
       <article class="lg:col-span-3 order-1 lg:order-2">
+        <!-- Series banner -->
+        <div :if={@series_info} class="mb-6 flex items-center gap-2 text-sm text-base-content/60">
+          <.icon name="hero-document-text" class="w-4 h-4" />
+          <span>Part of the <strong class="text-base-content/80">{@series_info.name}</strong> series</span>
+        </div>
+
         <header class="mb-8">
           <h1 class="text-4xl font-bold mb-4">{@content.title || @content.slug}</h1>
           <div class="flex items-center gap-3 opacity-60 mb-4">
@@ -35,7 +60,37 @@
           <% end %>
         </div>
 
-        <footer class="mt-12 pt-8 border-t border-base-300">
+        <!-- Prev/Next navigation -->
+        <div :if={@series_info && (@series_info.prev_post || @series_info.next_post)} class="mt-12 pt-8 border-t border-base-300">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <a
+                :if={@series_info.prev_post}
+                href={"/blog/#{@series_info.prev_post.slug}"}
+                class="block card bg-base-100 border border-base-300 hover:shadow-lg transition-shadow h-full"
+              >
+                <div class="card-body py-4 px-5">
+                  <span class="text-xs text-base-content/50 uppercase tracking-wide">Previous</span>
+                  <span class="font-medium text-sm">{@series_info.prev_post.title}</span>
+                </div>
+              </a>
+            </div>
+            <div class="text-right">
+              <a
+                :if={@series_info.next_post}
+                href={"/blog/#{@series_info.next_post.slug}"}
+                class="block card bg-base-100 border border-base-300 hover:shadow-lg transition-shadow h-full"
+              >
+                <div class="card-body py-4 px-5 items-end">
+                  <span class="text-xs text-base-content/50 uppercase tracking-wide">Next</span>
+                  <span class="font-medium text-sm">{@series_info.next_post.title}</span>
+                </div>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <footer :if={!@series_info} class="mt-12 pt-8 border-t border-base-300">
           <div class="flex gap-4">
             <button class="btn btn-primary">
               Share

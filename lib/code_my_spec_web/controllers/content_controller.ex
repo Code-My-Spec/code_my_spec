@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.ContentController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Content
+  alias CodeMySpec.Content.ContentRepository
 
   @index_config %{
     blog: %{
@@ -137,11 +138,13 @@ defmodule CodeMySpecWeb.ContentController do
         base_url = CodeMySpecWeb.Endpoint.url()
         canonical = build_canonical_url(content, is_protected)
         is_article = content.content_type == :blog
+        series_info = build_series_info(content)
 
         render(conn, template_action(template),
           content: content,
           tags: [],
           template: template,
+          series_info: series_info,
           page_title: content.meta_title || content.title || content.slug,
           meta_description: content.meta_description,
           og_title: content.og_title,
@@ -400,6 +403,32 @@ defmodule CodeMySpecWeb.ContentController do
     breadcrumb = build_breadcrumb(content, base_url)
 
     Jason.encode!(schemas ++ [breadcrumb])
+  end
+
+  defp build_series_info(content) do
+    series_name = get_in(content.metadata || %{}, ["series"])
+
+    case series_name do
+      nil ->
+        nil
+
+      name ->
+        posts = ContentRepository.list_series_posts(name)
+
+        if length(posts) > 1 do
+          current_idx = Enum.find_index(posts, &(&1.slug == content.slug))
+
+          %{
+            name: name,
+            posts: posts,
+            current_slug: content.slug,
+            prev_post: if(current_idx && current_idx > 0, do: Enum.at(posts, current_idx - 1)),
+            next_post: if(current_idx, do: Enum.at(posts, current_idx + 1))
+          }
+        else
+          nil
+        end
+    end
   end
 
   defp build_breadcrumb(content, base_url) do
