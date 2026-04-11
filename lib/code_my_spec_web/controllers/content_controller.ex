@@ -134,7 +134,7 @@ defmodule CodeMySpecWeb.ContentController do
 
     case load_and_verify_content(scope, slug, content_type, is_protected) do
       {:ok, content} ->
-        template = Map.get(content.metadata || %{}, "template", "default")
+        template = get_in(content.metadata || %{}, ["metadata", "template"]) || "default"
         base_url = CodeMySpecWeb.Endpoint.url()
         canonical = build_canonical_url(content, is_protected)
         is_article = content.content_type == :blog
@@ -297,7 +297,7 @@ defmodule CodeMySpecWeb.ContentController do
         :blog ->
           tag_names = Enum.map(content.tags || [], & &1.name)
           word_count = word_count(content.processed_content)
-          category = Map.get(content.metadata || %{}, "category")
+          category = get_in(content.metadata || %{}, ["metadata", "category"])
 
           blog_posting =
             %{
@@ -406,7 +406,7 @@ defmodule CodeMySpecWeb.ContentController do
   end
 
   defp build_series_info(content) do
-    series_name = get_in(content.metadata || %{}, ["series"])
+    series_name = get_in(content.metadata || %{}, ["metadata", "series"])
 
     case series_name do
       nil ->

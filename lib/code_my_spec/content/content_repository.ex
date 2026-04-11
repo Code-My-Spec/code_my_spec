@@ -124,11 +124,11 @@ defmodule CodeMySpec.Content.ContentRepository do
     now = DateTime.utc_now()
 
     Content
-    |> where([c], fragment("?->>'series' = ?", c.metadata, ^series_name))
+    |> where([c], fragment("?->'metadata'->>'series' = ?", c.metadata, ^series_name))
     |> where([c], c.protected == false)
     |> where([c], is_nil(c.publish_at) or c.publish_at <= ^now)
     |> where([c], is_nil(c.expires_at) or c.expires_at > ^now)
-    |> order_by([c], fragment("(?->>'series_part')::integer", c.metadata))
+    |> order_by([c], fragment("(?->'metadata'->>'series_part')::integer", c.metadata))
     |> Repo.all()
   end
 
