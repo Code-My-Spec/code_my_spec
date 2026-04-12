@@ -102,6 +102,31 @@ download_binary() {
 }
 
 main() {
+  local binary_file
+  binary_file=$(detect_platform)
+
+  # First-time install: no binary exists yet
+  if [ ! -x "$BIN_DIR/$BINARY_NAME" ]; then
+    log "Binary not found — first-time install"
+
+    local remote_version
+    remote_version=$(get_remote_version)
+
+    if [ -z "$remote_version" ]; then
+      log "Could not fetch remote version (offline or rate-limited)"
+      exit 0
+    fi
+
+    log "Installing $BINARY_NAME v$remote_version..."
+    if download_binary "$binary_file" "$remote_version"; then
+      log "First-time install complete"
+    else
+      log "First-time install failed (will retry next session)"
+    fi
+    exit 0
+  fi
+
+  # Update check: binary exists, compare versions
   log "Checking for updates..."
 
   local local_version
@@ -125,9 +150,6 @@ main() {
 
   if version_gt "$remote_version" "$local_version"; then
     log "Update available: $local_version -> $remote_version"
-
-    local binary_file
-    binary_file=$(detect_platform)
 
     if download_binary "$binary_file" "$remote_version"; then
       log "Auto-update complete"

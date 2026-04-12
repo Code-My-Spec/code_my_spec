@@ -25,11 +25,7 @@ claude plugin marketplace add Code-My-Spec/code_my_spec_claude_code_extension
 claude plugin install codemyspec@codemyspec
 ```
 
-Then download the CLI binary:
-
-```bash
-bash ~/.claude/plugins/cache/codemyspec/install.sh
-```
+The CLI binary downloads automatically on first session start.
 
 ### Manual Install
 
