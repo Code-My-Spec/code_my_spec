@@ -21,10 +21,16 @@ esac
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CMS_BIN="$PLUGIN_ROOT/bin/cms"
 
-# On SessionStart: auto-update binary and ensure server is running
+# On SessionStart: ensure binary exists and server is running
 if [ "$EVENT" = "SessionStart" ]; then
-  "$SCRIPT_DIR/auto-update" &>/dev/null &
-  disown
+  # Install binary if missing (foreground — must complete before server start)
+  if [ ! -x "$CMS_BIN" ]; then
+    "$SCRIPT_DIR/auto-update" 2>/dev/null
+  else
+    # Binary exists — check for updates in background
+    "$SCRIPT_DIR/auto-update" &>/dev/null &
+    disown
+  fi
 
   # Start server if not already running
   if [ -x "$CMS_BIN" ] && ! curl -sf --max-time 1 http://localhost:4003/health >/dev/null 2>&1; then
