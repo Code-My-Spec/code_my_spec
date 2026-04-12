@@ -167,6 +167,10 @@ jobs:
           name: extension
           path: extension
 
+      - name: Fix script permissions
+        run: |
+          chmod +x extension/.claude-plugin/bin/* extension/install.sh
+
       - name: Get version from tag
         id: version
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
