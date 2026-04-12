@@ -11,6 +11,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
   defp valid_module_atoms do
     [
       AgentTasks.ArchitectureDesign,
+      AgentTasks.CodeGeneration,
       AgentTasks.ComponentCode,
       AgentTasks.ComponentSpec,
       AgentTasks.ComponentTest,
@@ -33,9 +34,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ProjectSetup,
       AgentTasks.QaApp,
       AgentTasks.QaIntegrationPlan,
-      AgentTasks.QaJourneyExecute,
-      AgentTasks.QaJourneyPlan,
-      AgentTasks.QaJourneyWallaby,
+      AgentTasks.QaJourney,
       AgentTasks.QaPreflight,
       AgentTasks.QaSetup,
       AgentTasks.QaStory,
@@ -51,6 +50,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
   defp valid_string_names do
     [
       "ArchitectureDesign",
+      "CodeGeneration",
       "ComponentCode",
       "ComponentSpec",
       "ComponentTest",
@@ -73,9 +73,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ProjectSetup",
       "QaApp",
       "QaIntegrationPlan",
-      "QaJourneyExecute",
-      "QaJourneyPlan",
-      "QaJourneyWallaby",
+      "QaJourney",
       "QaPreflight",
       "QaSetup",
       "QaStory",
@@ -134,9 +132,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.TriageIssues} = SessionType.cast("TriageIssues")
       assert {:ok, AgentTasks.FixBddSpecs} = SessionType.cast("FixBddSpecs")
       assert {:ok, AgentTasks.FixIssues} = SessionType.cast("FixIssues")
-      assert {:ok, AgentTasks.QaJourneyExecute} = SessionType.cast("QaJourneyExecute")
-      assert {:ok, AgentTasks.QaJourneyPlan} = SessionType.cast("QaJourneyPlan")
-      assert {:ok, AgentTasks.QaJourneyWallaby} = SessionType.cast("QaJourneyWallaby")
+      assert {:ok, AgentTasks.QaJourney} = SessionType.cast("QaJourney")
     end
 
     test "returns module atom for valid atom" do

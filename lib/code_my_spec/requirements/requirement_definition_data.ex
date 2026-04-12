@@ -760,7 +760,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         node_scope: :self,
         check_type: :path_exists,
         config: %{path: ".code_my_spec/qa/journey_plan.md"},
-        satisfied_by: AgentTasks.QaJourneyPlan,
+        satisfied_by: AgentTasks.QaJourney,
         artifact_type: :review,
         description: "QA journey plan exists and valid",
         prerequisites: [9]
@@ -771,7 +771,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         node_scope: :self,
         check_type: :path_exists,
         config: %{path: ".code_my_spec/qa/journey_result.md"},
-        satisfied_by: AgentTasks.QaJourneyExecute,
+        satisfied_by: AgentTasks.QaJourney,
         artifact_type: :review,
         description: "QA journey result exists and valid",
         prerequisites: [10]
@@ -782,7 +782,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         node_scope: :self,
         check_type: :path_exists,
         config: %{path_prefix: "test/e2e/"},
-        satisfied_by: AgentTasks.QaJourneyWallaby,
+        satisfied_by: AgentTasks.QaJourney,
         artifact_type: :tests,
         description: "Wallaby journey tests exist",
         prerequisites: [11]
