@@ -18,10 +18,26 @@ case "$EVENT" in
   *)             exit 0 ;;
 esac
 
-# Auto-update binary check on SessionStart (background, non-blocking)
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CMS_BIN="$PLUGIN_ROOT/bin/cms"
+
+# On SessionStart: auto-update binary and ensure server is running
 if [ "$EVENT" = "SessionStart" ]; then
   "$SCRIPT_DIR/auto-update" &>/dev/null &
   disown
+
+  # Start server if not already running
+  if [ -x "$CMS_BIN" ] && ! curl -sf --max-time 1 http://localhost:4003/health >/dev/null 2>&1; then
+    "$CMS_BIN" server &>/dev/null &
+    disown
+    # Wait for server to be ready (up to 10s)
+    for i in $(seq 1 20); do
+      if curl -sf --max-time 1 http://localhost:4003/health >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.5
+    done
+  fi
 fi
 
 curl -s -X POST "http://localhost:4003${ENDPOINT}" \
