@@ -1,40 +1,26 @@
 <Layouts.marketing flash={@flash} current_scope={@current_scope}>
   <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
-      <aside class="lg:col-span-1 order-2 lg:order-1">
-        <div class="sticky top-4 space-y-6">
-          <div>
-            <h3 class="font-semibold text-lg mb-2">Tags</h3>
-            <div :if={!Enum.empty?(@tags)} class="flex flex-col gap-2">
-              <span :for={tag <- @tags} class="badge badge-primary">
-                {tag.name}
+      <!-- Series sidebar (only when series exists) -->
+      <aside :if={@series_info} class="lg:col-span-1 order-2 lg:order-1">
+        <div class="sticky top-4">
+          <h3 class="font-semibold text-lg mb-2">{@series_info.name}</h3>
+          <nav class="flex flex-col gap-1">
+            <a
+              :for={post <- @series_info.posts}
+              href={"/blog/#{post.slug}"}
+              class={"block text-sm px-3 py-2 rounded-lg transition-colors #{if post.slug == @series_info.current_slug, do: "bg-primary/10 text-primary font-medium", else: "hover:bg-base-200 text-base-content/70"}"}
+            >
+              <span :if={get_in(post.metadata || %{}, ["metadata", "series_part"])} class="font-mono text-xs opacity-60 mr-1">
+                {get_in(post.metadata || %{}, ["metadata", "series_part"])}.
               </span>
-            </div>
-            <div :if={Enum.empty?(@tags)} class="opacity-60 text-sm">
-              No tags
-            </div>
-          </div>
-
-          <!-- Series Navigation (sidebar) -->
-          <div :if={@series_info}>
-            <h3 class="font-semibold text-lg mb-2">{@series_info.name}</h3>
-            <nav class="flex flex-col gap-1">
-              <a
-                :for={post <- @series_info.posts}
-                href={"/blog/#{post.slug}"}
-                class={"block text-sm px-3 py-2 rounded-lg transition-colors #{if post.slug == @series_info.current_slug, do: "bg-primary/10 text-primary font-medium", else: "hover:bg-base-200 text-base-content/70"}"}
-              >
-                <span :if={get_in(post.metadata || %{}, ["metadata", "series_part"])} class="font-mono text-xs opacity-60 mr-1">
-                  {get_in(post.metadata || %{}, ["metadata", "series_part"])}.
-                </span>
-                {post.title || post.slug}
-              </a>
-            </nav>
-          </div>
+              {post.title || post.slug}
+            </a>
+          </nav>
         </div>
       </aside>
 
-      <article class="lg:col-span-3 order-1 lg:order-2">
+      <article class={"order-1 lg:order-2 #{if @series_info, do: "lg:col-span-3", else: "lg:col-span-4 max-w-4xl mx-auto"}"}>
         <!-- Series banner -->
         <div :if={@series_info} class="mb-6 flex items-center gap-2 text-sm text-base-content/60">
           <.icon name="hero-document-text" class="w-4 h-4" />
@@ -58,6 +44,13 @@
               Content not available
             </div>
           <% end %>
+        </div>
+
+        <!-- Tags at the bottom -->
+        <div :if={!Enum.empty?(@tags)} class="mt-8 flex gap-2 flex-wrap">
+          <span :for={tag <- @tags} class="badge badge-primary">
+            {tag.name}
+          </span>
         </div>
 
         <!-- Prev/Next navigation -->
@@ -89,14 +82,6 @@
             </div>
           </div>
         </div>
-
-        <footer :if={!@series_info} class="mt-12 pt-8 border-t border-base-300">
-          <div class="flex gap-4">
-            <button class="btn btn-primary">
-              Share
-            </button>
-          </div>
-        </footer>
       </article>
     </div>
   </div>
