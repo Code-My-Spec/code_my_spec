@@ -56,7 +56,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
         names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
 
         {:ok, :invalid,
-         "#{length(issues)} unresolved medium+ issue(s):\n\n#{names}\n\nUse `.code_my_spec/tools/issues/resolve-issue <id> \"<resolution>\"` for each fixed issue."}
+         "#{length(issues)} unresolved medium+ issue(s):\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
     end
   end
 
@@ -97,10 +97,10 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     ## Tools
 
-    Use the following bash tools in `.code_my_spec/tools/issues/` to interact with issues:
+    Use the following MCP tools to interact with issues:
 
-    - `.code_my_spec/tools/issues/get-issue <id>` — read full issue details
-    - `.code_my_spec/tools/issues/resolve-issue <id> "<resolution>"` — mark as resolved with description of fix
+    - `get_issue` — read full issue details (pass the issue `id`)
+    - `resolve_issue` — mark as resolved with description of fix (pass `id` and `resolution`)
 
     ## Goal
 
@@ -112,7 +112,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
        - Read the relevant source files
        - Make the fix
        - Verify the fix works
-    3. **Resolve the issue** — run `.code_my_spec/tools/issues/resolve-issue <id> "<resolution>"` with a summary of:
+    3. **Resolve the issue** — call `resolve_issue` with the issue `id` and a `resolution` summary of:
        - What was fixed
        - Files changed
        - How the fix was verified
@@ -143,7 +143,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     Accepted issues: `#{Paths.issues_accepted_dir()}/`
 
-    Fix the issues, resolve them with the tool, and run tests to verify.
+    Fix the issues, resolve them with `resolve_issue`, and run tests to verify.
     """
   end
 
