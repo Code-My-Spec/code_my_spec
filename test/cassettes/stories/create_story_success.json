@@ -1,0 +1,83 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-12T14:56:59.794509Z",
+      "request": {
+        "body_json": {
+          "story": {
+            "description": "Created by remote_client_test",
+            "status": "in_progress",
+            "title": "RemoteClient Test Story"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "708492f9-454e-482f-a2eb-be64f0356b87"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "http://localhost:4000/api/stories"
+      },
+      "response": {
+        "body_json": {
+          "data": {
+            "acceptance_criteria": [],
+            "account_id": "0f27281c-240b-4d6d-8e52-9c5972329522",
+            "component": null,
+            "component_id": null,
+            "criteria": [],
+            "description": "Created by remote_client_test",
+            "id": 552,
+            "inserted_at": "2026-04-12T14:56:59Z",
+            "lock_expires_at": null,
+            "locked_at": null,
+            "locked_by": null,
+            "priority": null,
+            "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+            "status": "in_progress",
+            "tags": [],
+            "title": "RemoteClient Test Story",
+            "updated_at": "2026-04-12T14:56:59Z"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:56:59 GMT"
+          ],
+          "location": [
+            "/api/stories/552"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWj4iRF0SnzaXQAAaUD"
+          ]
+        },
+        "status": 201
+      }
+    }
+  ],
+  "version": "2.0"
+}

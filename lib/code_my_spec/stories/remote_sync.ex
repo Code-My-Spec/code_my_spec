@@ -15,19 +15,12 @@ defmodule CodeMySpec.Stories.RemoteSync do
   Fetches stories from the remote API and upserts them locally.
   """
   @spec sync(Scope.t()) :: :ok | {:error, term()}
-  def sync(%Scope{} = scope) do
-    client = RemoteClient.new(scope)
-
-    case RemoteClient.list_project_stories(client) do
-      {:ok, %{status: 200, body: %{"data" => stories}}} ->
-        remote_stories = Enum.map(stories, &RemoteClient.deserialize_story/1)
-        Logger.debug("[RemoteSync] Upserting #{length(remote_stories)} stories from remote")
-        Enum.each(remote_stories, &upsert_story(&1, scope))
+  def sync(%Scope{} = scope, opts \\ []) do
+    case RemoteClient.list_project_stories(scope, opts) do
+      {:ok, stories} ->
+        Logger.debug("[RemoteSync] Upserting #{length(stories)} stories from remote")
+        Enum.each(stories, &upsert_story(&1, scope))
         :ok
-
-      {:ok, %{status: status, body: body}} ->
-        Logger.warning("[RemoteSync] Unexpected status: #{status}, body: #{inspect(body)}")
-        {:error, {:unexpected_status, status}}
 
       {:error, reason} ->
         Logger.warning("[RemoteSync] Failed to fetch remote stories: #{inspect(reason)}")

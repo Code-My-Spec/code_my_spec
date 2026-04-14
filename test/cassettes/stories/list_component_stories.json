@@ -1,0 +1,120 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-12T14:55:13.492839Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "916b066c-bd9e-4c6f-8634-b2df7da9db94"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://dev.codemyspec.com/api/stories-list/component/00000000-0000-0000-0000-000000000000"
+      },
+      "response": {
+        "body_json": {
+          "error": "Project not found"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=86400"
+          ],
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "9eb31217da2f39f8-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:55:13 GMT"
+          ],
+          "nel": [
+            "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}"
+          ],
+          "report-to": [
+            "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=ylzmPYPnLdQ3NPl1Jybdpt0jMz47qYNu0HpP80mXZPQgKJ%2BqQE9CMHUJ7G%2BWsDGS05ojNSYWTtpbDQXpUYamDGZvz1jxfmnFG2%2BFyOXXWPpYEmkzAMdWoo%2BW3iUFWQxTbr9xioU%3D\"}]}"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "server-timing": [
+            "cfCacheStatus;desc=\"DYNAMIC\"",
+            "cfEdge;dur=3,cfOrigin;dur=904"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWjyWV87Q_k5HAAAVLm"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-04-12T14:56:20.441548Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "708492f9-454e-482f-a2eb-be64f0356b87"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "http://localhost:4000/api/stories-list/component/00000000-0000-0000-0000-000000000000"
+      },
+      "response": {
+        "body_json": {
+          "data": []
+        },
+        "body_type": "json",
+        "headers": {
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:56:20 GMT"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWj2PwRusb3EY0AAipB"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

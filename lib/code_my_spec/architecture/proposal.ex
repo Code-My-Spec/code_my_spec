@@ -15,7 +15,7 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
-  alias CodeMySpec.Stories.RemoteClient, as: StoriesClient
+  alias CodeMySpec.Stories
 
   defstruct [
     :app_name,
@@ -665,18 +665,19 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   defp link_stories_to_component(scope, story_ids, component_id) do
-    client = StoriesClient.new(scope)
-
     Enum.each(story_ids, fn story_id ->
-      case StoriesClient.set_story_component(client, story_id, component_id) do
-        {:ok, %{status: status}} when status in 200..299 ->
-          Logger.debug("[Proposal] Linked story #{story_id} to component #{component_id}")
+      case Stories.get_story(scope, story_id) do
+        nil ->
+          Logger.warning("[Proposal] Story #{story_id} not found, skipping link")
 
-        {:ok, %{status: status, body: body}} ->
-          Logger.warning("[Proposal] Failed to link story #{story_id}: HTTP #{status} #{inspect(body)}")
+        story ->
+          case Stories.set_story_component(scope, story, component_id) do
+            {:ok, _story} ->
+              Logger.debug("[Proposal] Linked story #{story_id} to component #{component_id}")
 
-        {:error, reason} ->
-          Logger.warning("[Proposal] Failed to link story #{story_id}: #{inspect(reason)}")
+            {:error, reason} ->
+              Logger.warning("[Proposal] Failed to link story #{story_id}: #{inspect(reason)}")
+          end
       end
     end)
   end

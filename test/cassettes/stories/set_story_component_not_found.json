@@ -1,0 +1,133 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-12T14:55:07.789459Z",
+      "request": {
+        "body_json": {
+          "component_id": "comp-1"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "db3a7a05-b859-481b-804e-382e9fd5270e"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://dev.codemyspec.com/api/stories/999999/set-component"
+      },
+      "response": {
+        "body_json": {
+          "error": "Project not found"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=86400"
+          ],
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "9eb311f8488239f8-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:55:07 GMT"
+          ],
+          "nel": [
+            "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}"
+          ],
+          "report-to": [
+            "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=iX79Y2DsX7XgzKXeAINyFTGSJTD29cSW%2FsOS3f1HO4qRRqPm0uNH3fwJbbMv9xwnfb9y%2FBu3f%2FLwtHzlEbnb03KeRpYagwdOSumLPRQO9%2FWybW8URLuvvUl0yqSTBy1aRlax580%3D\"}]}"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWjyBFrrLSGiwIAAeui"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-04-12T14:56:20.026129Z",
+      "request": {
+        "body_json": {
+          "component_id": "comp-1"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "708492f9-454e-482f-a2eb-be64f0356b87"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "http://localhost:4000/api/stories/999999/set-component"
+      },
+      "response": {
+        "body_json": {
+          "error": "Story not found",
+          "status": "not_found"
+        },
+        "body_type": "json",
+        "headers": {
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:56:19 GMT"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWj2ODbxAL3EY0AAaNj"
+          ]
+        },
+        "status": 404
+      }
+    }
+  ],
+  "version": "2.0"
+}

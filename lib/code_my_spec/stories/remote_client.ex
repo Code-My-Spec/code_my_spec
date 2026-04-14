@@ -1,11 +1,18 @@
 defmodule CodeMySpec.Stories.RemoteClient do
   @moduledoc """
   HTTP client for the remote Stories API.
+
+  Implements the same public interface as StoriesRepository so it can be
+  swapped in via the `:stories_implementation` config key.
   """
 
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+
+  # ---------------------------------------------------------------------------
+  # Client construction
+  # ---------------------------------------------------------------------------
 
   def new(%Scope{} = scope, opts \\ []) do
     token = opts[:token] || get_token!()
@@ -25,15 +32,177 @@ defmodule CodeMySpec.Stories.RemoteClient do
     token
   end
 
-  def list_project_stories(client) do
-    Req.get(client, url: "/api/stories-list/project")
+  # ---------------------------------------------------------------------------
+  # List operations
+  # ---------------------------------------------------------------------------
+
+  def list_stories(%Scope{} = scope, opts \\ []) do
+    client = new(scope, opts)
+    {:ok, %{status: 200, body: body}} = Req.get(client, url: "/api/stories")
+    Enum.map(body["data"], &deserialize_story/1)
   end
 
-  def set_story_component(client, story_id, component_id) do
-    Req.post(client, url: "/api/stories/#{story_id}/set-component", json: %{component_id: component_id})
+  def list_project_stories(%Scope{} = scope, opts \\ []) do
+    client = new(scope, opts)
+    {:ok, %{status: 200, body: body}} = Req.get(client, url: "/api/stories-list/project")
+    {:ok, Enum.map(body["data"], &deserialize_story/1)}
   end
 
-  # Deserialization — public so callers can convert response bodies to structs
+  def list_project_stories_paginated(%Scope{} = scope, opts \\ []) do
+    {client_opts, query_opts} = split_opts(opts)
+    client = new(scope, client_opts)
+
+    params =
+      query_opts
+      |> Keyword.take([:limit, :offset, :search, :tag])
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    {:ok, %{status: 200, body: body}} =
+      Req.get(client, url: "/api/stories-list/paginated", params: params)
+
+    stories = Enum.map(body["data"], &deserialize_story/1)
+    total = body["total"]
+    {stories, total}
+  end
+
+  def list_story_titles(%Scope{} = scope, opts \\ []) do
+    {client_opts, query_opts} = split_opts(opts)
+    client = new(scope, client_opts)
+
+    params =
+      query_opts
+      |> Keyword.take([:search])
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    {:ok, %{status: 200, body: body}} =
+      Req.get(client, url: "/api/stories-list/titles", params: params)
+
+    body["data"]
+  end
+
+  def list_project_stories_by_priority(%Scope{} = scope, opts \\ []) do
+    client = new(scope, opts)
+
+    {:ok, %{status: 200, body: body}} =
+      Req.get(client, url: "/api/stories-list/by-priority")
+
+    Enum.map(body["data"], &deserialize_story/1)
+  end
+
+  def list_unsatisfied_stories(%Scope{} = scope, opts \\ []) do
+    client = new(scope, opts)
+
+    {:ok, %{status: 200, body: body}} =
+      Req.get(client, url: "/api/stories-list/unsatisfied")
+
+    Enum.map(body["data"], &deserialize_story/1)
+  end
+
+  def list_component_stories(%Scope{} = scope, component_id, opts \\ []) do
+    client = new(scope, opts)
+
+    {:ok, %{status: 200, body: body}} =
+      Req.get(client, url: "/api/stories-list/component/#{component_id}")
+
+    Enum.map(body["data"], &deserialize_story/1)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Single-record operations
+  # ---------------------------------------------------------------------------
+
+  def get_story(%Scope{} = scope, id, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.get(client, url: "/api/stories/#{id}") do
+      {:ok, %{status: 200, body: body}} -> deserialize_story(body["data"])
+      {:ok, %{status: 404}} -> nil
+    end
+  end
+
+  def get_story!(%Scope{} = scope, id, opts \\ []) do
+    case get_story(scope, id, opts) do
+      nil -> raise Ecto.NoResultsError, queryable: Story
+      story -> story
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Mutation operations
+  # ---------------------------------------------------------------------------
+
+  def create_story(%Scope{} = scope, attrs, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.post(client, url: "/api/stories", json: %{story: stringify_attrs(attrs)}) do
+      {:ok, %{status: 201, body: body}} ->
+        {:ok, deserialize_story(body["data"])}
+
+      {:ok, %{status: 422, body: body}} ->
+        {:error, errors_to_changeset(body, %Story{})}
+    end
+  end
+
+  def update_story(%Scope{} = scope, %Story{} = story, attrs, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.put(client, url: "/api/stories/#{story.id}", json: %{story: stringify_attrs(attrs)}) do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, deserialize_story(body["data"])}
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+
+      {:ok, %{status: 422, body: body}} ->
+        {:error, errors_to_changeset(body, story)}
+    end
+  end
+
+  def delete_story(%Scope{} = scope, %Story{} = story, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.delete(client, url: "/api/stories/#{story.id}") do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, deserialize_story(body["data"])}
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+    end
+  end
+
+  def set_story_component(%Scope{} = scope, %Story{} = story, component_id, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.post(client,
+           url: "/api/stories/#{story.id}/set-component",
+           json: %{component_id: component_id}
+         ) do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, deserialize_story(body["data"])}
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+
+      {:ok, %{status: 422, body: body}} ->
+        {:error, errors_to_changeset(body, story)}
+    end
+  end
+
+  def clear_story_component(%Scope{} = scope, %Story{} = story, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.post(client, url: "/api/stories/#{story.id}/clear-component", json: %{}) do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, deserialize_story(body["data"])}
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Deserialization
+  # ---------------------------------------------------------------------------
 
   def deserialize_story(data) do
     %Story{
@@ -42,7 +211,7 @@ defmodule CodeMySpec.Stories.RemoteClient do
       description: data["description"],
       acceptance_criteria: data["acceptance_criteria"] || [],
       criteria: parse_criteria(data["criteria"]),
-      status: parse_status(data["status"]),
+      status: parse_enum(data["status"]),
       priority: data["priority"],
       locked_at: parse_datetime(data["locked_at"]),
       lock_expires_at: parse_datetime(data["lock_expires_at"]),
@@ -56,7 +225,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
     }
   end
 
-  # Private
+  # ---------------------------------------------------------------------------
+  # Private helpers
+  # ---------------------------------------------------------------------------
 
   defp build_headers(token, %Scope{active_project_id: pid}) when is_binary(pid) do
     [authorization: "Bearer #{token}", "x-project-id": pid]
@@ -77,8 +248,41 @@ defmodule CodeMySpec.Stories.RemoteClient do
     end
   end
 
-  defp parse_status(nil), do: nil
-  defp parse_status(status) when is_binary(status), do: String.to_existing_atom(status)
+  defp split_opts(opts) do
+    client_keys = [:plug, :token]
+    client_opts = Keyword.take(opts, client_keys)
+    query_opts = Keyword.drop(opts, client_keys)
+    {client_opts, query_opts}
+  end
+
+  defp stringify_attrs(attrs) when is_map(attrs) do
+    Map.new(attrs, fn
+      {k, v} when is_atom(k) -> {Atom.to_string(k), v}
+      {k, v} -> {k, v}
+    end)
+  end
+
+  defp errors_to_changeset(%{"errors" => errors}, %Story{} = story) do
+    errors
+    |> Enum.reduce(Ecto.Changeset.change(story), fn {field, messages}, changeset ->
+      field_atom = String.to_existing_atom(field)
+
+      Enum.reduce(List.wrap(messages), changeset, fn msg, cs ->
+        Ecto.Changeset.add_error(cs, field_atom, msg)
+      end)
+    end)
+    |> Map.put(:valid?, false)
+  end
+
+  defp errors_to_changeset(_body, %Story{} = story) do
+    story
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:base, "unknown error")
+    |> Map.put(:valid?, false)
+  end
+
+  defp parse_enum(nil), do: nil
+  defp parse_enum(val) when is_binary(val), do: String.to_existing_atom(val)
 
   defp parse_tags(nil), do: []
 

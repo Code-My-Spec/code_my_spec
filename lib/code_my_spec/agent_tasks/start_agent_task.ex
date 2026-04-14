@@ -48,6 +48,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "code_generation" => AgentTasks.CodeGeneration,
     "write_bdd_specs" => AgentTasks.WriteBddSpecs,
 
+    "story_interview" => AgentTasks.StoryInterview,
+    "story_review" => AgentTasks.StoryInterview,
     "design_ui" => AgentTasks.DesignUi,
     "liveview_spec" => AgentTasks.LiveViewSpec,
     "develop_live_context" => AgentTasks.DevelopLiveContext,
@@ -75,6 +77,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # Tasks that don't require a component/module_name
   @componentless_tasks [
     "project_setup",
+    "story_interview",
+    "story_review",
     "architecture_design",
     "code_generation",
     "write_bdd_specs",

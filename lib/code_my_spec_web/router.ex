@@ -135,6 +135,8 @@ defmodule CodeMySpecWeb.Router do
     end
 
     get "/stories-list/project", StoriesController, :list_project_stories
+    get "/stories-list/paginated", StoriesController, :list_project_stories_paginated
+    get "/stories-list/titles", StoriesController, :list_story_titles
 
     get "/stories-list/by-priority",
         StoriesController,

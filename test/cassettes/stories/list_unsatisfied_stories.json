@@ -1,0 +1,140 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-12T14:55:07.495665Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "b3fbc879-fa08-43b0-a1d5-513bdc2f427c"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://dev.codemyspec.com/api/stories-list/unsatisfied"
+      },
+      "response": {
+        "body_json": {
+          "error": "Project not found"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=86400"
+          ],
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "9eb311f65ed239f8-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:55:07 GMT"
+          ],
+          "nel": [
+            "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}"
+          ],
+          "report-to": [
+            "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=lNUCsJe%2FTa0gOT1EF%2FT8mQXWv9gjaNzj2rp8liKZ0Cr%2BREbmkFaO5CNgGp4yWy31%2FbJ0vahzOoKTT0Z9eX1DzM%2FHKN9FFLNgSB%2F1OMT9xWaJn6ISUOkQWqVk9bs5RKNeTl7xzXs%3D\"}]}"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "server-timing": [
+            "cfCacheStatus;desc=\"DYNAMIC\"",
+            "cfEdge;dur=2,cfOrigin;dur=266"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWjx_-S9jmGiwIAAeuC"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-04-12T14:56:23.364626Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "708492f9-454e-482f-a2eb-be64f0356b87"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "http://localhost:4000/api/stories-list/unsatisfied"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "acceptance_criteria": [],
+              "account_id": "0f27281c-240b-4d6d-8e52-9c5972329522",
+              "component": null,
+              "component_id": null,
+              "criteria": [],
+              "description": "Created by remote_client_test",
+              "id": 551,
+              "inserted_at": "2026-04-12T14:56:20Z",
+              "lock_expires_at": null,
+              "locked_at": null,
+              "locked_by": null,
+              "priority": null,
+              "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+              "status": "in_progress",
+              "tags": [],
+              "title": "RemoteClient Test Story 70",
+              "updated_at": "2026-04-12T14:56:20Z"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:56:23 GMT"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWj2arUHkP3EY0AAVSm"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

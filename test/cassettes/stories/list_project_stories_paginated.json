@@ -1,0 +1,511 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-12T14:55:10.557792Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "c50a21d7-e7ab-4166-bbda-a970cae30a0f"
+          ]
+        },
+        "method": "GET",
+        "query_string": "limit=5&offset=0",
+        "uri": "https://dev.codemyspec.com/api/stories-list/paginated"
+      },
+      "response": {
+        "body_json": {
+          "error": "Project not found"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=86400"
+          ],
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "9eb312058b5839f8-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:55:10 GMT"
+          ],
+          "nel": [
+            "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}"
+          ],
+          "report-to": [
+            "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=r90%2BsPdyVc0W6n1ixRT0gkqZ95jNUXRQTqYwZDhDSjeVgcaJjc8Baka3PedTRGOuADgLP4aV1OAOp7mRIk4DHSMLl3ehuwfVqq0O81BCoXpZTHWlzJYPPZ12rM0AdgORh0XeaNE%3D\"}]}"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "server-timing": [
+            "cfCacheStatus;desc=\"DYNAMIC\"",
+            "cfEdge;dur=43,cfOrigin;dur=858"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWjyLJ7kYCGiwIAAewi"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-04-12T14:56:24.044834Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "708492f9-454e-482f-a2eb-be64f0356b87"
+          ]
+        },
+        "method": "GET",
+        "query_string": "limit=5&offset=0",
+        "uri": "http://localhost:4000/api/stories-list/paginated"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "acceptance_criteria": [],
+              "account_id": "0f27281c-240b-4d6d-8e52-9c5972329522",
+              "component": null,
+              "component_id": null,
+              "criteria": [],
+              "description": "Created by remote_client_test",
+              "id": 551,
+              "inserted_at": "2026-04-12T14:56:20Z",
+              "lock_expires_at": null,
+              "locked_at": null,
+              "locked_by": null,
+              "priority": null,
+              "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+              "status": "in_progress",
+              "tags": [],
+              "title": "RemoteClient Test Story 70",
+              "updated_at": "2026-04-12T14:56:20Z"
+            },
+            {
+              "acceptance_criteria": [
+                "Given I call the next-task endpoint, when there is an unsatisfied requirement with met prerequisites, then I receive a task description with a start-task link.",
+                "Given I call the start-task endpoint, then the task is activated and I receive a prompt with instructions for completing the task.",
+                "Given I am working on an automatic-validation task, when I complete an action that satisfies the requirement, then the PostToolUse hook response tells me the task is complete and to stop.",
+                "Given I stop after completing an automatic-validation task, when the stop hook evaluates my work as valid, then the stop is blocked and I am told to call next-task.",
+                "Given I stop after completing an automatic-validation task, when the stop hook evaluates my work as invalid, then the stop is blocked and I receive feedback on what to fix.",
+                "Given I am working on a manual-validation task, when I stop, then the stop is allowed (the user will evaluate).",
+                "Given I stop and the task passes, when there are no more actionable requirements, then the stop is allowed and the user is notified.",
+                "Given there are active sub-agent tasks on the session, when I stop, then the stop is allowed (sub-agents are still working)."
+              ],
+              "account_id": "0f27281c-240b-4d6d-8e52-9c5972329522",
+              "component": null,
+              "component_id": "583c71b8-f9ce-5f00-b5c7-8bb88765f471",
+              "criteria": [
+                {
+                  "description": "Given I call the next-task endpoint, when there is an unsatisfied requirement with met prerequisites, then I receive a task description with a start-task link.",
+                  "id": 4954,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Given I call the start-task endpoint, then the task is activated and I receive a prompt with instructions for completing the task.",
+                  "id": 4955,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Given I am working on an automatic-validation task, when I complete an action that satisfies the requirement, then the PostToolUse hook response tells me the task is complete and to stop.",
+                  "id": 4956,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Given I stop after completing an automatic-validation task, when the stop hook evaluates my work as valid, then the stop is blocked and I am told to call next-task.",
+                  "id": 4957,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Given I stop after completing an automatic-validation task, when the stop hook evaluates my work as invalid, then the stop is blocked and I receive feedback on what to fix.",
+                  "id": 4958,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Given I am working on a manual-validation task, when I stop, then the stop is allowed (the user will evaluate).",
+                  "id": 4959,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Given I stop and the task passes, when there are no more actionable requirements, then the stop is allowed and the user is notified.",
+                  "id": 4960,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Given there are active sub-agent tasks on the session, when I stop, then the stop is allowed (sub-agents are still working).",
+                  "id": 4961,
+                  "inserted_at": "2026-03-26T02:33:03Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 538,
+                  "updated_at": "2026-03-26T02:33:03Z",
+                  "verified": false,
+                  "verified_at": null
+                }
+              ],
+              "description": "As the LLM agent, I receive tasks from the orchestrator, complete them, and am automatically directed to the next task so that I can work through the project requirements without user intervention.",
+              "id": 538,
+              "inserted_at": "2026-03-26T02:33:03Z",
+              "lock_expires_at": null,
+              "locked_at": null,
+              "locked_by": null,
+              "priority": 1,
+              "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+              "status": null,
+              "tags": [],
+              "title": "LLM Agent Autonomous Task Execution",
+              "updated_at": "2026-03-26T02:51:11Z"
+            },
+            {
+              "acceptance_criteria": [
+                "validate_dependency_graph MCP tool detects circular dependencies",
+                "Generates review report with recommendations",
+                "Reviews story alignment - are all stories covered by components?",
+                "Validates dependency flow and component organization",
+                "Checks surface-to-domain separation (controllers/liveviews vs contexts)",
+                "ArchitectureReview agent task validates entire system architecture"
+              ],
+              "account_id": "0f27281c-240b-4d6d-8e52-9c5972329522",
+              "component": null,
+              "component_id": "16965231-4ef1-5c93-a8ee-dcce86b186ff",
+              "criteria": [
+                {
+                  "description": "validate_dependency_graph MCP tool detects circular dependencies",
+                  "id": 4419,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 471,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Generates review report with recommendations",
+                  "id": 4418,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 471,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Reviews story alignment - are all stories covered by components?",
+                  "id": 4417,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 471,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Validates dependency flow and component organization",
+                  "id": 4416,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 471,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Checks surface-to-domain separation (controllers/liveviews vs contexts)",
+                  "id": 4415,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 471,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "ArchitectureReview agent task validates entire system architecture",
+                  "id": 4414,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 471,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                }
+              ],
+              "description": "As an architect, I want automated system-wide architecture review so that the overall design maintains quality as the project grows.",
+              "id": 471,
+              "inserted_at": "2026-02-22T13:58:54Z",
+              "lock_expires_at": null,
+              "locked_at": null,
+              "locked_by": null,
+              "priority": 6,
+              "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+              "status": null,
+              "tags": [],
+              "title": "Architecture Review",
+              "updated_at": "2026-03-26T02:47:24Z"
+            },
+            {
+              "acceptance_criteria": [
+                "After making changes, I receive feedback from Credo (style), Sobelow (security), and spec alignment checks",
+                "Feedback is specific and actionable - tells me what file, what line, and what to fix",
+                "I can iterate on fixes within the same session until problems are resolved",
+                "If my evaluate/3 returns :invalid, I get the problem details to address",
+                "Problems are cleared automatically when I resolve the underlying issues"
+              ],
+              "account_id": "0f27281c-240b-4d6d-8e52-9c5972329522",
+              "component": null,
+              "component_id": "5ef0f1ad-ab60-5d0e-8d25-e20801850b50",
+              "criteria": [
+                {
+                  "description": "After making changes, I receive feedback from Credo (style), Sobelow (security), and spec alignment checks",
+                  "id": 4470,
+                  "inserted_at": "2026-02-22T17:03:34Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 470,
+                  "updated_at": "2026-02-22T17:03:34Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Feedback is specific and actionable - tells me what file, what line, and what to fix",
+                  "id": 4471,
+                  "inserted_at": "2026-02-22T17:03:34Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 470,
+                  "updated_at": "2026-02-22T17:03:34Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "I can iterate on fixes within the same session until problems are resolved",
+                  "id": 4472,
+                  "inserted_at": "2026-02-22T17:03:34Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 470,
+                  "updated_at": "2026-02-22T17:03:34Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "If my evaluate/3 returns :invalid, I get the problem details to address",
+                  "id": 4473,
+                  "inserted_at": "2026-02-22T17:03:34Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 470,
+                  "updated_at": "2026-02-22T17:03:34Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Problems are cleared automatically when I resolve the underlying issues",
+                  "id": 4474,
+                  "inserted_at": "2026-02-22T17:03:34Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 470,
+                  "updated_at": "2026-02-22T17:03:34Z",
+                  "verified": false,
+                  "verified_at": null
+                }
+              ],
+              "description": "As an LLM, I want structured feedback on code problems I introduce so that I can fix issues before stopping work on a task.",
+              "id": 470,
+              "inserted_at": "2026-02-22T13:58:54Z",
+              "lock_expires_at": null,
+              "locked_at": null,
+              "locked_by": null,
+              "priority": 32,
+              "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+              "status": null,
+              "tags": [],
+              "title": "Problem Feedback Loop",
+              "updated_at": "2026-03-26T02:47:23Z"
+            },
+            {
+              "acceptance_criteria": [
+                "Problems persisted to database for agent feedback",
+                "Analyzers run in parallel via StaticAnalysis.Runner",
+                "SpecAlignment analyzer validates spec/code correspondence",
+                "Sobelow analyzer checks for security vulnerabilities",
+                "Credo analyzer checks code style and consistency",
+                "Analysis gracefully skipped when no working directory available",
+                "ProblemFeedback agent task formats analysis results for Claude"
+              ],
+              "account_id": "0f27281c-240b-4d6d-8e52-9c5972329522",
+              "component": null,
+              "component_id": "eeeeceaa-cb18-5731-a73a-f68b5093f60d",
+              "criteria": [
+                {
+                  "description": "Problems persisted to database for agent feedback",
+                  "id": 4395,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 467,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Analyzers run in parallel via StaticAnalysis.Runner",
+                  "id": 4394,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 467,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "SpecAlignment analyzer validates spec/code correspondence",
+                  "id": 4393,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 467,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Sobelow analyzer checks for security vulnerabilities",
+                  "id": 4392,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 467,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Credo analyzer checks code style and consistency",
+                  "id": 4391,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 467,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "Analysis gracefully skipped when no working directory available",
+                  "id": 4397,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 467,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                },
+                {
+                  "description": "ProblemFeedback agent task formats analysis results for Claude",
+                  "id": 4396,
+                  "inserted_at": "2026-02-22T13:58:54Z",
+                  "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+                  "story_id": 467,
+                  "updated_at": "2026-02-22T13:58:54Z",
+                  "verified": false,
+                  "verified_at": null
+                }
+              ],
+              "description": "As a developer, I want automated static analysis integrated into the agent feedback loop so that code quality issues are caught and fixed.",
+              "id": 467,
+              "inserted_at": "2026-02-22T13:58:54Z",
+              "lock_expires_at": null,
+              "locked_at": null,
+              "locked_by": null,
+              "priority": 43,
+              "project_id": "708492f9-454e-482f-a2eb-be64f0356b87",
+              "status": null,
+              "tags": [],
+              "title": "Static Analysis Pipeline",
+              "updated_at": "2026-03-26T02:47:21Z"
+            }
+          ],
+          "total": 49
+        },
+        "body_type": "json",
+        "headers": {
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:56:23 GMT"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWj2dNR1Qf3EY0AAWyl"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

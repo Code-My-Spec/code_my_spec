@@ -1,6 +1,7 @@
 import Config
 
 config :code_my_spec, env: :dev_cli
+config :code_my_spec, stories_implementation: CodeMySpec.Stories.RemoteClient
 
 # SQLite adapter for CLI mode
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3

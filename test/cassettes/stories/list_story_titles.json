@@ -1,0 +1,366 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-12T14:55:09.108425Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "80431ec8-dc33-46fb-a36c-933f92d706a0"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://dev.codemyspec.com/api/stories-list/titles"
+      },
+      "response": {
+        "body_json": {
+          "error": "Project not found"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=86400"
+          ],
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "9eb311ff7e6b39f8-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:55:09 GMT"
+          ],
+          "nel": [
+            "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}"
+          ],
+          "report-to": [
+            "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=Uo80uzolMma%2BUyWMhmCDVDUEOLrKpFYtfhZ3eC5YY9nHyZdvQVT7%2FKIPa77vCWrmS2LWj%2FaHG%2B1My17FASIOoYG7HAHeD6ivVVkG0m3fC6wqlxDTvgB1e%2F52SPt2G2n9ITcgv%2Bc%3D\"}]}"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "server-timing": [
+            "cfCacheStatus;desc=\"DYNAMIC\"",
+            "cfEdge;dur=3,cfOrigin;dur=418"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWjyF8L0w6GiwIAAVJm"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-04-12T14:56:24.484418Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "708492f9-454e-482f-a2eb-be64f0356b87"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "http://localhost:4000/api/stories-list/titles"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "component_id": "f6b028d8-41a1-5a97-8c60-6d53b2ef2e6e",
+              "id": 466,
+              "title": "AI-Assisted Story Management"
+            },
+            {
+              "component_id": "41b0034a-531f-44ef-b4a9-02d37ab216c8",
+              "id": 85,
+              "title": "Agent Task Pipeline"
+            },
+            {
+              "component_id": "d1c76096-5a28-5a38-bca5-9002934a66d9",
+              "id": 465,
+              "title": "Application QA Testing"
+            },
+            {
+              "component_id": "d84ce5af-59f5-45e1-9e1e-b65903fa1672",
+              "id": 70,
+              "title": "Architecture Design"
+            },
+            {
+              "component_id": "16965231-4ef1-5c93-a8ee-dcce86b186ff",
+              "id": 471,
+              "title": "Architecture Review"
+            },
+            {
+              "component_id": "41758afd-f5da-52a7-a9ce-c833c6ccfc1d",
+              "id": 460,
+              "title": "BDD Specification Lifecycle"
+            },
+            {
+              "component_id": "cfddc06a-3c11-4816-951e-96a00ed2a9a3",
+              "id": 108,
+              "title": "CLI and IDE Integration"
+            },
+            {
+              "component_id": "f67c122b-0232-42cb-b03d-b6d7bf3a546c",
+              "id": 76,
+              "title": "Component Specification Generation"
+            },
+            {
+              "component_id": "254cc040-1ab5-4b6b-95cd-befc2f5b0f3e",
+              "id": 104,
+              "title": "Component Status Tracking"
+            },
+            {
+              "component_id": "4cec1d5f-2504-416c-aa14-0c4b1b8ea5be",
+              "id": 77,
+              "title": "Component Type System"
+            },
+            {
+              "component_id": "5cc5206f-c466-472b-8cd5-6b287f284029",
+              "id": 123,
+              "title": "Content Deletion and Expiration Handling"
+            },
+            {
+              "component_id": "5cc5206f-c466-472b-8cd5-6b287f284029",
+              "id": 116,
+              "title": "Content Rendering in LiveView"
+            },
+            {
+              "component_id": "5cc5206f-c466-472b-8cd5-6b287f284029",
+              "id": 118,
+              "title": "Content Scheduling System"
+            },
+            {
+              "component_id": "5cc5206f-c466-472b-8cd5-6b287f284029",
+              "id": 120,
+              "title": "Content Sync Status Monitoring"
+            },
+            {
+              "component_id": "8c164f47-7a86-5872-9f2e-711eb76a1e7f",
+              "id": 461,
+              "title": "Context Development Lifecycle"
+            },
+            {
+              "component_id": "f218979a-7cba-5451-b7d8-b79eedab795e",
+              "id": 463,
+              "title": "Controller Development"
+            },
+            {
+              "component_id": "dddfa8be-e2ba-4275-b6a3-6651258fefcf",
+              "id": 112,
+              "title": "Core Content Sync Pipeline"
+            },
+            {
+              "component_id": "7c16e853-0373-4d5d-ade5-aa6f3f7fda46",
+              "id": 99,
+              "title": "Design Evolution"
+            },
+            {
+              "component_id": "15112dca-fa06-4888-b2ce-ff0f127e60a3",
+              "id": 78,
+              "title": "Design Review Process"
+            },
+            {
+              "component_id": "90cafca1-f6d8-5bae-8cab-beeeb6fc1b52",
+              "id": 464,
+              "title": "Design System Creation"
+            },
+            {
+              "component_id": "dddfa8be-e2ba-4275-b6a3-6651258fefcf",
+              "id": 121,
+              "title": "Development Real-Time Preview"
+            },
+            {
+              "component_id": "9020bd38-9798-40c5-90c2-ec416684d23b",
+              "id": 66,
+              "title": "GitHub Repository Integration"
+            },
+            {
+              "component_id": "dddfa8be-e2ba-4275-b6a3-6651258fefcf",
+              "id": 114,
+              "title": "HTML Content Storage"
+            },
+            {
+              "component_id": "79334427-e9e5-41c8-b027-12ccdf0bee49",
+              "id": 95,
+              "title": "Implementation Failure Handling"
+            },
+            {
+              "component_id": "4cec1d5f-2504-416c-aa14-0c4b1b8ea5be",
+              "id": 107,
+              "title": "Implementation Orchestration"
+            },
+            {
+              "component_id": "583c71b8-f9ce-5f00-b5c7-8bb88765f471",
+              "id": 538,
+              "title": "LLM Agent Autonomous Task Execution"
+            },
+            {
+              "component_id": "946e309f-af75-589a-b788-0a136bcdd775",
+              "id": 462,
+              "title": "LiveView Development Lifecycle"
+            },
+            {
+              "component_id": "254cc040-1ab5-4b6b-95cd-befc2f5b0f3e",
+              "id": 128,
+              "title": "Local Development Status Analysis"
+            },
+            {
+              "component_id": "dddfa8be-e2ba-4275-b6a3-6651258fefcf",
+              "id": 113,
+              "title": "Markdown Content Processing"
+            },
+            {
+              "component_id": "6ef04ffb-f3f9-43a7-b9fd-1d502eaefec8",
+              "id": 100,
+              "title": "Multi-User Coordination"
+            },
+            {
+              "component_id": "f95f584f-619c-4baf-b4e9-41a556b2b74c",
+              "id": 65,
+              "title": "OAuth Authentication"
+            },
+            {
+              "component_id": "5ef0f1ad-ab60-5d0e-8d25-e20801850b50",
+              "id": 470,
+              "title": "Problem Feedback Loop"
+            },
+            {
+              "component_id": "d9e9ee99-f3e5-4225-b913-46a4daecab62",
+              "id": 62,
+              "title": "Project Administration"
+            },
+            {
+              "component_id": "6a35f329-fa69-493b-9125-d75dd9fef782",
+              "id": 103,
+              "title": "Project Dashboard"
+            },
+            {
+              "component_id": "5b214d66-2ff5-4877-930c-dc683387efee",
+              "id": 124,
+              "title": "Project Setup"
+            },
+            {
+              "component_id": "254cc040-1ab5-4b6b-95cd-befc2f5b0f3e",
+              "id": 127,
+              "title": "Project State Synchronization"
+            },
+            {
+              "component_id": "e63d35de-4ef3-5e7c-9ae2-3041ee36bcf0",
+              "id": 125,
+              "title": "Redesign Workflows"
+            },
+            {
+              "component_id": null,
+              "id": 551,
+              "title": "RemoteClient Test Story 70"
+            },
+            {
+              "component_id": "3d499498-2d04-4800-a3ad-f987a797a4a4",
+              "id": 74,
+              "title": "Requirements Traceability"
+            },
+            {
+              "component_id": "05d49442-2c88-4804-a7b8-5accdc98e1ee",
+              "id": 97,
+              "title": "Retry Management"
+            },
+            {
+              "component_id": "5cc5206f-c466-472b-8cd5-6b287f284029",
+              "id": 117,
+              "title": "SEO Metadata Management"
+            },
+            {
+              "component_id": "3f1ea9cd-576e-4982-9f04-89de26204f76",
+              "id": 79,
+              "title": "Specification Editing"
+            },
+            {
+              "component_id": "eeeeceaa-cb18-5731-a73a-f68b5093f60d",
+              "id": 467,
+              "title": "Static Analysis Pipeline"
+            },
+            {
+              "component_id": "6b20a5ed-ddfa-4e02-a709-40e0e1653c62",
+              "id": 98,
+              "title": "Story Change Impact Analysis"
+            },
+            {
+              "component_id": "bca98c9a-a20d-4635-9186-3c19ce5b2bea",
+              "id": 69,
+              "title": "Story Coverage Analysis"
+            },
+            {
+              "component_id": "5cc5206f-c466-472b-8cd5-6b287f284029",
+              "id": 119,
+              "title": "Tagging System"
+            },
+            {
+              "component_id": "b15666cb-482b-4afe-a447-106c05d8d757",
+              "id": 87,
+              "title": "Task Failure Recovery"
+            },
+            {
+              "component_id": "cfddc06a-3c11-4816-951e-96a00ed2a9a3",
+              "id": 80,
+              "title": "Technology Research"
+            },
+            {
+              "component_id": "6b58383c-d568-4701-a847-7814eda133c7",
+              "id": 68,
+              "title": "User Story Management"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:56:24 GMT"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWj2exWGlP3EY0AAizh"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

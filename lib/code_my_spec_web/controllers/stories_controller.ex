@@ -17,6 +17,34 @@ defmodule CodeMySpecWeb.StoriesController do
     render(conn, :index, stories: stories)
   end
 
+  def list_project_stories_paginated(conn, params) do
+    scope = conn.assigns.current_scope
+
+    opts =
+      [
+        limit: params["limit"] && String.to_integer(params["limit"]),
+        offset: params["offset"] && String.to_integer(params["offset"]),
+        search: params["search"],
+        tag: params["tag"]
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    {stories, total} = Stories.list_project_stories_paginated(scope, opts)
+    render(conn, :paginated, stories: stories, total: total)
+  end
+
+  def list_story_titles(conn, params) do
+    scope = conn.assigns.current_scope
+
+    opts =
+      if params["search"],
+        do: [search: params["search"]],
+        else: []
+
+    titles = Stories.list_story_titles(scope, opts)
+    render(conn, :titles, titles: titles)
+  end
+
   def list_project_stories_by_priority(conn, _params) do
     scope = conn.assigns.current_scope
     stories = Stories.list_project_stories_by_priority(scope)

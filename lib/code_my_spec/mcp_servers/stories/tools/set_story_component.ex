@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Stories.RemoteClient
+  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
 
@@ -30,23 +30,21 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
   end
 
   defp do_set_component(params, scope, frame) do
+    remote_opts = Map.get(frame.assigns, :remote_client_opts, [])
+
     with component when not is_nil(component) <-
            Components.get_component_by_module_name(scope, params.module_name),
-         client <- RemoteClient.new(scope),
-         {:ok, %{status: 200, body: %{"data" => story_data}}} <-
-           RemoteClient.set_story_component(client, params.story_id, component.id) do
-      updated = RemoteClient.deserialize_story(story_data)
-
+         story when not is_nil(story) <-
+           Stories.get_story(scope, params.story_id),
+         {:ok, updated} <-
+           Stories.set_story_component(scope, story, component.id) do
       # Sync stories from remote so local clone has the updated component_id
-      CodeMySpec.Stories.RemoteSync.sync(scope)
+      CodeMySpec.Stories.RemoteSync.sync(scope, remote_opts)
 
       {:reply, StoriesMapper.story_component_set_response(updated), frame}
     else
       nil ->
-        {:reply, StoriesMapper.error("Component not found: #{params.module_name}"), frame}
-
-      {:ok, %{status: status, body: body}} ->
-        {:reply, StoriesMapper.error("Remote API error: #{status} #{inspect(body)}"), frame}
+        {:reply, StoriesMapper.error("Component or story not found: #{params.module_name}"), frame}
 
       {:error, reason} ->
         {:reply, StoriesMapper.error(reason), frame}

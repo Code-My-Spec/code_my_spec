@@ -15,6 +15,14 @@ defmodule CodeMySpecWeb.StoriesJSON do
     %{data: data(story)}
   end
 
+  def paginated(%{stories: stories, total: total}) do
+    %{data: for(story <- stories, do: data(story)), total: total}
+  end
+
+  def titles(%{titles: titles}) do
+    %{data: titles}
+  end
+
   defp data(%Story{} = story) do
     %{
       id: story.id,

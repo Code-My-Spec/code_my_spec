@@ -1,0 +1,145 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-12T14:55:08.042431Z",
+      "request": {
+        "body_json": {
+          "story": {
+            "description": null,
+            "title": null
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "dd74a5f1-cdc0-46c8-b098-8ad1e1f9a464"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://dev.codemyspec.com/api/stories"
+      },
+      "response": {
+        "body_json": {
+          "error": "Project not found"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=86400"
+          ],
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "9eb311fa0a1e39f8-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:55:08 GMT"
+          ],
+          "nel": [
+            "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}"
+          ],
+          "report-to": [
+            "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=Yis4T9ZGH0IF9sCI0b%2FJTo7K3BBhec8bTL2XD6zmUIJyJLWr0%2BvoOqRZ82425q1JZ1xpL3%2FItnAnhEUUeuYCIW5H2EVBA%2FsQdi99XxaDNV1TPImrGvHisezcg6zPy7lgHfnfACs%3D\"}]}"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWjyCCQXjeGiwIAAevC"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-04-12T14:56:23.722829Z",
+      "request": {
+        "body_json": {
+          "story": {
+            "description": null,
+            "title": null
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-project-id": [
+            "708492f9-454e-482f-a2eb-be64f0356b87"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "http://localhost:4000/api/stories"
+      },
+      "response": {
+        "body_json": {
+          "errors": {
+            "description": [
+              "can't be blank"
+            ],
+            "title": [
+              "can't be blank"
+            ]
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "cache-control": [
+            "max-age=0, private, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 12 Apr 2026 14:56:23 GMT"
+          ],
+          "vary": [
+            "accept-encoding"
+          ],
+          "x-request-id": [
+            "GKWj2b8d02r3EY0AAiwh"
+          ]
+        },
+        "status": 422
+      }
+    }
+  ],
+  "version": "2.0"
+}
