@@ -94,7 +94,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert "CLAUDE.md" in paths
     end
 
-    test "detects changed files on second sync" do
+    test "full sync always reports all paths" do
       {scope, tmp_dir} = setup_project()
 
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
@@ -102,16 +102,9 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
       assert "lib/my_app/accounts.ex" in result1.changed_paths
 
-      # Second sync without changes — nothing changed
+      # Second sync reports all paths too (no mtime filtering)
       {:ok, result2} = FileSync.sync(scope, base_dir: tmp_dir)
-      refute "lib/my_app/accounts.ex" in result2.changed_paths
-
-      # Modify file (need mtime to advance)
-      Process.sleep(1100)
-      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\n  # changed\nend")
-
-      {:ok, result3} = FileSync.sync(scope, base_dir: tmp_dir)
-      assert "lib/my_app/accounts.ex" in result3.changed_paths
+      assert "lib/my_app/accounts.ex" in result2.changed_paths
     end
 
     test "removes files that no longer exist on disk" do
@@ -183,11 +176,6 @@ defmodule CodeMySpec.Files.FileSyncTest do
       ## Design
 
       Layout: Table of users.
-
-      ## Test Assertions
-
-      - renders user list
-      - deletes user on click
       """
 
       write_file(tmp_dir, ".code_my_spec/spec/my_app/user_live/index.spec.md", spec_content)
@@ -368,6 +356,66 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert "lib/my_app/real.ex" in paths
       refute Enum.any?(paths, &String.starts_with?(&1, "deps/"))
       refute Enum.any?(paths, &String.starts_with?(&1, "_build/"))
+    end
+  end
+
+  describe "sync_path/3" do
+    test "processes a single path" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+      write_file(tmp_dir, "lib/my_app/users.ex", "defmodule MyApp.Users do\nend")
+
+      abs_path = Path.join(tmp_dir, "lib/my_app/accounts.ex")
+      {:ok, result} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      assert result.changed_path == "lib/my_app/accounts.ex"
+
+      # Only accounts.ex should be in DB
+      assert Files.get_by_path(scope, "lib/my_app/accounts.ex")
+      refute Files.get_by_path(scope, "lib/my_app/users.ex")
+    end
+
+    test "deletes file record when file no longer exists on disk" do
+      {scope, tmp_dir} = setup_project()
+
+      path = write_file(tmp_dir, "lib/my_app/old.ex", "defmodule MyApp.Old do\nend")
+
+      # First create the record via full sync
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert Files.get_by_path(scope, "lib/my_app/old.ex")
+
+      # Delete from disk, then sync_path
+      File.rm!(path)
+      {:ok, result} = FileSync.sync_path(scope, path, base_dir: tmp_dir)
+
+      assert result.changed_path == "lib/my_app/old.ex"
+      refute Files.get_by_path(scope, "lib/my_app/old.ex")
+    end
+
+    test "returns nil changed_path for unrecognized file types" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "README.md", "# My App")
+      abs_path = Path.join(tmp_dir, "README.md")
+
+      {:ok, result} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      assert result.changed_path == nil
+    end
+
+    test "validates spec files" do
+      {scope, tmp_dir} = setup_project()
+
+      # Invalid spec — missing required sections
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\n\n## Type\n\nschema\n")
+      abs_path = Path.join(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md")
+
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
+      assert file.valid == false
+      assert file.validation_errors != nil
     end
   end
 

@@ -51,7 +51,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     story_result = RemoteSync.sync(scope)
     issues_result = IssuesRemoteSync.sync(scope)
 
-    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd, force: true),
+    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       story_line = case story_result do
         :ok -> {"Stories", "synced from remote"}

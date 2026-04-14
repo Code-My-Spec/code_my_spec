@@ -89,6 +89,19 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  Delete specific files by their paths.
+
+  Used for targeted removal when the file watcher detects file deletions.
+  """
+  @spec delete_by_paths(Scope.t(), [String.t()]) :: {integer(), nil}
+  def delete_by_paths(%Scope{active_project_id: project_id}, paths)
+      when is_list(paths) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path in ^paths)
+    |> Repo.delete_all()
+  end
+
+  @doc """
   Find files that changed — mtime in DB differs from provided mtime map.
 
   Takes a map of `%{path => mtime}` and returns File records where the stored

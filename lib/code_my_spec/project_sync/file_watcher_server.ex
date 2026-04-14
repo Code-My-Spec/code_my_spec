@@ -1,13 +1,12 @@
 defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   @moduledoc """
-  Singleton GenServer that watches project directories for file changes
-  and runs FileSync + ComponentSync.
+  Singleton GenServer that watches project directories for file changes.
 
   Auto-watches all linked projects on boot. New directories can also be
   registered via `ensure_watching/1`.
 
-  On file change: debounces events, runs FileSync (classify + validate)
-  and ComponentSync (upsert components from files).
+  On file change: classifies, validates, and upserts the individual file,
+  then runs incremental ComponentSync for affected components.
   """
   use GenServer
   require Logger
@@ -16,8 +15,16 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Users.Scope
 
-  @watched_subdirs [".code_my_spec/spec", ".code_my_spec/rules", ".code_my_spec/qa", ".code_my_spec/architecture", ".code_my_spec/integrations", "lib", "test"]
-  @debounce_ms 100
+  @watched_subdirs [
+    ".code_my_spec/spec",
+    ".code_my_spec/rules",
+    ".code_my_spec/qa",
+    ".code_my_spec/architecture",
+    ".code_my_spec/integrations",
+    ".code_my_spec/tasks",
+    "lib",
+    "test"
+  ]
 
   # --- Client API ---
 
@@ -50,7 +57,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
   @impl true
   def init(_opts) do
-    state = %{watchers: %{}, pending: %{}, debounce_timer: nil}
+    state = %{watchers: %{}}
     watchers = watch_all_linked_projects(state)
     {:ok, %{state | watchers: watchers}}
   end
@@ -82,21 +89,10 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   def handle_info({:file_event, watcher_pid, {path, events}}, state) do
     if relevant_event?(events) do
       Logger.debug("[FileWatcher] File event: #{path} #{inspect(events)}")
-      pending = Map.update(state.pending, watcher_pid, MapSet.new([path]), &MapSet.put(&1, path))
-      if state.debounce_timer, do: Process.cancel_timer(state.debounce_timer)
-      timer = Process.send_after(self(), :flush, @debounce_ms)
-      {:noreply, %{state | pending: pending, debounce_timer: timer}}
-    else
-      {:noreply, state}
+      process_file_event(watcher_pid, path, state.watchers)
     end
-  end
 
-  def handle_info(:flush, state) do
-    Enum.each(state.pending, fn {watcher_pid, paths} ->
-      flush_watcher(watcher_pid, paths, state.watchers)
-    end)
-
-    {:noreply, %{state | pending: %{}, debounce_timer: nil}}
+    {:noreply, state}
   end
 
   def handle_info({:file_event, watcher_pid, :stop}, state) do
@@ -111,12 +107,6 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
-
-  @impl true
-  def terminate(_reason, state) do
-    if state.debounce_timer, do: Process.cancel_timer(state.debounce_timer)
-    :ok
-  end
 
   # --- Private ---
 
@@ -147,7 +137,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
     Enum.any?(events, &(&1 in [:modified, :created, :removed, :renamed]))
   end
 
-  defp flush_watcher(watcher_pid, paths, watchers) do
+  defp process_file_event(watcher_pid, abs_path, watchers) do
     case find_root_by_watcher(watcher_pid, watchers) do
       nil ->
         :ok
@@ -156,30 +146,17 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
         %{scope: scope} = watchers[project_root]
 
         try do
-          start = System.monotonic_time(:millisecond)
-          file_count = paths |> Enum.to_list() |> length()
+          {:ok, result} = FileSync.sync_path(scope, abs_path, base_dir: project_root)
 
-          {:ok, file_result} = FileSync.sync(scope, base_dir: project_root)
-
-          {:ok, comp_result} =
+          if result.changed_path do
             FileComponentSync.sync_from_files(scope,
               base_dir: project_root,
-              changed_paths: file_result.changed_paths
+              changed_paths: [result.changed_path]
             )
-
-          ms = System.monotonic_time(:millisecond) - start
-
-          Logger.info(
-            "[FileWatcher] #{file_count} event(s) → " <>
-              "#{length(file_result.changed_paths)} file(s) changed, " <>
-              "#{length(comp_result.changed_component_ids)} component(s) changed " <>
-              "in #{ms}ms"
-          )
+          end
         rescue
           e ->
-            Logger.error(
-              "[FileWatcher] Error processing file changes for #{project_root}: #{Exception.message(e)}"
-            )
+            Logger.error("[FileWatcher] Error processing #{abs_path}: #{Exception.message(e)}")
         end
     end
   end

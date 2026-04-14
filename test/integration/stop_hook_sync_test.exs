@@ -31,34 +31,24 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   end
 
   # ============================================================================
-  # Test 1: mtime tracking detects modified components
+  # Test 1: full sync processes all files
   # ============================================================================
 
-  describe "mtime tracking" do
-    test "FileSync detects modified files via mtime" do
+  describe "full sync" do
+    test "FileSync processes all files on every sync" do
       {scope, tmp_dir} = setup_component_scenario()
 
       write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
       write_impl_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
 
-      # First sync — records mtimes
+      # First sync
       {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
       assert result1.total_files >= 2
       assert length(result1.changed_paths) >= 2
 
-      # Second sync without changes — nothing changed
+      # Second sync — still reports all paths (no mtime filtering)
       {:ok, result2} = FileSync.sync(scope, base_dir: tmp_dir)
-      assert result2.changed_paths == []
-
-      # Wait for filesystem mtime granularity
-      Process.sleep(1100)
-
-      # Modify the spec file
-      write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
-
-      # Third sync — detects the change
-      {:ok, result3} = FileSync.sync(scope, base_dir: tmp_dir)
-      assert ".code_my_spec/spec/my_app/accounts.spec.md" in result3.changed_paths
+      assert ".code_my_spec/spec/my_app/accounts.spec.md" in result2.changed_paths
     end
   end
 

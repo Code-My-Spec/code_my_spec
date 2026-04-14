@@ -39,36 +39,15 @@ defmodule CodeMySpec.Files.FileSync do
 
     scan_ms = System.monotonic_time(:millisecond) - start
 
-    # Build path→mtime map from current DB state for change detection
-    force? = Keyword.get(opts, :force, false)
-    existing_files = Files.list_files(scope)
-    existing_map = Map.new(existing_files, &{&1.path, &1.mtime})
-
-    # Only process files that are new or have a newer mtime (unless force)
-    changed_entries =
-      if force? do
-        file_entries
-      else
-        Enum.filter(file_entries, fn entry ->
-          case Map.get(existing_map, entry.path) do
-            nil -> true
-            db_mtime -> DateTime.compare(entry.mtime, db_mtime) == :gt
-          end
-        end)
-      end
-
-    changed_paths = Enum.map(changed_entries, & &1.path)
-
-    # Resolve owners and upsert only changed files
+    # Resolve owners, validate, and upsert all files
     upserted =
-      case changed_entries do
+      case file_entries do
         [] ->
           0
 
         _ ->
-          entries_with_owners = resolve_owners(scope, changed_entries)
+          entries_with_owners = resolve_owners(scope, file_entries)
 
-          # Validate before upsert so valid/validation_errors are part of the insert
           components = Components.list_components(scope)
           component_by_id = Map.new(components, &{&1.id, &1})
 
@@ -89,7 +68,7 @@ defmodule CodeMySpec.Files.FileSync do
 
     Logger.info(
       "[FileSync] #{length(file_entries)} files scanned in #{scan_ms}ms, " <>
-        "validated #{length(changed_paths)} in #{validate_ms}ms, " <>
+        "validated in #{validate_ms}ms, " <>
         "#{upserted} upserted, #{removed} removed, total #{total_ms}ms"
     )
 
@@ -97,9 +76,50 @@ defmodule CodeMySpec.Files.FileSync do
      %{
        upserted: upserted,
        removed: removed,
-       changed_paths: changed_paths,
+       changed_paths: current_paths,
        total_files: length(file_entries)
      }}
+  end
+
+  @doc """
+  Sync a single file path from the filesystem into the DB.
+
+  Takes an absolute path, classifies it, validates if needed,
+  and upserts or deletes the file record.
+
+  Returns `{:ok, %{changed_path: path | nil}}` where path is nil if
+  the file was unrecognized or ignored.
+  """
+  @spec sync_path(Scope.t(), String.t(), keyword()) :: {:ok, map()}
+  def sync_path(%Scope{} = scope, abs_path, opts \\ []) do
+    base_dir = Keyword.fetch!(opts, :base_dir)
+    rel_path = Path.relative_to(abs_path, base_dir)
+    ignored_patterns = load_ignored_paths(scope)
+
+    if ignored_path?(rel_path) or matches_ignored_pattern?(rel_path, ignored_patterns) do
+      {:ok, %{changed_path: nil}}
+    else
+      case classify(rel_path) do
+        nil ->
+          {:ok, %{changed_path: nil}}
+
+        {path, role} ->
+          case stat_file(base_dir, path, role) do
+            nil ->
+              # File deleted from disk
+              Files.delete_by_paths(scope, [path])
+              {:ok, %{changed_path: path}}
+
+            entry ->
+              [entry] = resolve_owners(scope, [entry])
+              components = Components.list_components(scope)
+              component_by_id = Map.new(components, &{&1.id, &1})
+              validated = validate_entry(entry, base_dir, component_by_id)
+              Files.upsert_files(scope, [validated])
+              {:ok, %{changed_path: path}}
+          end
+      end
+    end
   end
 
   @doc """
@@ -119,9 +139,14 @@ defmodule CodeMySpec.Files.FileSync do
     |> Stream.reject(&is_nil/1)
   end
 
-  # -- Inline validation for changed files --
+  @doc """
+  Validate a file entry based on its role.
 
-  defp validate_entry(%{role: :spec} = entry, base_dir, _component_by_id) do
+  Specs and reviews are validated via `Documents.create_dynamic_document`.
+  Tests with a component are checked for spec alignment.
+  Other tracked roles are valid by existence.
+  """
+  def validate_entry(%{role: :spec} = entry, base_dir, _component_by_id) do
     abs_path = Path.join(base_dir, entry.path)
 
     case Elixir.File.read(abs_path) do
@@ -134,7 +159,7 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  defp validate_entry(%{role: :review} = entry, base_dir, _component_by_id) do
+  def validate_entry(%{role: :review} = entry, base_dir, _component_by_id) do
     abs_path = Path.join(base_dir, entry.path)
 
     case Elixir.File.read(abs_path) do
@@ -146,7 +171,7 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  defp validate_entry(%{role: :test, component_id: component_id} = entry, base_dir, component_by_id)
+  def validate_entry(%{role: :test, component_id: component_id} = entry, base_dir, component_by_id)
        when not is_nil(component_id) do
     component = Map.get(component_by_id, component_id)
 
@@ -157,13 +182,13 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  defp validate_entry(%{role: role} = entry, _base_dir, _component_by_id)
+  def validate_entry(%{role: role} = entry, _base_dir, _component_by_id)
        when role in [:implementation, :test, :rule, :config, :bdd_spec, :qa_brief, :qa_result, :json, :review, :architecture, :integration] do
     # These roles are valid if they exist (which they do, since FileSync found them)
     Map.merge(entry, %{valid: true, validation_errors: nil})
   end
 
-  defp validate_entry(entry, _base_dir, _component_by_id) do
+  def validate_entry(entry, _base_dir, _component_by_id) do
     Map.merge(entry, %{valid: nil, validation_errors: nil})
   end
 
@@ -333,8 +358,9 @@ defmodule CodeMySpec.Files.FileSync do
       (path |> Path.basename() |> String.starts_with?("result"))
   end
 
+  @doc "Stat a file for mtime and size. Returns entry map or nil if file doesn't exist."
   # sobelow_skip ["Traversal.FileModule"]
-  defp stat_file(base_dir, path, role) do
+  def stat_file(base_dir, path, role) do
     abs_path = Path.join(base_dir, path)
 
     case File.stat(abs_path, time: :posix) do
@@ -347,7 +373,8 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  defp resolve_owners(scope, entries) do
+  @doc "Resolve component_id and story_id owners for file entries."
+  def resolve_owners(scope, entries) do
     # Build component lookup: module_name → component_id
     components = Components.list_components(scope)
     component_by_module = Map.new(components, &{&1.module_name, &1.id})
