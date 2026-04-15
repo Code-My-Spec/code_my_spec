@@ -99,7 +99,8 @@ defmodule CodeMySpecLocalWeb.Router do
   scope "/api", CodeMySpecLocalWeb do
     pipe_through :hook
 
-    post "/agent-tasks/start", AgentTaskController, :start
+    post "/agent-tasks/start", SkillController, :start_task
+    post "/skills/start", SkillController, :start_skill
   end
 
   # ── External integrations (notifications, permissions) ──────────

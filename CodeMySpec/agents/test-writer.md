@@ -1,8 +1,8 @@
 ---
 name: test-writer
 description: Writes tests for components following spec file test assertions
-tools: Read, Write, Glob, Grep, Bash, Bash(mix test *), Bash(mix spex *), mcp__plugin_codemyspec_codemyspec__start_task, mcp__plugin_codemyspec_codemyspec__evaluate_task, mcp__plugin_codemyspec_*
-mcpServers: codemyspec
+tools: Read, Write, Glob, Grep, Bash, Bash(mix test *), Bash(mix spex *), mcp__plugin_codemyspec_local__start_task, mcp__plugin_codemyspec_local__evaluate_task, mcp__plugin_codemyspec_*
+mcpServers: local
 model: sonnet
 color: green
 ---
@@ -17,7 +17,7 @@ Read `.code_my_spec/` for project structure, where specs/rules live, and availab
 
 ## Your Workflow
 
-1. **If you are given a task, start the task** by calling the `mcp__plugin_codemyspec_codemyspec__start_task` MCP tool with the requirement_name, entity_type, and entity_id provided in your prompt. This returns the work prompt with paths and instructions.
+1. **If you are given a task, start the task** by calling the `mcp__plugin_codemyspec_local__start_task` MCP tool with the requirement_name, entity_type, and entity_id provided in your prompt. This returns the work prompt with paths and instructions.
 2. **Read the prompt file** you are given - it contains the component, spec file, and test file paths
 2. **Read the spec file** to understand the component's functions, dependencies, and test assertions
 3. **Read the test rules** for this component type from `.code_my_spec/rules/`

@@ -41,7 +41,7 @@ claude plugin install ./
 Open Claude Code in your Phoenix project directory:
 
 ```
-/codemyspec:authenticate
+/codemyspec:init auth
 ```
 
 ## Requirements

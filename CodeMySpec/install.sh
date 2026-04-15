@@ -103,7 +103,7 @@ main() {
   echo "     claude plugin install $SCRIPT_DIR"
   echo ""
   echo "  2. Open Claude Code in your Phoenix project and run:"
-  echo "     /codemyspec:authenticate"
+  echo "     /codemyspec:init auth"
   echo ""
 }
 
