@@ -65,6 +65,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "qa_setup" => AgentTasks.QaSetup,
     "qa_story" => AgentTasks.QaStory,
     "start_implementation" => AgentTasks.StartImplementation,
+    "triage_issues" => AgentTasks.TriageIssues,
+    "fix_issues" => AgentTasks.FixIssues,
     "init" => AgentTasks.Init
   }
 
@@ -93,6 +95,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "qa_journey_wallaby",
     "qa_preflight",
     "qa_setup",
+    "triage_issues",
+    "fix_issues",
     "sync"
   ]
 
