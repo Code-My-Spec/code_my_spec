@@ -80,6 +80,41 @@ defmodule CodeMySpec.Users do
     |> Repo.insert()
   end
 
+  @doc """
+  Finds an existing user by OAuth provider identity or email, or registers a new one.
+
+  Lookup order:
+  1. Integration with matching provider + provider_user_id → existing user
+  2. User with matching email → auto-link
+  3. No match → create new auto-confirmed user (no password)
+
+  Returns `{:ok, user, :existing | :new}`.
+  """
+  def find_or_register_oauth_user(provider, %{provider_user_id: provider_user_id, email: email}) do
+    alias CodeMySpec.Integrations.IntegrationRepository
+
+    case IntegrationRepository.find_user_id_by_provider_identity(provider, provider_user_id) do
+      user_id when is_integer(user_id) ->
+        {:ok, get_user!(user_id), :existing}
+
+      nil ->
+        case get_user_by_email(email) do
+          %User{} = user -> {:ok, user, :existing}
+          nil -> register_oauth_user(%{email: email})
+        end
+    end
+  end
+
+  defp register_oauth_user(attrs) do
+    case %User{}
+         |> User.email_changeset(attrs)
+         |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
+         |> Repo.insert() do
+      {:ok, user} -> {:ok, user, :new}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
   ## Settings
 
   @doc """

@@ -206,6 +206,32 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
   end
 
   @doc """
+  Finds the user_id for an existing integration by provider and provider_user_id.
+
+  Searches the provider_metadata JSON field for a matching provider_user_id.
+  Used during social login to find an existing user by their OAuth identity.
+
+  ## Examples
+
+      iex> find_user_id_by_provider_identity(:github, "12345")
+      42
+
+      iex> find_user_id_by_provider_identity(:github, "unknown")
+      nil
+  """
+  @spec find_user_id_by_provider_identity(provider(), String.t()) :: integer() | nil
+  def find_user_id_by_provider_identity(provider, provider_user_id) do
+    Integration
+    |> where([i], i.provider == ^provider)
+    |> where(
+      [i],
+      fragment("?->>'provider_user_id' = ?", i.provider_metadata, ^provider_user_id)
+    )
+    |> select([i], i.user_id)
+    |> Repo.one()
+  end
+
+  @doc """
   Returns true if an integration exists for the scoped user and provider, false otherwise.
 
   Efficient check without loading full integration record.

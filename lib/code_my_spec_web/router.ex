@@ -264,12 +264,21 @@ defmodule CodeMySpecWeb.Router do
     post "/users/update-password", UserSessionController, :update_password
   end
 
-  # OAuth Provider Integration routes
+  # OAuth Provider routes — shared callback, two entry points
+  scope "/auth", CodeMySpecWeb do
+    pipe_through :browser
+
+    # Social login (unauthenticated)
+    get "/:provider/login", IntegrationsController, :login
+    # Shared callback for both login and integration flows
+    get "/:provider/callback", IntegrationsController, :callback
+  end
+
   scope "/auth", CodeMySpecWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    # Integration connect (authenticated)
     get "/:provider", IntegrationsController, :request
-    get "/:provider/callback", IntegrationsController, :callback
     delete "/:provider", IntegrationsController, :delete
   end
 

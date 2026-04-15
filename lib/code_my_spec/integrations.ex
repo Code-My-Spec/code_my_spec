@@ -35,6 +35,12 @@ defmodule CodeMySpec.Integrations do
     google: CodeMySpec.Integrations.Providers.Google
   }
 
+  # Minimal scopes for social login — just enough for identity
+  @login_scopes %{
+    github: "user:email",
+    google: "email profile"
+  }
+
   @type provider :: :github | :gitlab | :bitbucket | :google
   @type oauth_params :: %{String.t() => String.t()}
 
@@ -142,6 +148,68 @@ defmodule CodeMySpec.Integrations do
   """
   @spec connected?(Scope.t(), provider()) :: boolean()
   defdelegate connected?(scope, provider), to: IntegrationRepository
+
+  ## Social Login Flow
+
+  @doc """
+  Generates OAuth authorization URL with minimal scopes for social login.
+
+  Uses only identity scopes (email/profile) rather than the full integration
+  scopes. Shares the same `/auth/:provider/callback` URL as integration connect.
+  """
+  @spec authorize_login_url(provider()) ::
+          {:ok, %{url: String.t(), session_params: map()}} | {:error, term()}
+  def authorize_login_url(provider) do
+    with {:ok, provider_module} <- get_provider_module(provider) do
+      config =
+        provider_module.config()
+        |> Keyword.update(:authorization_params, [], fn params ->
+          params
+          |> Keyword.put(:scope, @login_scopes[provider])
+          |> Keyword.delete(:prompt)
+        end)
+
+      provider_module.strategy().authorize_url(config)
+    end
+  end
+
+  @doc """
+  Handles OAuth callback for social login.
+
+  Exchanges the authorization code for tokens and normalizes the user data.
+  Does NOT persist an integration — that happens after the user is found/created.
+  """
+  @spec handle_login_callback(provider(), oauth_params(), map()) ::
+          {:ok, %{user: map(), token: map()}} | {:error, term()}
+  def handle_login_callback(provider, callback_params, session_params) do
+    with {:ok, provider_module} <- get_provider_module(provider) do
+      config =
+        provider_module.config()
+        |> Keyword.put(:session_params, session_params)
+
+      case provider_module.strategy().callback(config, callback_params) do
+        {:ok, %{user: user, token: token}} ->
+          with {:ok, normalized_user} <- provider_module.normalize_user(user) do
+            {:ok, %{user: normalized_user, token: token}}
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Persists an integration for a user after social login.
+
+  Called after the user has been found or created, to store their OAuth
+  tokens and provider metadata.
+  """
+  @spec save_integration(Scope.t(), provider(), map(), map()) ::
+          {:ok, Integration.t()} | {:error, term()}
+  def save_integration(%Scope{} = scope, provider, token, normalized_user) do
+    persist_integration(scope, provider, token, normalized_user)
+  end
 
   # Private Helpers
 
