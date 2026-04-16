@@ -359,6 +359,61 @@ defmodule CodeMySpec.Files.FileSyncTest do
     end
   end
 
+  describe "sync_changed/2" do
+    test "skips unchanged files and only upserts new or modified ones" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+      write_file(tmp_dir, "lib/my_app/users.ex", "defmodule MyApp.Users do\nend")
+
+      # Full sync to populate DB
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      # Second sync with no changes — nothing should be upserted
+      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      assert result.upserted == 0
+      assert result.changed_paths == []
+      assert result.total_files >= 2
+
+      # Touch one file to bump mtime
+      :timer.sleep(1100)
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\n  # changed\nend")
+
+      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      assert result.upserted == 1
+      assert "lib/my_app/accounts.ex" in result.changed_paths
+      refute "lib/my_app/users.ex" in result.changed_paths
+    end
+
+    test "picks up new files not yet in DB" do
+      {scope, tmp_dir} = setup_project()
+
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      # Add a new file
+      write_file(tmp_dir, "lib/my_app/users.ex", "defmodule MyApp.Users do\nend")
+
+      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      assert result.upserted == 1
+      assert "lib/my_app/users.ex" in result.changed_paths
+    end
+
+    test "removes files no longer on disk" do
+      {scope, tmp_dir} = setup_project()
+
+      path = write_file(tmp_dir, "lib/my_app/old.ex", "defmodule MyApp.Old do\nend")
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert Files.get_by_path(scope, "lib/my_app/old.ex")
+
+      File.rm!(path)
+
+      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      assert result.removed >= 1
+      refute Files.get_by_path(scope, "lib/my_app/old.ex")
+    end
+  end
+
   describe "sync_path/3" do
     test "processes a single path" do
       {scope, tmp_dir} = setup_project()

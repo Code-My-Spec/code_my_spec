@@ -82,6 +82,85 @@ defmodule CodeMySpec.Files.FileSync do
   end
 
   @doc """
+  Sync only changed files from the filesystem into the DB.
+
+  Compares filesystem mtime against existing DB records and only processes
+  files that are new or have a newer mtime. Still removes files no longer on disk.
+
+  Returns `{:ok, %{upserted: count, removed: count, changed_paths: [path], total_files: count}}`.
+  """
+  @spec sync_changed(Scope.t(), keyword()) :: {:ok, map()}
+  def sync_changed(%Scope{} = scope, opts \\ []) do
+    base_dir = Keyword.get(opts, :base_dir, ".")
+    start = System.monotonic_time(:millisecond)
+
+    ignored_patterns = load_ignored_paths(scope)
+
+    file_entries =
+      base_dir
+      |> stream_files(ignored_patterns)
+      |> Enum.to_list()
+
+    scan_ms = System.monotonic_time(:millisecond) - start
+
+    # Build path→mtime map from current DB state for change detection
+    existing_files = Files.list_files(scope)
+    existing_map = Map.new(existing_files, &{&1.path, &1.mtime})
+
+    # Only process files that are new or have a newer mtime
+    changed_entries =
+      Enum.filter(file_entries, fn entry ->
+        case Map.get(existing_map, entry.path) do
+          nil -> true
+          db_mtime -> DateTime.compare(entry.mtime, db_mtime) == :gt
+        end
+      end)
+
+    changed_paths = Enum.map(changed_entries, & &1.path)
+
+    # Resolve owners, validate, and upsert only changed files
+    upserted =
+      case changed_entries do
+        [] ->
+          0
+
+        _ ->
+          entries_with_owners = resolve_owners(scope, changed_entries)
+
+          components = Components.list_components(scope)
+          component_by_id = Map.new(components, &{&1.id, &1})
+
+          validated_entries =
+            Enum.map(entries_with_owners, &validate_entry(&1, base_dir, component_by_id))
+
+          {count, _} = Files.upsert_files(scope, validated_entries)
+          count
+      end
+
+    validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
+
+    # Remove files no longer on disk
+    current_paths = Enum.map(file_entries, & &1.path)
+    {removed, _} = Files.delete_removed(scope, current_paths)
+
+    total_ms = System.monotonic_time(:millisecond) - start
+
+    Logger.info(
+      "[FileSync] #{length(file_entries)} files scanned in #{scan_ms}ms, " <>
+        "#{length(changed_paths)} changed, validated in #{validate_ms}ms, " <>
+        "#{upserted} upserted, #{removed} removed, total #{total_ms}ms"
+    )
+
+    {:ok,
+     %{
+       upserted: upserted,
+       removed: removed,
+       changed_paths: changed_paths,
+       total_files: length(file_entries)
+     }}
+  end
+
+  @doc """
   Sync a single file path from the filesystem into the DB.
 
   Takes an absolute path, classifies it, validates if needed,
