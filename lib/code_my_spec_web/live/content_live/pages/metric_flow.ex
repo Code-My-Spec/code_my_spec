@@ -122,7 +122,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
       from s in Story,
         join: p in Project,
         on: s.project_id == p.id,
-        where: like(p.name, "metric flow") or like(p.name, "metricflow"),
+        where: ilike(p.name, "metric flow") or ilike(p.name, "metricflow"),
         order_by: [asc: s.priority, asc: s.title],
         preload: [:criteria, :tags]
 

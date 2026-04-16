@@ -90,7 +90,7 @@
     title: "The Dev Story",
     subtitle: "The Good, The Bad, and The Ugly",
     description:
-      "An honest assessment of building a full-stack application with a software factory. The calendar span is January 30 to March 20, 2026, but the actual work happened across just 13 days.",
+      "An honest assessment of building a full-stack application with a software factory. The calendar span is January 30 to March 20, 2026, but the actual work happened across just 13 days. What we learned changed how the entire pipeline works.",
     sections: [
       %{
         id: "good",
@@ -145,6 +145,11 @@
             title: "AI Chat Lacked Real Data Access",
             description:
               "The chat interface renders, accepts messages, saves history, and can call the LLM, but the context injection for metrics, correlations, and dashboards is stubbed. The QA agent marked it as passing because it could send and receive messages. The responses just aren't grounded in anything useful."
+          },
+          %{
+            title: "Too Many Pipeline Steps, Not Enough Signal",
+            description:
+              "The full pipeline ran BDD specs, then component specs, then design review, then unit tests, then implementation, then QA. Most of that middle layer added time without catching problems. The component specs and design reviews rarely surfaced issues that the BDD scenarios and QA runs didn't already cover. The pipeline was doing six things when three of them actually mattered."
           }
         ]
       },
@@ -170,6 +175,11 @@
               "The factory initially generated a single \"Google\" provider for Ads, Analytics, and Search Console through one OAuth flow. That's architecturally wrong; each Google product has different scopes, different account selection flows, and different API endpoints. A massive refactor to split them into separate providers had to be guided step by step. The factory couldn't reach this decision on its own because the spec said \"connect Google\" and it connected Google."
           },
           %{
+            title: "Ambiguity Compounded Through Every Layer",
+            description:
+              "A vague story produced a vague BDD spec. The vague spec produced vague step definitions. The vague steps produced code that technically satisfied the spec but didn't do what anyone actually wanted. By the time QA caught the problem, the fix meant rewriting everything back to the story. There was no gate between the story and the spec where a human could say \"wait, what do we actually mean by this?\" That missing gate was the root cause of most of what went wrong."
+          },
+          %{
             title: "Manual Debugging Was Unavoidable",
             description:
               "I eventually sat down for two days and QA'd the integrations with the agent by hand, pointing at each broken flow and walking it through the fix. That was the only way to get working integrations. These are all things a human would catch in five minutes of clicking around."
@@ -179,30 +189,30 @@
     ]
   },
   conclusion: %{
-    title: "Lessons Learned",
+    title: "What We Changed After MetricFlow",
     takeaways: [
       %{
-        title: "QA Must Be Gate-Keeping, Not Advisory",
+        title: "The Pipeline Had Too Many Steps",
         description:
-          "Failed QA initially produced reports but the pipeline continued. Even requiring passage wasn't enough; agents learned to make QA pass rather than make the code work. The fix: QA scenarios that test outcomes, not UI elements. \"Did the OAuth token exchange produce a valid access token?\" not \"Does the success flash message appear?\""
+          "MetricFlow ran the full six-phase pipeline: BDD specs, component specs, design review, unit tests, implementation, QA. Most of those intermediate steps added ceremony without catching real problems. The specs that mattered were the BDD scenarios at the top and the QA runs at the bottom. Everything in between was overhead that slowed the factory down without making the output better."
       },
       %{
-        title: "Integrations Should Be Procedurally Generated",
+        title: "The Core Loop is Three Steps",
         description:
-          "Multi-tenancy and OAuth integrations are solved problems. They're the same everywhere. An LLM adds variance where you want consistency, and integrations are exactly the domain where variance kills you. Generators, not generation."
+          "After MetricFlow, we stripped the pipeline to what actually works: BDD specs, code, QA. That's it. Write the scenarios that define what \"done\" looks like, let the machine build it, then verify it works in the running application. Component specs, design reviews, and unit tests are still available for teams that want them, but they're optional. The default path is the shortest one that ships working software."
       },
       %{
-        title: "Validate External Dependencies Before Code Gen",
+        title: "Stories Were Flowing Into Specs Unexamined",
         description:
-          "When the factory generates a QuickBooks integration, it needs a working sandbox with valid credentials up front. When it discovers credential problems mid-generation, it papers over them. Let the machine generate code against a working foundation, not fight two problems at once."
+          "The biggest problem wasn't the code generation. It was that ambiguous stories were flowing straight into BDD specs with no human gate. The spec inherited every vague assumption from the story, the step definitions inherited it from the spec, and the implementation inherited it from the steps. Ambiguity compounded through three layers. By the time QA caught a problem, the fix meant rewriting everything back to the story."
       },
       %{
-        title: "The Factory Produced a Working App (With Caveats)",
+        title: "Example Mapping is the Missing Step",
         description:
-          "The bulk of MetricFlow works. Auth, account management, invitations, the dashboard, correlation analysis, data sync scheduling, the QA infrastructure: all functional. The output is best understood as a thorough first draft: architecturally sound, broadly functional, but with integration points that need human verification. 90% worked. The remaining 10% would never have shipped without a human clicking through it."
+          "The fix is a structured discovery conversation between the story and the spec. It's called Example Mapping (from Matt Wynne and the Cucumber team): take a story, extract the business rules, walk through concrete examples, surface open questions, and produce scenario titles. Those titles become your acceptance criteria and your BDD scenarios. One artifact, not two. Then the human reviews the feature file before codegen starts. That single gate prevents most of what went wrong in MetricFlow."
       }
     ],
     closing:
-      "40 commits. 13 working days. Zero human-written code. The factory produced 100% of the code and did 90% of the orchestration without intervention. That's the headline number. The honest assessment: the structured approach (stories, specs, implementation, QA) turned a complex multi-provider platform into a manageable sequence of verified steps. But the last 10% required a human sitting down and clicking through it."
+      "40 commits. 13 working days. Zero human-written code. MetricFlow proved the factory works. It also proved where the factory breaks. The fix wasn't more automation. It was less pipeline and one better gate. Example Mapping into BDD specs, code, QA. Three steps. One human review. That's the loop that ships."
   }
 }
