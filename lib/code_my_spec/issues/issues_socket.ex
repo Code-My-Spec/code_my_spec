@@ -13,7 +13,6 @@ defmodule CodeMySpec.Issues.IssuesSocket do
 
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Issues.Issue
-  alias CodeMySpec.Issues.IssuesRepository
   alias CodeMySpec.Users.Scope
 
   def start_link(opts) do

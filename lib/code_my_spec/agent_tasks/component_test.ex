@@ -10,12 +10,12 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
 
+  def analyzers, do: [:exunit_stale]
 
   @doc """
   Generate the command/prompt for Claude to write component tests.

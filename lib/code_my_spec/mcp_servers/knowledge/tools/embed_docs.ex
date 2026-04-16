@@ -20,13 +20,8 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.EmbedDocs do
   @impl true
   def execute(_params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      case Embeddings.embed_project_docs(scope) do
-        {:ok, results} ->
-          {:reply, text_response(format_results(results)), frame}
-
-        {:error, reason} ->
-          {:reply, error_response("#{inspect(reason)}"), frame}
-      end
+      {:ok, results} = Embeddings.embed_project_docs(scope)
+      {:reply, text_response(format_results(results)), frame}
     else
       {:error, reason} ->
         {:reply, error_response("#{reason}"), frame}

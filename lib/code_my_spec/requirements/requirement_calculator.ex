@@ -119,7 +119,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  defp check(%{check_type: :spex_passing}, _scope, entity, files, ctx) do
+  defp check(%{check_type: :spex_passing}, _scope, _entity, files, ctx) do
     # For stories, check that BDD spec files exist before declaring passing
     bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
 
@@ -251,7 +251,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   # -- File checks --
 
-  defp has_role?(files, role, expected_path \\ nil) do
+  defp has_role?(files, role, expected_path) do
     if Enum.any?(files, &(&1.role == role)) do
       {true, %{status: "#{role} file exists"}}
     else

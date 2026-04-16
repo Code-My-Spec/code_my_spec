@@ -40,6 +40,7 @@ defmodule CodeMySpec.MixProject do
   # Specifies which paths to compile per environment.
   # Release modules (Burrito steps) only compile in prod_cli.
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
+  defp elixirc_paths(:dev_cli), do: ["lib", "lib_cli"]
   defp elixirc_paths(:prod_cli), do: ["lib", "lib_cli"]
   defp elixirc_paths(_), do: ["lib"]
 
@@ -123,6 +124,11 @@ defmodule CodeMySpec.MixProject do
       {:oauth2, "~> 2.0"},
       {:web_push_elixir, "~> 0.5"},
       {:slipstream, "~> 1.1"},
+
+      # S3 uploads
+      {:ex_aws, "~> 2.6"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:sweet_xml, "~> 0.7"},
 
       # Embeddings
       {:ortex, "~> 0.1", only: [:dev_cli, :prod_cli]},

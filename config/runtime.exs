@@ -60,6 +60,14 @@ if config_env() not in [:dev_cli, :prod_cli] do
     deploy_key: env!("DEPLOY_KEY"),
     indexnow_key: env!("BING_SITEMASTER_INDEXNOW_KEY", :string, nil)
 
+  # S3 uploads (issue screenshots)
+  config :code_my_spec, s3_bucket: env!("S3_BUCKET", :string, "codemyspec-uploads")
+
+  config :ex_aws,
+    access_key_id: env!("AWS_ACCESS_KEY_ID", :string, ""),
+    secret_access_key: env!("AWS_SECRET_ACCESS_KEY", :string, ""),
+    region: env!("AWS_REGION", :string, "us-east-1")
+
   # Web Push VAPID configuration
   vapid_public_key = env!("VAPID_PUBLIC_KEY", :string, nil)
   vapid_private_key = env!("VAPID_PRIVATE_KEY", :string, nil)

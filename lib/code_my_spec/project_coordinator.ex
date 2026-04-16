@@ -11,9 +11,7 @@ defmodule CodeMySpec.ProjectCoordinator do
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments
-  alias CodeMySpec.Users.Scope
 
   @tasks_dir CodeMySpec.Paths.tasks_dir()
 

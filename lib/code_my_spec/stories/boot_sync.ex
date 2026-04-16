@@ -34,13 +34,8 @@ defmodule CodeMySpec.Stories.BootSync do
         {:ok, scope} ->
           Logger.info("[BootSync] Syncing stories for #{project.name}")
 
-          case RemoteSync.sync(scope) do
-            :ok ->
-              Logger.info("[BootSync] Stories synced for #{project.name}")
-
-            {:error, reason} ->
-              Logger.warning("[BootSync] Story sync failed for #{project.name}: #{inspect(reason)}")
-          end
+          RemoteSync.sync(scope)
+          Logger.info("[BootSync] Stories synced for #{project.name}")
 
           case IssuesRemoteSync.sync(scope) do
             :ok ->

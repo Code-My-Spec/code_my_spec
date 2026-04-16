@@ -30,7 +30,6 @@ defmodule CodeMySpecWeb.ProjectLive.Index do
           <div class="sr-only">
             <.link navigate={~p"/app/projects/#{project}"}>Show</.link>
           </div>
-          <.link navigate={~p"/app/projects/#{project}/setup"}>Setup</.link>
           <.link navigate={~p"/app/projects/#{project}/edit"}>Edit</.link>
         </:action>
         <:action :let={{id, project}}>

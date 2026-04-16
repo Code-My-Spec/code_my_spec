@@ -85,16 +85,12 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   defp sync_files(%Scope{cwd: nil}), do: :ok
 
   defp sync_files(%Scope{cwd: cwd} = scope) do
-    case FileSync.sync(scope, base_dir: cwd) do
-      {:ok, file_result} ->
-        FileComponentSync.sync_from_files(scope,
-          base_dir: cwd,
-          changed_paths: file_result.changed_paths
-        )
+    {:ok, file_result} = FileSync.sync(scope, base_dir: cwd)
 
-      {:error, reason} ->
-        Logger.warning("[Evaluator] FileSync failed: #{inspect(reason)}")
-    end
+    FileComponentSync.sync_from_files(scope,
+      base_dir: cwd,
+      changed_paths: file_result.changed_paths
+    )
 
     :ok
   end
@@ -231,6 +227,5 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   end
 
   defp join_feedback(req, nil), do: req
-  defp join_feedback(nil, problem), do: problem
   defp join_feedback(req, problem), do: "#{req}\n\n#{problem}"
 end

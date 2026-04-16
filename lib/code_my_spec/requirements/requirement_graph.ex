@@ -11,7 +11,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   3. **Stories → project**: each story's qa_complete → qa_preflight
   """
 
-  alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Requirement
@@ -525,37 +524,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     edges = build_template_edges(template, id_map)
     {nodes, edges}
   end
-
-  # -- Helpers --
-
-  # Walk hierarchical children AND dependencies to collect all component IDs
-  # that must be satisfied for a story's component tree.
-  defp collect_all_component_ids(component_id, components, visited) do
-    if MapSet.member?(visited, component_id) do
-      []
-    else
-      visited = MapSet.put(visited, component_id)
-      comp = Enum.find(components, &(&1.id == component_id))
-
-      if comp do
-        # Hierarchical children
-        children = Enum.filter(components, &(&1.parent_component_id == component_id))
-        child_ids = Enum.flat_map(children, &collect_all_component_ids(&1.id, components, visited))
-
-        # Dependencies
-        deps = case comp.dependencies do
-          %Ecto.Association.NotLoaded{} -> []
-          deps when is_list(deps) -> deps
-        end
-        dep_ids = Enum.flat_map(deps, &collect_all_component_ids(&1.id, components, visited))
-
-        [component_id | child_ids ++ dep_ids] |> Enum.uniq()
-      else
-        []
-      end
-    end
-  end
-
 
   # -- Sorting --
   # Actionable nodes sorted by story priority only.

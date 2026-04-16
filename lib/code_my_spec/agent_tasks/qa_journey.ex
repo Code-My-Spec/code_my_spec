@@ -106,13 +106,6 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     Enum.map_join(criteria, "\n", fn c -> "- #{c.description}" end)
   end
 
-  defp read_file(env, path) do
-    case Environments.read_file(env, path) do
-      {:ok, content} when byte_size(content) > 0 -> content
-      _ -> nil
-    end
-  end
-
   # ============================================================================
   # Prompt Building
   # ============================================================================

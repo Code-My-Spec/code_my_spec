@@ -48,15 +48,12 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     scope = socket.assigns.scope
 
     # Sync stories and issues from remote API
-    story_result = RemoteSync.sync(scope)
+    RemoteSync.sync(scope)
     issues_result = IssuesRemoteSync.sync(scope)
 
     with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
-      story_line = case story_result do
-        :ok -> {"Stories", "synced from remote"}
-        {:error, reason} -> {"Stories", "sync failed: #{inspect(reason)}"}
-      end
+      story_line = {"Stories", "synced from remote"}
 
       issues_line = case issues_result do
         :ok -> {"Issues", "synced from remote"}

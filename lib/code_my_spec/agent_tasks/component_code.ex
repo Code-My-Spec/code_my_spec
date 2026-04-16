@@ -10,11 +10,11 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
-  alias CodeMySpec.ProjectCoordinator
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.{Rules, Utils}
 
+  def analyzers, do: [:exunit_stale]
 
   @doc """
   Generate the command/prompt for Claude to implement a component.
