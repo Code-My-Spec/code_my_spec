@@ -77,6 +77,19 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   """
   @callback ensure_dir(env :: Environment.t(), path :: String.t()) :: :ok | {:error, term()}
 
+  @doc """
+  Stream files under a set of whitelisted roots, recursing into subdirectories.
+
+  Each root is resolved relative to the environment's `cwd`. Roots that don't
+  exist are silently skipped. Emitted paths are relative to `cwd`.
+
+  Roots may be either directories (walked recursively) or individual files
+  (emitted directly). Implementations must prune — they must NOT walk outside
+  the given roots.
+  """
+  @callback stream_files(env :: Environment.t(), roots :: [String.t()], opts :: keyword()) ::
+              Enumerable.t()
+
   # Remove later, or reconsider:
 
   @callback environment_setup_command(env :: Environment.t(), attrs :: map()) :: String.t()

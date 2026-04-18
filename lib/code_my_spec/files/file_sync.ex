@@ -11,10 +11,16 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Paths
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
   alias CodeMySpec.Users.Scope
+
+  # Whitelist of roots walked on sync. Anything outside these trees is invisible
+  # to FileSync — `deps/`, `_build/`, `node_modules/`, `priv/`, `assets/`, `.git/`
+  # are never touched. Keep in sync with `classify/1`.
+  @sync_roots ["lib", "test", Paths.base_dir(), "CLAUDE.md"]
 
   @ignored_dirs ~w(deps _build .git node_modules .elixir_ls .lexical)
 
@@ -24,8 +30,8 @@ defmodule CodeMySpec.Files.FileSync do
   Returns `{:ok, %{upserted: count, removed: count, changed_paths: [path]}}`.
   """
   @spec sync(Scope.t(), keyword()) :: {:ok, map()}
-  def sync(%Scope{} = scope, opts \\ []) do
-    base_dir = Keyword.get(opts, :base_dir, ".")
+  def sync(%Scope{environment: env} = scope, _opts \\ []) do
+    base_dir = env.cwd || "."
     start = System.monotonic_time(:millisecond)
 
     # Load ignored paths from config
@@ -33,7 +39,7 @@ defmodule CodeMySpec.Files.FileSync do
 
     # Stream filesystem, classify, stat — filtering ignored
     file_entries =
-      base_dir
+      env
       |> stream_files(ignored_patterns)
       |> Enum.to_list()
 
@@ -90,14 +96,14 @@ defmodule CodeMySpec.Files.FileSync do
   Returns `{:ok, %{upserted: count, removed: count, changed_paths: [path], total_files: count}}`.
   """
   @spec sync_changed(Scope.t(), keyword()) :: {:ok, map()}
-  def sync_changed(%Scope{} = scope, opts \\ []) do
-    base_dir = Keyword.get(opts, :base_dir, ".")
+  def sync_changed(%Scope{environment: env} = scope, _opts \\ []) do
+    base_dir = env.cwd || "."
     start = System.monotonic_time(:millisecond)
 
     ignored_patterns = load_ignored_paths(scope)
 
     file_entries =
-      base_dir
+      env
       |> stream_files(ignored_patterns)
       |> Enum.to_list()
 
@@ -190,11 +196,14 @@ defmodule CodeMySpec.Files.FileSync do
               {:ok, %{changed_path: path}}
 
             entry ->
+              # Upsert metadata (role, owners, valid) but NOT mtime.
+              # Leaves mtime stale so sync_changed still picks it up
+              # during the stop hook validation pass.
               [entry] = resolve_owners(scope, [entry])
               components = Components.list_components(scope)
               component_by_id = Map.new(components, &{&1.id, &1})
               validated = validate_entry(entry, base_dir, component_by_id)
-              Files.upsert_files(scope, [validated])
+              Files.upsert_file_metadata(scope, validated)
               {:ok, %{changed_path: path}}
           end
       end
@@ -202,15 +211,17 @@ defmodule CodeMySpec.Files.FileSync do
   end
 
   @doc """
-  Stream and classify all trackable files from a directory.
+  Stream and classify all trackable files under the sync whitelist roots.
 
-  Returns a stream of maps with `:path`, `:role`, `:mtime`, `:size`.
+  Returns a stream of maps with `:path`, `:role`, `:mtime`, `:size`. Paths are
+  relative to `env.cwd`.
   """
-  @spec stream_files(String.t(), [String.t()]) :: Enumerable.t()
-  def stream_files(base_dir, ignored_patterns \\ []) do
-    DirWalker.stream(base_dir)
-    |> Stream.map(&Path.relative_to(&1, base_dir))
-    |> Stream.reject(&ignored_path?/1)
+  @spec stream_files(Environments.Environment.t(), [String.t()]) :: Enumerable.t()
+  def stream_files(env, ignored_patterns \\ []) do
+    base_dir = env.cwd || "."
+
+    env
+    |> Environments.stream_files(@sync_roots)
     |> Stream.reject(&matches_ignored_pattern?(&1, ignored_patterns))
     |> Stream.map(&classify/1)
     |> Stream.reject(&is_nil/1)

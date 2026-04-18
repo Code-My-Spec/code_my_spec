@@ -65,6 +65,26 @@ defmodule CodeMySpec.Environments.Local do
   end
 
   @impl true
+  def stream_files(env, roots, _opts \\ []) do
+    base = env.cwd || File.cwd!()
+
+    existing =
+      roots
+      |> Enum.map(&Path.join(base, &1))
+      |> Enum.filter(&File.exists?/1)
+
+    case existing do
+      [] ->
+        Stream.map([], & &1)
+
+      paths ->
+        paths
+        |> DirWalker.stream()
+        |> Stream.map(&Path.relative_to(&1, base))
+    end
+  end
+
+  @impl true
   def environment_setup_command(_env, %{}) do
     ""
   end

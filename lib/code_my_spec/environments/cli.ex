@@ -149,6 +149,32 @@ defmodule CodeMySpec.Environments.Cli do
     File.mkdir_p(resolved_path)
   end
 
+  @doc """
+  Stream files under a whitelisted set of roots.
+
+  Delegates to DirWalker, pruning to the given subtrees only.
+  """
+  @spec stream_files(env :: Environment.t(), roots :: [String.t()], opts :: keyword()) ::
+          Enumerable.t()
+  def stream_files(env, roots, _opts \\ []) do
+    base = env.cwd || File.cwd!()
+
+    existing =
+      roots
+      |> Enum.map(&Path.join(base, &1))
+      |> Enum.filter(&File.exists?/1)
+
+    case existing do
+      [] ->
+        Stream.map([], & &1)
+
+      paths ->
+        paths
+        |> DirWalker.stream()
+        |> Stream.map(&Path.relative_to(&1, base))
+    end
+  end
+
   def environment_setup_command(_, _) do
     "pass"
   end

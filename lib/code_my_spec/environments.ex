@@ -139,6 +139,18 @@ defmodule CodeMySpec.Environments do
     impl(type).glob(env, pattern)
   end
 
+  @doc """
+  Stream files under a whitelisted set of roots, pruning to those subtrees only.
+
+  Roots are resolved relative to `env.cwd`; missing roots are skipped. Emitted
+  paths are relative to `env.cwd`.
+  """
+  @spec stream_files(env :: Environment.t(), roots :: [String.t()], opts :: keyword()) ::
+          Enumerable.t()
+  def stream_files(%Environment{type: type} = env, roots, opts \\ []) do
+    impl(type).stream_files(env, roots, opts)
+  end
+
   def cmd(environment, command, args, opts \\ []),
     do: impl(environment).cmd(command, args, opts)
 end
