@@ -7,7 +7,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   for the component type, and per-criterion file paths.
   """
 
-
   def analyzers, do: [:spex_stale]
 
   def orchestrate(node) do
@@ -324,21 +323,16 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # ============================================================================
 
   defp derive_app_name(scope) do
-    env = scope.environment
+    case scope.environment && Environments.read_file(scope.environment, "mix.exs") do
+      {:ok, content} -> extract_app_name(content)
+      _ -> "my_app"
+    end
+  end
 
-    if env do
-      case Environments.read_file(env, "mix.exs") do
-        {:ok, content} ->
-          case Regex.run(~r/app:\s*:(\w+)/, content) do
-            [_, name] -> name
-            _ -> "my_app"
-          end
-
-        _ ->
-          "my_app"
-      end
-    else
-      "my_app"
+  defp extract_app_name(content) do
+    case Regex.run(~r/app:\s*:(\w+)/, content) do
+      [_, name] -> name
+      _ -> "my_app"
     end
   end
 

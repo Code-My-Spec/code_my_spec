@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Fixtures do
     ComponentsFixtures,
     EnvironmentFixtures,
     Environments,
+    ProblemsFixtures,
     ProjectsFixtures,
     SessionsFixtures,
     Stories,
@@ -69,4 +70,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Sessions --
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
+
+  # -- Problems --
+  defdelegate problem_fixture(scope, attrs \\ %{}), to: ProblemsFixtures
 end

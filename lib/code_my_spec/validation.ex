@@ -1,20 +1,19 @@
 defmodule CodeMySpec.Validation do
   @moduledoc """
-  Orchestrates stop hook validation: file sync, compilation, static analysis, and tests.
+  Orchestrates stop hook validation: file sync, compilation, static analysis,
+  tests, and the final blocking decision.
 
-  Runs analyzers and writes results to DB. Does NOT decide pass/fail — that's
-  `TaskEvaluator`'s job (pure DB read).
+  Runs analyzers and writes results to DB. The blocking decision consults
+  `ProjectConfiguration` modes per source:
 
-  ## Flow
+  - `:off` — source never blocks (matches `resolve_analyzers` filtering)
+  - `:block_all` — every problem from this source blocks
+  - `:block_changed` — only problems on files/components changed during the
+    task block; others are advisory
+  - `:dont_block` — problems are persisted but never block
 
-  1. Incremental file sync (`sync_changed`)
-  2. Query changed files since task start
-  3. Early return if no changes
-  4. Compile (blocks on errors)
-  5. Resolve analyzers (role-derived + task-declared)
-  6. Split analyzers: static ones run through StaticAnalysis, the runner
-     analyzers (`:exunit_stale`, `:spex_stale`) run here as subprocesses
-  7. Return changed files
+  The blocking check runs even when no files changed this turn — outstanding
+  problems from a prior run still apply.
   """
 
   require Logger
@@ -32,11 +31,23 @@ defmodule CodeMySpec.Validation do
 
   @runner_analyzers [:exunit_stale, :spex_stale]
 
+  # Sources that always block — no config knob, these are cheap correctness
+  # gates (compiler errors, spec/QA validation).
+  @always_blocking_sources ["spec_validation", "qa_validation"]
+
+  # Configurable sources → the ProjectConfiguration field that gates them +
+  # the "in scope" predicate used for `:block_changed` mode.
+  @configurable_sources %{
+    "credo" => {:credo, :by_file_path},
+    "exunit" => {:exunit, :by_component_id},
+    "spex" => {:spex, :by_file_path}
+  }
+
   @doc """
   Run the full validation pipeline for a stop hook.
 
   Returns `{:ok, %{changed_files: [File.t()]}}` on success, or
-  `{:error, reason}` if compilation fails.
+  `{:error, reason}` if compilation fails or the blocking check rejects.
   """
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()]}} | {:error, String.t()}
@@ -64,26 +75,29 @@ defmodule CodeMySpec.Validation do
     )
 
     changed_files = resolve_changed_files(scope, task, sync_result)
-    run_analysis(scope, task, changed_files)
-  end
-
-  defp run_analysis(_scope, _task, []) do
-    Logger.info("[Validation] No changed files, skipping all analysis")
-    {:ok, %{changed_files: []}}
-  end
-
-  defp run_analysis(scope, task, changed_files) do
-    changed_file_paths = Enum.map(changed_files, & &1.path)
-    log_changed_files(changed_files)
     config = Configurations.get_or_create(scope)
 
-    with :ok <- StaticAnalysis.compile(scope, changed_file_paths),
-         analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config),
-         {runners, static} = Enum.split_with(analyzers, &(&1 in @runner_analyzers)),
-         _ = StaticAnalysis.run_analyzers(scope, static, changed_files),
-         _ = run_runner_analyzers(scope, runners),
-         :ok <- check_blocking_problems(scope, changed_files) do
+    with :ok <- run_pipeline(scope, task, changed_files, config),
+         :ok <- check_blocking_problems(scope, changed_files, config) do
       {:ok, %{changed_files: changed_files}}
+    end
+  end
+
+  defp run_pipeline(_scope, _task, [], _config) do
+    Logger.info("[Validation] No changed files, skipping pipeline")
+    :ok
+  end
+
+  defp run_pipeline(scope, task, changed_files, config) do
+    log_changed_files(changed_files)
+    changed_file_paths = Enum.map(changed_files, & &1.path)
+
+    with :ok <- StaticAnalysis.compile(scope, changed_file_paths) do
+      analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
+      {runners, static} = Enum.split_with(analyzers, &(&1 in @runner_analyzers))
+      StaticAnalysis.run_analyzers(scope, static, changed_files)
+      run_runner_analyzers(scope, runners)
+      :ok
     end
   end
 
@@ -101,7 +115,14 @@ defmodule CodeMySpec.Validation do
 
   # -- Blocking problem check --
 
-  defp check_blocking_problems(scope, changed_files) do
+  defp check_blocking_problems(scope, changed_files, config) do
+    sources = active_blocking_sources(config)
+
+    problems_by_source =
+      scope
+      |> Problems.list_project_problems(sources: sources)
+      |> Enum.group_by(& &1.source)
+
     changed_file_paths = Enum.map(changed_files, & &1.path)
 
     changed_component_ids =
@@ -110,46 +131,87 @@ defmodule CodeMySpec.Validation do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
 
-    problems_by_source =
-      scope
-      |> Problems.list_project_problems(sources: ["compiler", "credo", "exunit"])
-      |> Enum.group_by(& &1.source)
+    scope_context = %{
+      changed_file_paths: changed_file_paths,
+      changed_component_ids: changed_component_ids
+    }
 
-    compiler_problems = Map.get(problems_by_source, "compiler", [])
+    {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
 
-    credo_problems =
-      problems_by_source
-      |> Map.get("credo", [])
-      |> Enum.filter(&(&1.file_path in changed_file_paths))
+    decide(blocking, advisory)
+  end
 
-    {blocking_tests, advisory_tests} =
-      problems_by_source
-      |> Map.get("exunit", [])
-      |> Enum.split_with(&(&1.component_id in changed_component_ids))
+  defp active_blocking_sources(config) do
+    configurable =
+      Enum.flat_map(@configurable_sources, fn {source, {field, _scope_fn}} ->
+        if Map.get(config, field) == :off, do: [], else: [source]
+      end)
 
-    blocking = compiler_problems ++ credo_problems ++ blocking_tests
+    ["compiler" | @always_blocking_sources] ++ configurable
+  end
 
+  defp partition_problems(problems_by_source, config, scope_context) do
+    {compiler_block, compiler_advisory} =
+      partition_compiler(Map.get(problems_by_source, "compiler", []), config.compile_warnings)
+
+    always_block =
+      Enum.flat_map(@always_blocking_sources, &Map.get(problems_by_source, &1, []))
+
+    {configurable_block, configurable_advisory} =
+      Enum.reduce(@configurable_sources, {[], []}, fn {source, {field, scope_fn}},
+                                                      {block_acc, advisory_acc} ->
+        mode = Map.get(config, field)
+        problems = Map.get(problems_by_source, source, [])
+
+        {block, advisory} = apply_mode(problems, mode, scope_fn, scope_context)
+        {block_acc ++ block, advisory_acc ++ advisory}
+      end)
+
+    blocking = compiler_block ++ always_block ++ configurable_block
+    advisory = compiler_advisory ++ configurable_advisory
+
+    {blocking, advisory}
+  end
+
+  defp partition_compiler(problems, :block), do: {problems, []}
+
+  defp partition_compiler(problems, :dont_block) do
+    # Errors always block; only warnings are gated by compile_warnings.
+    Enum.split_with(problems, &(&1.severity == :error))
+  end
+
+  defp apply_mode(_problems, :off, _scope_fn, _ctx), do: {[], []}
+  defp apply_mode(problems, :block_all, _scope_fn, _ctx), do: {problems, []}
+  defp apply_mode(problems, :dont_block, _scope_fn, _ctx), do: {[], problems}
+
+  defp apply_mode(problems, :block_changed, scope_fn, ctx) do
+    Enum.split_with(problems, in_scope_fn(scope_fn, ctx))
+  end
+
+  defp in_scope_fn(:by_file_path, %{changed_file_paths: paths}) do
+    &(&1.file_path in paths)
+  end
+
+  defp in_scope_fn(:by_component_id, %{changed_component_ids: ids}) do
+    &(&1.component_id in ids)
+  end
+
+  defp decide([], []), do: :ok
+
+  defp decide([], advisory) do
+    Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
+    :ok
+  end
+
+  defp decide(blocking, advisory) do
     advisory_section =
-      if advisory_tests != [] do
-        "\n\nAdditional test failures on other components (not blocking):\n\n#{format_problems(advisory_tests)}"
+      if advisory != [] do
+        "\n\nAdditional problems on untouched scope (not blocking):\n\n#{format_problems(advisory)}"
       else
         ""
       end
 
-    case blocking do
-      [] ->
-        if advisory_tests != [] do
-          Logger.warning(
-            "[Validation] #{length(advisory_tests)} test failure(s) on other components"
-          )
-        end
-
-        :ok
-
-      _ ->
-        {:error,
-         "Fix these problems before stopping:\n\n#{format_problems(blocking)}#{advisory_section}"}
-    end
+    {:error, "Fix these problems before stopping:\n\n#{format_problems(blocking)}#{advisory_section}"}
   end
 
   defp format_problems(problems) do

@@ -12,7 +12,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   - `evaluate/3` — Checks that no relevant spex failures remain
   """
 
-
   def analyzers, do: [:spex_stale]
 
   def orchestrate(node) do
