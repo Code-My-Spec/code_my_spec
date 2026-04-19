@@ -87,7 +87,7 @@ defmodule CodeMySpec.MixProject do
 
       # Added by codemyspec
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
-      {:sexy_spex, git: "https://github.com/Code-My-Spec/spex"},
+      {:sexy_spex, path: "../spex", only: [:dev, :test]},
       {:client_utils, "~> 0.1.15"},
       {:credo, "~> 1.7.13"},
       {:sobelow, "~> 0.14.1"},

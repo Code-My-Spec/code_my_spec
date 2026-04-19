@@ -88,11 +88,14 @@ defmodule CodeMySpec.Documents.MarkdownParserTest do
       assert sections["notes"] =~ "Some content"
     end
 
-    test "returns error for invalid markdown" do
+    test "accepts unclosed code blocks — markdown parsers are lenient" do
+      # MDEx treats unclosed fenced code as extending to EOF; there's no
+      # concept of "invalid markdown" for well-formed text. The parser
+      # returns {:ok, _} — the section extractor just finds no H2s.
       markdown = "```\nunclosed code block"
 
-      assert {:error, error_msg} = MarkdownParser.parse(markdown)
-      assert error_msg =~ "Failed to parse markdown"
+      assert {:ok, sections} = MarkdownParser.parse(markdown)
+      assert sections == %{}
     end
   end
 
