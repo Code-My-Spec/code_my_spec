@@ -192,32 +192,34 @@ defmodule CodeMySpec.Files.FileSync do
     rel_path = Path.relative_to(abs_path, base_dir)
     ignored_patterns = load_ignored_paths(scope)
 
-    if ignored_path?(rel_path) or matches_ignored_pattern?(rel_path, ignored_patterns) do
-      {:ok, %{changed_path: nil}}
-    else
-      case classify(rel_path) do
-        nil ->
-          {:ok, %{changed_path: nil}}
+    cond do
+      ignored_path?(rel_path) or matches_ignored_pattern?(rel_path, ignored_patterns) ->
+        {:ok, %{changed_path: nil}}
 
-        {path, role} ->
-          case stat_file(env, path, role) do
-            nil ->
-              # File deleted from disk
-              Files.delete_by_paths(scope, [path])
-              {:ok, %{changed_path: path}}
+      classified = classify(rel_path) ->
+        {path, role} = classified
+        sync_classified_path(scope, env, path, role)
 
-            entry ->
-              # Upsert metadata (role, owners, valid) but NOT mtime.
-              # Leaves mtime stale so sync_changed still picks it up
-              # during the stop hook validation pass.
-              [entry] = resolve_owners(scope, [entry])
-              components = Components.list_components(scope)
-              component_by_id = Map.new(components, &{&1.id, &1})
-              validated = validate_entry(entry, env, component_by_id)
-              Files.upsert_file_metadata(scope, validated)
-              {:ok, %{changed_path: path}}
-          end
-      end
+      true ->
+        {:ok, %{changed_path: nil}}
+    end
+  end
+
+  defp sync_classified_path(scope, env, path, role) do
+    case stat_file(env, path, role) do
+      nil ->
+        Files.delete_by_paths(scope, [path])
+        {:ok, %{changed_path: path}}
+
+      entry ->
+        # Upsert metadata (role, owners, valid) but NOT mtime — leaves mtime
+        # stale so sync_changed still picks it up during the stop hook pass.
+        [entry] = resolve_owners(scope, [entry])
+        components = Components.list_components(scope)
+        component_by_id = Map.new(components, &{&1.id, &1})
+        validated = validate_entry(entry, env, component_by_id)
+        Files.upsert_file_metadata(scope, validated)
+        {:ok, %{changed_path: path}}
     end
   end
 
@@ -277,8 +279,22 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
+  @valid_by_existence_roles [
+    :implementation,
+    :test,
+    :rule,
+    :config,
+    :bdd_spec,
+    :qa_brief,
+    :qa_result,
+    :json,
+    :review,
+    :architecture,
+    :integration
+  ]
+
   def validate_entry(%{role: role} = entry, _env, _component_by_id)
-       when role in [:implementation, :test, :rule, :config, :bdd_spec, :qa_brief, :qa_result, :json, :review, :architecture, :integration] do
+      when role in @valid_by_existence_roles do
     # These roles are valid if they exist (which they do, since FileSync found them)
     Map.merge(entry, %{valid: true, validation_errors: nil})
   end
@@ -348,32 +364,53 @@ defmodule CodeMySpec.Files.FileSync do
   """
   @spec classify(String.t()) :: {String.t(), atom()} | nil
   def classify(path) do
+    Enum.find_value(
+      [
+        &classify_spec_or_review/1,
+        &classify_code/1,
+        &classify_docs/1,
+        &classify_qa/1,
+        &classify_config/1
+      ],
+      & &1.(path)
+    )
+  end
+
+  defp classify_spec_or_review(path) do
+    spec_prefix = Paths.spec_dir() <> "/"
+
     cond do
-      match?(<<_::binary-size(1), _::binary>>, path) and String.ends_with?(path, ".spec.md") and
-          String.starts_with?(path, Paths.spec_dir() <> "/") ->
+      String.starts_with?(path, spec_prefix) and String.ends_with?(path, ".spec.md") ->
         {path, :spec}
 
-      String.starts_with?(path, Paths.spec_dir() <> "/") and
-          String.ends_with?(path, "/design_review.md") ->
+      String.starts_with?(path, spec_prefix) and String.ends_with?(path, "/design_review.md") ->
         {path, :review}
 
-      String.starts_with?(path, "lib/") and String.ends_with?(path, ".ex") ->
-        {path, :implementation}
+      true ->
+        nil
+    end
+  end
+
+  defp classify_code(path) do
+    cond do
+      String.starts_with?(path, "test/spex/") and String.ends_with?(path, "_spex.exs") ->
+        {path, :bdd_spec}
 
       String.starts_with?(path, "test/") and String.ends_with?(path, "_test.exs") ->
         {path, :test}
 
-      String.starts_with?(path, "test/spex/") and String.ends_with?(path, "_spex.exs") ->
-        {path, :bdd_spec}
+      String.starts_with?(path, "lib/") and String.ends_with?(path, ".ex") ->
+        {path, :implementation}
 
+      true ->
+        nil
+    end
+  end
+
+  defp classify_docs(path) do
+    cond do
       String.starts_with?(path, Paths.rules_dir() <> "/") and String.ends_with?(path, ".md") ->
         {path, :rule}
-
-      match_qa_file?(path, "brief.md") ->
-        {path, :qa_brief}
-
-      match_qa_result?(path) ->
-        {path, :qa_result}
 
       String.starts_with?(path, Paths.architecture_dir() <> "/") and String.ends_with?(path, ".md") ->
         {path, :architecture}
@@ -381,17 +418,25 @@ defmodule CodeMySpec.Files.FileSync do
       String.starts_with?(path, Paths.integrations_dir() <> "/") and String.ends_with?(path, ".md") ->
         {path, :integration}
 
-      path == "CLAUDE.md" ->
-        {path, :config}
-
-      path == Path.join(Paths.base_dir(), "config.yml") ->
-        {path, :config}
-
-      path == Path.join(Paths.tasks_dir(), "code_generation.sh") ->
-        {path, :task_artifact}
-
       true ->
         nil
+    end
+  end
+
+  defp classify_qa(path) do
+    cond do
+      match_qa_file?(path, "brief.md") -> {path, :qa_brief}
+      match_qa_result?(path) -> {path, :qa_result}
+      true -> nil
+    end
+  end
+
+  defp classify_config(path) do
+    cond do
+      path == "CLAUDE.md" -> {path, :config}
+      path == Path.join(Paths.base_dir(), "config.yml") -> {path, :config}
+      path == Path.join(Paths.tasks_dir(), "code_generation.sh") -> {path, :task_artifact}
+      true -> nil
     end
   end
 
