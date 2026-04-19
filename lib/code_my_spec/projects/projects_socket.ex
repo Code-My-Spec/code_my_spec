@@ -96,8 +96,6 @@ defmodule CodeMySpec.Projects.ProjectsSocket do
       description: payload["description"],
       module_name: payload["module_name"],
       status: safe_atom(payload["status"]),
-      require_specs: payload["require_specs"],
-      require_unit_tests: payload["require_unit_tests"],
       account_id: scope.active_account_id
     }
 

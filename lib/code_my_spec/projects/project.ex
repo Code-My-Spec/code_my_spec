@@ -18,8 +18,6 @@ defmodule CodeMySpec.Projects.Project do
           google_analytics_property_id: String.t() | nil,
           setup_error: String.t() | nil,
           local_path: String.t() | nil,
-          require_specs: boolean(),
-          require_unit_tests: boolean(),
           account_id: Ecto.UUID.t() | nil,
           status:
             :created
@@ -47,8 +45,6 @@ defmodule CodeMySpec.Projects.Project do
     field :google_analytics_property_id, :string
     field :setup_error, :string
     field :local_path, :string
-    field :require_specs, :boolean, default: true
-    field :require_unit_tests, :boolean, default: true
     field :account_id, :binary_id
 
     belongs_to :oauth_application, CodeMySpec.Oauth.Application, type: :id
@@ -86,8 +82,6 @@ defmodule CodeMySpec.Projects.Project do
       :status,
       :setup_error,
       :local_path,
-      :require_specs,
-      :require_unit_tests,
       :oauth_application_id
     ])
     |> validate_required([:name])

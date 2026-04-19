@@ -29,8 +29,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]}
   def compute_graph(%Scope{} = scope) do
     ctx = Preloader.load(scope)
-    {nodes, ctx} = compute_all_from_ctx(scope, ctx)
-    edges = compute_edges(nodes, ctx, scope.active_project)
+    config = CodeMySpec.Configurations.get_or_create(scope)
+    {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
+    edges = compute_edges(nodes, ctx, config)
     nodes = clamp_satisfaction(nodes, edges)
     {nodes, edges}
   end
@@ -42,8 +43,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
     ctx = Preloader.load(scope)
-    {nodes, ctx} = compute_all_from_ctx(scope, ctx)
-    edges = compute_edges(nodes, ctx, scope.active_project)
+    config = CodeMySpec.Configurations.get_or_create(scope)
+    {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
+    edges = compute_edges(nodes, ctx, config)
     nodes = clamp_satisfaction(nodes, edges)
 
     satisfaction_map =
@@ -69,8 +71,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_all(Scope.t()) :: [Requirement.t()]
   def compute_all(%Scope{} = scope) do
     ctx = Preloader.load(scope)
-    {nodes, ctx} = compute_all_from_ctx(scope, ctx)
-    edges = compute_edges(nodes, ctx, scope.active_project)
+    config = CodeMySpec.Configurations.get_or_create(scope)
+    {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
+    edges = compute_edges(nodes, ctx, config)
     clamp_satisfaction(nodes, edges)
   end
 
@@ -115,21 +118,21 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Edge computation --
 
-  defp compute_edges(_nodes, ctx, project) do
+  defp compute_edges(_nodes, ctx, config) do
     # Template edges are computed during instantiation (stored in ctx)
     template_edges = ctx[:template_edges] || []
 
     template_edges ++
       project_to_story_edges(ctx) ++
-      component_tree_edges(ctx, project) ++
-      cross_context_dependency_edges(ctx, project) ++
+      component_tree_edges(ctx, config) ++
+      cross_context_dependency_edges(ctx, config) ++
       story_to_project_edges(ctx)
   end
 
   # Cross-entity: story ↔ surface component + its direct context dependencies.
   # Gives fan-out: story → surface + each context dep → back to story.
   # Context trees are internally connected via context_container_edges.
-  defp component_tree_edges(ctx, project) do
+  defp component_tree_edges(ctx, config) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
     |> Enum.flat_map(fn story ->
@@ -137,7 +140,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       if surface do
         # Surface component edges
-        surface_edges = edges_for_component(surface, story, project)
+        surface_edges = edges_for_component(surface, story, config)
 
         # Direct dependency edges (contexts the surface depends on)
         dep_edges =
@@ -146,7 +149,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             deps when is_list(deps) ->
               Enum.flat_map(deps, fn dep ->
                 dep_comp = Enum.find(ctx.components, &(&1.id == dep.id))
-                if dep_comp, do: edges_for_component(dep_comp, story, project), else: []
+                if dep_comp, do: edges_for_component(dep_comp, story, config), else: []
               end)
           end
 
@@ -157,10 +160,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp edges_for_component(comp, story, project) do
+  defp edges_for_component(comp, story, config) do
     defs =
       ComponentRegistry.get_requirements_for_type(comp.type)
-      |> filter_definitions_by_project_settings(project)
+      |> filter_definitions_by_config(config)
 
     first = List.first(defs)
     terminal = List.last(defs)
@@ -185,7 +188,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Cross-context dependency edges.
   # Sibling deps (same parent) are handled by template instantiation.
   # Cross-context deps gate the dependent's first requirement.
-  defp cross_context_dependency_edges(ctx, project) do
+  defp cross_context_dependency_edges(ctx, config) do
     ctx.components
     |> Enum.flat_map(fn comp ->
       deps = case comp.dependencies do
@@ -200,11 +203,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         if dep_comp do
           dep_defs =
             ComponentRegistry.get_requirements_for_type(dep_comp.type)
-            |> filter_definitions_by_project_settings(project)
+            |> filter_definitions_by_config(config)
 
           comp_defs =
             ComponentRegistry.get_requirements_for_type(comp.type)
-            |> filter_definitions_by_project_settings(project)
+            |> filter_definitions_by_config(config)
 
           dep_terminal = List.last(dep_defs)
           siblings? = comp.parent_component_id != nil and
@@ -276,8 +279,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Node computation --
 
-  defp compute_all_from_ctx(scope, ctx) do
-    {component_nodes, component_edges} = instantiate_component_graphs(scope, ctx)
+  defp compute_all_from_ctx(scope, ctx, config) do
+    {component_nodes, component_edges} = instantiate_component_graphs(scope, ctx, config)
     {story_nodes, story_edges} = compute_story_nodes(scope, ctx)
     {project_nodes, project_edges} = compute_project_nodes(scope, ctx)
 
@@ -292,7 +295,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Instantiate graph templates for all components.
   # For components with children (contexts), stamps out :child nodes per child.
   # Returns {nodes, edges} where edges are resolved from template IDs.
-  defp instantiate_component_graphs(scope, ctx) do
+  # The template is filtered by the project configuration up front so disabled
+  # artifact types (specs, reviews, tests) are stripped from both nodes and edges.
+  defp instantiate_component_graphs(scope, ctx, config) do
     # Build parent→children map
     children_by_parent =
       ctx.components
@@ -306,7 +311,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.reject(fn c -> MapSet.member?(child_ids, c.id) end)
     |> Enum.flat_map_reduce([], fn component, all_edges ->
       children = Map.get(children_by_parent, component.id, [])
-      template = RequirementDefinitionData.graph_for_type(component.type)
+
+      template =
+        component.type
+        |> RequirementDefinitionData.graph_for_type()
+        |> filter_definitions_by_config(config)
 
       {nodes, edges} = instantiate_template(scope, ctx, template, component, children)
       {nodes, all_edges ++ edges}
@@ -614,22 +623,30 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # -- Fast mode filtering --
+  # -- Configuration-based filtering --
 
-  # Filters component requirement definitions based on project settings.
-  # require_specs: false → removes :specification and :review artifact types
+  # Filters component requirement definitions based on ProjectConfiguration.
+  # require_specs: false → removes :specification artifact types
+  # require_reviews: false → removes :review artifact types
   # require_unit_tests: false → removes :tests artifact type + tests_passing
-  defp filter_definitions_by_project_settings(definitions, project) do
+  defp filter_definitions_by_config(definitions, config) do
     definitions
-    |> maybe_filter_specs(project)
-    |> maybe_filter_tests(project)
+    |> maybe_filter_specs(config)
+    |> maybe_filter_reviews(config)
+    |> maybe_filter_tests(config)
   end
 
   defp maybe_filter_specs(definitions, %{require_specs: false}) do
-    Enum.reject(definitions, &(&1.artifact_type in [:specification, :review]))
+    Enum.reject(definitions, &(&1.artifact_type == :specification))
   end
 
-  defp maybe_filter_specs(definitions, _project), do: definitions
+  defp maybe_filter_specs(definitions, _config), do: definitions
+
+  defp maybe_filter_reviews(definitions, %{require_reviews: false}) do
+    Enum.reject(definitions, &(&1.artifact_type == :review))
+  end
+
+  defp maybe_filter_reviews(definitions, _config), do: definitions
 
   defp maybe_filter_tests(definitions, %{require_unit_tests: false}) do
     Enum.reject(definitions, fn def ->
@@ -637,5 +654,5 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp maybe_filter_tests(definitions, _project), do: definitions
+  defp maybe_filter_tests(definitions, _config), do: definitions
 end
