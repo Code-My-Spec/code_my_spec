@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5089Spex do
           source: "exunit",
           source_type: :test,
           severity: :error,
-          file_path: "test/example_context_test.exs",
+          file_path: "lib/example_context.ex",
           line: 42,
           message: "assertion failed",
           component_id: context.component.id

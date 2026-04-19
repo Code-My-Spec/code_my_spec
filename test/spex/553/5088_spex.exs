@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
           source: "exunit",
           source_type: :test,
           severity: :error,
-          file_path: "test/sessions_test.exs",
+          file_path: "lib/example_context.ex",
           line: 17,
           message: "expected 2, got 3",
           component_id: context.component.id

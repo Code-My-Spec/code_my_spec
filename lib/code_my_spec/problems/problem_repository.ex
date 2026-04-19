@@ -214,6 +214,26 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   end
 
   @doc """
+  Delete all problems whose `file_path` is not in the given list.
+
+  Used during sync to clear problems for files that have been deleted from
+  the project — those problems reference source paths that no longer exist.
+  Problems with `file_path` nil are preserved (global problems).
+  """
+  @spec clear_problems_for_missing_files(Scope.t(), [String.t()]) :: {:ok, integer()}
+  def clear_problems_for_missing_files(%Scope{active_project_id: project_id}, current_paths)
+      when is_list(current_paths) do
+    {count, _} =
+      Problem
+      |> where([p], p.project_id == ^project_id)
+      |> where([p], not is_nil(p.file_path))
+      |> where([p], p.file_path not in ^current_paths)
+      |> Repo.delete_all()
+
+    {:ok, count}
+  end
+
+  @doc """
   Atomically replaces problems for specific components and source.
 
   Deletes existing problems matching `component_id IN component_ids AND source = source`,

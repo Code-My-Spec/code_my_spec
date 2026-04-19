@@ -14,6 +14,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Paths
+  alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
   alias CodeMySpec.Users.Scope
 
@@ -65,9 +66,15 @@ defmodule CodeMySpec.Files.FileSync do
 
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 
-    # Remove files no longer on disk
+    # Remove files no longer on disk + their orphaned problems (otherwise
+    # stale failures from deleted files keep blocking stop hooks).
     current_paths = Enum.map(file_entries, & &1.path)
     {removed, _} = Files.delete_removed(scope, current_paths)
+    {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
+
+    if orphaned > 0 do
+      Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
+    end
 
     total_ms = System.monotonic_time(:millisecond) - start
 
@@ -143,9 +150,15 @@ defmodule CodeMySpec.Files.FileSync do
 
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 
-    # Remove files no longer on disk
+    # Remove files no longer on disk + their orphaned problems (otherwise
+    # stale failures from deleted files keep blocking stop hooks).
     current_paths = Enum.map(file_entries, & &1.path)
     {removed, _} = Files.delete_removed(scope, current_paths)
+    {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
+
+    if orphaned > 0 do
+      Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
+    end
 
     total_ms = System.monotonic_time(:millisecond) - start
 

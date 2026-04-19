@@ -33,12 +33,15 @@ defmodule CodeMySpecSpex.Story553.Criterion5090Spex do
         {:ok, context}
       end
 
-      given_ "a spex failure exists on a bdd_spec file", context do
+      given_ "a spex failure exists on a synced file", context do
+        # Seed the problem against a file that is present in the in-memory
+        # env — FileSync.sync_changed wipes problems for missing files on
+        # every run, so the file_path must be one the sync will find.
         Fixtures.problem_fixture(context.scope, %{
           source: "spex",
           source_type: :test,
           severity: :error,
-          file_path: "test/spex/100/1000_spex.exs",
+          file_path: "lib/example_context.ex",
           line: 15,
           message: "expected document to contain \"hello\"",
           component_id: context.component.id
