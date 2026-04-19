@@ -14,6 +14,7 @@ defmodule CodeMySpecLocalWeb.Application do
     children = [
       CodeMySpec.Vault,
       CodeMySpec.Repo,
+      CodeMySpec.Environments.registry_child_spec(),
       CodeMySpecLocalWeb.Migrator,
       {Phoenix.PubSub, name: CodeMySpec.PubSub},
       CodeMySpec.Auth.AuthState,

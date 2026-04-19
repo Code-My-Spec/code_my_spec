@@ -35,7 +35,6 @@ defmodule CodeMySpecLocalWeb.Plugs.WorkingDir do
             |> halt()
 
           dir ->
-            IO.puts("working dir plug")
             resolve_and_assign(conn, dir, :html)
         end
     end

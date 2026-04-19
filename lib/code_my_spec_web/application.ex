@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpecWeb.Telemetry,
         CodeMySpec.Vault,
         CodeMySpec.Repo,
+        CodeMySpec.Environments.registry_child_spec(),
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         CodeMySpecWeb.Presence,
@@ -52,6 +53,11 @@ defmodule CodeMySpecWeb.Application do
       end
 
     children ++ dev_children
+  end
+
+  def children(children, :test) do
+    # Local web endpoint is needed for spex tests that drive the local UI.
+    children ++ [CodeMySpecLocalWeb.Endpoint]
   end
 
   def children(children, _), do: children

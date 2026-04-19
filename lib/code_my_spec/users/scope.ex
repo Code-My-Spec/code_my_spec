@@ -117,6 +117,7 @@ defmodule CodeMySpec.Users.Scope do
 
   def for_local_project(%Project{} = project) do
     user = default_local_user()
+    env = resolve_environment(project)
 
     {:ok,
      %__MODULE__{
@@ -126,9 +127,20 @@ defmodule CodeMySpec.Users.Scope do
        active_account_id: project.account_id,
        active_project: project,
        active_project_id: project.id,
-       cwd: project.local_path,
-       environment: Environment.new(:local, project.local_path)
+       cwd: env.cwd,
+       environment: env
      }}
+  end
+
+  # Consult the environment registry first — spex tests register an
+  # in-memory env per project so the LiveView (which rebuilds scope from
+  # the project record) gets the same env the test set up. Production
+  # projects have no registration and get a default :local env.
+  defp resolve_environment(%Project{} = project) do
+    case CodeMySpec.Environments.lookup_registered(project.id) do
+      nil -> Environment.new(:local, project.local_path)
+      %Environment{} = env -> env
+    end
   end
 
   # Default user for local/CLI contexts where no OAuth user is available

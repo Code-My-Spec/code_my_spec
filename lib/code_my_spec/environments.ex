@@ -9,6 +9,59 @@ defmodule CodeMySpec.Environments do
 
   alias CodeMySpec.Environments.Environment
 
+  @registry __MODULE__.Registry
+
+  @doc """
+  Child spec for the environment registry (keyed by project_id).
+
+  Start this in your application supervision tree to enable test-time
+  environment overrides. Production projects have no registered override
+  and fall back to `Environment.new(:local, project.local_path)`.
+  """
+  def registry_child_spec do
+    {Registry, keys: :unique, name: @registry}
+  end
+
+  @doc """
+  Register an environment override for a project.
+
+  After registration, any caller resolving a scope for `project_id` via
+  `lookup_registered/1` gets this env back. Registration is scoped to the
+  calling process — when the process exits, the registration is cleared
+  automatically (Registry monitors the caller).
+
+  Used by spex test setup to inject in-memory environments without global
+  config changes.
+  """
+  @spec register(any(), Environment.t()) :: :ok
+  def register(project_id, %Environment{} = env) do
+    case Registry.register(@registry, project_id, env) do
+      {:ok, _} -> :ok
+      {:error, {:already_registered, _pid}} -> :ok
+    end
+  end
+
+  @doc "Unregister a project's environment override. Idempotent."
+  @spec unregister(any()) :: :ok
+  def unregister(project_id) do
+    Registry.unregister(@registry, project_id)
+    :ok
+  end
+
+  @doc """
+  Look up a registered environment override for a project.
+
+  Returns `nil` when no override is registered — the caller should fall
+  back to its default env construction.
+  """
+  @spec lookup_registered(any()) :: Environment.t() | nil
+  def lookup_registered(project_id) do
+    case Registry.lookup(@registry, project_id) do
+      [{_pid, env}] -> env
+      [] -> nil
+    end
+  end
+
   @doc """
   Create a new execution context and return an opaque Environment struct.
 
@@ -93,6 +146,8 @@ defmodule CodeMySpec.Environments do
 
   defp impl(:local),
     do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.Local)
+
+  defp impl(:memory), do: CodeMySpec.Support.InMemoryEnvironment
 
   defp impl(:server) do
     # Server implementation not yet created

@@ -8,7 +8,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironmentTest do
     test "create returns an Environment with an Agent in ref" do
       {:ok, env} = InMemoryEnvironment.create()
 
-      assert %Environment{type: :local, ref: %{agent: agent}} = env
+      assert %Environment{type: :memory, ref: %{agent: agent}} = env
       assert is_pid(agent)
       assert Process.alive?(agent)
 

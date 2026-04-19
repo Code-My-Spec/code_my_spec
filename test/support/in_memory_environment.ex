@@ -26,7 +26,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
 
     {:ok,
      %Environment{
-       type: :local,
+       type: :memory,
        cwd: working_dir,
        ref: %{agent: agent},
        metadata: Keyword.get(opts, :metadata, %{})

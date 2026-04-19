@@ -23,6 +23,13 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
   secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
   server: false
 
+# Local web endpoint — needed for spex tests that drive the local UI.
+# server: false, runs as a started-but-quiet endpoint so LiveViewTest can use it.
+config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: 4004],
+  secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
+  server: false
+
 # In test we don't send emails
 config :code_my_spec, CodeMySpec.Mailer, adapter: Swoosh.Adapters.Test
 
@@ -40,6 +47,7 @@ config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
 config :code_my_spec,
+  env: :test,
   github_client_id: "test_github_client_id",
   github_client_secret: "test_github_client_secret",
   git_impl_module: CodeMySpec.Support.TestAdapter,
