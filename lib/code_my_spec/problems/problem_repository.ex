@@ -312,6 +312,10 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     where(query, [p], p.source == ^value)
   end
 
+  defp apply_single_filter(query, :sources, values) when is_list(values) do
+    where(query, [p], p.source in ^values)
+  end
+
   defp apply_single_filter(query, :source_type, value) do
     where(query, [p], p.source_type == ^value)
   end

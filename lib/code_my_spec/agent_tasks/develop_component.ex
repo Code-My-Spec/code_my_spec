@@ -14,6 +14,8 @@ defmodule CodeMySpec.AgentTasks.DevelopComponent do
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Files
 
+  def analyzers, do: [:exunit_stale]
+
   def command(scope, task) do
     component = Components.get_component!(scope, task.component_id)
 

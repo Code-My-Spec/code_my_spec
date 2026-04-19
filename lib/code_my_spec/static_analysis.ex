@@ -1,13 +1,14 @@
 defmodule CodeMySpec.StaticAnalysis do
   @moduledoc """
-  Executes optional code quality and correctness tools against a project codebase.
+  Public API for compilation and static analysis.
 
-  Provides a unified interface for running Credo (style/consistency),
-  Boundary (module dependency enforcement), Sobelow (security), and custom static analyzers.
-  Each tool writes output to temporary JSON files for reliable parsing, then normalizes results
-  into Problems for consistent reporting and tracking.
+  Provides a unified interface for:
+  - Compilation with problem persistence
+  - Analyzer resolution (role-derived + task-declared)
+  - Running analyzers (Credo, spec validation, etc.)
+  - Individual analyzer execution (Runner)
 
-  Separate from compilation and testing, which remain distinct concepts.
+  Called by `Validation` context — never call `Pipeline` directly.
   """
 
   alias CodeMySpec.StaticAnalysis.{Pipeline, Runner}
@@ -16,5 +17,7 @@ defmodule CodeMySpec.StaticAnalysis do
   defdelegate run(scope, analyzer_name, opts \\ []), to: Runner
   defdelegate run_all(scope, opts \\ []), to: Runner
 
-  defdelegate run_pipeline(scope, task, opts \\ []), to: Pipeline
+  defdelegate compile(scope, changed_file_paths), to: Pipeline
+  defdelegate resolve_analyzers(task, changed_files, config \\ nil), to: Pipeline
+  defdelegate run_analyzers(scope, analyzers, changed_files), to: Pipeline
 end

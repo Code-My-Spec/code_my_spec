@@ -8,6 +8,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   """
 
 
+  def analyzers, do: [:spex_stale]
+
   def orchestrate(node) do
     "Spawn a @spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end

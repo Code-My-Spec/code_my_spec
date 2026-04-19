@@ -2,19 +2,18 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   @moduledoc """
   Handles the Stop hook event.
 
-  Delegates to TaskEvaluator.evaluate_stop/3 for the full evaluation pipeline
-  (file sync, compilation, static analysis, requirement checks), then decides
-  whether to block the stop if actionable tasks remain.
+  Thin HTTP layer: resolves session/task, calls Validation (sync + compile +
+  analyze), calls TaskEvaluator (pure DB read), decides block/allow.
   """
   use CodeMySpecLocalWeb, :controller
 
   require Logger
 
-  alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Validation
   alias CodeMySpec.Validation.TaskEvaluator
 
   def handle(conn, params) do
@@ -24,48 +23,61 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
-    # Step 1: Full evaluation pipeline (sync + compile + analyze + requirements)
-    eval_result = TaskEvaluator.evaluate_stop(scope, session_id)
-
-    # Step 2: Log files changed during the active task
+    # Step 1: Resolve session + task
     session = session_id && Sessions.get_by_external_id(scope, session_id)
     active_task = session && Session.active_task(session)
-    log_changed_files(scope, active_task, req_id)
 
-    # Step 3: Decide response
+    # Step 2: Skip everything for subagent tasks
     response =
-      case eval_result do
-        {:error, reason} ->
-          %{"decision" => "block", "reason" => reason}
+      cond do
+        session && has_active_subagent_task?(session) ->
+          Logger.info("[StopHook] [#{req_id}] Active subagent task, allowing stop")
+          notify_complete()
+          %{}
 
-        result ->
-          response = maybe_continue_with_next_task(scope, session, req_id)
-          maybe_append_advisory(response, result)
+        session && has_active_manual_task?(session) ->
+          Logger.info("[StopHook] [#{req_id}] Active manual task, allowing stop")
+          notify_complete()
+          %{}
+
+        true ->
+          # Step 3: Run validation pipeline (sync + compile + analyze + tests)
+          case Validation.validate_stop(scope, active_task) do
+            {:error, reason} ->
+              Logger.info("[StopHook] [#{req_id}] Validation blocked: #{String.slice(reason, 0, 100)}")
+              %{"decision" => "block", "reason" => reason}
+
+            {:ok, _result} ->
+              # Step 4: Evaluate task requirements (pure DB read)
+              case maybe_evaluate(scope, session_id, session) do
+                {:error, reason} ->
+                  %{"decision" => "block", "reason" => reason}
+
+                {:ok, :valid} ->
+                  maybe_continue_with_next_task(scope, session, req_id)
+              end
+          end
       end
 
     json(conn, response)
   end
 
-  defp log_changed_files(_scope, nil, _req_id), do: :ok
-  defp log_changed_files(_scope, %{started_at: nil}, _req_id), do: :ok
+  defp maybe_evaluate(_scope, _session_id, nil), do: {:ok, :valid}
 
-  defp log_changed_files(scope, active_task, req_id) do
-    changed = Files.changed_since(scope, active_task.started_at)
+  defp maybe_evaluate(scope, session_id, _session) do
+    TaskEvaluator.evaluate_sessions(scope, session_id)
+  end
 
-    if changed != [] do
-      by_role = Enum.group_by(changed, & &1.role)
+  defp has_active_subagent_task?(session) do
+    Enum.any?(session.tasks || [], fn task ->
+      task.status == :active and task.execution_type == :sub_agent
+    end)
+  end
 
-      summary =
-        Enum.map_join(by_role, ", ", fn {role, files} ->
-          "#{role}(#{length(files)})"
-        end)
-
-      Logger.info(
-        "[StopHook] [#{req_id}] Files changed during task: #{summary} — " <>
-          Enum.map_join(changed, ", ", & &1.path)
-      )
-    else
-      Logger.info("[StopHook] [#{req_id}] No files changed during task")
+  defp has_active_manual_task?(session) do
+    case Session.active_task(session) do
+      %{validation_type: :manual} -> true
+      _ -> false
     end
   end
 
@@ -73,16 +85,6 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     cond do
       is_nil(session) ->
         Logger.info("[StopHook] [#{req_id}] No session, allowing stop")
-        notify_complete()
-        %{}
-
-      has_active_subagent_task?(session) ->
-        Logger.info("[StopHook] [#{req_id}] Active subagent task, allowing stop")
-        notify_complete()
-        %{}
-
-      has_active_manual_task?(session) ->
-        Logger.info("[StopHook] [#{req_id}] Active manual task, allowing stop")
         notify_complete()
         %{}
 
@@ -113,33 +115,8 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     end
   end
 
-  defp has_active_subagent_task?(session) do
-    Enum.any?(session.tasks || [], fn task ->
-      task.status == :active and task.execution_type == :sub_agent
-    end)
-  end
-
   defp continuous_mode?(%{state: %{"continuous" => true}}), do: true
   defp continuous_mode?(_), do: false
-
-  defp has_active_manual_task?(session) do
-    case Session.active_task(session) do
-      %{validation_type: :manual} -> true
-      _ -> false
-    end
-  end
-
-  defp maybe_append_advisory(response, {:ok, :valid, advisory}) do
-    case response do
-      %{"decision" => "block", "reason" => reason} ->
-        %{response | "reason" => reason <> "\n\n" <> advisory}
-
-      _ ->
-        response
-    end
-  end
-
-  defp maybe_append_advisory(response, _), do: response
 
   defp notify_complete do
     NotificationClient.notify(%{
