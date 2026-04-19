@@ -22,7 +22,6 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   require Logger
 
-
   def orchestrate(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end

@@ -18,8 +18,9 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
-  alias CodeMySpec.{Rules, Stories, Utils}
-
+  alias CodeMySpec.Rules
+  alias CodeMySpec.Stories
+  alias CodeMySpec.Utils
 
   @doc """
   Generate the command/prompt for Claude to implement a LiveView.

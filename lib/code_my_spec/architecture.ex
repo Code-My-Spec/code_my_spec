@@ -9,7 +9,6 @@ defmodule CodeMySpec.Architecture do
   alias CodeMySpec.Architecture.{MermaidProjector, NamespaceProjector, OverviewProjector}
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
-  alias CodeMySpec.Paths
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -17,74 +16,6 @@ defmodule CodeMySpec.Architecture do
   defdelegate generate_overview(components), to: OverviewProjector, as: :project
   defdelegate generate_dependency_graph(components), to: MermaidProjector, as: :project
   defdelegate generate_namespace_hierarchy(components), to: NamespaceProjector, as: :project
-
-  @doc """
-  Generates all architectural view files and writes them to the configured output directory.
-
-  ## Options
-    * `:output_dir` - Directory to write files to (default: ".code_my_spec/architecture/")
-    * `:only` - List of view types to generate (default: all)
-              Valid values: [:overview, :dependency_graph, :namespace_hierarchy]
-
-  ## Examples
-
-      iex> generate_views(scope)
-      {:ok, [".code_my_spec/architecture/overview.md", ".code_my_spec/architecture/dependency_graph.mmd", ".code_my_spec/architecture/namespace_hierarchy.md"]}
-
-      iex> generate_views(scope, output_dir: "/tmp/arch", only: [:overview])
-      {:ok, ["/tmp/arch/overview.md"]}
-
-  """
-  @spec generate_views(Scope.t(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
-  def generate_views(%Scope{} = scope, opts \\ []) do
-    output_dir = Keyword.get(opts, :output_dir, Paths.architecture_dir())
-    only = Keyword.get(opts, :only, [:overview, :dependency_graph, :namespace_hierarchy])
-
-    components = Components.list_components_with_dependencies(scope)
-
-    with :ok <- ensure_output_directory(output_dir) do
-      paths =
-        only
-        |> Enum.map(&generate_view(&1, components, output_dir))
-        |> Enum.reject(&is_nil/1)
-
-      {:ok, paths}
-    end
-  end
-
-  defp ensure_output_directory(dir) do
-    case File.mkdir_p(dir) do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp generate_view(:overview, components, output_dir) do
-    content = OverviewProjector.project(components)
-    path = Path.join(output_dir, "overview.md")
-    write_file(path, content)
-    path
-  end
-
-  defp generate_view(:dependency_graph, components, output_dir) do
-    content = MermaidProjector.project(components)
-    path = Path.join(output_dir, "dependency_graph.mmd")
-    write_file(path, content)
-    path
-  end
-
-  defp generate_view(:namespace_hierarchy, components, output_dir) do
-    content = NamespaceProjector.project(components)
-    path = Path.join(output_dir, "namespace_hierarchy.md")
-    write_file(path, content)
-    path
-  end
-
-  defp generate_view(_unknown, _components, _output_dir), do: nil
-
-  defp write_file(path, content) do
-    File.write!(path, content)
-  end
 
   @doc """
   Returns a structured summary of architecture metrics for programmatic use.

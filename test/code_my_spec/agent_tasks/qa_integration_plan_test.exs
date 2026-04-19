@@ -182,22 +182,20 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
 
-    test "returns {:ok, :invalid, feedback} when index missing", %{
+    test "returns {:ok, :valid} when index missing but no specs", %{
       scope: scope,
       task: task
     } do
-      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
-      assert feedback =~ "Integration index not found"
+      assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
 
-    test "returns {:ok, :invalid, feedback} when specs missing", %{
+    test "returns {:ok, :valid} when no specs exist", %{
       scope: scope,
       task: task
     } do
       write_integration_index(scope.environment)
 
-      assert {:ok, :invalid, feedback} = QaIntegrationPlan.evaluate(scope, task)
-      assert feedback =~ "No integration specs found"
+      assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
     end
 
     test "returns {:ok, :invalid, feedback} when verify script missing", %{

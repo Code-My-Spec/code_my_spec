@@ -10,7 +10,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   from any point and provides flexibility for the agent to adapt to different starting states.
   """
 
-
   def orchestrate(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
@@ -89,18 +88,17 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
           _ -> false
         end
 
-      prompt =
-        if done do
-          nil
-        else
-          case mod.command(scope, %{}) do
-            {:ok, text} -> text
-            _ -> "Run #{step_name(mod)}"
-          end
-        end
+      prompt = if done, do: nil, else: step_prompt(mod, scope)
 
       %{name: step_name(mod), done: done, prompt: prompt}
     end)
+  end
+
+  defp step_prompt(mod, scope) do
+    case mod.command(scope, %{}) do
+      {:ok, text} -> text
+      _ -> "Run #{step_name(mod)}"
+    end
   end
 
   @doc """
@@ -127,7 +125,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     end
   end
 
-  @doc "Delegate check for RequirementCalculator."
+  @doc "Check for RequirementCalculator."
   @spec check(term(), term()) :: {boolean(), map()}
   def check(scope, _entity) do
     case evaluate(scope, %{}) do

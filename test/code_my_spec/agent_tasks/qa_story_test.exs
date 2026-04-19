@@ -7,6 +7,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Issues
 
   # ============================================================================
   # Test Helpers
@@ -189,9 +190,6 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     )
   end
 
-  defp issues_dir(env) do
-    Path.join(env.cwd, ".code_my_spec/issues/incoming")
-  end
 
   # ============================================================================
   # command/3 Tests
@@ -487,15 +485,14 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
-      # Issue files are created for all severities including low/info
-      dir = issues_dir(scope.environment)
-      assert File.exists?(dir)
-      files = File.ls!(dir)
-      assert Enum.any?(files, &String.contains?(&1, "minor_typo"))
-      assert Enum.any?(files, &String.contains?(&1, "fyi_button_color"))
+      # Issues are created in DB for all severities including low/info
+      issues = Issues.list_by_story(scope, story.id)
+      titles = Enum.map(issues, & &1.title)
+      assert Enum.any?(titles, &String.contains?(&1, "typo"))
+      assert Enum.any?(titles, &String.contains?(&1, "Button color"))
     end
 
-    test "returns valid and creates files for all severity issues", %{
+    test "returns valid and creates DB issues for all severity levels", %{
       scope: scope,
       task: task,
       story: story
@@ -505,17 +502,15 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
-      # Should create files for all severities even though QA failed
-      dir = issues_dir(scope.environment)
-      assert File.exists?(dir)
-      files = File.ls!(dir)
+      issues = Issues.list_by_story(scope, story.id)
+      titles = Enum.map(issues, & &1.title)
 
-      assert Enum.any?(files, &String.contains?(&1, "login_redirect"))
-      assert Enum.any?(files, &String.contains?(&1, "missing_validation"))
-      assert Enum.any?(files, &String.contains?(&1, "typo"))
+      assert Enum.any?(titles, &String.contains?(&1, "redirect"))
+      assert Enum.any?(titles, &String.contains?(&1, "validation"))
+      assert Enum.any?(titles, &String.contains?(&1, "typo"))
     end
 
-    test "issue file content has severity, description, source sections", %{
+    test "issue records have severity, description, and source_path", %{
       scope: scope,
       task: task,
       story: story
@@ -525,20 +520,15 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
-      dir = issues_dir(scope.environment)
-      files = File.ls!(dir)
-      login_file = Enum.find(files, &String.contains?(&1, "login_redirect"))
+      issues = Issues.list_by_story(scope, story.id)
+      login_issue = Enum.find(issues, &String.contains?(&1.title, "redirect"))
 
-      content = File.read!(Path.join(dir, login_file))
-      assert content =~ "## Severity"
-      assert content =~ "high"
-      assert content =~ "## Description"
-      assert content =~ "invited users"
-      assert content =~ "## Source"
-      assert content =~ "QA Story #{story.id}"
+      assert login_issue.severity == :high
+      assert login_issue.description =~ "Invited users"
+      assert login_issue.source_path =~ "qa/#{story.id}/result.md"
     end
 
-    test "doesn't overwrite existing issue files", %{
+    test "upsert doesn't duplicate existing issues", %{
       scope: scope,
       task: task,
       story: story
@@ -546,35 +536,29 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-      # Run evaluate to create issue files (and archive result as failed)
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
-      dir = issues_dir(scope.environment)
-      files = File.ls!(dir)
-      login_file = Enum.find(files, &String.contains?(&1, "login_redirect"))
-      original_content = File.read!(Path.join(dir, login_file))
-
-      # Modify the file
-      File.write!(Path.join(dir, login_file), "MODIFIED")
+      issues_first = Issues.list_by_story(scope, story.id)
 
       # Write a new result and run evaluate again
       write_result_with_issues(scope.environment, story.id)
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
-      # Issue file should NOT be overwritten (upsert returns existing)
-      assert File.read!(Path.join(dir, login_file)) == "MODIFIED"
-      refute File.read!(Path.join(dir, login_file)) == original_content
+      issues_second = Issues.list_by_story(scope, story.id)
+
+      # Upsert should not create duplicates
+      assert length(issues_second) == length(issues_first)
     end
   end
 
   # ============================================================================
-  # evaluate/3 — Scope in Issue Files
+  # evaluate/3 — Scope in Issue Records
   # ============================================================================
 
-  describe "evaluate/3 scope in issue files" do
+  describe "evaluate/3 scope in issue records" do
     setup [:create_scope, :create_story, :create_task, :create_qa_plan]
 
-    test "issue files include default scope of app", %{
+    test "issues default to app scope", %{
       scope: scope,
       task: task,
       story: story
@@ -584,15 +568,13 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
-      dir = issues_dir(scope.environment)
-      files = File.ls!(dir)
-      login_file = Enum.find(files, &String.contains?(&1, "login_redirect"))
+      issues = Issues.list_by_story(scope, story.id)
+      login_issue = Enum.find(issues, &String.contains?(&1.title, "redirect"))
 
-      content = File.read!(Path.join(dir, login_file))
-      assert content =~ "## Scope\n\napp"
+      assert login_issue.scope == :app
     end
 
-    test "issue files preserve explicit scope from result", %{
+    test "issues preserve explicit scope from result", %{
       scope: scope,
       task: task,
       story: story
@@ -630,12 +612,10 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
-      dir = issues_dir(scope.environment)
-      files = File.ls!(dir)
-      seed_file = Enum.find(files, &String.contains?(&1, "seed_script"))
+      issues = Issues.list_by_story(scope, story.id)
+      seed_issue = Enum.find(issues, &String.contains?(&1.title, "Seed script"))
 
-      content = File.read!(Path.join(dir, seed_file))
-      assert content =~ "## Scope\n\nqa"
+      assert seed_issue.scope == :qa
     end
   end
 end
