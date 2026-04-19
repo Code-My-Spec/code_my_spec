@@ -20,6 +20,7 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
   alias CodeMySpec.Paths
   alias CodeMySpec.Repo
@@ -38,15 +39,18 @@ defmodule CodeMySpec.Files.ComponentSync do
   then backfills component_id on File records.
 
   ## Options
-  - `:base_dir` — project root for reading file content (required for parsing)
+  - `:base_dir` — accepted for backwards compatibility, ignored. File content
+    is read via `scope.environment` so the dispatcher can route to in-memory
+    implementations for tests.
   - `:changed_paths` — when provided, only process files matching these paths (incremental sync)
   """
   @spec sync_from_files(Scope.t(), keyword()) :: {:ok, sync_result()}
   def sync_from_files(%Scope{} = scope, opts \\ []) do
-    base_dir = Keyword.fetch!(opts, :base_dir)
+    _ = Keyword.get(opts, :base_dir)
     changed_paths = Keyword.get(opts, :changed_paths)
     incremental? = is_list(changed_paths)
     start = System.monotonic_time(:millisecond)
+    env = scope.environment
 
     project_id = scope.active_project_id
 
@@ -68,8 +72,8 @@ defmodule CodeMySpec.Files.ComponentSync do
         }
       end
 
-    spec_data = Enum.map(spec_files, &parse_spec_file(&1, base_dir))
-    impl_data = Enum.map(impl_files, &parse_impl_file(&1, base_dir))
+    spec_data = Enum.map(spec_files, &parse_spec_file(&1, env))
+    impl_data = Enum.map(impl_files, &parse_impl_file(&1, env))
     merged = merge_by_module_name(spec_data, impl_data)
 
     if merged == [] do
@@ -135,13 +139,11 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # -- Spec parsing --
 
-  # sobelow_skip ["Traversal.FileModule"]
-  defp parse_spec_file(%File{path: path} = _file, base_dir) do
+  defp parse_spec_file(%File{path: path} = _file, env) do
     module_name = module_name_from_path(path, :spec)
-    abs_path = Path.join(base_dir, path)
 
     {type, description, dependencies} =
-      case Elixir.File.read(abs_path) do
+      case Environments.read_file(env, path) do
         {:ok, content} ->
           {extract_type_section(content), extract_intro_text(content), extract_dependencies(content)}
 
@@ -157,13 +159,11 @@ defmodule CodeMySpec.Files.ComponentSync do
     }
   end
 
-  # sobelow_skip ["Traversal.FileModule"]
-  defp parse_impl_file(%File{path: path} = _file, base_dir) do
-    abs_path = Path.join(base_dir, path)
+  defp parse_impl_file(%File{path: path} = _file, env) do
     fallback = module_name_from_path(path, :implementation)
 
     module_name =
-      case Elixir.File.read(abs_path) do
+      case Environments.read_file(env, path) do
         {:ok, content} ->
           case Regex.run(~r/defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
             [_, name] -> name

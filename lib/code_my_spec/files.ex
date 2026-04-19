@@ -76,6 +76,34 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  Upsert a single file record without updating mtime.
+
+  Used by the FileWatcher to keep role, ownership, and validation fresh
+  in real-time while leaving mtime stale so `sync_changed` still picks
+  up the file as changed during the stop hook validation pass.
+  """
+  @spec upsert_file_metadata(Scope.t(), map()) :: {:ok, File.t()} | {:error, term()}
+  def upsert_file_metadata(%Scope{active_project_id: project_id}, attrs) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    entry =
+      attrs
+      |> Map.put(:project_id, project_id)
+      |> Map.put(:inserted_at, now)
+      |> Map.put(:updated_at, now)
+
+    {1, [file]} =
+      Repo.insert_all(File, [entry],
+        on_conflict:
+          {:replace, [:role, :size, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
+        conflict_target: [:project_id, :path],
+        returning: true
+      )
+
+    {:ok, file}
+  end
+
+  @doc """
   Delete files that exist in DB but not in the provided path list.
 
   Used during sync to clean up files that were removed from the filesystem.
