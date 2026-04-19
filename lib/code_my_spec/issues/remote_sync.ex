@@ -5,6 +5,7 @@ defmodule CodeMySpec.Issues.RemoteSync do
 
   require Logger
 
+  alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.RemoteClient
   alias CodeMySpec.Repo
@@ -12,22 +13,28 @@ defmodule CodeMySpec.Issues.RemoteSync do
 
   @spec sync(Scope.t()) :: :ok | {:error, term()}
   def sync(%Scope{} = scope) do
-    client = RemoteClient.new(scope)
+    with {:ok, token} <- OAuthClient.get_token() do
+      client = RemoteClient.new(scope, token: token)
 
-    case RemoteClient.list_accepted_issues(client) do
-      {:ok, %{status: 200, body: %{"data" => issues}}} ->
-        remote_issues = Enum.map(issues, &RemoteClient.deserialize_issue/1)
-        Logger.debug("[IssuesRemoteSync] Upserting #{length(remote_issues)} issues from remote")
-        Enum.each(remote_issues, &upsert_issue/1)
-        :ok
+      case RemoteClient.list_accepted_issues(client) do
+        {:ok, %{status: 200, body: %{"data" => issues}}} ->
+          remote_issues = Enum.map(issues, &RemoteClient.deserialize_issue/1)
 
-      {:ok, %{status: status, body: body}} ->
-        Logger.warning("[IssuesRemoteSync] Unexpected status: #{status}, body: #{inspect(body)}")
-        {:error, {:unexpected_status, status}}
+          Logger.debug(
+            "[IssuesRemoteSync] Upserting #{length(remote_issues)} issues from remote"
+          )
 
-      {:error, reason} ->
-        Logger.warning("[IssuesRemoteSync] Failed to fetch remote issues: #{inspect(reason)}")
-        {:error, reason}
+          Enum.each(remote_issues, &upsert_issue/1)
+          :ok
+
+        {:ok, %{status: status, body: body}} ->
+          Logger.warning("[IssuesRemoteSync] Unexpected status: #{status}, body: #{inspect(body)}")
+          {:error, {:unexpected_status, status}}
+
+        {:error, reason} ->
+          Logger.warning("[IssuesRemoteSync] Failed to fetch remote issues: #{inspect(reason)}")
+          {:error, reason}
+      end
     end
   end
 

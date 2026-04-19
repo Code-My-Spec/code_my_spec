@@ -180,20 +180,21 @@ defmodule CodeMySpec.Issues do
   defp broadcast(_scope, _message), do: :ok
 
   defp sync_resolution_to_remote(scope, %Issue{} = issue) do
+    alias CodeMySpec.Auth.OAuthClient
     alias CodeMySpec.Issues.RemoteClient
 
     Task.start(fn ->
-      try do
-        client = RemoteClient.new(scope)
+      with {:ok, token} <- OAuthClient.get_token() do
+        client = RemoteClient.new(scope, token: token)
 
         RemoteClient.update_issue(client, issue.id, %{
           status: "resolved",
           resolution: issue.resolution
         })
-      rescue
-        e ->
+      else
+        {:error, reason} ->
           require Logger
-          Logger.warning("[Issues] Failed to sync resolution to remote: #{Exception.message(e)}")
+          Logger.warning("[Issues] Failed to sync resolution to remote: #{inspect(reason)}")
       end
     end)
   end

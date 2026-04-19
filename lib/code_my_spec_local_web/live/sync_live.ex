@@ -7,6 +7,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
@@ -47,24 +48,17 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     socket = assign(socket, sync_status: :running, sync_result: nil)
     scope = socket.assigns.scope
 
-    # Sync stories and issues from remote API
-    RemoteSync.sync(scope)
-    issues_result = IssuesRemoteSync.sync(scope)
+    # Short-circuit remote syncs when not authenticated — avoids two DB
+    # lookups per sync (both end up returning :not_authenticated anyway).
+    {stories_line, issues_line} = run_remote_syncs(scope)
 
     with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
-      story_line = {"Stories", "synced from remote"}
-
-      issues_line = case issues_result do
-        :ok -> {"Issues", "synced from remote"}
-        {:error, reason} -> {"Issues", "sync failed: #{inspect(reason)}"}
-      end
-
       {:noreply,
        assign(socket,
          sync_status: :done,
          sync_result: [
-           story_line,
+           stories_line,
            issues_line,
            {"Files", file_result.total_files},
            {"Changed files", length(file_result.changed_paths)},
@@ -99,6 +93,26 @@ defmodule CodeMySpecLocalWeb.SyncLive do
        sync_status: :done,
        sync_result: [{"Purged", "#{file_count} files + #{length(components)} components deleted"}]
      )}
+  end
+
+  defp run_remote_syncs(scope) do
+    if OAuthClient.authenticated?() do
+      {
+        safe_remote_sync("Stories", fn -> RemoteSync.sync(scope) end),
+        safe_remote_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end)
+      }
+    else
+      skipped = {"skipped — not authenticated"}
+      {{"Stories", elem(skipped, 0)}, {"Issues", elem(skipped, 0)}}
+    end
+  end
+
+  defp safe_remote_sync(label, fun) do
+    case fun.() do
+      :ok -> {label, "synced from remote"}
+      {:ok, _} -> {label, "synced from remote"}
+      {:error, reason} -> {label, "sync failed: #{inspect(reason)}"}
+    end
   end
 
   @impl true

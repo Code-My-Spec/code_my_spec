@@ -6,6 +6,7 @@ defmodule CodeMySpec.Stories.RemoteSync do
   require Logger
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.RemoteClient
   alias CodeMySpec.Stories.Story
@@ -13,13 +14,20 @@ defmodule CodeMySpec.Stories.RemoteSync do
 
   @doc """
   Fetches stories from the remote API and upserts them locally.
+
+  Acquires the auth token up front and passes it to the client so a
+  missing/expired token surfaces as an `{:error, reason}` tuple rather
+  than a raise deep inside the HTTP client.
   """
-  @spec sync(Scope.t()) :: :ok
+  @spec sync(Scope.t(), keyword()) :: :ok | {:error, term()}
   def sync(%Scope{} = scope, opts \\ []) do
-    {:ok, stories} = RemoteClient.list_project_stories(scope, opts)
-    Logger.debug("[RemoteSync] Upserting #{length(stories)} stories from remote")
-    Enum.each(stories, &upsert_story(&1, scope))
-    :ok
+    with {:ok, token} <- OAuthClient.get_token(),
+         {:ok, stories} <-
+           RemoteClient.list_project_stories(scope, Keyword.put(opts, :token, token)) do
+      Logger.debug("[RemoteSync] Upserting #{length(stories)} stories from remote")
+      Enum.each(stories, &upsert_story(&1, scope))
+      :ok
+    end
   end
 
   defp upsert_story(%Story{} = story, scope) do

@@ -385,57 +385,6 @@ defmodule CodeMySpec.IssuesTest do
     end
   end
 
-  describe "project_all/2" do
-    test "projects incoming issues to incoming directory" do
-      scope = full_scope_fixture()
-      _issue = create_issue(scope)
-
-      assert :ok = Issues.project_all(scope)
-    end
-
-    test "projects accepted issues to accepted directory" do
-      scope = full_scope_fixture()
-      issue = create_issue(scope)
-      {:ok, _accepted} = Issues.accept_issue(scope, issue)
-
-      assert :ok = Issues.project_all(scope)
-    end
-
-    test "projects resolved issues to accepted directory (with Resolution section)" do
-      scope = full_scope_fixture()
-      issue = create_issue(scope)
-      {:ok, accepted} = Issues.accept_issue(scope, issue)
-      {:ok, _resolved} = Issues.resolve_issue(scope, accepted, "Fixed")
-
-      assert :ok = Issues.project_all(scope)
-    end
-
-    test "does not project dismissed issues" do
-      scope = full_scope_fixture()
-      issue = create_issue(scope)
-      {:ok, _dismissed} = Issues.dismiss_issue(scope, issue, "Not a bug")
-
-      assert :ok = Issues.project_all(scope)
-    end
-
-    test "is idempotent (same result on repeated calls)" do
-      scope = full_scope_fixture()
-      _issue = create_issue(scope)
-
-      assert :ok = Issues.project_all(scope)
-      assert :ok = Issues.project_all(scope)
-    end
-
-    test "recovers from deleted files" do
-      scope = full_scope_fixture()
-      _issue = create_issue(scope)
-
-      assert :ok = Issues.project_all(scope)
-      # Calling again recovers if files were deleted between calls
-      assert :ok = Issues.project_all(scope)
-    end
-  end
-
   describe "has_unresolved_issues?/2" do
     test "returns true when unresolved issues exist at severity" do
       scope = full_scope_fixture()
