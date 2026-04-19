@@ -31,7 +31,6 @@ defmodule CodeMySpec.Files.FileSync do
   """
   @spec sync(Scope.t(), keyword()) :: {:ok, map()}
   def sync(%Scope{environment: env} = scope, _opts \\ []) do
-    base_dir = env.cwd || "."
     start = System.monotonic_time(:millisecond)
 
     # Load ignored paths from config
@@ -58,7 +57,7 @@ defmodule CodeMySpec.Files.FileSync do
           component_by_id = Map.new(components, &{&1.id, &1})
 
           validated_entries =
-            Enum.map(entries_with_owners, &validate_entry(&1, base_dir, component_by_id))
+            Enum.map(entries_with_owners, &validate_entry(&1, env, component_by_id))
 
           {count, _} = Files.upsert_files(scope, validated_entries)
           count
@@ -97,7 +96,6 @@ defmodule CodeMySpec.Files.FileSync do
   """
   @spec sync_changed(Scope.t(), keyword()) :: {:ok, map()}
   def sync_changed(%Scope{environment: env} = scope, _opts \\ []) do
-    base_dir = env.cwd || "."
     start = System.monotonic_time(:millisecond)
 
     ignored_patterns = load_ignored_paths(scope)
@@ -137,7 +135,7 @@ defmodule CodeMySpec.Files.FileSync do
           component_by_id = Map.new(components, &{&1.id, &1})
 
           validated_entries =
-            Enum.map(entries_with_owners, &validate_entry(&1, base_dir, component_by_id))
+            Enum.map(entries_with_owners, &validate_entry(&1, env, component_by_id))
 
           {count, _} = Files.upsert_files(scope, validated_entries)
           count
@@ -176,8 +174,8 @@ defmodule CodeMySpec.Files.FileSync do
   the file was unrecognized or ignored.
   """
   @spec sync_path(Scope.t(), String.t(), keyword()) :: {:ok, map()}
-  def sync_path(%Scope{} = scope, abs_path, opts \\ []) do
-    base_dir = Keyword.fetch!(opts, :base_dir)
+  def sync_path(%Scope{environment: env} = scope, abs_path, opts \\ []) do
+    base_dir = Keyword.get(opts, :base_dir, env.cwd || ".")
     rel_path = Path.relative_to(abs_path, base_dir)
     ignored_patterns = load_ignored_paths(scope)
 
@@ -189,7 +187,7 @@ defmodule CodeMySpec.Files.FileSync do
           {:ok, %{changed_path: nil}}
 
         {path, role} ->
-          case stat_file(base_dir, path, role) do
+          case stat_file(env, path, role) do
             nil ->
               # File deleted from disk
               Files.delete_by_paths(scope, [path])
@@ -202,7 +200,7 @@ defmodule CodeMySpec.Files.FileSync do
               [entry] = resolve_owners(scope, [entry])
               components = Components.list_components(scope)
               component_by_id = Map.new(components, &{&1.id, &1})
-              validated = validate_entry(entry, base_dir, component_by_id)
+              validated = validate_entry(entry, env, component_by_id)
               Files.upsert_file_metadata(scope, validated)
               {:ok, %{changed_path: path}}
           end
@@ -218,14 +216,12 @@ defmodule CodeMySpec.Files.FileSync do
   """
   @spec stream_files(Environments.Environment.t(), [String.t()]) :: Enumerable.t()
   def stream_files(env, ignored_patterns \\ []) do
-    base_dir = env.cwd || "."
-
     env
     |> Environments.stream_files(@sync_roots)
     |> Stream.reject(&matches_ignored_pattern?(&1, ignored_patterns))
     |> Stream.map(&classify/1)
     |> Stream.reject(&is_nil/1)
-    |> Stream.map(fn {path, role} -> stat_file(base_dir, path, role) end)
+    |> Stream.map(fn {path, role} -> stat_file(env, path, role) end)
     |> Stream.reject(&is_nil/1)
   end
 
@@ -236,10 +232,8 @@ defmodule CodeMySpec.Files.FileSync do
   Tests with a component are checked for spec alignment.
   Other tracked roles are valid by existence.
   """
-  def validate_entry(%{role: :spec} = entry, base_dir, _component_by_id) do
-    abs_path = Path.join(base_dir, entry.path)
-
-    case Elixir.File.read(abs_path) do
+  def validate_entry(%{role: :spec} = entry, env, _component_by_id) do
+    case Environments.read_file(env, entry.path) do
       {:ok, content} ->
         document_type = document_type_from_content(content)
         validate_spec_content(entry, content, document_type)
@@ -249,10 +243,8 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  def validate_entry(%{role: :review} = entry, base_dir, _component_by_id) do
-    abs_path = Path.join(base_dir, entry.path)
-
-    case Elixir.File.read(abs_path) do
+  def validate_entry(%{role: :review} = entry, env, _component_by_id) do
+    case Environments.read_file(env, entry.path) do
       {:ok, content} ->
         validate_spec_content(entry, content, "design_review")
 
@@ -261,34 +253,33 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  def validate_entry(%{role: :test, component_id: component_id} = entry, base_dir, component_by_id)
+  def validate_entry(%{role: :test, component_id: component_id} = entry, env, component_by_id)
        when not is_nil(component_id) do
     component = Map.get(component_by_id, component_id)
 
     if component do
-      validate_test_alignment(entry, base_dir, component)
+      validate_test_alignment(entry, env, component)
     else
       Map.merge(entry, %{valid: true, validation_errors: nil})
     end
   end
 
-  def validate_entry(%{role: role} = entry, _base_dir, _component_by_id)
+  def validate_entry(%{role: role} = entry, _env, _component_by_id)
        when role in [:implementation, :test, :rule, :config, :bdd_spec, :qa_brief, :qa_result, :json, :review, :architecture, :integration] do
     # These roles are valid if they exist (which they do, since FileSync found them)
     Map.merge(entry, %{valid: true, validation_errors: nil})
   end
 
-  def validate_entry(entry, _base_dir, _component_by_id) do
+  def validate_entry(entry, _env, _component_by_id) do
     Map.merge(entry, %{valid: nil, validation_errors: nil})
   end
 
-  defp validate_test_alignment(entry, base_dir, component) do
+  defp validate_test_alignment(entry, env, component) do
     module_path = Macro.underscore(component.module_name) |> String.replace(".", "/")
-    spec_path = Path.join(base_dir, Paths.spec_file(module_path))
-    test_path = Path.join(base_dir, entry.path)
+    spec_path = Paths.spec_file(module_path)
 
-    with {:ok, spec_content} <- Elixir.File.read(spec_path),
-         {:ok, test_content} <- Elixir.File.read(test_path) do
+    with {:ok, spec_content} <- Environments.read_file(env, spec_path),
+         {:ok, test_content} <- Environments.read_file(env, entry.path) do
       case SpecAlignment.check_test_alignment(spec_content, test_content) do
         {:ok, :aligned} ->
           Map.merge(entry, %{valid: true, validation_errors: nil})
@@ -449,16 +440,12 @@ defmodule CodeMySpec.Files.FileSync do
   end
 
   @doc "Stat a file for mtime and size. Returns entry map or nil if file doesn't exist."
-  # sobelow_skip ["Traversal.FileModule"]
-  def stat_file(base_dir, path, role) do
-    abs_path = Path.join(base_dir, path)
-
-    case File.stat(abs_path, time: :posix) do
-      {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
-        mtime = DateTime.from_unix!(mtime_posix) |> DateTime.truncate(:second)
+  def stat_file(env, path, role) do
+    case Environments.stat(env, path) do
+      {:ok, %{mtime: mtime, size: size}} ->
         %{path: path, role: role, mtime: mtime, size: size}
 
-      _ ->
+      {:error, _} ->
         nil
     end
   end

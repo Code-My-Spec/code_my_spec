@@ -124,6 +124,15 @@ defmodule CodeMySpec.Environments do
   end
 
   @doc """
+  Stat a file, returning its mtime and size.
+  """
+  @spec stat(env :: Environment.t(), path :: String.t()) ::
+          {:ok, %{mtime: DateTime.t(), size: non_neg_integer()}} | {:error, term()}
+  def stat(%Environment{type: type} = env, path) do
+    impl(type).stat(env, path)
+  end
+
+  @doc """
   Ensure a directory exists, creating it and any parents if needed.
   """
   @spec ensure_dir(env :: Environment.t(), path :: String.t()) :: :ok | {:error, term()}

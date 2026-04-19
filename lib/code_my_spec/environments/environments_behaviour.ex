@@ -78,6 +78,15 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   @callback ensure_dir(env :: Environment.t(), path :: String.t()) :: :ok | {:error, term()}
 
   @doc """
+  Stat a regular file, returning its mtime and size.
+
+  `mtime` is a truncated-to-second `DateTime` in UTC. Returns `{:error, :enoent}`
+  for missing paths or non-regular files.
+  """
+  @callback stat(env :: Environment.t(), path :: String.t()) ::
+              {:ok, %{mtime: DateTime.t(), size: non_neg_integer()}} | {:error, term()}
+
+  @doc """
   Stream files under a set of whitelisted roots, recursing into subdirectories.
 
   Each root is resolved relative to the environment's `cwd`. Roots that don't

@@ -136,6 +136,27 @@ defmodule CodeMySpec.Environments.Cli do
   end
 
   @doc """
+  Stat a file on the server-side file system.
+  """
+  @spec stat(env :: Environment.t(), path :: String.t()) ::
+          {:ok, %{mtime: DateTime.t(), size: non_neg_integer()}} | {:error, term()}
+  def stat(env, path) do
+    resolved_path = resolve_path(path, env.cwd)
+
+    case File.stat(resolved_path, time: :posix) do
+      {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
+        mtime = mtime_posix |> DateTime.from_unix!() |> DateTime.truncate(:second)
+        {:ok, %{mtime: mtime, size: size}}
+
+      {:ok, _} ->
+        {:error, :not_regular}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Find files matching a glob pattern relative to the environment's working directory.
   """
   @spec glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]

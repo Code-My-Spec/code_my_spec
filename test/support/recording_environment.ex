@@ -67,6 +67,23 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   end
 
   @impl true
+  def stat(env, path) do
+    resolved_path = resolve_path(path, env.cwd)
+
+    case File.stat(resolved_path, time: :posix) do
+      {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
+        mtime = mtime_posix |> DateTime.from_unix!() |> DateTime.truncate(:second)
+        {:ok, %{mtime: mtime, size: size}}
+
+      {:ok, _} ->
+        {:error, :not_regular}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl true
   def glob(env, pattern) do
     resolved_pattern = resolve_path(pattern, env.cwd)
     Path.wildcard(resolved_pattern)
