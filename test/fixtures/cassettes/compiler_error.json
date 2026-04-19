@@ -1,0 +1,22 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/cassette_diagnostics_99.jsonl",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Compiling 1 file (.ex)\n    error: undefined variable \"undefined_variable\"\n    │\n  3 │     undefined_variable\n    │     ^^^^^^^^^^^^^^^^^^\n    │\n    └─ lib/code_my_spec_test_repo/bad_module.ex:3:5: CodeMySpecTestRepo.BadModule.broken/0\n\n\n== Compilation error in file lib/code_my_spec_test_repo/bad_module.ex ==\n** (CompileError) lib/code_my_spec_test_repo/bad_module.ex: cannot compile module CodeMySpecTestRepo.BadModule (errors have been logged)\n\n",
+      "recorded_at": "2026-04-19T17:42:02.120432Z"
+    }
+  ],
+  "ports": []
+}

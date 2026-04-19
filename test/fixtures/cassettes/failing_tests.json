@@ -1,0 +1,41 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/cassette_diagnostics_2.jsonl",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Compiling 1 file (.ex)\nGenerated code_my_spec_test_repo app\n",
+      "recorded_at": "2026-04-19T17:42:32.805216Z"
+    },
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
+      "command": "mix",
+      "exit_code": 2,
+      "opts": {
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/cassette_test_34.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Running ExUnit with seed: 379919, max_cases: \nExcluding tags: nil\nIncluding tags: nil\n\n\n\n  1) test add returns the sum of two numbers (CodeMySpecTestRepo.CalculatorTest)\n     test/code_my_spec_test_repo/calculator_test.exs:4\n     Assertion with == failed\n     code:  assert CodeMySpecTestRepo.Calculator.add(2, 3) == 5\n     left:  -1\n     right: 5\n     stacktrace:\n       test/code_my_spec_test_repo/calculator_test.exs:5: (test)\n\n.\nFinished in 0.03 seconds (0.00s async, 0.03s sync)\n2 tests, 1 failure\n",
+      "recorded_at": "2026-04-19T17:42:35.531384Z"
+    }
+  ],
+  "ports": []
+}

@@ -1,0 +1,59 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "env": {
+          "DIAGNOSTICS_OUTPUT": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/cassette_diagnostics_5.jsonl",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Compiling 1 file (.ex)\nGenerated code_my_spec_test_repo app\n",
+      "recorded_at": "2026-04-19T18:19:44.795553Z"
+    },
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/cassette_test_37.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "No stale tests\n",
+      "recorded_at": "2026-04-19T18:19:47.022234Z"
+    },
+    {
+      "args": [
+        "credo",
+        "suggest",
+        "--format",
+        "json",
+        "--all",
+        "--all-priorities",
+        "--no-color"
+      ],
+      "command": "mix",
+      "exit_code": 14,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "{\n  \"issues\": [\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.FunctionNames\",\n      \"column\": 7,\n      \"column_end\": 18,\n      \"filename\": \"lib/code_my_spec_test_repo/messy_module.ex\",\n      \"line_no\": 2,\n      \"message\": \"Function/macro/guard names should be written in snake_case.\",\n      \"priority\": 12,\n      \"scope\": \"CodeMySpecTestRepo.MessyModule.doSomething\",\n      \"trigger\": \"doSomething\"\n    },\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.ModuleDoc\",\n      \"column\": 11,\n      \"column_end\": 41,\n      \"filename\": \"lib/code_my_spec_test_repo/messy_module.ex\",\n      \"line_no\": 1,\n      \"message\": \"Modules should have a @moduledoc tag.\",\n      \"priority\": 1,\n      \"scope\": \"CodeMySpecTestRepo.MessyModule\",\n      \"trigger\": \"CodeMySpecTestRepo.MessyModule\"\n    },\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.AliasOrder\",\n      \"column\": 13,\n      \"column_end\": 32,\n      \"filename\": \"lib/code_my_spec_test_repo_web.ex\",\n      \"line_no\": 91,\n      \"message\": \"The alias `Phoenix.LiveView.JS` is not alphabetically ordered among its group.\",\n      \"priority\": -8,\n      \"scope\": \"CodeMySpecTestRepoWeb.html_helpers\",\n      \"trigger\": \"Phoenix.LiveView.JS\"\n    },\n    {\n      \"category\": \"design\",\n      \"check\": \"Credo.Check.Design.AliasUsage\",\n      \"column\": 9,\n      \"column_end\": 26,\n      \"filename\": \"lib/code_my_spec_test_repo_web/components/core_components.ex\",\n      \"line_no\": 204,\n      \"message\": \"Nested modules could be aliased at the top of the invoking module.\",\n      \"priority\": -7,\n      \"scope\": \"CodeMySpecTestRepoWeb.CoreComponents.input\",\n      \"trigger\": \"Phoenix.HTML.Form\"\n    },\n    {\n      \"category\": \"refactor\",\n      \"check\": \"Credo.Check.Refactor.CondStatements\",\n      \"column\": 5,\n      \"column_end\": 9,\n      \"filename\": \"lib/mix/tasks/cassette.record.ex\",\n      \"line_no\": 115,\n      \"message\": \"Cond statements should contain at least two conditions besides `true`, consider using `if` instead.\",\n      \"priority\": 3,\n      \"scope\": \"Mix.Tasks.Cassette.Record.load_scenario\",\n      \"trigger\": \"cond\"\n    },\n    {\n      \"category\": \"design\",\n      \"check\": \"Credo.Check.Design.AliasUsage\",\n      \"column\": 11,\n      \"column_end\": 36,\n      \"filename\": \"test/support/data_case.ex\",\n      \"line_no\": 39,\n      \"message\": \"Nested modules could be aliased at the top of the invoking module.\",\n      \"priority\": -8,\n      \"scope\": \"CodeMySpecTestRepo.DataCase.setup_sandbox\",\n      \"trigger\": \"Ecto.Adapters.SQL.Sandbox\"\n    },\n    {\n      \"category\": \"design\",\n      \"check\": \"Credo.Check.Design.AliasUsage\",\n      \"column\": 19,\n      \"column_end\": 44,\n      \"filename\": \"test/support/data_case.ex\",\n      \"line_no\": 40,\n      \"message\": \"Nested modules could be aliased at the top of the invoking module.\",\n      \"priority\": -8,\n      \"scope\": \"CodeMySpecTestRepo.DataCase.setup_sandbox\",\n      \"trigger\": \"Ecto.Adapters.SQL.Sandbox\"\n    }\n  ]\n}\n",
+      "recorded_at": "2026-04-19T18:19:48.953532Z"
+    }
+  ],
+  "ports": []
+}
