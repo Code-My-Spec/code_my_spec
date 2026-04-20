@@ -6,42 +6,54 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
   entirely and allows the stop immediately.
 
   StopController's `decide/6` short-circuits via
-  `has_active_subagent_task?/1` before validation even runs. No
-  pipeline, no compile, no analyzers — so no cassette is needed. If
-  the short-circuit broke and the pipeline tried to run `mix compile`,
-  it would blow up because there's no cassette in scope.
+  `has_active_subagent_task?/1` before validation runs. No pipeline,
+  no cassette — a missing one would fail if the short-circuit broke.
 
-  Session + task created via `Fixtures.session_with_task_fixture/3`.
-  These kinds of tasks originate server-side (orchestrators create
-  subagent tasks; agents don't start them through the local contract),
-  so the fixture bridge is the right abstraction — not an agent-driven
-  given.
+  Real-contract: `:synced_liveview_component` produces a liveview
+  component so the liveview_graph applies. Starting a task on the
+  `test_spec_alignment` requirement (node_scope :self, execution_type
+  :sub_agent) via the real `start_task` MCP tool yields a task with
+  the required shape.
   """
 
   use CodeMySpecSpex.Case
 
   import_givens CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpecSpex.Fixtures
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "Subagent task short-circuits the stop hook" do
     scenario "active subagent task → allow with no pipeline" do
-      given_ :synced_context_component
+      given_ :synced_liveview_component
 
-      given_ "a session has an active subagent task", context do
+      given_ "the agent starts a test_spec_alignment subagent task on the liveview component",
+             context do
         external_id = "spex-#{System.unique_integer([:positive])}"
 
-        session =
-          Fixtures.session_with_task_fixture(
-            context.scope,
-            %{external_conversation_id: external_id},
-            %{execution_type: :sub_agent}
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post("/api/hooks/session-start", %{"session_id" => external_id})
+        |> Phoenix.ConnTest.json_response(200)
+
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, _response, _frame} =
+          StartTask.execute(
+            %{
+              requirement_name: "test_spec_alignment",
+              entity_type: "component",
+              entity_id: to_string(context.liveview_component.id),
+              session_id: external_id
+            },
+            frame
           )
 
-        {:ok, Map.merge(context, %{session: session, external_id: external_id})}
+        {:ok, Map.put(context, :session_id, external_id)}
       end
 
       when_ "the stop hook fires", context do
@@ -49,7 +61,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
           |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.external_id})
+          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}

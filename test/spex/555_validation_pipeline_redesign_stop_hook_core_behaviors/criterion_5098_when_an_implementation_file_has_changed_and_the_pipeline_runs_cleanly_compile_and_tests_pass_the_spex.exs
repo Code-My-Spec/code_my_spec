@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story555.Criterion5098Spex do
   import_givens CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
-  alias CodeMySpecSpex.Fixtures
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
@@ -33,19 +32,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5098Spex do
   spex "Active task with a clean pipeline run is allowed to stop" do
     scenario "agent writes a clean impl, pipeline runs clean, stop allowed" do
       given_ :synced_context_component
-
-      given_ "a session has a main_agent active task", context do
-        external_id = "spex-#{System.unique_integer([:positive])}"
-
-        session =
-          Fixtures.session_with_task_fixture(
-            context.scope,
-            %{external_conversation_id: external_id},
-            %{}
-          )
-
-        {:ok, Map.merge(context, %{session: session, external_id: external_id})}
-      end
+      given_ :context_spec_task_started
 
       given_ "the agent writes a fresh implementation and a passing test",
              context do
@@ -61,7 +48,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5098Spex do
             |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.external_id,
+              "session_id" => context.session_id,
               "test_output_files" => %{
                 "exunit" => fixture_path("exunit.json"),
                 "compile" => fixture_path("compile.jsonl")

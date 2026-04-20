@@ -29,8 +29,6 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
 
   import_givens CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpecSpex.Fixtures
-
   @fixture_dir "test/fixtures/validation/pipeline_credo_blocks"
 
   setup :register_log_in_setup_account
@@ -40,19 +38,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
     scenario "credo finds a moduledoc issue on impl, stop blocked with credo listed" do
       given_ :synced_context_component
       given_ :credo_available
-
-      given_ "a session has a main_agent active task", context do
-        external_id = "spex-#{System.unique_integer([:positive])}"
-
-        session =
-          Fixtures.session_with_task_fixture(
-            context.scope,
-            %{external_conversation_id: external_id},
-            %{}
-          )
-
-        {:ok, Map.merge(context, %{session: session, external_id: external_id})}
-      end
+      given_ :context_spec_task_started
 
       when_ "the stop hook fires", context do
         response =
@@ -61,7 +47,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
             |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.external_id,
+              "session_id" => context.session_id,
               "test_output_files" => %{
                 "compile" => fixture_path("compile.jsonl"),
                 "exunit" => fixture_path("exunit.json")

@@ -28,7 +28,6 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
   import_givens CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
-  alias CodeMySpecSpex.Fixtures
 
   @impl_path "lib/example_context.ex"
   @fixture_dir "test/fixtures/validation/pipeline_compile_error"
@@ -39,19 +38,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
   spex "Compiler errors block the stop and short-circuit the pipeline" do
     scenario "mix compile returns errors → block with compiler reason, no analyzers" do
       given_ :synced_context_component
-
-      given_ "a session has a main_agent active task", context do
-        external_id = "spex-#{System.unique_integer([:positive])}"
-
-        session =
-          Fixtures.session_with_task_fixture(
-            context.scope,
-            %{external_conversation_id: external_id},
-            %{}
-          )
-
-        {:ok, Map.merge(context, %{session: session, external_id: external_id})}
-      end
+      given_ :context_spec_task_started
 
       given_ "the agent writes an implementation that does not compile",
              context do
@@ -66,7 +53,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
             |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.external_id,
+              "session_id" => context.session_id,
               "test_output_files" => %{"compile" => fixture_path("compile.jsonl")}
             })
             |> Phoenix.ConnTest.json_response(200)

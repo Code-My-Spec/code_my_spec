@@ -163,11 +163,24 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, _session} <- find_or_create_session(scope, external_id, agent_task_module),
+         {:ok, session} <- find_or_create_session(scope, external_id, agent_task_module),
+         {:ok, _session} <- maybe_enable_continuous_mode(scope, session, agent_task_module),
          {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id}) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
+
+  # StartImplementation's @moduledoc promises state["continuous"] = true
+  # on entry. The flag is the stop hook's signal to keep looping the
+  # agent through get_next_requirement until work is done. Wire it here
+  # rather than in the agent_task_module.command so the session
+  # context is available and no MCP tool has to duplicate the logic.
+  defp maybe_enable_continuous_mode(scope, session, AgentTasks.StartImplementation) do
+    state = Map.put(session.state || %{}, "continuous", true)
+    Sessions.update_session(scope, session, %{state: state})
+  end
+
+  defp maybe_enable_continuous_mode(_scope, session, _module), do: {:ok, session}
 
   defp run_componentless_task(scope, external_id, session_type) do
     with {:ok, _} <- validate_external_id(external_id),

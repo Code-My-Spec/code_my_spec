@@ -5,23 +5,22 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
   since its started_at, the stop hook skips the pipeline (no compile,
   no analyzers, no tests) and the stop is allowed.
 
-  After `:synced_context_component` syncs the story's files, we start
-  an active task with `started_at` set 10s in the future. When the
-  stop hook fires, `Validation.resolve_changed_files/3` calls
-  `Files.changed_since(scope, task.started_at)` — every synced file's
-  `updated_at` is earlier than `started_at`, so the changed-files set
-  is empty, `run_pipeline/5` short-circuits, and the stop is allowed.
+  Real-contract flow: `:synced_context_component` writes + syncs the
+  component's files (updated_at T0), a 1.1-second clock advance
+  guarantees the task's `started_at` lands past every file's
+  updated_at, then `:context_spec_task_started` drives the actual
+  `POST /api/hooks/session-start` + `start_task` MCP tool on the
+  already-satisfied `spec_file` requirement. When the stop hook
+  fires with no further writes, `Files.changed_since` returns [] and
+  the pipeline short-circuits.
 
-  No cassette is needed. If the short-circuit broke and the pipeline
-  tried to run `mix compile`, the test would fail on a missing
-  cassette.
+  No cassette needed — a missing one would fail the test if the
+  pipeline tried to shell out.
   """
 
   use CodeMySpecSpex.Case
 
   import_givens CodeMySpecSpex.SharedGivens
-
-  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,33 +29,24 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
     scenario "task started after sync, no writes follow, stop allowed" do
       given_ :synced_context_component
 
-      given_ "a session has an active task started after the last sync",
+      given_ "enough clock time passes that the task's started_at will land past every file's updated_at",
              context do
-        external_id = "spex-#{System.unique_integer([:positive])}"
-
-        # 10s in the future guarantees task.started_at > every
-        # synced file's updated_at, even after second-truncation.
-        future =
-          DateTime.utc_now()
-          |> DateTime.add(10, :second)
-          |> DateTime.truncate(:second)
-
-        session =
-          Fixtures.session_with_task_fixture(
-            context.scope,
-            %{external_conversation_id: external_id},
-            %{started_at: future}
-          )
-
-        {:ok, Map.merge(context, %{session: session, external_id: external_id})}
+        # Files.changed_since uses `updated_at >= since`. Sync just
+        # ran; a task started in the same second would match every
+        # synced file. Crossing a second boundary makes
+        # `started_at > updated_at` deterministic.
+        Process.sleep(1_100)
+        {:ok, context}
       end
+
+      given_ :context_spec_task_started
 
       when_ "the stop hook fires with no additional file writes", context do
         response =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
           |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.external_id})
+          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}

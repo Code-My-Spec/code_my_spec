@@ -6,22 +6,25 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
   stop.
 
   StopController's `decide/6` short-circuits via
-  `has_active_manual_task?/1` (which consults `Session.active_task`)
-  before validation runs. No pipeline, no cassette needed — if the
-  short-circuit broke and the pipeline tried to run, the test would
-  blow up on a missing cassette.
+  `has_active_manual_task?/1` before the pipeline runs. No cassette
+  needed — if the short-circuit broke and the pipeline tried to run,
+  the test would fail on a missing cassette.
 
-  Manual-validation tasks represent work a human (not the agent)
-  verifies — an orchestrator creates them; agents don't self-start
-  them through the local contract. Using the Fixtures bridge matches
-  the real origin.
+  Real-contract: the `qa_integration_plan` requirement on the project
+  is defined with `validation_type: :manual`, so starting a task for
+  that requirement via the `start_task` MCP tool creates a task with
+  the required shape. The requirement's artifact (a path under
+  `.code_my_spec/integrations/`) is NOT provided, but because manual
+  tasks short-circuit before task evaluation runs, that absence never
+  matters.
   """
 
   use CodeMySpecSpex.Case
 
   import_givens CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpecSpex.Fixtures
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,17 +33,30 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
     scenario "active manual task → allow with no pipeline and no eval" do
       given_ :synced_context_component
 
-      given_ "a session has an active manual-validation task", context do
+      given_ "the agent starts the qa_integration_plan task on the project via the real contract",
+             context do
         external_id = "spex-#{System.unique_integer([:positive])}"
 
-        session =
-          Fixtures.session_with_task_fixture(
-            context.scope,
-            %{external_conversation_id: external_id},
-            %{validation_type: :manual}
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post("/api/hooks/session-start", %{"session_id" => external_id})
+        |> Phoenix.ConnTest.json_response(200)
+
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, _response, _frame} =
+          StartTask.execute(
+            %{
+              requirement_name: "qa_integration_plan",
+              entity_type: "project",
+              entity_id: to_string(context.scope.active_project_id),
+              session_id: external_id
+            },
+            frame
           )
 
-        {:ok, Map.merge(context, %{session: session, external_id: external_id})}
+        {:ok, Map.put(context, :session_id, external_id)}
       end
 
       when_ "the stop hook fires", context do
@@ -48,7 +64,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
           |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => context.external_id})
+          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}

@@ -38,6 +38,12 @@ defmodule CodeMySpecSpex.SharedGivens do
     MCP tool to create an active `WriteBddSpecs` task on a story.
     Produces `context.session_id`. Requires `context.story` from
     `:story_linked_to_component`.
+  - `:context_spec_task_started` — drives session_start + start_task for
+    the `spec_file` requirement on `context.component` (satisfied by
+    `:synced_context_component`'s synced spec file). Gives specs a
+    main_agent/automatic task whose evaluation trivially passes, so
+    the spec can observe pipeline behavior without evaluator noise.
+    Produces `context.session_id`. Requires `context.component`.
   - `:credo_available` — plants `deps/credo` under `context.scope.cwd`
     so the Credo analyzer's availability check passes. Pair with a
     cassette that replays `mix credo` output.
@@ -120,6 +126,82 @@ defmodule CodeMySpecSpex.SharedGivens do
   given :credo_available do
     File.mkdir_p!(Path.join([context.scope.cwd, "deps", "credo"]))
     {:ok, %{}}
+  end
+
+  # Like :synced_context_component but produces a liveview-typed
+  # component so the liveview_graph applies. Specs that need a :self
+  # :sub_agent requirement (e.g. `test_spec_alignment`) can start a
+  # task on this component. Produces `context.liveview_component`.
+  given :synced_liveview_component do
+    scope = context.scope
+    env = context.environment
+
+    spec_path = ".code_my_spec/spec/example_context_web/dashboard_live.spec.md"
+    impl_path = "lib/example_context_web/live/dashboard_live.ex"
+
+    :ok =
+      Environments.write_file(env, spec_path, """
+      # DashboardLive
+
+      An example liveview for BDD specs.
+
+      ## Type
+
+      liveview
+      """)
+
+    :ok =
+      Environments.write_file(env, impl_path, """
+      defmodule ExampleContextWeb.DashboardLive do
+        @moduledoc false
+      end
+      """)
+
+    {:ok, sync_live, _html} =
+      live(context.conn, "/projects/#{context.project.name}/sync")
+
+    sync_live |> element("button[phx-click='sync']") |> render_click()
+
+    %_{} =
+      component =
+      Fixtures.get_component_by_module_name(scope, "ExampleContextWeb.DashboardLive")
+
+    {:ok, %{liveview_component: component}}
+  end
+
+  # Drives the real POST /api/hooks/session-start hook and the
+  # start_task MCP tool to create an active main_agent/automatic task
+  # on `context.component`. Uses the context_graph's :parent-scoped
+  # `spec_file` requirement — already satisfied because
+  # :synced_context_component wrote and synced the spec file — so
+  # TaskEvaluator passes via RequirementCalculator with no extra
+  # artifacts needed.
+  given :context_spec_task_started do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, _response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "spec_file",
+          entity_type: "component",
+          entity_id: to_string(context.component.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    {:ok, %{session_id: session_id}}
   end
 
   # The agent has signalled SessionStart and called the start_task MCP tool
