@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story554.Criterion5093Spex do
   place to reproduce it.
 
   Reuses the `pipeline_exunit_failure` cassette + JSON fixtures
-  recorded for Story 553 specs 5088/5089. The seeded exunit message
-  contains `\\ncode: ...\\nstacktrace: ...` — ripe for compaction.
+  recorded for Story 553 criteria 5088 and 5089. The seeded exunit
+  message contains `\\ncode: ...\\nstacktrace: ...` — ripe for
+  compaction.
   """
 
   use CodeMySpecSpex.Case

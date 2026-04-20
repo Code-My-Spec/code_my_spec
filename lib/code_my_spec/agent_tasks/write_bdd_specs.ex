@@ -114,6 +114,12 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     **Description**: #{story.description || "No description"}
     **Component**: `#{component.module_name}` (#{component_type})
 
+    ## Component Under Test
+
+    #{component_context_section(component)}
+
+    #{sibling_specs_section(story, criteria)}
+
     ## Acceptance Criteria
 
     #{criteria_sections}
@@ -126,7 +132,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     1. Create the spec file at the path shown above
     2. All spec modules must be under the `#{spex_module}` namespace
     3. Write actual test implementations — no TODOs or placeholders
-    4. Surface layer ONLY — test through the UI, not context functions
+    4. Drive the real interaction surface only — engineers interact
+       through LiveView, agents through files + HTTP hooks + MCP tools.
+       Never call context functions directly from `when_` / `then_`
+       steps; never read the DB from `then_`
     5. Run `mix compile` to verify
     6. STOP and wait for validation before the next spec
 
@@ -168,6 +177,105 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     - Boundary definition: `#{@spex_dir}/#{app_name}_spex.ex`
     - Shared givens: `test/support/shared_givens.ex`
     """
+  end
+
+  # Surfaces the component's source location and @moduledoc so the
+  # spec-writer can see the real public interface rather than
+  # grepping blind.
+  defp component_context_section(%{module_name: module_name}) do
+    path = module_path(module_name)
+
+    case path && File.read(path) do
+      {:ok, source} ->
+        """
+        Source: `#{path}`
+
+        #{extract_moduledoc(source)}
+        """
+
+      _ ->
+        """
+        Source: `#{inferred_path_hint(module_name)}` (couldn't read — read the file before writing specs to see the public API)
+        """
+    end
+  end
+
+  # If other specs in the same story already exist, point at one so
+  # the author can copy the established pattern (setup blocks, fixture
+  # paths, shared givens, module namespace) rather than reinventing.
+  defp sibling_specs_section(story, criteria) do
+    dir = story_spec_dir(story, criteria)
+
+    case dir && list_existing_specs(dir) do
+      [_ | _] = existing ->
+        bullets = Enum.map_join(existing, "\n", &"    - `#{&1}`")
+
+        """
+        ## Sibling Specs in This Story
+
+        Other criteria in this story have already been written. Read at
+        least one end-to-end as a template for shared setup, fixture
+        paths, case template, and given usage:
+
+        #{bullets}
+        """
+
+      _ ->
+        ""
+    end
+  end
+
+  defp module_path(module_name) when is_binary(module_name) do
+    relative =
+      module_name
+      |> String.split(".")
+      |> Enum.map_join("/", &Macro.underscore/1)
+
+    candidates = ["lib/#{relative}.ex", "#{relative}.ex"]
+    Enum.find(candidates, &File.exists?/1)
+  end
+
+  defp module_path(_), do: nil
+
+  defp inferred_path_hint(module_name) when is_binary(module_name) do
+    relative =
+      module_name
+      |> String.split(".")
+      |> Enum.map_join("/", &Macro.underscore/1)
+
+    "lib/#{relative}.ex"
+  end
+
+  defp inferred_path_hint(_), do: "lib/<path>.ex"
+
+  defp extract_moduledoc(source) do
+    case Regex.run(~r/@moduledoc\s+"""\n(.*?)\n\s*"""/s, source) do
+      [_, doc] ->
+        trimmed = String.trim(doc)
+        "### Module documentation\n\n#{trimmed}"
+
+      _ ->
+        "(No @moduledoc; read the file to understand the public API.)"
+    end
+  end
+
+  defp story_spec_dir(story, [first | _]) do
+    Path.dirname(BddSpecs.spec_file_path(story, first))
+  end
+
+  defp story_spec_dir(_story, _), do: nil
+
+  defp list_existing_specs(dir) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&String.ends_with?(&1, "_spex.exs"))
+        |> Enum.sort()
+        |> Enum.map(&Path.join(dir, &1))
+
+      _ ->
+        []
+    end
   end
 
   defp testing_setup("liveview", conn_case, spex_module) do
