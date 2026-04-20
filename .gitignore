@@ -65,3 +65,7 @@ diagnostics.jsonl
 
 # CodeMySpec - ephemeral
 .code_my_spec/internal/
+
+# Built binary (distributed via GitHub Releases, not git)
+/CodeMySpec/bin/cms
+/CodeMySpec/bin/cms.exe
