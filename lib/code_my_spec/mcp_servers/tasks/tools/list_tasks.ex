@@ -25,14 +25,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
     session_id = Map.get(params, :session_id)
     status_filter = Map.get(params, :status)
 
-    with {:ok, scope} <- Validators.validate_local_scope(frame),
+    with {:ok, status} <- parse_status(status_filter),
+         {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, session} <- resolve_session(scope, session_id) do
       tasks = session.tasks || []
 
       tasks =
-        if status_filter do
-          filter = String.to_existing_atom(status_filter)
-          Enum.filter(tasks, &(&1.status == filter))
+        if status do
+          Enum.filter(tasks, &(&1.status == status))
         else
           tasks
         end
@@ -80,4 +80,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
   end
 
   defp resolve_session(_scope, _), do: {:error, "No session_id available"}
+
+  @valid_statuses ~w(prepared active completed failed cancelled)
+
+  defp parse_status(nil), do: {:ok, nil}
+  defp parse_status(s) when is_binary(s) do
+    if s in @valid_statuses do
+      {:ok, String.to_existing_atom(s)}
+    else
+      {:error,
+       "Invalid status: #{inspect(s)}. Allowed: #{Enum.join(@valid_statuses, ", ")}."}
+    end
+  end
 end
