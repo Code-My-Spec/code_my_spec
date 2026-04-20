@@ -21,17 +21,25 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd do
       :ok ->
         {:reply, BootstrapMapper.install_success(".code_my_spec/AGENTS.md"), frame}
 
+      {:error, :no_mix_exs} ->
+        {:reply,
+         BootstrapMapper.error(
+           "mix.exs not found in #{working_dir}. This doesn't look like an Elixir project — CodeMySpec currently only supports Phoenix/Elixir. Run this tool from the project root."
+         ), frame}
+
       {:error, reason} ->
         {:reply, BootstrapMapper.error("Failed to write AGENTS.md: #{inspect(reason)}"), frame}
     end
   end
 
   defp install(working_dir) do
-    app_name = Content.extract_app_name(Path.join(working_dir, "mix.exs"))
-    content = Content.agents_md_content(app_name)
-    agents_path = Path.join([working_dir, CodeMySpec.Paths.base_dir(), "AGENTS.md"])
+    mix_exs_path = Path.join(working_dir, "mix.exs")
 
-    with :ok <- agents_path |> Path.dirname() |> File.mkdir_p() do
+    with true <- File.exists?(mix_exs_path) || {:error, :no_mix_exs},
+         app_name <- Content.extract_app_name(mix_exs_path),
+         content <- Content.agents_md_content(app_name),
+         agents_path <- Path.join([working_dir, CodeMySpec.Paths.base_dir(), "AGENTS.md"]),
+         :ok <- agents_path |> Path.dirname() |> File.mkdir_p() do
       File.write(agents_path, content)
     end
   end
