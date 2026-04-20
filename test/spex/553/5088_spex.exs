@@ -2,19 +2,33 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
   @moduledoc """
   Story 553 — Project Configuration: Local quality gate settings
   Criterion 5088 — When exunit is set to block_changed, test failures on
-  components outside the task's scope are persisted but do not block the stop.
+  components outside the task's scope are persisted but do not block the
+  stop.
 
-  Exercises the blocking decision directly: seeds an exunit problem on a
-  component that is NOT touched during this turn (no files changed since
-  the task started), sets exunit to block_changed, fires the stop hook.
-  The seeded problem should be advisory, not blocking.
+  End-to-end: two turns of the stop hook.
+
+  Turn 1 writes a failing test file; the pipeline records an exunit
+  problem (via the `pipeline_exunit_failure` cassette + JSON fixture).
+  Turn 2 fires the stop hook with no file changes — FileSync reports
+  no changes, the pipeline is skipped, and `check_blocking_problems`
+  consults the persisted problem with `block_changed` config and empty
+  `changed_component_ids`, demoting it to advisory.
+
+  We only assert on turn 2; turn 1 is setup. The cassette and fixtures
+  are shared with 5089 (same failing test path).
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   import_givens CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpec.Environments
+
+  @impl_path "lib/example_context.ex"
+  @test_path "test/example_context_test.exs"
+
+  @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,24 +48,32 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
         {:ok, context}
       end
 
-      given_ "an exunit failure exists on an untouched component", context do
-        # No file changes this turn, so changed_component_ids will be [].
-        # The seeded problem's component_id won't match, which is the whole
-        # point — block_changed should treat it as advisory.
-        Fixtures.problem_fixture(context.scope, %{
-          source: "exunit",
-          source_type: :test,
-          severity: :error,
-          file_path: "lib/example_context.ex",
-          line: 17,
-          message: "expected 2, got 3",
-          component_id: context.component.id
-        })
+      given_ "turn 1: the agent writes a failing test and fires the stop hook",
+             context do
+        :ok = Environments.write_file(context.environment, @test_path, failing_test())
+        :ok = Environments.write_file(context.environment, @impl_path, impl())
+
+        _turn_1_response =
+          use_cmd_cassette "pipeline_exunit_failure", record: :none do
+            Phoenix.ConnTest.build_conn()
+            |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> post(~p"/api/hooks/stop", %{
+              "test_output_files" => %{
+                "exunit" => fixture_path("exunit.json"),
+                "compile" => fixture_path("compile.jsonl")
+              }
+            })
+            |> Phoenix.ConnTest.json_response(200)
+          end
 
         {:ok, context}
       end
 
-      when_ "the stop hook fires with no file changes this turn", context do
+      when_ "turn 2: the stop hook fires with no file changes", context do
+        # Second turn: no writes since turn 1, so FileSync reports no
+        # changes and the pipeline is skipped. No System.cmd is invoked,
+        # so no cassette wrapper is needed.
         response =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
@@ -70,5 +92,27 @@ defmodule CodeMySpecSpex.Story553.Criterion5088Spex do
         :ok
       end
     end
+  end
+
+  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
+
+  defp failing_test do
+    """
+    defmodule ExampleContextTest do
+      use ExUnit.Case
+
+      test "fails on purpose" do
+        assert 1 == 2, "exunit failure fixture"
+      end
+    end
+    """
+  end
+
+  defp impl do
+    """
+    defmodule ExampleContext do
+      @moduledoc false
+    end
+    """
   end
 end

@@ -1,0 +1,43 @@
+{
+  "commands": [
+    {
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex-4387",
+        "env": {
+          "DIAGNOSTICS_OUTPUT": "/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_exunit_failure/compile.jsonl",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "** (Mix) Could not find a Mix.Project, please ensure you are running Mix in a directory with a mix.exs file\n",
+      "recorded_at": "2026-04-20T03:11:37.077979Z"
+    },
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "cd": "/var/folders/0v/1kzg_9w53l9gf8730_3jxz9w0000gn/T/spex-4387",
+        "env": {
+          "EXUNIT_JSON_OUTPUT_FILE": "/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_exunit_failure/exunit.json",
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "** (Mix) Could not find a Mix.Project, please ensure you are running Mix in a directory with a mix.exs file\n",
+      "recorded_at": "2026-04-20T03:11:37.523667Z"
+    }
+  ],
+  "ports": []
+}

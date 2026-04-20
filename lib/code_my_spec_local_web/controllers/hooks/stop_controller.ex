@@ -19,47 +19,47 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   def handle(conn, params) do
     scope = conn.assigns.current_scope
     session_id = Map.get(params, "session_id")
+    validation_opts = extract_test_output_files(params)
 
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
-    # Step 1: Resolve session + task
     session = session_id && Sessions.get_by_external_id(scope, session_id)
     active_task = session && Session.active_task(session)
 
-    # Step 2: Skip everything for subagent tasks
-    response =
-      cond do
-        session && has_active_subagent_task?(session) ->
-          Logger.info("[StopHook] [#{req_id}] Active subagent task, allowing stop")
-          notify_complete()
-          %{}
-
-        session && has_active_manual_task?(session) ->
-          Logger.info("[StopHook] [#{req_id}] Active manual task, allowing stop")
-          notify_complete()
-          %{}
-
-        true ->
-          # Step 3: Run validation pipeline (sync + compile + analyze + tests)
-          case Validation.validate_stop(scope, active_task) do
-            {:error, reason} ->
-              Logger.info("[StopHook] [#{req_id}] Validation blocked: #{String.slice(reason, 0, 100)}")
-              %{"decision" => "block", "reason" => reason}
-
-            {:ok, _result} ->
-              # Step 4: Evaluate task requirements (pure DB read)
-              case maybe_evaluate(scope, session_id, session) do
-                {:error, reason} ->
-                  %{"decision" => "block", "reason" => reason}
-
-                {:ok, :valid} ->
-                  maybe_continue_with_next_task(scope, session, req_id)
-              end
-          end
-      end
+    response = decide(scope, session_id, session, active_task, validation_opts, req_id)
 
     json(conn, response)
+  end
+
+  defp decide(scope, session_id, session, active_task, validation_opts, req_id) do
+    cond do
+      session && has_active_subagent_task?(session) ->
+        allow(req_id, "Active subagent task")
+
+      session && has_active_manual_task?(session) ->
+        allow(req_id, "Active manual task")
+
+      true ->
+        run_and_decide(scope, session_id, session, active_task, validation_opts, req_id)
+    end
+  end
+
+  defp run_and_decide(scope, session_id, session, active_task, validation_opts, req_id) do
+    with {:ok, _result} <- Validation.validate_stop(scope, active_task, validation_opts),
+         {:ok, :valid} <- maybe_evaluate(scope, session_id, session) do
+      maybe_continue_with_next_task(scope, session, req_id)
+    else
+      {:error, reason} ->
+        Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}")
+        %{"decision" => "block", "reason" => reason}
+    end
+  end
+
+  defp allow(req_id, label) do
+    Logger.info("[StopHook] [#{req_id}] #{label}, allowing stop")
+    notify_complete()
+    %{}
   end
 
   defp maybe_evaluate(_scope, _session_id, nil), do: {:ok, :valid}
@@ -117,6 +117,22 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   defp continuous_mode?(%{state: %{"continuous" => true}}), do: true
   defp continuous_mode?(_), do: false
+
+  # Test-only: specs back pipeline outputs with pre-recorded JSON fixtures
+  # so cassette replays can observe failures (`System.cmd` side effects —
+  # the JSON output files — can't be captured by ExCliVcr alone).
+  # Real Claude Code clients never send this param; the map is ignored
+  # when absent.
+  defp extract_test_output_files(%{"test_output_files" => files}) when is_map(files) do
+    [
+      compile_output_file: Map.get(files, "compile"),
+      exunit_output_file: Map.get(files, "exunit"),
+      spex_output_file: Map.get(files, "spex")
+    ]
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+  end
+
+  defp extract_test_output_files(_params), do: []
 
   defp notify_complete do
     NotificationClient.notify(%{

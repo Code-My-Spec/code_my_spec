@@ -31,12 +31,12 @@ defmodule CodeMySpec.Validation do
 
   @runner_analyzers [:exunit_stale, :spex_stale]
 
-  # Sources that always block — no config knob, these are cheap correctness
-  # gates (compiler errors, spec/QA validation).
+  # Sources that always block — no config knob. Cheap correctness gates
+  # (compiler errors, spec/QA validation).
   @always_blocking_sources ["spec_validation", "qa_validation"]
 
-  # Configurable sources → the ProjectConfiguration field that gates them +
-  # the "in scope" predicate used for `:block_changed` mode.
+  # Configurable source → {ProjectConfiguration field, scope predicate for
+  # :block_changed mode}.
   @configurable_sources %{
     "credo" => {:credo, :by_file_path},
     "exunit" => {:exunit, :by_component_id},
@@ -48,13 +48,23 @@ defmodule CodeMySpec.Validation do
 
   Returns `{:ok, %{changed_files: [File.t()]}}` on success, or
   `{:error, reason}` if compilation fails or the blocking check rejects.
+
+  ## Options
+
+  - `:compile_output_file` - pre-recorded diagnostics JSONL (test-only)
+  - `:exunit_output_file` - pre-recorded ExUnit JSON (test-only)
+  - `:spex_output_file` - pre-recorded spex JSONL (test-only)
+
+  Set by `StopController` from the `test_output_files` request param so
+  cassette-backed specs can drive the pipeline with known outputs without
+  relying on `System.cmd` side effects.
   """
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()]}} | {:error, String.t()}
-  def validate_stop(%Scope{} = scope, task, _opts \\ []) do
+  def validate_stop(%Scope{} = scope, task, opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
-    result = do_validate_stop(scope, task)
+    result = do_validate_stop(scope, task, opts)
 
     elapsed = System.monotonic_time(:millisecond) - start
     Logger.info("[Validation] validate_stop completed in #{elapsed}ms")
@@ -62,11 +72,11 @@ defmodule CodeMySpec.Validation do
     result
   end
 
-  defp do_validate_stop(%Scope{cwd: nil}, _task) do
+  defp do_validate_stop(%Scope{cwd: nil}, _task, _opts) do
     {:ok, %{changed_files: []}}
   end
 
-  defp do_validate_stop(%Scope{cwd: cwd} = scope, task) do
+  defp do_validate_stop(%Scope{cwd: cwd} = scope, task, opts) do
     {:ok, sync_result} = FileSync.sync_changed(scope, base_dir: cwd)
 
     FileComponentSync.sync_from_files(scope,
@@ -77,26 +87,25 @@ defmodule CodeMySpec.Validation do
     changed_files = resolve_changed_files(scope, task, sync_result)
     config = Configurations.get_or_create(scope)
 
-    with :ok <- run_pipeline(scope, task, changed_files, config),
+    with :ok <- run_pipeline(scope, task, changed_files, config, opts),
          :ok <- check_blocking_problems(scope, changed_files, config) do
       {:ok, %{changed_files: changed_files}}
     end
   end
 
-  defp run_pipeline(_scope, _task, [], _config) do
+  defp run_pipeline(_scope, _task, [], _config, _opts) do
     Logger.info("[Validation] No changed files, skipping pipeline")
     :ok
   end
 
-  defp run_pipeline(scope, task, changed_files, config) do
+  defp run_pipeline(scope, task, changed_files, config, opts) do
     log_changed_files(changed_files)
-    changed_file_paths = Enum.map(changed_files, & &1.path)
 
-    with :ok <- StaticAnalysis.compile(scope, changed_file_paths) do
+    with :ok <- StaticAnalysis.compile(scope, opts) do
       analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
       {runners, static} = Enum.split_with(analyzers, &(&1 in @runner_analyzers))
       StaticAnalysis.run_analyzers(scope, static, changed_files)
-      run_runner_analyzers(scope, runners)
+      run_runner_analyzers(scope, runners, opts)
       :ok
     end
   end
@@ -113,8 +122,6 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  # -- Blocking problem check --
-
   defp check_blocking_problems(scope, changed_files, config) do
     sources = active_blocking_sources(config)
 
@@ -123,29 +130,24 @@ defmodule CodeMySpec.Validation do
       |> Problems.list_project_problems(sources: sources)
       |> Enum.group_by(& &1.source)
 
-    changed_file_paths = Enum.map(changed_files, & &1.path)
-
-    changed_component_ids =
-      changed_files
-      |> Enum.map(& &1.component_id)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
-
     scope_context = %{
-      changed_file_paths: changed_file_paths,
-      changed_component_ids: changed_component_ids
+      changed_file_paths: Enum.map(changed_files, & &1.path),
+      changed_component_ids:
+        changed_files
+        |> Enum.map(& &1.component_id)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
     }
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
-
     decide(blocking, advisory)
   end
 
   defp active_blocking_sources(config) do
     configurable =
-      Enum.flat_map(@configurable_sources, fn {source, {field, _scope_fn}} ->
-        if Map.get(config, field) == :off, do: [], else: [source]
-      end)
+      for {source, {field, _scope_fn}} <- @configurable_sources,
+          Map.get(config, field) != :off,
+          do: source
 
     ["compiler" | @always_blocking_sources] ++ configurable
   end
@@ -167,16 +169,14 @@ defmodule CodeMySpec.Validation do
         {block_acc ++ block, advisory_acc ++ advisory}
       end)
 
-    blocking = compiler_block ++ always_block ++ configurable_block
-    advisory = compiler_advisory ++ configurable_advisory
-
-    {blocking, advisory}
+    {compiler_block ++ always_block ++ configurable_block,
+     compiler_advisory ++ configurable_advisory}
   end
 
   defp partition_compiler(problems, :block), do: {problems, []}
 
+  # Errors always block; only warnings are gated by compile_warnings.
   defp partition_compiler(problems, :dont_block) do
-    # Errors always block; only warnings are gated by compile_warnings.
     Enum.split_with(problems, &(&1.severity == :error))
   end
 
@@ -230,28 +230,37 @@ defmodule CodeMySpec.Validation do
     "#{source} (#{length(items)}):\n#{details}#{truncated}"
   end
 
-  # -- Runner analyzers (test/spex subprocesses) --
-
-  defp run_runner_analyzers(scope, analyzers) do
-    Enum.each(analyzers, &run_runner_analyzer(scope, &1))
+  defp run_runner_analyzers(scope, analyzers, opts) do
+    Enum.each(analyzers, &run_runner_analyzer(scope, &1, opts))
   end
 
-  defp run_runner_analyzer(scope, :exunit_stale) do
+  defp run_runner_analyzer(scope, :exunit_stale, opts) do
+    exec_opts = [project_root: scope.cwd] |> maybe_put_output_file(opts, :exunit_output_file)
+
     run_and_persist(scope, "mix test --stale", "exunit", fn ->
-      case Tests.execute(["--stale"], project_root: scope.cwd) do
+      case Tests.execute(["--stale"], exec_opts) do
         {:ok, test_run} -> {:ok, test_run.failures, &test_failure_to_problem/1}
         {:error, reason} -> {:error, reason}
       end
     end)
   end
 
-  defp run_runner_analyzer(scope, :spex_stale) do
+  defp run_runner_analyzer(scope, :spex_stale, opts) do
+    exec_opts = [project_root: scope.cwd] |> maybe_put_output_file(opts, :spex_output_file)
+
     run_and_persist(scope, "mix spex --stale", "spex", fn ->
-      case Spex.execute(["--stale"], project_root: scope.cwd) do
+      case Spex.execute(["--stale"], exec_opts) do
         {:ok, failures, _exit_code} -> {:ok, failures, &spex_failure_to_problem/1}
         {:error, reason} -> {:error, reason}
       end
     end)
+  end
+
+  defp maybe_put_output_file(exec_opts, opts, key) do
+    case Keyword.get(opts, key) do
+      nil -> exec_opts
+      path -> Keyword.put(exec_opts, :output_file, path)
+    end
   end
 
   defp run_and_persist(scope, label, source, runner) do
@@ -266,7 +275,7 @@ defmodule CodeMySpec.Validation do
           |> Enum.map(&%{&1 | project_id: scope.active_project_id, source: source})
 
         Problems.clear_problems_for_source(scope, [source: source], :all)
-        if problems != [], do: Problems.create_problems(scope, problems)
+        Problems.create_problems(scope, problems)
 
         ms = System.monotonic_time(:millisecond) - start
         Logger.info("[Validation] #{label}: #{length(problems)} failure(s) (#{ms}ms)")
@@ -287,8 +296,6 @@ defmodule CodeMySpec.Validation do
       message: (failure.error && failure.error.message) || "Spex scenario failed"
     })
   end
-
-  # -- Logging --
 
   defp log_changed_files(changed_files) do
     summary =

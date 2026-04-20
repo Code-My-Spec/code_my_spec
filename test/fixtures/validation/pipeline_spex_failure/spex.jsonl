@@ -1,0 +1,1 @@
+{"spex":"intentional failure","scenario":"asserts false","steps":[{"type":"then","description":"fails","status":"failed"}],"error":{"message":"spex failure fixture","file":"test/spex/example_context_spex.exs","line":7,"stacktrace":[]}}

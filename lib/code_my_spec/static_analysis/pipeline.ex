@@ -2,17 +2,14 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   @moduledoc """
   Compilation and static analysis for the validation pipeline.
 
-  Provides three public functions called by the StaticAnalysis context:
+  Three public functions called by the StaticAnalysis context:
 
-  - `compile/2` — run compiler, persist diagnostics as problems, block on errors
-  - `resolve_analyzers/2` — merge role-derived + task-declared analyzers
+  - `compile/1` — run compiler, persist diagnostics, block on errors
+  - `resolve_analyzers/3` — merge role-derived + task-declared, then filter by config
   - `run_analyzers/3` — run resolved analyzers against changed files, persist problems
 
-  ## Tuning
-
-  The `@role_analyzers` map is the primary tuning surface. It maps file roles
-  to the analyzers that should run when files of that role change. Task modules
-  can augment this by implementing `analyzers/0`.
+  `@role_analyzers` is the tuning surface: file role → analyzers to run.
+  Task modules can augment via an `analyzers/0` callback.
   """
 
   require Logger
@@ -27,8 +24,6 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Users.Scope
 
-  # The tuning surface — file role → analyzers to run
-  # Look here to understand "what runs when I change X?"
   @role_analyzers %{
     implementation: [:credo, :exunit_stale],
     test: [:credo, :exunit_stale],
@@ -50,35 +45,37 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   @doc """
   Compile the project and persist diagnostics as problems.
 
-  Clears old compiler problems scoped to `changed_file_paths`, then persists
-  new diagnostics. Returns `:ok` or `{:error, reason}` on compiler errors.
+  Clears all compiler problems (mix compile produces the complete picture)
+  and replaces with the new diagnostics. Returns `:ok` or `{:error, reason}`
+  when compilation has errors.
   """
-  @spec compile(Scope.t(), [String.t()]) :: :ok | {:error, String.t()}
-  def compile(%Scope{cwd: nil}, _changed_file_paths), do: :ok
+  @spec compile(Scope.t(), keyword()) :: :ok | {:error, String.t()}
+  def compile(scope, opts \\ [])
+  def compile(%Scope{cwd: nil}, _opts), do: :ok
 
-  def compile(%Scope{cwd: cwd} = scope, _changed_file_paths) do
+  def compile(%Scope{cwd: cwd} = scope, opts) do
     start = System.monotonic_time(:millisecond)
 
-    result = Compile.execute(cwd: cwd)
-    diagnostics = result.data.compiler_results
+    execute_opts = [cwd: cwd]
 
-    # Convert diagnostics to Problem structs
+    execute_opts =
+      case Keyword.get(opts, :compile_output_file) do
+        nil -> execute_opts
+        path -> Keyword.put(execute_opts, :output_file, path)
+      end
+
+    result = Compile.execute(execute_opts)
+
     problems =
-      diagnostics
+      result.data.compiler_results
       |> Enum.map(&ProblemConverter.from_compiler/1)
       |> Enum.map(&%{&1 | project_id: scope.active_project_id})
 
-    # Clear ALL compiler problems — mix compile gives us the complete picture,
-    # so we replace everything rather than scoping to changed files
     Problems.clear_problems_for_source(scope, [source: "compiler"], :all)
+    Problems.create_problems(scope, problems)
 
-    if problems != [] do
-      Problems.create_problems(scope, problems)
-    end
-
+    {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
     ms = System.monotonic_time(:millisecond) - start
-    errors = Enum.filter(problems, &(&1.severity == :error))
-    warnings = Enum.filter(problems, &(&1.severity == :warning))
 
     Logger.info(
       "[Pipeline] Compile: #{length(errors)} error(s), #{length(warnings)} warning(s) (#{ms}ms)"
@@ -93,8 +90,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   # -- Analyzer resolution --
 
-  # Map analyzer atoms to the ProjectConfiguration field that gates them.
-  # Analyzers not in this map are always eligible (validators etc.).
+  # Analyzer atom → ProjectConfiguration field that gates it.
+  # Atoms not in this map are always eligible (validators etc.).
   @config_gated_analyzers %{
     credo: :credo,
     exunit_stale: :exunit,
@@ -102,46 +99,33 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   }
 
   @doc """
-  Resolve which analyzers to run by merging role-derived and task-declared,
-  then filtering out analyzers that the project configuration has disabled.
-
-  Sources:
-  1. Role-derived from `@role_analyzers` based on changed file roles
-  2. Task module `analyzers/0` callback (augments, not replaces)
-
-  Config filter: analyzers whose corresponding `ProjectConfiguration` field
-  is `:off` are removed. If `config` is `nil`, no filtering happens.
+  Resolve which analyzers to run: merge role-derived with task-declared,
+  then drop analyzers whose `ProjectConfiguration` field is `:off`.
   """
-  @spec resolve_analyzers(map() | nil, [map()], map() | nil) :: [atom()]
-  def resolve_analyzers(task, changed_files, config \\ nil) do
+  @spec resolve_analyzers(map() | nil, [map()], map()) :: [atom()]
+  def resolve_analyzers(task, changed_files, config) do
     role_derived = analyzers_for_roles(changed_files)
     task_declared = task_analyzers(task)
 
     merged = (role_derived ++ task_declared) |> Enum.uniq()
     filtered = apply_config_filter(merged, config)
 
-    module = task && task.session_type
+    Logger.info(
+      "[Pipeline] Analyzers: #{inspect(filtered)} (#{resolve_source(role_derived, task_declared, task)}#{config_note(merged -- filtered)})"
+    )
 
-    source =
-      if task_declared != [] do
-        type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
-        "role-derived #{inspect(role_derived)} + #{type_name}.analyzers/0 #{inspect(task_declared)}"
-      else
-        "role-derived"
-      end
-
-    dropped = merged -- filtered
-
-    config_note =
-      if dropped != [],
-        do: " — dropped by config: #{inspect(dropped)}",
-        else: ""
-
-    Logger.info("[Pipeline] Analyzers: #{inspect(filtered)} (#{source}#{config_note})")
     filtered
   end
 
-  defp apply_config_filter(analyzers, nil), do: analyzers
+  defp resolve_source(_role_derived, [], _task), do: "role-derived"
+
+  defp resolve_source(role_derived, task_declared, task) do
+    type_name = task.session_type |> Atom.to_string() |> String.split(".") |> List.last()
+    "role-derived #{inspect(role_derived)} + #{type_name}.analyzers/0 #{inspect(task_declared)}"
+  end
+
+  defp config_note([]), do: ""
+  defp config_note(dropped), do: " — dropped by config: #{inspect(dropped)}"
 
   defp apply_config_filter(analyzers, config) do
     Enum.reject(analyzers, fn analyzer ->
@@ -199,40 +183,34 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
     {static_analyzers, validators} = split_analyzers(analyzers)
 
-    # Run static analyzers (credo, sobelow, etc.)
-    static_problems = run_static_analyzers(scope, static_analyzers, file_paths)
-
-    # Run validators (spec validation, qa validation, etc.)
-    validation_problems = run_validators(scope, validators, files)
-
-    all_problems = static_problems ++ validation_problems
-
-    # Assign component_id from file records
     all_problems =
-      Enum.map(all_problems, fn problem ->
-        component_id = Map.get(component_map, problem.file_path)
+      (run_static_analyzers(scope, static_analyzers, file_paths) ++
+         run_validators(scope, validators, files))
+      |> Enum.map(&stamp_component_id(&1, component_map))
 
-        if component_id do
-          %{problem | component_id: component_id}
-        else
-          problem
-        end
-      end)
-
-    # Persist: clear old problems for sources that ran, insert new
     ran_sources = sources_for_analyzers(static_analyzers, validators)
     persist_problems(scope, all_problems, file_paths, ran_sources)
 
-    if all_problems != [] do
-      by_source =
-        all_problems
-        |> Enum.group_by(& &1.source)
-        |> Enum.map_join(", ", fn {source, probs} -> "#{source}(#{length(probs)})" end)
-
-      Logger.info("[Pipeline] Persisted #{length(all_problems)} problem(s) — #{by_source}")
-    end
-
+    log_persisted(all_problems)
     all_problems
+  end
+
+  defp stamp_component_id(problem, component_map) do
+    case Map.get(component_map, problem.file_path) do
+      nil -> problem
+      component_id -> %{problem | component_id: component_id}
+    end
+  end
+
+  defp log_persisted([]), do: :ok
+
+  defp log_persisted(problems) do
+    by_source =
+      problems
+      |> Enum.group_by(& &1.source)
+      |> Enum.map_join(", ", fn {source, probs} -> "#{source}(#{length(probs)})" end)
+
+    Logger.info("[Pipeline] Persisted #{length(problems)} problem(s) — #{by_source}")
   end
 
   defp run_static_analyzers(_scope, [], _file_paths), do: []
@@ -283,61 +261,36 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   end
 
   defp run_validator(scope, :validate_spec, files) do
+    fun = &spec_document_type/2
+
     files
     |> Enum.filter(&(&1.role in [:spec, :review]))
-    |> Enum.flat_map(&validate_spec_file(scope, &1))
+    |> Enum.flat_map(&validate_document(scope, &1, "spec_validation", fun))
   end
 
   defp run_validator(scope, :validate_qa, files) do
+    fun = &qa_document_type/2
+
     files
     |> Enum.filter(&(&1.role in [:qa_brief, :qa_result]))
-    |> Enum.flat_map(&validate_qa_file(scope, &1))
+    |> Enum.flat_map(&validate_document(scope, &1, "qa_validation", fun))
   end
 
-  defp run_validator(_scope, :validate_bdd, _files) do
-    # BDD specs are .exs files — compiler step already catches syntax errors.
-    # Runtime validation (spex passing) is handled by RequirementCalculator.
-    []
-  end
+  # BDD specs are .exs files — the compile step catches syntax errors and
+  # RequirementCalculator handles runtime (spex passing) validation.
+  defp run_validator(_scope, :validate_bdd, _files), do: []
 
   defp run_validator(_scope, validator, _files) do
     Logger.warning("[Pipeline] Unknown validator: #{validator}")
     []
   end
 
-  defp validate_spec_file(%Scope{cwd: cwd} = scope, file) do
+  defp validate_document(%Scope{cwd: cwd} = scope, file, source, document_type_fn) do
     abs_path = Path.join(cwd, file.path)
 
     case File.read(abs_path) do
       {:ok, content} ->
-        document_type =
-          if file.role == :review do
-            "design_review"
-          else
-            document_type_from_content(content)
-          end
-
-        case Documents.create_dynamic_document(content, document_type) do
-          {:ok, _document} ->
-            Files.mark_validated(file, true)
-            []
-
-          {:error, error} ->
-            reason = to_string(error)
-            Files.mark_validated(file, false, %{error: reason})
-
-            [
-              %Problem{
-                severity: :error,
-                source: "spec_validation",
-                source_type: :static_analysis,
-                file_path: file.path,
-                message: reason,
-                category: "validation",
-                project_id: scope.active_project_id
-              }
-            ]
-        end
+        run_document_validation(scope, file, source, document_type_fn.(file, content), content)
 
       {:error, reason} ->
         Logger.warning("[Pipeline] Could not read #{abs_path}: #{inspect(reason)}")
@@ -345,55 +298,41 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end
   rescue
     e ->
-      Logger.warning("[Pipeline] Spec validation error for #{file.path}: #{Exception.message(e)}")
+      Logger.warning("[Pipeline] #{source} error for #{file.path}: #{Exception.message(e)}")
       []
   end
 
-  defp validate_qa_file(%Scope{cwd: cwd} = scope, file) do
-    abs_path = Path.join(cwd, file.path)
-
-    document_type =
-      case file.role do
-        :qa_brief -> "qa_story_brief"
-        :qa_result -> "qa_result"
-      end
-
-    case File.read(abs_path) do
-      {:ok, content} ->
-        case Documents.create_dynamic_document(content, document_type) do
-          {:ok, _document} ->
-            Files.mark_validated(file, true)
-            []
-
-          {:error, error} ->
-            reason = to_string(error)
-            Files.mark_validated(file, false, %{error: reason})
-
-            [
-              %Problem{
-                severity: :error,
-                source: "qa_validation",
-                source_type: :static_analysis,
-                file_path: file.path,
-                message: reason,
-                category: "validation",
-                project_id: scope.active_project_id
-              }
-            ]
-        end
-
-      {:error, reason} ->
-        Logger.warning("[Pipeline] Could not read #{abs_path}: #{inspect(reason)}")
+  defp run_document_validation(scope, file, source, document_type, content) do
+    case Documents.create_dynamic_document(content, document_type) do
+      {:ok, _document} ->
+        Files.mark_validated(file, true)
         []
+
+      {:error, error} ->
+        reason = to_string(error)
+        Files.mark_validated(file, false, %{error: reason})
+
+        [
+          %Problem{
+            severity: :error,
+            source: source,
+            source_type: :static_analysis,
+            file_path: file.path,
+            message: reason,
+            category: "validation",
+            project_id: scope.active_project_id
+          }
+        ]
     end
-  rescue
-    e ->
-      Logger.warning("[Pipeline] QA validation error for #{file.path}: #{Exception.message(e)}")
-      []
   end
 
-  # Extract document type from spec content's ## Type section.
-  # Mirrors the logic in FileSync.document_type_from_content/1.
+  defp spec_document_type(%{role: :review}, _content), do: "design_review"
+  defp spec_document_type(_file, content), do: document_type_from_content(content)
+
+  defp qa_document_type(%{role: :qa_brief}, _content), do: "qa_story_brief"
+  defp qa_document_type(%{role: :qa_result}, _content), do: "qa_result"
+
+  # Mirrors FileSync.document_type_from_content/1 (kept private there).
   defp document_type_from_content(content) do
     type_section =
       content
@@ -415,14 +354,12 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end
   end
 
-  # Static analyzers go through Runner; validators are handled separately
   defp split_analyzers(analyzers) do
     Enum.split_with(analyzers, fn atom ->
       atom in [:credo, :sobelow, :spec_alignment]
     end)
   end
 
-  # Map analyzer atoms to the source strings they produce in Problem records
   @analyzer_source_map %{
     credo: "credo",
     sobelow: "sobelow",
@@ -440,13 +377,14 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   # -- Problem persistence --
 
+  # Clear per-source even when an analyzer ran clean — otherwise stale
+  # problems from the previous turn linger.
   defp persist_problems(scope, problems, file_paths, analyzer_sources) do
-    # Always clear old problems for analyzers that ran, even if they found nothing
     Enum.each(analyzer_sources, fn source ->
       Problems.clear_problems_for_source(scope, [source: source], file_paths)
     end)
 
-    if problems != [], do: Problems.create_problems(scope, problems)
+    Problems.create_problems(scope, problems)
   end
 
   # -- Formatting helpers --

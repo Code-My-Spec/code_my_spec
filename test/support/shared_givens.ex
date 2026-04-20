@@ -34,6 +34,10 @@ defmodule CodeMySpecSpex.SharedGivens do
     `context.component` from a prior given.
   - `:on_configuration_page` — navigates to the project configuration
     LiveView. Produces `context.config_live`.
+  - `:bdd_task_started` — drives the real session_start hook + StartTask
+    MCP tool to create an active `WriteBddSpecs` task on a story.
+    Produces `context.session_id`. Requires `context.story` from
+    `:story_linked_to_component`.
 
   Add new shared givens only after a third spec duplicates setup.
   """
@@ -43,7 +47,9 @@ defmodule CodeMySpecSpex.SharedGivens do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecLocalWeb.Endpoint
@@ -100,6 +106,39 @@ defmodule CodeMySpecSpex.SharedGivens do
       live(context.conn, "/projects/#{context.project.name}/configuration")
 
     {:ok, %{config_live: config_live}}
+  end
+
+  # The agent has signalled SessionStart and called the start_task MCP tool
+  # for the "bdd_specs_exist" requirement on `context.story`. This is the
+  # real contract the harness drives — we post to the same HTTP hook and
+  # invoke the same MCP tool module, so the pipeline sees a real active
+  # `WriteBddSpecs` task whose `analyzers/0` returns `[:spex_stale]`.
+  given :bdd_task_started do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, _response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "bdd_specs_exist",
+          entity_type: "story",
+          entity_id: to_string(context.story.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    {:ok, %{session_id: session_id}}
   end
 
   # -- Content helpers --
