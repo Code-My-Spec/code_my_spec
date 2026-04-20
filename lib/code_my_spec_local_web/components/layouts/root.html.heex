@@ -1,16 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="cyberpunk">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content={get_csrf_token()} />
-  <title><%= assigns[:page_title] || "CodeMySpec" %></title>
+  <title><%= assigns[:page_title] || "CodeMySpec Local" %></title>
   <link rel="stylesheet" href="/local/assets/css/local_app.css" />
 </head>
-<body class="bg-base-100 text-base-content min-h-screen">
-  <div class="max-w-3xl mx-auto px-6 py-8">
-    <%= @inner_content %>
-  </div>
+<body class="bg-base-100 text-base-content min-h-screen antialiased">
+  <%= @inner_content %>
   <script src="/local/assets/js/graphology.umd.min.js"></script>
   <script src="/local/assets/js/sigma.min.js"></script>
   <script src="/local/assets/js/local_app.js"></script>

@@ -5,10 +5,21 @@ defmodule CodeMySpecLocalWeb.InitLive do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpec.Projects
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, working_dir: nil, steps: [], step: nil, error: nil)}
+    projects = Projects.list_local_projects()
+
+    {:ok,
+     assign(socket,
+       projects: projects,
+       project: nil,
+       working_dir: nil,
+       steps: [],
+       step: nil,
+       error: nil
+     )}
   end
 
   @impl true
@@ -88,43 +99,69 @@ defmodule CodeMySpecLocalWeb.InitLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} class="alert alert-error">
-      <p>{@error}</p>
-    </div>
-
-    <div :if={@step} class="prose prose-invert max-w-none">
-      <h1>{@step.name}</h1>
-      <p :if={@step.status == :done} class="text-success">Done</p>
-      <p :if={match?({:not_done, _}, @step.status)} class="text-warning">
-        Not done — {elem(@step.status, 1)}
-      </p>
-      <div :if={@step.prompt}>
-        <h2>Instructions</h2>
-        <pre class="whitespace-pre-wrap text-sm">{@step.prompt}</pre>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={nil}
+      page_title={assigns[:page_title] || "Project Init"}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
-      <.link navigate={"/init?dir=#{URI.encode_www_form(@working_dir)}"} class="link">
-        ← Back to checklist
-      </.link>
-    </div>
 
-    <div :if={@steps != [] and is_nil(@step)} class="prose prose-invert max-w-none">
-      <h1>Project Init ({Enum.count(@steps, & &1.done)}/{length(@steps)})</h1>
-      <ul>
-        <li :for={step <- @steps}>
-          <span :if={step.done} class="text-success">[x]</span>
-          <span :if={!step.done}>[ ]</span>
-          <.link
-            :if={!step.done}
-            navigate={"/init/#{step.id}?dir=#{URI.encode_www_form(@working_dir)}"}
-            class="link"
-          >
-            {step.name}
+      <div :if={@step}>
+        <div class="mb-4">
+          <.link navigate={"/init?dir=#{URI.encode_www_form(@working_dir)}"} class="btn btn-ghost btn-sm gap-1">
+            ← Back to checklist
           </.link>
-          <span :if={step.done}>{step.name}</span>
-          <span :if={step.detail} class="text-base-content/50 text-sm"> — {step.detail}</span>
-        </li>
-      </ul>
-    </div>
+        </div>
+
+        <div class="flex items-start justify-between gap-4 mb-6">
+          <h1 class="text-2xl font-bold">{@step.name}</h1>
+          <span :if={@step.status == :done} class="badge badge-success">Done</span>
+          <span :if={match?({:not_done, _}, @step.status)} class="badge badge-warning">
+            Not done — {elem(@step.status, 1)}
+          </span>
+        </div>
+
+        <div :if={@step.prompt} class="card bg-base-200 border border-base-300">
+          <div class="card-body">
+            <h2 class="card-title text-lg">Instructions</h2>
+            <pre class="whitespace-pre-wrap text-sm">{@step.prompt}</pre>
+          </div>
+        </div>
+      </div>
+
+      <div :if={@steps != [] and is_nil(@step)}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">
+            Project Init
+            <span class="text-base-content/50 font-normal text-xl">
+              ({Enum.count(@steps, & &1.done)}/{length(@steps)})
+            </span>
+          </h1>
+          <p class="text-sm opacity-60 font-mono mt-1">{@working_dir}</p>
+        </div>
+
+        <ul class="menu bg-base-200 border border-base-300 rounded-box w-full">
+          <li :for={step <- @steps}>
+            <div class="flex items-center gap-3">
+              <span :if={step.done} class="badge badge-success badge-sm">✓</span>
+              <span :if={!step.done} class="badge badge-ghost badge-sm">○</span>
+              <.link
+                :if={!step.done}
+                navigate={"/init/#{step.id}?dir=#{URI.encode_www_form(@working_dir)}"}
+                class="link link-primary flex-1"
+              >
+                {step.name}
+              </.link>
+              <span :if={step.done} class="flex-1">{step.name}</span>
+              <span :if={step.detail} class="text-xs opacity-60">{step.detail}</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </Layouts.app>
     """
   end
 

@@ -11,7 +11,17 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, project: nil, sessions: [], session: nil, task: nil, error: nil)}
+    projects = Projects.list_local_projects()
+
+    {:ok,
+     assign(socket,
+       projects: projects,
+       project: nil,
+       sessions: [],
+       session: nil,
+       task: nil,
+       error: nil
+     )}
   end
 
   @impl true
@@ -22,7 +32,15 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   defp apply_action(socket, :index, %{"project_name" => name}) do
     with {:ok, project, scope} <- load_project(name) do
       sessions = Sessions.list_sessions(scope)
-      assign(socket, project: project, sessions: sessions, session: nil, task: nil, error: nil)
+
+      assign(socket,
+        project: project,
+        sessions: sessions,
+        session: nil,
+        task: nil,
+        page_title: "#{project.name} — Sessions",
+        error: nil
+      )
     else
       {:error, reason} -> assign(socket, error: "Failed to load project: #{inspect(reason)}")
     end
@@ -31,8 +49,17 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   defp apply_action(socket, :show, %{"project_name" => name, "id" => id}) do
     with {:ok, project, scope} <- load_project(name) do
       case Sessions.get_session(scope, id) do
-        nil -> assign(socket, error: "Session not found: #{id}")
-        session -> assign(socket, project: project, session: session, task: nil, error: nil)
+        nil ->
+          assign(socket, project: project, error: "Session not found: #{id}")
+
+        session ->
+          assign(socket,
+            project: project,
+            session: session,
+            task: nil,
+            page_title: "#{project.name} — Session",
+            error: nil
+          )
       end
     else
       {:error, reason} -> assign(socket, error: "Failed to load project: #{inspect(reason)}")
@@ -43,12 +70,21 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
     with {:ok, project, scope} <- load_project(name) do
       case Sessions.get_session(scope, id) do
         nil ->
-          assign(socket, error: "Session not found: #{id}")
+          assign(socket, project: project, error: "Session not found: #{id}")
 
         session ->
           case Session.find_task(session, task_id) do
-            nil -> assign(socket, error: "Task not found: #{task_id}")
-            task -> assign(socket, project: project, session: session, task: task, error: nil)
+            nil ->
+              assign(socket, project: project, error: "Task not found: #{task_id}")
+
+            task ->
+              assign(socket,
+                project: project,
+                session: session,
+                task: task,
+                page_title: "#{project.name} — Task",
+                error: nil
+              )
           end
       end
     else
@@ -63,28 +99,32 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
     end
   end
 
-  # ============================================================================
-  # Render
-  # ============================================================================
-
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} class="alert alert-error">
-      <p>{@error}</p>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={:sessions}
+      page_title={assigns[:page_title]}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={@live_action == :index && !@error}>
-      {render_index(assigns)}
-    </div>
+      <div :if={@live_action == :index && !@error}>
+        {render_index(assigns)}
+      </div>
 
-    <div :if={@live_action == :show && @session && !@error}>
-      {render_show(assigns)}
-    </div>
+      <div :if={@live_action == :show && @session && !@error}>
+        {render_show(assigns)}
+      </div>
 
-    <div :if={@live_action == :task_show && @task && !@error}>
-      {render_task(assigns)}
-    </div>
+      <div :if={@live_action == :task_show && @task && !@error}>
+        {render_task(assigns)}
+      </div>
+    </Layouts.app>
     """
   end
 
@@ -94,142 +134,168 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
     assigns = assign(assigns, active: active, total: total)
 
     ~H"""
-    <div class="prose prose-invert max-w-none">
-      <h1>Sessions ({@active} active / {@total} total)</h1>
+    <div class="mb-6">
+      <h1 class="text-3xl font-bold">
+        Sessions
+        <span class="text-base-content/50 font-normal text-xl">
+          ({@active} active / {@total} total)
+        </span>
+      </h1>
+    </div>
 
-      <p :if={@sessions == []}>No sessions found.</p>
+    <div :if={@sessions == []} class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box">
+      No sessions found.
+    </div>
 
-      <ul :if={@sessions != []}>
-        <li :for={session <- @sessions}>
-          {status_badge(session.status)}
-          <.link navigate={~p"/projects/#{slug(@project)}/sessions/#{session.id}"} class="link link-primary">
-            {format_type(session.type)}
-          </.link>
-          <span :if={session.external_conversation_id} class="font-mono text-xs opacity-60">
-            {truncate(session.external_conversation_id, 12)}
-          </span>
-          <span :if={session.tasks != []} class="text-xs opacity-60">
-            ({task_summary(session)})
-          </span>
-          <span :if={session.inserted_at} class="text-xs opacity-40">
-            — {Calendar.strftime(session.inserted_at, "%Y-%m-%d %H:%M")}
-          </span>
-        </li>
-      </ul>
+    <div :if={@sessions != []} class="overflow-x-auto rounded-box border border-base-300">
+      <table class="table table-zebra">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Type</th>
+            <th class="hidden md:table-cell">Tasks</th>
+            <th class="hidden sm:table-cell">Started</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            :for={session <- @sessions}
+            class="hover cursor-pointer"
+            phx-click={JS.navigate(~p"/projects/#{slug(@project)}/sessions/#{session.id}")}
+          >
+            <td><span class={"badge badge-sm #{status_class(session.status)}"}>{session.status}</span></td>
+            <td class="font-medium">{format_type(session.type)}</td>
+            <td class="hidden md:table-cell text-sm opacity-70">
+              {task_summary(session)}
+            </td>
+            <td class="hidden sm:table-cell text-sm opacity-50">
+              <span :if={session.inserted_at}>{Calendar.strftime(session.inserted_at, "%b %d, %H:%M")}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     """
   end
 
   defp render_show(assigns) do
     ~H"""
-    <div class="prose prose-invert max-w-none">
-      <p>
-        <.link navigate={~p"/projects/#{slug(@project)}/sessions"} class="link">
-          &larr; Back to sessions
-        </.link>
-      </p>
+    <div class="mb-4">
+      <.link navigate={~p"/projects/#{slug(@project)}/sessions"} class="btn btn-ghost btn-sm gap-1">
+        ← Sessions
+      </.link>
+    </div>
 
-      <h1>Session: {format_type(@session.type)}</h1>
+    <div class="flex items-start justify-between gap-4 mb-6">
+      <h1 class="text-2xl font-bold">Session: {format_type(@session.type)}</h1>
+      <span class={"badge #{status_class(@session.status)}"}>{@session.status}</span>
+    </div>
 
-      <p><strong>Status:</strong> {status_badge(@session.status)} {@session.status}</p>
+    <div class="card bg-base-200 border border-base-300 mb-6">
+      <div class="card-body text-sm">
+        <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1">
+          <dt :if={@session.external_conversation_id} class="font-semibold opacity-70">External ID</dt>
+          <dd :if={@session.external_conversation_id} class="font-mono">{@session.external_conversation_id}</dd>
 
-      <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt :if={@session.external_conversation_id} class="font-semibold">External ID</dt>
-        <dd :if={@session.external_conversation_id} class="font-mono">{@session.external_conversation_id}</dd>
+          <dt :if={@session.component_module_name} class="font-semibold opacity-70">Component</dt>
+          <dd :if={@session.component_module_name}>{@session.component_module_name}</dd>
 
-        <dt :if={@session.component_module_name} class="font-semibold">Component</dt>
-        <dd :if={@session.component_module_name}>{@session.component_module_name}</dd>
+          <dt :if={@session.inserted_at} class="font-semibold opacity-70">Started</dt>
+          <dd :if={@session.inserted_at}>{Calendar.strftime(@session.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
 
-        <dt :if={@session.inserted_at} class="font-semibold">Started</dt>
-        <dd :if={@session.inserted_at}>{Calendar.strftime(@session.inserted_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
-
-        <dt :if={@session.updated_at} class="font-semibold">Updated</dt>
-        <dd :if={@session.updated_at}>{Calendar.strftime(@session.updated_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
-      </dl>
-
-      <h2>Tasks ({task_completed_count(@session)}/{task_count(@session)})</h2>
-
-      <p :if={(@session.tasks || []) == []}>No tasks recorded.</p>
-
-      <ul :if={(@session.tasks || []) != []}>
-        <li :for={task <- @session.tasks || []}>
-          {status_badge(task.status)}
-          <.link
-            navigate={~p"/projects/#{slug(@project)}/sessions/#{@session.id}/tasks/#{task.id}"}
-            class="link link-primary font-semibold"
-          >
-            {format_type(task.session_type)}
-          </.link>
-          <span :if={task.component_module_name} class="text-sm opacity-60">
-            — {task.component_module_name}
-          </span>
-          <span :if={task.requirement_name} class="text-sm opacity-60">
-            ({task.requirement_name})
-          </span>
-          <span :if={task.completed_at} class="text-xs opacity-40">
-            — completed {Calendar.strftime(task.completed_at, "%H:%M:%S")}
-          </span>
-          <span :if={!task.completed_at && task.started_at} class="text-xs opacity-40">
-            — started {Calendar.strftime(task.started_at, "%H:%M:%S")}
-          </span>
-        </li>
-      </ul>
-
-      <div :if={@session.state && @session.state != %{}}>
-        <h2>State</h2>
-        <pre class="text-xs"><code>{Jason.encode!(@session.state, pretty: true)}</code></pre>
+          <dt :if={@session.updated_at} class="font-semibold opacity-70">Updated</dt>
+          <dd :if={@session.updated_at}>{Calendar.strftime(@session.updated_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
+        </dl>
       </div>
+    </div>
+
+    <h2 class="text-lg font-semibold mb-3">
+      Tasks <span class="text-base-content/50 font-normal">({task_completed_count(@session)}/{task_count(@session)})</span>
+    </h2>
+
+    <p :if={(@session.tasks || []) == []} class="text-base-content/50">No tasks recorded.</p>
+
+    <div :if={(@session.tasks || []) != []} class="overflow-x-auto rounded-box border border-base-300">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Type</th>
+            <th class="hidden md:table-cell">Component</th>
+            <th class="hidden lg:table-cell">Requirement</th>
+            <th class="hidden sm:table-cell">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            :for={task <- @session.tasks || []}
+            class="hover cursor-pointer"
+            phx-click={JS.navigate(~p"/projects/#{slug(@project)}/sessions/#{@session.id}/tasks/#{task.id}")}
+          >
+            <td><span class={"badge badge-sm #{status_class(task.status)}"}>{task.status}</span></td>
+            <td class="font-medium">{format_type(task.session_type)}</td>
+            <td class="hidden md:table-cell text-sm opacity-70">{task.component_module_name || "—"}</td>
+            <td class="hidden lg:table-cell text-sm opacity-70">{task.requirement_name || "—"}</td>
+            <td class="hidden sm:table-cell text-xs opacity-50">
+              <span :if={task.completed_at}>done {Calendar.strftime(task.completed_at, "%H:%M:%S")}</span>
+              <span :if={!task.completed_at && task.started_at}>started {Calendar.strftime(task.started_at, "%H:%M:%S")}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div :if={@session.state && @session.state != %{}} class="mt-6">
+      <h2 class="text-lg font-semibold mb-2">State</h2>
+      <pre class="bg-base-200 border border-base-300 rounded-box p-4 text-xs overflow-x-auto"><code>{Jason.encode!(@session.state, pretty: true)}</code></pre>
     </div>
     """
   end
 
   defp render_task(assigns) do
     ~H"""
-    <div class="prose prose-invert max-w-none">
-      <p>
-        <.link navigate={~p"/projects/#{slug(@project)}/sessions/#{@session.id}"} class="link">
-          &larr; Back to session
-        </.link>
-      </p>
+    <div class="mb-4">
+      <.link navigate={~p"/projects/#{slug(@project)}/sessions/#{@session.id}"} class="btn btn-ghost btn-sm gap-1">
+        ← Session
+      </.link>
+    </div>
 
-      <h1>Task: {format_type(@task.session_type)}</h1>
+    <div class="flex items-start justify-between gap-4 mb-6">
+      <h1 class="text-2xl font-bold">Task: {format_type(@task.session_type)}</h1>
+      <span class={"badge #{status_class(@task.status)}"}>{@task.status}</span>
+    </div>
 
-      <p><strong>Status:</strong> {status_badge(@task.status)} {@task.status}</p>
-
-      <table class="text-sm">
-        <tbody>
-          <tr><td class="font-semibold pr-6 py-1 align-top">Requirement</td><td class="py-1">{@task.requirement_name || "—"}</td></tr>
-          <tr><td class="font-semibold pr-6 py-1 align-top">Component</td><td class="py-1">{@task.component_module_name || "—"}</td></tr>
-          <tr><td class="font-semibold pr-6 py-1 align-top">Story ID</td><td class="py-1">{@task.story_id || "—"}</td></tr>
-          <tr><td class="font-semibold pr-6 py-1 align-top">Agent ID</td><td class="py-1 font-mono">{@task.agent_id || "not assigned"}</td></tr>
-          <tr><td class="font-semibold pr-6 py-1 align-top">Started</td><td class="py-1">{if @task.started_at, do: Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
-          <tr><td class="font-semibold pr-6 py-1 align-top">Completed</td><td class="py-1">{if @task.completed_at, do: Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
-        </tbody>
-      </table>
-
-      <div :if={has_expected_files?(@task)}>
-        <h2>Expected Files</h2>
-        <ul>
-          <li :for={file <- @task.expected_files}>
-            <code>{file}</code>
-          </li>
-        </ul>
+    <div class="card bg-base-200 border border-base-300 mb-6">
+      <div class="card-body p-0">
+        <table class="table table-sm">
+          <tbody>
+            <tr><td class="font-semibold opacity-70 w-40">Requirement</td><td>{@task.requirement_name || "—"}</td></tr>
+            <tr><td class="font-semibold opacity-70">Component</td><td>{@task.component_module_name || "—"}</td></tr>
+            <tr><td class="font-semibold opacity-70">Story ID</td><td>{@task.story_id || "—"}</td></tr>
+            <tr><td class="font-semibold opacity-70">Agent ID</td><td class="font-mono">{@task.agent_id || "not assigned"}</td></tr>
+            <tr><td class="font-semibold opacity-70">Started</td><td>{if @task.started_at, do: Calendar.strftime(@task.started_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
+            <tr><td class="font-semibold opacity-70">Completed</td><td>{if @task.completed_at, do: Calendar.strftime(@task.completed_at, "%Y-%m-%d %H:%M:%S UTC"), else: "—"}</td></tr>
+          </tbody>
+        </table>
       </div>
+    </div>
+
+    <div :if={has_expected_files?(@task)}>
+      <h2 class="text-lg font-semibold mb-2">Expected Files</h2>
+      <ul class="menu menu-sm bg-base-200 border border-base-300 rounded-box">
+        <li :for={file <- @task.expected_files}><a><code class="text-sm">{file}</code></a></li>
+      </ul>
     </div>
     """
   end
 
-  # ============================================================================
-  # Helpers
-  # ============================================================================
-
-  defp status_badge(:active), do: "🔵"
-  defp status_badge(:completed), do: "✅"
-  defp status_badge(:complete), do: "✅"
-  defp status_badge(:failed), do: "❌"
-  defp status_badge(:cancelled), do: "⚪"
-  defp status_badge(:prepared), do: "⏳"
-  defp status_badge(_), do: "○"
+  defp status_class(:active), do: "badge-info"
+  defp status_class(:completed), do: "badge-success"
+  defp status_class(:complete), do: "badge-success"
+  defp status_class(:failed), do: "badge-error"
+  defp status_class(:cancelled), do: "badge-neutral"
+  defp status_class(:prepared), do: "badge-warning"
+  defp status_class(_), do: "badge-ghost"
 
   defp format_type(nil), do: "Unknown"
   defp format_type(type) when is_atom(type), do: type |> Atom.to_string() |> String.split(".") |> List.last()
@@ -239,10 +305,10 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
     active = Enum.count(tasks, &(&1.status == :active))
     completed = Enum.count(tasks, &(&1.status in [:completed, :failed, :cancelled]))
     total = length(tasks)
-    "#{completed}/#{total} tasks" <> if(active > 0, do: ", #{active} active", else: "")
+    "#{completed}/#{total}" <> if(active > 0, do: " (#{active} active)", else: "")
   end
 
-  defp task_summary(_), do: ""
+  defp task_summary(_), do: "—"
 
   defp task_count(%{tasks: tasks}) when is_list(tasks), do: length(tasks)
   defp task_count(_), do: 0
@@ -255,9 +321,6 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
 
   defp has_expected_files?(%{expected_files: files}) when is_list(files) and files != [], do: true
   defp has_expected_files?(_), do: false
-
-  defp truncate(str, len) when byte_size(str) > len, do: String.slice(str, 0, len) <> "…"
-  defp truncate(str, _len), do: str
 
   defp slug(project) do
     (project.name || "project")

@@ -1,6 +1,7 @@
 defmodule CodeMySpecLocalWeb.ArchitectureLive do
   @moduledoc """
-  Displays architecture views: mermaid dependency graph and component overview.
+  Architecture views: dependency graph, component overview, and namespace
+  hierarchy. Each view is a separate live_action, navigated via tabs.
   """
   use CodeMySpecLocalWeb, :live_view
 
@@ -11,7 +12,8 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, project: nil, mermaid: nil, overview: nil, namespace: nil, error: nil)}
+    projects = Projects.list_local_projects()
+    {:ok, assign(socket, projects: projects, project: nil, slug: nil, view: nil, error: nil)}
   end
 
   @impl true
@@ -19,18 +21,14 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
       components = Components.list_components_with_dependencies(scope)
-      mermaid = Architecture.generate_dependency_graph(components)
-      overview = Architecture.generate_overview(components)
-      namespace = Architecture.generate_namespace_hierarchy(components)
+      view = compute_view(socket.assigns.live_action, components)
 
       {:noreply,
        assign(socket,
          project: project,
          slug: project_slug(project),
-         mermaid: mermaid,
-         overview: overview,
-         namespace: namespace,
-         page_title: "Architecture — #{project.name}",
+         view: view,
+         page_title: "#{project.name} — Architecture",
          error: nil
        )}
     else
@@ -39,41 +37,82 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
     end
   end
 
+  defp compute_view(:dependency_graph, components),
+    do: {:dependency_graph, Architecture.generate_dependency_graph(components)}
+
+  defp compute_view(:overview, components),
+    do: {:overview, Architecture.generate_overview(components)}
+
+  defp compute_view(:namespaces, components),
+    do: {:namespaces, Architecture.generate_namespace_hierarchy(components)}
+
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={!@error && @project}>
-      <div class="mb-4">
-        <.link navigate={"/projects/#{@slug}"} class="text-blue-400 hover:underline">
-          ← Back to project
-        </.link>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={:architecture}
+      page_title={assigns[:page_title]}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <h1 class="text-2xl font-bold mb-6">Architecture</h1>
+      <div :if={!@error && @project}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">Architecture</h1>
+          <p class="text-base-content/60 mt-1">Structural views of the project's components.</p>
+        </div>
 
-      <div class="mb-8">
-        <h2 class="text-xl font-semibold mb-4">Dependency Graph</h2>
-        <div id="mermaid-graph" phx-hook="Mermaid" data-graph={@mermaid} phx-update="ignore">
-          <pre class="mermaid">{@mermaid}</pre>
+        <div role="tablist" class="tabs tabs-bordered mb-6">
+          <.link
+            patch={~p"/projects/#{@slug}/architecture"}
+            role="tab"
+            class={["tab", @live_action == :dependency_graph && "tab-active"]}
+          >
+            Dependency Graph
+          </.link>
+          <.link
+            patch={~p"/projects/#{@slug}/architecture/overview"}
+            role="tab"
+            class={["tab", @live_action == :overview && "tab-active"]}
+          >
+            Component Overview
+          </.link>
+          <.link
+            patch={~p"/projects/#{@slug}/architecture/namespaces"}
+            role="tab"
+            class={["tab", @live_action == :namespaces && "tab-active"]}
+          >
+            Namespace Hierarchy
+          </.link>
+        </div>
+
+        <div :if={match?({:dependency_graph, _}, @view)}>
+          <div
+            id="mermaid-graph"
+            phx-hook="Mermaid"
+            data-graph={elem(@view, 1)}
+            phx-update="ignore"
+            class="bg-base-200 border border-base-300 rounded-box p-4"
+          >
+            <pre class="mermaid">{elem(@view, 1)}</pre>
+          </div>
+        </div>
+
+        <div :if={match?({:overview, _}, @view)}>
+          <article class="prose max-w-none bg-base-200 border border-base-300 rounded-box p-6">
+            {raw(CodeMySpecLocalWeb.markdown_to_html(elem(@view, 1)))}
+          </article>
+        </div>
+
+        <div :if={match?({:namespaces, _}, @view)}>
+          <pre class="bg-base-200 border border-base-300 rounded-box p-4 overflow-x-auto text-sm">{elem(@view, 1)}</pre>
         </div>
       </div>
-
-      <div class="mb-8">
-        <h2 class="text-xl font-semibold mb-4">Component Overview</h2>
-        <div class="prose prose-invert max-w-none">
-          {raw(CodeMySpecLocalWeb.markdown_to_html(@overview))}
-        </div>
-      </div>
-
-      <div class="mb-8">
-        <h2 class="text-xl font-semibold mb-4">Namespace Hierarchy</h2>
-        <pre class="bg-base-200 p-4 rounded-lg overflow-x-auto text-sm">{@namespace}</pre>
-      </div>
-    </div>
+    </Layouts.app>
     """
   end
 

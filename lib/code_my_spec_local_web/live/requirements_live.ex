@@ -19,7 +19,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, project: nil, scope: nil, markdown: nil, graph_data: nil, error: nil)}
+    projects = Projects.list_local_projects()
+    {:ok, assign(socket, projects: projects, project: nil, scope: nil, markdown: nil, graph_data: nil, error: nil)}
   end
 
   # --- Handle params ---
@@ -304,38 +305,54 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} class="text-red-400">
-      <h1>Error</h1>
-      <p>{@error}</p>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={section_for(@live_action)}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={@graph_data} id="graph-page">
-      <div class="mb-4">
-        <.link navigate={"/projects/#{project_slug(@project)}/requirements"} class="text-blue-400 hover:underline">
-          ← Back to requirements
-        </.link>
+      <div :if={@graph_data} id="graph-page">
+        <div class="mb-4">
+          <.link navigate={"/projects/#{project_slug(@project)}/requirements"} class="btn btn-ghost btn-sm gap-1">
+            ← Back to requirements
+          </.link>
+        </div>
+        <h1 class="text-2xl font-bold mb-4">Requirements Graph</h1>
+        <div class="flex flex-wrap gap-4 text-sm mb-4">
+          <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied</span>
+          <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable</span>
+          <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked</span>
+        </div>
+        <div
+          id="sigma-graph"
+          phx-hook="SigmaGraph"
+          data-graph={Jason.encode!(@graph_data)}
+          phx-update="ignore"
+          class="rounded-box border border-base-300 bg-base-200"
+          style="width: 100%; height: 80vh;"
+        >
+        </div>
       </div>
-      <h1 class="text-xl font-bold mb-6">Requirements Graph</h1>
-      <div class="flex gap-4 text-sm mb-4">
-        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#60a5fa] inline-block"></span> Satisfied</span>
-        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#4ade80] inline-block"></span> Actionable</span>
-        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-[#fbbf24] inline-block"></span> Blocked</span>
-      </div>
-      <div
-        id="sigma-graph"
-        phx-hook="SigmaGraph"
-        data-graph={Jason.encode!(@graph_data)}
-        phx-update="ignore"
-        style="width: 95vw; height: 85vh; margin-left: calc(-50vw + 50%); background: #0f172a; border-radius: 8px;"
-      >
-      </div>
-    </div>
 
-    <div :if={@markdown} class="prose prose-invert max-w-none">
-      {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
-    </div>
+      <article :if={@markdown} class="prose max-w-none">
+        {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
+      </article>
+    </Layouts.app>
     """
   end
+
+  defp section_for(action)
+       when action in [:components, :components_graph, :component_show, :component_graph,
+                       :component_req_show, :component_req_prompt],
+       do: :components
+
+  defp section_for(action) when action in [:stories, :story_show, :story_req_show], do: :stories
+  defp section_for(:graph), do: :requirements_graph
+  defp section_for(_), do: :requirements
 
   # --- Markdown builders ---
 

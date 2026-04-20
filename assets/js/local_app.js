@@ -3,104 +3,158 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 // graphology + sigma loaded via script tags in root layout (UMD globals)
 
+function themeVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
+// Sigma's WebGL renderer only understands hex/rgb — daisyUI themes use oklch().
+// Modern Chrome's fillStyle getter preserves the oklch color space, so we have
+// to actually paint a pixel and read the resolved RGB back out.
+let _normCanvas = null
+function normalizeColor(c, fallback = "#64748b") {
+  if (!c) return fallback
+  const trimmed = String(c).trim()
+  if (/^#[0-9a-f]{3,8}$/i.test(trimmed)) return trimmed
+  if (!_normCanvas) {
+    _normCanvas = document.createElement("canvas")
+    _normCanvas.width = 1
+    _normCanvas.height = 1
+  }
+  const ctx = _normCanvas.getContext("2d")
+  try {
+    ctx.clearRect(0, 0, 1, 1)
+    ctx.fillStyle = trimmed
+    ctx.fillRect(0, 0, 1, 1)
+    const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data
+    if (a === 0) return fallback
+    const hex = "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("")
+    return hex
+  } catch {
+    return fallback
+  }
+}
+
+function themeColors() {
+  return {
+    base100: normalizeColor(themeVar("--color-base-100"), "#ffffff"),
+    base200: normalizeColor(themeVar("--color-base-200"), "#f5f5f5"),
+    base300: normalizeColor(themeVar("--color-base-300"), "#e5e5e5"),
+    baseContent: normalizeColor(themeVar("--color-base-content"), "#111111"),
+    primary: normalizeColor(themeVar("--color-primary"), "#60a5fa"),
+    secondary: normalizeColor(themeVar("--color-secondary"), "#818cf8"),
+    accent: normalizeColor(themeVar("--color-accent"), "#6366f1"),
+    neutral: normalizeColor(themeVar("--color-neutral"), "#64748b"),
+    success: normalizeColor(themeVar("--color-success"), "#4ade80"),
+    warning: normalizeColor(themeVar("--color-warning"), "#fbbf24"),
+    error: normalizeColor(themeVar("--color-error"), "#ef4444")
+  }
+}
+
+// GraphProjector emits hex colors; remap them to the active theme's semantic tokens.
+function remapColor(hex, t) {
+  switch ((hex || "").toLowerCase()) {
+    case "#60a5fa": return t.primary   // satisfied
+    case "#4ade80": return t.success   // actionable
+    case "#fbbf24": return t.warning   // blocked
+    case "#64748b": return t.neutral   // default node / intra-group edge
+    case "#818cf8": return t.secondary // cross-group edge
+    case "#6366f1": return t.accent    // special edge
+    default: return hex || t.neutral
+  }
+}
+
 let Hooks = {}
 
 Hooks.Mermaid = {
-  mounted() {
-    this.renderGraph()
-  },
-  updated() {
-    this.renderGraph()
-  },
+  mounted() { this.renderGraph() },
+  updated() { this.renderGraph() },
   renderGraph() {
     const src = this.el.dataset.graph
     if (!src) return
 
-    // Load mermaid from CDN if not already loaded
     if (window.mermaid) {
       this.doRender(src)
     } else {
+      const t = themeColors()
+      const config = {
+        startOnLoad: false,
+        theme: "base",
+        flowchart: { useMaxWidth: false, htmlLabels: true, curve: "basis" },
+        themeVariables: {
+          background: t.base100,
+          primaryColor: t.base200,
+          primaryTextColor: t.baseContent,
+          primaryBorderColor: t.base300,
+          lineColor: t.neutral,
+          secondaryColor: t.secondary,
+          tertiaryColor: t.accent
+        }
+      }
       const script = document.createElement("script")
       script.type = "module"
       script.textContent = `
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: 'dark',
-          flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
-          themeVariables: {
-            darkMode: true,
-            background: '#0f172a',
-            primaryColor: '#1e293b',
-            primaryTextColor: '#e2e8f0',
-            primaryBorderColor: '#475569',
-            lineColor: '#94a3b8'
-          }
-        });
+        mermaid.initialize(${JSON.stringify(config)});
         window.mermaid = mermaid;
         window.dispatchEvent(new Event('mermaid:loaded'));
       `
       document.head.appendChild(script)
-      window.addEventListener('mermaid:loaded', () => this.doRender(src), {once: true})
+      window.addEventListener("mermaid:loaded", () => this.doRender(src), {once: true})
     }
   },
   async doRender(src) {
     const container = this.el
     try {
-      const {svg} = await window.mermaid.render('mermaid-svg', src)
+      const {svg} = await window.mermaid.render("mermaid-svg", src)
       container.innerHTML = svg
     } catch (e) {
-      container.innerHTML = `<pre class="text-red-400">Mermaid render error: ${e.message}</pre><pre>${src}</pre>`
+      container.innerHTML = `<pre class="text-error">Mermaid render error: ${e.message}</pre><pre>${src}</pre>`
     }
   }
 }
 
 Hooks.SigmaGraph = {
-  mounted() {
-    this.renderGraph()
-  },
+  mounted() { this.renderGraph() },
   updated() {
-    if (this.sigma) {
-      this.sigma.kill()
-      this.sigma = null
-    }
+    if (this.sigma) { this.sigma.kill(); this.sigma = null }
     this.renderGraph()
   },
   destroyed() {
-    if (this.sigma) {
-      this.sigma.kill()
-      this.sigma = null
-    }
+    if (this.sigma) { this.sigma.kill(); this.sigma = null }
+    const panel = document.getElementById("graph-debug")
+    if (panel) panel.remove()
   },
   renderGraph() {
     const raw = this.el.dataset.graph
     if (!raw) return
 
+    const t = themeColors()
     const data = JSON.parse(raw)
     const graph = new window.graphology.Graph()
 
-    // Add nodes (skip duplicates — shared components across stories)
+    // Add nodes with theme-remapped colors
     data.nodes.forEach(n => {
       if (!graph.hasNode(n.key)) {
-        graph.addNode(n.key, n.attributes)
+        const attrs = { ...n.attributes, color: remapColor(n.attributes.color, t) }
+        graph.addNode(n.key, attrs)
       }
     })
 
-    // Add edges (deduplicate by key — shared components across stories)
+    // Add edges (deduplicate by key) with theme-remapped colors
     const seenEdges = new Set()
     data.edges.forEach(e => {
       if (!seenEdges.has(e.key) && graph.hasNode(e.source) && graph.hasNode(e.target)) {
         seenEdges.add(e.key)
-        graph.addEdge(e.source, e.target, e.attributes)
+        const attrs = { ...e.attributes, color: remapColor(e.attributes.color, t) }
+        graph.addEdge(e.source, e.target, attrs)
       }
     })
 
-    // Render
     const container = this.el
     const SigmaClass = window.Sigma?.default || window.Sigma
     this.sigma = new SigmaClass(graph, container, {
       renderLabels: true,
-      labelColor: { color: "#e2e8f0" },
+      labelColor: { color: t.baseContent },
       labelFont: "Inter, system-ui, sans-serif",
       labelSize: 16,
       labelWeight: "bold",
@@ -113,48 +167,43 @@ Hooks.SigmaGraph = {
         const boxWidth = textWidth + padding * 2
         const boxHeight = 20
 
-        // Dark background with high-contrast white text
-        context.fillStyle = "#1e293b"
-        context.strokeStyle = "#60a5fa"
+        context.fillStyle = t.base200
+        context.strokeStyle = t.primary
         context.lineWidth = 1.5
         context.fillRect(data.x - boxWidth / 2, data.y - size - boxHeight - 4, boxWidth, boxHeight)
         context.strokeRect(data.x - boxWidth / 2, data.y - size - boxHeight - 4, boxWidth, boxHeight)
 
-        context.fillStyle = "#ffffff"
+        context.fillStyle = t.baseContent
         context.textAlign = "center"
         context.textBaseline = "middle"
         context.fillText(label, data.x, data.y - size - boxHeight / 2 - 4)
       },
       defaultEdgeType: "arrow",
-      defaultEdgeColor: "#64748b",
+      defaultEdgeColor: t.neutral,
       stagePadding: 80,
       labelRenderedSizeThreshold: 0,
       labelDensity: 0.5,
       labelGridCellSize: 200,
       zoomToSizeRatioFunction: () => 1,
       itemSizesReference: "positions",
-      defaultNodeColor: "#64748b",
+      defaultNodeColor: t.neutral,
       enableEdgeClickEvents: true,
-      enableEdgeHoverEvents: true,
+      enableEdgeHoverEvents: true
     })
 
-    // Run simple force layout if requested
-    if (data.layout === "force") {
-      this.runForceLayout(graph)
-    }
+    if (data.layout === "force") this.runForceLayout(graph)
 
-    // Zoom out a bit from the default auto-fit so nodes have breathing room
     const camera = this.sigma.getCamera()
     camera.setState({ ratio: 1.3 })
 
-    // Debug panel — dump full graph data
-    console.log("Graph data:", data)
+    // Debug panel — themed
     let debugPanel = document.getElementById("graph-debug")
     if (!debugPanel) {
       debugPanel = document.createElement("details")
       debugPanel.id = "graph-debug"
-      debugPanel.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:50vh;overflow-y:auto;background:#1e293b;color:#e2e8f0;padding:8px 16px;font-family:monospace;font-size:11px;z-index:9999;border-top:2px solid #475569;"
-      debugPanel.innerHTML = `<summary style="cursor:pointer;color:#94a3b8;margin-bottom:8px">Graph Debug (${data.nodes.length} nodes, ${data.edges.length} edges)</summary><pre id="graph-debug-content" style="margin:0"></pre>`
+      debugPanel.className = "bg-base-200 text-base-content border-t border-base-300"
+      debugPanel.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;padding:8px 16px;font-family:ui-monospace,monospace;font-size:11px;z-index:9999"
+      debugPanel.innerHTML = `<summary style="cursor:pointer;opacity:0.7;margin-bottom:8px">Graph Debug (${data.nodes.length} nodes, ${data.edges.length} edges)</summary><pre id="graph-debug-content" style="margin:0"></pre>`
       document.body.appendChild(debugPanel)
     }
     const debugContent = document.getElementById("graph-debug-content")
@@ -172,46 +221,38 @@ Hooks.SigmaGraph = {
         if (source === node) outEdges.push({ edge, to: target })
       })
 
-      let panel = document.getElementById("graph-debug")
-      if (!panel) {
-        panel = document.createElement("div")
-        panel.id = "graph-debug"
-        panel.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:#1e293b;color:#e2e8f0;padding:12px 16px;font-family:monospace;font-size:12px;z-index:9999;border-top:2px solid #475569;"
-        document.body.appendChild(panel)
-      }
-
+      const panel = document.getElementById("graph-debug")
+      if (!panel) return
+      panel.open = true
       const inHtml = inEdges.map(e => `  ← ${e.from}`).join("\n")
       const outHtml = outEdges.map(e => `  → ${e.to}`).join("\n")
-
-      panel.innerHTML = `<pre style="margin:0"><strong>${node}</strong>  (${attrs.label || ""})
-<span style="color:#60a5fa">IN (${inEdges.length}):</span>
+      const content = document.getElementById("graph-debug-content")
+      content.innerHTML = `<strong>${node}</strong>  (${attrs.label || ""})
+<span style="color:${t.primary}">IN (${inEdges.length}):</span>
 ${inHtml || "  (none)"}
-<span style="color:#4ade80">OUT (${outEdges.length}):</span>
-${outHtml || "  (none)"}</pre>`
+<span style="color:${t.success}">OUT (${outEdges.length}):</span>
+${outHtml || "  (none)"}`
     })
 
-    // Click edge → show edge details
     this.sigma.on("clickEdge", ({ edge }) => {
       const source = graph.source(edge)
       const target = graph.target(edge)
       const sourceLabel = graph.getNodeAttributes(source).label || source
       const targetLabel = graph.getNodeAttributes(target).label || target
 
-      let panel = document.getElementById("graph-debug")
+      const panel = document.getElementById("graph-debug")
       if (!panel) return
       panel.open = true
       const content = document.getElementById("graph-debug-content")
       content.textContent = `EDGE: ${edge}\n\n  FROM: ${source}\n        (${sourceLabel})\n\n  TO:   ${target}\n        (${targetLabel})`
     })
 
-    // Hover cursor
     this.sigma.on("enterNode", () => { container.style.cursor = "pointer" })
     this.sigma.on("leaveNode", () => { container.style.cursor = "default" })
     this.sigma.on("enterEdge", () => { container.style.cursor = "pointer" })
     this.sigma.on("leaveEdge", () => { container.style.cursor = "default" })
   },
   runForceLayout(graph) {
-    // Simple spring-electric force layout — runs 200 iterations
     const iterations = 300
     const repulsion = 50000
     const attraction = 0.005
@@ -222,7 +263,6 @@ ${outHtml || "  (none)"}</pre>`
     nodes.forEach(n => { vel[n] = { vx: 0, vy: 0 } })
 
     for (let i = 0; i < iterations; i++) {
-      // Repulsion between all node pairs
       for (let a = 0; a < nodes.length; a++) {
         const na = nodes[a]
         const pa = graph.getNodeAttributes(na)
@@ -242,7 +282,6 @@ ${outHtml || "  (none)"}</pre>`
         }
       }
 
-      // Attraction along edges
       graph.forEachEdge((edge, attrs, source, target) => {
         const pa = graph.getNodeAttributes(source)
         const pb = graph.getNodeAttributes(target)
@@ -258,7 +297,6 @@ ${outHtml || "  (none)"}</pre>`
         vel[target].vy -= fy
       })
 
-      // Apply velocities with damping
       nodes.forEach(n => {
         vel[n].vx *= damping
         vel[n].vy *= damping

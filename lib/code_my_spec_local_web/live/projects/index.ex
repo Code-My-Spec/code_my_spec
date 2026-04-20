@@ -9,39 +9,37 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
   @impl true
   def mount(_params, _session, socket) do
     projects = Projects.list_local_projects()
-    {:ok, assign(socket, projects: projects, page_title: "Projects")}
+    {:ok, assign(socket, projects: projects, project: nil, page_title: "Projects")}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="prose prose-invert max-w-none">
-      <h1>Projects</h1>
-
-      <div :if={@projects == []} class="alert alert-info">
-        <span>No local projects found. Use the MCP init_project tool to link a project.</span>
+    <Layouts.app flash={@flash} projects={@projects} project={nil} section={:projects} page_title="Projects">
+      <div class="mb-6">
+        <h1 class="text-3xl font-bold">Projects</h1>
+        <p class="text-base-content/60 mt-1">Projects linked to a local working directory.</p>
       </div>
 
-      <div class="not-prose grid gap-4">
-        <.project_card :for={project <- @projects} project={project} />
+      <div :if={@projects == []} role="alert" class="alert">
+        <span>No local projects found. Use the MCP <code class="kbd kbd-sm">init_project</code> tool to link a project.</span>
       </div>
-    </div>
-    """
-  end
 
-  defp project_card(assigns) do
-    ~H"""
-    <a
-      href={"/projects/#{project_slug(@project)}"}
-      class="card bg-base-200 shadow-md hover:shadow-lg transition-shadow"
-    >
-      <div class="card-body">
-        <h2 class="card-title">{@project.name}</h2>
-        <p :if={@project.local_path} class="text-sm opacity-70 font-mono truncate">
-          {@project.local_path}
-        </p>
+      <div :if={@projects != []} class="grid gap-4 sm:grid-cols-2">
+        <.link
+          :for={project <- @projects}
+          navigate={~p"/projects/#{project_slug(project)}"}
+          class="card bg-base-200 border border-base-300 hover:border-primary hover:shadow-lg transition"
+        >
+          <div class="card-body">
+            <h2 class="card-title">{project.name}</h2>
+            <p :if={project.local_path} class="text-sm opacity-60 font-mono truncate">
+              {project.local_path}
+            </p>
+          </div>
+        </.link>
       </div>
-    </a>
+    </Layouts.app>
     """
   end
 

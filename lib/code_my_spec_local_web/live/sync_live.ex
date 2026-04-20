@@ -22,8 +22,11 @@ defmodule CodeMySpecLocalWeb.SyncLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    projects = Projects.list_local_projects()
+
     {:ok,
      assign(socket,
+       projects: projects,
        project: nil,
        scope: nil,
        sync_status: :idle,
@@ -36,7 +39,14 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   def handle_params(%{"project_name" => name}, _uri, socket) do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
-      {:noreply, assign(socket, project: project, scope: scope, error: nil)}
+      {:noreply,
+       assign(socket,
+         project: project,
+         scope: scope,
+         slug: project_slug(project),
+         page_title: "#{project.name} — Sync",
+         error: nil
+       )}
     else
       {:error, reason} ->
         {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
@@ -48,8 +58,6 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     socket = assign(socket, sync_status: :running, sync_result: nil)
     scope = socket.assigns.scope
 
-    # Short-circuit remote syncs when not authenticated — avoids two DB
-    # lookups per sync (both end up returning :not_authenticated anyway).
     {stories_line, issues_line} = run_remote_syncs(scope)
 
     with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
@@ -76,17 +84,15 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   def handle_event("purge", _params, socket) do
     scope = socket.assigns.scope
 
-    # Delete files
     {file_count, _} = Files.delete_removed(scope, [])
-
-    # Delete all requirements (project, story, component)
     Requirements.clear_all_project_requirements(scope)
 
-    # Delete all components
     components = Components.list_components(scope)
     Enum.each(components, &Components.delete_component(scope, &1))
 
-    Logger.info("[SyncLive] Purged #{file_count} files, #{length(components)} components for #{scope.active_project.name}")
+    Logger.info(
+      "[SyncLive] Purged #{file_count} files, #{length(components)} components for #{scope.active_project.name}"
+    )
 
     {:noreply,
      assign(socket,
@@ -102,8 +108,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
         safe_remote_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end)
       }
     else
-      skipped = {"skipped — not authenticated"}
-      {{"Stories", elem(skipped, 0)}, {"Issues", elem(skipped, 0)}}
+      {{"Stories", "skipped — not authenticated"}, {"Issues", "skipped — not authenticated"}}
     end
   end
 
@@ -118,59 +123,68 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} style="color: #f87171; padding: 24px;">
-      <h1>Error</h1>
-      <p>{@error}</p>
-    </div>
-
-    <div :if={!@error && @project}>
-      <h1>{@project.name || "Project"} — Sync</h1>
-      <p style="color: #94a3b8; margin-bottom: 24px;">
-        Recalculate requirements, update component status, and persist results.
-      </p>
-
-      <div style="display: flex; gap: 12px;">
-        <button
-          phx-click="sync"
-          disabled={@sync_status == :running}
-          style={"padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; " <>
-            if(@sync_status == :running, do: "background: #334155; color: #64748b;", else: "background: #4ade80; color: #0f172a; font-weight: 600;")}
-        >
-          {case @sync_status do
-            :running -> "Syncing..."
-            _ -> "Run Sync"
-          end}
-        </button>
-
-        <button
-          phx-click="purge"
-          disabled={@sync_status == :running}
-          data-confirm="This will delete ALL components and requirements for this project. Continue?"
-          style={"padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; " <>
-            if(@sync_status == :running, do: "background: #334155; color: #64748b;", else: "background: #f87171; color: #fff; font-weight: 600;")}
-        >
-          Purge All
-        </button>
+    <Layouts.app flash={@flash} projects={@projects} project={@project} section={:sync} page_title={assigns[:page_title]}>
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <div :if={@sync_status == :done && @sync_result} style="margin-top: 24px;">
-        <h2>Sync Complete</h2>
-        <table class="checklist">
-          <tr :for={{label, value} <- @sync_result} class="done">
-            <td style="color: #94a3b8; padding: 6px 8px;">{label}</td>
-            <td style="padding: 6px 8px;">{value}</td>
-          </tr>
-        </table>
-        <a href={"/projects/#{project_slug(@project)}/requirements"} style="display: inline-block; margin-top: 16px;">
-          View requirements &rarr;
-        </a>
-      </div>
+      <div :if={!@error && @project}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">Sync</h1>
+          <p class="text-base-content/60 mt-1">
+            Recalculate requirements, update component status, and persist results.
+          </p>
+        </div>
 
-      <div :if={@sync_status == :error && @sync_result} style="margin-top: 24px; color: #f87171;">
-        <h2>Sync Failed</h2>
-        <pre>{@sync_result.error}</pre>
+        <div class="flex flex-wrap gap-3 mb-6">
+          <button
+            type="button"
+            phx-click="sync"
+            disabled={@sync_status == :running}
+            class="btn btn-primary"
+          >
+            <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
+            {if @sync_status == :running, do: "Syncing…", else: "Run Sync"}
+          </button>
+
+          <button
+            type="button"
+            phx-click="purge"
+            disabled={@sync_status == :running}
+            data-confirm="This will delete ALL components and requirements for this project. Continue?"
+            class="btn btn-error btn-outline"
+          >
+            Purge All
+          </button>
+        </div>
+
+        <div :if={@sync_status == :done && @sync_result} class="card bg-base-200 border border-base-300">
+          <div class="card-body">
+            <h2 class="card-title text-lg">Sync Complete</h2>
+            <table class="table table-sm">
+              <tbody>
+                <tr :for={{label, value} <- @sync_result}>
+                  <td class="opacity-60 w-1/3">{label}</td>
+                  <td class="font-mono text-sm">{value}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="card-actions justify-end mt-2">
+              <.link navigate={~p"/projects/#{@slug}/requirements"} class="btn btn-sm btn-ghost">
+                View requirements →
+              </.link>
+            </div>
+          </div>
+        </div>
+
+        <div :if={@sync_status == :error && @sync_result} role="alert" class="alert alert-error">
+          <div>
+            <h2 class="font-bold">Sync Failed</h2>
+            <pre class="text-xs mt-2 whitespace-pre-wrap">{@sync_result.error}</pre>
+          </div>
+        </div>
       </div>
-    </div>
+    </Layouts.app>
     """
   end
 

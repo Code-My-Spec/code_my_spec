@@ -10,7 +10,16 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, project: nil, issues: [], filters: %{}, error: nil)}
+    projects = Projects.list_local_projects()
+
+    {:ok,
+     assign(socket,
+       projects: projects,
+       project: nil,
+       issues: [],
+       filters: %{},
+       error: nil
+     )}
   end
 
   @impl true
@@ -27,6 +36,7 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
          slug: project_slug(project),
          issues: issues,
          filters: filters,
+         page_title: "#{project.name} — Issues",
          error: nil
        )}
     else
@@ -45,90 +55,96 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={!@error && @project}>
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold">Issues ({length(@issues)})</h1>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={:issues}
+      page_title={assigns[:page_title]}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <div class="flex flex-wrap gap-2 mb-6">
-        <select
-          name="status"
-          phx-change="filter"
-          class="select select-sm select-bordered"
-          value={@filters[:status]}
-        >
-          <option value="">All statuses</option>
-          <option :for={s <- ~w(incoming accepted dismissed resolved)} value={s} selected={@filters[:status] == String.to_existing_atom(s)}>
-            {s}
-          </option>
-        </select>
+      <div :if={!@error && @project}>
+        <div class="flex items-center justify-between mb-6">
+          <h1 class="text-3xl font-bold">Issues <span class="text-base-content/50 font-normal text-xl">({length(@issues)})</span></h1>
+        </div>
 
-        <select
-          name="severity"
-          phx-change="filter"
-          class="select select-sm select-bordered"
-          value={@filters[:severity]}
-        >
-          <option value="">All severities</option>
-          <option :for={s <- ~w(critical high medium low info)} value={s} selected={@filters[:severity] == String.to_existing_atom(s)}>
-            {s}
-          </option>
-        </select>
+        <div class="flex flex-wrap gap-2 mb-6">
+          <select
+            name="status"
+            phx-change="filter"
+            class="select select-sm select-bordered"
+            value={@filters[:status]}
+          >
+            <option value="">All statuses</option>
+            <option :for={s <- ~w(incoming accepted dismissed resolved)} value={s} selected={@filters[:status] == String.to_existing_atom(s)}>
+              {s}
+            </option>
+          </select>
 
-        <select
-          name="scope"
-          phx-change="filter"
-          class="select select-sm select-bordered"
-          value={@filters[:scope]}
-        >
-          <option value="">All scopes</option>
-          <option :for={s <- ~w(app qa docs)} value={s} selected={@filters[:scope] == String.to_existing_atom(s)}>
-            {s}
-          </option>
-        </select>
+          <select
+            name="severity"
+            phx-change="filter"
+            class="select select-sm select-bordered"
+            value={@filters[:severity]}
+          >
+            <option value="">All severities</option>
+            <option :for={s <- ~w(critical high medium low info)} value={s} selected={@filters[:severity] == String.to_existing_atom(s)}>
+              {s}
+            </option>
+          </select>
+
+          <select
+            name="scope"
+            phx-change="filter"
+            class="select select-sm select-bordered"
+            value={@filters[:scope]}
+          >
+            <option value="">All scopes</option>
+            <option :for={s <- ~w(app qa docs)} value={s} selected={@filters[:scope] == String.to_existing_atom(s)}>
+              {s}
+            </option>
+          </select>
+        </div>
+
+        <div :if={@issues == []} class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box">
+          No issues found.
+        </div>
+
+        <div :if={@issues != []} class="overflow-x-auto rounded-box border border-base-300">
+          <table class="table table-zebra">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Severity</th>
+                <th>Title</th>
+                <th>Scope</th>
+                <th class="hidden sm:table-cell">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                :for={issue <- @issues}
+                class="hover cursor-pointer"
+                phx-click={JS.navigate("/projects/#{@slug}/issues/#{issue.id}")}
+              >
+                <td><span class={"badge badge-sm #{status_badge(issue.status)}"}>{issue.status}</span></td>
+                <td><span class={"badge badge-sm badge-outline #{severity_badge(issue.severity)}"}>{issue.severity}</span></td>
+                <td class="font-medium">{issue.title}</td>
+                <td>{issue.scope}</td>
+                <td class="hidden sm:table-cell text-base-content/50 text-sm">
+                  {Calendar.strftime(issue.inserted_at, "%b %d")}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-
-      <div :if={@issues == []} class="text-base-content/50 py-8 text-center">
-        No issues found.
-      </div>
-
-      <div :if={@issues != []} class="overflow-x-auto">
-        <table class="table table-zebra">
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Severity</th>
-              <th>Title</th>
-              <th>Scope</th>
-              <th class="hidden sm:table-cell">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              :for={issue <- @issues}
-              class="hover cursor-pointer"
-              phx-click={JS.navigate("/projects/#{@slug}/issues/#{issue.id}")}
-            >
-              <td><span class={"badge badge-sm #{status_badge(issue.status)}"}>{issue.status}</span></td>
-              <td><span class={"badge badge-sm badge-outline #{severity_badge(issue.severity)}"}>{issue.severity}</span></td>
-              <td class="font-medium">{issue.title}</td>
-              <td>{issue.scope}</td>
-              <td class="hidden sm:table-cell text-base-content/50 text-sm">
-                {Calendar.strftime(issue.inserted_at, "%b %d")}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    </Layouts.app>
     """
   end
-
-  # -- Helpers -----------------------------------------------------------------
 
   defp status_badge(:incoming), do: "badge-info"
   defp status_badge(:accepted), do: "badge-success"

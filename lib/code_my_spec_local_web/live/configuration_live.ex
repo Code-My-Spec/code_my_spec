@@ -17,7 +17,8 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, error: nil, flash_message: nil)}
+    projects = Projects.list_local_projects()
+    {:ok, assign(socket, projects: projects, project: nil, error: nil)}
   end
 
   @impl true
@@ -42,150 +43,155 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
 
   @impl true
   def handle_event("save", %{"configuration" => attrs}, socket) do
-    # Checkboxes not present in params = unchecked.
     attrs = normalize_checkbox_attrs(attrs)
 
     case Configurations.update(socket.assigns.scope, attrs) do
       {:ok, configuration} ->
         {:noreply,
          socket
-         |> assign(configuration: configuration, flash_message: "Configuration saved")}
+         |> assign(configuration: configuration)
+         |> put_flash(:info, "Configuration saved")}
 
       {:error, _changeset} ->
-        {:noreply, assign(socket, flash_message: "Failed to save configuration")}
+        {:noreply, put_flash(socket, :error, "Failed to save configuration")}
     end
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} style="color: #f87171;">
-      <h1>Error</h1>
-      <p>{@error}</p>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={:configuration}
+      page_title={assigns[:page_title]}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={!@error} class="prose prose-invert">
-      <h1>{@project.name} — Configuration</h1>
-      <p>Local quality gate settings. Never synced to the server.</p>
+      <div :if={!@error && @project}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">Configuration</h1>
+          <p class="text-base-content/60 mt-1">
+            Local quality gate settings. Never synced to the server.
+          </p>
+        </div>
 
-      <div :if={@flash_message} style="color: #4ade80;">{@flash_message}</div>
+        <form id="configuration-form" data-test="configuration-form" phx-submit="save" class="space-y-6">
+          <section class="card bg-base-200 border border-base-300">
+            <div class="card-body">
+              <h2 class="card-title text-lg">Requirement Toggles</h2>
+              <p class="text-sm opacity-70">What's required for a component to be considered done.</p>
 
-      <form id="configuration-form" data-test="configuration-form" phx-submit="save">
-        <section>
-          <h2>Requirement Toggles</h2>
-          <p>What's required for a component to be considered done.</p>
+              <div class="divider my-1"></div>
 
-          <label>
-            <input
-              type="hidden"
-              name="configuration[require_specs]"
-              value="false"
-            />
-            <input
-              type="checkbox"
-              name="configuration[require_specs]"
-              value="true"
-              checked={@configuration.require_specs}
-              data-test="require-specs"
-            />
-            Require Specs
-          </label>
+              <.toggle_field
+                name="require_specs"
+                label="Require Specs"
+                checked={@configuration.require_specs}
+              />
+              <.toggle_field
+                name="require_reviews"
+                label="Require Reviews"
+                checked={@configuration.require_reviews}
+              />
+              <.toggle_field
+                name="require_unit_tests"
+                label="Require Unit Tests"
+                checked={@configuration.require_unit_tests}
+              />
+            </div>
+          </section>
 
-          <label>
-            <input
-              type="hidden"
-              name="configuration[require_reviews]"
-              value="false"
-            />
-            <input
-              type="checkbox"
-              name="configuration[require_reviews]"
-              value="true"
-              checked={@configuration.require_reviews}
-              data-test="require-reviews"
-            />
-            Require Reviews
-          </label>
+          <section class="card bg-base-200 border border-base-300">
+            <div class="card-body">
+              <h2 class="card-title text-lg">Analyzer Settings</h2>
+              <p class="text-sm opacity-70">What runs at stop time and whether it blocks.</p>
 
-          <label>
-            <input
-              type="hidden"
-              name="configuration[require_unit_tests]"
-              value="false"
-            />
-            <input
-              type="checkbox"
-              name="configuration[require_unit_tests]"
-              value="true"
-              checked={@configuration.require_unit_tests}
-              data-test="require-unit-tests"
-            />
-            Require Unit Tests
-          </label>
-        </section>
+              <div class="divider my-1"></div>
 
-        <section>
-          <h2>Analyzer Settings</h2>
-          <p>What runs at stop time and whether it blocks.</p>
+              <.select_field
+                name="compile_warnings"
+                label="Compile Warnings"
+                value={@configuration.compile_warnings}
+                modes={@compile_modes}
+              />
+              <.select_field
+                name="credo"
+                label="Credo"
+                value={@configuration.credo}
+                modes={@analyzer_modes}
+              />
+              <.select_field
+                name="exunit"
+                label="ExUnit"
+                value={@configuration.exunit}
+                modes={@analyzer_modes}
+              />
+              <.select_field
+                name="spex"
+                label="Spex"
+                value={@configuration.spex}
+                modes={@analyzer_modes}
+              />
+            </div>
+          </section>
 
-          <label>
-            Compile Warnings
-            <select name="configuration[compile_warnings]" data-test="compile-warnings">
-              <option
-                :for={mode <- @compile_modes}
-                value={mode}
-                selected={@configuration.compile_warnings == mode}
-              >
-                {format_mode(mode)}
-              </option>
-            </select>
-          </label>
+          <div class="flex justify-end">
+            <button type="submit" class="btn btn-primary" data-test="save-configuration">
+              Save Configuration
+            </button>
+          </div>
+        </form>
+      </div>
+    </Layouts.app>
+    """
+  end
 
-          <label>
-            Credo
-            <select name="configuration[credo]" data-test="credo">
-              <option
-                :for={mode <- @analyzer_modes}
-                value={mode}
-                selected={@configuration.credo == mode}
-              >
-                {format_mode(mode)}
-              </option>
-            </select>
-          </label>
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :checked, :boolean, required: true
 
-          <label>
-            ExUnit
-            <select name="configuration[exunit]" data-test="exunit">
-              <option
-                :for={mode <- @analyzer_modes}
-                value={mode}
-                selected={@configuration.exunit == mode}
-              >
-                {format_mode(mode)}
-              </option>
-            </select>
-          </label>
+  defp toggle_field(assigns) do
+    ~H"""
+    <label class="label cursor-pointer justify-between py-2">
+      <span class="label-text">{@label}</span>
+      <span>
+        <input type="hidden" name={"configuration[#{@name}]"} value="false" />
+        <input
+          type="checkbox"
+          name={"configuration[#{@name}]"}
+          value="true"
+          checked={@checked}
+          class="toggle toggle-primary"
+          data-test={String.replace(@name, "_", "-")}
+        />
+      </span>
+    </label>
+    """
+  end
 
-          <label>
-            Spex
-            <select name="configuration[spex]" data-test="spex">
-              <option
-                :for={mode <- @analyzer_modes}
-                value={mode}
-                selected={@configuration.spex == mode}
-              >
-                {format_mode(mode)}
-              </option>
-            </select>
-          </label>
-        </section>
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :value, :atom, required: true
+  attr :modes, :list, required: true
 
-        <footer>
-          <button type="submit" data-test="save-configuration">Save Configuration</button>
-        </footer>
-      </form>
-    </div>
+  defp select_field(assigns) do
+    ~H"""
+    <label class="form-control w-full">
+      <div class="label"><span class="label-text">{@label}</span></div>
+      <select
+        name={"configuration[#{@name}]"}
+        class="select select-bordered w-full"
+        data-test={String.replace(@name, "_", "-")}
+      >
+        <option :for={mode <- @modes} value={mode} selected={@value == mode}>
+          {format_mode(mode)}
+        </option>
+      </select>
+    </label>
     """
   end
 

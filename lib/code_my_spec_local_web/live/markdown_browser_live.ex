@@ -30,54 +30,89 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, markdown: nil, error: nil)}
+    projects = Projects.list_local_projects()
+    {:ok, assign(socket, projects: projects, project: nil, markdown: nil, error: nil)}
   end
 
-  # Index route — no *path param, show the library root
   @impl true
   def handle_params(%{"project_name" => project_name} = params, _uri, socket)
       when not is_map_key(params, "path") do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
 
-    with {:ok, root} <- resolve_root(config.root, project_name) do
+    with {:ok, project} <- Projects.get_project_by_name(project_name),
+         {:ok, root} <- resolve_root(config.root, project_name) do
       resolved_config = Map.put(config, :root, root)
-      base_url = "/projects/#{project_name}/#{library}"
+      base_url = "/projects/#{project_name}/#{library_path(library)}"
       markdown = build_index(resolved_config, root, base_url)
-      {:noreply, assign(socket, markdown: markdown, page_title: config.title, error: nil)}
+
+      {:noreply,
+       assign(socket,
+         project: project,
+         markdown: markdown,
+         library: library,
+         page_title: config.title,
+         error: nil
+       )}
     else
       {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
     end
   end
 
-  # Navigation route — *path param present, resolve file or subdirectory
   def handle_params(%{"project_name" => project_name, "path" => path_segments}, _uri, socket) do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
 
-    with {:ok, root} <- resolve_root(config.root, project_name) do
+    with {:ok, project} <- Projects.get_project_by_name(project_name),
+         {:ok, root} <- resolve_root(config.root, project_name) do
       resolved_config = Map.put(config, :root, root)
-      base_url = "/projects/#{project_name}/#{library}"
+      base_url = "/projects/#{project_name}/#{library_path(library)}"
       relative_path = Path.join(path_segments)
       full_path = Path.join(root, relative_path)
 
       cond do
         not safe_path?(root, full_path) ->
-          {:noreply, assign(socket, error: "Invalid path")}
+          {:noreply, assign(socket, project: project, library: library, error: "Invalid path")}
 
         not File.exists?(full_path) ->
-          {:noreply, assign(socket, error: "Not found: #{relative_path}")}
+          {:noreply,
+           assign(socket,
+             project: project,
+             library: library,
+             error: "Not found: #{relative_path}"
+           )}
 
         File.dir?(full_path) ->
           markdown = build_index(resolved_config, full_path, base_url)
-          {:noreply, assign(socket, markdown: markdown, page_title: Path.basename(full_path) |> humanize(), error: nil)}
+
+          {:noreply,
+           assign(socket,
+             project: project,
+             library: library,
+             markdown: markdown,
+             page_title: Path.basename(full_path) |> humanize(),
+             error: nil
+           )}
 
         String.ends_with?(full_path, ".md") ->
           markdown = build_file_view(resolved_config, full_path, base_url, relative_path)
-          {:noreply, assign(socket, markdown: markdown, page_title: Path.basename(full_path, ".md") |> humanize(), error: nil)}
+
+          {:noreply,
+           assign(socket,
+             project: project,
+             library: library,
+             markdown: markdown,
+             page_title: Path.basename(full_path, ".md") |> humanize(),
+             error: nil
+           )}
 
         true ->
-          {:noreply, assign(socket, error: "Not found: #{relative_path}")}
+          {:noreply,
+           assign(socket,
+             project: project,
+             library: library,
+             error: "Not found: #{relative_path}"
+           )}
       end
     else
       {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
@@ -87,18 +122,23 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} style="color: #f87171;">
-      <h1>Error</h1>
-      <p>{@error}</p>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={assigns[:library]}
+      page_title={assigns[:page_title]}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={@markdown} class="prose prose-invert">
-      {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
-    </div>
+      <article :if={@markdown} class="prose max-w-none">
+        {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
+      </article>
+    </Layouts.app>
     """
   end
-
-  # -- Root resolution --
 
   defp resolve_root({:priv, relative}, _project_name) do
     root = :code_my_spec |> :code.priv_dir() |> Path.join(relative)
@@ -122,8 +162,6 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
       end
     end
   end
-
-  # -- Markdown building --
 
   defp build_index(config, dir_path, base_url) do
     back =
@@ -187,7 +225,6 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
       {name, type}
     end)
     |> Enum.sort_by(fn {name, type} ->
-      # Directories first, then files; README first within files
       {if(type == :dir, do: 0, else: 1), if(name =~ ~r/^readme/i, do: 0, else: 1), name}
     end)
   end
@@ -210,7 +247,9 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
     |> humanize()
   end
 
-  # -- Public API for the controller --
+  defp library_path(library) when is_atom(library) do
+    library |> Atom.to_string() |> String.replace("_", "-")
+  end
 
   def libraries, do: @libraries
 

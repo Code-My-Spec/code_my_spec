@@ -11,7 +11,8 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, project: nil, markdown: nil, error: nil)}
+    projects = Projects.list_local_projects()
+    {:ok, assign(socket, projects: projects, project: nil, markdown: nil, error: nil)}
   end
 
   @impl true
@@ -24,7 +25,13 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
           nodes -> RequirementsMapper.format_next_requirements(nodes)
         end
 
-      {:noreply, assign(socket, project: project, markdown: markdown, error: nil)}
+      {:noreply,
+       assign(socket,
+         project: project,
+         markdown: markdown,
+         page_title: "#{project.name} — Next Task",
+         error: nil
+       )}
     else
       {:error, reason} ->
         {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
@@ -34,17 +41,30 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} class="alert alert-error">
-      <p>{@error}</p>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={:next_task}
+      page_title={assigns[:page_title]}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={@markdown} class="prose prose-invert max-w-none">
-      {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
-    </div>
+      <div :if={!@error}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">Next Task</h1>
+          <p class="text-base-content/60 mt-1">Preview of what the agent sees from <code class="kbd kbd-sm">get_next_requirement</code>.</p>
+        </div>
 
-    <div :if={!@markdown && !@error} class="text-base-content/50">
-      Loading...
-    </div>
+        <div :if={@markdown} class="prose max-w-none bg-base-200 border border-base-300 rounded-box p-6">
+          {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
+        </div>
+
+        <div :if={!@markdown} class="text-base-content/50">Loading…</div>
+      </div>
+    </Layouts.app>
     """
   end
 end

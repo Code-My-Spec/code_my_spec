@@ -1,8 +1,6 @@
 defmodule CodeMySpecLocalWeb.HomeLive do
   @moduledoc """
-  Main menu page for the local web interface.
-
-  Renders a markdown-based navigation hub linking to all project sections.
+  Project overview / dashboard — landing page for a single project.
   """
   use CodeMySpecLocalWeb, :live_view
 
@@ -11,20 +9,19 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, markdown: nil, error: nil)}
+    projects = Projects.list_local_projects()
+    {:ok, assign(socket, projects: projects, project: nil, scope: nil, error: nil)}
   end
 
   @impl true
   def handle_params(%{"project_name" => name}, _uri, socket) do
     with {:ok, project, scope} <- load_project_and_scope(name) do
-      slug = project_slug(project)
-      dir_param = URI.encode_www_form(scope.cwd)
-
-      markdown = build_menu(project.name, slug, dir_param)
-
       {:noreply,
        assign(socket,
-         markdown: markdown,
+         project: project,
+         scope: scope,
+         slug: project_slug(project),
+         dir_param: URI.encode_www_form(scope.cwd),
          page_title: project.name,
          error: nil
        )}
@@ -36,45 +33,54 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} style="color: #f87171;">
-      <h1>Error</h1>
-      <p>{@error}</p>
-    </div>
+    <Layouts.app flash={@flash} projects={@projects} project={@project} section={:overview} page_title={assigns[:page_title]}>
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={@markdown} class="prose prose-invert">
-      {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
-    </div>
+      <div :if={@project && !@error}>
+        <div class="mb-8">
+          <h1 class="text-3xl font-bold">{@project.name}</h1>
+          <p :if={@project.local_path} class="text-sm opacity-60 font-mono mt-1">{@project.local_path}</p>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <.dash_card title="Next Task" href={~p"/projects/#{@slug}/next-task"} desc="Pick up the next actionable requirement." />
+          <.dash_card title="Sync" href={~p"/projects/#{@slug}/sync"} desc="Recalculate requirements and component status." />
+          <.dash_card title="Configuration" href={~p"/projects/#{@slug}/configuration"} desc="Quality gate and analyzer settings." />
+
+          <.dash_card title="Requirements" href={~p"/projects/#{@slug}/requirements"} desc="Project-level requirement graph." />
+          <.dash_card title="Components" href={~p"/projects/#{@slug}/components"} desc="Component inventory and dependencies." />
+          <.dash_card title="Architecture" href={~p"/projects/#{@slug}/architecture"} desc="Dependency graph and namespace hierarchy." />
+          <.dash_card title="Stories" href={~p"/projects/#{@slug}/stories"} desc="User stories and acceptance criteria." />
+
+          <.dash_card title="Issues" href={~p"/projects/#{@slug}/issues"} desc="Open problems and incoming triage." />
+          <.dash_card title="Sessions" href={~p"/projects/#{@slug}/sessions"} desc="Agent session history." />
+          <.dash_card title="Project Init" href={"/init?dir=#{@dir_param}"} desc="Bootstrap checklist for this directory." />
+
+          <.dash_card title="Knowledge Base" href={~p"/projects/#{@slug}/knowledge"} desc="Shared methodology and rules." />
+          <.dash_card title="Project Knowledge" href={~p"/projects/#{@slug}/project-knowledge"} desc="Project-specific docs and specs." />
+        </div>
+      </div>
+    </Layouts.app>
     """
   end
 
-  defp build_menu(project_name, slug, dir_param) do
-    """
-    # #{project_name}
+  attr :title, :string, required: true
+  attr :href, :string, required: true
+  attr :desc, :string, required: true
 
-    ## Initialization
-
-    - [Project Init Checklist](/init?dir=#{dir_param})
-
-    ## Data
-
-    - [Stories](/projects/#{slug}/stories)
-    - [Issues](/projects/#{slug}/issues)
-
-    ## Requirements
-
-    - [Project Requirements](/projects/#{slug}/requirements)
-    - [Stories Requirements](/projects/#{slug}/stories/requirements)
-    - [Components Requirements](/projects/#{slug}/components)
-
-    ## Reference
-
-    - [Knowledge Base](/projects/#{slug}/knowledge)
-    - [Project Knowledge](/projects/#{slug}/project-knowledge)
-
-    ## Project Management
-
-    - [Next Task](/projects/#{slug}/next-task)
-    - [Sync Requirements](/projects/#{slug}/sync)
+  defp dash_card(assigns) do
+    ~H"""
+    <.link
+      navigate={@href}
+      class="card bg-base-200 border border-base-300 hover:border-primary hover:shadow-lg transition"
+    >
+      <div class="card-body p-5">
+        <h2 class="card-title text-base">{@title}</h2>
+        <p class="text-sm opacity-70">{@desc}</p>
+      </div>
+    </.link>
     """
   end
 
