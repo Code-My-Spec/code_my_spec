@@ -31,8 +31,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
 
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        limit = min(params[:limit] || @default_limit, @max_limit)
-        offset = params[:offset] || 0
+        limit = (params[:limit] || @default_limit) |> max(0) |> min(@max_limit)
+        offset = max(params[:offset] || 0, 0)
 
         opts = [limit: limit, offset: offset]
         opts = if params[:search], do: Keyword.put(opts, :search, params[:search]), else: opts
