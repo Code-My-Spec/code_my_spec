@@ -895,5 +895,43 @@ defmodule CodeMySpec.BddSpecsTest do
       refute String.contains?(result, ">")
       refute String.contains?(result, "|")
     end
+
+    test "caps filenames under the 255-byte filesystem limit for verbose criteria" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{title: "Some Story With A Reasonably Long Title"})
+
+      verbose_description =
+        "When a stop is blocked and advisory problems also exist, the blocking response " <>
+          "enumerates only the blocking set and collapses the advisory set to one summary line " <>
+          "per source (source: N severity (advisory)) — no individual advisory file paths, " <>
+          "line numbers, or messages appear."
+
+      criterion = criterion_fixture(scope, story, %{description: verbose_description})
+
+      result = BddSpecs.spec_file_path(story, criterion)
+      filename = Path.basename(result)
+
+      assert byte_size(filename) <= 255,
+             "filename must fit under the 255-byte filesystem limit, got #{byte_size(filename)}: #{filename}"
+    end
+
+    test "truncates the criterion slug on a word boundary" do
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
+
+      verbose =
+        "this is a long description that will exceed the slug cap and should be cut " <>
+          "on a word boundary rather than mid-word so the filename still reads naturally"
+
+      criterion = criterion_fixture(scope, story, %{description: verbose})
+
+      result = BddSpecs.spec_file_path(story, criterion)
+      filename = Path.basename(result)
+
+      # The trailing "_spex.exs" is fixed; the slug sits between the
+      # criterion id prefix and the suffix. It must not end mid-word.
+      refute filename =~ ~r/_[a-z]{1,3}_spex\.exs$/,
+             "truncation should land on a word boundary, got: #{filename}"
+    end
   end
 end

@@ -235,6 +235,12 @@ defmodule CodeMySpec.BddSpecs do
     end
   end
 
+  # Capped so `criterion_<id>_<slug>_spex.exs` stays well under the
+  # 255-byte filesystem component limit even when descriptions are
+  # verbose. Truncates on the last `_` boundary under the cap to keep
+  # the slug readable.
+  @max_slug_length 100
+
   # Private helper to slugify strings for filesystem paths
   defp slugify(string) do
     string
@@ -243,5 +249,19 @@ defmodule CodeMySpec.BddSpecs do
     |> String.replace(~r/\s+/, "_")
     |> String.replace(~r/_+/, "_")
     |> String.trim("_")
+    |> truncate_slug(@max_slug_length)
+  end
+
+  defp truncate_slug(slug, max) when byte_size(slug) <= max, do: slug
+
+  defp truncate_slug(slug, max) do
+    chunk = binary_part(slug, 0, max)
+
+    case :binary.matches(chunk, "_") do
+      [] -> chunk
+      matches ->
+        {pos, _} = List.last(matches)
+        binary_part(chunk, 0, pos)
+    end
   end
 end
