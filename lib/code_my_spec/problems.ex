@@ -6,7 +6,7 @@ defmodule CodeMySpec.Problems do
   (in-memory during sessions) and persistently (stored for project-level fitness tracking).
   """
 
-  alias CodeMySpec.Problems.{ProblemConverter, ProblemRepository}
+  alias CodeMySpec.Problems.{ProblemConverter, ProblemRenderer, ProblemRepository}
 
   # Repository functions
   defdelegate list_project_problems(scope, opts \\ []), to: ProblemRepository
@@ -26,4 +26,7 @@ defmodule CodeMySpec.Problems do
   defdelegate from_credo(credo_data), to: ProblemConverter
   defdelegate from_compiler(compiler_data), to: ProblemConverter
   defdelegate from_test_failure(test_error), to: ProblemConverter
+
+  # Renderer functions
+  defdelegate render_stop_response(blocking, advisory, opts \\ []), to: ProblemRenderer
 end

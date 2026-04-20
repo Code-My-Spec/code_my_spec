@@ -204,30 +204,7 @@ defmodule CodeMySpec.Validation do
   end
 
   defp decide(blocking, advisory) do
-    advisory_section =
-      if advisory != [] do
-        "\n\nAdditional problems on untouched scope (not blocking):\n\n#{format_problems(advisory)}"
-      else
-        ""
-      end
-
-    {:error, "Fix these problems before stopping:\n\n#{format_problems(blocking)}#{advisory_section}"}
-  end
-
-  defp format_problems(problems) do
-    problems
-    |> Enum.group_by(& &1.source)
-    |> Enum.map_join("\n", &format_problem_group/1)
-  end
-
-  defp format_problem_group({source, items}) do
-    details =
-      items
-      |> Enum.take(10)
-      |> Enum.map_join("\n", fn p -> "  - #{p.file_path}:#{p.line}: #{p.message}" end)
-
-    truncated = if length(items) > 10, do: "\n  ... and #{length(items) - 10} more", else: ""
-    "#{source} (#{length(items)}):\n#{details}#{truncated}"
+    {:error, Problems.render_stop_response(blocking, advisory)}
   end
 
   defp run_runner_analyzers(scope, analyzers, opts) do

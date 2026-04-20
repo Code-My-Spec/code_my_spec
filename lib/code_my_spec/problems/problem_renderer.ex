@@ -9,6 +9,12 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   @severity_order [:error, :warning, :info]
 
+  # Compactness policy for stop-hook responses. The agent's context window
+  # is finite — the response must stay tight.
+  @per_problem_cap 200
+  @per_source_list_cap 10
+  @total_response_cap 4096
+
   @doc """
   Render a single problem to a formatted string.
 
@@ -16,16 +22,20 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
     * `:format` - Output format: `:text` (default), `:compact`
     * `:include_source` - Include source tool name (default: true)
+    * `:compact_message` - When true, strip multi-line message bodies
+      (stacktraces, assertion left/right dumps) and keep only the first
+      line. Default: false.
+    * `:max_length` - Truncate the rendered line to this many bytes
+      (ellipsis appended). Default: nil (no cap).
 
   """
   @spec render(Problem.t(), keyword()) :: String.t()
   def render(%Problem{} = problem, opts \\ []) do
     format = Keyword.get(opts, :format, :text)
-    include_source = Keyword.get(opts, :include_source, true)
 
     case format do
-      :compact -> render_compact(problem, include_source)
-      :text -> render_text(problem, include_source)
+      :compact -> render_compact(problem, opts)
+      :text -> render_text(problem, Keyword.get(opts, :include_source, true))
     end
   end
 
@@ -74,8 +84,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     @severity_order
     |> Enum.map(fn severity -> {severity, Map.get(counts, severity, 0)} end)
     |> Enum.filter(fn {_severity, count} -> count > 0 end)
-    |> Enum.map(fn {severity, count} -> format_count(count, severity) end)
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", fn {severity, count} -> format_count(count, severity) end)
   end
 
   @doc """
@@ -88,11 +97,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     problems
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map(fn {source, source_problems} ->
+    |> Enum.map_join("\n", fn {source, source_problems} ->
       severity_summary = render_severity_counts(source_problems)
       "#{source}: #{severity_summary}"
     end)
-    |> Enum.join("\n")
   end
 
   @doc """
@@ -140,19 +148,190 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     Enum.join(parts, "\n")
   end
 
-  # Private functions
+  @doc """
+  Render the full stop-hook `reason` string.
 
-  defp render_compact(%Problem{} = problem, include_source) do
-    location = format_location(problem)
-    severity = Atom.to_string(problem.severity)
+  Given the blocking and advisory problem lists, produces a compact
+  string suitable for the agent's context window:
 
-    base = "#{location}: [#{severity}] #{problem.message}"
+  - Each blocking problem is one line: `file:line — first-line message`
+    truncated to `@per_problem_cap` bytes.
+  - Per source, at most `@per_source_list_cap` blocking problems are
+    enumerated; overflow surfaces as `... N more <source> problems
+    (use get_issue to inspect)`.
+  - Advisory problems are never enumerated — they collapse to one
+    summary line per source: `<source>: N <severity>s on untouched
+    scope (advisory)`.
+  - The total response is capped at `@total_response_cap` bytes; excess
+    is truncated with `... more problems omitted (response size limit)`.
 
-    case include_source do
-      true -> "#{base} (#{problem.source})"
-      false -> base
+  Returns `""` when there are no blocking problems — the allow path
+  never produces a stop reason.
+  """
+  @spec render_stop_response([Problem.t()], [Problem.t()], keyword()) :: String.t()
+  def render_stop_response(blocking, advisory, opts \\ [])
+
+  def render_stop_response([], _advisory, _opts), do: ""
+
+  def render_stop_response(blocking, advisory, _opts) do
+    header = "Fix these problems before stopping:\n\n"
+    advisory_section = render_advisory_section(advisory)
+
+    blocking_section = render_blocking_section(blocking)
+
+    raw = header <> blocking_section <> advisory_section
+
+    enforce_total_cap(raw, blocking, advisory)
+  end
+
+  defp render_blocking_section(blocking) do
+    blocking
+    |> Enum.group_by(& &1.source)
+    |> Enum.sort_by(fn {source, _} -> source end)
+    |> Enum.map_join("\n", &render_blocking_group/1)
+  end
+
+  defp render_blocking_group({source, items}) do
+    count = length(items)
+    visible = Enum.take(items, @per_source_list_cap)
+
+    details = Enum.map_join(visible, "\n", &render_blocking_line/1)
+
+    overflow =
+      case count - length(visible) do
+        0 -> ""
+        n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
+      end
+
+    "#{source} (#{count}):\n#{details}#{overflow}"
+  end
+
+  defp render_blocking_line(%Problem{} = problem) do
+    message =
+      problem.message
+      |> maybe_compact_message(true)
+      |> truncate_message(@per_problem_cap)
+
+    "  - #{format_location(problem)} — #{message}"
+  end
+
+  defp truncate_message(message, max) when is_binary(message) do
+    if byte_size(message) <= max do
+      message
+    else
+      binary_part(message, 0, max - 3) <> "..."
     end
   end
+
+  defp truncate_message(message, _max), do: message
+
+  defp render_advisory_section([]), do: ""
+
+  defp render_advisory_section(advisory) do
+    lines =
+      advisory
+      |> Enum.group_by(& &1.source)
+      |> Enum.sort_by(fn {source, _} -> source end)
+      |> Enum.map_join("\n", fn {source, items} ->
+        "  - #{source}: #{length(items)} #{dominant_severity_label(items)} (advisory)"
+      end)
+
+    "\n\nAdditional problems (not blocking):\n" <> lines
+  end
+
+  defp dominant_severity_label(items) do
+    severity =
+      items
+      |> Enum.map(& &1.severity)
+      |> Enum.frequencies()
+      |> Enum.max_by(fn {_sev, count} -> count end)
+      |> elem(0)
+      |> Atom.to_string()
+
+    case length(items) do
+      1 -> severity
+      _ -> "#{severity}s"
+    end
+  end
+
+  defp enforce_total_cap(text, blocking, advisory) do
+    if byte_size(text) <= @total_response_cap do
+      text
+    else
+      footer = "\n... more problems omitted (response size limit)"
+      # Leave room for the footer, then truncate at the last full newline.
+      budget = @total_response_cap - byte_size(footer)
+      trimmed = truncate_at_newline(text, budget, blocking, advisory)
+      trimmed <> footer
+    end
+  end
+
+  defp truncate_at_newline(text, budget, _blocking, _advisory)
+       when byte_size(text) <= budget,
+       do: text
+
+  defp truncate_at_newline(text, budget, _blocking, _advisory) do
+    chunk = binary_part(text, 0, budget)
+
+    case :binary.matches(chunk, "\n") do
+      [] ->
+        chunk
+
+      matches ->
+        {pos, _} = List.last(matches)
+        binary_part(chunk, 0, pos)
+    end
+  end
+
+  # Private functions
+
+  defp render_compact(%Problem{} = problem, opts) when is_list(opts) do
+    include_source = Keyword.get(opts, :include_source, true)
+    compact_message = Keyword.get(opts, :compact_message, false)
+    max_length = Keyword.get(opts, :max_length)
+
+    location = format_location(problem)
+    severity = Atom.to_string(problem.severity)
+    message = maybe_compact_message(problem.message, compact_message)
+
+    base = "#{location}: [#{severity}] #{message}"
+
+    rendered =
+      case include_source do
+        true -> "#{base} (#{problem.source})"
+        false -> base
+      end
+
+    maybe_truncate(rendered, max_length)
+  end
+
+  # Back-compat: prior callers pass a bare boolean.
+  defp render_compact(%Problem{} = problem, include_source) when is_boolean(include_source) do
+    render_compact(problem, include_source: include_source)
+  end
+
+  defp maybe_compact_message(message, false), do: message
+
+  defp maybe_compact_message(message, true) when is_binary(message) do
+    message
+    |> String.split("\n", parts: 2)
+    |> List.first()
+    |> String.trim()
+  end
+
+  defp maybe_compact_message(message, true), do: message
+
+  defp maybe_truncate(text, nil), do: text
+
+  defp maybe_truncate(text, max) when is_integer(max) and max > 3 do
+    if byte_size(text) <= max do
+      text
+    else
+      binary_part(text, 0, max - 3) <> "..."
+    end
+  end
+
+  defp maybe_truncate(text, _), do: text
 
   defp render_text(%Problem{} = problem, include_source) do
     location = format_location(problem)
@@ -184,21 +363,18 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   end
 
   defp render_flat(problems, opts) do
-    problems
-    |> Enum.map(&render(&1, opts))
-    |> Enum.join("\n\n")
+    Enum.map_join(problems, "\n\n", &render(&1, opts))
   end
 
   defp render_grouped(problems, group_by, _opts) do
     problems
     |> Enum.group_by(&Map.get(&1, group_by))
     |> Enum.sort_by(fn {key, _} -> group_sort_key(group_by, key) end)
-    |> Enum.map(fn {key, group_problems} ->
+    |> Enum.map_join("\n\n", fn {key, group_problems} ->
       header = format_group_header(group_by, key)
       rendered = Enum.map_join(group_problems, "\n", &render_compact(&1, false))
       "## #{header}\n#{rendered}"
     end)
-    |> Enum.join("\n\n")
   end
 
   defp group_sort_key(:severity, key) do
@@ -223,8 +399,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     @severity_order
     |> Enum.map(fn severity -> {severity, Map.get(counts, severity, 0)} end)
     |> Enum.filter(fn {_severity, count} -> count > 0 end)
-    |> Enum.map(fn {severity, count} -> format_count(count, severity) end)
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", fn {severity, count} -> format_count(count, severity) end)
   end
 
   defp format_count(1, severity), do: "1 #{severity}"
