@@ -25,8 +25,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
     session_id = Map.get(params, :session_id)
     status_filter = Map.get(params, :status)
 
-    with {:ok, _scope} <- Validators.validate_local_scope(frame),
-         {:ok, session} <- resolve_session(frame, session_id) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
+         {:ok, session} <- resolve_session(scope, session_id) do
       tasks = session.tasks || []
 
       tasks =
@@ -72,14 +72,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
     end
   end
 
-  defp resolve_session(frame, session_id) when is_binary(session_id) and session_id != "" do
-    scope = frame.assigns[:scope]
-
+  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do
       nil -> {:error, "Session not found: #{session_id}"}
       session -> {:ok, session}
     end
   end
 
-  defp resolve_session(_frame, _), do: {:error, "No session_id available"}
+  defp resolve_session(_scope, _), do: {:error, "No session_id available"}
 end
