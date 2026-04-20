@@ -93,7 +93,7 @@ defmodule CodeMySpecWeb.InvitationsLive.AcceptTest do
     end
 
     test "renders error for missing token parameter", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/invitations/accept/")
+      {:ok, _lv, html} = live(conn, ~p"/invitations/accept")
 
       assert html =~ "Invalid Invitation"
       refute html =~ "Accept Invitation"
@@ -296,7 +296,7 @@ defmodule CodeMySpecWeb.InvitationsLive.AcceptTest do
 
     test "handles malformed URLs gracefully", %{conn: conn} do
       # Test with empty token
-      {:ok, _lv, html} = live(conn, ~p"/invitations/accept/")
+      {:ok, _lv, html} = live(conn, ~p"/invitations/accept")
       assert html =~ "Invalid Invitation"
 
       # Test with very long token

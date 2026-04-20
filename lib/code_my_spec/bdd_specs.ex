@@ -159,9 +159,12 @@ defmodule CodeMySpec.BddSpecs do
       {:error, ["Missing spex macro"]}
 
   """
-  @spec validate_spec_syntax(String.t()) :: :ok | {:error, [String.t()]}
-  def validate_spec_syntax(content) do
-    Parser.validate_syntax(content)
+  @spec validate_spec_syntax(Path.t()) :: :ok | {:error, [String.t()]}
+  def validate_spec_syntax(path) do
+    case File.read(path) do
+      {:ok, content} -> Parser.validate_syntax(content)
+      {:error, reason} -> {:error, ["File not found: #{path} (#{inspect(reason)})"]}
+    end
   end
 
   @doc """

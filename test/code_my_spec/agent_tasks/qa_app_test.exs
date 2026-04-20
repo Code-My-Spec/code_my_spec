@@ -7,6 +7,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
   alias CodeMySpec.AgentTasks.QaApp
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Issues.IssuesRepository
 
   # ============================================================================
   # Test Helpers
@@ -215,7 +216,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     end
 
     test "lists existing issues to avoid duplicates", %{scope: scope, task: task} do
-      CodeMySpec.Issues.IssuesRepository.create_issue(scope, %{
+      IssuesRepository.create_issue(scope, %{
         title: "login-form-broken",
         severity: :high,
         description: "Login form is broken",
@@ -223,7 +224,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       })
 
       assert {:ok, prompt} = QaApp.command(scope, task)
-      assert prompt =~ "login_form_broken"
+      assert prompt =~ "login-form-broken"
     end
 
     test "includes BDD coverage section", %{scope: scope, task: task} do

@@ -3,6 +3,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.BddSpecs
+  alias CodeMySpec.Environments.Environment
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -17,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   defp scope_with_cwd(tmp_dir) do
     scope = full_scope_fixture()
-    Map.put(scope, :cwd, tmp_dir)
+    %{scope | environment: Environment.new(:local, tmp_dir)}
   end
 
   defp create_story_with_component(scope, opts \\ %{}) do

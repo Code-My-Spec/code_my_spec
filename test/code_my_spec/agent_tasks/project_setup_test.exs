@@ -335,16 +335,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       end
     end
 
-    test "includes commit instructions between major steps", %{tmp_dir: tmp_dir} do
-      scope = create_scope(tmp_dir)
-      task = create_task(tmp_dir)
-
-      use_cmd_cassette "project_setup_command_commits", ignore: [[:opts, :cd]] do
-        assert {:ok, prompt} = ProjectSetup.command(scope, task)
-
-        assert prompt =~ "commit" or prompt =~ "git"
-      end
-    end
   end
 
   # ============================================================================

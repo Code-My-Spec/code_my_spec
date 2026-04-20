@@ -141,6 +141,13 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     # ClaudeMd
     File.write!(Path.join(tmp_dir, "CLAUDE.md"), "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
 
+    # IgnoredPaths
+    File.write!(Path.join([tmp_dir, base, "config.yml"]), """
+    ignored_paths:
+      - lib/#{app}/application.ex
+      - lib/#{app}_web/endpoint.ex
+    """)
+
     :ok
   end
 

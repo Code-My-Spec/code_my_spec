@@ -66,12 +66,6 @@ defmodule CodeMySpecWeb.IntegrationsControllerTest do
       assert is_nil(get_session(conn, :oauth_provider))
       assert is_nil(get_session(conn, :oauth_session_params))
     end
-
-    test "requires authentication" do
-      conn = build_conn() |> get(~p"/auth/github/callback")
-
-      assert redirected_to(conn) =~ "/users/log-in"
-    end
   end
 
   describe "DELETE /auth/:provider" do

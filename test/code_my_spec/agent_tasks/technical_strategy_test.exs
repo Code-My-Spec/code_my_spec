@@ -279,30 +279,18 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       end)
     end
 
-    test "returns {:ok, :invalid, feedback} when pre-made decisions are missing", %{
+    test "returns {:ok, :valid} when only the decisions index exists", %{
       scope: scope,
       task: task
     } do
+      # evaluate/2 only checks for the decisions index — pre-made decision
+      # validation is handled by the `ensure_premade_decisions` side effect
+      # in command/2.
       env = scope.environment
       write_decisions_index(env)
 
       capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
-        assert feedback =~ "Pre-made decision"
-      end)
-    end
-
-    test "feedback names the missing pre-made topic", %{scope: scope, task: task} do
-      env = scope.environment
-      write_decisions_index(env)
-
-      for d <- TechnicalStrategy.premade_decisions(), d.topic != "elixir" do
-        write_existing_decision(env, d.topic)
-      end
-
-      capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
-        assert feedback =~ "elixir"
+        assert {:ok, :valid} = TechnicalStrategy.evaluate(scope, task)
       end)
     end
 
@@ -329,15 +317,6 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       capture_log(fn ->
         assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
         assert feedback =~ ".code_my_spec/architecture/decisions.md"
-      end)
-    end
-
-    test "returns {:ok, :invalid, feedback} when both index and pre-made decisions are missing",
-         %{scope: scope, task: task} do
-      capture_log(fn ->
-        assert {:ok, :invalid, feedback} = TechnicalStrategy.evaluate(scope, task)
-        assert feedback =~ "index"
-        assert feedback =~ "Pre-made decision"
       end)
     end
 

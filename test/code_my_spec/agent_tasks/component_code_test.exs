@@ -107,19 +107,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       scope: scope,
       component: component
     } do
-      requirement_fixture(scope, component, %{
-        name: "implementation_file",
-        artifact_type: :code,
-        description: "Component implementation file exists",
-        satisfied: true
-      })
-
-      requirement_fixture(scope, component, %{
-        name: "tests_passing",
-        artifact_type: :code,
-        description: "Component tests are passing",
-        satisfied: true
-      })
+      satisfy_code_requirements(scope, component)
 
       assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
@@ -129,28 +117,10 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       scope: scope,
       component: component
     } do
-      # Satisfied code requirements
-      requirement_fixture(scope, component, %{
-        name: "implementation_file",
-        artifact_type: :code,
-        description: "Component implementation file exists",
-        satisfied: true
-      })
-
-      requirement_fixture(scope, component, %{
-        name: "tests_passing",
-        artifact_type: :code,
-        description: "Component tests are passing",
-        satisfied: true
-      })
-
-      # Unsatisfied non-code requirement — should be ignored
-      requirement_fixture(scope, component, %{
-        name: "test_file",
-        artifact_type: :tests,
-        description: "Component test file exists",
-        satisfied: false
-      })
+      # Seeding :implementation and :test Files satisfies both :code requirements.
+      # evaluate only inspects :code artifacts, so spec/test-artifact requirements
+      # are irrelevant.
+      satisfy_code_requirements(scope, component)
 
       assert {:ok, :valid} = ComponentCode.evaluate(scope, task)
     end
@@ -240,18 +210,28 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
   end
 
   defp satisfy_code_requirements(scope, component) do
-    requirement_fixture(scope, component, %{
-      name: "implementation_file",
-      artifact_type: :code,
-      description: "Component implementation file exists",
-      satisfied: true
-    })
+    project = scope.active_project
+    %{code_file: code_path, test_file: test_path} =
+      CodeMySpec.Utils.component_files(component, project)
 
-    requirement_fixture(scope, component, %{
-      name: "tests_passing",
-      artifact_type: :code,
-      description: "Component tests are passing",
-      satisfied: true
+    %CodeMySpec.Files.File{}
+    |> CodeMySpec.Files.File.changeset(%{
+      path: code_path,
+      role: :implementation,
+      project_id: project.id,
+      component_id: component.id,
+      valid: true
     })
+    |> CodeMySpec.Repo.insert!()
+
+    %CodeMySpec.Files.File{}
+    |> CodeMySpec.Files.File.changeset(%{
+      path: test_path,
+      role: :test,
+      project_id: project.id,
+      component_id: component.id,
+      valid: true
+    })
+    |> CodeMySpec.Repo.insert!()
   end
 end

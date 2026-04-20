@@ -238,21 +238,19 @@ defmodule CodeMySpec.Files.FileSyncTest do
       - deletes user on click
       """
 
-      # Test covers both assertions — should be valid
+      # Test names must match the spec's Test Assertions lines. SpecAlignment
+      # pulls `{:test, _, [name, ...]}` nodes from the AST; describe block names
+      # aren't considered matchable.
       aligned_test = """
       defmodule MyApp.UserLive.IndexTest do
         use ExUnit.Case
 
-        describe "renders user list" do
-          test "shows users" do
-            assert true
-          end
+        test "renders user list" do
+          assert true
         end
 
-        describe "deletes user on click" do
-          test "removes user" do
-            assert true
-          end
+        test "deletes user on click" do
+          assert true
         end
       end
       """

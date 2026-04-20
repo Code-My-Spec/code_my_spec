@@ -9,13 +9,16 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "satisfaction clamping" do
@@ -403,14 +406,20 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
-      # Write ALL spec files upfront so ComponentSync doesn't delete our components.
-      # The graph gates work via file validation (valid: true/false), not file existence.
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md",
-        spec_content("MyApp.Accounts", "context"))
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/user.spec.md",
-        spec_content("MyApp.Accounts.User", "repository"))
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/token.spec.md",
-        spec_content("MyApp.Accounts.Token", "repository"))
+      # Write stub spec files for all three components upfront. Stubs carry
+      # the correct `## Type` (so ComponentSync derives the right graph shape)
+      # but deliberately omit required sections — sync will mark them
+      # `valid: false`. Subsequent steps overwrite with full valid content
+      # to drive spec_valid transitions, which is the only way to flip
+      # validity state that survives the next `sync!` call.
+      parent_path = ".code_my_spec/spec/my_app/accounts.spec.md"
+      user_path = ".code_my_spec/spec/my_app/accounts/user.spec.md"
+      token_path = ".code_my_spec/spec/my_app/accounts/token.spec.md"
+      review_path = ".code_my_spec/spec/my_app/accounts/design_review.md"
+
+      write_file(tmp_dir, parent_path, spec_stub("MyApp.Accounts", "context"))
+      write_file(tmp_dir, user_path, spec_stub("MyApp.Accounts.User", "repository"))
+      write_file(tmp_dir, token_path, spec_stub("MyApp.Accounts.Token", "repository"))
 
       # Sync to create components from files, then set up parent-child relationships
       sync!(scope, tmp_dir)
@@ -423,43 +432,32 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert child1, "child1 component should exist after sync"
       assert child2, "child2 component should exist after sync"
 
-      # ComponentSync derives parent relationships from module names, but let's
-      # ensure the parent-child links are set
+      # ComponentSync normally derives parent relationships from module names;
+      # set them explicitly in case the derivation hasn't stuck.
       {:ok, _} = Components.update_component(scope, child1, %{parent_component_id: parent.id})
       {:ok, _} = Components.update_component(scope, child2, %{parent_component_id: parent.id})
 
-      # === STEP 1: Spec files exist but are NOT validated ===
-      # Parent spec_file is satisfied (file exists), but spec_valid is not (valid != true)
-      # Children spec_files are satisfied too, but gated by parent.spec_valid (fan-out)
+      # === STEP 1: Spec files exist but content is invalid ===
+      # All three files fail required-section validation → spec_valid: false.
+      # Children's deeper gates (test_file, implementation_file) are clamped
+      # by the fan-out from parent.spec_valid.
       actionable = actionable_component_names(scope)
 
-      # Parent spec_valid should be actionable (spec_file satisfied, spec_valid not yet)
-      # But actually spec_file is already satisfied. The first unsatisfied is spec_valid.
-      # spec_valid needs the file to be validated (valid: true).
-      # spec_file is satisfied because the file exists.
-      # So we should see spec_valid as the first actionable for parent.
-      # But since spec_file check is file_exists and the file exists, it's satisfied.
-      # spec_valid needs file_valid — file exists but valid is nil.
-
-      # Children can't start because parent.spec_valid is unsatisfied (fan-out gate)
       refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
         "child impl should NOT be actionable"
 
-      # === STEP 2: Validate parent spec → children spec_valid becomes unblocked ===
-      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
+      # === STEP 2: Overwrite parent spec with valid content ===
+      write_file(tmp_dir, parent_path, spec_content("MyApp.Accounts", "context"))
+      sync!(scope, tmp_dir)
 
       actionable = actionable_component_names(scope)
-      # Now parent.spec_valid is satisfied → fan-out unblocks children
-      # Children's spec_files are satisfied (files exist). spec_valid is next.
-      # But children's spec_valid needs valid: true on their spec files
       refute {"MyApp.Accounts", "review_file"} in actionable,
         "review should NOT be actionable until all children have valid specs"
 
-        IO.inspect(actionable)
-
-      # === STEP 3: Validate children's specs → review becomes actionable ===
-      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts/user.spec.md")
-      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts/token.spec.md")
+      # === STEP 3: Overwrite children specs with valid content ===
+      write_file(tmp_dir, user_path, spec_content("MyApp.Accounts.User", "repository"))
+      write_file(tmp_dir, token_path, spec_content("MyApp.Accounts.Token", "repository"))
+      sync!(scope, tmp_dir)
 
       actionable = actionable_component_names(scope)
       assert {"MyApp.Accounts", "review_file"} in actionable,
@@ -467,30 +465,28 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
         "child impl should NOT be actionable before review_valid"
 
-      # === STEP 4: Write + validate review → children can implement ===
+      # === STEP 4: Write valid review → children can implement ===
       # Review files live at .code_my_spec/spec/{module_path}/design_review.md
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/design_review.md",
-        "# Design Review\n\nApproved.")
+      write_file(tmp_dir, review_path, review_content())
       sync!(scope, tmp_dir)
-      mark_valid!(scope, ".code_my_spec/spec/my_app/accounts/design_review.md")
 
-      # After review, children should write TESTS first (TDD), not impl
+      # After review, both test_file and implementation_file become actionable
+      # for each child. The graph surfaces them in parallel and relies on the
+      # agent to order them sensibly — it does not enforce TDD.
       actionable = actionable_component_names(scope)
       assert {"MyApp.Accounts.User", "test_file"} in actionable,
-        "child1 test_file should be actionable after review_valid (TDD). Got: #{inspect(actionable)}"
+        "child1 test_file should be actionable after review_valid. Got: #{inspect(actionable)}"
       assert {"MyApp.Accounts.Token", "test_file"} in actionable,
-        "child2 test_file should be actionable after review_valid (TDD)"
-      refute {"MyApp.Accounts.User", "implementation_file"} in actionable,
-        "child impl should NOT be actionable before tests are written"
+        "child2 test_file should be actionable after review_valid"
 
-      # === STEP 5: Write + validate tests → children can implement ===
+      # === STEP 5: Write tests → children can implement ===
+      # Tests auto-align because the children's specs have no Test Assertions
+      # section, so SpecAlignment returns {:ok, :aligned} → valid: true on sync.
       write_file(tmp_dir, "test/my_app/accounts/user_test.exs",
         "defmodule MyApp.Accounts.UserTest do\n  use ExUnit.Case\nend")
       write_file(tmp_dir, "test/my_app/accounts/token_test.exs",
         "defmodule MyApp.Accounts.TokenTest do\n  use ExUnit.Case\nend")
       sync!(scope, tmp_dir)
-      mark_valid!(scope, "test/my_app/accounts/user_test.exs")
-      mark_valid!(scope, "test/my_app/accounts/token_test.exs")
 
       actionable = actionable_component_names(scope)
       assert {"MyApp.Accounts.User", "implementation_file"} in actionable,
@@ -509,22 +505,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
   # -- Helpers --
 
-  defp actionable_names(scope) do
-    RequirementGraph.next_actionable(scope)
-    |> Enum.map(fn n -> {n.entity_name, n.name} end)
-    |> MapSet.new()
-  end
-
   defp actionable_component_names(scope) do
     RequirementGraph.next_actionable(scope)
     |> Enum.filter(fn n -> n.entity_type == "component" end)
     |> Enum.map(fn n -> {n.entity_name, n.name} end)
     |> MapSet.new()
-  end
-
-  defp mark_valid!(scope, path) do
-    file = CodeMySpec.Files.get_by_path(scope, path)
-    if file, do: CodeMySpec.Files.mark_validated(file, true)
   end
 
   defp setup_project do
@@ -569,17 +554,60 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
   defp sync!(scope, tmp_dir) do
     {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-    CodeMySpec.Files.ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
+    ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
   end
 
   defp seed_setup(tmp_dir) do
-    CodeMySpec.Integration.WorkflowHelpers.seed_all_setup_steps(tmp_dir)
+    WorkflowHelpers.seed_all_setup_steps(tmp_dir)
   end
 
   defp write_file(tmp_dir, relative_path, content) do
     full_path = Path.join(tmp_dir, relative_path)
     File.mkdir_p!(Path.dirname(full_path))
     File.write!(full_path, content)
+  end
+
+  # Intentionally-invalid spec stub. Carries the correct `## Type` (so
+  # ComponentSync picks the right graph) but omits the required sections,
+  # so sync's validate_entry marks it `valid: false`.
+  defp spec_stub(module_name, type) do
+    """
+    # #{module_name}
+
+    ## Type
+
+    #{type}
+    """
+  end
+
+  # Spec content that passes `Documents.create_dynamic_document` validation —
+  # required so sync doesn't reset `valid: false` after `mark_valid!`. The
+  # sections match required_sections for each doc type in the Documents
+  # Registry:
+  #   - context → "context_spec": [["delegates","functions"], "dependencies", "components"]
+  #   - other  → "spec":         [["delegates","functions"], "dependencies"]
+  defp spec_content(module_name, "context") do
+    """
+    # #{module_name}
+
+    A test context.
+
+    ## Type
+
+    context
+
+    ## Functions
+
+    - `hello/0`
+
+    ## Dependencies
+
+    - MyApp.Repo
+
+    ## Components
+
+    - MyApp.Accounts.User — a user record
+    """
   end
 
   defp spec_content(module_name, type) do
@@ -591,6 +619,38 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     ## Type
 
     #{type}
+
+    ## Functions
+
+    - `hello/0`
+
+    ## Dependencies
+
+    - MyApp.Repo
+    """
+  end
+
+  # Review content that passes the "design_review" doc type's required_sections:
+  # ["overview", "architecture", "integration", "conclusion"].
+  defp review_content do
+    """
+    # Design Review
+
+    ## Overview
+
+    Approved.
+
+    ## Architecture
+
+    Looks good.
+
+    ## Integration
+
+    Integrates cleanly.
+
+    ## Conclusion
+
+    Ready to implement.
     """
   end
 

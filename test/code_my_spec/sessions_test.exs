@@ -1,31 +1,15 @@
 defmodule CodeMySpec.SessionsTest do
-  use ExUnit.Case, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Environments.Environment
 
+  import CodeMySpec.UsersFixtures
   import CodeMySpec.SessionsFixtures
 
   setup do
-    tmp_dir =
-      Path.join(
-        System.tmp_dir!(),
-        "sessions_context_test_#{:erlang.unique_integer([:positive])}"
-      )
-
-    File.mkdir_p!(tmp_dir)
-
-    # Create a scope with an environment for testing
-    scope = %Scope{
-      environment: Environment.new(:local, tmp_dir)
-    }
-
-    on_exit(fn -> File.rm_rf!(tmp_dir) end)
-
-    %{scope: scope}
+    %{scope: full_scope_fixture()}
   end
 
   describe "create_session/2" do
@@ -40,24 +24,26 @@ defmodule CodeMySpec.SessionsTest do
       assert session.status == :active
       assert session.type == AgentTasks.ContextSpec
       assert session.state == %{}
+      assert session.project_id == scope.active_project_id
     end
 
     test "with invalid data returns error changeset", %{scope: scope} do
-      assert {:error, %Ecto.Changeset{}} = Sessions.create_session(scope, %{type: nil})
+      assert {:error, %Ecto.Changeset{}} = Sessions.create_session(scope, %{status: nil})
     end
   end
 
   describe "get_session/2" do
     test "returns the session with given id", %{scope: scope} do
       session = session_fixture(scope)
-      assert {:ok, %Session{} = fetched} = Sessions.get_session(scope, session.id)
+      fetched = Sessions.get_session(scope, session.id)
+      assert %Session{} = fetched
       assert fetched.id == session.id
       assert fetched.status == session.status
       assert fetched.type == session.type
     end
 
-    test "returns error when session doesn't exist", %{scope: scope} do
-      assert {:error, :not_found} = Sessions.get_session(scope, Ecto.UUID.generate())
+    test "returns nil when session doesn't exist", %{scope: scope} do
+      assert Sessions.get_session(scope, Ecto.UUID.generate()) == nil
     end
   end
 
@@ -66,7 +52,7 @@ defmodule CodeMySpec.SessionsTest do
       session1 = session_fixture(scope)
       session2 = session_fixture(scope, %{type: AgentTasks.ComponentSpec})
 
-      assert {:ok, sessions} = Sessions.list_sessions(scope)
+      sessions = Sessions.list_sessions(scope)
       assert length(sessions) == 2
 
       ids = Enum.map(sessions, & &1.id) |> Enum.sort()
@@ -74,16 +60,17 @@ defmodule CodeMySpec.SessionsTest do
     end
 
     test "returns empty list when no sessions exist", %{scope: scope} do
-      assert {:ok, []} = Sessions.list_sessions(scope)
+      assert Sessions.list_sessions(scope) == []
     end
   end
 
-  describe "update_session/2" do
+  describe "update_session/3" do
     test "with valid data updates the session", %{scope: scope} do
       session = session_fixture(scope)
-      updated = %{session | status: :complete}
 
-      assert {:ok, %Session{} = result} = Sessions.update_session(scope, updated)
+      assert {:ok, %Session{} = result} =
+               Sessions.update_session(scope, session, %{status: :complete})
+
       assert result.status == :complete
     end
   end
@@ -91,35 +78,27 @@ defmodule CodeMySpec.SessionsTest do
   describe "delete_session/2" do
     test "removes the session", %{scope: scope} do
       session = session_fixture(scope)
-      assert :ok = Sessions.delete_session(scope, session.id)
-      assert {:error, :not_found} = Sessions.get_session(scope, session.id)
+      assert {:ok, %Session{}} = Sessions.delete_session(scope, session.id)
+      assert Sessions.get_session(scope, session.id) == nil
+    end
+
+    test "returns :not_found when session doesn't exist", %{scope: scope} do
+      assert {:error, :not_found} = Sessions.delete_session(scope, Ecto.UUID.generate())
     end
   end
 
   describe "list_active_sessions/1" do
-    test "returns sessions sorted by priority descending", %{scope: scope} do
-      session_fixture(scope, %{type: AgentTasks.ContextSpec, priority: 1})
-      session_fixture(scope, %{type: AgentTasks.ComponentSpec, priority: 10})
+    test "returns only active sessions", %{scope: scope} do
+      active = session_fixture(scope, %{status: :active})
+      _complete = session_fixture(scope, %{status: :complete})
 
-      assert {:ok, sessions} = Sessions.list_active_sessions(scope)
+      sessions = Sessions.list_active_sessions(scope)
       assert length(sessions) == 1
-
-      priorities = Enum.map(sessions, & &1.priority)
-      assert priorities == [10]
+      assert hd(sessions).id == active.id
     end
 
-    test "returns empty list when no sessions exist", %{scope: scope} do
-      assert {:ok, []} = Sessions.list_active_sessions(scope)
-    end
-  end
-
-  describe "clear_sessions/1" do
-    test "removes all sessions", %{scope: scope} do
-      session_fixture(scope)
-      session_fixture(scope, %{type: AgentTasks.ComponentSpec})
-
-      assert :ok = Sessions.clear_sessions(scope)
-      assert {:ok, []} = Sessions.list_sessions(scope)
+    test "returns empty list when no active sessions exist", %{scope: scope} do
+      assert Sessions.list_active_sessions(scope) == []
     end
   end
 end

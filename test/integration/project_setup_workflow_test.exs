@@ -12,7 +12,6 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
 
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Requirements.RequirementsRepository
   alias CodeMySpec.Sessions
   alias CodeMySpecLocalWeb.Hooks.StopController
 
@@ -32,10 +31,11 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
        } do
     # Step 1: get_next_requirement → returns project_setup (technical_strategy is blocked)
     next_text = call_get_next_text!(frame)
-    assert next_text =~ "Next Requirement: project_setup"
+    assert next_text =~ "### ProjectSetup"
+    assert next_text =~ "requirement `project_setup`"
 
     # Step 2: start_task → all 12 steps unchecked (empty tmp dir)
-    prompt = call_start_task_text!(frame, to_string(req1.id), session_id)
+    prompt = call_start_task_text!(frame, req1, session_id)
     assert prompt =~ "Project Setup (0/12)"
     assert prompt =~ "- [ ] **Claude md**"
     assert prompt =~ "Task ID:"
@@ -51,7 +51,7 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     File.write!(claude_md_path, "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
 
     # Step 4: start_task again → Claude md now shows [x], count is 1/12
-    prompt2 = call_start_task_text!(frame, to_string(req1.id), session_id)
+    prompt2 = call_start_task_text!(frame, req1, session_id)
     assert prompt2 =~ "Project Setup (1/12)"
     assert prompt2 =~ "- [x] **Claude md**"
 
@@ -59,7 +59,7 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     seed_all_setup_steps(tmp_dir)
 
     # Step 6: start_task again → all 12 steps now satisfied
-    prompt3 = call_start_task_text!(frame, to_string(req1.id), session_id)
+    prompt3 = call_start_task_text!(frame, req1, session_id)
     assert prompt3 =~ "Project Setup (12/12)"
     refute prompt3 =~ "- [ ] "
 
@@ -72,13 +72,12 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     completed_task = Enum.find(session2.tasks, &(&1.id == task_id))
     assert completed_task.status == :completed
 
-    # Step 8: satisfy the requirement in DB (simulates sync after stop hook)
-    {:ok, _} =
-      RequirementsRepository.update_requirement(scope, req1, %{satisfied: true, score: 1.0})
-
-    # Step 9: get_next_requirement → returns technical_strategy (now unblocked)
+    # Step 8: get_next_requirement → project_setup satisfied from filesystem,
+    # technical_strategy now unblocked. Requirements are computed, so the
+    # seeded files alone satisfy project_setup — no DB mutation needed.
     next_text2 = call_get_next_text!(frame)
-    assert next_text2 =~ "Next Requirement: technical_strategy"
+    assert next_text2 =~ "### TechnicalStrategy"
+    assert next_text2 =~ "requirement `technical_strategy`"
   end
 
   # ---------------------------------------------------------------------------
@@ -91,9 +90,10 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     response_text(resp)
   end
 
-  defp call_start_task_text!(frame, requirement_id, session_id) do
-    assert {:reply, resp, ^frame} =
-             StartTask.execute(%{requirement_id: requirement_id, session_id: session_id}, frame)
+  defp call_start_task_text!(frame, req, session_id) do
+    params = Map.put(req, :session_id, session_id)
+
+    assert {:reply, resp, ^frame} = StartTask.execute(params, frame)
 
     refute resp.isError, "start_task failed: #{response_text(resp)}"
     response_text(resp)

@@ -60,7 +60,8 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     {:reply, graph_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
     refute graph_resp.isError
     graph_text = response_text(graph_resp)
-    assert graph_text =~ "Next Requirement: project_setup"
+    assert graph_text =~ "### ProjectSetup"
+    assert graph_text =~ "requirement `project_setup`"
   end
 
 end

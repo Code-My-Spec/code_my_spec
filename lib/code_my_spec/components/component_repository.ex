@@ -29,7 +29,6 @@ defmodule CodeMySpec.Components.ComponentRepository do
     Component
     |> where([c], c.parent_component_id == ^parent_component_id and c.project_id == ^project_id)
     |> order_by([c], asc: c.name)
-    
     |> Repo.all()
   end
 
@@ -48,7 +47,6 @@ defmodule CodeMySpec.Components.ComponentRepository do
     all_components =
       Component
       |> where([c], c.project_id == ^project_id)
-      
       |> Repo.all()
 
     # Build parent->children lookup map in memory
@@ -72,7 +70,7 @@ defmodule CodeMySpec.Components.ComponentRepository do
   def get_component!(%Scope{active_project_id: project_id}, id) do
     Component
     |> where([c], c.id == ^id and c.project_id == ^project_id)
-    |> preload([:project, :dependencies])
+    |> preload([:project, :dependencies, :parent_component])
     |> Repo.one!()
   end
 
@@ -182,7 +180,6 @@ defmodule CodeMySpec.Components.ComponentRepository do
   def get_component_by_module_name(%Scope{active_project_id: project_id}, module_name) do
     Component
     |> where([c], c.module_name == ^module_name and c.project_id == ^project_id)
-    
     |> Repo.one()
   end
 
@@ -195,21 +192,24 @@ defmodule CodeMySpec.Components.ComponentRepository do
 
   @spec search_components_by_name(Scope.t(), String.t()) :: [Component.t()]
   def search_components_by_name(%Scope{active_project_id: project_id}, name_pattern) do
-    search_term = "%#{name_pattern}%"
+    # Lower-case both sides so the same query works on SQLite (LIKE is
+    # case-insensitive only for ASCII) and Postgres (LIKE is case-sensitive,
+    # would otherwise require ILIKE).
+    search_term = "%#{String.downcase(name_pattern)}%"
 
     Component
     |> where([c], c.project_id == ^project_id)
-    |> where([c], like(c.name, ^search_term))
+    |> where([c], like(fragment("lower(?)", c.name), ^search_term))
     |> Repo.all()
   end
 
   @spec search_components_by_module_name(Scope.t(), String.t()) :: [Component.t()]
   def search_components_by_module_name(%Scope{active_project_id: project_id}, module_name_pattern) do
-    search_term = "%#{module_name_pattern}%"
+    search_term = "%#{String.downcase(module_name_pattern)}%"
 
     Component
     |> where([c], c.project_id == ^project_id)
-    |> where([c], like(c.module_name, ^search_term))
+    |> where([c], like(fragment("lower(?)", c.module_name), ^search_term))
     |> Repo.all()
   end
 

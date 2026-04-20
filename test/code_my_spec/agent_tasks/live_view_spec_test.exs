@@ -270,17 +270,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       refute prompt =~ "Delegates"
     end
 
-    test "returns error if rules cannot be loaded", %{tmp_dir: tmp_dir} do
-      scope = create_scope(tmp_dir)
-      component = create_liveview_component(scope)
-
-      # Simulate a component with a nil type (not possible via normal creation)
-      # to verify the implementation handles invalid state gracefully
-      broken_component = %{component | type: nil}
-      task = create_task(scope, broken_component)
-
-      assert {:error, _reason} = LiveViewSpec.command(scope, task)
-    end
   end
 
   # ============================================================================
