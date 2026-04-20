@@ -29,13 +29,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
 
       assert content =~ "Project Requirements"
       assert content =~ "spec_file"
-
-      data = extract_data(response)
-      # Should include project-level + component requirements
-      assert data["count"] > 0
-      names = Enum.map(data["requirements"], & &1["requirement_name"])
-      assert "spec_file" in names
-      assert "project_setup" in names
+      assert content =~ "project_setup"
     end
 
     test "returns project-level requirements even with no components" do
@@ -45,11 +39,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
       assert {:reply, response, ^frame} = ListRequirements.execute(%{}, frame)
 
       refute response.isError
-      data = extract_data(response)
-      # Project always has computed requirements (project_setup, etc.)
-      assert data["count"] > 0
-      names = Enum.map(data["requirements"], & &1["requirement_name"])
-      assert "project_setup" in names
+      content = response_text(response)
+      assert content =~ "project_setup"
     end
 
     test "returns error without valid scope" do
@@ -63,9 +54,5 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
   defp response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
-  end
-
-  defp extract_data(%{structured_content: data}) when is_map(data) do
-    Jason.decode!(Jason.encode!(data))
   end
 end

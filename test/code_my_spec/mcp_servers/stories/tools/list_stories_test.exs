@@ -29,7 +29,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
 
       assert content =~ "Showing 1-20 of 25 stories"
       assert content =~ "Use offset: 20 to see more"
-      assert response.structured_content
     end
 
     test "respects limit parameter" do
@@ -81,12 +80,16 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
 
     test "enforces max limit of 100" do
       scope = full_scope_fixture()
+      for i <- 1..150, do: story_fixture(scope, %{title: "Story #{i}"})
+
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert {:reply, response, ^frame} = ListStories.execute(%{limit: 500}, frame)
 
-      data = extract_structured(response)
-      assert data["limit"] == 100
+      protocol = Response.to_protocol(response)
+      content = hd(protocol["content"])["text"]
+
+      assert content =~ "Showing 1-100 of 150"
     end
 
     test "returns empty state message when no stories" do
@@ -139,7 +142,4 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoriesTest do
     end
   end
 
-  defp extract_structured(%{structured_content: data}) when is_map(data) do
-    Jason.decode!(Jason.encode!(data))
-  end
 end

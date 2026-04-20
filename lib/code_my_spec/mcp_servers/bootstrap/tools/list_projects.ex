@@ -57,10 +57,5 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.ListProjects do
 
     Response.tool()
     |> Response.text(text)
-    |> Map.put(:structured_content, %{
-      projects: Enum.map(projects, fn p ->
-        %{id: p["id"], name: p["name"], description: p["description"]}
-      end)
-    })
   end
 end

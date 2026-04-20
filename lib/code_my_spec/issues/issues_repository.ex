@@ -37,7 +37,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   end
 
   def get_issue(%Scope{} = scope, id) do
-    Repo.get_by(Issue, id: id, project_id: scope.active_project.id)
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> Repo.get_by(Issue, id: uuid, project_id: scope.active_project.id)
+      :error -> nil
+    end
   end
 
   def create_issue(%Scope{} = scope, attrs) do

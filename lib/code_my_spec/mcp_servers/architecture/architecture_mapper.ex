@@ -10,7 +10,6 @@ defmodule CodeMySpec.McpServers.Architecture.ArchitectureMapper do
 
     Response.tool()
     |> Response.text(markdown)
-    |> Map.put(:structured_content, analysis)
   end
 
   # Proposal responses

@@ -186,20 +186,8 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     #{failure_lines}#{more_failures}
     """
 
-    data = %{
-      success: false,
-      created_count: created_count,
-      failed_count: failed_count,
-      created_stories: Enum.map(successes, &story_summary/1),
-      errors:
-        Enum.map(failures, fn {index, changeset} ->
-          %{index: index, errors: Formatters.extract_errors(changeset)}
-        end)
-    }
-
     Response.tool()
     |> Response.error(String.trim(summary))
-    |> Map.put(:structured_content, data)
   end
 
   def prompt_response(prompt) do
@@ -379,10 +367,9 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   # Private Helpers
   # ---------------------------------------------------------------------------
 
-  defp hybrid_response(summary, data) do
+  defp hybrid_response(summary, _data) do
     Response.tool()
     |> Response.text(summary)
-    |> Map.put(:structured_content, data)
   end
 
   defp story_data(story) do

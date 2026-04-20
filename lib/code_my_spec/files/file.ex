@@ -44,6 +44,7 @@ defmodule CodeMySpec.Files.File do
           | :config
           | :architecture
           | :integration
+          | :task_artifact
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,

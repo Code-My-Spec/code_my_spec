@@ -48,9 +48,6 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       assert text =~ "Component: Accounts"
       assert text =~ "[ ] **spec_file**"
       assert text =~ "[x] **write_tests**"
-
-      assert response.structured_content.count == 2
-      assert length(response.structured_content.requirements) == 2
     end
 
     test "groups nodes by entity type and name" do
@@ -202,7 +199,6 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
 
       [%{"text" => text}] = response.content
       assert text =~ "All requirements satisfied"
-      assert response.structured_content == %{status: :complete}
     end
   end
 end

@@ -28,15 +28,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitlesTest do
       assert content =~ "2 stories:"
       assert content =~ "First Story"
       assert content =~ "Second Story"
-
-      # Verify lightweight data structure (no criteria)
-      data = extract_structured(response)
-      story = hd(data["stories"])
-      assert Map.has_key?(story, "id")
-      assert Map.has_key?(story, "title")
-      assert Map.has_key?(story, "component_id")
-      refute Map.has_key?(story, "criteria")
-      refute Map.has_key?(story, "description")
     end
 
     test "filters by search term" do
@@ -68,10 +59,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitlesTest do
 
       assert {:reply, response, ^frame} = ListStoryTitles.execute(%{}, frame)
 
-      data = extract_structured(response)
+      protocol = Response.to_protocol(response)
+      content = hd(protocol["content"])["text"]
 
-      titles = Enum.map(data["stories"], & &1["title"])
-      assert titles == ["Alpha Story", "Beta Story", "Zebra Story"]
+      alpha_pos = :binary.match(content, "Alpha Story") |> elem(0)
+      beta_pos = :binary.match(content, "Beta Story") |> elem(0)
+      zebra_pos = :binary.match(content, "Zebra Story") |> elem(0)
+
+      assert alpha_pos < beta_pos
+      assert beta_pos < zebra_pos
     end
 
     test "returns empty state message when no stories" do
@@ -87,7 +83,4 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitlesTest do
     end
   end
 
-  defp extract_structured(%{structured_content: data}) when is_map(data) do
-    Jason.decode!(Jason.encode!(data))
-  end
 end

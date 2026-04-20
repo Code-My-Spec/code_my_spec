@@ -8,29 +8,21 @@ defmodule CodeMySpec.McpServers.Bootstrap.BootstrapMapper do
   def install_success(path) do
     Response.tool()
     |> Response.text("Installed: #{path}")
-    |> Map.put(:structured_content, %{status: :ok, path: path})
   end
 
-  def install_success(path, extras) do
-    data = Map.merge(%{status: :ok, path: path}, extras)
-
+  def install_success(path, _extras) do
     Response.tool()
     |> Response.text("Installed: #{path}")
-    |> Map.put(:structured_content, data)
   end
 
   def init_success(config_path, project_name) do
-    data = %{status: :ok, config_path: config_path, project_name: project_name}
-
     Response.tool()
     |> Response.text("Project initialized: #{project_name}\nConfig: #{config_path}")
-    |> Map.put(:structured_content, data)
   end
 
-  def status_response(text, data) do
+  def status_response(text, _data) do
     Response.tool()
     |> Response.text(text)
-    |> Map.put(:structured_content, data)
   end
 
   def error(reason) when is_binary(reason) do

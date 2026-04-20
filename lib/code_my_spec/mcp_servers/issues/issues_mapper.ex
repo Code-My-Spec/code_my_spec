@@ -87,10 +87,9 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   # Private Helpers
   # ---------------------------------------------------------------------------
 
-  defp hybrid_response(summary, data) do
+  defp hybrid_response(summary, _data) do
     Response.tool()
     |> Response.text(summary)
-    |> Map.put(:structured_content, data)
   end
 
   defp issue_data(issue) do

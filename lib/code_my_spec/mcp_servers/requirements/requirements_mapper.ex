@@ -59,12 +59,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
       |> group_by_entity()
       |> format_grouped_summary()
 
-    data = Enum.map(nodes, &node_data/1)
-
-    hybrid_response("# Project Requirements\n\n#{summary}", %{
-      requirements: data,
-      count: length(nodes)
-    })
+    tool_text("# Project Requirements\n\n#{summary}")
   end
 
   def sync_required_response do
@@ -80,7 +75,6 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   def all_satisfied_response do
     Response.tool()
     |> Response.text("# All requirements satisfied\n\nNo actionable requirements remain.")
-    |> Map.put(:structured_content, %{status: :complete})
   end
 
   def init_required_response(prompt) do
@@ -174,34 +168,10 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   defp entity_label(_, _), do: "Other"
 
   # ---------------------------------------------------------------------------
-  # Node data (for structured content)
-  # ---------------------------------------------------------------------------
-
-  defp node_data(node) do
-    %{
-      requirement_name: node.name,
-      description: node.description,
-      satisfied: node.satisfied,
-      execution_type: node.execution_type,
-      validation_type: node.validation_type,
-      entity_type: node.entity_type,
-      entity_id: node.entity_id,
-      entity_name: node.entity_name,
-      satisfied_by: node.satisfied_by && short_module_name(node.satisfied_by)
-    }
-  end
-
-  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
 
   defp tool_text(text), do: Response.tool() |> Response.text(text)
-
-  defp hybrid_response(text, data) do
-    Response.tool()
-    |> Response.text(text)
-    |> Map.put(:structured_content, data)
-  end
 
   defp short_module_name(mod), do: mod |> inspect() |> String.split(".") |> List.last()
 end

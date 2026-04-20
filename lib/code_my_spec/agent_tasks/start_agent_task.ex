@@ -22,9 +22,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Paths
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Paths
   alias CodeMySpec.ProjectSync.FileWatcherServer
   alias CodeMySpec.Sessions
 
@@ -201,7 +201,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, _session} <- create_topic_session(scope, external_id, agent_task_module, topic),
-         {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id, requirement_name: topic}) do
+         task_attrs <- %{project_id: scope.active_project_id, requirement_name: topic},
+         {:ok, prompt} <- agent_task_module.command(scope, task_attrs) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
