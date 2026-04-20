@@ -28,49 +28,40 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
     with {:ok, status} <- parse_status(status_filter),
          {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, session} <- resolve_session(scope, session_id) do
-      tasks = session.tasks || []
-
-      tasks =
-        if status do
-          Enum.filter(tasks, &(&1.status == status))
-        else
-          tasks
-        end
-
-      text =
-        if tasks == [] do
-          "No tasks on this session."
-        else
-          header = "# Session Tasks (#{length(tasks)})\n\n"
-
-          rows =
-            Enum.map_join(tasks, "\n", fn t ->
-              status_icon =
-                case t.status do
-                  :completed -> "✓"
-                  :active -> "●"
-                  :failed -> "✗"
-                  :cancelled -> "—"
-                  :prepared -> "○"
-                  _ -> "?"
-                end
-
-              agent = if t.agent_id, do: "agent=#{t.agent_id}", else: "unassigned"
-              component = t.component_module_name || "—"
-
-              "- #{status_icon} **#{t.requirement_name}** #{component} [#{t.status}] #{agent} `#{t.id}`"
-            end)
-
-          header <> rows
-        end
-
-      response = Response.tool() |> Response.text(text)
+      tasks = filter_tasks(session.tasks || [], status)
+      response = Response.tool() |> Response.text(format_tasks(tasks))
       {:reply, response, frame}
     else
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{reason}"), frame}
     end
   end
+
+  defp filter_tasks(tasks, nil), do: tasks
+  defp filter_tasks(tasks, status), do: Enum.filter(tasks, &(&1.status == status))
+
+  defp format_tasks([]), do: "No tasks on this session."
+
+  defp format_tasks(tasks) do
+    header = "# Session Tasks (#{length(tasks)})\n\n"
+    rows = Enum.map_join(tasks, "\n", &format_task_row/1)
+    header <> rows
+  end
+
+  defp format_task_row(task) do
+    icon = status_icon(task.status)
+    agent = if task.agent_id, do: "agent=#{task.agent_id}", else: "unassigned"
+    component = task.component_module_name || "—"
+
+    "- #{icon} **#{task.requirement_name}** #{component} [#{task.status}] #{agent} `#{task.id}`"
+  end
+
+  defp status_icon(:completed), do: "✓"
+  defp status_icon(:active), do: "●"
+  defp status_icon(:failed), do: "✗"
+  defp status_icon(:cancelled), do: "—"
+  defp status_icon(:prepared), do: "○"
+  defp status_icon(_), do: "?"
 
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do

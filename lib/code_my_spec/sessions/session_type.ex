@@ -57,25 +57,34 @@ defmodule CodeMySpec.Sessions.SessionType do
   def cast(string) when is_binary(string) do
     # Try short name first ("TechnicalStrategy"), then full atom string ("Elixir.CodeMySpec.AgentTasks.TechnicalStrategy")
     case Map.get(mapper(), string) do
-      nil ->
-        atom = String.to_atom(string)
-        if atom in @valid_types, do: {:ok, atom}, else: :error
-
-      module ->
-        {:ok, module}
+      nil -> cast_full_atom(string)
+      module -> {:ok, module}
     end
   end
 
   def cast(_module), do: :error
 
+  defp cast_full_atom(string) do
+    try do
+      atom = String.to_existing_atom(string)
+      if atom in @valid_types, do: {:ok, atom}, else: :error
+    rescue
+      ArgumentError -> :error
+    end
+  end
+
   @spec load(binary()) :: {:ok, t()} | :error
   def load(data) when is_binary(data) do
-    atom = String.to_atom(data)
+    try do
+      atom = String.to_existing_atom(data)
 
-    if atom in @valid_types do
-      {:ok, atom}
-    else
-      :error
+      if atom in @valid_types do
+        {:ok, atom}
+      else
+        :error
+      end
+    rescue
+      ArgumentError -> :error
     end
   end
 
