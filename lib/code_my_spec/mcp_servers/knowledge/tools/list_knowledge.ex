@@ -26,8 +26,8 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      library = library_atom(params)
+    with {:ok, library} <- library_atom(params),
+         {:ok, scope} <- Validators.validate_local_scope(frame) do
       path_segments = parse_path(params)
       project_name = scope.active_project.name
 
@@ -45,15 +45,24 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
           {:reply, error_response("#{inspect(reason)}"), frame}
       end
     else
+      {:error, {:invalid_library, value}} ->
+        {:reply,
+         error_response(
+           "Invalid library #{inspect(value)}. Use 'knowledge' or 'project_knowledge'."
+         ), frame}
+
       {:error, reason} ->
         {:reply, error_response("#{reason}"), frame}
     end
   end
 
-  defp library_atom(%{"library" => "project_knowledge"}), do: :project_knowledge
-  defp library_atom(_), do: :knowledge
+  defp library_atom(%{library: nil}), do: {:ok, :knowledge}
+  defp library_atom(%{library: "knowledge"}), do: {:ok, :knowledge}
+  defp library_atom(%{library: "project_knowledge"}), do: {:ok, :project_knowledge}
+  defp library_atom(%{library: other}), do: {:error, {:invalid_library, other}}
+  defp library_atom(_), do: {:ok, :knowledge}
 
-  defp parse_path(%{"path" => path}) when is_binary(path) and path != "" do
+  defp parse_path(%{path: path}) when is_binary(path) and path != "" do
     String.split(path, "/", trim: true)
   end
 

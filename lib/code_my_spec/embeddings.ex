@@ -4,10 +4,23 @@ defmodule CodeMySpec.Embeddings do
 
   Manages embedding generation for project documentation (knowledge, specs, rules)
   and provides vector similarity search across all embedded content.
+
+  Embeddings require Ortex + sqlite_vec, which are compiled only for
+  `:dev_cli` / `:prod_cli`. Callers must handle `{:error, :embeddings_unavailable}`
+  when running from the Phoenix dev server.
   """
 
   alias CodeMySpec.Embeddings.EmbeddingService
   alias CodeMySpec.Users.Scope
+
+  @doc """
+  Returns `:ok` if the embedding pipeline is loaded, `{:error, :embeddings_unavailable}`
+  otherwise. Use as a precondition before calling embed/search functions.
+  """
+  def available? do
+    Code.ensure_loaded?(CodeMySpec.Embeddings.OrtexServing) and
+      Code.ensure_loaded?(SqliteVec)
+  end
 
   @doc """
   Embed all project documentation sources.
@@ -16,6 +29,14 @@ defmodule CodeMySpec.Embeddings do
   Skips unchanged content via content-hash deduplication.
   """
   def embed_project_docs(%Scope{} = scope) do
+    if available?() do
+      do_embed_project_docs(scope)
+    else
+      {:error, :embeddings_unavailable}
+    end
+  end
+
+  defp do_embed_project_docs(%Scope{} = scope) do
     project_id = scope.active_project_id
     cwd = scope.cwd || scope.environment.cwd
     base = CodeMySpec.Paths.base_dir()
@@ -44,6 +65,10 @@ defmodule CodeMySpec.Embeddings do
   Semantic search across all embedded project docs.
   """
   def search(%Scope{} = scope, query, opts \\ []) do
-    EmbeddingService.search(scope.active_project_id, query, opts)
+    if available?() do
+      EmbeddingService.search(scope.active_project_id, query, opts)
+    else
+      {:error, :embeddings_unavailable}
+    end
   end
 end

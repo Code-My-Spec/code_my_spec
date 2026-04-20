@@ -10,6 +10,7 @@ defmodule CodeMySpec.McpServers.Hexdocs.Tools.EmbedHexdocs do
 
   use Anubis.Server.Component, type: :tool
 
+  alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.{DocExtractor, EmbeddingService}
   alias CodeMySpec.McpServers.Validators
 
@@ -20,13 +21,14 @@ defmodule CodeMySpec.McpServers.Hexdocs.Tools.EmbedHexdocs do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
+         :ok <- ensure_available() do
       cwd = scope.cwd || scope.environment.cwd
       build_dir = Path.join(cwd, "_build/dev")
       project_id = scope.active_project_id
 
       case params do
-        %{"package" => package} when is_binary(package) and package != "" ->
+        %{package: package} when is_binary(package) and package != "" ->
           result = embed_package(project_id, build_dir, package)
           {:reply, text_response(format_single(package, result)), frame}
 
@@ -35,9 +37,19 @@ defmodule CodeMySpec.McpServers.Hexdocs.Tools.EmbedHexdocs do
           {:reply, text_response(format_all(results)), frame}
       end
     else
+      {:error, :embeddings_unavailable} ->
+        {:reply,
+         error_response(
+           "Embeddings are unavailable in this runtime. The embed pipeline (Ortex + sqlite_vec) ships only with the CodeMySpec CLI binary."
+         ), frame}
+
       {:error, reason} ->
         {:reply, error_response("#{reason}"), frame}
     end
+  end
+
+  defp ensure_available do
+    if Embeddings.available?(), do: :ok, else: {:error, :embeddings_unavailable}
   end
 
   defp embed_package(project_id, build_dir, package) do

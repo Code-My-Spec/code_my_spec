@@ -36,6 +36,12 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
         {:ok, results} ->
           {:reply, text_response(format_results(query, results)), frame}
 
+        {:error, :embeddings_unavailable} ->
+          {:reply,
+           error_response(
+             "Embeddings are unavailable in this runtime. The embed pipeline (Ortex + sqlite_vec) ships only with the CodeMySpec CLI binary."
+           ), frame}
+
         {:error, reason} ->
           {:reply, error_response("#{inspect(reason)}"), frame}
       end
