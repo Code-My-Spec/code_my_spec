@@ -1,20 +1,30 @@
 defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
+  @moduledoc """
+  Case-study LiveView page for the MetricFlow marketing site.
+
+  Loads compile-time copy + stories fixtures from the sibling
+  `metric_flow_*.exs` files and renders them through the marketing
+  layout.
+  """
+
   use CodeMySpecWeb, :live_view
 
-  import Ecto.Query
-
   alias CodeMySpecWeb.Layouts
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Projects.Project
 
   # Load copy data at compile time
   @external_resource copy_path =
                        Path.join(__DIR__, "metric_flow_case_study_copy.exs")
 
+  @external_resource stories_path =
+                       Path.join(__DIR__, "metric_flow_stories.exs")
+
   @copy (case Code.eval_file(copy_path) do
            {copy, _} -> copy
          end)
+
+  @stories (case Code.eval_file(stories_path) do
+              {stories, _} -> stories
+            end)
 
   @impl true
   def render(assigns) do
@@ -34,7 +44,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
 
   @impl true
   def mount(_params, _session, socket) do
-    stories = load_metric_flow_stories()
+    stories = @stories
     base_url = CodeMySpecWeb.Endpoint.url()
 
     json_ld =
@@ -113,20 +123,6 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
 
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, :active_tab, tab)}
-  end
-
-  # --- Data Loading ---
-
-  defp load_metric_flow_stories do
-    query =
-      from s in Story,
-        join: p in Project,
-        on: s.project_id == p.id,
-        where: ilike(p.name, "metric flow") or ilike(p.name, "metricflow"),
-        order_by: [asc: s.priority, asc: s.title],
-        preload: [:criteria, :tags]
-
-    Repo.all(query)
   end
 
   # --- Hero Section ---
