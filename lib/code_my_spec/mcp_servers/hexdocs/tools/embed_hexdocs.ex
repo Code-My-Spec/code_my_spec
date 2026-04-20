@@ -10,6 +10,7 @@ defmodule CodeMySpec.McpServers.Hexdocs.Tools.EmbedHexdocs do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.{DocExtractor, EmbeddingService}
   alias CodeMySpec.McpServers.Validators
@@ -124,12 +125,12 @@ defmodule CodeMySpec.McpServers.Hexdocs.Tools.EmbedHexdocs do
   end
 
   defp text_response(content) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.text(content)
+    Response.tool()
+    |> Response.text(content)
   end
 
   defp error_response(message) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.error(message)
+    Response.tool()
+    |> Response.error(message)
   end
 end
