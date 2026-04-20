@@ -1,0 +1,62 @@
+{
+  "commands": [
+    {
+      "command": "mix",
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
+      "opts": {
+        "env": {
+          "MIX_ENV": "test",
+          "DIAGNOSTICS_OUTPUT": "*"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "exit_code": 0,
+      "recorded_at": "2026-04-20T00:00:00Z"
+    },
+    {
+      "command": "mix",
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
+      "opts": {
+        "env": {
+          "MIX_ENV": "test",
+          "EXUNIT_JSON_OUTPUT_FILE": "*"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "No stale tests",
+      "exit_code": 0,
+      "recorded_at": "2026-04-20T00:00:00Z"
+    },
+    {
+      "command": "mix",
+      "args": [
+        "credo",
+        "suggest",
+        "--format",
+        "json",
+        "--all",
+        "--all-priorities",
+        "--no-color",
+        ".code_my_spec/spec/example_context.spec.md",
+        "lib/example_context.ex"
+      ],
+      "opts": {
+        "stderr_to_stdout": true,
+        "cd": "*"
+      },
+      "output": "{\"issues\": [{\"category\": \"readability\", \"check\": \"Credo.Check.Readability.ModuleDoc\", \"column\": 1, \"column_end\": null, \"filename\": \"lib/example_context.ex\", \"line_no\": 1, \"message\": \"Modules should have a @moduledoc tag.\", \"priority\": 10, \"scope\": \"ExampleContext\", \"trigger\": \"ExampleContext\"}]}",
+      "exit_code": 14,
+      "recorded_at": "2026-04-20T00:00:00Z"
+    }
+  ],
+  "ports": []
+}

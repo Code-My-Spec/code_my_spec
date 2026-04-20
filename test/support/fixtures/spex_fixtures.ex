@@ -71,6 +71,9 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Sessions --
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
 
+  defdelegate session_with_task_fixture(scope, session_attrs \\ %{}, task_attrs),
+    to: SessionsFixtures
+
   # -- Problems --
   defdelegate problem_fixture(scope, attrs \\ %{}), to: ProblemsFixtures
 end

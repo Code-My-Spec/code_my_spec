@@ -38,6 +38,9 @@ defmodule CodeMySpecSpex.SharedGivens do
     MCP tool to create an active `WriteBddSpecs` task on a story.
     Produces `context.session_id`. Requires `context.story` from
     `:story_linked_to_component`.
+  - `:credo_available` — plants `deps/credo` under `context.scope.cwd`
+    so the Credo analyzer's availability check passes. Pair with a
+    cassette that replays `mix credo` output.
 
   Add new shared givens only after a third spec duplicates setup.
   """
@@ -106,6 +109,17 @@ defmodule CodeMySpecSpex.SharedGivens do
       live(context.conn, "/projects/#{context.project.name}/configuration")
 
     {:ok, %{config_live: config_live}}
+  end
+
+  # Plants an empty `deps/credo` directory inside the stub working
+  # directory so `CodeMySpec.StaticAnalysis.Analyzers.Credo.available?/1`
+  # returns true for this spec. Without this, credo is unavailable in
+  # the memfs-backed spec environment and the pipeline silently
+  # no-ops credo. Pair with a cassette that replays the actual
+  # `mix credo` output.
+  given :credo_available do
+    File.mkdir_p!(Path.join([context.scope.cwd, "deps", "credo"]))
+    {:ok, %{}}
   end
 
   # The agent has signalled SessionStart and called the start_task MCP tool

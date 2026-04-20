@@ -1,0 +1,13 @@
+{
+  "commands": [
+    {
+      "command": "mix",
+      "args": ["compile", "--return-errors"],
+      "opts": {"env": {"MIX_ENV": "test", "DIAGNOSTICS_OUTPUT": "*"}, "stderr_to_stdout": true},
+      "output": "** (SyntaxError) lib/example_context.ex:1: syntax error before: end\n",
+      "exit_code": 1,
+      "recorded_at": "2026-04-20T00:00:00Z"
+    }
+  ],
+  "ports": []
+}

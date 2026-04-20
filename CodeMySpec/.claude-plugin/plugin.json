@@ -26,6 +26,10 @@
       "headers": {
         "X-Working-Dir": "${PWD}"
       }
+    },
+    "stories": {
+      "type": "http",
+      "url": "https://dev.codemyspec.com/mcp/stories"
     }
   }
 }
