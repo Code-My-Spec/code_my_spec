@@ -12,7 +12,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStory do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :id, :string,
+    field :story_id, :string,
       required: true,
       doc: "Story ID to delete (use list_story_titles to find IDs)"
   end
@@ -20,7 +20,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStory do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.id),
+         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
          {:ok, story} <- Stories.delete_story(scope, story) do
       {:reply, StoriesMapper.story_deleted_response(story), frame}
     else

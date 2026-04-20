@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
       story = story_fixture(scope)
 
       params = %{
-        id: story.id,
+        story_id: story.id,
         title: "Updated User Login",
         description: "Updated description"
       }
@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params = %{
-        id: story.id,
+        story_id: story.id,
         tags: ["accounts", "notifications"]
       }
 
@@ -56,7 +56,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
 
       # Replace with new set
       params = %{
-        id: story.id,
+        story_id: story.id,
         tags: ["keep-tag", "new-tag"]
       }
 
@@ -75,7 +75,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
 
       # Clear all tags
       params = %{
-        id: story.id,
+        story_id: story.id,
         tags: []
       }
 

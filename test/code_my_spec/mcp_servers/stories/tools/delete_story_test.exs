@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStoryTest do
     test "executes with valid params and scope" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
-      params = %{id: story.id}
+      params = %{story_id: story.id}
 
       frame = %Frame{assigns: %{current_scope: scope}}
 

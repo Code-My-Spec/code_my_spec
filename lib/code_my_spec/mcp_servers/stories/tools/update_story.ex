@@ -20,7 +20,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   alias CodeMySpec.Tags
 
   schema do
-    field :id, :string,
+    field :story_id, :string,
       required: true,
       doc: "Story ID to update (use list_story_titles to find IDs)"
 
@@ -43,7 +43,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
-         story when not is_nil(story) <- Stories.get_story(scope, params.id),
+         story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
          update_params <- transform_params(params, story),
          {:ok, story} <- Stories.update_story(scope, story, update_params),
          {:ok, story} <- sync_tags_if_provided(scope, story, params) do
@@ -72,7 +72,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
 
   # Transform params, respecting verified (locked) criteria
   defp transform_params(params, story) do
-    base_params = Map.drop(params, [:id, :acceptance_criteria])
+    base_params = Map.drop(params, [:story_id, :acceptance_criteria])
 
     # Only transform criteria if acceptance_criteria was provided
     if Map.has_key?(params, :acceptance_criteria) do
