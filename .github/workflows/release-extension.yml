@@ -11,7 +11,7 @@ permissions:
 env:
   MIX_ENV: prod_cli
   ELIXIR_VERSION: '1.19.5'
-  OTP_VERSION: '27'
+  OTP_VERSION: '27.3.4.10'
   EXTENSION_REPO: Code-My-Spec/code_my_spec_claude_code_extension
 
 jobs:
