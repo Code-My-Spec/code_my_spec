@@ -12,7 +12,7 @@ env:
   MIX_ENV: prod_cli
   ELIXIR_VERSION: '1.19.5'
   OTP_VERSION: '27.3.4.10'
-  EXTENSION_REPO: Code-My-Spec/code_my_spec_claude_code_extension
+  EXTENSION_REPO: Code-My-Spec/plugins
 
 jobs:
   build:
@@ -159,16 +159,9 @@ jobs:
           body: |
             ## Installation
 
-            ### Plugin Marketplace (recommended)
             ```bash
-            /plugin marketplace add Code-My-Spec/code_my_spec_claude_code_extension
+            /plugin marketplace add Code-My-Spec/plugins
             /plugin install codemyspec@codemyspec
             ```
 
-            ### Manual Install
-            ```bash
-            git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension.git
-            cd code_my_spec_claude_code_extension
-            bash install.sh
-            claude plugin install ./
-            ```
+            The CLI binary auto-installs on first SessionStart.

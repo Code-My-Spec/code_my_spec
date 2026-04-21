@@ -2,28 +2,16 @@
 
 AI-powered specification-driven development for Phoenix applications.
 
-## Installation (Claude Code Extension)
+## Installation (Claude Code Plugin)
 
-### 1. Clone the extension repository
+Inside Claude Code:
 
-```bash
-git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension.git
-cd code_my_spec_claude_code_extension
+```
+/plugin marketplace add Code-My-Spec/plugins
+/plugin install codemyspec@codemyspec
 ```
 
-### 2. Run the installer
-
-```bash
-./install.sh
-```
-
-This downloads the appropriate binary for your platform from GitHub Releases.
-
-### 3. Add extension to Claude Code
-
-```bash
-claude extension add /path/to/code_my_spec_claude_code_extension
-```
+The CLI binary auto-installs on first SessionStart.
 
 ### Troubleshooting
 
@@ -72,8 +60,8 @@ PUBLISH_RELEASE=true MIX_ENV=prod mix release --overwrite
 
 This will:
 1. Build the Burrito binary
-2. Package the Claude Code extension
-3. Push extension files to [code_my_spec_claude_code_extension](https://github.com/Code-My-Spec/code_my_spec_claude_code_extension)
+2. Package the Claude Code plugin marketplace artifact
+3. Push marketplace files (incl. `.claude-plugin/marketplace.json` and `plugins/codemyspec/`) to [Code-My-Spec/plugins](https://github.com/Code-My-Spec/plugins)
 4. Create a GitHub Release and upload the binary
 
 **Requirements:**
@@ -96,17 +84,20 @@ Update the version in `CodeMySpec/.claude-plugin/plugin.json` before releasing:
 
 ```
 release/
-├── codemyspec-extension/     # Push to GitHub repo
+├── codemyspec-extension/                    # Push to Code-My-Spec/plugins
 │   ├── .claude-plugin/
-│   │   └── plugin.json
-│   ├── hooks/
-│   │   └── hooks.json
-│   ├── agents/
-│   ├── skills/
-│   ├── install.sh
+│   │   └── marketplace.json                 # Marketplace manifest
+│   ├── plugins/
+│   │   └── codemyspec/                      # The plugin itself
+│   │       ├── .claude-plugin/plugin.json
+│   │       ├── hooks/
+│   │       ├── agents/
+│   │       ├── skills/
+│   │       └── bin/cms                      # populated by auto-update
+│   ├── install.sh                           # Manual-install fallback
 │   └── README.md
 └── binaries/
-    └── cms-darwin-arm64      # Upload to GitHub Release
+    └── cms-darwin-arm64                     # Upload to GitHub Release
 ```
 
 ## Learn more

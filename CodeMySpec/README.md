@@ -18,23 +18,14 @@ Each step is handled by a specialized agent with constrained tools and role-spec
 
 ## Installation
 
-### Plugin Marketplace (recommended)
+In Claude Code:
 
-```bash
-claude plugin marketplace add Code-My-Spec/code_my_spec_claude_code_extension
-claude plugin install codemyspec@codemyspec
+```
+/plugin marketplace add Code-My-Spec/plugins
+/plugin install codemyspec@codemyspec
 ```
 
-The CLI binary downloads automatically on first session start.
-
-### Manual Install
-
-```bash
-git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension.git
-cd code_my_spec_claude_code_extension
-bash install.sh
-claude plugin install ./
-```
+The CLI binary auto-installs on first SessionStart.
 
 ### Getting Started
 

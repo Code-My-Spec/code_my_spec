@@ -6,7 +6,7 @@
 
 set -e
 
-REPO="Code-My-Spec/code_my_spec_claude_code_extension"
+REPO="Code-My-Spec/plugins"
 BINARY_NAME="cms"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLUGIN_JSON="$PLUGIN_ROOT/.claude-plugin/plugin.json"

@@ -4,11 +4,15 @@
 
 set -e
 
-REPO="Code-My-Spec/code_my_spec_claude_code_extension"
+REPO="Code-My-Spec/plugins"
 BINARY_NAME="cms"
 VERSION="${CMS_VERSION:-latest}"
 
-# Determine script directory (where extension is installed)
+# Determine script directory (where this install.sh lives).
+# In the source repo it lives inside CodeMySpec/, and we drop the binary
+# next to it in CodeMySpec/bin/. After PackageExtension wraps this into
+# the marketplace layout, it gets regenerated with a plugins/codemyspec/
+# bin path. Keep this simple and put the binary next to the install.sh.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$SCRIPT_DIR/bin"
 

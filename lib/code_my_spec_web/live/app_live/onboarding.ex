@@ -35,8 +35,8 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
               local admin UI and the Product Manager MCP, all bundled. Runs on port 4003.
             </p>
             <div class="mockup-code text-sm mb-4">
-              <pre data-prefix="$"><code>git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension</code></pre>
-              <pre data-prefix="$"><code>cd code_my_spec_claude_code_extension && ./install.sh && claude extension add $(pwd)</code></pre>
+              <pre data-prefix="&gt;"><code>/plugin marketplace add Code-My-Spec/plugins</code></pre>
+              <pre data-prefix="&gt;"><code>/plugin install codemyspec@codemyspec</code></pre>
             </div>
             <p class="text-sm text-base-content/70 mb-3">
               Then open

@@ -15,7 +15,8 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
   @binary_name "cms"
   @release_dir "codemyspec-extension"
-  @github_repo "Code-My-Spec/code_my_spec_claude_code_extension"
+  @github_repo "Code-My-Spec/plugins"
+  @plugin_slug "codemyspec"
 
   # sobelow_skip ["Traversal"]
   @impl true
@@ -41,9 +42,15 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     File.mkdir_p!(extension_dir)
     File.mkdir_p!(binaries_dir)
 
-    # Copy extension directories
-    copy_extension_files(source_extension, extension_dir)
-    log("Copied extension files")
+    # Marketplace repo layout — the plugin content lives under
+    # plugins/<slug>/, with .claude-plugin/marketplace.json at root so
+    # Code-My-Spec/plugins can host multiple plugins over time.
+    plugin_dest = Path.join([extension_dir, "plugins", @plugin_slug])
+    File.mkdir_p!(plugin_dest)
+
+    # Copy plugin files into plugins/<slug>/
+    copy_extension_files(source_extension, plugin_dest)
+    log("Copied plugin files into plugins/#{@plugin_slug}/")
 
     # Copy binary for GitHub Release
     binary_name = binary_name_for_target(context.target)
@@ -52,11 +59,15 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     File.chmod!(target_binary, 0o755)
     log("Copied binary to #{target_binary}")
 
-    # Create install script
+    # Create marketplace.json at repo root
+    create_marketplace_json(extension_dir, plugin_dest)
+    log("Created marketplace.json")
+
+    # Create install script (manual-install fallback) at repo root
     create_install_script(extension_dir)
     log("Created install script")
 
-    # Create README
+    # Create repo-level README (marketplace doc)
     create_readme(extension_dir)
     log("Created README")
 
@@ -84,7 +95,8 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
   # sobelow_skip ["Traversal"]
   defp get_plugin_version(extension_dir) do
-    plugin_json_path = Path.join([extension_dir, ".claude-plugin", "plugin.json"])
+    plugin_json_path =
+      Path.join([extension_dir, "plugins", @plugin_slug, ".claude-plugin", "plugin.json"])
 
     case File.read(plugin_json_path) do
       {:ok, content} ->
@@ -222,13 +234,14 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
     set -e
 
-    REPO="Code-My-Spec/code_my_spec_claude_code_extension"
+    REPO="Code-My-Spec/plugins"
     BINARY_NAME="cms"
     VERSION="${CMS_VERSION:-latest}"
 
     # Determine script directory (where extension is installed)
+    # Plugin content lives under plugins/codemyspec/ in the marketplace repo.
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    BIN_DIR="$SCRIPT_DIR/bin"
+    BIN_DIR="$SCRIPT_DIR/plugins/codemyspec/bin"
 
     # Colors
     RED='\033[0;31m'
@@ -343,40 +356,33 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
   defp readme_content do
     ~S"""
-    # CodeMySpec - Claude Code Extension
+    # CodeMySpec — Claude Code Plugin Marketplace
 
-    Specification-driven development for Phoenix applications, powered by Claude Code.
+    Specification-driven development plugins for Claude Code, powered by CodeMySpec.
 
-    CodeMySpec turns user stories into working Phoenix code through a structured
-    workflow: design architecture, write specifications, generate tests, then
-    implement — all orchestrated by specialized AI agents that enforce clean
-    architecture and maintain spec compliance.
+    Today this marketplace ships one plugin — `codemyspec` — which turns user
+    stories into working Phoenix code through a structured workflow: design
+    architecture, write specifications, generate tests, then implement — all
+    orchestrated by specialized AI agents that enforce clean architecture and
+    maintain spec compliance.
 
     ## Installation
 
-    ### Option A: Plugin Marketplace (recommended)
-
     In Claude Code:
     ```
-    /plugin marketplace add Code-My-Spec/code_my_spec_claude_code_extension
+    /plugin marketplace add Code-My-Spec/plugins
     /plugin install codemyspec@codemyspec
     ```
 
-    Then download the CLI binary:
-    ```bash
-    bash ~/.claude/plugins/cache/codemyspec/install.sh
-    ```
+    The CLI binary auto-installs on first SessionStart.
 
-    ### Option B: Manual Install
+    ## Layout
 
-    ```bash
-    git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension.git
-    cd code_my_spec_claude_code_extension
-    bash install.sh
-    claude plugin install ./
-    ```
+    - `.claude-plugin/marketplace.json` — marketplace manifest
+    - `plugins/codemyspec/` — the CodeMySpec plugin source (skills, agents,
+      hooks, install scripts)
 
-    ### Getting Started
+    ## Getting Started
 
     Open Claude Code in your Phoenix project directory and run:
 
@@ -497,10 +503,56 @@ defmodule CodeMySpecCli.Release.PackageExtension do
   defp create_gitignore(extension_dir) do
     gitignore = """
     # Binary downloaded by install script (overwrites dev wrapper)
-    bin/cms
+    plugins/#{@plugin_slug}/bin/cms
     """
 
     gitignore_path = Path.join(extension_dir, ".gitignore")
     File.write!(gitignore_path, gitignore)
+  end
+
+  # sobelow_skip ["Traversal"]
+  defp create_marketplace_json(extension_dir, plugin_dest) do
+    plugin_json_path = Path.join([plugin_dest, ".claude-plugin", "plugin.json"])
+
+    {description, version} =
+      case File.read(plugin_json_path) do
+        {:ok, content} ->
+          case Jason.decode(content) do
+            {:ok, %{} = json} ->
+              {Map.get(json, "description", "CodeMySpec plugins for Claude Code"),
+               Map.get(json, "version", "0.1.0")}
+
+            _ ->
+              {"CodeMySpec plugins for Claude Code", "0.1.0"}
+          end
+
+        _ ->
+          {"CodeMySpec plugins for Claude Code", "0.1.0"}
+      end
+
+    marketplace = %{
+      "name" => "codemyspec",
+      "description" => "CodeMySpec plugins for Claude Code",
+      "owner" => %{
+        "name" => "CodeMySpec",
+        "url" => "https://codemyspec.com"
+      },
+      "plugins" => [
+        %{
+          "name" => @plugin_slug,
+          "source" => "./plugins/#{@plugin_slug}",
+          "description" => description,
+          "version" => version
+        }
+      ]
+    }
+
+    marketplace_dir = Path.join(extension_dir, ".claude-plugin")
+    File.mkdir_p!(marketplace_dir)
+
+    File.write!(
+      Path.join(marketplace_dir, "marketplace.json"),
+      Jason.encode!(marketplace, pretty: true)
+    )
   end
 end
