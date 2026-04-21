@@ -94,23 +94,31 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   def search(project_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
     source = Keyword.get(opts, :source)
+    source_prefix = Keyword.get(opts, :source_prefix)
 
     case generate_embedding(query) do
       {:ok, query_embedding} ->
         vector_json = Jason.encode!(query_embedding)
 
-        {where_clause, params} =
-          if source do
-            {"WHERE e.project_id = ?1 AND e.source = ?3", [project_id, limit, source]}
-          else
-            {"WHERE e.project_id = ?1", [project_id, limit]}
+        {where_clause, params, filtered?} =
+          cond do
+            source ->
+              {"WHERE e.project_id = ?1 AND e.source = ?3",
+               [project_id, limit, source], true}
+
+            source_prefix ->
+              {"WHERE e.project_id = ?1 AND e.source LIKE ?3",
+               [project_id, limit, source_prefix <> "%"], true}
+
+            true ->
+              {"WHERE e.project_id = ?1", [project_id, limit], false}
           end
 
         sql = """
         SELECT e.source, e.path, e.chunk_index, e.content
         FROM doc_embeddings e
         #{where_clause}
-        ORDER BY vec_distance_cosine(e.embedding, vec_f32(?#{if source, do: 4, else: 3}))
+        ORDER BY vec_distance_cosine(e.embedding, vec_f32(?#{if filtered?, do: 4, else: 3}))
         LIMIT ?2
         """
 
