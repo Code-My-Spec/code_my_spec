@@ -32,12 +32,15 @@ if [ "$EVENT" = "SessionStart" ]; then
     disown
   fi
 
-  # Start server if not already running
+  # Start server if not already running.
+  # nohup + stdin redirect detach from Claude Code's process group so the
+  # server survives when the hook (and parent session) exits.
   if [ -x "$CMS_BIN" ] && ! curl -sf --max-time 1 http://localhost:4003/health >/dev/null 2>&1; then
-    "$CMS_BIN" server &>/dev/null &
+    nohup "$CMS_BIN" server >/tmp/cms-server.log 2>&1 </dev/null &
     disown
-    # Wait for server to be ready (up to 10s)
-    for i in $(seq 1 20); do
+    # Wait up to 30s for server to be ready — cold Burrito cache can take
+    # 20+ seconds on first boot (unpacking 170MB payload + SQLite WAL).
+    for i in $(seq 1 60); do
       if curl -sf --max-time 1 http://localhost:4003/health >/dev/null 2>&1; then
         break
       fi
