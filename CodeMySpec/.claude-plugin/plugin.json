@@ -1,7 +1,7 @@
 {
   "name": "codemyspec",
   "description": "Specification-driven development for Phoenix applications — design architecture, write specs, generate tests, and implement with specialized AI agents",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "author": {
     "name": "CodeMySpec",
     "url": "https://codemyspec.com"
@@ -29,7 +29,7 @@
     },
     "stories": {
       "type": "http",
-      "url": "https://dev.codemyspec.com/mcp/stories"
+      "url": "https://codemyspec.com/mcp/stories"
     }
   }
 }
