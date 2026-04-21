@@ -27,13 +27,20 @@ defmodule CodeMySpecLocalWeb.Plugs.ProjectScope do
       |> assign(:working_dir, scope.cwd)
     else
       {:error, :not_found} ->
-        conn |> send_resp(404, "Project not found: #{name}") |> halt()
+        text_halt(conn, 404, "Project not found: #{name}")
 
       {:error, :no_local_path} ->
-        conn |> send_resp(400, "Project has no local_path set — run init first") |> halt()
+        text_halt(conn, 400, "Project has no local_path set — run init first")
 
       {:error, reason} ->
-        conn |> send_resp(400, "Failed to load project: #{inspect(reason)}") |> halt()
+        text_halt(conn, 400, "Failed to load project: #{inspect(reason)}")
     end
+  end
+
+  defp text_halt(conn, status, body) do
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(status, body)
+    |> halt()
   end
 end

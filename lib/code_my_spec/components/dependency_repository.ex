@@ -129,9 +129,21 @@ defmodule CodeMySpec.Components.DependencyRepository do
   defp format_cycles(cycles) do
     Enum.map(cycles, fn dep ->
       %{
-        components: [dep.source_component, dep.target_component],
+        components: [
+          component_summary(dep.source_component),
+          component_summary(dep.target_component)
+        ],
         path: [dep.source_component.name, dep.target_component.name]
       }
     end)
+  end
+
+  defp component_summary(component) do
+    %{
+      id: component.id,
+      name: component.name,
+      type: component.type,
+      module_name: component.module_name
+    }
   end
 end

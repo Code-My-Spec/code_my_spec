@@ -74,12 +74,18 @@ defmodule CodeMySpec.Components.ComponentRepository do
     |> Repo.one!()
   end
 
-  @spec get_component(Scope.t(), integer()) :: Component.t() | nil
+  @spec get_component(Scope.t(), String.t()) :: Component.t() | nil
   def get_component(%Scope{active_project_id: project_id}, id) do
-    Component
-    |> where([c], c.id == ^id and c.project_id == ^project_id)
-    |> preload([:project])
-    |> Repo.one()
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} ->
+        Component
+        |> where([c], c.id == ^uuid and c.project_id == ^project_id)
+        |> preload([:project])
+        |> Repo.one()
+
+      :error ->
+        nil
+    end
   end
 
   @spec create_component(Scope.t(), map()) :: {:ok, Component.t()} | {:error, Ecto.Changeset.t()}

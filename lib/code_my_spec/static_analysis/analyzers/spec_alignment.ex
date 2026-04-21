@@ -199,7 +199,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   defp build_impl_function_map(impl_functions) do
     impl_functions
-    |> Enum.map(fn func -> {{func.name, func.arity}, func} end)
+    |> Enum.map(fn func -> {{Atom.to_string(func.name), func.arity}, func} end)
     |> Map.new()
   end
 
@@ -207,7 +207,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     case String.split(name, "/") do
       [func_name, arity_str] ->
         case Integer.parse(arity_str) do
-          {arity, ""} -> {:ok, String.to_atom(func_name), arity}
+          {arity, ""} -> {:ok, func_name, arity}
           _ -> :error
         end
 
@@ -411,7 +411,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
   defp find_extra_test_assertions(test_names_map, spec_assertions_map, test_path, project_id) do
     test_names_map
     |> Enum.flat_map(fn
-      {{name, arity}, actual_tests} when is_atom(name) and is_integer(arity) ->
+      {{name, arity}, actual_tests} when is_binary(name) and is_integer(arity) ->
         spec_assertions = Map.get(spec_assertions_map, {name, arity}, [])
 
         find_extra_tests_for_function(

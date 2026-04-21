@@ -130,6 +130,8 @@ defmodule CodeMySpecLocalWeb.BootstrapController do
   end
 
   defp send_error_html(conn, error) do
+    safe_error = error |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
     html = """
     <!DOCTYPE html>
     <html>
@@ -147,7 +149,7 @@ defmodule CodeMySpecLocalWeb.BootstrapController do
       <div class="container">
         <div class="error">&#10007;</div>
         <h1>Authentication Failed</h1>
-        <p>#{error}</p>
+        <p>#{safe_error}</p>
       </div>
     </body>
     </html>

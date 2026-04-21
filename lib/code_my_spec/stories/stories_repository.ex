@@ -129,10 +129,27 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   def get_story(%Scope{} = scope, id) do
-    Story
-    |> Repo.get_by(id: id, project_id: scope.active_project_id)
-    |> Repo.preload([:criteria, :tags])
+    case cast_story_id(id) do
+      {:ok, story_id} ->
+        Story
+        |> Repo.get_by(id: story_id, project_id: scope.active_project_id)
+        |> Repo.preload([:criteria, :tags])
+
+      :error ->
+        nil
+    end
   end
+
+  defp cast_story_id(id) when is_integer(id), do: {:ok, id}
+
+  defp cast_story_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int, ""} -> {:ok, int}
+      _ -> :error
+    end
+  end
+
+  defp cast_story_id(_), do: :error
 
   def get_story!(%Scope{} = scope, id) do
     Story

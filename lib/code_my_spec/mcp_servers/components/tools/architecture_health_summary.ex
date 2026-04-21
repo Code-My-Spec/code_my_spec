@@ -151,10 +151,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
     missing_refs = find_missing_references(components, all_component_ids)
     high_fan_out = find_high_fan_out_components(components)
 
-    dependency_validation = Components.validate_dependency_graph(scope)
-
     circular_dependencies =
-      case dependency_validation do
+      case Components.validate_dependency_graph(scope) do
         {:error, cycles} -> cycles
         :ok -> []
       end
@@ -163,7 +161,6 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
       missing_references: missing_refs,
       high_fan_out_components: high_fan_out,
       circular_dependencies: circular_dependencies,
-      dependency_validation: dependency_validation,
       dependency_health:
         dependency_health_status(missing_refs, high_fan_out, circular_dependencies)
     }

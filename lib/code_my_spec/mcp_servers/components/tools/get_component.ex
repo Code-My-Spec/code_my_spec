@@ -14,10 +14,14 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
-         component <- Components.get_component!(scope, params.component_id),
+         component when not is_nil(component) <-
+           Components.get_component(scope, params.component_id),
          component <- load_similar_components(scope, component) do
       {:reply, ComponentsMapper.component_response(component), frame}
     else
+      nil ->
+        {:reply, ComponentsMapper.error("Component not found"), frame}
+
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end
