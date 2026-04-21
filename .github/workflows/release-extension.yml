@@ -136,15 +136,58 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
         run: |
-          cd artifacts/extension
-          git init -b main
+          # Clone the existing marketplace repo so we only update our own
+          # slice — other plugins (e.g. plugins/market-my-spec/) must not
+          # be wiped. Previous approach was git init + force-push, which
+          # clobbered everything.
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${EXTENSION_REPO}.git" target-repo
+          cd target-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${EXTENSION_REPO}.git"
+
+          # Replace our plugin slice with the freshly packaged one.
+          rm -rf plugins/codemyspec
+          mkdir -p plugins
+          cp -R ../artifacts/extension/plugins/codemyspec plugins/codemyspec
+
+          # Root-level codemyspec assets (install.sh, README) we own.
+          cp ../artifacts/extension/install.sh install.sh
+          cp ../artifacts/extension/README.md README.md
+
+          # One-time cleanup: codemyspec used to live at the repo root
+          # (flat layout, pre-marketplace restructure). Remove leftover
+          # codemyspec-specific root paths so they don't double up with
+          # the new plugins/codemyspec/ content. Idempotent — rm -f
+          # doesn't fail if already gone on subsequent releases.
+          rm -rf .claude-plugin/bin
+          rm -f .claude-plugin/plugin.json
+          rm -rf agents skills hooks
+          rm -f AGENTS.md
+
+          # Merge codemyspec into the repo's marketplace.json: replace the
+          # codemyspec entry, keep everything else (market-my-spec, etc).
+          OUR_ENTRY=$(jq '.plugins[] | select(.name == "codemyspec")' \
+            ../artifacts/extension/.claude-plugin/marketplace.json)
+          mkdir -p .claude-plugin
+          if [ -f .claude-plugin/marketplace.json ]; then
+            jq --argjson entry "$OUR_ENTRY" '
+              .plugins = (
+                (.plugins // []) | map(select(.name != "codemyspec")) + [$entry]
+              )
+            ' .claude-plugin/marketplace.json > .claude-plugin/marketplace.json.new
+            mv .claude-plugin/marketplace.json.new .claude-plugin/marketplace.json
+          else
+            cp ../artifacts/extension/.claude-plugin/marketplace.json .claude-plugin/marketplace.json
+          fi
+
           git add .
-          git commit -m "Release ${{ steps.version.outputs.tag }}"
+          if git diff --cached --quiet; then
+            echo "No changes to publish."
+          else
+            git commit -m "Release codemyspec ${{ steps.version.outputs.tag }}"
+          fi
           git tag -f "${{ steps.version.outputs.tag }}"
-          git push -f origin main
+          git push origin main
           git push -f origin "${{ steps.version.outputs.tag }}"
 
       - name: Delete existing release on extension repo (if any)
