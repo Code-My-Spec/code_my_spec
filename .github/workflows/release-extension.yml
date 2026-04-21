@@ -82,6 +82,10 @@ jobs:
       - name: Build release
         run: |
           rm -rf _build/prod_cli/rel release/
+          # Force app recompile — cache restore can leave stale beams that
+          # mix release happily reuses, shipping source fixes that never
+          # made it into the binary.
+          mix compile --force
           mix release code_my_spec_cli
         env:
           BURRITO_TARGET: ${{ matrix.target }}
