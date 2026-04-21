@@ -137,7 +137,12 @@ defmodule CodeMySpec.MixProject do
       {:sqlite_vec, "~> 0.1.0", only: [:dev_cli, :prod_cli]},
 
       # CLI release
-      {:burrito, "~> 1.5", only: [:dev_cli, :prod_cli], runtime: false},
+      {:burrito,
+       github: "Code-My-Spec/burrito",
+       ref: "d44eb28befa146f1c12f6b7b4a2cbc598b3c9686",
+       only: [:dev_cli, :prod_cli],
+       runtime: false,
+       override: true},
       {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli]}
     ]
   end
@@ -157,6 +162,7 @@ defmodule CodeMySpec.MixProject do
           steps: [:assemble, &Burrito.wrap/1],
           burrito: [
             targets: burrito_targets(),
+            prod_envs: [:prod_cli],
             extra_steps: [
               fetch: [pre: [CodeMySpecCli.Release.PatchLauncherStep]],
               build: [post: [CodeMySpecCli.Release.PackageExtension]]

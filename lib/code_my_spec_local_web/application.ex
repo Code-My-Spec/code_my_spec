@@ -78,7 +78,7 @@ defmodule CodeMySpecLocalWeb.Application do
   end
 
   defp reject_known(argv) do
-    Enum.reject(argv, &(&1 in ["--help", "-h", "--version", "-v", "server", ""]))
+    Enum.reject(argv, &(&1 in ["--help", "-h", "--version", "-v", "server", "--", ""]))
   end
 
   defp version_string do
