@@ -123,7 +123,10 @@ jobs:
           ls -la release-assets/
 
       - name: Fix extension script permissions
-        run: chmod +x artifacts/extension/.claude-plugin/bin/* artifacts/extension/install.sh
+        run: |
+          # Marketplace layout: bin scripts live under plugins/codemyspec/.
+          chmod +x artifacts/extension/plugins/codemyspec/.claude-plugin/bin/*
+          [ -f artifacts/extension/install.sh ] && chmod +x artifacts/extension/install.sh || true
 
       - name: Get version from tag
         id: version

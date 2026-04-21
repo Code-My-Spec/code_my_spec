@@ -184,7 +184,10 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
   # sobelow_skip ["Traversal"]
   defp copy_extension_files(source, dest) do
-    for dir <- [".claude-plugin", "bin", "hooks", "agents", "skills", "knowledge"] do
+    # Intentionally NOT copying "bin" — the cms binary now lives in
+    # ~/.codemyspec/bin/ (shared across plugin versions). Shipping a
+    # 200MB stale copy inside every plugin release is a non-starter.
+    for dir <- [".claude-plugin", "hooks", "agents", "skills", "knowledge"] do
       source_dir = Path.join(source, dir)
       dest_dir = Path.join(dest, dir)
 
@@ -192,6 +195,12 @@ defmodule CodeMySpecCli.Release.PackageExtension do
         File.cp_r!(source_dir, dest_dir)
       end
     end
+
+    # marketplace.json belongs at the repo root in the new layout, not
+    # inside the plugin dir. If it tagged along with .claude-plugin/,
+    # drop it from the plugin's copy.
+    stray_marketplace = Path.join([dest, ".claude-plugin", "marketplace.json"])
+    if File.exists?(stray_marketplace), do: File.rm!(stray_marketplace)
 
     # Copy top-level files
     for file <- ["AGENTS.md"] do
@@ -534,11 +543,14 @@ defmodule CodeMySpecCli.Release.PackageExtension do
       end
 
     marketplace = %{
+      "$schema" => "https://anthropic.com/claude-code/marketplace.schema.json",
       "name" => "codemyspec",
-      "description" => "CodeMySpec plugins for Claude Code",
       "owner" => %{
         "name" => "CodeMySpec",
         "url" => "https://codemyspec.com"
+      },
+      "metadata" => %{
+        "description" => "CodeMySpec plugins for Claude Code"
       },
       "plugins" => [
         %{
