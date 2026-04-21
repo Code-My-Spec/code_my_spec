@@ -89,7 +89,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: extension
-          path: CodeMySpec/
+          # PackageExtension rebuilds this dir into the marketplace layout
+          # (.claude-plugin/marketplace.json + plugins/codemyspec/...).
+          # The raw source CodeMySpec/ is the pre-marketplace flat shape.
+          path: release/codemyspec-extension/
           include-hidden-files: true
           retention-days: 1
 
