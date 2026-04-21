@@ -104,19 +104,17 @@ jobs:
           include-hidden-files: true
           retention-days: 1
 
-  release:
-    name: Create Release
+  publish-extension:
+    name: Publish Extension & Release
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Prepare release assets
+      - name: Prepare binary release assets
         run: |
           mkdir -p release-assets
           echo "Artifact structure:"
@@ -124,7 +122,6 @@ jobs:
           for dir in artifacts/cms-*; do
             [ -d "$dir" ] || continue
             binary=$(basename "$dir")
-            # download-artifact v4 may flatten or preserve paths
             file=$(find "$dir" -type f | head -1)
             if [ -n "$file" ]; then
               cp "$file" "release-assets/$binary"
@@ -133,14 +130,41 @@ jobs:
           done
           ls -la release-assets/
 
-      - name: Delete existing release if present
-        run: gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Fix extension script permissions
+        run: chmod +x artifacts/extension/.claude-plugin/bin/* artifacts/extension/install.sh
 
-      - name: Create GitHub Release
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Push files + tag to extension repo
+        env:
+          GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
+        run: |
+          cd artifacts/extension
+          git init -b main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${EXTENSION_REPO}.git"
+          git add .
+          git commit -m "Release ${{ steps.version.outputs.tag }}"
+          git tag -f "${{ steps.version.outputs.tag }}"
+          git push -f origin main
+          git push -f origin "${{ steps.version.outputs.tag }}"
+
+      - name: Delete existing release on extension repo (if any)
+        env:
+          GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
+        run: |
+          gh release delete "${{ steps.version.outputs.tag }}" \
+            --yes --repo "${EXTENSION_REPO}" 2>/dev/null || true
+
+      - name: Create GitHub Release on extension repo
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ env.EXTENSION_REPO }}
+          token: ${{ secrets.EXTENSION_REPO_TOKEN }}
+          tag_name: ${{ steps.version.outputs.tag }}
           files: release-assets/*
           generate_release_notes: true
           body: |
@@ -159,37 +183,3 @@ jobs:
             bash install.sh
             claude plugin install ./
             ```
-
-  publish-extension:
-    name: Publish Extension Repo
-    needs: [build, release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download extension artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: extension
-          path: extension
-
-      - name: Fix script permissions
-        run: |
-          chmod +x extension/.claude-plugin/bin/* extension/install.sh
-
-      - name: Get version from tag
-        id: version
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Push to extension repo
-        env:
-          GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
-        run: |
-          cd extension
-          git init -b main
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${EXTENSION_REPO}.git"
-          git add .
-          git commit -m "Release ${{ steps.version.outputs.tag }}"
-          git tag -f "${{ steps.version.outputs.tag }}"
-          git push -f origin main
-          git push -f origin "${{ steps.version.outputs.tag }}"
