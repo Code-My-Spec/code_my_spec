@@ -38,11 +38,20 @@ claude plugin install ./
 
 ### Getting Started
 
-Open Claude Code in your Phoenix project directory:
+Open Claude Code in your Phoenix project directory.
+
+**1. Sign in once:**
 
 ```
 /codemyspec:init auth
 ```
+
+**2. Tell the agent to use the `get_next_requirement` tool.**
+
+That's it. The tool walks you through the rest — linking the project,
+syncing components, and handing off the next unit of work. Every time
+the agent doesn't know what to do next, the answer is the same:
+`get_next_requirement`.
 
 ## Requirements
 
