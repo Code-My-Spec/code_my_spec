@@ -13,51 +13,72 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
         id="onboarding-page"
         phx-hook=".SignUpTracking"
         data-just-confirmed={to_string(@just_confirmed)}
-        class="max-w-xl mx-auto px-6 py-16"
+        class="max-w-2xl mx-auto px-6 py-16"
       >
-        <h1 class="text-3xl font-heading font-bold mb-6">Welcome to CodeMySpec</h1>
+        <h1 class="text-3xl font-heading font-bold mb-4">Welcome to CodeMySpec</h1>
 
-        <div class="text-base-content/80 space-y-3 mb-10">
-          <p>
-            Hey &mdash; I'm John. CodeMySpec is something I'm actively building.
-            The methodology is real (I use it for client projects), but the tooling
-            is early and moving fast.
-          </p>
-          <p>
-            The quickest way to get value is to just talk to me. I'll help you get
-            set up with the spec-driven workflow for your project.
-          </p>
-        </div>
+        <p class="text-base-content/80 mb-10">
+          Hey &mdash; I'm John. CodeMySpec drives Phoenix projects from user stories
+          to working code through a requirement graph. Pick how you want to get started.
+        </p>
 
-        <div class="flex flex-col gap-5">
-          <a
-            href="https://cal.com/john-s10-davenport"
-            target="_blank"
-            rel="noopener"
-            class="btn btn-primary btn-lg w-full"
-          >
-            Book a Call with John
-          </a>
-
-          <div class="divider text-base-content/40">or get started on your own</div>
+        <div class="flex flex-col gap-6">
+          <div class="bg-base-200 rounded-lg p-6 border border-primary/30">
+            <div class="flex items-baseline justify-between mb-2 gap-3">
+              <h2 class="text-xl font-heading font-semibold">
+                Install the Claude Code extension
+              </h2>
+              <span class="badge badge-primary badge-sm shrink-0">Recommended</span>
+            </div>
+            <p class="text-sm text-base-content/70 mb-4">
+              The full workflow &mdash; design, specs, tests, code, QA &mdash; plus a
+              local admin UI and the Product Manager MCP, all bundled. Runs on port 4003.
+            </p>
+            <div class="mockup-code text-sm mb-4">
+              <pre data-prefix="$"><code>git clone https://github.com/Code-My-Spec/code_my_spec_claude_code_extension</code></pre>
+              <pre data-prefix="$"><code>cd code_my_spec_claude_code_extension && ./install.sh && claude extension add $(pwd)</code></pre>
+            </div>
+            <p class="text-sm text-base-content/70 mb-3">
+              Then open
+              <code class="text-primary">http://localhost:4003/auth</code>
+              to sign in and link your first project.
+            </p>
+            <.link
+              href={~p"/documentation/getting-started"}
+              class="link link-primary text-sm"
+            >
+              Full walkthrough &rarr;
+            </.link>
+          </div>
 
           <div class="bg-base-200 rounded-lg p-5">
-            <h3 class="font-heading font-semibold mb-2">Add the Product Manager</h3>
+            <h3 class="font-heading font-semibold mb-2">Just want to draft stories?</h3>
             <p class="text-sm text-base-content/70 mb-3">
-              Point Claude Code, Cursor, or any MCP client at this server.
-              It'll interview you about what you're building and write structured stories.
+              Not on Claude Code? Point any MCP client at the remote Product Manager
+              server. It interviews you and writes structured user stories.
             </p>
             <div class="mockup-code text-sm mb-3">
               <pre><code>Server URL: <%= CodeMySpecWeb.Endpoint.url() <> "/mcp/stories" %></code></pre>
             </div>
-            <.link href={~p"/pages/stories-mcp-server"} class="link link-primary text-sm">
-              Full setup instructions &rarr;
+            <.link href={~p"/documentation/stories-mcp-setup"} class="link link-primary text-sm">
+              Setup instructions &rarr;
             </.link>
           </div>
 
-          <.link navigate={~p"/app"} class="btn btn-ghost w-full">
-            Skip for now &mdash; explore the app
-          </.link>
+          <div class="flex items-center justify-between text-sm text-base-content/70 pt-2">
+            <span>
+              Rather talk it through?
+              <a
+                href="https://cal.com/john-s10-davenport"
+                target="_blank"
+                rel="noopener"
+                class="link link-primary"
+              >
+                Book a call with John
+              </a>
+            </span>
+            <.link navigate={~p"/app"} class="link">Skip &rarr;</.link>
+          </div>
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">

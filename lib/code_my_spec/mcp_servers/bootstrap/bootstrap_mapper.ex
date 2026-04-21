@@ -31,4 +31,18 @@ defmodule CodeMySpec.McpServers.Bootstrap.BootstrapMapper do
   end
 
   def error(reason), do: error(inspect(reason))
+
+  @doc """
+  Friendly error for `:not_authenticated` / `:needs_authentication` from
+  `OAuthClient.get_token/0`. Tells the user exactly where to sign in.
+  """
+  def not_authenticated_error do
+    auth_url = "#{CodeMySpecLocalWeb.Endpoint.url()}/auth"
+
+    error("""
+    Not authenticated. Visit #{auth_url} in your browser and sign in before calling CodeMySpec MCP tools.
+
+    The agent cannot complete the OAuth flow itself — you need to sign in once manually.
+    """)
+  end
 end

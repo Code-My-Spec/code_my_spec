@@ -120,40 +120,13 @@ defmodule CodeMySpecLocalWeb.BootstrapController do
                OAuthClient.fetch_user_info(server_url, token_data["access_token"]),
              {:ok, _client_user} <-
                OAuthClient.save_client_user(user_id, email, token_data) do
-          send_success_html(conn)
+          redirect(conn, to: "/auth")
         else
           {:error, reason} ->
             Logger.error("[Bootstrap] Auth callback failed: #{inspect(reason)}")
             send_error_html(conn, "Authentication failed: #{inspect(reason)}")
         end
     end
-  end
-
-  defp send_success_html(conn) do
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Authentication Successful</title>
-      <style>
-        body { font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .container { background: white; padding: 3rem; border-radius: 1rem; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; max-width: 400px; }
-        h1 { color: #2d3748; margin-bottom: 1rem; }
-        p { color: #4a5568; font-size: 1.1rem; }
-        .success { color: #48bb78; font-size: 3rem; margin-bottom: 1rem; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="success">&#10003;</div>
-        <h1>Authentication Successful!</h1>
-        <p>You can close this window and return to your terminal.</p>
-      </div>
-    </body>
-    </html>
-    """
-
-    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
   end
 
   defp send_error_html(conn, error) do

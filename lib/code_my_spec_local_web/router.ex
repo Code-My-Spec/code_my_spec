@@ -16,6 +16,7 @@ defmodule CodeMySpecLocalWeb.Router do
     scope "/", CodeMySpecLocalWeb do
       pipe_through :browser
 
+      live "/auth", AuthLive, :index
       live "/init", InitLive, :index
       live "/init/:step", InitLive, :show
 

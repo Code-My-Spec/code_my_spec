@@ -31,6 +31,9 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
          {:ok, project} <- upsert_local_project(project_data, working_dir) do
       {:reply, BootstrapMapper.init_success("local_path: #{working_dir}", project.name), frame}
     else
+      {:error, reason} when reason in [:not_authenticated, :needs_authentication] ->
+        {:reply, BootstrapMapper.not_authenticated_error(), frame}
+
       {:error, reason} ->
         {:reply, BootstrapMapper.error("#{reason}"), frame}
     end

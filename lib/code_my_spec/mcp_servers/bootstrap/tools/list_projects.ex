@@ -11,6 +11,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.ListProjects do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Auth.OAuthClient
+  alias CodeMySpec.McpServers.Bootstrap.BootstrapMapper
 
   schema do
   end
@@ -20,6 +21,9 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.ListProjects do
     case fetch_projects() do
       {:ok, projects} ->
         {:reply, format_response(projects), frame}
+
+      {:error, reason} when reason in [:not_authenticated, :needs_authentication] ->
+        {:reply, BootstrapMapper.not_authenticated_error(), frame}
 
       {:error, reason} ->
         response = Response.tool() |> Response.error("Failed to list projects: #{reason}")
