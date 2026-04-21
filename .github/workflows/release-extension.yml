@@ -91,6 +91,9 @@ jobs:
         with:
           name: ${{ matrix.binary }}
           path: release/binaries/${{ matrix.binary }}
+          # Only needed long enough for the release + publish-extension
+          # jobs to download. Release assets are stored separately.
+          retention-days: 1
 
       - name: Upload extension artifact
         if: matrix.target == 'macos_m1'
@@ -99,6 +102,7 @@ jobs:
           name: extension
           path: CodeMySpec/
           include-hidden-files: true
+          retention-days: 1
 
   release:
     name: Create Release
