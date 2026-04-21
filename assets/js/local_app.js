@@ -65,54 +65,6 @@ function remapColor(hex, t) {
 
 let Hooks = {}
 
-Hooks.Mermaid = {
-  mounted() { this.renderGraph() },
-  updated() { this.renderGraph() },
-  renderGraph() {
-    const src = this.el.dataset.graph
-    if (!src) return
-
-    if (window.mermaid) {
-      this.doRender(src)
-    } else {
-      const t = themeColors()
-      const config = {
-        startOnLoad: false,
-        theme: "base",
-        flowchart: { useMaxWidth: false, htmlLabels: true, curve: "basis" },
-        themeVariables: {
-          background: t.base100,
-          primaryColor: t.base200,
-          primaryTextColor: t.baseContent,
-          primaryBorderColor: t.base300,
-          lineColor: t.neutral,
-          secondaryColor: t.secondary,
-          tertiaryColor: t.accent
-        }
-      }
-      const script = document.createElement("script")
-      script.type = "module"
-      script.textContent = `
-        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-        mermaid.initialize(${JSON.stringify(config)});
-        window.mermaid = mermaid;
-        window.dispatchEvent(new Event('mermaid:loaded'));
-      `
-      document.head.appendChild(script)
-      window.addEventListener("mermaid:loaded", () => this.doRender(src), {once: true})
-    }
-  },
-  async doRender(src) {
-    const container = this.el
-    try {
-      const {svg} = await window.mermaid.render("mermaid-svg", src)
-      container.innerHTML = svg
-    } catch (e) {
-      container.innerHTML = `<pre class="text-error">Mermaid render error: ${e.message}</pre><pre>${src}</pre>`
-    }
-  }
-}
-
 Hooks.SigmaGraph = {
   mounted() { this.renderGraph() },
   updated() {

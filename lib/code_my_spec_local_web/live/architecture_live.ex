@@ -8,6 +8,7 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
   alias CodeMySpec.Architecture
   alias CodeMySpec.Components
   alias CodeMySpec.Projects
+  alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Users.Scope
 
   @impl true
@@ -20,8 +21,7 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
   def handle_params(%{"project_name" => name}, _uri, socket) do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
-      components = Components.list_components_with_dependencies(scope)
-      view = compute_view(socket.assigns.live_action, components)
+      view = compute_view(socket.assigns.live_action, scope)
 
       {:noreply,
        assign(socket,
@@ -37,14 +37,14 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
     end
   end
 
-  defp compute_view(:dependency_graph, components),
-    do: {:dependency_graph, Architecture.generate_dependency_graph(components)}
+  defp compute_view(:dependency_graph, scope),
+    do: {:dependency_graph, GraphProjector.components_graph(scope)}
 
-  defp compute_view(:overview, components),
-    do: {:overview, Architecture.generate_overview(components)}
+  defp compute_view(:overview, scope),
+    do: {:overview, Architecture.generate_overview(Components.list_components_with_dependencies(scope))}
 
-  defp compute_view(:namespaces, components),
-    do: {:namespaces, Architecture.generate_namespace_hierarchy(components)}
+  defp compute_view(:namespaces, scope),
+    do: {:namespaces, Architecture.generate_namespace_hierarchy(Components.list_components_with_dependencies(scope))}
 
   @impl true
   def render(assigns) do
@@ -91,14 +91,25 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
         </div>
 
         <div :if={match?({:dependency_graph, _}, @view)}>
+          <div class="flex flex-wrap gap-4 text-sm mb-4">
+            <span class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied
+            </span>
+            <span class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable
+            </span>
+            <span class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked
+            </span>
+          </div>
           <div
-            id="mermaid-graph"
-            phx-hook="Mermaid"
-            data-graph={elem(@view, 1)}
+            id="sigma-graph"
+            phx-hook="SigmaGraph"
+            data-graph={Jason.encode!(elem(@view, 1))}
             phx-update="ignore"
-            class="bg-base-200 border border-base-300 rounded-box p-4"
+            class="rounded-box border border-base-300 bg-base-200"
+            style="width: 100%; height: 80vh;"
           >
-            <pre class="mermaid">{elem(@view, 1)}</pre>
           </div>
         </div>
 

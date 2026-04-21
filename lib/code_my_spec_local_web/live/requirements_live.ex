@@ -8,11 +8,11 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Components
+  alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
-  alias CodeMySpec.Projects
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpecLocalWeb.RequirementsMarkdown
@@ -27,259 +27,261 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   @impl true
   def handle_params(%{"project_name" => name, "name" => req_name, "child_id" => child_id}, _uri, %{assigns: %{live_action: :child}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      mod = ProjectSetup.find_step(child_id)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        mod = ProjectSetup.find_step(child_id)
 
-      if mod do
-        command_text = generate_command(mod, scope)
-        back = "[← Back to #{req_name}](/projects/#{project_slug(project)}/requirements/#{req_name})\n\n"
-        markdown = back <> "# #{ProjectSetup.step_name(mod)}\n\n" <> command_text
+        if mod do
+          command_text = generate_command(mod, scope)
+          back = "[← Back to #{req_name}](/projects/#{project_slug(project)}/requirements/#{req_name})\n\n"
+          markdown = back <> "# #{ProjectSetup.step_name(mod)}\n\n" <> command_text
 
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
-      else
-        {:noreply, assign(socket, error: "Step not found: #{child_id}")}
-      end
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+          {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
+        else
+          {:noreply, assign(socket, error: "Step not found: #{child_id}")}
+        end
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name, "name" => req_name}, _uri, %{assigns: %{live_action: :show}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      nodes = Requirements.compute_all(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        nodes = Requirements.compute_all(scope)
 
-      node = Enum.find(nodes, fn n ->
-        n.entity_type == "project" and n.name == req_name
-      end)
+        node = Enum.find(nodes, fn n ->
+          n.entity_type == "project" and n.name == req_name
+        end)
 
-      if node do
-        markdown = build_show_markdown(node, project, scope, nodes)
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
-      else
-        {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
-      end
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        if node do
+          markdown = build_show_markdown(node, project, scope, nodes)
+          {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
+        else
+          {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
+        end
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name, "story_id" => story_id, "name" => req_name}, _uri, %{assigns: %{live_action: :story_req_show}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      story = Stories.get_story!(scope, story_id)
-      nodes = Requirements.compute_all(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        story = Stories.get_story!(scope, story_id)
+        nodes = Requirements.compute_all(scope)
 
-      node = Enum.find(nodes, fn n ->
-        n.entity_type == "story" and n.entity_id == story.id and n.name == req_name
-      end)
+        node = Enum.find(nodes, fn n ->
+          n.entity_type == "story" and n.entity_id == story.id and n.name == req_name
+        end)
 
-      slug = project_slug(project)
+        slug = project_slug(project)
 
-      if node do
-        back = "[← Back to #{story.title}](/projects/#{slug}/stories/#{story_id})\n\n"
-        markdown = back <> RequirementsMarkdown.show(%{node: node})
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
-      else
-        {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
-      end
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
+        if node do
+          back = "[← Back to #{story.title}](/projects/#{slug}/stories/#{story_id})\n\n"
+          markdown = back <> RequirementsMarkdown.show(%{node: node})
+          {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+        else
+          {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
+        end
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: "#{msg}")}
     end
   end
 
   def handle_params(%{"project_name" => name, "component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_prompt}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      component = Components.get_component!(scope, component_id)
-      nodes = Requirements.compute_all(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        component = Components.get_component!(scope, component_id)
+        nodes = Requirements.compute_all(scope)
 
-      node = Enum.find(nodes, fn n ->
-        n.entity_type == "component" and n.entity_id == component.id and n.name == req_name
-      end)
+        node = Enum.find(nodes, fn n ->
+          n.entity_type == "component" and n.entity_id == component.id and n.name == req_name
+        end)
 
-      slug = project_slug(project)
+        slug = project_slug(project)
 
-      if node && node.satisfied_by do
-        task = %{component_id: component_id, component_module_name: component.module_name}
-        prompt_text =
-          case node.satisfied_by.command(scope, task) do
-            {:ok, text} -> text
-            {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
-          end
+        if node && node.satisfied_by do
+          task = %{component_id: component_id, component_module_name: component.module_name}
+          prompt_text = fetch_prompt_text(node.satisfied_by, scope, task)
 
-        back = "[← Back to #{req_name}](/projects/#{slug}/components/#{component_id}/requirements/#{req_name})\n\n"
-        markdown = back <> "# Prompt: #{component.module_name} / #{req_name}\n\n" <> prompt_text
+          back = "[← Back to #{req_name}](/projects/#{slug}/components/#{component_id}/requirements/#{req_name})\n\n"
+          markdown = back <> "# Prompt: #{component.module_name} / #{req_name}\n\n" <> prompt_text
 
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
-      else
-        {:noreply, assign(socket, error: "Requirement #{req_name} has no task module")}
-      end
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+          {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+        else
+          {:noreply, assign(socket, error: "Requirement #{req_name} has no task module")}
+        end
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name, "component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_show}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      component = Components.get_component!(scope, component_id)
-      nodes = Requirements.compute_all(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        component = Components.get_component!(scope, component_id)
+        nodes = Requirements.compute_all(scope)
 
-      node = Enum.find(nodes, fn n ->
-        n.entity_type == "component" and n.entity_id == component.id and n.name == req_name
-      end)
+        node = Enum.find(nodes, fn n ->
+          n.entity_type == "component" and n.entity_id == component.id and n.name == req_name
+        end)
 
-      slug = project_slug(project)
+        slug = project_slug(project)
 
-      if node do
-        back = "[← Back to #{component.module_name}](/projects/#{slug}/components/#{component_id})\n\n"
-        prompt_link =
-          if node.satisfied_by do
-            "\n\n[View Prompt →](/projects/#{slug}/components/#{component_id}/requirements/#{req_name}/prompt)\n"
-          else
-            ""
-          end
-        markdown = back <> RequirementsMarkdown.show(%{node: node}) <> prompt_link
-        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
-      else
-        {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
-      end
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        if node do
+          back = "[← Back to #{component.module_name}](/projects/#{slug}/components/#{component_id})\n\n"
+          prompt_link = prompt_link(node, slug, component_id, req_name)
+          markdown = back <> RequirementsMarkdown.show(%{node: node}) <> prompt_link
+          {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+        else
+          {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
+        end
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components_graph}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      graph_data = GraphProjector.components_graph(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        graph_data = GraphProjector.components_graph(scope)
 
-      {:noreply,
-       assign(socket,
-         project: project,
-         scope: scope,
-         markdown: nil,
-         graph_data: graph_data,
-         error: nil
-       )}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           markdown: nil,
+           graph_data: graph_data,
+           error: nil
+         )}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      components = Components.list_components(scope)
-      nodes = Requirements.compute_all(scope)
-      slug = project_slug(project)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        components = Components.list_components(scope)
+        nodes = Requirements.compute_all(scope)
+        slug = project_slug(project)
 
-      lines =
-        Enum.map_join(components, "\n", fn component ->
-          comp_nodes = Enum.filter(nodes, &(&1.entity_type == "component" and &1.entity_id == component.id))
-          total = length(comp_nodes)
-          satisfied = Enum.count(comp_nodes, & &1.satisfied)
-          check = if satisfied == total and total > 0, do: "[x]", else: "[ ]"
-          "- #{check} [#{component.module_name}](/projects/#{slug}/components/#{component.id}) (#{satisfied}/#{total})"
-        end)
+        lines = Enum.map_join(components, "\n", &component_line(&1, nodes, slug))
 
-      back = "[← Back to project](/projects/#{slug})\n\n"
-      markdown = back <> "# Components\n\n#{lines}\n"
+        back = "[← Back to project](/projects/#{slug})\n\n"
+        markdown = back <> "# Components\n\n#{lines}\n"
 
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_graph}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      graph_data = GraphProjector.component_graph(scope, component_id)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        graph_data = GraphProjector.component_graph(scope, component_id)
 
-      {:noreply,
-       assign(socket,
-         project: project,
-         scope: scope,
-         markdown: nil,
-         graph_data: graph_data,
-         error: nil
-       )}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           markdown: nil,
+           graph_data: graph_data,
+           error: nil
+         )}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_show}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      component = Components.get_component!(scope, component_id)
-      nodes = Requirements.compute_all(scope)
-      markdown = build_component_show_markdown(component, project, nodes)
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        component = Components.get_component!(scope, component_id)
+        nodes = Requirements.compute_all(scope)
+        markdown = build_component_show_markdown(component, project, nodes)
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name, "story_id" => story_id}, _uri, %{assigns: %{live_action: :story_show}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      story = Stories.get_story!(scope, story_id)
-      nodes = Requirements.compute_all(scope)
-      markdown = build_story_show_markdown(story, project, nodes)
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        story = Stories.get_story!(scope, story_id)
+        nodes = Requirements.compute_all(scope)
+        markdown = build_story_show_markdown(story, project, nodes)
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :stories}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      {:ok, stories} = Stories.list_project_stories(scope)
-      nodes = Requirements.compute_all(scope)
-      slug = project_slug(project)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        {:ok, stories} = Stories.list_project_stories(scope)
+        nodes = Requirements.compute_all(scope)
+        slug = project_slug(project)
 
-      lines =
-        Enum.map_join(stories, "\n", fn story ->
-          story_nodes = Enum.filter(nodes, &(&1.entity_type == "story" and &1.entity_id == story.id))
-          total = length(story_nodes)
-          satisfied = Enum.count(story_nodes, & &1.satisfied)
-          check = if satisfied == total and total > 0, do: "[x]", else: "[ ]"
-          "- #{check} [#{story.title}](/projects/#{slug}/stories/#{story.id}) (#{satisfied}/#{total})"
-        end)
+        lines = Enum.map_join(stories, "\n", &story_line(&1, nodes, slug))
 
-      back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
-      markdown = back <> "# Stories\n\n#{lines}\n"
+        back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
+        markdown = back <> "# Stories\n\n#{lines}\n"
 
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :graph}} = socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      graph_data = GraphProjector.project_graph(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        graph_data = GraphProjector.project_graph(scope)
 
-      {:noreply,
-       assign(socket,
-         project: project,
-         scope: scope,
-         markdown: nil,
-         graph_data: graph_data,
-         error: nil
-       )}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           markdown: nil,
+           graph_data: graph_data,
+           error: nil
+         )}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
   def handle_params(%{"project_name" => name}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      nodes = Requirements.compute_all(scope)
-      actionable = Requirements.next_actionable_project(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        nodes = Requirements.compute_all(scope)
+        actionable = Requirements.next_actionable_project(scope)
 
-      markdown =
-        RequirementsMarkdown.index(%{project: project, nodes: nodes, actionable: actionable})
-        |> rewrite_req_links(project)
-        |> append_nav_links(project)
+        markdown =
+          RequirementsMarkdown.index(%{project: project, nodes: nodes, actionable: actionable})
+          |> rewrite_req_links(project)
 
-      {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+        {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: msg)}
     end
   end
 
@@ -359,48 +361,57 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   defp build_show_markdown(node, project, scope, all_nodes) do
     slug = project_slug(project)
     back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
-
-    status = if node.satisfied, do: "Satisfied", else: "Not satisfied"
-    header = "# #{node.name}\n\n#{node.description}\n\n**#{status}**\n"
-
-    body =
-      case node.name do
-        "project_setup" ->
-          build_setup_checklist(scope, slug, node.name)
-
-        _ ->
-          if node.satisfied_by && !node.satisfied do
-            "\n\n" <> generate_command(node.satisfied_by, scope)
-          else
-            ""
-          end
-      end
-
-    # Prereqs and dependents
-    project_nodes = Enum.filter(all_nodes, &(&1.entity_type == "project"))
-
-    prereq_links =
-      node.prerequisites
-      |> Enum.map(fn prereq_name ->
-        prereq = Enum.find(project_nodes, &(&1.name == prereq_name))
-        status_icon = if prereq && prereq.satisfied, do: "x", else: " "
-        "[#{status_icon}] [#{prereq_name}](/projects/#{slug}/requirements/#{prereq_name})"
-      end)
-
-    dependent_links =
-      project_nodes
-      |> Enum.filter(fn n -> node.name in n.prerequisites end)
-      |> Enum.map(fn n ->
-        status_icon = if n.satisfied, do: "x", else: " "
-        "[#{status_icon}] [#{n.name}](/projects/#{slug}/requirements/#{n.name})"
-      end)
-
-    nav = ""
-    nav = if prereq_links != [], do: nav <> "\n\n---\n\n### Depends on\n\n" <> Enum.join(prereq_links, " | "), else: nav
-    nav = if dependent_links != [], do: nav <> "\n\n### Unblocks\n\n" <> Enum.join(dependent_links, " | "), else: nav
+    header = build_show_header(node)
+    body = build_show_body(node, scope, slug)
+    nav = build_show_nav(node, all_nodes, slug)
 
     back <> header <> body <> nav
   end
+
+  defp build_show_header(node) do
+    status = if node.satisfied, do: "Satisfied", else: "Not satisfied"
+    "# #{node.name}\n\n#{node.description}\n\n**#{status}**\n"
+  end
+
+  defp build_show_body(%{name: "project_setup"} = node, scope, slug),
+    do: build_setup_checklist(scope, slug, node.name)
+
+  defp build_show_body(%{satisfied_by: satisfied_by, satisfied: false} = _node, scope, _slug)
+       when not is_nil(satisfied_by),
+       do: "\n\n" <> generate_command(satisfied_by, scope)
+
+  defp build_show_body(_node, _scope, _slug), do: ""
+
+  defp build_show_nav(node, all_nodes, slug) do
+    project_nodes = Enum.filter(all_nodes, &(&1.entity_type == "project"))
+    prereq_links = prereq_links(node, project_nodes, slug)
+    dependent_links = dependent_links(node, project_nodes, slug)
+
+    prereq_section(prereq_links) <> dependent_section(dependent_links)
+  end
+
+  defp prereq_links(node, project_nodes, slug) do
+    Enum.map(node.prerequisites, fn prereq_name ->
+      prereq = Enum.find(project_nodes, &(&1.name == prereq_name))
+      status_icon = if prereq && prereq.satisfied, do: "x", else: " "
+      "[#{status_icon}] [#{prereq_name}](/projects/#{slug}/requirements/#{prereq_name})"
+    end)
+  end
+
+  defp dependent_links(node, project_nodes, slug) do
+    project_nodes
+    |> Enum.filter(fn n -> node.name in n.prerequisites end)
+    |> Enum.map(fn n ->
+      status_icon = if n.satisfied, do: "x", else: " "
+      "[#{status_icon}] [#{n.name}](/projects/#{slug}/requirements/#{n.name})"
+    end)
+  end
+
+  defp prereq_section([]), do: ""
+  defp prereq_section(links), do: "\n\n---\n\n### Depends on\n\n" <> Enum.join(links, " | ")
+
+  defp dependent_section([]), do: ""
+  defp dependent_section(links), do: "\n\n### Unblocks\n\n" <> Enum.join(links, " | ")
 
   defp build_setup_checklist(scope, slug, req_name) do
     steps = ProjectSetup.setup_steps()
@@ -473,12 +484,36 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     String.replace(markdown, ~r/\*\*([a-z_\/]+)\*\*/, "[**\\1**](/projects/#{slug}/requirements/\\1)")
   end
 
-  defp append_nav_links(markdown, project) do
-    slug = project_slug(project)
-    markdown <> "\n\n---\n\n[View Stories ->](/projects/#{slug}/stories) | [View Components ->](/projects/#{slug}/components) | [View Graph ->](/projects/#{slug}/requirements/graph) | [Components Graph ->](/projects/#{slug}/components/graph)"
+  # --- Helpers ---
+
+  defp fetch_prompt_text(satisfied_by, scope, task) do
+    case satisfied_by.command(scope, task) do
+      {:ok, text} -> text
+      {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
+    end
   end
 
-  # --- Helpers ---
+  defp prompt_link(%{satisfied_by: nil}, _slug, _component_id, _req_name), do: ""
+
+  defp prompt_link(_node, slug, component_id, req_name),
+    do: "\n\n[View Prompt →](/projects/#{slug}/components/#{component_id}/requirements/#{req_name}/prompt)\n"
+
+  defp check_mark(satisfied, total) when satisfied == total and total > 0, do: "[x]"
+  defp check_mark(_satisfied, _total), do: "[ ]"
+
+  defp component_line(component, nodes, slug) do
+    comp_nodes = Enum.filter(nodes, &(&1.entity_type == "component" and &1.entity_id == component.id))
+    total = length(comp_nodes)
+    satisfied = Enum.count(comp_nodes, & &1.satisfied)
+    "- #{check_mark(satisfied, total)} [#{component.module_name}](/projects/#{slug}/components/#{component.id}) (#{satisfied}/#{total})"
+  end
+
+  defp story_line(story, nodes, slug) do
+    story_nodes = Enum.filter(nodes, &(&1.entity_type == "story" and &1.entity_id == story.id))
+    total = length(story_nodes)
+    satisfied = Enum.count(story_nodes, & &1.satisfied)
+    "- #{check_mark(satisfied, total)} [#{story.title}](/projects/#{slug}/stories/#{story.id}) (#{satisfied}/#{total})"
+  end
 
   defp generate_command(task_module, scope) do
     case task_module.command(scope, %{}) do
