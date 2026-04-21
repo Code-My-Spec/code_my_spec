@@ -15,6 +15,7 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   alias CodeMySpec.Embeddings.DocEmbedding
   alias CodeMySpec.Embeddings.Serving
   alias CodeMySpec.Repo
+  alias Ecto.Adapters.SQL, as: AdaptersSQL
 
   @chunk_size 1500
   @chunk_overlap 200
@@ -26,27 +27,30 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   Returns `{:ok, %{embedded: n, skipped: n, deleted: n}}`.
   """
   def embed_directory(project_id, source, dir_path) do
-    unless File.dir?(dir_path) do
-      {:error, "Directory not found: #{dir_path}"}
+    if File.dir?(dir_path) do
+      do_embed_directory(project_id, source, dir_path)
     else
-      files = walk_markdown_files(dir_path)
-
-      results =
-        Enum.map(files, fn path ->
-          relative = Path.relative_to(path, dir_path)
-          content = File.read!(path)
-          embed_file(project_id, source, relative, content)
-        end)
-
-      # Delete embeddings for files that no longer exist
-      existing_paths = Enum.map(files, &Path.relative_to(&1, dir_path))
-      deleted = delete_stale(project_id, source, existing_paths)
-
-      embedded = Enum.sum(Enum.map(results, fn {:ok, r} -> r.embedded end))
-      skipped = Enum.sum(Enum.map(results, fn {:ok, r} -> r.skipped end))
-
-      {:ok, %{embedded: embedded, skipped: skipped, deleted: deleted}}
+      {:error, "Directory not found: #{dir_path}"}
     end
+  end
+
+  defp do_embed_directory(project_id, source, dir_path) do
+    files = walk_markdown_files(dir_path)
+
+    results =
+      Enum.map(files, fn path ->
+        relative = Path.relative_to(path, dir_path)
+        content = File.read!(path)
+        embed_file(project_id, source, relative, content)
+      end)
+
+    existing_paths = Enum.map(files, &Path.relative_to(&1, dir_path))
+    deleted = delete_stale(project_id, source, existing_paths)
+
+    embedded = Enum.sum(Enum.map(results, fn {:ok, r} -> r.embedded end))
+    skipped = Enum.sum(Enum.map(results, fn {:ok, r} -> r.skipped end))
+
+    {:ok, %{embedded: embedded, skipped: skipped, deleted: deleted}}
   end
 
   @doc """
@@ -66,19 +70,8 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
     {embedded, skipped} =
       chunks
       |> Enum.with_index()
-      |> Enum.reduce({0, 0}, fn {chunk, index}, {emb, skip} ->
-        hash = content_hash(chunk)
-
-        if MapSet.member?(existing_hashes, hash) do
-          {emb, skip + 1}
-        else
-          case generate_and_store(project_id, source, path, index, chunk, hash) do
-            :ok -> {emb + 1, skip}
-            {:error, reason} ->
-              Logger.warning("[EmbeddingService] Failed to embed #{path} chunk #{index}: #{inspect(reason)}")
-              {emb, skip}
-          end
-        end
+      |> Enum.reduce({0, 0}, fn {chunk, index}, acc ->
+        embed_chunk(project_id, source, path, index, chunk, existing_hashes, acc)
       end)
 
     # Delete old chunks for this file that don't match current chunk hashes
@@ -86,6 +79,30 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
     delete_old_chunks(project_id, source, path, current_hashes)
 
     {:ok, %{embedded: embedded, skipped: skipped}}
+  end
+
+  defp embed_chunk(project_id, source, path, index, chunk, existing_hashes, {emb, skip}) do
+    hash = content_hash(chunk)
+
+    if MapSet.member?(existing_hashes, hash) do
+      {emb, skip + 1}
+    else
+      store_chunk(project_id, source, path, index, chunk, hash, {emb, skip})
+    end
+  end
+
+  defp store_chunk(project_id, source, path, index, chunk, hash, {emb, skip}) do
+    case generate_and_store(project_id, source, path, index, chunk, hash) do
+      :ok ->
+        {emb + 1, skip}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[EmbeddingService] Failed to embed #{path} chunk #{index}: #{inspect(reason)}"
+        )
+
+        {emb, skip}
+    end
   end
 
   @doc """
@@ -96,50 +113,45 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
     source = Keyword.get(opts, :source)
     source_prefix = Keyword.get(opts, :source_prefix)
 
-    case generate_embedding(query) do
-      {:ok, query_embedding} ->
-        vector_json = Jason.encode!(query_embedding)
-
-        {where_clause, params, filtered?} =
-          cond do
-            source ->
-              {"WHERE e.project_id = ?1 AND e.source = ?3",
-               [project_id, limit, source], true}
-
-            source_prefix ->
-              {"WHERE e.project_id = ?1 AND e.source LIKE ?3",
-               [project_id, limit, source_prefix <> "%"], true}
-
-            true ->
-              {"WHERE e.project_id = ?1", [project_id, limit], false}
-          end
-
-        sql = """
-        SELECT e.source, e.path, e.chunk_index, e.content
-        FROM doc_embeddings e
-        #{where_clause}
-        ORDER BY vec_distance_cosine(e.embedding, vec_f32(?#{if filtered?, do: 4, else: 3}))
-        LIMIT ?2
-        """
-
-        params = params ++ [vector_json]
-
-        case Ecto.Adapters.SQL.query(Repo, sql, params) do
-          {:ok, %{rows: rows}} ->
-            results =
-              Enum.map(rows, fn [src, path, chunk_index, content] ->
-                %{source: src, path: path, chunk_index: chunk_index, content: content}
-              end)
-
-            {:ok, results}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, query_embedding} <- generate_embedding(query),
+         {:ok, rows} <- run_search_query(project_id, limit, source, source_prefix, query_embedding) do
+      {:ok, Enum.map(rows, &row_to_result/1)}
     end
+  end
+
+  defp run_search_query(project_id, limit, source, source_prefix, query_embedding) do
+    vector_json = Jason.encode!(query_embedding)
+    {where_clause, params, filtered?} = build_where(project_id, limit, source, source_prefix)
+
+    sql = """
+    SELECT e.source, e.path, e.chunk_index, e.content
+    FROM doc_embeddings e
+    #{where_clause}
+    ORDER BY vec_distance_cosine(e.embedding, vec_f32(?#{if filtered?, do: 4, else: 3}))
+    LIMIT ?2
+    """
+
+    case AdaptersSQL.query(Repo, sql, params ++ [vector_json]) do
+      {:ok, %{rows: rows}} -> {:ok, rows}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp build_where(project_id, limit, source, _source_prefix) when not is_nil(source) do
+    {"WHERE e.project_id = ?1 AND e.source = ?3", [project_id, limit, source], true}
+  end
+
+  defp build_where(project_id, limit, _source, source_prefix) when not is_nil(source_prefix) do
+    {"WHERE e.project_id = ?1 AND e.source LIKE ?3",
+     [project_id, limit, source_prefix <> "%"], true}
+  end
+
+  defp build_where(project_id, limit, _source, _source_prefix) do
+    {"WHERE e.project_id = ?1", [project_id, limit], false}
+  end
+
+  defp row_to_result([src, path, chunk_index, content]) do
+    %{source: src, path: path, chunk_index: chunk_index, content: content}
   end
 
   # -- Chunking --
@@ -201,9 +213,11 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
         ON CONFLICT DO NOTHING
         """
 
-        case Ecto.Adapters.SQL.query(Repo, sql, [
-               UUID.uuid4(), project_id, source, path, index, chunk, hash, vector_json, now, now
-             ]) do
+        params = [
+          UUID.uuid4(), project_id, source, path, index, chunk, hash, vector_json, now, now
+        ]
+
+        case AdaptersSQL.query(Repo, sql, params) do
           {:ok, _} -> :ok
           {:error, reason} -> {:error, reason}
         end
@@ -255,19 +269,20 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
         entries
         |> Enum.reject(&String.starts_with?(&1, "."))
         |> Enum.sort()
-        |> Enum.flat_map(fn name ->
-          full = Path.join(dir, name)
-
-          cond do
-            File.dir?(full) -> walk_markdown_files(full)
-            String.ends_with?(name, ".md") -> [full]
-            true -> []
-          end
-        end)
+        |> Enum.flat_map(&expand_entry(dir, &1))
 
       _ ->
         []
     end
   end
 
+  defp expand_entry(dir, name) do
+    full = Path.join(dir, name)
+
+    cond do
+      File.dir?(full) -> walk_markdown_files(full)
+      String.ends_with?(name, ".md") -> [full]
+      true -> []
+    end
+  end
 end

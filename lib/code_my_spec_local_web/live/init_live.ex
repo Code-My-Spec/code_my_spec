@@ -1,11 +1,15 @@
 defmodule CodeMySpecLocalWeb.InitLive do
   @moduledoc """
   Human interface for the project init checklist.
+
+  Scoped under `/projects/:project_name/init[/:step]`. The project's
+  `local_path` is the working directory the checklist evaluates against.
   """
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Projects
+  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
@@ -15,7 +19,8 @@ defmodule CodeMySpecLocalWeb.InitLive do
      assign(socket,
        projects: projects,
        project: nil,
-       working_dir: nil,
+       scope: nil,
+       slug: nil,
        steps: [],
        step: nil,
        error: nil
@@ -23,77 +28,20 @@ defmodule CodeMySpecLocalWeb.InitLive do
   end
 
   @impl true
-  def handle_params(%{"dir" => dir, "step" => step_id}, _uri, socket) do
-    with {:ok, working_dir} <- resolve_dir(dir) do
-      scope = %{cwd: working_dir}
-
-      case Init.evaluate_one(step_id, scope) do
-        {:ok, mod, status} ->
-          prompt =
-            case status do
-              {:not_done, _} ->
-                case mod.command(scope, %{}) do
-                  {:ok, text} -> text
-                  _ -> nil
-                end
-
-              :done ->
-                nil
-            end
-
-          {:noreply,
-           assign(socket,
-             working_dir: working_dir,
-             step: %{name: Init.step_name(mod), id: Init.step_id(mod), status: status, prompt: prompt},
-             page_title: Init.step_name(mod),
-             error: nil
-           )}
-
-        {:error, :not_found} ->
-          {:noreply, assign(socket, error: "Step not found: #{step_id}")}
-      end
+  def handle_params(%{"project_name" => name, "step" => step_id}, _uri, socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      load_step(socket, project, scope, step_id)
     else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
     end
   end
 
-  def handle_params(%{"dir" => dir}, _uri, socket) do
-    with {:ok, working_dir} <- resolve_dir(dir) do
-      scope = %{cwd: working_dir}
-      evaluated = Init.evaluate_all(scope)
-
-      steps =
-        Enum.map(evaluated, fn {mod, status} ->
-          %{
-            id: Init.step_id(mod),
-            name: Init.step_name(mod),
-            done: status == :done,
-            detail:
-              case status do
-                {:not_done, detail} -> detail
-                :done -> nil
-              end
-          }
-        end)
-
-      done = Enum.count(steps, & &1.done)
-      total = length(steps)
-
-      {:noreply,
-       assign(socket,
-         working_dir: working_dir,
-         steps: steps,
-         step: nil,
-         page_title: "Project Init (#{done}/#{total})",
-         error: nil
-       )}
+  def handle_params(%{"project_name" => name}, _uri, socket) do
+    with {:ok, project, scope} <- load_project_and_scope(name) do
+      load_checklist(socket, project, scope)
     else
-      {:error, msg} -> {:noreply, assign(socket, error: msg)}
+      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
     end
-  end
-
-  def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, error: "Missing ?dir= parameter")}
   end
 
   @impl true
@@ -102,7 +50,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
     <Layouts.app
       flash={@flash}
       projects={@projects}
-      project={nil}
+      project={@project}
       page_title={assigns[:page_title] || "Project Init"}
     >
       <div :if={@error} role="alert" class="alert alert-error">
@@ -111,7 +59,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
       <div :if={@step}>
         <div class="mb-4">
-          <.link navigate={"/init?dir=#{URI.encode_www_form(@working_dir)}"} class="btn btn-ghost btn-sm gap-1">
+          <.link navigate={~p"/projects/#{@slug}/init"} class="btn btn-ghost btn-sm gap-1">
             ← Back to checklist
           </.link>
         </div>
@@ -140,7 +88,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
               ({Enum.count(@steps, & &1.done)}/{length(@steps)})
             </span>
           </h1>
-          <p class="text-sm opacity-60 font-mono mt-1">{@working_dir}</p>
+          <p class="text-sm opacity-60 font-mono mt-1">{@scope.cwd}</p>
         </div>
 
         <ul class="menu bg-base-200 border border-base-300 rounded-box w-full">
@@ -150,7 +98,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
               <span :if={!step.done} class="badge badge-ghost badge-sm">○</span>
               <.link
                 :if={!step.done}
-                navigate={"/init/#{step.id}?dir=#{URI.encode_www_form(@working_dir)}"}
+                navigate={~p"/projects/#{@slug}/init/#{step.id}"}
                 class="link link-primary flex-1"
               >
                 {step.name}
@@ -165,19 +113,80 @@ defmodule CodeMySpecLocalWeb.InitLive do
     """
   end
 
-  defp resolve_dir(dir) do
-    expanded = Path.expand(dir)
+  # --- handle_params helpers ---
 
-    if File.dir?(expanded),
-      do: {:ok, find_project_root(expanded)},
-      else: {:error, "Invalid directory: #{dir}"}
+  defp load_checklist(socket, project, scope) do
+    steps = Enum.map(Init.evaluate_all(scope), &to_step_summary/1)
+    done = Enum.count(steps, & &1.done)
+    total = length(steps)
+
+    {:noreply,
+     assign(socket,
+       project: project,
+       scope: scope,
+       slug: project_slug(project),
+       steps: steps,
+       step: nil,
+       page_title: "#{project.name} — Init (#{done}/#{total})",
+       error: nil
+     )}
   end
 
-  defp find_project_root(dir) do
-    cond do
-      File.exists?(Path.join(dir, "mix.exs")) -> dir
-      dir == "/" or dir == Path.dirname(dir) -> dir
-      true -> find_project_root(Path.dirname(dir))
+  defp load_step(socket, project, scope, step_id) do
+    case Init.evaluate_one(step_id, scope) do
+      {:ok, mod, status} ->
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           slug: project_slug(project),
+           step: %{
+             name: Init.step_name(mod),
+             id: Init.step_id(mod),
+             status: status,
+             prompt: step_prompt(mod, scope, status)
+           },
+           page_title: "#{project.name} — #{Init.step_name(mod)}",
+           error: nil
+         )}
+
+      {:error, :not_found} ->
+        {:noreply, assign(socket, project: project, scope: scope, slug: project_slug(project), error: "Step not found: #{step_id}")}
     end
+  end
+
+  defp to_step_summary({mod, status}) do
+    %{
+      id: Init.step_id(mod),
+      name: Init.step_name(mod),
+      done: status == :done,
+      detail: step_detail(status)
+    }
+  end
+
+  defp step_detail({:not_done, detail}), do: detail
+  defp step_detail(:done), do: nil
+
+  defp step_prompt(mod, scope, {:not_done, _}) do
+    case mod.command(scope, %{}) do
+      {:ok, text} -> text
+      _ -> nil
+    end
+  end
+
+  defp step_prompt(_mod, _scope, :done), do: nil
+
+  defp load_project_and_scope(name) do
+    with {:ok, project} <- Projects.get_project_by_name(name),
+         {:ok, scope} <- Scope.for_local_project(project) do
+      {:ok, project, scope}
+    end
+  end
+
+  defp project_slug(project) do
+    (project.name || "project")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 end

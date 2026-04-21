@@ -56,7 +56,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
           <.dash_card title="Issues" href={~p"/projects/#{@slug}/issues"} desc="Open problems and incoming triage." />
           <.dash_card title="Sessions" href={~p"/projects/#{@slug}/sessions"} desc="Agent session history." />
-          <.dash_card title="Project Init" href={"/init?dir=#{@dir_param}"} desc="Bootstrap checklist for this directory." />
+          <.dash_card title="Project Init" href={~p"/projects/#{@slug}/init"} desc="Bootstrap checklist for this directory." />
 
           <.dash_card title="Knowledge Base" href={~p"/projects/#{@slug}/knowledge"} desc="Shared methodology and rules." />
           <.dash_card title="Project Knowledge" href={~p"/projects/#{@slug}/project-knowledge"} desc="Project-specific docs and specs." />

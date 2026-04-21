@@ -17,11 +17,11 @@ defmodule CodeMySpecLocalWeb.Router do
       pipe_through :browser
 
       live "/auth", AuthLive, :index
-      live "/init", InitLive, :index
-      live "/init/:step", InitLive, :show
 
       live "/projects", ProjectsLive.Index, :index
       live "/projects/:project_name", HomeLive
+      live "/projects/:project_name/init", InitLive, :index
+      live "/projects/:project_name/init/:step", InitLive, :show
       live "/projects/:project_name/configuration", ConfigurationLive
       live "/projects/:project_name/sync", SyncLive
       live "/projects/:project_name/next-task", Tasks.NextTaskLive
