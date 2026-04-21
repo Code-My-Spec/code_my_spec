@@ -238,10 +238,11 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     BINARY_NAME="cms"
     VERSION="${CMS_VERSION:-latest}"
 
-    # Determine script directory (where extension is installed)
-    # Plugin content lives under plugins/codemyspec/ in the marketplace repo.
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    BIN_DIR="$SCRIPT_DIR/plugins/codemyspec/bin"
+    # Binary installs to shared ~/.codemyspec/bin/ so it survives plugin
+    # upgrades. The plugin's hook + auto-update read from the same path.
+    CMS_HOME="$HOME/.codemyspec"
+    BIN_DIR="$CMS_HOME/bin"
+    mkdir -p "$BIN_DIR"
 
     # Colors
     RED='\033[0;31m'
@@ -501,9 +502,11 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
   # sobelow_skip ["Traversal"]
   defp create_gitignore(extension_dir) do
+    # The cms binary now lives at ~/.codemyspec/bin/cms (shared across
+    # plugin versions), not inside the plugin tree. Nothing to ignore
+    # in the repo itself — keep a placeholder .gitignore for consumers.
     gitignore = """
-    # Binary downloaded by install script (overwrites dev wrapper)
-    plugins/#{@plugin_slug}/bin/cms
+    # Reserved — binary installs to ~/.codemyspec/bin/cms outside this tree.
     """
 
     gitignore_path = Path.join(extension_dir, ".gitignore")

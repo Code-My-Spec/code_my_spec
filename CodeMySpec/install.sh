@@ -8,13 +8,11 @@ REPO="Code-My-Spec/plugins"
 BINARY_NAME="cms"
 VERSION="${CMS_VERSION:-latest}"
 
-# Determine script directory (where this install.sh lives).
-# In the source repo it lives inside CodeMySpec/, and we drop the binary
-# next to it in CodeMySpec/bin/. After PackageExtension wraps this into
-# the marketplace layout, it gets regenerated with a plugins/codemyspec/
-# bin path. Keep this simple and put the binary next to the install.sh.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN_DIR="$SCRIPT_DIR/bin"
+# Binary installs to shared ~/.codemyspec/bin/ so it survives plugin
+# upgrades. The plugin's hook + auto-update read from the same path.
+CMS_HOME="$HOME/.codemyspec"
+BIN_DIR="$CMS_HOME/bin"
+mkdir -p "$BIN_DIR"
 
 # Colors
 RED='\033[0;31m'

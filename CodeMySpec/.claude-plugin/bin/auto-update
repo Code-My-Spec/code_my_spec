@@ -10,9 +10,17 @@ REPO="Code-My-Spec/plugins"
 BINARY_NAME="cms"
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLUGIN_JSON="$PLUGIN_ROOT/.claude-plugin/plugin.json"
-BIN_DIR="$PLUGIN_ROOT/bin"
-LOCK_FILE="/tmp/cms-auto-update.lock"
-UPDATE_LOG="/tmp/cms-auto-update.log"
+
+# Binary lives in a shared location so it survives plugin-version upgrades
+# and can be found by any plugin version's hook. Previous layout put it
+# under $PLUGIN_ROOT/bin/, which broke when Claude Code had multiple
+# plugin versions on disk (e.g., during a /plugin update transition).
+CMS_HOME="$HOME/.codemyspec"
+BIN_DIR="$CMS_HOME/bin"
+LOCK_FILE="$CMS_HOME/auto-update.lock"
+UPDATE_LOG="$CMS_HOME/auto-update.log"
+
+mkdir -p "$CMS_HOME" "$BIN_DIR"
 
 # Prevent concurrent updates
 if [ -f "$LOCK_FILE" ]; then
