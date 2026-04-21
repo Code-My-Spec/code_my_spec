@@ -57,9 +57,13 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
   @impl true
   def init(_opts) do
-    state = %{watchers: %{}}
+    {:ok, %{watchers: %{}}, {:continue, :watch_linked_projects}}
+  end
+
+  @impl true
+  def handle_continue(:watch_linked_projects, state) do
     watchers = watch_all_linked_projects(state)
-    {:ok, %{state | watchers: watchers}}
+    {:noreply, %{state | watchers: watchers}}
   end
 
   @impl true
