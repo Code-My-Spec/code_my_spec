@@ -7,6 +7,15 @@ defmodule CodeMySpecLocalWeb.Application do
   """
   use Application
 
+  # CodeMySpecCli.Daemon lives in the sibling CLI project and only links into
+  # the CLI binary. The web build compiles this same source without it.
+  # Resolving the module through an atom at runtime keeps both builds clean.
+  @daemon :"Elixir.CodeMySpecCli.Daemon"
+
+  # Burrito.Util.Args is Burrito-release-only — the bare web build doesn't
+  # include it. Same atom trick.
+  @burrito_args :"Elixir.Burrito.Util.Args"
+
   @impl true
   def start(_type, _args) do
     handle_cli_args(cli_argv())
@@ -32,6 +41,7 @@ defmodule CodeMySpecLocalWeb.Application do
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
+        daemon_call(:write_pid_file)
         print_server_banner()
         {:ok, pid}
 
@@ -40,45 +50,62 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
-  defp cli_argv do
-    mod = Burrito.Util.Args
+  @impl true
+  def stop(_state), do: daemon_call(:remove_pid_file)
 
-    if Code.ensure_loaded?(mod) and function_exported?(mod, :argv, 0) do
-      try do
-        apply(mod, :argv, []) || []
-      rescue
-        _ -> []
-      end
-    else
-      []
+  defp cli_argv do
+    try do
+      call_optional(@burrito_args, :argv) || []
+    rescue
+      _ -> []
     end
   end
 
   defp handle_cli_args(argv) do
+    # Drop Burrito's launcher separator so subcommand matching is clean.
+    args = Enum.reject(argv, &(&1 in ["--", ""]))
+
     cond do
-      "--version" in argv or "-v" in argv ->
-        IO.puts(version_string())
-        System.halt(0)
-
-      "--help" in argv or "-h" in argv ->
-        IO.puts(help_text())
-        System.halt(0)
-
-      true ->
-        case reject_known(argv) do
-          [] ->
-            :ok
-
-          [first | _] ->
-            IO.puts(:stderr, "cms: unknown option #{inspect(first)}\n")
-            IO.puts(:stderr, help_text())
-            System.halt(2)
-        end
+      version_flag?(args) -> print_and_halt(version_string(), 0)
+      help_flag?(args) -> print_and_halt(help_text(), 0)
+      subcommand = find_subcommand(args) -> run_subcommand(subcommand, args)
+      args == [] -> :ok
+      true -> unknown_command(args)
     end
   end
 
-  defp reject_known(argv) do
-    Enum.reject(argv, &(&1 in ["--help", "-h", "--version", "-v", "server", "--", ""]))
+  defp version_flag?(args), do: "--version" in args or "-v" in args
+  defp help_flag?(args), do: "--help" in args or "-h" in args
+
+  defp find_subcommand(args) do
+    Enum.find(["status", "stop", "logs", "start", "server"], &(&1 in args))
+  end
+
+  defp run_subcommand("status", _args), do: System.halt(daemon_call(:print_status))
+  defp run_subcommand("stop", _args), do: System.halt(daemon_call(:stop))
+  defp run_subcommand("logs", args), do: System.halt(daemon_call(:logs, [follow?(args)]))
+  defp run_subcommand("start", _args), do: System.halt(daemon_call(:start, [self_path()]))
+  defp run_subcommand("server", _args), do: :ok
+
+  defp follow?(args), do: "-f" in args or "--follow" in args
+
+  defp print_and_halt(text, code) do
+    IO.puts(text)
+    System.halt(code)
+  end
+
+  defp unknown_command(args) do
+    IO.puts(:stderr, "cms: unknown command #{inspect(hd(args))}\n")
+    IO.puts(:stderr, help_text())
+    System.halt(2)
+  end
+
+  # Path of the running binary — passed to `start` so the detached child
+  # is exactly this binary (Burrito launcher + embedded payload).
+  defp self_path do
+    System.get_env("_") ||
+      List.first(:init.get_plain_arguments() |> Enum.map(&to_string/1)) ||
+      "cms"
   end
 
   defp version_string do
@@ -90,25 +117,33 @@ defmodule CodeMySpecLocalWeb.Application do
     """
     cms — CodeMySpec local server
 
-    This is a background server, not an interactive CLI. It boots the local
-    Phoenix endpoint on :4003 and an MCP server that your Claude Code
-    extension talks to. Run it and leave it running.
+    The cms process hosts the Phoenix endpoint on :4003 and the MCP server
+    the Claude Code plugin talks to. Your workflow happens in Claude Code;
+    cms just needs to be running.
 
     Usage:
-      cms              Start the server (ctrl-C to stop).
+      cms start        Start the server in the background, wait for /health.
+      cms stop         Stop the running server (SIGTERM, then SIGKILL).
+      cms status       Print version/pid/port/log of the running server.
+      cms logs         Print the server log.
+      cms logs -f      Follow the server log.
+      cms server       Run the server in the foreground (ctrl-C to stop).
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
-    Your project workflow happens through the Claude Code extension —
-    invoke the codemyspec MCP tools and slash commands there. The
-    extension points at http://localhost:4003/mcp, which this process
-    serves.
+    Logs and pid file live in ~/.codemyspec/.
     """
   end
 
   defp print_server_banner do
-    if not silent?() do
-      IO.puts("cms #{Application.spec(:code_my_spec, :vsn)} — listening on http://localhost:4003 (ctrl-C to stop)")
+    unless silent?() do
+      version = Application.spec(:code_my_spec, :vsn)
+      pid = System.pid()
+      log = daemon_call(:log_file) || Path.expand("~/.codemyspec/server.log")
+
+      IO.puts(
+        "cms v#{version}  ·  pid #{pid}  ·  http://localhost:4003  ·  log #{log}"
+      )
     end
   end
 
@@ -119,5 +154,17 @@ defmodule CodeMySpecLocalWeb.Application do
   # sobelow_skip ["Traversal.FileModule"]
   defp ensure_directories do
     File.mkdir_p!(Path.expand("~/.codemyspec"))
+  end
+
+  defp daemon_call(fun, args \\ []), do: call_optional(@daemon, fun, args)
+
+  # Dispatch to a module only when it's loaded. Used for cross-project
+  # references (CodeMySpecCli.Daemon, Burrito.Util.Args) that don't link
+  # into every build of this app. Missing module or missing function both
+  # resolve to nil.
+  defp call_optional(mod, fun, args \\ []) do
+    if Code.ensure_loaded?(mod) and function_exported?(mod, fun, length(args)) do
+      apply(mod, fun, args)
+    end
   end
 end
