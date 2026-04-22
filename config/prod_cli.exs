@@ -21,8 +21,9 @@ config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   code_reloader: false,
   check_origin: false
 
-# Disable console logging to prevent cluttering the TUI
-config :logger, :default_handler, false
-
-# Do not print debug messages in production
+# Default handler writes to stderr. `cms server` is always daemonized via
+# `nohup cms server >>~/.codemyspec/server.log 2>&1`, so stderr lands in
+# server.log and `cms logs` can show it. Previously we disabled the handler
+# to keep the TUI clean — but the TUI is moot once daemonized, and without
+# any handler every error in the prod binary was invisible.
 config :logger, level: :info
