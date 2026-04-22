@@ -54,11 +54,9 @@ defmodule CodeMySpecLocalWeb.Application do
   def stop(_state), do: daemon_call(:remove_pid_file)
 
   defp cli_argv do
-    try do
-      call_optional(@burrito_args, :argv) || []
-    rescue
-      _ -> []
-    end
+    call_optional(@burrito_args, :argv) || []
+  rescue
+    _ -> []
   end
 
   defp handle_cli_args(argv) do

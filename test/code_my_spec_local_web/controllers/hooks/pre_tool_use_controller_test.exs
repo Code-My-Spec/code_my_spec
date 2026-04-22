@@ -16,7 +16,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
     test "injects session_id into MCP tool inputs", %{scope: scope} do
       conn =
         build_post(scope, %{
-          "tool_name" => "mcp__plugin_codemyspec_codemyspec__start_task",
+          "tool_name" => "mcp__plugin_codemyspec_local__start_task",
           "tool_input" => %{"requirement_id" => "123"},
           "session_id" => "conv-abc-456"
         })
@@ -34,7 +34,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
     test "enriches evaluate_task tool too", %{scope: scope} do
       conn =
         build_post(scope, %{
-          "tool_name" => "mcp__plugin_codemyspec_codemyspec__evaluate_task",
+          "tool_name" => "mcp__plugin_codemyspec_local__evaluate_task",
           "tool_input" => %{"task_id" => "task-789"},
           "session_id" => "conv-xyz"
         })
@@ -48,7 +48,7 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
     test "returns empty response when MCP tool has no session_id in payload", %{scope: scope} do
       conn =
         build_post(scope, %{
-          "tool_name" => "mcp__plugin_codemyspec_codemyspec__start_task",
+          "tool_name" => "mcp__plugin_codemyspec_local__start_task",
           "tool_input" => %{"requirement_id" => "123"}
           # No session_id in payload
         })
