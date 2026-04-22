@@ -6,8 +6,9 @@ config :code_my_spec, stories_implementation: CodeMySpec.Stories.RemoteClient
 # SQLite adapter for CLI mode
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 
+# `database` is set in runtime.exs so `~` expands on the user's machine,
+# not the CI builder's ($HOME = /Users/runner in GitHub Actions).
 config :code_my_spec, CodeMySpec.Repo,
-  database: Path.expand("~/.codemyspec/cli.db"),
   pool_size: 5,
   busy_timeout: 10_000,
   log: false

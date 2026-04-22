@@ -44,9 +44,17 @@ if config_env() in [:dev_cli, :prod_cli] do
     api_base_url: env!("API_BASE_URL", :string, "https://codemyspec.com"),
     oauth_base_url: env!("OAUTH_BASE_URL", :string, "https://codemyspec.com")
 
-  # Load sqlite_vec extension for vector search
+  # Resolve `~` on the user's machine. If we do this at compile time
+  # (in {dev,prod}_cli.exs) it gets baked to the CI builder's $HOME
+  # (`/Users/runner/...`) and every SQLite call fails with EACCES on end users.
   repo_config = Application.get_env(:code_my_spec, CodeMySpec.Repo, [])
-  config :code_my_spec, CodeMySpec.Repo, Keyword.put(repo_config, :load_extensions, [SqliteVec.path()])
+
+  repo_config =
+    repo_config
+    |> Keyword.put(:database, Path.expand("~/.codemyspec/cli.db"))
+    |> Keyword.put(:load_extensions, [SqliteVec.path()])
+
+  config :code_my_spec, CodeMySpec.Repo, repo_config
 end
 
 # Web app mode

@@ -7,8 +7,8 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
   so they don't pollute requirements with generated boilerplate.
   """
 
-  alias CodeMySpec.{Environments, Paths}
   alias CodeMySpec.AgentTasks.Setup.Helpers
+  alias CodeMySpec.{Environments, Paths}
 
   @config_file Path.join(Paths.base_dir(), "config.yml")
 
