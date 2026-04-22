@@ -16,6 +16,7 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
   alias CodeMySpec.Projects.ProjectsSocket
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias Ecto.Adapters.SQL
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -23,8 +24,28 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
 
   @impl true
   def init(_opts) do
-    children = build_children()
+    children =
+      if wait_for_repo(10) == :ok do
+        build_children()
+      else
+        Logger.warning("[SocketSupervisor] Repo not ready — starting with no account sockets")
+        []
+      end
+
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  defp wait_for_repo(0), do: :timeout
+
+  defp wait_for_repo(attempts) do
+    case SQL.query(Repo, "SELECT 1", [], timeout: 5_000) do
+      {:ok, _} ->
+        :ok
+
+      _ ->
+        Process.sleep(500)
+        wait_for_repo(attempts - 1)
+    end
   end
 
   defp build_children do
