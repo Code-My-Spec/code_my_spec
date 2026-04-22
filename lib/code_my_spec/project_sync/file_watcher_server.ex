@@ -57,13 +57,31 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
   @impl true
   def init(_opts) do
-    {:ok, %{watchers: %{}}, {:continue, :watch_linked_projects}}
+    {:ok, %{watchers: %{}}, {:continue, {:scan_projects, 0}}}
   end
 
   @impl true
-  def handle_continue(:watch_linked_projects, state) do
-    watchers = watch_all_linked_projects(state)
-    {:noreply, %{state | watchers: watchers}}
+  def handle_continue({:scan_projects, attempts}, state) do
+    cond do
+      repo_ready?() ->
+        watchers = watch_all_linked_projects(state)
+        {:noreply, %{state | watchers: watchers}}
+
+      attempts >= 10 ->
+        Logger.error("[FileWatcher] Repo not ready after 10 attempts — skipping auto-watch")
+        {:noreply, state}
+
+      true ->
+        Process.sleep(500)
+        {:noreply, state, {:continue, {:scan_projects, attempts + 1}}}
+    end
+  end
+
+  defp repo_ready? do
+    match?(
+      {:ok, _},
+      Ecto.Adapters.SQL.query(CodeMySpec.Repo, "SELECT 1", [], timeout: 5_000)
+    )
   end
 
   @impl true
