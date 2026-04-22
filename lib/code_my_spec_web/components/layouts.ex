@@ -237,7 +237,7 @@ defmodule CodeMySpecWeb.Layouts do
                 <li><a href="/documentation" class="hover:text-primary transition-colors">Documentation</a></li>
                 <li><a href="/pages" class="hover:text-primary transition-colors">Pages</a></li>
                 <li><a href="/pages/founder-story" class="hover:text-primary transition-colors">Founder Story</a></li>
-                <li><a href="/author/john-davenport" class="hover:text-primary transition-colors">About</a></li>
+                <li><a href="/pages/about" class="hover:text-primary transition-colors">About</a></li>
               </ul>
             </div>
             <div>
