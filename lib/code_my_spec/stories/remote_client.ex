@@ -281,8 +281,23 @@ defmodule CodeMySpec.Stories.RemoteClient do
     |> Map.put(:valid?, false)
   end
 
+  # Explicit allowlist — decoupled from Ecto.Enum module-load timing so
+  # BootSync's async Task can deserialize status strings even if the
+  # Story schema module hasn't been hot yet in this session.
+  @story_statuses %{
+    "in_progress" => :in_progress,
+    "completed" => :completed,
+    "dirty" => :dirty
+  }
+
   defp parse_enum(nil), do: nil
-  defp parse_enum(val) when is_binary(val), do: String.to_existing_atom(val)
+
+  defp parse_enum(val) when is_binary(val) do
+    case Map.fetch(@story_statuses, val) do
+      {:ok, atom} -> atom
+      :error -> nil
+    end
+  end
 
   defp parse_tags(nil), do: []
 
