@@ -10,9 +10,9 @@ defmodule CodeMySpecWeb.UserLive.Registration do
       <div id="register-page" phx-hook=".ViewRegisterPage" class="mx-auto max-w-sm">
         <div class="text-center">
           <.header>
-            Register for an account
+            Start building with CodeMySpec
             <:subtitle>
-              Already registered?
+              Free — no credit card required. Already registered?
               <.link navigate={~p"/users/log-in"} class="font-semibold text-brand hover:underline">
                 Log in
               </.link>
@@ -63,6 +63,10 @@ defmodule CodeMySpecWeb.UserLive.Registration do
           </svg>
           Continue with Google
         </.link>
+
+        <p class="text-xs text-base-content/60 text-center mt-4">
+          Specs, code, tests, verification — end to end, Elixir-first.
+        </p>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ViewRegisterPage">
@@ -70,6 +74,15 @@ defmodule CodeMySpecWeb.UserLive.Registration do
           mounted() {
             if (typeof gtag === "function") {
               gtag("event", "view_register_page");
+            }
+
+            const emailField = this.el.querySelector('input[type="email"]');
+            if (emailField) {
+              emailField.addEventListener("focus", () => {
+                if (typeof gtag === "function") {
+                  gtag("event", "registration_form_start");
+                }
+              }, { once: true });
             }
           }
         }
@@ -98,13 +111,7 @@ defmodule CodeMySpecWeb.UserLive.Registration do
             &url(~p"/users/log-in/#{&1}")
           )
 
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "An email was sent to #{user.email}, please access it to confirm your account."
-         )
-         |> push_navigate(to: ~p"/users/log-in")}
+        {:noreply, push_navigate(socket, to: ~p"/users/check-email?email=#{user.email}")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}

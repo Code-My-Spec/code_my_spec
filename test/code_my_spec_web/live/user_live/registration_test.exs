@@ -8,8 +8,27 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
     test "renders registration page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Register"
+      assert html =~ "Start building with CodeMySpec"
       assert html =~ "Log in"
+    end
+
+    test "renders the free / no-credit-card reassurance", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/users/register")
+      assert html =~ "Free — no credit card required"
+    end
+
+    test "renders the category one-liner below OAuth buttons", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/users/register")
+      assert html =~ "Specs, code, tests, verification — end to end, Elixir-first."
+    end
+
+    test "mounts the analytics hook that fires view_register_page and registration_form_start",
+         %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/users/register")
+
+      assert html =~ ~s|id="register-page"|
+      assert html =~ ~s|phx-hook=|
+      assert html =~ "ViewRegisterPage"
     end
 
     test "redirects if already logged in", %{conn: conn} do
@@ -30,13 +49,13 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
         |> element("#registration_form")
         |> render_change(user: %{"email" => "with spaces"})
 
-      assert result =~ "Register"
+      assert result =~ "Start building with CodeMySpec"
       assert result =~ "must have the @ sign and no spaces"
     end
   end
 
   describe "register user" do
-    test "creates account but does not log in", %{conn: conn} do
+    test "creates account and redirects to check-email screen", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
       email = unique_user_email()
@@ -44,10 +63,10 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
 
       {:ok, _lv, html} =
         render_submit(form)
-        |> follow_redirect(conn, ~p"/users/log-in")
+        |> follow_redirect(conn, ~p"/users/check-email?email=#{email}")
 
-      assert html =~
-               ~r/An email was sent to .*, please access it to confirm your account/
+      assert html =~ "Check your email"
+      assert html =~ email
     end
 
     test "renders errors for duplicated email", %{conn: conn} do

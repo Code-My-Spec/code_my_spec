@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Users.UserNotifier do
+  @moduledoc false
   import Swoosh.Email
 
   alias CodeMySpec.Mailer
@@ -49,34 +50,38 @@ defmodule CodeMySpec.Users.UserNotifier do
   end
 
   defp deliver_magic_link_instructions(user, url) do
-    deliver(user.email, "Log in instructions", """
+    deliver(user.email, "Your CodeMySpec login link", """
 
     ==============================
 
-    Hi #{user.email},
-
-    You can log into your account by visiting the URL below:
+    Here's your login link:
 
     #{url}
 
-    If you didn't request this email, please ignore this.
+    This link expires in 60 minutes.
+
+    If you didn't request this, ignore this email.
 
     ==============================
     """)
   end
 
   defp deliver_confirmation_instructions(user, url) do
-    deliver(user.email, "Confirmation instructions", """
+    deliver(user.email, "Your CodeMySpec login link", """
 
     ==============================
 
-    Hi #{user.email},
+    Welcome to CodeMySpec.
 
-    You can confirm your account by visiting the URL below:
+    Click below to confirm your account and get started:
 
     #{url}
 
-    If you didn't create an account with us, please ignore this.
+    This link expires in 60 minutes.
+
+    If you didn't sign up, ignore this email.
+
+    -- John
 
     ==============================
     """)

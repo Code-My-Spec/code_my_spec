@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Users.UserToken do
+  @moduledoc false
   use Ecto.Schema
   import Ecto.Query
   alias CodeMySpec.Users.UserToken
@@ -8,7 +9,7 @@ defmodule CodeMySpec.Users.UserToken do
 
   # It is very important to keep the magic link token expiry short,
   # since someone with access to the email may take over the account.
-  @magic_link_validity_in_minutes 15
+  @magic_link_validity_in_minutes 60
   @change_email_validity_in_days 7
   @session_validity_in_days 14
 
@@ -102,7 +103,7 @@ defmodule CodeMySpec.Users.UserToken do
 
   The given token is valid if it matches its hashed counterpart in the
   database. This function also checks if the token is being used within
-  15 minutes. The context of a magic link token is always "login".
+  60 minutes. The context of a magic link token is always "login".
   """
   def verify_magic_link_token_query(token) do
     case Base.url_decode64(token, padding: false) do

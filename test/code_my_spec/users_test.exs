@@ -327,6 +327,19 @@ defmodule CodeMySpec.UsersTest do
       {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
       refute Users.get_user_by_magic_link_token(token)
     end
+
+    test "returns user for token that is less than 60 minutes old", %{user: user, token: token} do
+      dt = DateTime.utc_now(:second) |> DateTime.add(-50, :minute)
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt])
+      assert session_user = Users.get_user_by_magic_link_token(token)
+      assert session_user.id == user.id
+    end
+
+    test "does not return user for token older than 60 minutes", %{token: token} do
+      dt = DateTime.utc_now(:second) |> DateTime.add(-61, :minute)
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt])
+      refute Users.get_user_by_magic_link_token(token)
+    end
   end
 
   describe "login_user_by_magic_link/1" do
