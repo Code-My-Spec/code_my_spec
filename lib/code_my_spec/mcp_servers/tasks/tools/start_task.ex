@@ -19,10 +19,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
 
@@ -122,61 +122,71 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp start_or_resume(scope, session, requirement, agent_id, frame) do
-    # Check for existing task for this exact requirement + entity.
-    # Must match on entity ID too — multiple subagents may have tasks
-    # with the same requirement_name for different components.
+    # Check for existing task for this exact requirement + entity. Must
+    # match on entity ID too — multiple subagents may have tasks with the
+    # same requirement_name for different components.
     entity_id = to_string(requirement.entity_id)
+    existing = find_existing_task(session, requirement, entity_id)
+    handle_existing(existing, scope, session, requirement, agent_id, frame)
+  end
 
-    existing =
-      (session.tasks || [])
-      |> Enum.find(fn t ->
-        t.requirement_name == requirement.name and
-          t.status in [:prepared, :active] and
-          matches_entity?(t, requirement.entity_type, entity_id)
-      end)
+  defp find_existing_task(session, requirement, entity_id) do
+    Enum.find(session.tasks || [], fn t ->
+      t.requirement_name == requirement.name and
+        t.status in [:prepared, :active] and
+        matches_entity?(t, requirement.entity_type, entity_id)
+    end)
+  end
 
-    case existing do
-      %{status: :active} = task ->
-        # Already active — just return the prompt
-        if agent_id && is_nil(task.agent_id) do
-          Sessions.assign_agent(scope, session, task.id, agent_id)
-        end
+  defp handle_existing(nil, scope, session, requirement, agent_id, frame),
+    do: create_and_activate(scope, session, requirement, agent_id, frame)
 
-        prompt = generate_prompt(task, scope)
-        {:reply, TasksMapper.prompt_response(prompt, task), frame}
+  defp handle_existing(%{status: :active} = task, scope, session, _req, agent_id, frame) do
+    maybe_assign_agent(scope, session, task, agent_id)
+    return_prompt(task, scope, frame)
+  end
 
-      %{status: :prepared} = task ->
-        # Prepared but not started — activate it
-        case Sessions.activate_task(scope, session, task.id, agent_id) do
-          {:ok, _updated} ->
-            prompt = generate_prompt(task, scope)
-            {:reply, TasksMapper.prompt_response(prompt, task), frame}
+  defp handle_existing(%{status: :prepared} = task, scope, session, _req, agent_id, frame) do
+    case Sessions.activate_task(scope, session, task.id, agent_id) do
+      {:ok, _updated} ->
+        return_prompt(task, scope, frame)
 
-          {:error, reason} ->
-            {:reply, TasksMapper.error("Failed to activate task: #{inspect(reason)}"), frame}
-        end
-
-      nil ->
-        # No existing task — create and activate in one step
-        create_and_activate(scope, session, requirement, agent_id, frame)
+      {:error, reason} ->
+        {:reply, TasksMapper.error("Failed to activate task: #{inspect(reason)}"), frame}
     end
   end
 
+  defp return_prompt(task, scope, frame) do
+    prompt = generate_prompt(task, scope)
+    {:reply, TasksMapper.prompt_response(prompt, task), frame}
+  end
+
+  defp maybe_assign_agent(scope, session, %{agent_id: nil, id: task_id}, agent_id)
+       when is_binary(agent_id) do
+    Sessions.assign_agent(scope, session, task_id, agent_id)
+  end
+
+  defp maybe_assign_agent(_scope, _session, _task, _agent_id), do: :ok
+
   defp create_and_activate(scope, session, requirement, agent_id, frame) do
-    {component_id, component_module_name, story_id} =
-      case requirement.entity_type do
-        "component" ->
-          comp = Components.get_component(scope, requirement.entity_id)
-          {requirement.entity_id, comp && comp.module_name, nil}
+    task_attrs = build_task_attrs(scope, requirement, agent_id)
+    session = maybe_init_session(scope, session, requirement.satisfied_by)
 
-        "story" ->
-          {nil, nil, requirement.entity_id}
+    case session |> Session.add_task(task_attrs) |> Repo.update() do
+      {:ok, updated_session} ->
+        task = Session.find_task(updated_session, task_attrs.id)
+        return_prompt(task, scope, frame)
 
-        _ ->
-          {nil, nil, nil}
-      end
+      {:error, reason} ->
+        Logger.warning("[StartTask] Failed to create task: #{inspect(reason)}")
+        {:reply, TasksMapper.error("Failed to create task: #{inspect(reason)}"), frame}
+    end
+  end
 
-    task_attrs = %{
+  defp build_task_attrs(scope, requirement, agent_id) do
+    {component_id, component_module_name, story_id} = build_entity_refs(scope, requirement)
+
+    %{
       id: Ecto.UUID.generate(),
       session_type: requirement.satisfied_by,
       requirement_name: requirement.name,
@@ -190,24 +200,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       started_at: DateTime.utc_now() |> DateTime.truncate(:second),
       agent_id: agent_id
     }
+  end
 
-    session =
-      if function_exported?(requirement.satisfied_by, :init_session, 2) do
-        {:ok, s} = requirement.satisfied_by.init_session(scope, session)
-        s
-      else
-        session
-      end
+  defp build_entity_refs(scope, %{entity_type: "component", entity_id: id}) do
+    comp = Components.get_component(scope, id)
+    {id, comp && comp.module_name, nil}
+  end
 
-    case session |> Session.add_task(task_attrs) |> Repo.update() do
-      {:ok, updated_session} ->
-        task = Session.find_task(updated_session, task_attrs.id)
-        prompt = generate_prompt(task, scope)
-        {:reply, TasksMapper.prompt_response(prompt, task), frame}
+  defp build_entity_refs(_scope, %{entity_type: "story", entity_id: id}), do: {nil, nil, id}
+  defp build_entity_refs(_scope, _req), do: {nil, nil, nil}
 
-      {:error, reason} ->
-        Logger.warning("[StartTask] Failed to create task: #{inspect(reason)}")
-        {:reply, TasksMapper.error("Failed to create task: #{inspect(reason)}"), frame}
+  defp maybe_init_session(scope, session, task_module) do
+    if function_exported?(task_module, :init_session, 2) do
+      {:ok, s} = task_module.init_session(scope, session)
+      s
+    else
+      session
     end
   end
 
