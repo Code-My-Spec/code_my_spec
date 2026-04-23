@@ -9,15 +9,31 @@
         CodeMySpec wraps LLMs in strict workflows, Phoenix contexts, and one design doc per file.
         You stay in charge of the system. The model just fills in the blanks.
       </p>
-      <div class="flex gap-4 justify-center">
+      <div class="flex gap-4 justify-center mb-10">
         <a href={~p"/users/register"} class="btn btn-primary">Get started free</a>
         <a href={~p"/methodology"} class="btn btn-outline">See the method</a>
+      </div>
+
+      <div class="max-w-3xl mx-auto text-left">
+        <div class="mockup-code bg-base-300 text-sm">
+          <pre data-prefix="$"><code>claude /plugin install codemyspec@codemyspec</code></pre>
+          <pre data-prefix=">" class="text-success"><code>Plugin installed. MCP servers ready.</code></pre>
+          <pre data-prefix="$"><code>claude /cms:develop</code></pre>
+          <pre data-prefix=">" class="text-base-content/70"><code>→ next requirement: Accounts.Projects design doc</code></pre>
+          <pre data-prefix=">" class="text-base-content/70"><code>→ spec written   · tests generated   · code compiles</code></pre>
+          <pre data-prefix=">" class="text-base-content/70"><code>→ BDD scenarios pass   · QA agent verifies</code></pre>
+          <pre data-prefix=">" class="text-success"><code>Requirement satisfied. Fetching next.</code></pre>
+        </div>
+        <p class="text-center text-xs text-base-content/50 mt-3">
+          The loop runs until every story is built, tested, and verified — inside the guardrails you set.
+        </p>
       </div>
     </div>
 
     <div class="grid md:grid-cols-3 gap-8 mb-16">
       <div class="card bg-base-200">
         <div class="card-body">
+          <div class="badge badge-error badge-outline mb-2">The problem</div>
           <p class="font-bold text-lg">LLMs invent architecture</p>
           <p>
             Give an LLM a vague brief and it happily makes up its own layers inside your app. It compiles. It passes tests. And it quietly ignores your Phoenix contexts.
@@ -26,17 +42,19 @@
       </div>
       <div class="card bg-base-200">
         <div class="card-body">
-          <p class="font-bold text-lg">The manual process works</p>
+          <div class="badge badge-warning badge-outline mb-2">The insight</div>
+          <p class="font-bold text-lg">Engineering discipline still wins</p>
           <p>
-            With Markdown, Git, and a good model you can keep things under control: one design doc per file, strict context boundaries, tests first. It's just a lot to juggle by hand.
+            One design doc per file, strict context boundaries, tests first, reviews that block merges. None of that stopped being valuable when LLMs showed up — the discipline just got harder to hold by hand.
           </p>
         </div>
       </div>
       <div class="card bg-base-200">
         <div class="card-body">
-          <p class="font-bold text-lg">CodeMySpec automates the boring parts</p>
+          <div class="badge badge-success badge-outline mb-2">The solution</div>
+          <p class="font-bold text-lg">CodeMySpec is the harness</p>
           <p>
-            CodeMySpec turns that manual workflow into a workspace. Stories, contexts, designs, tests, and sessions all live in one place, with AI running inside the guardrails. The AI generates code. You review architecture. The process catches bugs before they compound.
+            Stories, contexts, designs, tests, and sessions all live in one workspace with AI running inside the guardrails. The AI generates code. You review architecture. The process catches bugs before they compound.
           </p>
         </div>
       </div>

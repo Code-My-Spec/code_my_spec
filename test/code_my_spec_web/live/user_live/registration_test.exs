@@ -5,21 +5,42 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
   import CodeMySpec.UsersFixtures
 
   describe "Registration page" do
-    test "renders registration page", %{conn: conn} do
+    test "renders the outcome-focused headline", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Start building with CodeMySpec"
+      assert html =~ "Get free access to the harness that built MetricFlow"
       assert html =~ "Log in"
     end
 
     test "renders the free / no-credit-card reassurance", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "Free — no credit card required"
+      assert html =~ "Free, no credit card required"
     end
 
-    test "renders the category one-liner below OAuth buttons", %{conn: conn} do
+    test "promotes the tagline directly under the headline", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "Specs, code, tests, verification — end to end, Elixir-first."
+      assert html =~ "Specs, code, tests, verification - end to end, Elixir-first."
+    end
+
+    test "renders the BYO differentiator line", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/users/register")
+      assert html =~ "Open source. BYO agent. BYO model. No token markup."
+    end
+
+    test "renders the MetricFlow case-study trust line linking to the case study", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/users/register")
+
+      assert html =~ "Built MetricFlow with this harness in 13 days"
+      assert html =~ "see the case study"
+      assert html =~ ~s|href="/case-studies/metric-flow"|
+    end
+
+    test "tags OAuth buttons with registration-method data attributes for analytics",
+         %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/users/register")
+
+      assert html =~ ~s|data-registration-method="github"|
+      assert html =~ ~s|data-registration-method="google"|
     end
 
     test "mounts the analytics hook that fires view_register_page and registration_form_start",
@@ -49,7 +70,7 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
         |> element("#registration_form")
         |> render_change(user: %{"email" => "with spaces"})
 
-      assert result =~ "Start building with CodeMySpec"
+      assert result =~ "Get free access to the harness that built MetricFlow"
       assert result =~ "must have the @ sign and no spaces"
     end
   end

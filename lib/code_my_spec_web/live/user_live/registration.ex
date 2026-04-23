@@ -10,15 +10,22 @@ defmodule CodeMySpecWeb.UserLive.Registration do
       <div id="register-page" phx-hook=".ViewRegisterPage" class="mx-auto max-w-sm">
         <div class="text-center">
           <.header>
-            Start building with CodeMySpec
+            Get free access to the harness that built MetricFlow
             <:subtitle>
-              Free — no credit card required. Already registered?
+              Free, no credit card required. Already registered?
               <.link navigate={~p"/users/log-in"} class="font-semibold text-brand hover:underline">
                 Log in
               </.link>
               to your account now.
             </:subtitle>
           </.header>
+
+          <p class="text-base text-base-content/80 mt-4">
+            Specs, code, tests, verification - end to end, Elixir-first.
+          </p>
+          <p class="text-sm text-base-content/60 mt-1">
+            Open source. BYO agent. BYO model. No token markup.
+          </p>
         </div>
 
         <.form for={@form} id="registration_form" phx-submit="save" phx-change="validate">
@@ -36,13 +43,28 @@ defmodule CodeMySpecWeb.UserLive.Registration do
           </.button>
         </.form>
 
-        <.link href={~p"/auth/github/login"} class="btn btn-outline w-full">
+        <p class="text-xs text-base-content/60 text-center mt-3">
+          Built MetricFlow with this harness in 13 days — <.link
+            navigate={~p"/case-studies/metric-flow"}
+            class="underline hover:text-primary"
+          >see the case study</.link>.
+        </p>
+
+        <.link
+          href={~p"/auth/github/login"}
+          data-registration-method="github"
+          class="btn btn-outline w-full"
+        >
           <svg class="size-5" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
           </svg>
           Continue with GitHub
         </.link>
-        <.link href={~p"/auth/google/login"} class="btn btn-outline w-full">
+        <.link
+          href={~p"/auth/google/login"}
+          data-registration-method="google"
+          class="btn btn-outline w-full"
+        >
           <svg class="size-5" viewBox="0 0 24 24">
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -63,27 +85,41 @@ defmodule CodeMySpecWeb.UserLive.Registration do
           </svg>
           Continue with Google
         </.link>
-
-        <p class="text-xs text-base-content/60 text-center mt-4">
-          Specs, code, tests, verification — end to end, Elixir-first.
-        </p>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ViewRegisterPage">
         export default {
           mounted() {
-            if (typeof gtag === "function") {
-              gtag("event", "view_register_page");
-            }
+            const track = (event, params) => {
+              if (typeof gtag === "function") {
+                gtag("event", event, params || {});
+              }
+            };
+
+            track("view_register_page");
 
             const emailField = this.el.querySelector('input[type="email"]');
             if (emailField) {
               emailField.addEventListener("focus", () => {
-                if (typeof gtag === "function") {
-                  gtag("event", "registration_form_start");
-                }
+                track("registration_form_start", { method: "email" });
+                track("registration_path_chosen", { method: "email" });
               }, { once: true });
             }
+
+            const form = this.el.querySelector('#registration_form');
+            if (form) {
+              form.addEventListener("submit", () => {
+                track("registration_path_chosen", { method: "email" });
+              }, { once: true });
+            }
+
+            this.el.querySelectorAll('[data-registration-method]').forEach((link) => {
+              link.addEventListener("click", () => {
+                const method = link.dataset.registrationMethod;
+                track("registration_path_chosen", { method: method });
+                track("oauth_" + method + "_clicked");
+              }, { once: true });
+            });
           }
         }
       </script>
