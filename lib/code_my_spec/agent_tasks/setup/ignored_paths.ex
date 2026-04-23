@@ -9,6 +9,7 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
 
   alias CodeMySpec.AgentTasks.Setup.Helpers
   alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.Files.{ComponentSync, FileSync}
 
   @config_file Path.join(Paths.base_dir(), "config.yml")
 
@@ -39,6 +40,7 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
       {:ok, content} ->
         case YamlElixir.read_from_string(content) do
           {:ok, %{"ignored_paths" => paths}} when is_list(paths) and paths != [] ->
+            run_sync(scope)
             {:ok, :valid}
 
           _ ->
@@ -48,6 +50,19 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
       _ ->
         {:ok, :invalid,
          "`.code_my_spec/config.yml` not found. Framework modules will pollute task graphs."}
+    end
+  end
+
+  # Re-sync files and components so newly-ignored paths drop out of the graph.
+  # No-op if we don't have an active project to sync into.
+  defp run_sync(%{active_project_id: nil}), do: :ok
+
+  defp run_sync(scope) do
+    with {:ok, _} <- FileSync.sync(scope),
+         {:ok, _} <- ComponentSync.sync_from_files(scope) do
+      :ok
+    else
+      _ -> :ok
     end
   end
 
