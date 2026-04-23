@@ -2844,9 +2844,6 @@
       color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
     }
   }
-  .text-error {
-    color: var(--color-error);
-  }
   .normal-case {
     text-transform: none;
   }
