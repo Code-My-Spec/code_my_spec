@@ -1,11 +1,11 @@
 %{
   metadata: %{
-    meta_title: "MetricFlow Case Study: Zero Human-Written Code, 40 Commits, 13 Days",
+    meta_title: "MetricFlow Case Study: 13 Days, 51 Stories, One Honest Teardown",
     meta_description:
-      "How CodeMySpec built MetricFlow: a full-stack Phoenix analytics platform with OAuth integrations, AI insights, and multi-tenant accounts. Zero human-written code. This is an honest assessment of the process.",
-    og_title: "MetricFlow Case Study - AI-Driven Development in Practice",
+      "How CodeMySpec built MetricFlow — a Phoenix LiveView analytics platform with OAuth integrations and multi-tenant accounts. Specs, code, tests, verification. Here's what worked and what broke.",
+    og_title: "MetricFlow Case Study — The Harness Built This App",
     og_description:
-      "A full-stack Phoenix app built entirely by AI agents. 40 commits, 13 working days, zero human-written code. Here's the honest story.",
+      "A full-stack Phoenix app built with CodeMySpec in 13 working days. 51 stories, 434 acceptance criteria. Here's the honest teardown of what worked and what didn't.",
     og_image: nil,
     author: "John Davenport",
     tags: [
@@ -18,19 +18,19 @@
       "bdd",
       "google-analytics",
       "quickbooks",
-      "software-factory"
+      "harness-engineering"
     ]
   },
   hero: %{
     title: "MetricFlow",
-    tagline: "Zero Human-Written Code. One Honest Assessment.",
+    tagline: "The harness wrote the code. Here's what worked and what didn't.",
     description:
-      "A Phoenix LiveView marketing analytics platform with OAuth integrations, multi-tenant accounts, correlation analysis, and AI insights. Built entirely by CodeMySpec agents. 100% of the code was generated. 90% of the orchestration was autonomous.",
+      "A Phoenix LiveView marketing analytics platform built by CodeMySpec in 13 working days. OAuth integrations across five platforms, multi-tenant accounts with agency white-labeling, correlation analysis, AI insights. If the app holds up, the tool that built it holds up. Here's both sides.",
     stats: [
-      %{label: "Commits", value: "40"},
       %{label: "Working Days", value: "13"},
-      %{label: "Human Code", value: "0 lines"},
-      %{label: "Integrations", value: "5 platforms"}
+      %{label: "Stories", value: "51"},
+      %{label: "Acceptance Criteria", value: "434"},
+      %{label: "BDD Specs", value: "50+"}
     ]
   },
   overview: %{
@@ -90,7 +90,7 @@
     title: "The Dev Story",
     subtitle: "The Good, The Bad, and The Ugly",
     description:
-      "An honest assessment of building a full-stack application with a software factory. The calendar span is January 30 to March 20, 2026, but the actual work happened across just 13 days. What we learned changed how the entire pipeline works.",
+      "An honest assessment of building a full-stack Phoenix app with CodeMySpec. The calendar span is January 30 to March 20, 2026, but the actual work happened across just 13 working days. What we learned changed how the entire pipeline works.",
     sections: [
       %{
         id: "good",
@@ -213,6 +213,6 @@
       }
     ],
     closing:
-      "40 commits. 13 working days. Zero human-written code. MetricFlow proved the factory works. It also proved where the factory breaks. The fix wasn't more automation. It was less pipeline and one better gate. Example Mapping into BDD specs, code, QA. Three steps. One human review. That's the loop that ships."
+      "13 working days. 51 stories. 434 acceptance criteria. MetricFlow proved the harness works — and proved where it broke. The fix wasn't more automation. It was less pipeline and one better gate. Example Mapping into BDD specs, code, QA. Three steps. One human review. That's the loop that ships."
   }
 }

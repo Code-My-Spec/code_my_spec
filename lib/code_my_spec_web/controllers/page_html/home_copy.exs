@@ -1,18 +1,18 @@
 %{
   meta: %{
-    page_title: "CodeMySpec — AI-Assisted Phoenix Development That Actually Ships",
+    page_title: "CodeMySpec — The AI Development Platform for Phoenix Engineers",
     meta_description:
-      "Build production Phoenix apps with AI through structured workflows, clear component boundaries, and human oversight. Stop drowning in LLM-generated slop.",
-    og_title: "CodeMySpec — AI-Assisted Phoenix Development That Actually Ships",
+      "Full-lifecycle AI development for Phoenix: specs, code, tests, verification. Built for engineers who have to maintain what they ship. BYO agent, no token markup.",
+    og_title: "CodeMySpec — The AI Development Platform for Phoenix Engineers",
     og_description:
-      "Structured workflows guide AI through design and testing. No more compounding errors from vague specifications.",
+      "Lovable builds the demo. CodeMySpec builds the app you can still maintain in two years. Full-lifecycle AI development, Phoenix-first.",
     canonical_url: "https://codemyspec.com/"
   },
   hero: %{
     title: "CodeMySpec",
-    tagline: "AI-Assisted Phoenix Development That Actually Ships",
+    tagline: "The AI development platform for engineers who still care about the codebase.",
     description:
-      "Stop drowning in LLM-generated slop. Build production-ready Phoenix applications through structured workflows, clear component boundaries, and human oversight where it matters."
+      "Stop drowning in LLM-generated slop. CodeMySpec gives Phoenix engineers the full lifecycle — specs, code, tests, verification — end to end. Bring your own agent, your own model, your own keys."
   },
   value_props: [
     %{
@@ -68,12 +68,12 @@
   ],
   cta: %{
     primary: %{
-      text: "Get Started",
-      href: "/users/register"
+      text: "Read the Methodology",
+      href: "/methodology"
     },
     secondary: %{
-      text: "View Documentation",
-      href: "/content"
+      text: "Get Started",
+      href: "/users/register"
     }
   }
 }

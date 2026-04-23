@@ -151,6 +151,20 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
               </div>
             <% end %>
           </div>
+
+          <div class="mt-8 flex flex-wrap justify-center gap-3">
+            <a href="/methodology" class="btn btn-primary btn-lg gap-2">
+              <.icon name="hero-book-open" class="w-5 h-5" /> Read the Full Methodology
+            </a>
+            <a
+              href={@copy.repository.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-outline btn-lg gap-2"
+            >
+              <.icon name="hero-arrow-top-right-on-square" class="w-5 h-5" /> View on GitHub
+            </a>
+          </div>
         </div>
       </div>
     </div>
