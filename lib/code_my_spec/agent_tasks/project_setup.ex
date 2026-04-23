@@ -23,6 +23,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Setup.SpexConfig,
     Setup.TestBoundaries,
     Setup.TestSupportNamespace,
+    Setup.SpexCase,
     Setup.ProjectStructure,
     Setup.IgnoredPaths,
     Setup.AgentsMd,

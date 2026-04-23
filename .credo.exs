@@ -68,11 +68,11 @@
       #     {Credo.Check.Design.DuplicatedCode, false}
       #
       checks: %{
-        extra:
-          if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
-            do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
-            else: []
-          ),
+        # NOTE: Credo's `:extra` key is silently dropped when `:enabled` is also
+        # provided (see Credo.ConfigFile.merge_checks/2 clause at
+        # config_file.ex:376 — it pattern-matches on `%{enabled: ...}` and
+        # ignores everything else). So we append framework checks into the
+        # `:enabled` list itself rather than relying on `:extra`.
         enabled: [
           #
           ## Consistency Checks
@@ -169,6 +169,10 @@
           {Credo.Check.Warning.UnusedStringOperation, []},
           {Credo.Check.Warning.UnusedTupleOperation, []},
           {Credo.Check.Warning.WrongTestFileExtension, []}
+          | if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
+              do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
+              else: []
+            )
         ],
         disabled: [
           #
