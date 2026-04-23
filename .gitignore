@@ -69,3 +69,4 @@ diagnostics.jsonl
 # Built binary (distributed via GitHub Releases, not git)
 /CodeMySpec/bin/cms
 /CodeMySpec/bin/cms.exe
+artifacts/
