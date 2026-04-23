@@ -31,16 +31,14 @@ defmodule CodeMySpec.Validation do
 
   @runner_analyzers [:exunit_stale, :spex_stale]
 
-  # Sources that always block — no config knob. Cheap correctness gates
-  # (compiler errors, spec/QA validation).
-  @always_blocking_sources ["spec_validation", "qa_validation"]
-
   # Configurable source → {ProjectConfiguration field, scope predicate for
   # :block_changed mode}.
   @configurable_sources %{
     "credo" => {:credo, :by_file_path},
     "exunit" => {:exunit, :by_component_id},
-    "spex" => {:spex, :by_file_path}
+    "spex" => {:spex, :by_file_path},
+    "spec_validation" => {:spec_validation, :by_file_path},
+    "qa_validation" => {:qa_validation, :by_file_path}
   }
 
   @doc """
@@ -149,15 +147,12 @@ defmodule CodeMySpec.Validation do
           Map.get(config, field) != :off,
           do: source
 
-    ["compiler" | @always_blocking_sources] ++ configurable
+    ["compiler" | configurable]
   end
 
   defp partition_problems(problems_by_source, config, scope_context) do
     {compiler_block, compiler_advisory} =
       partition_compiler(Map.get(problems_by_source, "compiler", []), config.compile_warnings)
-
-    always_block =
-      Enum.flat_map(@always_blocking_sources, &Map.get(problems_by_source, &1, []))
 
     {configurable_block, configurable_advisory} =
       Enum.reduce(@configurable_sources, {[], []}, fn {source, {field, scope_fn}},
@@ -169,7 +164,7 @@ defmodule CodeMySpec.Validation do
         {block_acc ++ block, advisory_acc ++ advisory}
       end)
 
-    {compiler_block ++ always_block ++ configurable_block,
+    {compiler_block ++ configurable_block,
      compiler_advisory ++ configurable_advisory}
   end
 

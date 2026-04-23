@@ -17,6 +17,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   alias CodeMySpec.Compile
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
@@ -91,11 +92,14 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   # -- Analyzer resolution --
 
   # Analyzer atom → ProjectConfiguration field that gates it.
-  # Atoms not in this map are always eligible (validators etc.).
+  # Atoms not in this map are always eligible.
   @config_gated_analyzers %{
     credo: :credo,
     exunit_stale: :exunit,
-    spex_stale: :spex
+    spex_stale: :spex,
+    validate_spec: :spec_validation,
+    validate_bdd: :spec_validation,
+    validate_qa: :qa_validation
   }
 
   @doc """
@@ -285,15 +289,13 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     []
   end
 
-  defp validate_document(%Scope{cwd: cwd} = scope, file, source, document_type_fn) do
-    abs_path = Path.join(cwd, file.path)
-
-    case File.read(abs_path) do
+  defp validate_document(%Scope{environment: env} = scope, file, source, document_type_fn) do
+    case Environments.read_file(env, file.path) do
       {:ok, content} ->
         run_document_validation(scope, file, source, document_type_fn.(file, content), content)
 
       {:error, reason} ->
-        Logger.warning("[Pipeline] Could not read #{abs_path}: #{inspect(reason)}")
+        Logger.warning("[Pipeline] Could not read #{file.path}: #{inspect(reason)}")
         []
     end
   rescue

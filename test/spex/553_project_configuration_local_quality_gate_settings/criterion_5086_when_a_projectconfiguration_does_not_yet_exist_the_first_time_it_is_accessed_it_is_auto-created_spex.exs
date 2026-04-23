@@ -10,6 +10,8 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
   - credo: block_changed
   - exunit: block_all
   - spex: off
+  - spec_validation: block_changed
+  - qa_validation: block_changed
   """
 
   use CodeMySpecSpex.Case
@@ -58,6 +60,14 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
 
         assert html =~ ~r/name="configuration\[spex\]"[^>]*>.*?<option[^>]*value="off"[^>]*selected/s,
                "spex must default to off"
+
+        assert html =~
+                 ~r/name="configuration\[spec_validation\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
+               "spec_validation must default to block_changed"
+
+        assert html =~
+                 ~r/name="configuration\[qa_validation\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
+               "qa_validation must default to block_changed"
 
         :ok
       end

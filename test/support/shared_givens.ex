@@ -243,11 +243,31 @@ defmodule CodeMySpecSpex.SharedGivens do
     """
     # ExampleContext
 
-    An example context for BDD specs.
-
     ## Type
 
     context
+
+    An example context for BDD specs.
+
+    ## Functions
+
+    ### noop/0
+
+    Returns `:ok`.
+
+    ```elixir
+    @spec noop() :: :ok
+    ```
+
+    ## Dependencies
+
+    - None
+
+    ## Components
+
+    ### ExampleContext.Noop
+
+    Placeholder child module.
     """
   end
 

@@ -23,21 +23,23 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
 
   @impl true
   def handle_params(%{"project_name" => name}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      configuration = Configurations.get_or_create(scope)
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        configuration = Configurations.get_or_create(scope)
 
-      {:noreply,
-       assign(socket,
-         project: project,
-         scope: scope,
-         configuration: configuration,
-         analyzer_modes: @analyzer_modes,
-         compile_modes: @compile_modes,
-         page_title: "#{project.name} — Configuration",
-         error: nil
-       )}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           configuration: configuration,
+           analyzer_modes: @analyzer_modes,
+           compile_modes: @compile_modes,
+           page_title: "#{project.name} — Configuration",
+           error: nil
+         )}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: "#{msg}")}
     end
   end
 
@@ -134,6 +136,18 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
                 name="spex"
                 label="Spex"
                 value={@configuration.spex}
+                modes={@analyzer_modes}
+              />
+              <.select_field
+                name="spec_validation"
+                label="Spec Validation"
+                value={@configuration.spec_validation}
+                modes={@analyzer_modes}
+              />
+              <.select_field
+                name="qa_validation"
+                label="QA Validation"
+                value={@configuration.qa_validation}
                 modes={@analyzer_modes}
               />
             </div>

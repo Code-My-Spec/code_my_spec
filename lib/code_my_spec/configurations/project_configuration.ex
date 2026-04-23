@@ -33,6 +33,8 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           credo: analyzer_mode(),
           exunit: analyzer_mode(),
           spex: analyzer_mode(),
+          spec_validation: analyzer_mode(),
+          qa_validation: analyzer_mode(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -50,6 +52,8 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     field :credo, Ecto.Enum, values: @analyzer_modes, default: :block_changed
     field :exunit, Ecto.Enum, values: @analyzer_modes, default: :block_all
     field :spex, Ecto.Enum, values: @analyzer_modes, default: :off
+    field :spec_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
+    field :qa_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
 
     timestamps(type: :utc_datetime)
   end
@@ -65,7 +69,9 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :compile_warnings,
       :credo,
       :exunit,
-      :spex
+      :spex,
+      :spec_validation,
+      :qa_validation
     ])
     |> validate_required([:project_id])
     |> unique_constraint(:project_id)
