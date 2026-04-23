@@ -96,7 +96,9 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
       true ->
         case RequirementGraph.next_actionable(scope) do
           [_ | _] ->
-            Logger.info("[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop")
+            Logger.info(
+              "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
+            )
 
             %{
               "decision" => "block",
@@ -115,7 +117,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     end
   end
 
-  defp continuous_mode?(%{state: %{"continuous" => true}}), do: true
+  defp continuous_mode?(%{continuous: true}), do: true
   defp continuous_mode?(_), do: false
 
   # Test-only: specs back pipeline outputs with pre-recorded JSON fixtures

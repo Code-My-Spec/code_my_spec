@@ -35,17 +35,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       required: true,
       doc: "Entity type: component, story, or project"
 
-    field :entity_id, :string,
-      doc: "ID of the entity that owns this requirement"
+    field :entity_id, :string, doc: "ID of the entity that owns this requirement"
 
     field :module_name, :string,
       doc: "Component module name (alternative to entity_id for component requirements)"
 
-    field :session_id, :string,
-      doc: "Injected by hook — do not set manually"
+    field :session_id, :string, doc: "Injected by hook — do not set manually"
 
-    field :agent_id, :string,
-      doc: "Your agent identifier — claims ownership of the task"
+    field :agent_id, :string, doc: "Your agent identifier — claims ownership of the task"
 
     # Legacy — kept for backwards compatibility
     field :requirement_id, :string,
@@ -81,7 +78,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp resolve_requirement(_scope, _params) do
-    {:error, "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
+    {:error,
+     "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
   end
 
   defp resolve_from_graph(scope, name, entity_type, entity_id) do
@@ -193,11 +191,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       agent_id: agent_id
     }
 
-    # Enable continuous mode if starting implementation
     session =
-      if requirement.satisfied_by == CodeMySpec.AgentTasks.StartImplementation do
-        state = Map.put(session.state || %{}, "continuous", true)
-        {:ok, s} = Sessions.update_session(scope, session, %{state: state})
+      if function_exported?(requirement.satisfied_by, :init_session, 2) do
+        {:ok, s} = requirement.satisfied_by.init_session(scope, session)
         s
       else
         session
@@ -246,5 +242,4 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   rescue
     error -> "Error: #{inspect(error)}"
   end
-
 end

@@ -23,6 +23,7 @@ defmodule CodeMySpec.Sessions.Session do
           external_conversation_id: String.t() | nil,
           component_module_name: String.t() | nil,
           state: map() | nil,
+          continuous: boolean() | nil,
           tasks: [Task.t()],
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
@@ -43,6 +44,7 @@ defmodule CodeMySpec.Sessions.Session do
     field :external_conversation_id, :string
     field :component_module_name, :string
     field :state, :map, default: %{}
+    field :continuous, :boolean, default: false
 
     embeds_many :tasks, Task, on_replace: :delete
 
@@ -69,6 +71,7 @@ defmodule CodeMySpec.Sessions.Session do
       :external_conversation_id,
       :component_module_name,
       :state,
+      :continuous,
       :project_id,
       :account_id,
       :user_id,

@@ -47,7 +47,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "architecture_design" => AgentTasks.ArchitectureDesign,
     "code_generation" => AgentTasks.CodeGeneration,
     "write_bdd_specs" => AgentTasks.WriteBddSpecs,
-
     "story_interview" => AgentTasks.StoryInterview,
     "story_review" => AgentTasks.StoryInterview,
     "design_ui" => AgentTasks.DesignUi,
@@ -164,23 +163,24 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, session} <- find_or_create_session(scope, external_id, agent_task_module),
-         {:ok, _session} <- maybe_enable_continuous_mode(scope, session, agent_task_module),
+         {:ok, _session} <- init_session_state(scope, session, agent_task_module),
          {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id}) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
 
-  # StartImplementation's @moduledoc promises state["continuous"] = true
-  # on entry. The flag is the stop hook's signal to keep looping the
-  # agent through get_next_requirement until work is done. Wire it here
-  # rather than in the agent_task_module.command so the session
-  # context is available and no MCP tool has to duplicate the logic.
-  defp maybe_enable_continuous_mode(scope, session, AgentTasks.StartImplementation) do
-    state = Map.put(session.state || %{}, "continuous", true)
-    Sessions.update_session(scope, session, %{state: state})
+  # Optional per-task session-state initialization. Task modules that need
+  # to mutate the session before `command/2` runs (e.g. StartImplementation
+  # enabling continuous mode) export `init_session/2` and own the mutation
+  # themselves. This dispatcher keeps the per-task logic in the task module
+  # so MCP tools and CLI entry points share one source of truth.
+  defp init_session_state(scope, session, agent_task_module) do
+    if function_exported?(agent_task_module, :init_session, 2) do
+      agent_task_module.init_session(scope, session)
+    else
+      {:ok, session}
+    end
   end
-
-  defp maybe_enable_continuous_mode(_scope, session, _module), do: {:ok, session}
 
   defp run_componentless_task(scope, external_id, session_type) do
     with {:ok, _} <- validate_external_id(external_id),
@@ -215,7 +215,11 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, component} <- get_component(scope, module_name),
          {:ok, agent_task_module} <- resolve_session_type(session_type, component),
          {:ok, _session} <- create_session(scope, external_id, agent_task_module, component),
-         {:ok, prompt} <- agent_task_module.command(scope, %{component_id: component.id, project_id: scope.active_project_id}) do
+         {:ok, prompt} <-
+           agent_task_module.command(scope, %{
+             component_id: component.id,
+             project_id: scope.active_project_id
+           }) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -388,7 +392,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     if base_dir do
       with {:ok, _file_result} <- FileSync.sync(scope, base_dir: base_dir),
            {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: base_dir) do
-        {:ok, %{components: comp_result.all_components, changed: comp_result.changed_component_ids}}
+        {:ok,
+         %{components: comp_result.all_components, changed: comp_result.changed_component_ids}}
       else
         {:error, reason} -> {:error, "Sync failed: #{inspect(reason)}"}
       end
