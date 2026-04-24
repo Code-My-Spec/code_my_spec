@@ -22,6 +22,7 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
         {CodeMySpec.McpServers.AnalyticsAdminServer, transport: :streamable_http},
         {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},
+        {CodeMySpec.McpServers.PersonasServer, transport: :streamable_http},
         CodeMySpecWeb.Endpoint
       ]
       |> children(env)

@@ -14,6 +14,7 @@ defmodule CodeMySpec.Stories.BootSync do
   import Ecto.Query
 
   alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
+  alias CodeMySpec.Personas.RemoteSync, as: PersonasRemoteSync
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.RemoteSync
@@ -29,25 +30,34 @@ defmodule CodeMySpec.Stories.BootSync do
       |> where([p], not is_nil(p.local_path))
       |> Repo.all()
 
-    Enum.each(projects, fn project ->
-      case Scope.for_local_project(project) do
-        {:ok, scope} ->
-          Logger.info("[BootSync] Syncing stories for #{project.name}")
+    Enum.each(projects, &sync_project/1)
+  end
 
-          RemoteSync.sync(scope)
-          Logger.info("[BootSync] Stories synced for #{project.name}")
+  defp sync_project(project) do
+    case Scope.for_local_project(project) do
+      {:ok, scope} -> sync_with_scope(project, scope)
+      {:error, _} -> :ok
+    end
+  end
 
-          case IssuesRemoteSync.sync(scope) do
-            :ok ->
-              Logger.info("[BootSync] Issues synced for #{project.name}")
+  defp sync_with_scope(project, scope) do
+    Logger.info("[BootSync] Syncing stories for #{project.name}")
+    RemoteSync.sync(scope)
+    Logger.info("[BootSync] Stories synced for #{project.name}")
 
-            {:error, reason} ->
-              Logger.warning("[BootSync] Issues sync failed for #{project.name}: #{inspect(reason)}")
-          end
+    log_sync_result("Issues", project.name, IssuesRemoteSync.sync(scope))
+    log_sync_result("Personas", project.name, PersonasRemoteSync.sync(scope))
+  end
 
-        {:error, _} ->
-          :ok
-      end
-    end)
+  defp log_sync_result(label, project_name, :ok) do
+    Logger.info("[BootSync] #{label} synced for #{project_name}")
+  end
+
+  defp log_sync_result(label, project_name, {:ok, _}) do
+    Logger.info("[BootSync] #{label} synced for #{project_name}")
+  end
+
+  defp log_sync_result(label, project_name, {:error, reason}) do
+    Logger.warning("[BootSync] #{label} sync failed for #{project_name}: #{inspect(reason)}")
   end
 end

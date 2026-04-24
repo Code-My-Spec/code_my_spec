@@ -27,6 +27,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.LinkStoryComponent,
     AgentTasks.LiveContextSpec,
     AgentTasks.LiveViewSpec,
+    AgentTasks.PersonaResearch,
 
     AgentTasks.ProjectSetup,
     AgentTasks.QaApp,

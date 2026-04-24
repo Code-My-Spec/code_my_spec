@@ -116,6 +116,9 @@ defmodule CodeMySpecWeb.Router do
 
     forward "/analytics-admin", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.AnalyticsAdminServer
+
+    forward "/personas", Anubis.Server.Transport.StreamableHTTP.Plug,
+      server: CodeMySpec.McpServers.PersonasServer
   end
 
   # API routes
@@ -144,6 +147,19 @@ defmodule CodeMySpecWeb.Router do
 
     get "/stories-list/unsatisfied", StoriesController, :list_unsatisfied_stories
     get "/stories-list/component/:component_id", StoriesController, :list_component_stories
+
+    resources "/personas", PersonasController, only: [:index, :show, :create, :update] do
+      post "/link-story", PersonasController, :link_story
+      post "/unlink-story", PersonasController, :unlink_story
+    end
+
+    get "/personas-by-slug/:slug", PersonasController, :show_by_slug
+    get "/personas-list/story/:story_id", PersonasController, :list_for_story
+    get "/personas-list/project/:project_id", PersonasController, :list_for_project
+
+    get "/personas-list/project/:project_id/links",
+        PersonasController,
+        :list_project_link_edges
 
     post "/notifications/push", NotificationController, :push
 
@@ -232,6 +248,8 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/new", ProjectLive.Form, :new
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
+
+      live "/personas", PersonaLive.Index, :index
     end
 
     live_session :require_active_project,

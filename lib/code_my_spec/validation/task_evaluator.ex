@@ -69,6 +69,19 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
         {:ok, :invalid, feedback} ->
           {:error, feedback}
 
+        {:error, {:evaluator_crashed, detail}} ->
+          # Distinguish crashes from requirement failures. The marker text at
+          # the front lets agents (and humans) tell the difference from a
+          # legitimate "not met" result.
+          {:error,
+           """
+           ⚠️ Evaluator crashed (not a requirement failure) — this is a bug in the task's evaluate/2 or a checker it delegates to.
+
+           #{detail}
+
+           Agents: do not retry the task until the underlying bug is fixed. Report to the user.
+           """}
+
         {:error, reason} ->
           {:error, "Error: #{inspect(reason)}"}
       end
@@ -83,6 +96,19 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     end
   rescue
     e ->
-      {:error, "Task evaluation failed: #{Exception.message(e)}"}
+      stack = __STACKTRACE__
+      Logger.error("[TaskEvaluator] Evaluator crashed for #{inspect(module)}: #{Exception.format(:error, e, stack)}")
+
+      detail =
+        "#{inspect(e.__struct__)}: #{Exception.message(e)}\n\n" <>
+          format_stack_summary(stack)
+
+      {:error, {:evaluator_crashed, detail}}
+  end
+
+  defp format_stack_summary(stack) do
+    stack
+    |> Enum.take(5)
+    |> Enum.map_join("\n", fn entry -> "  " <> Exception.format_stacktrace_entry(entry) end)
   end
 end

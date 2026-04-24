@@ -676,6 +676,23 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [1]
       }),
       new!(%{
+        id: 13,
+        name: "personas_complete",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.PersonasChecker, function: :complete?},
+        satisfied_by: AgentTasks.PersonaResearch,
+        artifact_type: :specification,
+        description:
+          "At least one persona researched — DB record + summary.md + sources.md, linked to a story",
+        prerequisites: [1],
+        # Manual so the stop hook doesn't short-circuit the multi-turn
+        # intake conversation. The PM and agent need room to exchange
+        # questions, do research, and write artifacts across many turns
+        # before the checker is run.
+        validation_type: :manual
+      }),
+      new!(%{
         id: 3,
         name: "code_generation",
         node_scope: :self,

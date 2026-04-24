@@ -122,13 +122,24 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   defp orchestrate_node(node) do
     mod = node.satisfied_by
 
-    if Code.ensure_loaded?(mod) and function_exported?(mod, :orchestrate, 1) do
-      "- " <> mod.orchestrate(node)
+    body =
+      if Code.ensure_loaded?(mod) and function_exported?(mod, :orchestrate, 1) do
+        mod.orchestrate(node)
+      else
+        node.description || to_string(node.name)
+      end
+
+    # Always include the raw call signature so the agent never has to guess
+    # the requirement_name from a human label.
+    if String.contains?(body, "requirement_name") do
+      "- #{body}"
     else
-      "- Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+      call_sig =
+        "`start_task` with requirement_name=`#{node.name}`, entity_type=`#{node.entity_type}`, entity_id=`#{node.entity_id}`"
+
+      "- #{body} — call #{call_sig}."
     end
   end
-
 
   # ---------------------------------------------------------------------------
   # List requirements — grouped by entity

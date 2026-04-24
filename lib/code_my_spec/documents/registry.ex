@@ -1189,6 +1189,126 @@ defmodule CodeMySpec.Documents.Registry do
         "status" => @integration_status
       }
     },
+    "persona_summary" => %{
+      overview: """
+      Persona summary documents capture the distilled output of a persona research
+      session: role, goals, pain points, context, decision drivers, and the evidence
+      backing every claim. Optional sections accommodate JTBD framing, verbatim
+      quotes, and explicit anti-patterns where they add decision-useful detail.
+      """,
+      required_sections: [
+        "role",
+        "goals",
+        "pain points",
+        "context",
+        "decision drivers",
+        "evidence"
+      ],
+      optional_sections: [
+        "jobs to be done",
+        "quotes",
+        "motivations",
+        "behaviors",
+        "anti-patterns"
+      ],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "role" => """
+        Format:
+        - Use H2 heading
+        - Paragraphs or short bullet list
+
+        Content:
+        - Professional role, title, responsibilities, decision scope
+        - The context the persona operates in day to day
+        """,
+        "goals" => """
+        Format:
+        - Use H2 heading
+        - Bullet list of end goals (per Goodwin's goal types)
+
+        Content:
+        - Concrete outcomes the persona is trying to achieve with the product
+        - Prefer end goals over life or experience goals
+        """,
+        "pain points" => """
+        Format:
+        - Use H2 heading
+        - Bullet list
+
+        Content:
+        - Frustrations, blockers, escape motives
+        - Tie each to evidence in the Evidence section where possible
+        """,
+        "context" => """
+        Format:
+        - Use H2 heading
+        - Paragraphs
+
+        Content:
+        - Environment, tools, team shape, workflow, constraints
+        """,
+        "decision drivers" => """
+        Format:
+        - Use H2 heading
+        - Bullet list
+
+        Content:
+        - What actually moves the persona to adopt, buy, or switch
+        """,
+        "evidence" => """
+        Format:
+        - Use H2 heading
+        - Bullet list of citations
+
+        Content:
+        - Interviews, reviews, analytics cohorts, and other sources backing the claims
+        - Every claim in Role / Goals / Pain Points / Context / Decision Drivers should
+          trace to an entry here (triangulation guardrail from the research playbook)
+        """,
+        "jobs to be done" => """
+        Format:
+        - Use H2 heading
+        - Paragraphs or bullet list
+
+        Content:
+        - Switching-heavy framing when relevant: job statement, struggling moment,
+          forces (push/pull/anxiety/habit), desired outcomes
+        """,
+        "quotes" => """
+        Format:
+        - Use H2 heading
+        - Block quotes with speaker + source attribution
+
+        Content:
+        - Verbatim excerpts supporting claims elsewhere in the summary
+        """,
+        "motivations" => """
+        Format:
+        - Use H2 heading
+        - Bullet list
+
+        Content:
+        - What the persona cares about at a deeper level than tactical goals
+        """,
+        "behaviors" => """
+        Format:
+        - Use H2 heading
+        - Bullet list
+
+        Content:
+        - Observable behaviors, rituals, or patterns the persona exhibits
+        """,
+        "anti-patterns" => """
+        Format:
+        - Use H2 heading
+        - Bullet list
+
+        Content:
+        - Things this persona is NOT — guardrails against scope creep and elastic-user design
+        """
+      }
+    },
     "architecture_proposal" => %{
       overview: """
       Architecture proposal documents define the component structure for a Phoenix application.

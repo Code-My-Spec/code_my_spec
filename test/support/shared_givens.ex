@@ -47,6 +47,21 @@ defmodule CodeMySpecSpex.SharedGivens do
   - `:credo_available` — plants `deps/credo` under `context.scope.cwd`
     so the Credo analyzer's availability check passes. Pair with a
     cassette that replays `mix credo` output.
+  - `:persona_exists` — drives the `CreatePersona` MCP tool against the
+    active scope to create an account-scoped persona. Produces
+    `context.persona_slug` and `context.persona_id`.
+  - `:persona_research_task_started` — drives session_start + start_task
+    for the `personas_complete` requirement on the active project.
+    Produces `context.session_id`.
+  - `:persona_research_prompt` — same as `:persona_research_task_started`
+    but flattens the start_task response into a single prompt text string.
+    Produces `context.prompt` and `context.session_id`. Use when a spec
+    asserts on prompt content rather than pipeline side effects.
+  - `:technical_strategy_task_started` — drives session_start + start_task
+    for the `technical_strategy` requirement on the active project. The
+    start_task call triggers `TechnicalStrategy.command/2`, which writes
+    missing pre-made ADRs and returns the session prompt. Produces
+    `context.session_id`, `context.task_id`, and `context.prompt`.
 
   Add new shared givens only after a third spec duplicates setup.
   """
@@ -58,6 +73,7 @@ defmodule CodeMySpecSpex.SharedGivens do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
 
@@ -237,7 +253,183 @@ defmodule CodeMySpecSpex.SharedGivens do
     {:ok, %{session_id: session_id}}
   end
 
+  # The PM has created a persona through the account library surface and
+  # linked it to at least one story on the active project. Personas need
+  # a story link to count toward personas_complete, so this given bundles
+  # both actions — if a spec needs an unlinked persona it should drive
+  # CreatePersona directly inline.
+  #
+  # Drives the real CreatePersona MCP tool against the active scope so the
+  # personas row originates through the same contract the agent uses in
+  # production. The story is fixtured via the bridge (stories arrive from
+  # server sync in production — using the bridge here matches that pattern).
+  given :persona_exists do
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, _response, _frame} =
+      CreatePersona.execute(
+        %{
+          slug: "founder",
+          name: "Founder",
+          headline: "Solo founder shipping a product without hiring"
+        },
+        frame
+      )
+
+    persona = CodeMySpec.Personas.get_persona_by_slug(context.scope, "founder")
+
+    story =
+      Fixtures.story_fixture(context.scope,
+        title: "Persona-linked story",
+        description: "Story used to link the persona onto the active project."
+      )
+
+    {:ok, _} =
+      CodeMySpec.Personas.link_persona_to_story(context.scope, persona.id, story.id)
+
+    {:ok,
+     %{persona_slug: persona.slug, persona_id: persona.id, persona: persona, story: story}}
+  end
+
+  # The agent has signalled SessionStart and called start_task for the
+  # `personas_complete` requirement on the active project. Same shape as
+  # :context_spec_task_started / :bdd_task_started — drives the real hook
+  # + MCP call so the pipeline sees a live `PersonaResearch` task.
+  # Captures the active task id from the session so specs can call
+  # `evaluate_task` against it (personas_complete is manual-validation).
+  given :persona_research_task_started do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, _response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "personas_complete",
+          entity_type: "project",
+          entity_id: to_string(context.project.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
+    task = CodeMySpec.Sessions.Session.active_task(session)
+
+    {:ok, %{session_id: session_id, task_id: task && task.id}}
+  end
+
+  # Drives session_start + start_task and returns the prompt text so specs
+  # can assert directly on the instructions the agent receives. Use this
+  # when a spec tests static prompt content (e.g., "the prompt tells the
+  # agent to X") rather than pipeline side effects.
+  given :persona_research_prompt do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "personas_complete",
+          entity_type: "project",
+          entity_id: to_string(context.project.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    prompt =
+      case response do
+        %{content: parts} when is_list(parts) ->
+          Enum.map_join(parts, "\n", fn
+            %{text: t} -> t
+            %{"text" => t} -> t
+            o -> inspect(o)
+          end)
+
+        other ->
+          inspect(other)
+      end
+
+    {:ok, %{session_id: session_id, prompt: prompt}}
+  end
+
+  # The agent has signalled SessionStart and called start_task for the
+  # `technical_strategy` requirement on the active project. Same shape as
+  # the other *_task_started givens — drives the real hook + MCP call so
+  # the pipeline sees a live `TechnicalStrategy` task. start_task's
+  # handler runs `command/2`, which writes missing pre-made ADRs to the
+  # env as a side effect and returns the prompt text.
+  given :technical_strategy_task_started do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "technical_strategy",
+          entity_type: "project",
+          entity_id: to_string(context.project.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    prompt = flatten_tool_response(response)
+
+    session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
+    task = CodeMySpec.Sessions.Session.active_task(session)
+
+    {:ok,
+     %{
+       session_id: session_id,
+       task_id: task && task.id,
+       prompt: prompt,
+       start_response: response
+     }}
+  end
+
   # -- Content helpers --
+
+  defp flatten_tool_response(%{content: parts}) when is_list(parts) do
+    Enum.map_join(parts, "\n", fn
+      %{text: t} -> t
+      %{"text" => t} -> t
+      other -> inspect(other)
+    end)
+  end
+
+  defp flatten_tool_response(%{text: text}), do: text
+  defp flatten_tool_response(other), do: inspect(other)
 
   defp spec_file_content do
     """
