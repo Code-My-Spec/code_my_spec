@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Fixtures do
     SetupFixtures,
     Stories,
     StoriesFixtures,
+    TechnicalStrategyFixtures,
     UserPreferences,
     Users,
     UsersFixtures
@@ -47,6 +48,13 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
   defdelegate reset_setup_env(env), to: SetupFixtures, as: :reset
+
+  # -- Technical Strategy (Story 80) --
+  defdelegate with_mix_exs(env), to: TechnicalStrategyFixtures
+  defdelegate with_custom_adr(env, topic, marker), to: TechnicalStrategyFixtures
+  defdelegate with_decisions_index(env), to: TechnicalStrategyFixtures
+  defdelegate read_adr(env, topic), to: TechnicalStrategyFixtures
+  defdelegate adr_exists?(env, topic), to: TechnicalStrategyFixtures
 
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures
