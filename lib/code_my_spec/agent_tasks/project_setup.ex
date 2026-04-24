@@ -32,12 +32,19 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Setup.ClaudeMd
   ]
 
-  @doc "Returns the ordered list of setup step modules."
-  def setup_steps, do: @setup_steps
+  @doc """
+  Returns the ordered list of setup step modules.
+
+  Override via `Application.put_env(:code_my_spec, :project_setup_steps, [MyStub | ...])`
+  for test-time injection. Production code should not set this key.
+  """
+  def setup_steps do
+    Application.get_env(:code_my_spec, :project_setup_steps, @setup_steps)
+  end
 
   @doc "Find a setup step module by its derived ID."
   def find_step(id) do
-    Enum.find(@setup_steps, fn mod -> step_id(mod) == id end)
+    Enum.find(setup_steps(), fn mod -> step_id(mod) == id end)
   end
 
   @doc "Derive a URL-friendly ID from a step module name."
@@ -53,52 +60,68 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
 
   Evaluates each step, shows completed steps as checked off, and inlines
   the full command prompt for each incomplete step. One prompt, one agent.
+
+  Returns `{:error, reason}` if any incomplete step's `command/2` returns
+  an error — the caller (LiveView, agent harness) must see it, not swallow it.
   """
-  @spec command(term(), map()) :: {:ok, String.t()}
+  @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
   def command(scope, _task) do
-    steps = build_step_status(scope)
-    done = Enum.count(steps, & &1.done)
-    total = length(steps)
+    with {:ok, steps} <- build_step_status(scope) do
+      done = Enum.count(steps, & &1.done)
+      total = length(steps)
 
-    checklist =
-      Enum.map_join(steps, "\n\n", fn step ->
-        if step.done do
-          "- [x] **#{step.name}**"
-        else
-          "- [ ] **#{step.name}**\n\n#{step.prompt}"
-        end
-      end)
+      checklist =
+        Enum.map_join(steps, "\n\n", fn step ->
+          if step.done do
+            "- [x] **#{step.name}**"
+          else
+            "- [ ] **#{step.name}**\n\n#{step.prompt}"
+          end
+        end)
 
-    {:ok, """
-    # Project Setup (#{done}/#{total})
+      {:ok, """
+      # Project Setup (#{done}/#{total})
 
-    Configure this Phoenix project for CodeMySpec integration.
-    Complete all unchecked steps below. Order does not matter.
+      Configure this Phoenix project for CodeMySpec integration.
+      Complete all unchecked steps below. Order does not matter.
 
-    #{checklist}
+      #{checklist}
 
-    When all steps are complete, use `evaluate_task` to validate.
-    """}
+      When all steps are complete, use `evaluate_task` to validate.
+      """}
+    end
   end
 
   defp build_step_status(scope) do
-    Enum.map(@setup_steps, fn mod ->
-      done =
-        case mod.evaluate(scope, %{}) do
-          {:ok, :valid} -> true
-          _ -> false
-        end
-
-      prompt = if done, do: nil, else: step_prompt(mod, scope)
-
-      %{name: step_name(mod), done: done, prompt: prompt}
-    end)
+    setup_steps()
+    |> Enum.reduce_while({:ok, []}, fn mod, {:ok, acc} -> accumulate_step(mod, scope, acc) end)
+    |> case do
+      {:ok, steps} -> {:ok, Enum.reverse(steps)}
+      {:error, _} = err -> err
+    end
   end
 
-  defp step_prompt(mod, scope) do
-    case mod.command(scope, %{}) do
-      {:ok, text} -> text
-      _ -> "Run #{step_name(mod)}"
+  defp accumulate_step(mod, scope, acc) do
+    if step_done?(mod, scope) do
+      {:cont, {:ok, [%{name: step_name(mod), done: true, prompt: nil} | acc]}}
+    else
+      case mod.command(scope, %{}) do
+        {:ok, prompt} ->
+          {:cont, {:ok, [%{name: step_name(mod), done: false, prompt: prompt} | acc]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+
+        other ->
+          {:halt, {:error, {:unexpected_command_return, mod, other}}}
+      end
+    end
+  end
+
+  defp step_done?(mod, scope) do
+    case mod.evaluate(scope, %{}) do
+      {:ok, :valid} -> true
+      _ -> false
     end
   end
 
@@ -108,19 +131,20 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   Returns:
   - `{:ok, :valid}` if all steps pass
   - `{:ok, :invalid, feedback}` listing incomplete steps
+
+  Does not call steps' `command/2` — evaluation is a pure state check.
   """
   @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, _task, _opts \\ []) do
-    steps = build_step_status(scope)
-    incomplete = Enum.reject(steps, & &1.done)
+    incomplete =
+      setup_steps()
+      |> Enum.reject(fn mod -> mod.evaluate(scope, %{}) == {:ok, :valid} end)
 
     if incomplete == [] do
       {:ok, :valid}
     else
-      feedback =
-        incomplete
-        |> Enum.map_join("\n", fn step -> "- [ ] #{step.name}" end)
+      feedback = Enum.map_join(incomplete, "\n", fn mod -> "- [ ] #{step_name(mod)}" end)
 
       {:ok, :invalid, "Setup incomplete (#{length(incomplete)} steps remaining):\n\n#{feedback}"}
     end

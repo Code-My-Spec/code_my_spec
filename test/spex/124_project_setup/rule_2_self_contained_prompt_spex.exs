@@ -1,0 +1,88 @@
+defmodule CodeMySpecSpex.Story124.Rule2SelfContainedPromptSpex do
+  @moduledoc """
+  Story 124 — Project Setup
+  Rule 2 — The prompt is self-contained: one agent, one prompt, no back-and-forth.
+
+  The page contains the full inline prompt for every incomplete step —
+  a developer (or agent) reading the page has everything needed to
+  complete each unchecked step without drilling elsewhere.
+
+  Surface: `/projects/:project_name/requirements/project_setup`.
+  """
+
+  use CodeMySpecSpex.Case
+
+  import_givens CodeMySpecSpex.SharedGivens
+
+  alias CodeMySpec.AgentTasks.ProjectSetup
+  alias CodeMySpec.AgentTasks.Setup
+  alias CodeMySpecSpex.Fixtures
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  spex "Prompt is self-contained" do
+    scenario "every incomplete step's full prompt is inlined on one page" do
+      given_ "ApplicationInWeb and CodemyspecDeps are satisfied; the rest are not", context do
+        Fixtures.reset_setup_env(context.environment)
+
+        Fixtures.satisfy_setup_steps(context.environment, [
+          Setup.ApplicationInWeb,
+          Setup.CodemyspecDeps
+        ])
+
+        {:ok, context}
+      end
+
+      when_ "developer views the project setup page", context do
+        {:ok, view, _html} =
+          live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
+
+        {:ok, Map.put(context, :view, view)}
+      end
+
+      then_ "the page contains the inline prompt heading for every incomplete step", context do
+        html = render(context.view)
+
+        # TestSupportNamespace passes by default (missing conn_case.ex / data_case.ex
+        # counts as "not wrong") — treat it as satisfied for this assertion.
+        satisfied_by_fixture = [Setup.ApplicationInWeb, Setup.CodemyspecDeps]
+        satisfied_by_default = [Setup.TestSupportNamespace]
+
+        incomplete =
+          (ProjectSetup.setup_steps() -- satisfied_by_fixture) -- satisfied_by_default
+
+        for mod <- incomplete do
+          heading = step_prompt_heading(mod, context.scope)
+
+          assert html =~ heading,
+                 "expected inline prompt heading #{inspect(heading)} to be rendered for #{inspect(mod)}"
+        end
+
+        {:ok, context}
+      end
+
+      and_ "satisfied steps do not render their inline prompt heading", context do
+        html = render(context.view)
+
+        for mod <- [Setup.ApplicationInWeb, Setup.CodemyspecDeps] do
+          heading = step_prompt_heading(mod, context.scope)
+
+          refute html =~ heading,
+                 "expected inline prompt heading #{inspect(heading)} to be absent for completed #{inspect(mod)}"
+        end
+
+        {:ok, context}
+      end
+    end
+  end
+
+  defp step_prompt_heading(mod, scope) do
+    {:ok, prompt} = mod.command(scope, %{})
+
+    prompt
+    |> String.split("\n", trim: true)
+    |> Enum.find(fn line -> String.starts_with?(line, "# ") end)
+    |> String.replace_prefix("# ", "")
+  end
+end

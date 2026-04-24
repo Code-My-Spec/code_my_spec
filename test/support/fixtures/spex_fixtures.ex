@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Fixtures do
     ProblemsFixtures,
     ProjectsFixtures,
     SessionsFixtures,
+    SetupFixtures,
     Stories,
     StoriesFixtures,
     UserPreferences,
@@ -42,6 +43,10 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate memory_environment_fixture(opts \\ []), to: EnvironmentFixtures
   defdelegate register_environment(project_id, env), to: Environments, as: :register
   defdelegate unregister_environment(project_id), to: Environments, as: :unregister
+
+  # -- Project Setup (Story 124) --
+  defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
+  defdelegate reset_setup_env(env), to: SetupFixtures, as: :reset
 
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures

@@ -20,7 +20,17 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   @impl true
   def mount(_params, _session, socket) do
     projects = Projects.list_local_projects()
-    {:ok, assign(socket, projects: projects, project: nil, scope: nil, markdown: nil, graph_data: nil, error: nil)}
+
+    {:ok,
+     assign(socket,
+       projects: projects,
+       project: nil,
+       scope: nil,
+       markdown: nil,
+       graph_data: nil,
+       error: nil,
+       setup_error: nil
+     )}
   end
 
   # --- Handle params ---
@@ -49,18 +59,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name, "name" => req_name}, _uri, %{assigns: %{live_action: :show}} = socket) do
     case load_project_and_scope(name) do
       {:ok, project, scope} ->
-        nodes = Requirements.compute_all(scope)
-
-        node = Enum.find(nodes, fn n ->
-          n.entity_type == "project" and n.name == req_name
-        end)
-
-        if node do
-          markdown = build_show_markdown(node, project, scope, nodes)
-          {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, error: nil)}
-        else
-          {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
-        end
+        handle_show_for_project(project, scope, req_name, socket)
 
       {:error, msg} ->
         {:noreply, assign(socket, error: msg)}
@@ -317,6 +316,10 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         <span>{@error}</span>
       </div>
 
+      <div :if={@setup_error} data-role="setup-error" role="alert" class="alert alert-error my-4">
+        <span>Setup error: {@setup_error}</span>
+      </div>
+
       <div :if={@graph_data} id="graph-page">
         <div class="mb-4">
           <.link navigate={"/projects/#{project_slug(@project)}/requirements"} class="btn btn-ghost btn-sm gap-1">
@@ -362,10 +365,12 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     slug = project_slug(project)
     back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
     header = build_show_header(node)
-    body = build_show_body(node, scope, slug)
     nav = build_show_nav(node, all_nodes, slug)
 
-    back <> header <> body <> nav
+    case build_show_body(node, scope, slug) do
+      {:ok, body} -> {:ok, back <> header <> body <> nav}
+      {:error, reason} -> {:error, reason, back <> header <> nav}
+    end
   end
 
   defp build_show_header(node) do
@@ -373,14 +378,18 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     "# #{node.name}\n\n#{node.description}\n\n**#{status}**\n"
   end
 
-  defp build_show_body(%{name: "project_setup"} = node, scope, slug),
-    do: build_setup_checklist(scope, slug, node.name)
+  defp build_show_body(%{name: "project_setup"}, scope, _slug) do
+    case ProjectSetup.command(scope, %{}) do
+      {:ok, text} -> {:ok, "\n\n" <> text}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-  defp build_show_body(%{satisfied_by: satisfied_by, satisfied: false} = _node, scope, _slug)
+  defp build_show_body(%{satisfied_by: satisfied_by, satisfied: false}, scope, _slug)
        when not is_nil(satisfied_by),
-       do: "\n\n" <> generate_command(satisfied_by, scope)
+       do: {:ok, "\n\n" <> generate_command(satisfied_by, scope)}
 
-  defp build_show_body(_node, _scope, _slug), do: ""
+  defp build_show_body(_node, _scope, _slug), do: {:ok, ""}
 
   defp build_show_nav(node, all_nodes, slug) do
     project_nodes = Enum.filter(all_nodes, &(&1.entity_type == "project"))
@@ -412,30 +421,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   defp dependent_section([]), do: ""
   defp dependent_section(links), do: "\n\n### Unblocks\n\n" <> Enum.join(links, " | ")
-
-  defp build_setup_checklist(scope, slug, req_name) do
-    steps = ProjectSetup.setup_steps()
-
-    {items, _} =
-      Enum.map_reduce(steps, scope, fn mod, acc_scope ->
-        satisfied =
-          case mod.evaluate(acc_scope, %{}) do
-            {:ok, :valid} -> true
-            _ -> false
-          end
-
-        step_id = ProjectSetup.step_id(mod)
-        step_name = ProjectSetup.step_name(mod)
-        check = if satisfied, do: "[x]", else: "[ ]"
-        link = "[#{step_name}](/projects/#{slug}/requirements/#{req_name}/#{step_id})"
-        {"- #{check} #{link}", acc_scope}
-      end)
-
-    done = Enum.count(items, &String.starts_with?(&1, "- [x]"))
-    total = length(items)
-
-    "\n\n## Steps (#{done}/#{total})\n\n" <> Enum.join(items, "\n")
-  end
 
   defp build_component_show_markdown(component, project, nodes) do
     slug = project_slug(project)
@@ -536,5 +521,39 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     |> String.downcase()
     |> String.replace(~r/[^a-z0-9]+/, "-")
     |> String.trim("-")
+  end
+
+  defp handle_show_for_project(project, scope, req_name, socket) do
+    nodes = Requirements.compute_all(scope)
+
+    node =
+      Enum.find(nodes, fn n ->
+        n.entity_type == "project" and n.name == req_name
+      end)
+
+    case node && build_show_markdown(node, project, scope, nodes) do
+      {:ok, markdown} ->
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           markdown: markdown,
+           error: nil,
+           setup_error: nil
+         )}
+
+      {:error, reason, markdown} ->
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           markdown: markdown,
+           error: nil,
+           setup_error: inspect(reason)
+         )}
+
+      nil_or_false when nil_or_false in [nil, false] ->
+        {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
+    end
   end
 end
