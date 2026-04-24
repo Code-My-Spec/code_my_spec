@@ -20,6 +20,7 @@ defmodule CodeMySpec.Validation do
 
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
@@ -144,10 +145,17 @@ defmodule CodeMySpec.Validation do
   defp active_blocking_sources(config) do
     configurable =
       for {source, {field, _scope_fn}} <- @configurable_sources,
-          Map.get(config, field) != :off,
+          mode_for(config, field) != :off,
           do: source
 
     ["compiler" | configurable]
+  end
+
+  # Rows predating a new analyzer_mode column have NULL for that field since
+  # schema `default:` only applies on struct build, not on DB load. Fall back
+  # to the schema default so the blocking decision stays consistent.
+  defp mode_for(config, field) do
+    Map.get(config, field) || Map.fetch!(%ProjectConfiguration{}, field)
   end
 
   defp partition_problems(problems_by_source, config, scope_context) do
@@ -157,7 +165,7 @@ defmodule CodeMySpec.Validation do
     {configurable_block, configurable_advisory} =
       Enum.reduce(@configurable_sources, {[], []}, fn {source, {field, scope_fn}},
                                                       {block_acc, advisory_acc} ->
-        mode = Map.get(config, field)
+        mode = mode_for(config, field)
         problems = Map.get(problems_by_source, source, [])
 
         {block, advisory} = apply_mode(problems, mode, scope_fn, scope_context)
