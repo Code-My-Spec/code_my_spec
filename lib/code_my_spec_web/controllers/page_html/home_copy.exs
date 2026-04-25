@@ -1,11 +1,11 @@
 %{
   meta: %{
-    page_title: "CodeMySpec — The AI Development Platform for Phoenix Engineers",
+    page_title: "CodeMySpec — The Harness Platform for Software Founders",
     meta_description:
-      "Full-lifecycle AI development for Phoenix: specs, code, tests, verification. Built for engineers who have to maintain what they ship. BYO agent, no token markup.",
-    og_title: "CodeMySpec — The AI Development Platform for Phoenix Engineers",
+      "Run your entire software business from your terminal. CodeMySpec is a platform of Claude Code harnesses for the founder doing every job — engineering, marketing, support. BYO model. No token markup.",
+    og_title: "CodeMySpec — The Harness Platform for Software Founders",
     og_description:
-      "Lovable builds the demo. CodeMySpec builds the app you can still maintain in two years. Full-lifecycle AI development, Phoenix-first.",
+      "A platform of harnesses for the founder doing every job. Build the product. Market it. Support it. Use one. Use all. Add the next when you need it.",
     canonical_url: "https://codemyspec.com/"
   },
   hero: %{

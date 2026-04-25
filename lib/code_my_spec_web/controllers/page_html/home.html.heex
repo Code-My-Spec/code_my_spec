@@ -1,164 +1,483 @@
-<Layouts.marketing flash={@flash} current_scope={@current_scope}>
-  <div class="max-w-7xl mx-auto px-6 py-16">
-    <div class="text-center mb-16">
-      <p class="text-sm text-base-content/70 mb-4">Process-guided AI development for Phoenix</p>
-      <h1 class="text-5xl font-heading font-bold mb-6">
-        Keep your architecture. Let AI do the typing.
-      </h1>
-      <p class="text-xl text-base-content/80 mb-8 max-w-2xl mx-auto">
-        CodeMySpec wraps LLMs in strict workflows, Phoenix contexts, and one design doc per file.
-        You stay in charge of the system. The model just fills in the blanks.
-      </p>
-      <div class="flex gap-4 justify-center mb-10">
-        <a href={~p"/users/register"} class="btn btn-primary">Get started free</a>
-        <a href={~p"/methodology"} class="btn btn-outline">See the method</a>
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<div class="product-page-zone hair-grid">
+  <%!-- ───────────── HERO ───────────── --%>
+  <section class="border-b border-base-300 signal-top scanlines">
+    <div class="max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-[1.1fr_1fr] gap-14 items-start">
+      <div>
+        <div class="flex items-center gap-4 mb-7 font-mono text-[11px] uppercase tracking-[0.2em] text-base-content/40">
+          <span class="border border-primary/30 text-primary px-2.5 py-1 chamfer-sm">▸ 00 · the_harness_platform</span>
+          <span class="text-primary">●</span><span>v0.9 · early_access</span>
+          <span class="animate-pulse">_</span>
+        </div>
+
+        <h1 class="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-[1.02] tracking-tight">
+          Run your entire software business
+          <span class="text-primary">from your terminal.</span>
+        </h1>
+        <p class="text-lg text-base-content mt-7 max-w-[58ch] leading-relaxed">
+          CodeMySpec is a platform of harnesses for the founder doing every job. Build the product. Market it. Support it. Each harness is a Claude Code plugin that turns one of those jobs from ad-hoc into a system. Use one. Use all of them. Add the next when you need it.
+        </p>
+
+        <div class="mt-9 flex flex-wrap items-center gap-5">
+          <a href="#install-section" class="btn btn-primary font-mono chamfer-sm">
+            ▸ Install a harness
+          </a>
+          <a
+            href="https://cal.com/johndavenport"
+            class="font-mono text-sm uppercase tracking-[0.14em] text-base-content border-b border-primary/30 hover:text-primary hover:border-primary transition pb-0.5"
+          >
+            Talk to John →
+          </a>
+        </div>
       </div>
 
-      <div class="max-w-3xl mx-auto text-left">
-        <div class="mockup-code bg-base-300 text-sm">
-          <pre data-prefix="$"><code>claude /plugin install codemyspec@codemyspec</code></pre>
-          <pre data-prefix=">" class="text-success"><code>Plugin installed. MCP servers ready.</code></pre>
-          <pre data-prefix="$"><code>claude /cms:develop</code></pre>
-          <pre data-prefix=">" class="text-base-content/70"><code>→ next requirement: Accounts.Projects design doc</code></pre>
-          <pre data-prefix=">" class="text-base-content/70"><code>→ spec written   · tests generated   · code compiles</code></pre>
-          <pre data-prefix=">" class="text-base-content/70"><code>→ BDD scenarios pass   · QA agent verifies</code></pre>
-          <pre data-prefix=">" class="text-success"><code>Requirement satisfied. Fetching next.</code></pre>
+      <%!-- Hero media: founder's day across harnesses --%>
+      <div class="border border-primary/30 bg-base-200 overflow-hidden chamfer-lg shadow-[0_40px_80px_rgba(255,56,56,0.05)] order-first lg:order-none">
+        <div class="h-9 flex items-center gap-2 px-3.5 border-b border-primary/30 bg-base-300 font-mono text-[10px] uppercase tracking-[0.2em] text-base-content/50">
+          <span class="w-2.5 h-2.5 bg-primary border border-primary/40"></span>
+          <span class="w-2.5 h-2.5 border border-primary/40"></span>
+          <span class="w-2.5 h-2.5 border border-primary/40"></span>
+          <span class="ml-auto text-primary">~/codemyspec · founder/day</span>
         </div>
-        <p class="text-center text-xs text-base-content/50 mt-3">
-          The loop runs until every story is built, tested, and verified — inside the guardrails you set.
+        <div class="px-6 py-5 font-mono text-[12.5px] leading-[1.7]">
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 09:14 · plan the day</div>
+          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-code">/daily-plan</span></div>
+          <div><span class="text-base-content/50">→</span> 3 activities · awareness loop</div>
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 10:32 · build the product</div>
+          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span>mix spex --continuous</span></div>
+          <div><span class="text-base-content/50">→</span> spec · test · code · <span class="text-success">all green</span></div>
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 14:08 · market the product</div>
+          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-spec">/marketing-strategy --review</span></div>
+          <div><span class="text-base-content/50">→</span> bottleneck holds · keep shipping</div>
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 16:45 · feedback</div>
+          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-bdd">/marketing-stack --validate</span></div>
+          <div><span class="text-base-content/50">→</span> 17/17 healthy</div>
+          <div class="flex gap-2.5 mt-2"><span class="text-primary font-bold">▸</span><span class="border-r-2 border-primary animate-pulse">&nbsp;</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PROBLEM ───────────── --%>
+  <section class="border-b border-base-300 signal-top bg-gradient-to-b from-base-100 via-base-200/50 to-base-100">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">01</span><span>// the_frame</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight max-w-[22ch]">
+        You don't have a team.<br /><span class="text-primary">You have to BE the team.</span>
+      </h2>
+      <div class="grid md:grid-cols-2 gap-12 mt-12">
+        <p class="text-lg leading-relaxed text-base-content">
+          Solo software founders aren't running a smaller version of a software company. You're running every department of one. The product team. The marketing team. The support team. The ops team. Each of those is a real job, with real systems behind it inside companies that have engineers, marketers, and support staff.
+        </p>
+        <p class="text-lg leading-relaxed text-base-content">
+          The mistake is trying to do all of it the way a team would, in your head, alone. The fix isn't another SaaS subscription or another to-do list. It's the
+          <strong class="text-base-content font-medium">harness</strong>
+          — the discipline a real team uses to make sure work compounds instead of evaporates. CodeMySpec gives you that harness, one domain at a time.
         </p>
       </div>
     </div>
+  </section>
 
-    <div class="grid md:grid-cols-3 gap-8 mb-16">
-      <div class="card bg-base-200">
-        <div class="card-body">
-          <div class="badge badge-error badge-outline mb-2">The problem</div>
-          <p class="font-bold text-lg">LLMs invent architecture</p>
-          <p>
-            Give an LLM a vague brief and it happily makes up its own layers inside your app. It compiles. It passes tests. And it quietly ignores your Phoenix contexts.
-          </p>
-        </div>
-      </div>
-      <div class="card bg-base-200">
-        <div class="card-body">
-          <div class="badge badge-warning badge-outline mb-2">The insight</div>
-          <p class="font-bold text-lg">Engineering discipline still wins</p>
-          <p>
-            One design doc per file, strict context boundaries, tests first, reviews that block merges. None of that stopped being valuable when LLMs showed up — the discipline just got harder to hold by hand.
-          </p>
-        </div>
-      </div>
-      <div class="card bg-base-200">
-        <div class="card-body">
-          <div class="badge badge-success badge-outline mb-2">The solution</div>
-          <p class="font-bold text-lg">CodeMySpec is the harness</p>
-          <p>
-            Stories, contexts, designs, tests, and sessions all live in one workspace with AI running inside the guardrails. The AI generates code. You review architecture. The process catches bugs before they compound.
-          </p>
-        </div>
-      </div>
-    </div>
-
-    <div class="mb-16">
-      <h2 class="text-3xl font-heading font-bold mb-4 text-center">How It Works</h2>
-      <p class="text-center text-base-content/70 max-w-2xl mx-auto mb-8">
-        CodeMySpec replaces unstructured AI prompting with a six-phase development process.
-        Each phase produces artifacts that the next phase verifies against.
-        Nothing ships without passing through the full loop.
+  <%!-- ───────────── PLATFORM ───────────── --%>
+  <section class="border-b border-base-300 signal-top bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,_rgba(255,56,56,0.06),_transparent_70%)]">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">02</span><span>// the_platform</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        Two harnesses today.<br /><span class="text-primary">More as we need them.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-6 max-w-[64ch] leading-relaxed">
+        Built in the open by a solo founder who's using each harness as he ships it. CodeMySpec's product was built with
+        <code class="font-mono text-primary">/codemyspec</code>. Its marketing is being run with
+        <code class="font-mono text-cms-agent-bdd">/marketmyspec</code>. The next one ships when the bottleneck moves.
       </p>
-      <div class="grid md:grid-cols-3 gap-8">
-        <div class="card bg-base-100 border border-base-300">
-          <div class="card-body">
-            <div class="badge badge-primary mb-2">Step 1</div>
-            <h3 class="text-xl font-semibold mb-2">Stories & Requirements</h3>
-            <p>
-              The Product Manager MCP interviews you about what you're building and generates user stories with testable acceptance criteria. Each criterion becomes a contract: if the acceptance criteria pass, the feature is done.
-            </p>
+
+      <div class="mt-16 grid grid-cols-1 lg:grid-cols-3 gap-[18px]">
+        <%!-- /codemyspec — production --%>
+        <article class="harness-card flex flex-col" style="--ac: var(--color-cms-red);">
+          <div class="font-mono text-[14px] font-bold text-primary mb-1.5">/codemyspec</div>
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// engineering harness</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4">Build the product.</h3>
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-primary border border-primary/30 px-2.5 py-1 self-start mb-5 inline-flex items-center gap-2.5">
+            <span class="w-1.5 h-1.5 bg-primary inline-block animate-pulse [box-shadow:0_0_8px_var(--color-cms-red)]"></span>
+            ▸ Production
+          </span>
+          <p class="text-[15px] text-base-content/70 leading-relaxed mb-6 flex-1">
+            Specs, requirement graph, six subagents, BDD scenarios, browser-based QA. Phoenix-native today, broader stack support next. The harness that built this product.
+          </p>
+          <a href={~p"/products/code-my-spec"} class="font-mono text-xs uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 self-start hover:text-base-content transition">
+            → See CodeMySpec
+          </a>
+        </article>
+
+        <%!-- /marketmyspec — early access --%>
+        <article class="harness-card flex flex-col" style="--ac: var(--color-cms-agent-bdd);">
+          <div class="font-mono text-[14px] font-bold text-cms-agent-bdd mb-1.5">/marketmyspec</div>
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// marketing harness</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4">Market the product.</h3>
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-cms-agent-bdd border border-base-300 px-2.5 py-1 self-start mb-5 inline-flex items-center gap-2.5">
+            <span class="w-1.5 h-1.5 bg-cms-agent-bdd inline-block"></span>
+            ▸ Early Access
+          </span>
+          <p class="text-[15px] text-base-content/70 leading-relaxed mb-6 flex-1">
+            8-step strategy interview with research agents. A
+            <code class="font-mono text-cms-agent-code">/daily-plan</code>
+            that picks today's three activities. 17 infrastructure recipes. Adapts by industry. The harness marketing this product right now.
+          </p>
+          <a href={~p"/products/market-my-spec"} class="font-mono text-xs uppercase tracking-[0.14em] text-cms-agent-bdd border-b border-cms-agent-bdd pb-0.5 self-start hover:text-base-content transition">
+            → See MarketMySpec
+          </a>
+        </article>
+
+        <%!-- /portmyspec — planned --%>
+        <article class="harness-card flex flex-col opacity-55" style="--ac: var(--color-cms-text-mute);">
+          <div class="font-mono text-[14px] font-bold text-base-content/50 mb-1.5">/portmyspec</div>
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// support harness</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4 text-base-content/60">Support the product.</h3>
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-base-content/50 border border-base-300 px-2.5 py-1 self-start mb-5 inline-flex items-center gap-2.5">
+            <span class="w-1.5 h-1.5 border border-base-content/50 inline-block"></span>
+            ○ Planned
+          </span>
+          <p class="text-[15px] text-base-content/50 leading-relaxed mb-6 flex-1">
+            Coming when the bottleneck moves. Built when 25 customers need it; not before. No date promised, no waitlist — it'll be here when it earns its place.
+          </p>
+          <span class="font-mono text-xs uppercase tracking-[0.14em] text-base-content/50 border-b border-base-content/30 pb-0.5 self-start">
+            → Coming next
+          </span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── WHO IT'S FOR ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">03</span><span>// who_its_for</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        Built for the founder <span class="text-primary">doing every job.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-6 max-w-[64ch] leading-relaxed">
+        If you're shipping software and there's nobody else in the building, you're our beachhead. If you're a small team — engineer, product, marketing in three chairs or fewer — the same harnesses work; the platform doesn't care whether the user is the founder or someone the founder hired.
+      </p>
+
+      <div class="mt-14 grid lg:grid-cols-[1.2fr_1fr] gap-[18px]">
+        <%!-- Solo founder --%>
+        <div class="bg-base-200 border border-primary/30 chamfer-lg p-10 flex flex-col relative">
+          <span class="absolute top-0 left-0 h-full w-[3px] bg-primary"></span>
+          <div class="font-mono text-[11px] uppercase tracking-[0.22em] text-primary mb-5">▸ Primary</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-5">Solo founder</h3>
+          <div class="font-mono text-sm text-base-content/70 mb-5 flex flex-wrap gap-x-3.5 gap-y-2">
+            <span class="text-base-content">1 person</span><span class="text-primary">·</span>
+            <span class="text-base-content">4+ jobs</span><span class="text-primary">·</span>
+            <span class="text-base-content">no patience for SaaS sprawl</span>
           </div>
+          <p class="text-[15px] text-base-content/70 leading-relaxed mb-6">
+            Wants engineering rigor without an engineering team. Wants a marketing system without hiring a CMO. Wants the work to compound instead of evaporate every Monday.
+          </p>
+          <p class="text-base text-base-content italic border-l-2 border-primary pl-3.5 mb-6 leading-snug">
+            "I can finally ship like a real company."
+          </p>
+          <a href="#install-section" class="font-mono text-xs uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 self-start mt-auto hover:text-base-content transition">
+            Start with one harness →
+          </a>
         </div>
-        <div class="card bg-base-100 border border-base-300">
-          <div class="card-body">
-            <div class="badge badge-primary mb-2">Step 2</div>
-            <h3 class="text-xl font-semibold mb-2">Architecture & Design</h3>
-            <p>
-              The Architect MCP maps stories to Phoenix contexts with validated dependencies. Each context gets a design document that defines its schemas, repositories, and services. The dependency graph catches circular references before a single line of code is written.
-            </p>
+
+        <%!-- Small team --%>
+        <div class="bg-base-300 border border-base-300 chamfer-lg p-10 flex flex-col relative" style="--ac: var(--color-cms-agent-bdd);">
+          <span class="absolute top-0 left-0 h-full w-[3px] bg-cms-agent-bdd"></span>
+          <div class="font-mono text-[11px] uppercase tracking-[0.22em] text-cms-agent-bdd mb-5">▸ Secondary</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-5">Small software team</h3>
+          <div class="font-mono text-sm text-base-content/70 mb-5 flex flex-wrap gap-x-3.5 gap-y-2">
+            <span class="text-base-content">2-5 people</span><span class="text-cms-agent-bdd">·</span>
+            <span class="text-base-content">cross-functional</span><span class="text-cms-agent-bdd">·</span>
+            <span class="text-base-content">founder still doing 3 jobs</span>
           </div>
-        </div>
-        <div class="card bg-base-100 border border-base-300">
-          <div class="card-body">
-            <div class="badge badge-primary mb-2">Step 3</div>
-            <h3 class="text-xl font-semibold mb-2">BDD Specs, Tests & Code</h3>
-            <p>
-              AI generates BDD scenarios from acceptance criteria, writes tests from specs, and implements code that passes them. The QA agent then tests each story against the running application with browser automation, filing structured issues for anything that doesn't match.
-            </p>
-          </div>
+          <p class="text-[15px] text-base-content/70 leading-relaxed mb-6">
+            Same harnesses, shared across the team via specs and MCP servers. Onboarding is high-touch today by design.
+          </p>
+          <p class="text-base text-base-content italic border-l-2 border-cms-agent-bdd pl-3.5 mb-6 leading-snug">
+            "Our engineer, our marketer, and the founder all work from the same source of truth."
+          </p>
+          <a href="https://cal.com/johndavenport" class="font-mono text-xs uppercase tracking-[0.14em] text-cms-agent-bdd border-b border-cms-agent-bdd pb-0.5 self-start mt-auto hover:text-base-content transition">
+            Talk to John →
+          </a>
         </div>
       </div>
     </div>
+  </section>
 
-    <div class="mb-16">
-      <div class="card bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
-        <div class="card-body p-8 lg:p-10">
-          <h2 class="text-2xl font-heading font-bold mb-4 text-center">Proven with MetricFlow</h2>
-          <p class="text-center text-base-content/70 mb-6 max-w-2xl mx-auto">
-            We built a full-stack Phoenix analytics platform using this method —
-            OAuth integrations with Google Analytics, QuickBooks, and three other platforms,
-            multi-tenant accounts, correlation analysis, and AI chat insights.
-            Zero human-written code. Here's what happened.
+  <%!-- ───────────── PROOF ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">04</span><span>// proof</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        Real founder. Real apps.<br /><span class="text-primary">Real recursion.</span>
+      </h2>
+
+      <div class="mt-14 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr_1fr] gap-[18px]">
+        <%!-- MetricFlow (featured) --%>
+        <div class="proof-feature flex flex-col min-h-[280px]">
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-primary mb-5 flex items-center gap-2.5">
+            <span class="w-2 h-2 bg-primary inline-block [box-shadow:0_0_8px_var(--color-cms-red)]"></span>
+            featured · open-sourcing soon
+          </div>
+          <h3 class="font-heading font-bold text-[22px] leading-tight tracking-tight mb-4">MetricFlow</h3>
+          <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
+            Multi-context Phoenix app with Google Ads, Google Analytics, Facebook, and QuickBooks integrations. Built end to end with
+            <code class="font-mono text-primary text-xs bg-primary/[0.06] border border-primary/20 px-1.5 py-0.5">/codemyspec</code>. The codebase is the case study.
           </p>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">40</div>
-              <div class="text-sm text-base-content/60">Commits</div>
+          <div class="grid grid-cols-3 gap-3.5 border-t border-primary/20 pt-5 mb-5">
+            <div>
+              <div class="font-heading font-bold text-2xl text-primary tracking-tight leading-none [text-shadow:0_0_14px_rgba(255,56,56,0.3)]">40</div>
+              <div class="font-mono text-[10px] uppercase tracking-[0.18em] text-base-content/50 mt-1">commits</div>
             </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">13</div>
-              <div class="text-sm text-base-content/60">Working days</div>
+            <div>
+              <div class="font-heading font-bold text-2xl text-primary tracking-tight leading-none [text-shadow:0_0_14px_rgba(255,56,56,0.3)]">13d</div>
+              <div class="font-mono text-[10px] uppercase tracking-[0.18em] text-base-content/50 mt-1">end-to-end</div>
             </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">0</div>
-              <div class="text-sm text-base-content/60">Human-written lines</div>
-            </div>
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary">5</div>
-              <div class="text-sm text-base-content/60">Platform integrations</div>
+            <div>
+              <div class="font-heading font-bold text-2xl text-primary tracking-tight leading-none [text-shadow:0_0_14px_rgba(255,56,56,0.3)]">5</div>
+              <div class="font-mono text-[10px] uppercase tracking-[0.18em] text-base-content/50 mt-1">integrations</div>
             </div>
           </div>
-          <div class="text-center">
-            <a href="/case-studies/metric-flow" class="btn btn-ghost gap-2">
-              Read the honest case study &rarr;
+          <a href="https://github.com/Code-My-Spec/metricflow" class="font-mono text-xs uppercase tracking-[0.14em] text-base-content border-b border-primary pb-0.5 self-start hover:text-primary transition">
+            ▸ github.com/Code-My-Spec/metricflow
+          </a>
+        </div>
+
+        <%!-- Fuellytics --%>
+        <div class="proof-stats flex flex-col min-h-[280px]">
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-primary mb-5 flex items-center gap-2.5">
+            <span class="w-2 h-2 bg-primary inline-block [box-shadow:0_0_8px_var(--color-cms-red)]"></span>
+            production · uat
+          </div>
+          <h3 class="font-heading font-bold text-[22px] leading-tight tracking-tight mb-4">Fuellytics</h3>
+          <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
+            Production client app built with the CodeMySpec methodology. In UAT March 2026. Real customers, real uptime.
+          </p>
+          <a href="#" class="font-mono text-xs uppercase tracking-[0.14em] text-base-content border-b border-primary pb-0.5 self-start hover:text-primary transition">
+            ▸ Case study
+          </a>
+        </div>
+
+        <%!-- Recursive --%>
+        <div class="proof-stats flex flex-col min-h-[280px]">
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-primary mb-5 flex items-center gap-2.5">
+            <span class="w-2 h-2 bg-primary inline-block [box-shadow:0_0_8px_var(--color-cms-red)]"></span>
+            recursive · self-hosted
+          </div>
+          <h3 class="font-heading font-bold text-[22px] leading-tight tracking-tight mb-4">codemyspec.com itself</h3>
+          <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
+            This site, the product pages, the methodology page, the daily Reddit comments — all output of the harness platform marketing this site. The marketing harness is marketing the marketing harness.
+          </p>
+          <a href="https://github.com/Code-My-Spec" class="font-mono text-xs uppercase tracking-[0.14em] text-base-content border-b border-primary pb-0.5 self-start hover:text-primary transition">
+            ▸ See the repo
+          </a>
+        </div>
+      </div>
+
+      <div class="mt-12 pt-8 border-t border-primary/20 flex flex-wrap items-center gap-4 font-mono text-sm text-base-content/70">
+        <div class="w-[46px] h-[46px] bg-gradient-to-br from-primary to-cms-agent-bdd flex items-center justify-center font-heading font-bold text-base-100 text-[15px] chamfer-sm">
+          JD
+        </div>
+        <div>
+          Built by
+          <a href={~p"/author/john-davenport"} class="text-base-content border-b border-primary hover:text-primary transition">
+            John Davenport
+          </a>
+          — six years on r/elixir, working Phoenix engineer, taught himself entrepreneurship from the internet. Building what he needs as he needs it, in the open.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PRICING ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28 text-center">
+      <p class="eyebrow justify-center mb-6"><span class="idx">05</span><span>// pricing</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        <span class="text-primary">Free</span> during early access.
+      </h2>
+      <div class="mt-12 mx-auto max-w-2xl border border-primary p-10 md:p-12 bg-gradient-to-b from-base-200 to-base-100 text-left chamfer-lg relative">
+        <span class="absolute top-0 left-0 right-0 h-[3px] bg-primary"></span>
+        <span class="inline-flex items-center gap-2.5 font-mono text-[10px] uppercase tracking-[0.22em] text-primary border border-primary bg-primary/10 px-3 py-1.5 mb-6">
+          <span class="w-1.5 h-1.5 bg-primary inline-block animate-pulse [box-shadow:0_0_6px_var(--color-cms-red)]"></span>
+          early access · 2026
+        </span>
+        <h3 class="font-heading font-bold text-[38px] leading-tight tracking-tight mb-4">
+          $0<span class="text-base-content/50 text-lg ml-2">/ month</span>
+        </h3>
+        <p class="text-base text-base-content/70 leading-relaxed">
+          Each harness is free during early access. Server-side platform features will be priced per-seat once we hit 1.0. You bring your own model provider and keys — we never charge a markup on your tokens. Same arrangement on every harness.
+        </p>
+        <ul class="mt-6 pt-6 border-t border-primary/20 grid gap-3 list-none p-0">
+          <%= for item <- [
+            "Unlimited specs, daily plans, BDD scenarios",
+            "All harnesses · all skills · all recipes",
+            "BYO model · BYO keys · no token markup",
+            "Specs and artifacts live in your repo · no lock-in",
+            "Works with Claude Code today"
+          ] do %>
+            <li class="font-mono text-[13px] text-base-content flex items-center gap-3.5">
+              <span class="w-5 h-5 bg-primary text-base-100 font-mono font-bold text-xs flex items-center justify-center chamfer-sm">✓</span>
+              {item}
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">06</span><span>// objections</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight mb-3">
+        Questions founders <span class="text-primary">actually ask.</span>
+      </h2>
+
+      <div class="mt-12 border-t border-primary/20">
+        <%= for {{idx, q, a}, open?} <- Enum.with_index([
+          {"Q.01", "Is this a CodeMySpec thing or a different product?",
+           "CodeMySpec is the company and the first product (the engineering harness). MarketMySpec is the second product (the marketing harness). Both live under one platform — same brand, same Claude Code plugin model, same BYO-model commitment. Future harnesses will follow the same pattern."},
+          {"Q.02", "I'm a solo founder, not a software business owner. Does this still work?",
+           "That's exactly who we built it for. The harnesses are designed to give one person the discipline a real team would have. Solo founder is the primary audience."},
+          {"Q.03", "I have a small team. Can we use this together?",
+           "Yes. Specs are markdown in your repo. MCP servers expose the same source of truth to every team member's Claude Code. The team motion is high-touch today — book time with John to set it up properly."},
+          {"Q.04", "Why two products instead of one?",
+           "Different bottlenecks. Engineering and marketing are completely separate concerns; mashing them into one product would help neither. Same brand, same harness pattern, separate scope. You can install just the one you need."},
+          {"Q.05", "Is this open source?",
+           "Specs are markdown in your repo. Generated tests are standard ExUnit. The plugin code is a Claude Code plugin — open and inspectable. The platform service that backs team-features and persistence is closed-source, paid post-1.0."},
+          {"Q.06", "What if you build something better tomorrow?",
+           "You own the artifacts. Specs, tests, marketing files, daily plans — all live in your repo as markdown. No lock-in. The platform brings continuity across them; you can always walk."},
+          {"Q.07", "What stack do I need to use this?",
+           "The engineering harness is Phoenix-native today. Other stack support on the roadmap. The marketing harness works regardless of stack — it's about your business, not your codebase."},
+          {"Q.08", "How much time per week?",
+           "Realistically, 5-10 hours/week to keep both harnesses running well. Heavier the first month while you do the strategy interviews and wire the infrastructure. Lighter after. Three activities a day from /daily-plan is the cap."}
+        ]) |> Enum.map(fn {item, i} -> {item, i == 0} end) do %>
+          <details class="border-b border-primary/20 group" open={open?}>
+            <summary class="cursor-pointer list-none py-7 flex justify-between items-center gap-6 font-mono text-[15px] font-medium hover:text-primary transition">
+              <span>
+                <span class="text-primary text-[11px] tracking-[0.22em] mr-3.5">{idx}</span>{q}
+              </span>
+              <span class="font-mono text-sm text-primary border border-primary px-2 py-0.5 chamfer-sm transition group-open:bg-primary group-open:text-base-100 flex-shrink-0">
+                +
+              </span>
+            </summary>
+            <div class="pb-7 text-base text-base-content/70 leading-relaxed max-w-[72ch]">
+              {a}
+            </div>
+          </details>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FINAL CTA ───────────── --%>
+  <section
+    id="install-section"
+    class="signal-top scanlines bg-[radial-gradient(circle_at_75%_30%,_rgba(255,56,56,0.14),_transparent_55%),radial-gradient(circle_at_15%_80%,_rgba(255,56,56,0.06),_transparent_60%)]"
+  >
+    <div class="max-w-7xl mx-auto px-6 py-28 lg:py-32">
+      <p class="eyebrow"><span class="idx">07</span><span>// install</span></p>
+      <h2 class="font-heading font-bold text-4xl md:text-6xl leading-[1.02] tracking-tight max-w-[14ch]">
+        Pick a harness.<br /><span class="text-primary">Install it.</span>
+      </h2>
+      <p class="text-lg text-base-content mt-6 max-w-[46ch] leading-relaxed">
+        Two commands. No signup gate. The full platform is one Claude Code plugin install away.
+      </p>
+
+      <div class="mt-14 grid lg:grid-cols-2 gap-[18px]">
+        <%!-- /codemyspec install --%>
+        <div class="border-[1.5px] border-primary bg-gradient-to-b from-base-100 to-base-200 chamfer-lg overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3.5 border-b border-primary/30 bg-gradient-to-r from-primary/15 to-transparent">
+            <span class="font-mono text-[11px] uppercase tracking-[0.22em] text-primary font-bold flex items-center gap-2.5">
+              <span class="w-1.5 h-1.5 bg-primary inline-block [box-shadow:0_0_6px_var(--color-cms-red)]"></span>
+              /codemyspec
+            </span>
+            <button
+              class="copy-btn font-mono text-[10px] uppercase tracking-[0.2em] text-primary border border-primary px-2.5 py-1.5 hover:bg-primary hover:text-base-100 transition"
+              data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install codemyspec@codemyspec"}
+            >
+              [ copy ]
+            </button>
+          </div>
+          <div class="px-4 py-4 font-mono text-sm">
+            <div class="flex gap-2.5 py-1">
+              <span class="text-primary font-bold select-none">▸</span>
+              <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
+            </div>
+            <div class="flex gap-2.5 py-1">
+              <span class="text-primary font-bold select-none">▸</span>
+              <span class="break-all">/plugin install codemyspec@codemyspec</span>
+            </div>
+          </div>
+          <div class="px-4 py-3.5 border-t border-primary/30">
+            <a href={~p"/products/code-my-spec"} class="font-mono text-[11px] uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 hover:text-base-content transition">
+              Read the engineering brief →
+            </a>
+          </div>
+        </div>
+
+        <%!-- /marketmyspec install --%>
+        <div class="border-[1.5px] border-cms-agent-bdd bg-gradient-to-b from-base-100 to-base-200 chamfer-lg overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3.5 border-b border-base-300 bg-gradient-to-r from-cms-agent-bdd/15 to-transparent">
+            <span class="font-mono text-[11px] uppercase tracking-[0.22em] text-cms-agent-bdd font-bold flex items-center gap-2.5">
+              <span class="w-1.5 h-1.5 bg-cms-agent-bdd inline-block"></span>
+              /marketmyspec
+            </span>
+            <button
+              class="copy-btn font-mono text-[10px] uppercase tracking-[0.2em] text-cms-agent-bdd border border-cms-agent-bdd px-2.5 py-1.5 hover:bg-cms-agent-bdd hover:text-base-100 transition"
+              data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install marketmyspec@codemyspec"}
+            >
+              [ copy ]
+            </button>
+          </div>
+          <div class="px-4 py-4 font-mono text-sm">
+            <div class="flex gap-2.5 py-1">
+              <span class="text-cms-agent-bdd font-bold select-none">▸</span>
+              <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
+            </div>
+            <div class="flex gap-2.5 py-1">
+              <span class="text-cms-agent-bdd font-bold select-none">▸</span>
+              <span class="break-all">/plugin install marketmyspec@codemyspec</span>
+            </div>
+          </div>
+          <div class="px-4 py-3.5 border-t border-base-300">
+            <a href={~p"/products/market-my-spec"} class="font-mono text-[11px] uppercase tracking-[0.14em] text-cms-agent-bdd border-b border-cms-agent-bdd pb-0.5 hover:text-base-content transition">
+              Read the marketing brief →
             </a>
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="mb-16">
-      <h2 class="text-3xl font-heading font-bold mb-8 text-center">Built by a Phoenix Developer</h2>
-      <p class="text-center text-base-content/70 max-w-2xl mx-auto mb-4">
-        CodeMySpec is built by <a href="/author/john-davenport" class="text-primary hover:underline">John Davenport</a> — 15 years in enterprise systems, 2 years deep in LLM-assisted development.
-        Every feature went through the same six-phase method. The methodology isn't theoretical. It's how this product was built.
-      </p>
-      <p class="text-center text-base-content/70 max-w-2xl mx-auto mb-4">
-        The stack is Elixir, Phoenix, and LiveView with MCP servers for AI agent orchestration. BDD specs use Gherkin scenarios that run against the live application. The architecture enforces bounded contexts with validated dependency graphs — the same patterns that Phoenix contexts were designed for.
-      </p>
-      <p class="text-center text-base-content/50 text-sm">
-        Read the <a href="/pages/founder-story" class="hover:text-primary">founder story</a> or check the <a href="/blog" class="hover:text-primary">blog</a> for technical deep dives.
-      </p>
-    </div>
-
-    <div class="text-center">
-      <h2 class="text-3xl font-heading font-bold mb-4">
-        Want LLMs in your workflow without letting them design your system?
-      </h2>
-      <div class="flex gap-4 justify-center">
-        <a href={~p"/users/register"} class="btn btn-primary">Get Started</a>
-        <a href={~p"/methodology"} class="btn btn-ghost">
-          Read the methodology
+      <p class="mt-10 text-center font-mono text-sm uppercase tracking-[0.14em] text-base-content/70">
+        Not sure where to start?
+        <a href="https://cal.com/johndavenport" class="text-primary border border-primary px-4 py-2 ml-2.5 chamfer-sm hover:bg-primary hover:text-base-100 transition">
+          ▸ Talk to John
         </a>
-      </div>
+      </p>
     </div>
-  </div>
+  </section>
+
+  <script>
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const text = btn.getAttribute('data-copy');
+        const original = btn.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (_) {}
+          document.body.removeChild(ta);
+        }
+        btn.textContent = '[ ✓ COPIED ]';
+        setTimeout(() => { btn.textContent = original; }, 1800);
+      });
+    });
+  </script>
+</div>
 </Layouts.marketing>

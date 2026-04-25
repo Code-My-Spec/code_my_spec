@@ -124,12 +124,12 @@
     --color-cms-agent-code: #fde047;
     --color-cms-agent-qa: #ff3838;
 
-    /* Type families — Space Mono Bold = display, JetBrains Mono = code/labels, Inter = body only */
+    /* Type families — Space Mono Bold = display, JetBrains Mono = code/labels, IBM Plex Sans = body only */
     --font-display: "Space Mono", ui-monospace, monospace;
     --font-heading: "Space Mono", ui-monospace, monospace;
     --font-mono: "JetBrains Mono", ui-monospace, monospace;
-    --font-body: "Inter", system-ui, sans-serif;
-    --font-sans: "Inter", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-body: "IBM Plex Sans", system-ui, sans-serif;
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
 /* ─── Brand system utilities — texture & geometry daisyUI doesn't model ──── */
