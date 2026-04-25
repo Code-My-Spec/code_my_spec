@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Fixtures do
     Environments,
     ProblemsFixtures,
     ProjectsFixtures,
+    QaIntegrationPlanFixtures,
     SessionsFixtures,
     SetupFixtures,
     Stories,
@@ -72,6 +73,25 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate with_existing_script(env, body), to: CodeGenerationFixtures
   defdelegate read_script(env), to: CodeGenerationFixtures
   defdelegate script_exists?(env), to: CodeGenerationFixtures
+
+  # -- QA Integration Plan --
+  defdelegate with_decision_for_service(env, service, opts \\ []),
+    to: QaIntegrationPlanFixtures
+
+  defdelegate with_verified_integration_spec(env, name), to: QaIntegrationPlanFixtures
+  defdelegate with_pending_integration_spec(env, name), to: QaIntegrationPlanFixtures
+
+  defdelegate with_integration_spec_missing_verify_script(env, name),
+    to: QaIntegrationPlanFixtures
+
+  defdelegate with_verify_script(env, name), to: QaIntegrationPlanFixtures
+  defdelegate with_integration_index(env, topics), to: QaIntegrationPlanFixtures
+  defdelegate with_empty_integration_index(env), to: QaIntegrationPlanFixtures
+  defdelegate with_verified_integration(env, name), to: QaIntegrationPlanFixtures
+  defdelegate read_integration_spec(env, name), to: QaIntegrationPlanFixtures
+  defdelegate integration_spec_exists?(env, name), to: QaIntegrationPlanFixtures
+  defdelegate integration_index_exists?(env), to: QaIntegrationPlanFixtures
+  defdelegate verify_script_exists?(env, name), to: QaIntegrationPlanFixtures
 
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures

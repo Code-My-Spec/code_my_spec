@@ -67,6 +67,16 @@ defmodule CodeMySpecSpex.SharedGivens do
     the prompt the agent receives so specs can assert on its content
     or pass it forward into evaluate_task scenarios. Produces
     `context.session_id`, `context.task_id`, and `context.prompt`.
+  - `:qa_integration_plan_task_started` — drives session_start + start_task
+    for the `qa_integration_plan` requirement on the active project.
+    Mirror of the code_generation given for the integration-credentials
+    flow. Produces `context.session_id`, `context.task_id`, and
+    `context.prompt`.
+  - `:three_amigos_task_started` — drives session_start + start_task for
+    the `three_amigos_complete` requirement on `context.story`. Mirror of
+    `:persona_research_task_started` for the per-story Three Amigos node.
+    Produces `context.session_id` and `context.task_id`. Requires
+    `context.story` from a prior given.
 
   Add new shared givens only after a third spec duplicates setup.
   """
@@ -445,6 +455,85 @@ defmodule CodeMySpecSpex.SharedGivens do
       StartTask.execute(
         %{
           requirement_name: "code_generation",
+          entity_type: "project",
+          entity_id: to_string(context.project.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    prompt = flatten_tool_response(response)
+
+    session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
+    task = CodeMySpec.Sessions.Session.active_task(session)
+
+    {:ok,
+     %{
+       session_id: session_id,
+       task_id: task && task.id,
+       prompt: prompt,
+       start_response: response
+     }}
+  end
+
+  # The agent has signalled SessionStart and called start_task for the
+  # `three_amigos_complete` requirement on `context.story`. Same shape as
+  # the other *_task_started givens — drives the real hook + MCP call so
+  # the pipeline sees a live `ThreeAmigos` task.
+  given :three_amigos_task_started do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, _response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "three_amigos_complete",
+          entity_type: "story",
+          entity_id: to_string(context.story.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
+    task = CodeMySpec.Sessions.Session.active_task(session)
+
+    {:ok, %{session_id: session_id, task_id: task && task.id}}
+  end
+
+  # The agent has signalled SessionStart and called start_task for the
+  # `qa_integration_plan` requirement on the active project. start_task
+  # runs `QaIntegrationPlan.command/2`, which returns the orchestration
+  # prompt (no side effects on disk — qa_integration_plan is a pure
+  # prompt builder).
+  given :qa_integration_plan_task_started do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "qa_integration_plan",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id

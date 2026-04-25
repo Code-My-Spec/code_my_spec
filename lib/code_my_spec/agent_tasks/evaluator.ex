@@ -69,6 +69,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       CodeMySpec.AgentTasks.ProjectSetup,
       CodeMySpec.AgentTasks.QaApp,
       CodeMySpec.AgentTasks.QaSetup,
+      CodeMySpec.AgentTasks.QaIntegrationPlan,
       CodeMySpec.AgentTasks.Init,
       CodeMySpec.AgentTasks.ProjectBootstrap,
       CodeMySpec.AgentTasks.RefactorModule,

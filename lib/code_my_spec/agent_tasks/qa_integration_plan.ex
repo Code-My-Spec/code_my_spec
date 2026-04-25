@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   @moduledoc """
-  Pre-bootstrap integration planning agent task.
+  Integration planning agent task.
 
   Reads technical decisions from `.code_my_spec/architecture/decisions/` to identify
   third-party integrations (OAuth providers, API services), then guides the agent to:
@@ -15,8 +15,11 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   Two main functions:
   - `command/3` — Builds prompt with integration instructions
   - `evaluate/3` — State machine checking integration spec completeness and verification status
-  """
 
+  Sequencing — where this task runs in the requirement graph — is the
+  concern of `CodeMySpec.Requirements.RequirementDefinitionData`, not this
+  module. This task only describes its own contract.
+  """
 
   def orchestrate(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
@@ -81,15 +84,16 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   # Data Loading
   # ============================================================================
 
-  defp read_decisions(env) do
-    case Environments.glob(env, Path.join(@decisions_dir, "*.md")) do
+  defp read_decisions(env), do: read_md_pairs(env, @decisions_dir)
+
+  defp read_existing_specs(env), do: read_md_pairs(env, @integrations_dir)
+
+  # Glob `*.md` under `dir`, read each, return [{file, content}] dropping unreadable files.
+  defp read_md_pairs(env, dir) do
+    case Environments.glob(env, Path.join(dir, "*.md")) do
       files when is_list(files) and files != [] ->
-        Enum.map(files, fn file ->
-          case Environments.read_file(env, file) do
-            {:ok, content} -> {file, content}
-            _ -> nil
-          end
-        end)
+        files
+        |> Enum.map(&read_file_pair(env, &1))
         |> Enum.reject(&is_nil/1)
 
       _ ->
@@ -97,19 +101,10 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
     end
   end
 
-  defp read_existing_specs(env) do
-    case Environments.glob(env, Path.join(@integrations_dir, "*.md")) do
-      files when is_list(files) and files != [] ->
-        Enum.map(files, fn file ->
-          case Environments.read_file(env, file) do
-            {:ok, content} -> {file, content}
-            _ -> nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
-
-      _ ->
-        []
+  defp read_file_pair(env, file) do
+    case Environments.read_file(env, file) do
+      {:ok, content} -> {file, content}
+      _ -> nil
     end
   end
 
@@ -141,15 +136,12 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
 
   defp build_header do
     """
-    # QA Integration Plan: Pre-Bootstrap Integration Setup
+    # Integration Plan: Third-Party Credentials
 
     You are planning third-party integrations for this project. Your job is to read the
     technical decisions (ADRs), identify integrations that need external credentials
     (OAuth providers, API-key services), and produce structured integration specs with
-    verify scripts that prove credentials work.
-
-    This step runs BEFORE project bootstrap. The integration specs you produce will be
-    consumed by bootstrap to scaffold provider code, routes, and tests.\
+    verify scripts that prove credentials work.\
     """
   end
 
@@ -297,36 +289,43 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   defp check_verify_scripts(_env, []), do: :ok
 
   defp check_verify_scripts(env, spec_files) do
-    Enum.reduce_while(spec_files, :ok, fn file, :ok ->
-      case read_verify_script_path(env, file) do
-        {:ok, script_path} ->
-          case Environments.file_exists?(env, script_path) do
-            true -> {:cont, :ok}
-            _ -> {:halt, {:error, "Verify script `#{script_path}` missing (referenced by `#{file}`). Create it and stop again."}}
-          end
+    Enum.reduce_while(spec_files, :ok, fn file, :ok -> check_one_verify_script(env, file) end)
+  end
 
-        {:error, _} ->
-          {:halt, {:error, "Integration spec `#{file}` has no verify script path. Add a `## Verify Script` section."}}
-      end
-    end)
+  defp check_one_verify_script(env, file) do
+    case read_verify_script_path(env, file) do
+      {:ok, script_path} -> verify_script_exists(env, file, script_path)
+      {:error, _} -> {:halt, {:error, "Integration spec `#{file}` has no verify script path. Add a `## Verify Script` section."}}
+    end
+  end
+
+  defp verify_script_exists(env, file, script_path) do
+    if Environments.file_exists?(env, script_path) do
+      {:cont, :ok}
+    else
+      {:halt, {:error, "Verify script `#{script_path}` missing (referenced by `#{file}`). Create it and stop again."}}
+    end
   end
 
   defp check_verified_status(_env, []), do: :ok
 
   defp check_verified_status(env, spec_files) do
-    Enum.reduce_while(spec_files, :ok, fn file, :ok ->
-      case Environments.read_file(env, file) do
-        {:ok, content} ->
-          if String.contains?(String.downcase(content), "verified") do
-            {:cont, :ok}
-          else
-            {:halt, {:error, "Integration `#{file}` is not yet verified. Run the verify script and update the status."}}
-          end
+    Enum.reduce_while(spec_files, :ok, fn file, :ok -> check_one_verified(env, file) end)
+  end
 
-        _ ->
-          {:halt, {:error, "Cannot read integration spec `#{file}`."}}
-      end
-    end)
+  defp check_one_verified(env, file) do
+    case Environments.read_file(env, file) do
+      {:ok, content} -> verified_status(file, content)
+      _ -> {:halt, {:error, "Cannot read integration spec `#{file}`."}}
+    end
+  end
+
+  defp verified_status(file, content) do
+    if String.contains?(String.downcase(content), "verified") do
+      {:cont, :ok}
+    else
+      {:halt, {:error, "Integration `#{file}` is not yet verified. Run the verify script and update the status."}}
+    end
   end
 
   defp read_verify_script_path(env, spec_file) do
