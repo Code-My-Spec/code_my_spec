@@ -310,6 +310,161 @@
         content: "// ";
     }
 
+    /* ─── MarketMySpec — skill card ────────────────────────────────────
+       3-skill grid: slash-command label + colored top-left accent bar
+       (driven by --ac CSS variable per card). */
+    .skill-card {
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        padding: 36px 32px;
+        position: relative;
+        transition: background 0.15s;
+        clip-path: polygon(
+            16px 0,
+            100% 0,
+            100% calc(100% - 16px),
+            calc(100% - 16px) 100%,
+            0 100%,
+            0 16px
+        );
+    }
+    .skill-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 3px;
+        height: 48px;
+        background: var(--ac, var(--color-cms-red));
+        box-shadow: 0 0 12px var(--ac, var(--color-cms-red));
+    }
+    .skill-cmd {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        color: var(--ac, var(--color-cms-red));
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-bottom: 6px;
+    }
+    .skill-tag {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--color-cms-text-mute);
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        margin-bottom: 22px;
+    }
+    .skill-tag::before {
+        content: "// ";
+    }
+    .skill-card ul li::before {
+        content: "▸";
+        color: var(--ac, var(--color-cms-red));
+        flex-shrink: 0;
+    }
+
+    /* ─── Industry tile (4-up grid) ─────────────────────────────────── */
+    .industry-card {
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        padding: 24px 22px;
+        clip-path: polygon(
+            12px 0,
+            100% 0,
+            100% calc(100% - 12px),
+            calc(100% - 12px) 100%,
+            0 100%,
+            0 12px
+        );
+    }
+
+    /* ─── Recipe tile (small, hover bg) ─────────────────────────────── */
+    .recipe-tile {
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        padding: 18px 14px;
+        text-align: center;
+        transition: all 0.15s;
+        clip-path: polygon(
+            8px 0,
+            100% 0,
+            100% calc(100% - 8px),
+            calc(100% - 8px) 100%,
+            0 100%,
+            0 8px
+        );
+    }
+    .recipe-tile:hover {
+        border-color: var(--color-cms-red);
+        background: #120809;
+    }
+
+    /* ─── Harness comparison card (full top accent bar) ─────────────── */
+    .harness-card {
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        padding: 40px 36px;
+        position: relative;
+        clip-path: polygon(
+            18px 0,
+            100% 0,
+            100% calc(100% - 18px),
+            calc(100% - 18px) 100%,
+            0 100%,
+            0 18px
+        );
+    }
+    .harness-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: var(--ac, var(--color-cms-red));
+    }
+
+    /* ─── Proof feature + stats panels ──────────────────────────────── */
+    .proof-feature {
+        background: linear-gradient(180deg, var(--color-cms-ink-1), #0f0509);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        padding: 40px 36px;
+        clip-path: polygon(
+            16px 0,
+            100% 0,
+            100% calc(100% - 16px),
+            calc(100% - 16px) 100%,
+            0 100%,
+            0 16px
+        );
+    }
+    .proof-stats {
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        padding: 36px 32px;
+        clip-path: polygon(
+            16px 0,
+            100% 0,
+            100% calc(100% - 16px),
+            calc(100% - 16px) 100%,
+            0 100%,
+            0 16px
+        );
+    }
+
+    /* ─── MarketMySpec phases connector (skill-themed gradient) ──────── */
+    .skill-phases-connector::before {
+        background: linear-gradient(
+            90deg,
+            var(--color-cms-agent-spec) 0%,
+            var(--color-cms-agent-spec) 30%,
+            var(--color-cms-agent-bdd) 50%,
+            var(--color-cms-agent-code) 75%,
+            var(--color-cms-red) 100%
+        );
+        opacity: 0.7;
+    }
+
     /* Horizontal connector line through the row of phase nodes — gradient
        across the agent palette. Position at node-center height. */
     .phases-connector {

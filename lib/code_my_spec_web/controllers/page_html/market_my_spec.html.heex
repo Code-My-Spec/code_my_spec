@@ -1,0 +1,580 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<div class="product-page-zone hair-grid">
+  <%!-- ───────────── HERO ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-[1.05fr_1fr] gap-14 items-start">
+      <div>
+        <div class="flex items-center gap-4 mb-7 font-mono text-[11px] uppercase tracking-[0.2em] text-base-content/40">
+          <span class="border border-primary/30 text-primary px-2.5 py-1 chamfer-sm">▸ MMS.SYS · 01</span>
+          <span class="text-primary">●</span><span>v0.4 · early_access</span>
+          <span class="animate-pulse">_</span>
+        </div>
+
+        <h1 class="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-[1.02] tracking-tight">
+          Marketing for founders, in <span class="text-primary">Claude Code.</span>
+        </h1>
+        <p class="text-lg text-base-content mt-7 max-w-[54ch] leading-relaxed">
+          Strategy. Daily plan. Infrastructure. Three skills that turn marketing from
+          <em class="not-italic text-primary uppercase font-mono text-[15px] tracking-[0.04em]">ad-hoc</em>
+          into a system. Real frameworks, real customer research, today's plan in one file.
+        </p>
+
+        <div class="mt-9 flex flex-wrap items-center gap-5">
+          <a href="#install" class="btn btn-primary font-mono chamfer-sm">
+            ▸ Install plugin
+          </a>
+          <a
+            href="#how"
+            class="font-mono text-sm uppercase tracking-[0.14em] text-base-content border-b border-primary/30 hover:text-primary hover:border-primary transition pb-0.5"
+          >
+            How it works →
+          </a>
+        </div>
+
+        <div id="install" class="mt-9 max-w-xl border border-primary/30 bg-gradient-to-b from-base-100 to-base-200 chamfer-md">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-primary/30 bg-gradient-to-r from-primary/10 to-transparent">
+            <span class="font-mono text-[10px] uppercase tracking-[0.2em] text-primary flex items-center gap-2.5">
+              <i class="w-1.5 h-1.5 bg-primary inline-block animate-pulse [box-shadow:0_0_6px_var(--color-cms-red)]"></i>
+              install · 2 commands
+            </span>
+            <button
+              class="copy-btn font-mono text-[10px] uppercase tracking-[0.2em] text-primary border border-primary px-2.5 py-1 hover:bg-primary hover:text-base-100 transition"
+              data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install marketmyspec@codemyspec"}
+            >
+              [ copy ]
+            </button>
+          </div>
+          <div class="p-4 font-mono text-sm">
+            <div class="flex gap-2.5 py-1">
+              <span class="text-primary font-bold select-none">▸</span>
+              <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
+            </div>
+            <div class="flex gap-2.5 py-1">
+              <span class="text-primary font-bold select-none">▸</span>
+              <span class="break-all">/plugin install marketmyspec@codemyspec</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Hero media: today's daily-plan terminal output --%>
+      <div class="relative aspect-[16/10.5] border border-primary/40 bg-base-100 overflow-hidden chamfer-lg [box-shadow:0_0_0_1px_rgba(255,56,56,0.08),_0_40px_80px_rgba(255,56,56,0.04)] order-first lg:order-none">
+        <div class="h-9 flex items-center gap-2 px-3.5 border-b border-primary/30 bg-base-200 font-mono text-[10.5px] uppercase tracking-[0.2em] text-base-content/40">
+          <span class="w-2.5 h-2.5 border border-primary/50 bg-primary"></span>
+          <span class="w-2.5 h-2.5 border border-primary/50"></span>
+          <span class="w-2.5 h-2.5 border border-primary/50"></span>
+          <span class="ml-auto text-primary">~/codemyspec · /daily-plan</span>
+        </div>
+        <div class="px-6 py-5 font-mono text-[13px] leading-[1.75] relative z-[1]">
+          <div class="flex gap-2.5">
+            <span class="text-primary font-bold">▸</span><span>/daily-plan</span>
+          </div>
+          <div class="text-base-content/40">
+            → loaded strategy · 8 artifacts · last review +3d
+          </div>
+          <div class="text-base-content/40">
+            → bottleneck: <span class="text-base-content">awareness</span> · loop: top-of-funnel
+          </div>
+          <h4 class="font-mono font-bold text-xs uppercase tracking-[0.2em] text-primary mt-3.5 mb-1.5">
+            // today · 2026-04-25
+          </h4>
+          <div class="flex justify-between items-baseline py-0.5">
+            <span><span class="text-primary font-bold mr-2">01</span>Reddit · 3 substantive comments on r/elixir</span>
+            <span class="text-base-content/40 text-[11px]"><span class="text-cms-agent-spec">strategy</span></span>
+          </div>
+          <div class="flex justify-between items-baseline py-0.5">
+            <span><span class="text-primary font-bold mr-2">02</span>Ghost · publish post draft</span>
+            <span class="text-base-content/40 text-[11px]"><span class="text-cms-agent-code">daily</span></span>
+          </div>
+          <div class="flex justify-between items-baseline py-0.5">
+            <span><span class="text-primary font-bold mr-2">03</span>GSC · pull last 7d query report</span>
+            <span class="text-base-content/40 text-[11px]"><span class="text-cms-agent-bdd">stack</span></span>
+          </div>
+          <h4 class="font-mono font-bold text-xs uppercase tracking-[0.2em] text-primary mt-3.5 mb-1.5">
+            // hit_rate · last 14d
+          </h4>
+          <div class="flex gap-2.5">
+            <span class="text-base-content">▣▣▣▣▣▣▣▣▣▣▣▣▢▢</span>
+            <span class="text-base-content/40">12 / 14 days shipped</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PROBLEM ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">02</span><span>// the_frame</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight max-w-[22ch]">
+        You know your product.<br /><span class="text-primary">You wing your marketing.</span>
+      </h2>
+      <div class="grid md:grid-cols-2 gap-14 mt-14">
+        <p class="text-lg leading-relaxed">
+          Most founders try
+          <span class="text-primary font-display font-bold tabular-nums [text-shadow:0_0_12px_rgba(255,56,56,0.4)]">5+</span>
+          channels in a quarter. Nothing sticks. There's no written strategy, no daily discipline, no measurement loop. Raw prompting Claude gives advice that vanishes when the session ends.
+        </p>
+        <p class="text-lg leading-relaxed">
+          Marketing isn't a content problem. It's a
+          <strong class="text-base-content font-medium">system problem</strong>
+          — strategy → daily execution → infrastructure → feedback. Without the system, every week starts from zero.
+          <strong class="text-base-content font-medium">That's the gap Market My Spec fills.</strong>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── THREE SKILLS ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">03</span><span>// three_skills</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        Three skills.<br /><span class="text-primary">One marketing system.</span>
+      </h2>
+
+      <div class="mt-16 grid grid-cols-1 lg:grid-cols-3 gap-[18px]">
+        <article class="skill-card" style="--ac: var(--color-cms-agent-spec);">
+          <div class="skill-cmd">/marketing-strategy</div>
+          <div class="skill-tag">strategy · 8 steps</div>
+          <h3 class="font-heading font-bold text-2xl tracking-tight mb-4 text-base-content">
+            Strategy interview, not a template.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed mb-6">
+            Guided 8-step founder interview. Dispatches research agents to find real customer language. Produces positioning, messaging, channels, and a 90-day plan.
+          </p>
+          <ul class="border-t border-base-300 pt-4 grid gap-2 list-none p-0">
+            <li class="font-mono text-xs flex gap-2.5 items-start">
+              Mom Test interviews · Dunford positioning
+            </li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">
+              Moore's 9-point beachhead · Weinberg Bullseye
+            </li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">
+              Moesta Switch interviews
+            </li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">
+              8 artifacts written to <code class="text-cms-agent-spec">marketing/</code>
+            </li>
+          </ul>
+        </article>
+
+        <article class="skill-card" style="--ac: var(--color-cms-agent-code);">
+          <div class="skill-cmd">/daily-plan</div>
+          <div class="skill-tag">execution · 1-3 activities/day</div>
+          <h3 class="font-heading font-bold text-2xl tracking-tight mb-4 text-base-content">
+            Today's plan, not a backlog.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed mb-6">
+            Reads the strategy. Picks today's 1-3 activities from a roster. Logs outcomes. Detects when the bottleneck shifts. Reviews hit rates weekly. Scaffolds new activities as project-local skills.
+          </p>
+          <ul class="border-t border-base-300 pt-4 grid gap-2 list-none p-0">
+            <li class="font-mono text-xs flex gap-2.5 items-start">Max 3 activities/day · scope discipline</li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">Loop-shift detection · bottleneck-aware</li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">Weekly hit-rate review · auto-prune</li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">Activities scaffold as real skills</li>
+          </ul>
+        </article>
+
+        <article class="skill-card" style="--ac: var(--color-cms-agent-bdd);">
+          <div class="skill-cmd">/marketing-stack</div>
+          <div class="skill-tag">infrastructure · 17 recipes</div>
+          <h3 class="font-heading font-bold text-2xl tracking-tight mb-4 text-base-content">
+            Infrastructure, MCP-first.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed mb-6">
+            Installs only what your strategy calls for. 17 recipes covering content, social, email, analytics, payments. .env-only secrets. Reversible installs. Validation built in.
+          </p>
+          <ul class="border-t border-base-300 pt-4 grid gap-2 list-none p-0">
+            <li class="font-mono text-xs flex gap-2.5 items-start">17 recipes · core 8 + extensions 9</li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">MCP-first · .env-only secrets</li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">Reversible · validated · idempotent</li>
+            <li class="font-mono text-xs flex gap-2.5 items-start">Install time: minutes per recipe</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── HOW IT WORKS ───────────── --%>
+  <section class="border-b border-base-300 signal-top" id="how">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">04</span><span>// how_it_works</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        Strategy → Stack → Daily.<br /><span class="text-primary">Six phases. One loop.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-5 max-w-[64ch] leading-relaxed">
+        The skills compose. Strategy first — research-grounded, written down. Infrastructure follows the strategy, not the other way around. Daily execution picks from the roster the strategy defined. Weekly review computes hit rates and adjusts.
+      </p>
+
+      <div class="mt-20 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 phases-connector skill-phases-connector">
+        <%= for phase <- [
+          %{n: "01", agent: "interview", title: "Interview", token: "spec", body: "8-step founder interview. What you sell, who buys, what they switched from, what they say."},
+          %{n: "02", agent: "research",  title: "Research",  token: "spec", body: "Research agents pull real customer language. Reddit, reviews, communities. Personas grounded in evidence."},
+          %{n: "03", agent: "artifacts", title: "Artifacts", token: "spec", body: "8 markdown files in marketing/ — positioning, messaging, ICP, channels, 90-day plan."},
+          %{n: "04", agent: "install",   title: "Install",   token: "bdd",  body: "Stack installs only what the strategy calls for. Reddit, Ghost, Stripe, GA4 — pick the recipes you need."},
+          %{n: "05", agent: "execute",   title: "Execute",   token: "code", body: "Daily-plan picks 1-3 activities from your roster. You ship. Outcomes logged automatically."},
+          %{n: "06", agent: "review",    title: "Review",    token: "qa",   body: "Weekly hit-rate analysis. Loop-shift detection. Roster pruned. Strategy iterated when bottleneck moves."}
+        ] do %>
+          <div class="px-4 py-2 relative" style={"--ac: var(--color-cms-agent-#{phase.token});"}>
+            <div class="phase-node chamfer-sm w-16 h-16 mb-7 bg-base-100 flex flex-col items-center justify-center font-mono uppercase relative z-10">
+              <span class="phase-color font-display font-bold text-base leading-none">
+                {phase.n}
+              </span>
+              <span class="text-[9px] tracking-[0.14em] text-base-content/40 mt-1">
+                {phase.agent}
+              </span>
+            </div>
+            <h3 class="phase-title font-mono font-bold text-xs uppercase tracking-[0.08em] mb-3">
+              {phase.title}
+            </h3>
+            <p class="text-sm text-base-content/70 leading-relaxed">{phase.body}</p>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── INDUSTRIES ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">05</span><span>// any_business</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        Same flow.<br /><span class="text-primary">Different channels.</span>
+      </h2>
+      <p class="text-lg text-base-content mt-6 max-w-[64ch] leading-relaxed">
+        The 8-step strategy adapts. Interview questions, research sources, channels, and metrics all shift by business type. The system underneath stays the same.
+      </p>
+
+      <div class="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-[14px]">
+        <%= for industry <- [
+          %{tag: "// software · saas", name: "Founders shipping product", channels: ["Reddit", "Content", "SEO", "Community", "YouTube"]},
+          %{tag: "// consulting", name: "Service businesses", channels: ["LinkedIn", "Email", "Referrals", "Discovery", "Outbound"]},
+          %{tag: "// local · trades", name: "Service-area businesses", channels: ["GBP", "Reviews", "Local SEO", "Referral partners"]},
+          %{tag: "// b2c · dtc", name: "Consumer brands", channels: ["Paid ads", "Retention", "Cohorts", "Influencer", "Email"]}
+        ] do %>
+          <div class="industry-card">
+            <h4 class="font-mono font-bold text-[11px] uppercase tracking-[0.18em] text-primary mb-3.5">
+              {industry.tag}
+            </h4>
+            <div class="font-heading font-bold text-lg text-base-content mb-3.5 tracking-tight">
+              {industry.name}
+            </div>
+            <ul class="flex flex-wrap gap-1.5 list-none p-0 m-0">
+              <%= for channel <- industry.channels do %>
+                <li class="font-mono text-[10px] text-base-content/70 uppercase tracking-[0.1em] px-2 py-0.5 border border-primary/20">
+                  {channel}
+                </li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── RECIPES ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">06</span><span>// infrastructure</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        17 recipes.<br /><span class="text-primary">Install only what you need.</span>
+      </h2>
+      <div class="mt-9 mb-7 font-mono text-xs text-base-content/70">
+        MCP-first · .env-only secrets · reversible installs ·
+        <em class="not-italic text-primary">validation built in.</em>
+      </div>
+
+      <div class="mb-8">
+        <div class="font-mono text-[11px] text-base-content/40 tracking-[0.22em] uppercase mb-3.5 flex items-center gap-3">
+          core · <span class="text-primary">×8</span>
+          <span class="flex-1 h-px bg-primary/20"></span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+          <%= for name <- ~w(Reddit Ghost WordPress Wix Stripe HubSpot claude-seo Resend) do %>
+            <div class="recipe-tile">
+              <div class="font-mono text-[11px] text-primary uppercase tracking-[0.18em] font-bold mb-2">
+                ▸
+              </div>
+              <div class="font-mono text-xs text-base-content font-semibold tracking-[0.04em]">
+                {name}
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <div>
+        <div class="font-mono text-[11px] text-base-content/40 tracking-[0.22em] uppercase mb-3.5 flex items-center gap-3">
+          extensions · <span class="text-primary">×9</span>
+          <span class="flex-1 h-px bg-primary/20"></span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+          <%= for name <- ["Postiz", "FB Ads", "FB Publish", "Instagram", "LinkedIn", "Twitter / X", "YouTube", "GSC", "GA4"] do %>
+            <div class="recipe-tile opacity-85">
+              <div class="font-mono text-[11px] text-base-content/40 uppercase tracking-[0.18em] font-bold mb-2">
+                +
+              </div>
+              <div class="font-mono text-xs text-base-content font-semibold tracking-[0.04em]">
+                {name}
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PROOF ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">07</span><span>// proof</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
+        CodeMySpec's marketing<br />was built with <span class="text-primary">Market My Spec.</span>
+      </h2>
+
+      <div class="mt-14 grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-[18px]">
+        <div class="proof-feature">
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-primary mb-5 flex items-center gap-2.5">
+            <span class="w-2 h-2 bg-primary [box-shadow:0_0_8px_var(--color-cms-red)]"></span>
+            recursive · self-hosted
+          </div>
+          <h3 class="font-heading font-bold text-2xl md:text-[26px] tracking-tight mb-5 text-base-content">
+            The 8 artifacts in our <code class="text-primary bg-transparent border-0 p-0">marketing/</code> are real.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed mb-6">
+            Every marketing decision on this site — the positioning, the channels, the daily Reddit cadence, the content roadmap — came out of
+            <em class="not-italic text-primary">/marketing-strategy</em>
+            running on our own repo. The daily-plan loop has been running for weeks.
+          </p>
+          <div class="grid grid-cols-2 gap-2 border-t border-primary/20 pt-5">
+            <%= for art <- ["positioning.md", "icp.md", "messaging.md", "channels.md", "90-day-plan.md", "competitors.md", "switch-interviews.md", "activity-roster.md"] do %>
+              <div class="font-mono text-[11px] text-base-content/70 py-1.5 flex gap-2 before:content-['▸'] before:text-primary">
+                {art}
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <div class="proof-stats flex flex-col gap-8">
+          <h3 class="font-mono font-bold text-[11px] uppercase tracking-[0.22em] text-primary">
+            // running · live
+          </h3>
+          <%= for stat <- [
+            %{n: "8/8", l: "strategy artifacts", d: "all generated, all in repo"},
+            %{n: "17",  l: "recipes available",  d: "8 core, 9 extensions"},
+            %{n: "∞",   l: "daily-plan iterations", d: "running since v0.1"}
+          ] do %>
+            <div>
+              <div class="font-display font-bold text-[42px] text-primary tracking-tight leading-none [text-shadow:0_0_14px_rgba(255,56,56,0.3)]">
+                {stat.n}
+              </div>
+              <div class="font-mono text-[11px] text-base-content/70 uppercase tracking-[0.14em] mt-2">
+                {stat.l}
+              </div>
+              <div class="text-[13px] text-base-content/40 mt-1">{stat.d}</div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── TWO HARNESSES ───────────── --%>
+  <section class="border-b border-base-300 signal-top bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,_rgba(255,56,56,0.06),_transparent_70%)]">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">08</span><span>// the_pattern</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight max-w-[24ch]">
+        Two harnesses.<br /><span class="text-primary">One platform.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-6 max-w-[64ch] leading-relaxed">
+        CodeMySpec started with engineering — specs, code, tests, verification. Market My Spec adds marketing — strategy, daily execution, infrastructure. The pattern underneath is the same:
+        <em class="not-italic text-primary">strategy → daily execution → infrastructure → feedback loops.</em>
+      </p>
+
+      <div class="mt-14 grid grid-cols-1 lg:grid-cols-2 gap-[18px] items-stretch">
+        <div class="harness-card" style="--ac: var(--color-cms-red);">
+          <div class="font-mono text-[11px] uppercase tracking-[0.22em] mb-4 text-primary">
+            /codemyspec
+          </div>
+          <h3 class="font-heading font-bold text-3xl tracking-tight mb-3.5 text-base-content">
+            Engineering harness.
+          </h3>
+          <span class="inline-flex items-center gap-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-base-content/40 border border-primary/20 px-2.5 py-1 mb-6">
+            <span class="w-1.5 h-1.5 bg-primary [box-shadow:0_0_6px_var(--color-cms-red)]"></span>
+            middle completeness · production
+          </span>
+          <p class="text-base text-base-content/70 leading-relaxed mb-3.5">
+            Specs, requirement graph, six subagents, BDD scenarios, browser verification. Phoenix-native, Claude-Code-plugged. The harness that built this product.
+          </p>
+          <div class="mt-6 pt-5 border-t border-primary/20 font-mono text-xs flex flex-wrap gap-x-2.5 gap-y-1.5">
+            <span class="text-primary">specs</span><span class="text-base-content/40">→</span>
+            <span class="text-primary">tests</span><span class="text-base-content/40">→</span>
+            <span class="text-primary">code</span><span class="text-base-content/40">→</span>
+            <span class="text-primary">qa</span>
+          </div>
+        </div>
+
+        <div class="harness-card" style="--ac: var(--color-cms-agent-bdd);">
+          <div class="font-mono text-[11px] uppercase tracking-[0.22em] mb-4 text-cms-agent-bdd">
+            /marketmyspec
+          </div>
+          <h3 class="font-heading font-bold text-3xl tracking-tight mb-3.5 text-base-content">
+            Marketing harness.
+          </h3>
+          <span class="inline-flex items-center gap-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-base-content/40 border border-primary/20 px-2.5 py-1 mb-6">
+            <span class="w-1.5 h-1.5 bg-cms-agent-bdd [box-shadow:0_0_6px_var(--color-cms-agent-bdd)]"></span>
+            early access · actively built &amp; used
+          </span>
+          <p class="text-base text-base-content/70 leading-relaxed mb-3.5">
+            Strategy interview, daily plan, infrastructure recipes, weekly review. Adapts by industry. The harness marketing this product right now.
+          </p>
+          <div class="mt-6 pt-5 border-t border-primary/20 font-mono text-xs flex flex-wrap gap-x-2.5 gap-y-1.5">
+            <span class="text-cms-agent-bdd">strategy</span><span class="text-base-content/40">→</span>
+            <span class="text-cms-agent-bdd">stack</span><span class="text-base-content/40">→</span>
+            <span class="text-cms-agent-bdd">daily</span><span class="text-base-content/40">→</span>
+            <span class="text-cms-agent-bdd">review</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8 pt-6 border-t border-primary/20 font-mono text-[13px] text-base-content/70 text-center tracking-[0.04em]">
+        We use these ourselves. The engineering harness built the product. The marketing harness
+        <em class="not-italic text-primary font-bold uppercase tracking-[0.14em]">is marketing it right now.</em>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">09</span><span>// objections</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight mb-3">
+        Questions founders <span class="text-primary">actually ask.</span>
+      </h2>
+
+      <div class="mt-12 border-t border-primary/20">
+        <%= for {q, a, idx, open?} <- [
+          {"\"Isn't this just prompting Claude with extra steps?\"",
+           ~s|No. Strategy artifacts <em class="not-italic text-primary">persist</em> across sessions. Research agents find real customer evidence — your personas aren't invented. Daily-plan picks today's activities and logs outcomes. Weekly review computes hit rates. Raw prompting gives you advice that vanishes; this gives you a system that compounds.|,
+           "Q.01", true},
+          {"\"I've already tried 5 marketing tools.\"",
+           ~s|This isn't another tool. It's the <em class="not-italic text-primary">strategy and operating loop</em> that decides which tools you need. The 17 recipes install only what your strategy calls for. If your strategy says "Reddit + Ghost + email," that's what you get — not 47 dashboards you'll never log into.|,
+           "Q.02", false},
+          {"\"I'm not a software founder.\"",
+           ~s|Works for consulting, local trades, services, B2C, DTC. The 8-step flow adapts the interview, research sources, channels, and metrics by business type. Same system underneath, different channels on top.|,
+           "Q.03", false},
+          {"\"How much time per week?\"",
+           ~s|Built for 2-5 hrs/week. Strategy is a one-time setup (a couple hours). Daily-plan is meant to run in 30-60 min/day. Weekly review takes 15 min. Three activities max per day — the scope discipline is the point.|,
+           "Q.04", false},
+          {"\"Where do my secrets live?\"",
+           ~s|Local <code class="text-base-content bg-primary/[0.06] border border-primary/20 px-1.5 py-0.5 text-sm">.env</code> files. MCP-first wherever possible. Recipes are reversible — install, validate, uninstall — no orphan state in your repo.|,
+           "Q.05", false},
+          {"\"Pricing?\"",
+           ~s|Free during early access. You bring your own model provider and keys — we never charge a markup on your tokens. Same arrangement as CodeMySpec.|,
+           "Q.06", false}
+        ] do %>
+          <details class="border-b border-primary/20 group" open={open?}>
+            <summary class="cursor-pointer list-none py-7 flex justify-between items-center gap-6 font-mono text-base text-base-content hover:text-primary transition">
+              <span>
+                <span class="text-primary text-[11px] tracking-[0.22em] mr-3.5">{idx}</span>{q}
+              </span>
+              <span class="font-mono text-sm text-primary border border-primary w-7 text-center leading-none py-1 chamfer-sm group-open:bg-primary group-open:text-base-100 transition">
+                +
+              </span>
+            </summary>
+            <div class="pb-7 pl-14 text-base text-base-content/70 leading-relaxed max-w-[72ch]">
+              {Phoenix.HTML.raw(a)}
+            </div>
+          </details>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FINAL CTA ───────────── --%>
+  <section class="signal-top bg-[radial-gradient(circle_at_75%_30%,_rgba(255,56,56,0.12),_transparent_55%),radial-gradient(circle_at_15%_80%,_rgba(255,56,56,0.05),_transparent_60%)]">
+    <div class="max-w-7xl mx-auto px-6 py-32 grid lg:grid-cols-[1.1fr_1fr] gap-16 items-end">
+      <div>
+        <p class="eyebrow"><span class="idx">10</span><span>// install</span></p>
+        <h2 class="font-heading font-bold text-4xl md:text-6xl leading-[1.02] tracking-tight max-w-[14ch]">
+          Install<br />the <span class="text-primary">plugin.</span>
+        </h2>
+        <p class="text-lg text-base-content mt-6 max-w-[46ch]">
+          Two commands. Then run
+          <code class="font-mono text-primary bg-primary/[0.06] border border-primary/20 px-2 py-0.5 text-sm">
+            /marketing-strategy
+          </code>
+          to start the interview.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-7 font-mono text-xs uppercase tracking-[0.14em]">
+          <a
+            href="https://cal.com/johndavenport"
+            class="text-base-content border-b border-primary pb-0.5 hover:text-primary transition"
+          >
+            ▸ Talk to John
+          </a>
+          <a
+            href={~p"/products/code-my-spec"}
+            class="text-base-content border-b border-primary pb-0.5 hover:text-primary transition"
+          >
+            ▸ See CodeMySpec
+          </a>
+          <a
+            href={~p"/methodology"}
+            class="text-base-content border-b border-primary pb-0.5 hover:text-primary transition"
+          >
+            ▸ Methodology
+          </a>
+        </div>
+      </div>
+
+      <div class="border border-primary/30 bg-gradient-to-b from-base-100 to-base-200 chamfer-md">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-primary/30 bg-gradient-to-r from-primary/10 to-transparent">
+          <span class="font-mono text-[10px] uppercase tracking-[0.2em] text-primary flex items-center gap-2.5">
+            <i class="w-1.5 h-1.5 bg-primary inline-block animate-pulse"></i>
+            install · 2 commands
+          </span>
+          <button
+            class="copy-btn font-mono text-[10px] uppercase tracking-[0.2em] text-primary border border-primary px-2.5 py-1 hover:bg-primary hover:text-base-100 transition"
+            data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install marketmyspec@codemyspec"}
+          >
+            [ copy ]
+          </button>
+        </div>
+        <div class="p-4 font-mono text-sm">
+          <div class="flex gap-2.5 py-1">
+            <span class="text-primary font-bold select-none">▸</span>
+            <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
+          </div>
+          <div class="flex gap-2.5 py-1">
+            <span class="text-primary font-bold select-none">▸</span>
+            <span class="break-all">/plugin install marketmyspec@codemyspec</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const text = btn.getAttribute('data-copy');
+        const original = btn.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (_) {}
+          document.body.removeChild(ta);
+        }
+        btn.textContent = '[ ✓ COPIED ]';
+        setTimeout(() => { btn.textContent = original; }, 1800);
+      });
+    });
+  </script>
+</div>
+</Layouts.marketing>

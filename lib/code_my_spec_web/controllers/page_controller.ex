@@ -196,4 +196,125 @@ defmodule CodeMySpecWeb.PageController do
       json_ld_list: json_ld_list
     )
   end
+
+  def market_my_spec(conn, _params) do
+    meta = CodeMySpecWeb.PageHTML.market_my_spec_copy().meta
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/products/market-my-spec"
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "SoftwareApplication",
+            "@id" => "#{canonical}#software",
+            "name" => "MarketMySpec",
+            "url" => canonical,
+            "applicationCategory" => "BusinessApplication",
+            "operatingSystem" => "macOS, Linux, Windows",
+            "description" => meta.meta_description,
+            "offers" => %{
+              "@type" => "Offer",
+              "price" => "0",
+              "priceCurrency" => "USD",
+              "availability" => "https://schema.org/InStock"
+            },
+            "publisher" => %{
+              "@id" => "#{base_url}/#organization"
+            }
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "BreadcrumbList",
+            "itemListElement" => [
+              %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+              %{
+                "@type" => "ListItem",
+                "position" => 2,
+                "name" => "Products",
+                "item" => "#{base_url}/products"
+              },
+              %{
+                "@type" => "ListItem",
+                "position" => 3,
+                "name" => "MarketMySpec",
+                "item" => canonical
+              }
+            ]
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "FAQPage",
+            "mainEntity" => [
+              %{
+                "@type" => "Question",
+                "name" => "Isn't this just prompting Claude with extra steps?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "No. Strategy artifacts persist across sessions. Research agents find real customer evidence. Daily-plan picks today's activities and logs outcomes. Weekly review computes hit rates. Raw prompting gives you advice that vanishes; this gives you a system that compounds."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "I've already tried 5 marketing tools.",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "This isn't another tool. It's the strategy and operating loop that decides which tools you need. The 17 recipes install only what your strategy calls for."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "I'm not a software founder.",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "Works for consulting, local trades, services, B2C, DTC. The 8-step flow adapts the interview, research sources, channels, and metrics by business type."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "How much time per week?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "Built for 2-5 hrs/week. Strategy is a one-time setup. Daily-plan runs in 30-60 min/day. Weekly review takes 15 min. Three activities max per day."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "Where do my secrets live?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "Local .env files. MCP-first wherever possible. Recipes are reversible — install, validate, uninstall — no orphan state in your repo."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "Pricing?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "Free during early access. You bring your own model provider and keys — we never charge a markup on your tokens."
+                }
+              }
+            ]
+          }
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :market_my_spec,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image: "#{base_url}/images/og-market-my-spec.png",
+      canonical_url: meta.canonical_url,
+      json_ld_list: json_ld_list
+    )
+  end
 end
