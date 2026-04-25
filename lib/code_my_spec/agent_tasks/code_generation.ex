@@ -257,8 +257,9 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     """
     ## Existing Generation Script
 
-    A generation script already exists at `#{@artifact_path}`. Read it to see
-    what has already been recorded. Append any new commands you run.\
+    A generation script already exists at `#{@artifact_path}`. Confirm with the
+    user before overwriting it. The new script will replace the file with one
+    rewritten from the currently-detected project state.\
     """
   end
 
@@ -315,9 +316,11 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
 
     ### Step 5: Record the Generation Script
 
-    Write a shell script to `#{@artifact_path}` that records every generator
-    command you ran, in order. Include comments noting what each generator produces.
-    The script should be re-runnable on a fresh Phoenix project.
+    Write a shell script to `#{@artifact_path}` that rewrites the file from the
+    currently-detected project state — the script should match what's actually
+    in the project today, not what was previously recorded. Include comments
+    noting what each generator produces. The script should be re-runnable on a
+    fresh Phoenix project.
 
     Format:
     ```bash

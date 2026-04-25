@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   alias CodeMySpec.{
     AccountsFixtures,
+    CodeGenerationFixtures,
     Components,
     ComponentsFixtures,
     EnvironmentFixtures,
@@ -55,6 +56,22 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate with_decisions_index(env), to: TechnicalStrategyFixtures
   defdelegate read_adr(env, topic), to: TechnicalStrategyFixtures
   defdelegate adr_exists?(env, topic), to: TechnicalStrategyFixtures
+
+  # -- Code Generation --
+  defdelegate with_baseline_project(env), to: CodeGenerationFixtures
+  defdelegate with_decision(env, topic), to: CodeGenerationFixtures
+  defdelegate with_decisions(env, topics), to: CodeGenerationFixtures
+  defdelegate with_integration_spec(env, provider), to: CodeGenerationFixtures
+  defdelegate with_integration_specs(env, providers), to: CodeGenerationFixtures
+  defdelegate with_generator_applied(env, generator_id), to: CodeGenerationFixtures
+  defdelegate with_all_generators_applied(env), to: CodeGenerationFixtures
+  defdelegate generator_applied?(env, generator_id), to: CodeGenerationFixtures
+  defdelegate generator_ids(), to: CodeGenerationFixtures
+  defdelegate with_full_script(env), to: CodeGenerationFixtures
+  defdelegate with_empty_script(env), to: CodeGenerationFixtures
+  defdelegate with_existing_script(env, body), to: CodeGenerationFixtures
+  defdelegate read_script(env), to: CodeGenerationFixtures
+  defdelegate script_exists?(env), to: CodeGenerationFixtures
 
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures
