@@ -197,7 +197,7 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
           <div class="flex-none">
             <ul class="menu menu-horizontal px-1">
-              <li><.link href={~p"/"}>Product</.link></li>
+              <li><.link href={~p"/products/code-my-spec"}>Product</.link></li>
               <li><.link href={~p"/methodology"}>Method</.link></li>
               <li><.link href={~p"/blog"}>Blog</.link></li>
               <li><.link href={~p"/documentation"}>Docs</.link></li>

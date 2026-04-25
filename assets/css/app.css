@@ -19,39 +19,46 @@
     themes: false;
 }
 
-/* daisyUI theme plugin - CodeMySpec custom theme */
+/* daisyUI theme plugin - CodeMySpec custom theme
+   brand_system v0.9 — signal red on black, white = success */
 @plugin "../vendor/daisyui-theme" {
     name: "codemyspec";
     default: true;
     prefersdark: true;
     color-scheme: "dark";
-    --color-primary: #f97316;
-    --color-primary-content: oklch(25% 0.015 256);
-    --color-secondary: #7e22ce;
-    --color-secondary-content: oklch(92% 0.005 272);
+    /* Signal red — punctuation, not dominance */
+    --color-primary: #ff3838;
+    --color-primary-content: #000000;
+    /* Secondary kept as a deep wash for backgrounds */
+    --color-secondary: #2a0808;
+    --color-secondary-content: #f5f5f7;
+    /* Accent reserved for spec-writer agent surfaces */
     --color-accent: #22d3ee;
-    --color-accent-content: oklch(20% 0.015 256);
-    --color-neutral: #0b0f18;
-    --color-neutral-content: oklch(82% 0.005 256);
-    --color-base-100: #050308;
-    --color-base-200: #0b0f18;
-    --color-base-300: #111827;
-    --color-base-content: oklch(85% 0.005 256);
+    --color-accent-content: #000000;
+    --color-neutral: #0a0a0c;
+    --color-neutral-content: #d4d4d8;
+    /* Pure black ground; ink surfaces step up */
+    --color-base-100: #000000;
+    --color-base-200: #0a0a0c;
+    --color-base-300: #121215;
+    --color-base-content: #d4d4d8;
     --color-info: oklch(58% 0.158 241.966);
     --color-info-content: oklch(97% 0.013 236.62);
-    --color-success: oklch(60% 0.118 184.704);
-    --color-success-content: oklch(98% 0.014 180.72);
-    --color-warning: oklch(66% 0.179 58.318);
-    --color-warning-content: oklch(98% 0.022 95.277);
-    --color-error: oklch(58% 0.253 17.585);
-    --color-error-content: oklch(96% 0.015 12.422);
-    --radius-selector: 0.25rem;
-    --radius-field: 0.25rem;
-    --radius-box: 0.5rem;
+    /* White is the success color, not green */
+    --color-success: #f5f5f7;
+    --color-success-content: #000000;
+    --color-warning: #fde047;
+    --color-warning-content: #000000;
+    --color-error: #ff3838;
+    --color-error-content: #000000;
+    /* Sharp corners — chamfer is opt-in via .chamfer-* utilities */
+    --radius-selector: 0;
+    --radius-field: 0;
+    --radius-box: 0;
     --size-selector: 0.21875rem;
     --size-field: 0.21875rem;
-    --border: 1.5px;
-    --depth: 1;
+    --border: 1px;
+    --depth: 0;
     --noise: 0;
 }
 
@@ -90,23 +97,243 @@
     --noise: 0;
 }
 
-/* Custom colors and fonts from original Tailwind config */
+/* Brand system tokens — see design-tokens.html (v0.9) */
 @theme {
-    /* Custom colors */
-    --color-cms-black: #050308;
-    --color-cms-charcoal: #0b0f18;
-    --color-cms-charcoal-light: #111827;
-    --color-cms-orange: #f97316;
-    --color-cms-purple: #7e22ce;
-    --color-cms-aqua: #22d3ee;
-    --color-cms-sand: #fbbf77;
+    /* Surface tokens — ink stack on pure black */
+    --color-cms-black: #000000;
+    --color-cms-ink-1: #0a0a0c;
+    --color-cms-ink-2: #121215;
+    --color-cms-ink-3: #1a1a1f;
 
-    /* Custom font families - properly configured for Tailwind v4 */
-    --font-heading: "Space Grotesk", sans-serif;
+    /* Signal palette */
+    --color-cms-red: #ff3838;
+    --color-cms-red-dim: #8a1515;
+    --color-cms-red-deep: #2a0808;
+    --color-cms-white: #f5f5f7;
+
+    /* Text scale */
+    --color-cms-text: #d4d4d8;
+    --color-cms-text-dim: #8a8a93;
+    --color-cms-text-mute: #53535a;
+
+    /* Agent palette — only surfaces inside How It Works / CLI / docs */
+    --color-cms-agent-pm: #a78bfa;
+    --color-cms-agent-arch: #60a5fa;
+    --color-cms-agent-bdd: #f472b6;
+    --color-cms-agent-spec: #22d3ee;
+    --color-cms-agent-code: #fde047;
+    --color-cms-agent-qa: #ff3838;
+
+    /* Type families — Space Mono Bold = display, JetBrains Mono = code/labels, Inter = body only */
+    --font-display: "Space Mono", ui-monospace, monospace;
+    --font-heading: "Space Mono", ui-monospace, monospace;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
     --font-body: "Inter", system-ui, sans-serif;
-
-    /* Override default sans font to use Inter */
     --font-sans: "Inter", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* ─── Brand system utilities — texture & geometry daisyUI doesn't model ──── */
+@layer utilities {
+    /* Chamfered corners — corner cuts, not radius. Three sizes. */
+    .chamfer-sm {
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    }
+    .chamfer-md {
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+    .chamfer-lg {
+        clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+    }
+
+    /* Top-left signal accent bar (80px wide, glowing red) — section markers */
+    .signal-top {
+        position: relative;
+    }
+    .signal-top::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 80px;
+        height: 2px;
+        background: var(--color-cms-red);
+        box-shadow: 0 0 12px var(--color-cms-red);
+    }
+
+    /* Scanline overlay — reserved for brand moments + money shots */
+    .scanlines {
+        position: relative;
+    }
+    .scanlines::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.04) 0 1px,
+            transparent 1px 3px
+        );
+        mix-blend-mode: overlay;
+        z-index: 1;
+    }
+
+    /* Hairline red grid — global pressure, soft enough to ignore.
+       Pseudo is viewport-fixed so the radial mask stays centered on screen
+       regardless of scroll position. */
+    .hair-grid::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+            linear-gradient(rgba(255, 56, 56, 0.10) 1px, transparent 1px) 0 0 / 80px 80px,
+            linear-gradient(90deg, rgba(255, 56, 56, 0.10) 1px, transparent 1px) 0 0 / 80px 80px;
+        mask-image: radial-gradient(ellipse at center, black 0%, transparent 80%);
+        opacity: 0.5;
+        z-index: 1;
+    }
+
+    /* ─── Agent phase node (How It Works) ─────────────────────────────
+       Driven by --ac CSS variable set per card to the agent palette token.
+       Renders chamfered colored node + glow shadow + agent-colored title
+       with left accent bar. */
+    .phase-node {
+        border: 1.5px solid var(--ac);
+        box-shadow: 0 0 12px color-mix(in oklab, var(--ac) 24%, transparent);
+    }
+    .phase-color {
+        color: var(--ac);
+    }
+    .phase-title {
+        position: relative;
+        padding-left: 14px;
+        color: var(--ac);
+    }
+    .phase-title::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 3px;
+        height: 16px;
+        background: var(--ac);
+    }
+
+    /* ─── Product zone — scoped conventions for /products/* pages ──────
+       Brand-system rules: all section/display headings uppercase,
+       eyebrow uses the index-slash-name convention with trailing red line. */
+    .product-page-zone h1,
+    .product-page-zone h2,
+    .product-page-zone h3 {
+        text-transform: uppercase;
+    }
+
+    .product-page-zone .eyebrow {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        color: var(--color-cms-red);
+        margin-bottom: 22px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .product-page-zone .eyebrow .idx {
+        color: var(--color-cms-text-mute);
+    }
+    .product-page-zone .eyebrow::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, var(--color-cms-red), transparent);
+        max-width: 200px;
+    }
+
+    /* ─── Differentiator card (product zone) ───────────────────────────
+       Big red number with glow + mono "// label" + uppercase white title.
+       Red 3px accent bar at top-left (full height for the wide thesis card). */
+    .diff-card {
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        padding: 44px 40px;
+        position: relative;
+        transition: background 0.15s;
+        clip-path: polygon(
+            16px 0,
+            100% 0,
+            100% calc(100% - 16px),
+            calc(100% - 16px) 100%,
+            0 100%,
+            0 16px
+        );
+    }
+    .diff-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 3px;
+        height: 48px;
+        background: var(--color-cms-red);
+    }
+    .diff-card:hover {
+        background: #111015;
+    }
+    .diff-card--tall {
+        background: linear-gradient(180deg, var(--color-cms-ink-1), #120809);
+    }
+    .diff-card--tall::before {
+        height: 100%;
+    }
+    .diff-num {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 42px;
+        color: var(--color-cms-red);
+        letter-spacing: -0.02em;
+        line-height: 1;
+        margin-bottom: 4px;
+        text-shadow: 0 0 18px rgba(255, 56, 56, 0.25);
+    }
+    .diff-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--color-cms-text-mute);
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        margin-bottom: 24px;
+    }
+    .diff-label::before {
+        content: "// ";
+    }
+
+    /* Horizontal connector line through the row of phase nodes — gradient
+       across the agent palette. Position at node-center height. */
+    .phases-connector {
+        position: relative;
+    }
+    .phases-connector::before {
+        content: "";
+        position: absolute;
+        top: 36px;
+        left: calc(100% / 12);
+        right: calc(100% / 12);
+        height: 1px;
+        background: linear-gradient(
+            90deg,
+            var(--color-cms-agent-pm),
+            var(--color-cms-agent-arch),
+            var(--color-cms-agent-spec),
+            var(--color-cms-agent-code),
+            var(--color-cms-agent-bdd),
+            var(--color-cms-agent-qa)
+        );
+        opacity: 0.45;
+        pointer-events: none;
+    }
 }
 
 /* Set base font size to 16px to match original */

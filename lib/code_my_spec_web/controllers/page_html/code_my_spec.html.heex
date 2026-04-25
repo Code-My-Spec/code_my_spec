@@ -1,0 +1,647 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<div class="product-page-zone hair-grid">
+  <%!-- ───────────── HERO ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-[1.05fr_1fr] gap-16 items-center">
+      <div>
+        <p class="eyebrow"><span class="idx">01</span><span>// the_harness</span></p>
+        <h1 class="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-[1.02] tracking-tight text-base-content">
+          Lovable for engineers <span class="text-primary">who care about the code.</span>
+        </h1>
+        <p class="text-lg text-base-content/70 mt-6 max-w-[52ch] leading-relaxed">
+          Specs, code, tests, verification — end to end, Elixir-first. CodeMySpec is the harness that sits around your AI coding agent so the code you ship still makes sense in two years.
+        </p>
+
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <a href="#install" class="btn btn-primary font-mono chamfer-sm">
+            Install the plugin <span aria-hidden="true">→</span>
+          </a>
+          <a
+            href={~p"/methodology"}
+            class="font-mono text-sm text-base-content/70 border-b border-dashed border-base-content/30 pb-0.5 hover:text-primary hover:border-primary transition"
+          >
+            Read the methodology
+          </a>
+        </div>
+
+        <div id="install" class="mt-8 max-w-xl border border-base-300 bg-base-200 chamfer-md">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-base-content/50">
+              install · 2 commands
+            </span>
+            <button
+              class="copy-btn font-mono text-[11px] text-base-content/50 border border-base-300 px-2.5 py-1 hover:text-base-content hover:border-base-content/40 transition"
+              data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install codemyspec@codemyspec"}
+            >
+              Copy
+            </button>
+          </div>
+          <div class="px-4 py-3 font-mono text-sm">
+            <div class="flex gap-2.5 py-1">
+              <span class="text-primary select-none">$</span>
+              <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
+            </div>
+            <div class="flex gap-2.5 py-1">
+              <span class="text-primary select-none">$</span>
+              <span class="break-all">/plugin install codemyspec@codemyspec</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Hero media: mock terminal w/ play overlay --%>
+      <div
+        id="hero-media"
+        class="relative aspect-[16/10] border border-base-300 bg-base-200 overflow-hidden cursor-pointer group order-first lg:order-none chamfer-lg"
+        role="button"
+        tabindex="0"
+        aria-label="Play demo video"
+      >
+        <div class="h-8 flex items-center gap-1.5 px-3 border-b border-base-300 bg-base-300">
+          <span class="w-2.5 h-2.5 rounded-full bg-base-content/20"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-base-content/20"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-base-content/20"></span>
+          <span class="ml-auto mr-auto font-mono text-[11px] text-base-content/50">
+            ~/metricflow — mix spex
+          </span>
+        </div>
+        <div class="px-6 py-5 font-mono text-[13px] leading-[1.7] text-base-content/90">
+          <div><span class="text-primary">$</span> mix spex --continuous</div>
+          <div class="text-base-content/50">→ loading requirement graph · 142 nodes · 0 cycles</div>
+          <div class="text-base-content/50">
+            → next: <span class="text-warning">DashboardLive.render/1</span> (pending spec)
+          </div>
+          <div>
+            <span class="text-base-content/50">↪</span>
+            <span class="text-cms-agent-spec">spec-writer</span>
+            drafting component spec…
+          </div>
+          <div>
+            <span class="text-base-content/50">↪</span>
+            <span class="text-cms-agent-spec">test-writer</span>
+            generated 7 ExUnit cases
+          </div>
+          <div>
+            <span class="text-base-content/50">↪</span>
+            <span class="text-cms-agent-code">code-writer</span>
+            implementing · 1 file changed
+          </div>
+          <div>
+            <span class="text-success">✓</span>
+            <span class="text-success">mix test</span>
+            · 7 passed · 0 failed
+          </div>
+          <div>
+            <span class="text-success">✓</span>
+            <span class="text-success">mix spex.verify</span>
+            · live browser · 2 screenshots
+          </div>
+          <div>
+            <span class="text-error">!</span>
+            <span class="text-error">qa-agent</span>
+            filed <span class="text-error">#CMS-412</span> · dashboard tile empty
+          </div>
+        </div>
+        <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-transparent to-base-100/60">
+          <div class="w-[72px] h-[72px] rounded-full bg-primary flex items-center justify-center shadow-[0_10px_40px_rgba(255,56,56,0.35)] transition group-hover:scale-105">
+            <svg viewBox="0 0 24 24" class="w-6 h-6 fill-base-100 ml-1">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </div>
+          <div class="absolute bottom-4 left-4 right-4 flex justify-between items-center font-mono text-[11px] uppercase tracking-[0.14em] text-base-content/70">
+            <span>demo · 01:12</span>
+            <span>▸ play</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PROBLEM ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">02</span><span>// the_frame</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.06] tracking-tight max-w-[18ch]">
+        AI writes code fast.<br /><span class="text-primary">That's the easy part.</span>
+      </h2>
+      <div class="grid md:grid-cols-2 gap-12 mt-12">
+        <p class="text-lg leading-relaxed">
+          The hard part is what happens next. Codebases built with AI assistance are showing
+          <span class="font-mono font-semibold text-primary tabular-nums">60%</span>
+          less refactoring,
+          <span class="font-mono font-semibold text-primary tabular-nums">48%</span>
+          more duplication, a three-month wall where velocity drops off a cliff.
+        </p>
+        <p class="text-lg leading-relaxed">
+          Efficient technical debt machines. The problem isn't the model. It's the missing harness — no specs, no architecture, no verification, no lifecycle. Prompting is praying.
+          <em class="not-italic text-primary">That's the gap CodeMySpec fills.</em>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── HOW IT WORKS ───────────── --%>
+  <section class="border-b border-base-300 signal-top" id="how">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">03</span><span>// how_it_works</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.06] tracking-tight">
+        One requirement graph.<br />Six subagents. <span class="text-primary">Full lifecycle.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-5 max-w-[62ch] leading-relaxed">
+        CodeMySpec tracks every artifact your Phoenix app needs — specs, tests, implementations, BDD scenarios, QA results — on a single dependency graph. Call
+        <code class="font-mono text-base-content bg-base-200 px-1.5 py-0.5 border border-base-300 text-sm">
+          get_next_requirement
+        </code>
+        . Do one thing. The graph moves forward.
+      </p>
+
+      <div class="mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 phases-connector">
+        <%= for phase <- [
+          %{n: "01", agent: "pm", title: "Product", token: "pm", body: "Story interview. The Product Manager agent asks what you want and writes it as markdown with acceptance criteria."},
+          %{n: "02", agent: "arch", title: "Architecture", token: "arch", body: "Map stories to Phoenix contexts. Validate the graph. No cycles, no cross-context leaks."},
+          %{n: "03", agent: "spec", title: "Spec & Test", token: "spec", body: "spec-writer drafts component specs. test-writer generates ExUnit from assertions. TDD, the way you know it."},
+          %{n: "04", agent: "impl", title: "Implement", token: "code", body: "code-writer writes to pass the tests. Continuous mode walks the graph until every requirement is satisfied."},
+          %{n: "05", agent: "bdd", title: "BDD specs", token: "bdd", body: "User-facing behavior captured as BDD scenarios in the Spex DSL, generated from acceptance criteria."},
+          %{n: "06", agent: "qa", title: "Verification", token: "qa", body: "QA agent opens a real browser via Vibium, drives the app, takes screenshots, files issues when reality diverges."}
+        ] do %>
+          <div class="px-4 py-2 relative" style={"--ac: var(--color-cms-agent-#{phase.token});"}>
+            <div class="phase-node chamfer-sm w-14 h-14 mb-6 bg-base-100 flex flex-col items-center justify-center font-mono uppercase relative z-10">
+              <span class="phase-color font-display font-bold text-[15px] leading-none">
+                {phase.n}
+              </span>
+              <span class="text-[8px] tracking-[0.14em] text-base-content/40 mt-1">
+                {phase.agent}
+              </span>
+            </div>
+            <h3 class="phase-title font-mono font-bold text-xs uppercase tracking-[0.1em] mb-3">
+              {phase.title}
+            </h3>
+            <p class="text-sm text-base-content/70 leading-relaxed">{phase.body}</p>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="mt-16 pt-8 border-t border-base-300 flex flex-wrap justify-between items-baseline gap-6">
+        <p class="text-base text-base-content/70 italic max-w-[60ch] m-0">
+          It's the harness OpenAI spent six months building for Codex — productized, for teams that don't have OpenAI's infrastructure team.
+        </p>
+        <a
+          href={~p"/methodology"}
+          class="font-mono text-sm text-base-content/70 border-b border-dashed border-base-content/30 pb-0.5 hover:text-primary hover:border-primary transition"
+        >
+          Read the full methodology →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── DIFFERENTIATORS ───────────── --%>
+  <section class="border-b border-base-300 signal-top" id="diff">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">04</span><span>// differentiators</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.06] tracking-tight">
+        What makes CodeMySpec <span class="text-primary">different.</span>
+      </h2>
+
+      <div class="mt-16 grid grid-cols-1 md:grid-cols-2 gap-[18px]">
+        <article class="diff-card">
+          <div class="diff-num">01</div>
+          <div class="diff-label">lifecycle</div>
+          <h3 class="font-heading font-bold text-2xl tracking-tight mb-4 max-w-[26ch] text-base-content">
+            Full-lifecycle platform, not a point tool.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed max-w-[50ch]">
+            Requirements → specs → architecture → code → tests → verification. One graph, one system. Every other tool owns a single phase and assumes you'll glue the rest together yourself.
+          </p>
+        </article>
+
+        <article class="diff-card">
+          <div class="diff-num">02</div>
+          <div class="diff-label">agent_agnostic</div>
+          <h3 class="font-heading font-bold text-2xl tracking-tight mb-4 max-w-[26ch] text-base-content">
+            Bring your own agent. Bring your own model. Bring your own keys.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed max-w-[50ch]">
+            Specs are plain markdown. Tests are standard ExUnit. The plugin works with Claude Code today and whatever agent wins next year. You pay Anthropic or OpenAI directly — CodeMySpec doesn't arbitrage your token spend.
+          </p>
+        </article>
+
+        <article class="diff-card">
+          <div class="diff-num">03</div>
+          <div class="diff-label">elixir_native</div>
+          <h3 class="font-heading font-bold text-2xl tracking-tight mb-4 max-w-[26ch] text-base-content">
+            Elixir-native by design.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed max-w-[50ch]">
+            Phoenix contexts, LiveView components, Ecto schemas, OTP supervision — first-class primitives the platform understands. Cursor doesn't know what a context is. CodeMySpec does.
+          </p>
+        </article>
+
+        <article class="diff-card">
+          <div class="diff-num">04</div>
+          <div class="diff-label">verification</div>
+          <h3 class="font-heading font-bold text-2xl tracking-tight mb-4 max-w-[26ch] text-base-content">
+            Verification is part of the product, not homework.
+          </h3>
+          <p class="text-base text-base-content/70 leading-relaxed max-w-[50ch]">
+            Every spec produces acceptance criteria and generated tests. The QA agent drives the live app with a real browser, not a mock. You know the feature works before you ship it, not after the alert fires.
+          </p>
+        </article>
+
+        <article class="diff-card diff-card--tall md:col-span-2">
+          <div class="diff-num">05</div>
+          <div class="diff-label">the_thesis</div>
+          <h3 class="font-heading font-bold text-3xl tracking-tight mb-4 max-w-[30ch] text-base-content">
+            Harness engineering, productized.
+          </h3>
+          <p class="text-lg text-base-content/70 leading-relaxed max-w-[70ch]">
+            <em class="not-italic text-primary">"The agent is commodity. The harness is the differentiator."</em>
+            CodeMySpec is the harness — ready to use, purpose-built for Phoenix.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── MONEY SHOT ───────────── --%>
+  <section class="border-b border-base-300 bg-gradient-to-b from-base-100 via-base-200/40 to-base-100 signal-top scanlines">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">05</span><span>// the_money_shot</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.06] tracking-tight max-w-[20ch]">
+        Prompting is praying.<br /><span class="text-primary">Verification is a guarantee.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-5 max-w-[58ch] leading-relaxed">
+        Unit tests pass. BDD specs pass. Then the QA agent opens a real browser, clicks through the flow a user would take, and finds the bug anyway. That's the loop no other AI coding tool has.
+      </p>
+
+      <div class="mt-14 grid lg:grid-cols-2 gap-6 items-stretch">
+        <%!-- Left: terminal --%>
+        <div class="border border-base-300 bg-base-200 overflow-hidden min-h-[460px] chamfer-lg">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-base-300 font-mono text-[11px] uppercase tracking-[0.14em] text-base-content/50">
+            <span>terminal · metricflow</span>
+            <span class="text-success">✓ all green</span>
+          </div>
+          <div class="px-5 py-5 font-mono text-[13.5px] leading-[1.75]">
+            <div><span class="text-primary">$</span> mix test</div>
+            <div class="text-base-content/40">Compiling 2 files (.ex)</div>
+            <div class="text-base-content/40">Running ExUnit with seed: 0xCAFE</div>
+            <div>...............................................</div>
+            <div class="text-success">Finished in 4.2 seconds</div>
+            <div class="text-success">47 tests, 0 failures</div>
+            <div class="h-3.5"></div>
+            <div><span class="text-primary">$</span> mix spex</div>
+            <div class="text-base-content/40">Loading BDD scenarios from spex/</div>
+            <div>Feature: Dashboard renders revenue tile</div>
+            <div>
+              &nbsp;&nbsp;<span class="text-success">✓</span> Given a signed-in user
+            </div>
+            <div>
+              &nbsp;&nbsp;<span class="text-success">✓</span> When they visit /dashboard
+            </div>
+            <div>
+              &nbsp;&nbsp;<span class="text-success">✓</span> Then revenue tile is present
+            </div>
+            <div class="text-success">3 scenarios, 0 failures</div>
+          </div>
+        </div>
+
+        <%!-- Right: QA browser screenshot w/ issue overlay --%>
+        <div class="border border-base-300 bg-base-200 overflow-hidden min-h-[460px] flex flex-col chamfer-lg">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-base-300 font-mono text-[11px] uppercase tracking-[0.14em] text-base-content/50">
+            <span>qa-agent · browser verification</span>
+            <span class="text-error">! issue filed</span>
+          </div>
+          <div class="relative p-5 flex-1 flex flex-col gap-3.5">
+            <%!-- mock browser --%>
+            <div class="border border-base-content/20 bg-base-100 flex-1 flex flex-col">
+              <div class="h-7 bg-base-300 border-b border-base-300 flex items-center gap-1.5 px-2.5">
+                <span class="w-2 h-2 rounded-full bg-base-content/20"></span>
+                <span class="w-2 h-2 rounded-full bg-base-content/20"></span>
+                <span class="w-2 h-2 rounded-full bg-base-content/20"></span>
+                <span class="ml-3 font-mono text-[10px] text-base-content/40 bg-base-100 px-2.5 py-0.5 border border-base-300 max-w-[260px] truncate">
+                  localhost:4000/dashboard
+                </span>
+              </div>
+              <div class="flex-1 p-4 grid grid-cols-2 gap-2.5 bg-[repeating-linear-gradient(135deg,_var(--color-base-200)_0_10px,_var(--color-base-100)_10px_20px)]">
+                <div class="bg-base-300 border border-base-300 p-2.5 font-mono min-h-[80px]">
+                  <div class="text-[9px] uppercase tracking-[0.12em] text-base-content/40 mb-2">
+                    Total MRR
+                  </div>
+                  <div class="font-heading text-xl font-bold text-base-content">$284,419</div>
+                </div>
+                <div class="bg-base-300 border border-base-300 p-2.5 font-mono min-h-[80px]">
+                  <div class="text-[9px] uppercase tracking-[0.12em] text-base-content/40 mb-2">
+                    Active Users
+                  </div>
+                  <div class="font-heading text-xl font-bold text-base-content">12,847</div>
+                </div>
+                <div class="border border-dashed border-error bg-base-100 p-2.5 font-mono min-h-[80px] relative">
+                  <div class="text-[9px] uppercase tracking-[0.12em] text-error mb-2">
+                    Revenue · 30d
+                  </div>
+                  <div class="font-heading text-xl font-bold text-transparent">—</div>
+                  <span class="absolute bottom-1.5 right-2.5 text-[9px] text-error uppercase tracking-[0.12em]">
+                    empty
+                  </span>
+                </div>
+                <div class="bg-base-300 border border-base-300 p-2.5 font-mono min-h-[80px]">
+                  <div class="text-[9px] uppercase tracking-[0.12em] text-base-content/40 mb-2">
+                    Conversion
+                  </div>
+                  <div class="font-heading text-xl font-bold text-base-content">4.2%</div>
+                </div>
+              </div>
+            </div>
+
+            <%!-- issue overlay --%>
+            <div class="absolute right-4 bottom-4 w-[68%] bg-base-100 border border-error font-mono text-xs shadow-2xl shadow-error/10 z-10">
+              <div class="flex items-center justify-between px-3 py-2.5 border-b border-base-300 bg-error/5">
+                <span class="text-error text-[10px] tracking-[0.14em]">SEVERITY · HIGH</span>
+                <span class="text-base-content/50 text-[10px]">#CMS-412</span>
+              </div>
+              <div class="p-3">
+                <div class="font-heading text-sm tracking-tight text-base-content mb-2">
+                  Revenue tile renders empty on /dashboard
+                </div>
+                <div class="text-[10px] text-base-content/40 flex flex-wrap gap-2.5">
+                  <span>filed by qa-agent</span><span>·</span>
+                  <span>2026-04-22 14:08</span><span>·</span>
+                  <span>spec: DashboardLive</span>
+                </div>
+                <div class="text-[11px] text-base-content/70 leading-relaxed mt-2">
+                  Expected chart svg in [data-testid="rev-30d"]; got empty div. Screenshot + LiveView trace attached.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-12 text-center font-heading font-bold text-xl md:text-3xl tracking-tight uppercase">
+        Tests passed.<span class="text-primary font-mono font-normal mx-3.5">·</span>Feature broken.<span class="text-primary font-mono font-normal mx-3.5">·</span><em class="not-italic text-primary [text-shadow:0_0_18px_rgba(255,56,56,0.4)]">QA caught it.</em>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PROOF ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">06</span><span>// proof</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.06] tracking-tight">
+        Real apps. Real Elixir.<br /><span class="text-primary">Built with CodeMySpec.</span>
+      </h2>
+
+      <div class="mt-14 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr_1fr] gap-px bg-base-300 border border-base-300">
+        <div class="bg-base-100 p-9 flex flex-col min-h-[280px]">
+          <div class="font-mono text-[10px] text-base-content/50 uppercase tracking-[0.18em] mb-5 flex items-center gap-2">
+            <span class="w-1.5 h-1.5 bg-primary inline-block"></span> featured · open source
+          </div>
+          <h3 class="font-heading text-xl font-bold tracking-tight mb-4">MetricFlow</h3>
+          <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
+            Multi-context Phoenix app with Google Ads, Google Analytics, Facebook, and QuickBooks integrations. Built end to end with CodeMySpec. The codebase itself is the case study.
+          </p>
+          <div class="grid grid-cols-3 gap-4 border-t border-base-300 pt-5 mt-2">
+            <div>
+              <div class="font-heading text-2xl tracking-tight">40</div>
+              <div class="font-mono text-[10px] text-base-content/50 uppercase tracking-[0.14em]">
+                commits
+              </div>
+            </div>
+            <div>
+              <div class="font-heading text-2xl tracking-tight">13d</div>
+              <div class="font-mono text-[10px] text-base-content/50 uppercase tracking-[0.14em]">
+                end-to-end
+              </div>
+            </div>
+            <div>
+              <div class="font-heading text-2xl tracking-tight">5</div>
+              <div class="font-mono text-[10px] text-base-content/50 uppercase tracking-[0.14em]">
+                integrations
+              </div>
+            </div>
+          </div>
+          <a
+            href="https://github.com/Code-My-Spec/metricflow"
+            class="font-mono text-sm text-base-content border-b border-dashed border-base-content/30 pb-0.5 hover:text-primary hover:border-primary transition self-start mt-5"
+          >
+            github.com/Code-My-Spec/metricflow →
+          </a>
+        </div>
+
+        <div class="bg-base-100 p-9 flex flex-col min-h-[280px]">
+          <div class="font-mono text-[10px] text-base-content/50 uppercase tracking-[0.18em] mb-5 flex items-center gap-2">
+            <span class="w-1.5 h-1.5 bg-primary inline-block"></span> production · uat
+          </div>
+          <h3 class="font-heading text-xl font-bold tracking-tight mb-4">Fuellytics</h3>
+          <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
+            Production client app built with CodeMySpec methodology. In UAT March 2026. Real customers, real uptime.
+          </p>
+          <a
+            href="#"
+            class="font-mono text-sm text-base-content border-b border-dashed border-base-content/30 pb-0.5 hover:text-primary hover:border-primary transition self-start"
+          >
+            Read the case study →
+          </a>
+        </div>
+
+        <div class="bg-base-100 p-9 flex flex-col min-h-[280px]">
+          <div class="font-mono text-[10px] text-base-content/50 uppercase tracking-[0.18em] mb-5 flex items-center gap-2">
+            <span class="w-1.5 h-1.5 bg-primary inline-block"></span> self-hosted · recursion
+          </div>
+          <h3 class="font-heading text-xl font-bold tracking-tight mb-4">
+            CodeMySpec is built with CodeMySpec.
+          </h3>
+          <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
+            The requirement graph you use is the requirement graph the product tracks itself against. The recursion is the proof.
+          </p>
+          <a
+            href="https://github.com/Code-My-Spec"
+            class="font-mono text-sm text-base-content border-b border-dashed border-base-content/30 pb-0.5 hover:text-primary hover:border-primary transition self-start"
+          >
+            See the repo →
+          </a>
+        </div>
+      </div>
+
+      <div class="mt-10 pt-7 border-t border-base-300 flex flex-wrap items-center gap-4 text-sm text-base-content/70">
+        <div class="w-10 h-10 bg-gradient-to-br from-primary to-secondary flex items-center justify-center font-mono font-semibold text-base-100 text-sm">
+          JD
+        </div>
+        <div>
+          Built by
+          <a
+            href={~p"/author/john-davenport"}
+            class="text-base-content border-b border-dashed border-base-content/30 hover:text-primary hover:border-primary transition"
+          >
+            John Davenport
+          </a>
+          — a working Phoenix engineer, not a tourist. Six years on r/elixir. Real code, in production, right now.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
+      <p class="eyebrow"><span class="idx">07</span><span>// objections</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.06] tracking-tight mb-3">
+        Questions engineers <span class="text-primary">actually ask.</span>
+      </h2>
+
+      <div class="mt-12 border-t border-base-300">
+        <%= for {q, a, open?} <- [
+          {"\"I already use Claude Code / Cursor. Why do I need this?\"",
+           "You still do. CodeMySpec runs inside Claude Code as a plugin. It adds the lifecycle layer those tools don't have — specs that survive code changes, a requirement graph that keeps the agent on-rails, and browser-based verification after the tests pass.",
+           true},
+          {"\"Isn't this just writing more docs?\"",
+           "Specs aren't docs. They generate tests, constrain the agent, and survive when the code changes. The doc-writing version of this is why nobody did it before. Agents changed the economics — twenty minutes on a spec now saves two hours of prompt iteration.",
+           false},
+          {"\"Am I paying twice — once for Claude and once for you?\"",
+           "No. CodeMySpec doesn't mark up model tokens. You keep your own provider, your own keys, your own bill. We charge for the platform — server, specs, verification, team features. Not for agent use.",
+           false},
+          {"\"What happens if CodeMySpec shuts down?\"",
+           "Specs are markdown in your repo. Tests are standard Elixir. You own the artifacts. No lock-in.",
+           false},
+          {"\"Looks over-engineered for my project.\"",
+           "Use the lightweight path — one spec per feature, generated tests, no ceremony. The graph scales up if the project does.",
+           false},
+          {"\"I'm not on Elixir. Should I care?\"",
+           "The core lifecycle — plugin, MCP servers, requirement graph — works on any stack today. The Elixir-native features are the deepest integration. Broader stack support is on the roadmap once the Elixir beachhead is won.",
+           false}
+        ] do %>
+          <details class="border-b border-base-300 group" open={open?}>
+            <summary class="cursor-pointer list-none py-7 flex justify-between items-center gap-6 font-heading text-lg md:text-xl font-bold tracking-tight hover:text-primary transition">
+              <span>{q}</span>
+              <span class="font-mono text-sm text-base-content/40 w-6 text-center transition group-open:rotate-45 group-open:text-primary">
+                +
+              </span>
+            </summary>
+            <div class="pb-7 text-base text-base-content/70 leading-relaxed max-w-[72ch]">
+              {a}
+            </div>
+          </details>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PRICING ───────────── --%>
+  <section class="border-b border-base-300 signal-top">
+    <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28 text-center">
+      <p class="eyebrow justify-center mb-6"><span class="idx">08</span><span>// pricing</span></p>
+      <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.06] tracking-tight">
+        <span class="text-primary">Free</span> during early access.
+      </h2>
+      <div class="mt-12 mx-auto max-w-2xl border border-base-300 p-10 md:p-12 bg-base-200 text-left chamfer-lg">
+        <span class="inline-block font-mono text-[11px] uppercase tracking-[0.12em] text-primary border border-primary/30 bg-primary/10 px-2.5 py-1 mb-5">
+          ● Early access · 2026
+        </span>
+        <h3 class="font-heading text-2xl font-bold tracking-tight mb-4">$0 / month</h3>
+        <p class="text-base text-base-content/70 leading-relaxed mb-2">
+          CodeMySpec is free during early access. Server-side platform features will be priced per-seat once we hit 1.0.
+        </p>
+        <p class="text-base text-base-content/70 leading-relaxed">
+          You bring your own model provider and keys — we never charge a markup on your tokens.
+        </p>
+        <ul class="mt-6 pt-6 border-t border-base-300 grid gap-2.5 list-none p-0">
+          <%= for item <- [
+            "Unlimited specs, tests, BDD scenarios",
+            "Continuous mode · requirement graph",
+            "QA agent with browser verification (Vibium)",
+            "Works with Claude Code today",
+            "No token markup · ever"
+          ] do %>
+            <li class="font-mono text-sm text-base-content/70 flex items-center gap-2.5">
+              <span class="text-primary">✓</span> {item}
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FINAL CTA ───────────── --%>
+  <section class="bg-[radial-gradient(circle_at_70%_30%,_rgba(255,56,56,0.08),_transparent_60%)] signal-top">
+    <div class="max-w-7xl mx-auto px-6 py-28 lg:py-32 grid lg:grid-cols-[1.1fr_1fr] gap-16 items-end">
+      <div>
+        <p class="eyebrow"><span class="idx">09</span><span>// install</span></p>
+        <h2 class="font-heading font-bold text-4xl md:text-6xl leading-[1.02] tracking-tight max-w-[14ch]">
+          Install <span class="text-primary">the plugin.</span>
+        </h2>
+        <p class="text-lg text-base-content/70 mt-5 max-w-[44ch]">
+          Two commands. No signup gate. See the harness for yourself.
+        </p>
+        <div class="mt-7 flex flex-wrap gap-7 font-mono text-sm">
+          <a
+            href="https://cal.com/johndavenport"
+            class="text-base-content border-b border-dashed border-base-content/30 hover:text-primary hover:border-primary transition pb-0.5"
+          >
+            Talk to John →
+          </a>
+          <a
+            href={~p"/methodology"}
+            class="text-base-content border-b border-dashed border-base-content/30 hover:text-primary hover:border-primary transition pb-0.5"
+          >
+            Read the methodology →
+          </a>
+          <a
+            href="https://www.youtube.com/@codemyspec"
+            class="text-base-content border-b border-dashed border-base-content/30 hover:text-primary hover:border-primary transition pb-0.5"
+          >
+            See a demo →
+          </a>
+        </div>
+      </div>
+      <div class="border border-base-300 bg-base-200 chamfer-md">
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
+          <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-base-content/50">
+            install · 2 commands
+          </span>
+          <button
+            class="copy-btn font-mono text-[11px] text-base-content/50 border border-base-300 px-2.5 py-1 hover:text-base-content hover:border-base-content/40 transition"
+            data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install codemyspec@codemyspec"}
+          >
+            Copy
+          </button>
+        </div>
+        <div class="px-4 py-3 font-mono text-sm">
+          <div class="flex gap-2.5 py-1">
+            <span class="text-primary select-none">$</span>
+            <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
+          </div>
+          <div class="flex gap-2.5 py-1">
+            <span class="text-primary select-none">$</span>
+            <span class="break-all">/plugin install codemyspec@codemyspec</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const text = btn.getAttribute('data-copy');
+        const original = btn.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (_) {}
+          document.body.removeChild(ta);
+        }
+        btn.textContent = '✓ Copied';
+        btn.classList.add('text-primary', 'border-primary');
+        setTimeout(() => {
+          btn.textContent = original;
+          btn.classList.remove('text-primary', 'border-primary');
+        }, 1800);
+      });
+    });
+  </script>
+</div>
+</Layouts.marketing>

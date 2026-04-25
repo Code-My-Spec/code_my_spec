@@ -35,6 +35,7 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/products/code-my-spec", PageController, :code_my_spec
     get "/sitemap.xml", SitemapController, :index
     get "/llms.txt", LlmsTxtController, :index
     get "/llms-full.txt", LlmsTxtController, :full
