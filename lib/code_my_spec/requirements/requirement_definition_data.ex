@@ -613,6 +613,21 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: []
       }),
       new!(%{
+        id: 5,
+        name: "three_amigos_complete",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.BddRulesChecker, function: :complete?},
+        satisfied_by: AgentTasks.ThreeAmigos,
+        artifact_type: :specification,
+        description:
+          "Three Amigos session complete — persona linked, rules and scenarios populated",
+        prerequisites: [],
+        # Manual so the stop hook doesn't short-circuit the multi-turn
+        # PM/agent intake conversation. Same rationale as personas_complete.
+        validation_type: :manual
+      }),
+      new!(%{
         id: 2,
         name: "bdd_specs_exist",
         node_scope: :self,
@@ -749,7 +764,19 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [6]
       }),
 
-      # QA chain (separate from main — qa_preflight has no prereqs in this chain)
+      # QA chain (separate from main — gated on qa_setup so all QA work has a plan)
+      new!(%{
+        id: 14,
+        name: "qa_setup",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/qa/plan.md"},
+        satisfied_by: AgentTasks.QaSetup,
+        artifact_type: :review,
+        description:
+          "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
+        prerequisites: []
+      }),
       new!(%{
         id: 8,
         name: "qa_preflight",
@@ -759,7 +786,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaPreflight,
         artifact_type: :review,
         description: "App-level integration verification complete",
-        prerequisites: []
+        prerequisites: [14]
       }),
       new!(%{
         id: 9,
