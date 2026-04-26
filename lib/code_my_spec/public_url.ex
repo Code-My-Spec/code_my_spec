@@ -23,20 +23,37 @@ defmodule CodeMySpec.PublicUrl do
   https, 80/nil for http).
   """
   @spec base() :: String.t()
-  def base do
-    cfg =
-      :code_my_spec
-      |> Application.get_env(CodeMySpecWeb.Endpoint, [])
-      |> Keyword.get(:url, [])
+  def base, do: build(CodeMySpecWeb.Endpoint)
 
-    scheme = Keyword.get(cfg, :scheme, "http")
-    host = Keyword.get(cfg, :host, "localhost")
-    port = Keyword.get(cfg, :port)
+  @doc """
+  Returns the local CLI server's base URL, e.g. `"http://127.0.0.1:4003"`.
+
+  Reads from the local endpoint's `:url` / `:http` config under
+  `:code_my_spec, CodeMySpecLocalWeb.Endpoint`. Used by MCP-tool
+  responses that point the agent at the local sign-in screen.
+  """
+  @spec local_base() :: String.t()
+  def local_base, do: build(CodeMySpecLocalWeb.Endpoint)
+
+  defp build(endpoint_key) do
+    cfg = Application.get_env(:code_my_spec, endpoint_key, [])
+    url_cfg = Keyword.get(cfg, :url, [])
+
+    scheme = Keyword.get(url_cfg, :scheme, "http")
+    host = Keyword.get(url_cfg, :host, "localhost")
+    port = Keyword.get(url_cfg, :port) || http_port(cfg)
 
     cond do
       scheme == "https" and port in [nil, 443] -> "https://#{host}"
       scheme == "http" and port in [nil, 80] -> "http://#{host}"
       true -> "#{scheme}://#{host}:#{port}"
+    end
+  end
+
+  defp http_port(cfg) do
+    case Keyword.get(cfg, :http) do
+      http when is_list(http) -> Keyword.get(http, :port)
+      _ -> nil
     end
   end
 end

@@ -12,8 +12,8 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
 
   use Anubis.Server.Component, type: :tool
 
+  alias CodeMySpec.Knowledge
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpecLocalWeb.MarkdownBrowserLive
 
   schema do
     field :library, :string,
@@ -31,7 +31,7 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
       path_segments = parse_path(params)
       project_name = scope.active_project.name
 
-      case MarkdownBrowserLive.resolve(library, path_segments, project_name) do
+      case Knowledge.resolve(library, path_segments, project_name) do
         {:ok, content} ->
           {:reply, text_response(content), frame}
 

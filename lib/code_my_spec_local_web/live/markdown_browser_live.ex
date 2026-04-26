@@ -12,21 +12,12 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Knowledge
   alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
 
-  @libraries %{
-    knowledge: %{
-      title: "Knowledge Base",
-      root: {:priv, "knowledge"},
-      description: "Curated reference articles for AI-assisted development"
-    },
-    project_knowledge: %{
-      title: "Project Knowledge",
-      root: {:project, ".code_my_spec/knowledge"},
-      description: "Project-specific research and technology decisions"
-    }
-  }
+  # Library config + path resolution rules live in CodeMySpec.Knowledge —
+  # the LiveView is the display surface, the lib module is the contract.
+  @libraries Knowledge.libraries()
 
   @impl true
   def mount(_params, _session, socket) do
@@ -140,28 +131,7 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
     """
   end
 
-  defp resolve_root({:priv, relative}, _project_name) do
-    root = :code_my_spec |> :code.priv_dir() |> Path.join(relative)
-
-    if File.dir?(root) do
-      {:ok, root}
-    else
-      {:error, "Directory not found: priv/#{relative}"}
-    end
-  end
-
-  defp resolve_root({:project, relative}, project_name) do
-    with {:ok, project} <- Projects.get_project_by_name(project_name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      root = Path.join(scope.cwd, relative)
-
-      if File.dir?(root) do
-        {:ok, root}
-      else
-        {:error, "Directory not found: #{relative}"}
-      end
-    end
-  end
+  defdelegate resolve_root(root, project_name), to: Knowledge
 
   defp build_index(config, dir_path, base_url) do
     back =
@@ -214,25 +184,8 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
     "[← Back](#{parent_url})\n\n#{content}"
   end
 
-  defp list_entries(dir_path) do
-    dir_path
-    |> File.ls!()
-    |> Enum.reject(&String.starts_with?(&1, "."))
-    |> Enum.sort()
-    |> Enum.map(fn name ->
-      full = Path.join(dir_path, name)
-      type = if File.dir?(full), do: :dir, else: :file
-      {name, type}
-    end)
-    |> Enum.sort_by(fn {name, type} ->
-      {if(type == :dir, do: 0, else: 1), if(name =~ ~r/^readme/i, do: 0, else: 1), name}
-    end)
-  end
-
-  defp safe_path?(root, path) do
-    expanded = Path.expand(path)
-    String.starts_with?(expanded, Path.expand(root))
-  end
+  defdelegate list_entries(dir_path), to: Knowledge
+  defdelegate safe_path?(root, path), to: Knowledge
 
   defp humanize(name) do
     name
@@ -251,37 +204,4 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
     library |> Atom.to_string() |> String.replace("_", "-")
   end
 
-  def libraries, do: @libraries
-
-  def resolve(library, path_segments, project_name) do
-    with {:ok, config} <- Map.fetch(@libraries, library),
-         {:ok, root} <- resolve_root(config.root, project_name) do
-      case path_segments do
-        [] ->
-          lines = list_entries(root) |> format_entries()
-          {:ok, "# #{config.title}\n\n#{lines}\n"}
-
-        segments ->
-          relative_path = Path.join(segments)
-          full_path = Path.join(root, relative_path)
-
-          cond do
-            not safe_path?(root, full_path) -> {:error, :invalid_path}
-            not File.exists?(full_path) -> {:error, :not_found}
-            File.dir?(full_path) ->
-              lines = list_entries(full_path) |> format_entries()
-              {:ok, "# #{Path.basename(full_path)}\n\n#{lines}\n"}
-            String.ends_with?(full_path, ".md") -> {:ok, File.read!(full_path)}
-            true -> {:error, :not_found}
-          end
-      end
-    end
-  end
-
-  defp format_entries(entries) do
-    Enum.map_join(entries, "\n", fn {name, type} ->
-      label = if type == :dir, do: "#{name}/", else: Path.basename(name, ".md")
-      "- #{label}"
-    end)
-  end
 end
