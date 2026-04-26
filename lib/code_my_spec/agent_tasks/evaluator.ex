@@ -77,7 +77,8 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       CodeMySpec.AgentTasks.ResearchTopic,
       CodeMySpec.AgentTasks.ResearchTopics,
       CodeMySpec.AgentTasks.ArchitectureDesign,
-      CodeMySpec.AgentTasks.QaStory
+      CodeMySpec.AgentTasks.QaStory,
+      CodeMySpec.AgentTasks.TriageIssues
     ]
   end
 

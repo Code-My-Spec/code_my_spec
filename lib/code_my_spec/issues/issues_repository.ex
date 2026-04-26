@@ -101,6 +101,12 @@ defmodule CodeMySpec.Issues.IssuesRepository do
         story_id -> Map.put(attrs, :story_id, story_id)
       end
 
+    attrs =
+      case Keyword.get(opts, :category) do
+        nil -> attrs
+        category -> Map.put(attrs, :category, category)
+      end
+
     issue
     |> Issue.status_changeset(attrs)
     |> Repo.update()

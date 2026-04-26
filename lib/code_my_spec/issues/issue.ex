@@ -11,6 +11,7 @@ defmodule CodeMySpec.Issues.Issue do
           scope: :app | :qa | :docs,
           description: String.t(),
           status: :incoming | :accepted | :dismissed | :resolved,
+          category: :bug | :requirements_change | nil,
           resolution: String.t() | nil,
           source: String.t() | nil,
           story_id: integer() | nil,
@@ -24,6 +25,7 @@ defmodule CodeMySpec.Issues.Issue do
   @severities [:critical, :high, :medium, :low, :info]
   @scopes [:app, :qa, :docs]
   @statuses [:incoming, :accepted, :dismissed, :resolved]
+  @categories [:bug, :requirements_change]
 
   @valid_transitions %{
     incoming: [:accepted, :dismissed],
@@ -54,6 +56,7 @@ defmodule CodeMySpec.Issues.Issue do
     field :scope, Ecto.Enum, values: @scopes, default: :app
     field :description, :string
     field :status, Ecto.Enum, values: @statuses, default: :incoming
+    field :category, Ecto.Enum, values: @categories
     field :resolution, :string
     field :source, :string
     field :story_id, :integer
@@ -64,10 +67,23 @@ defmodule CodeMySpec.Issues.Issue do
     timestamps(type: :utc_datetime)
   end
 
+  @castable_fields [
+    :title,
+    :severity,
+    :scope,
+    :description,
+    :status,
+    :category,
+    :resolution,
+    :source,
+    :story_id,
+    :source_path
+  ]
+
   @doc false
   def changeset(issue, attrs) do
     issue
-    |> cast(attrs, [:title, :severity, :scope, :description, :status, :resolution, :source, :story_id, :source_path])
+    |> cast(attrs, @castable_fields)
     |> validate_required([:title, :severity, :description])
     |> unique_constraint([:title, :story_id, :project_id])
   end
@@ -77,10 +93,11 @@ defmodule CodeMySpec.Issues.Issue do
     new_status = attrs[:status] || attrs["status"]
 
     issue
-    |> cast(attrs, [:status, :resolution, :story_id])
+    |> cast(attrs, [:status, :category, :resolution, :story_id])
     |> validate_required([:status])
     |> validate_transition(issue.status, new_status)
     |> maybe_require_resolution(new_status)
+    |> maybe_require_story_for_requirements_change()
   end
 
   @doc "Returns a numeric index for severity ordering (lower = more severe)."
@@ -113,4 +130,24 @@ defmodule CodeMySpec.Issues.Issue do
   end
 
   defp maybe_require_resolution(changeset, _status), do: changeset
+
+  defp maybe_require_story_for_requirements_change(changeset) do
+    case get_field(changeset, :category) do
+      :requirements_change ->
+        case get_field(changeset, :story_id) do
+          nil ->
+            add_error(
+              changeset,
+              :story_id,
+              "is required when category is :requirements_change"
+            )
+
+          _ ->
+            changeset
+        end
+
+      _ ->
+        changeset
+    end
+  end
 end
