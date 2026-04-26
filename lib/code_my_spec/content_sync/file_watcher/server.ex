@@ -19,28 +19,17 @@ defmodule CodeMySpec.ContentSync.FileWatcher.Server do
 
   @impl true
   def init(opts) do
-    case Impl.build_config(opts) do
-      {:ok, config} ->
-        case Impl.validate_config(config) do
-          :ok ->
-            case subscribe_to_filesystem(config.directory) do
-              {:ok, _pid} ->
-                state = Impl.new_state(config)
+    with {:ok, config} <- Impl.build_config(opts),
+         :ok <- Impl.validate_config(config),
+         {:ok, _pid} <- subscribe_to_filesystem(config.directory) do
+      state = Impl.new_state(config)
 
-                Logger.info(
-                  "FileWatcher started: watching #{state.watched_directory} for account_id=#{state.scope.active_account_id} project_id=#{state.scope.active_project_id}"
-                )
+      Logger.info(
+        "FileWatcher started: watching #{state.watched_directory} for account_id=#{state.scope.active_account_id} project_id=#{state.scope.active_project_id}"
+      )
 
-                {:ok, state}
-
-              {:error, reason} ->
-                {:stop, reason}
-            end
-
-          {:error, reason} ->
-            {:stop, reason}
-        end
-
+      {:ok, state}
+    else
       {:error, reason} ->
         {:stop, reason}
     end

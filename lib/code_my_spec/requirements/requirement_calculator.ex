@@ -143,17 +143,23 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     if is_nil(module) do
       {false, %{reason: "delegate check missing :module in config"}}
     else
-      case apply(module, function, [scope, entity]) do
-        {true, details} -> {true, details}
-        {false, details} -> {false, details}
-        {:ok, :valid} -> {true, %{status: "delegate check passed"}}
-        {:ok, :invalid, reason} -> {false, %{reason: reason}}
-        _ -> {false, %{reason: "delegate check returned unexpected result"}}
-      end
+      run_delegate(module, function, scope, entity)
     end
+  end
+
+  defp run_delegate(module, function, scope, entity) do
+    module
+    |> apply(function, [scope, entity])
+    |> normalize_delegate_result()
   rescue
     e -> {false, %{reason: "delegate check failed: #{Exception.message(e)}"}}
   end
+
+  defp normalize_delegate_result({true, details}), do: {true, details}
+  defp normalize_delegate_result({false, details}), do: {false, details}
+  defp normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
+  defp normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
+  defp normalize_delegate_result(_), do: {false, %{reason: "delegate check returned unexpected result"}}
 
   # Fallback for definitions without check_type (legacy or unknown)
   defp check(%{check_type: nil, name: name}, _scope, _entity, _files, _ctx) do

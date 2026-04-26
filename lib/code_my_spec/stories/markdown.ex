@@ -71,26 +71,22 @@ defmodule CodeMySpec.Stories.Markdown do
   end
 
   defp split_into_sections(markdown) do
-    sections = String.split(markdown, "\n## ")
-
-    case sections do
-      [first_section | rest] ->
-        # Check if first section contains a story (starts with ## after trimming)
-        if String.trim(first_section) |> String.starts_with?("## ") do
-          # No project header, all sections are stories
-          Enum.map(sections, fn
-            "## " <> _ = section -> section
-            section -> "## " <> section
-          end)
-        else
-          # Has project header, skip first section
-          Enum.map(rest, &("## " <> &1))
-        end
-
-      [] ->
-        []
+    case String.split(markdown, "\n## ") do
+      [] -> []
+      [first_section | rest] = sections -> sections_with_headers(first_section, rest, sections)
     end
   end
+
+  defp sections_with_headers(first_section, rest, sections) do
+    if first_section |> String.trim() |> String.starts_with?("## ") do
+      Enum.map(sections, &ensure_story_header/1)
+    else
+      Enum.map(rest, &("## " <> &1))
+    end
+  end
+
+  defp ensure_story_header("## " <> _ = section), do: section
+  defp ensure_story_header(section), do: "## " <> section
 
   defp parse_story_sections(sections) do
     sections

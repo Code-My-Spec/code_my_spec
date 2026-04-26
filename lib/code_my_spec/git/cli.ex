@@ -136,19 +136,20 @@ defmodule CodeMySpec.Git.CLI do
   defp restore_remote_url(path) do
     # Attempt to get current URL and strip credentials
     case get_remote_url(path) do
-      {:ok, current_url} ->
-        # Only restore if URL contains credentials (has @ sign before host)
-        if String.contains?(current_url, "@") do
-          case strip_credentials(current_url) do
-            {:ok, clean_url} -> set_remote_url(path, clean_url)
-            _ -> :ok
-          end
-        else
-          :ok
-        end
+      {:ok, current_url} -> maybe_strip_remote_credentials(path, current_url)
+      _ -> :ok
+    end
+  end
 
-      _ ->
-        :ok
+  # Only restore if URL contains credentials (has @ sign before host).
+  defp maybe_strip_remote_credentials(path, current_url) do
+    if String.contains?(current_url, "@") do
+      case strip_credentials(current_url) do
+        {:ok, clean_url} -> set_remote_url(path, clean_url)
+        _ -> :ok
+      end
+    else
+      :ok
     end
   end
 

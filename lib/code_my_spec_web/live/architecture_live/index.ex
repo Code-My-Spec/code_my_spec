@@ -495,42 +495,36 @@ defmodule CodeMySpecWeb.ArchitectureLive.Index do
   end
 
   defp generate_architecture_text(architecture_data) do
-    unsatisfied_text =
-      case architecture_data.unsatisfied do
-        [] ->
-          ""
+    unsatisfied_section(architecture_data.unsatisfied) <>
+      satisfied_section(architecture_data.satisfied)
+  end
 
-        stories ->
-          "UNSATISFIED STORIES:\n" <>
-            Enum.map_join(stories, "\n", fn story -> "- #{story.title}" end) <>
-            "\n\n"
-      end
+  defp unsatisfied_section([]), do: ""
 
-    satisfied_text =
-      case architecture_data.satisfied do
-        [] ->
-          ""
+  defp unsatisfied_section(stories) do
+    "UNSATISFIED STORIES:\n" <>
+      Enum.map_join(stories, "\n", fn story -> "- #{story.title}" end) <>
+      "\n\n"
+  end
 
-        component_list ->
-          "SATISFIED COMPONENTS:\n" <>
-            Enum.map_join(component_list, "\n", fn %{component: component} ->
-              stories_text = Enum.map_join(component.stories, ", ", & &1.title)
-              deps = get_component_dependencies(component)
+  defp satisfied_section([]), do: ""
 
-              deps_text =
-                case deps do
-                  [] ->
-                    ""
+  defp satisfied_section(component_list) do
+    "SATISFIED COMPONENTS:\n" <>
+      Enum.map_join(component_list, "\n", &format_satisfied_component/1)
+  end
 
-                  deps ->
-                    "\n  Dependencies: " <>
-                      Enum.map_join(deps, ", ", fn dep -> "#{dep.name} (#{dep.type})" end)
-                end
+  defp format_satisfied_component(%{component: component}) do
+    stories_text = Enum.map_join(component.stories, ", ", & &1.title)
+    deps_text = format_component_deps(get_component_dependencies(component))
 
-              "- #{component.name} (#{component.type}) serves: #{stories_text}" <> deps_text
-            end)
-      end
+    "- #{component.name} (#{component.type}) serves: #{stories_text}" <> deps_text
+  end
 
-    unsatisfied_text <> satisfied_text
+  defp format_component_deps([]), do: ""
+
+  defp format_component_deps(deps) do
+    "\n  Dependencies: " <>
+      Enum.map_join(deps, ", ", fn dep -> "#{dep.name} (#{dep.type})" end)
   end
 end

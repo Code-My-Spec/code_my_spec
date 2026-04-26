@@ -262,19 +262,21 @@ defmodule CodeMySpec.Invitations do
 
   defp get_valid_invitation(token) do
     case InvitationRepository.get_invitation_by_token(token) do
-      nil ->
+      nil -> {:error, :invalid_token}
+      invitation -> validate_invitation_state(invitation)
+    end
+  end
+
+  defp validate_invitation_state(invitation) do
+    cond do
+      not DateTime.after?(invitation.expires_at, DateTime.utc_now()) ->
+        {:error, :expired_token}
+
+      not is_nil(invitation.accepted_at) or not is_nil(invitation.cancelled_at) ->
         {:error, :invalid_token}
 
-      invitation ->
-        if DateTime.after?(invitation.expires_at, DateTime.utc_now()) do
-          if is_nil(invitation.accepted_at) and is_nil(invitation.cancelled_at) do
-            {:ok, invitation}
-          else
-            {:error, :invalid_token}
-          end
-        else
-          {:error, :expired_token}
-        end
+      true ->
+        {:ok, invitation}
     end
   end
 

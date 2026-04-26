@@ -750,16 +750,20 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   defp write_all_spec_files(env, components) do
-    case Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
-           case write_spec_file(env, comp_attrs) do
-             :ok -> {:cont, {:ok, [comp_attrs | created]}}
-             {:error, reason} -> {:halt, {:error, reason}}
-           end
-         end) do
-      {:ok, created} -> {:ok, Enum.reverse(created)}
-      err -> err
+    components
+    |> Enum.reduce_while({:ok, []}, &write_one_spec(env, &1, &2))
+    |> finalize_spec_writes()
+  end
+
+  defp write_one_spec(env, comp_attrs, {:ok, created}) do
+    case write_spec_file(env, comp_attrs) do
+      :ok -> {:cont, {:ok, [comp_attrs | created]}}
+      {:error, reason} -> {:halt, {:error, reason}}
     end
   end
+
+  defp finalize_spec_writes({:ok, created}), do: {:ok, Enum.reverse(created)}
+  defp finalize_spec_writes(err), do: err
 
   defp sync_and_link_components(scope, components) do
     # Sync all components to database and collect surface components with their story mappings
