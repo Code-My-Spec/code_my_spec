@@ -83,6 +83,12 @@ defmodule CodeMySpecSpex.SharedGivens do
     Produces `context.registered_email` and `context.magic_link_url`.
     Uses the main `CodeMySpecWeb.Endpoint` (auth lives there, not on
     the local web).
+  - `:empty_state_user_on_onboarding` — chains
+    `:registered_user_with_magic_link`, follows the magic-link URL to
+    complete provisioning, then connects the onboarding LiveView in
+    that session. Produces `context.conn`, `context.view`, and
+    `context.html` (initial render). Use this in any story-603 spec
+    that needs to interact with the onboarding form.
 
   Add new shared givens only after a third spec duplicates setup.
   """
@@ -600,6 +606,38 @@ defmodule CodeMySpecSpex.SharedGivens do
     magic_link_url = extract_magic_link_url!(sent_email)
 
     {:ok, %{registered_email: email, magic_link_url: magic_link_url}}
+  end
+
+  # The visitor has registered through the public registration LiveView,
+  # clicked their magic link (so the user is now confirmed and the personal
+  # account / member / preference rows have all been provisioned), and is
+  # sitting on /app/onboarding with a connected LiveView socket. Subsequent
+  # `when_` / `then_` steps interact with `context.view` (LiveView) or
+  # assert against `context.html` (initial render).
+  given :empty_state_user_on_onboarding do
+    %{magic_link_url: magic_link_url} = context
+
+    auth_path = URI.parse(magic_link_url).path
+
+    auth_conn =
+      Phoenix.ConnTest.dispatch(
+        Phoenix.ConnTest.build_conn(),
+        CodeMySpecWeb.Endpoint,
+        :get,
+        auth_path
+      )
+
+    onboarding_conn =
+      Phoenix.ConnTest.dispatch(
+        Phoenix.ConnTest.recycle(auth_conn),
+        CodeMySpecWeb.Endpoint,
+        :get,
+        "/app/onboarding"
+      )
+
+    {:ok, view, html} = Phoenix.LiveViewTest.live(onboarding_conn)
+
+    {:ok, %{conn: onboarding_conn, view: view, html: html}}
   end
 
   # -- Content helpers --

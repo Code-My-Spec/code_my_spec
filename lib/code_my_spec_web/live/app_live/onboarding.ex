@@ -1,9 +1,40 @@
 defmodule CodeMySpecWeb.AppLive.Onboarding do
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Projects.Project
+
   def mount(_params, _session, socket) do
-    just_confirmed = Phoenix.Flash.get(socket.assigns.flash, :info) == "User confirmed successfully."
-    {:ok, assign(socket, page_title: "Welcome", just_confirmed: just_confirmed)}
+    scope = socket.assigns.current_scope
+    empty_state? = scope && Projects.list_projects(scope) == []
+
+    just_confirmed =
+      Phoenix.Flash.get(socket.assigns.flash, :info) == "User confirmed successfully."
+
+    form =
+      %Project{}
+      |> Project.changeset(%{}, scope || %CodeMySpec.Users.Scope{})
+      |> to_form(as: "project")
+
+    {:ok,
+     assign(socket,
+       page_title: "Welcome",
+       just_confirmed: just_confirmed,
+       empty_state?: empty_state?,
+       form: form
+     )}
+  end
+
+  def handle_event("save_project", %{"project" => params}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Projects.create_project(scope, params) do
+      {:ok, _project} ->
+        {:noreply, push_navigate(socket, to: ~p"/app")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset, as: "project"))}
+    end
   end
 
   def render(assigns) do
@@ -21,6 +52,27 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
           Hey &mdash; I'm John. CodeMySpec drives Phoenix projects from user stories
           to working code through a requirement graph. Pick how you want to get started.
         </p>
+
+        <div :if={@empty_state?} class="bg-base-200 rounded-lg p-6 border border-primary/30 mb-6">
+          <h2 class="text-xl font-semibold mb-3">Name your first project</h2>
+          <p class="text-sm text-base-content/70 mb-4">
+            Pick a name now — you can change it later. The plugin uses this to
+            link your local repo to the right project.
+          </p>
+          <.form for={@form} id="project_form" phx-submit="save_project">
+            <.input
+              field={@form[:name]}
+              type="text"
+              label="What should we call your first project?"
+              required
+              autocomplete="off"
+              phx-mounted={JS.focus()}
+            />
+            <.button class="btn btn-primary w-full mt-2" phx-disable-with="Creating...">
+              Create project
+            </.button>
+          </.form>
+        </div>
 
         <div class="flex flex-col gap-6">
           <div class="bg-base-200 rounded-lg p-6 border border-primary/30">
