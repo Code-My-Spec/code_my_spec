@@ -63,7 +63,22 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   # Personas — account-scoped persona library
   component(CodeMySpec.McpServers.Personas.Tools.CreatePersona)
+  component(CodeMySpec.McpServers.Personas.Tools.UpdatePersona)
+  component(CodeMySpec.McpServers.Personas.Tools.DeletePersona)
   component(CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory)
+  component(CodeMySpec.McpServers.Personas.Tools.UnlinkPersonaFromStory)
   component(CodeMySpec.McpServers.Personas.Tools.ListPersonas)
   component(CodeMySpec.McpServers.Personas.Tools.GetPersona)
+
+  # BDD Rules — Three Amigos session artifacts (blue + green + red cards).
+  # Lives under BddRules namespace to disambiguate from CodeMySpec.Rules
+  # (the coding-convention markdown rules consumed by agent task prompts).
+  component(CodeMySpec.McpServers.BddRules.Tools.AddRule)
+  component(CodeMySpec.McpServers.BddRules.Tools.DeleteRule)
+  component(CodeMySpec.McpServers.BddRules.Tools.ListRules)
+  component(CodeMySpec.McpServers.BddRules.Tools.AddScenario)
+  component(CodeMySpec.McpServers.BddRules.Tools.AddQuestion)
+  component(CodeMySpec.McpServers.BddRules.Tools.ListQuestions)
+  component(CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion)
+  component(CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin)
 end

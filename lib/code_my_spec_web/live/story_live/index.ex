@@ -96,6 +96,18 @@ defmodule CodeMySpecWeb.StoryLive.Index do
 
             <div class="flex items-center justify-between">
               <div class="card-actions">
+                <.link
+                  navigate={~p"/app/stories/#{story}/three-amigos"}
+                  class="btn btn-sm btn-outline"
+                >
+                  <.icon name="hero-squares-2x2" class="size-4" /> Three Amigos
+                </.link>
+                <.link
+                  navigate={~p"/app/stories/#{story}/gherkin"}
+                  class="btn btn-sm btn-outline"
+                >
+                  <.icon name="hero-document-text" class="size-4" /> Gherkin
+                </.link>
                 <.link navigate={~p"/app/stories/#{story}/edit"} class="btn btn-sm btn-outline">
                   Edit
                 </.link>

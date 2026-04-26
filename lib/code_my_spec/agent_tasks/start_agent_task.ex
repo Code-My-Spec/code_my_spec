@@ -64,6 +64,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "qa_setup" => AgentTasks.QaSetup,
     "qa_story" => AgentTasks.QaStory,
     "start_implementation" => AgentTasks.StartImplementation,
+    "three_amigos" => AgentTasks.ThreeAmigos,
     "triage_issues" => AgentTasks.TriageIssues,
     "fix_issues" => AgentTasks.FixIssues,
     "init" => AgentTasks.Init
@@ -99,8 +100,11 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "sync"
   ]
 
-  # Tasks that take a topic name (passed as module_name arg) instead of a component lookup
-  @topic_tasks ["research_topic", "qa_story"]
+  # Tasks that take a topic name (passed as module_name arg) instead of a component lookup.
+  # `three_amigos` uses the topic slot for the story_id so the skill can
+  # bypass the requirement-graph dispatch and start a session against any
+  # story directly.
+  @topic_tasks ["research_topic", "qa_story", "three_amigos"]
 
   @valid_types ["spec" | Map.keys(@session_type_map)]
 

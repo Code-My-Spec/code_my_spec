@@ -40,6 +40,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ResearchTopic,
     AgentTasks.StartImplementation,
     AgentTasks.TechnicalStrategy,
+    AgentTasks.ThreeAmigos,
     AgentTasks.TriageIssues,
     AgentTasks.WriteBddSpecs
   ]

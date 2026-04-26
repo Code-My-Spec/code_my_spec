@@ -3,6 +3,8 @@ import Config
 config :code_my_spec, env: :prod_cli
 config :code_my_spec, stories_implementation: CodeMySpec.Stories.RemoteClient
 config :code_my_spec, personas_implementation: CodeMySpec.Personas.RemoteClient
+config :code_my_spec, bdd_rules_implementation: CodeMySpec.BddRules.RemoteClient
+config :code_my_spec, questions_implementation: CodeMySpec.Questions.RemoteClient
 
 config :code_my_spec,
   acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.RemoteClient

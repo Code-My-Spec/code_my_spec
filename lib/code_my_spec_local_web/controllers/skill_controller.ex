@@ -19,7 +19,8 @@ defmodule CodeMySpecLocalWeb.SkillController do
   @skill_routes %{
     "product" => %{
       "interview" => "story_interview",
-      "review" => "story_review"
+      "review" => "story_review",
+      "three-amigos" => "three_amigos"
     },
     "init" => %{
       nil => "init"

@@ -16,6 +16,12 @@ defmodule CodeMySpecWeb.StoryLive.Show do
           <.button navigate={~p"/app/stories"}>
             <.icon name="hero-arrow-left" />
           </.button>
+          <.button navigate={~p"/app/stories/#{@story}/three-amigos"}>
+            <.icon name="hero-squares-2x2" /> Three Amigos
+          </.button>
+          <.button navigate={~p"/app/stories/#{@story}/gherkin"}>
+            <.icon name="hero-document-text" /> View Gherkin
+          </.button>
           <.button navigate={~p"/app/stories/#{@story}/edit?return_to=show"}>
             <.icon name="hero-pencil-square" /> Edit story
           </.button>

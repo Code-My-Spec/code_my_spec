@@ -163,9 +163,17 @@ defmodule CodeMySpecWeb.Router do
         PersonasController,
         :list_project_link_edges
 
+    # BDD Rules — Three Amigos blue cards
+    resources "/bdd-rules", BddRulesController, only: [:show, :create, :update, :delete]
+    get "/bdd-rules-list/story/:story_id", BddRulesController, :list_for_story
+
     # Acceptance Criteria — Three Amigos green cards
     resources "/criteria", CriteriaController, only: [:show, :create, :update, :delete]
     get "/criteria-list/story/:story_id", CriteriaController, :list_for_story
+
+    # Questions — Three Amigos red cards
+    resources "/questions", QuestionsController, only: [:show, :create, :update, :delete]
+    get "/questions-list/story/:story_id", QuestionsController, :list_for_story
 
     post "/notifications/push", NotificationController, :push
 
@@ -255,7 +263,11 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
 
-      live "/personas", PersonaLive.Index, :index
+      live "/personas", PersonasLive.Index, :index
+      live "/personas/new", PersonasLive.Index, :new
+      live "/personas/:slug", PersonasLive.Show, :show
+      live "/personas/:slug/edit", PersonasLive.Show, :edit
+      live "/personas/:slug/link", PersonasLive.Show, :link
     end
 
     live_session :require_active_project,
@@ -271,6 +283,8 @@ defmodule CodeMySpecWeb.Router do
       live "/stories/import", StoryLive.Import, :import
       live "/stories/:id", StoryLive.Show, :show
       live "/stories/:id/edit", StoryLive.Form, :edit
+      live "/stories/:id/three-amigos", StoryLive.ThreeAmigos
+      live "/stories/:id/gherkin", StoryLive.Gherkin
 
       live "/components", ComponentLive.Index, :index
       live "/components/new", ComponentLive.Form, :new
