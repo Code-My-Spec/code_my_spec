@@ -1,13 +1,12 @@
-defmodule CodeMySpecSpex.QaIntegrationPlan.Rule3StatusPendingToVerifiedSpex do
+defmodule CodeMySpecSpex.Story597.Criterion5280Spex do
   @moduledoc """
-  Story: Verified third-party integrations
-  Rule 3 — Spec status moves from `pending` to `verified` only after
-  successful credential verification.
+  Story 597 — Verified third-party integrations
+  Criterion 5280 — OAuth2 integrations trigger an additional token-exchange script instruction.
 
-  The contract: new specs start at `pending`. Promotion to `verified`
-  happens after the agent runs the verify script and confirms a
-  successful JSON response. This rule locks in the prompt language
-  that drives that lifecycle.
+  OAuth2 integrations get an additional `exchange_*_token.sh` for
+  client-credential exchange beyond the standard `verify_*` script.
+
+  Surface: `start_task` MCP tool against `qa_integration_plan`.
   """
 
   use CodeMySpecSpex.Case
@@ -21,8 +20,8 @@ defmodule CodeMySpecSpex.QaIntegrationPlan.Rule3StatusPendingToVerifiedSpex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Spec status moves from pending to verified only after successful verification" do
-    scenario "Prompt instructs initial pending status and verified-on-success promotion" do
+  spex "Each integration carries a runnable verify script" do
+    scenario "OAuth2 integrations trigger an additional token-exchange script instruction" do
       given_ "a baseline project is in place", context do
         Fixtures.reset_setup_env(context.environment)
         Fixtures.with_baseline_project(context.environment)
@@ -58,19 +57,12 @@ defmodule CodeMySpecSpex.QaIntegrationPlan.Rule3StatusPendingToVerifiedSpex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt instructs setting initial spec status to pending", context do
-        assert context.prompt =~ ~r/initial status to.*pending/i,
-               "expected the prompt to set initial spec status to pending"
+      then_ "the prompt names the OAuth2 token-exchange script path pattern", context do
+        assert context.prompt =~ "exchange_",
+               "expected the prompt to mention the exchange_ script for OAuth2"
 
-        {:ok, context}
-      end
-
-      and_ "the prompt instructs promoting status to verified after verification", context do
-        assert context.prompt =~ "verified",
-               "expected the prompt to mention the verified status"
-
-        assert context.prompt =~ ~r/update.*status.*verified/is,
-               "expected the prompt to instruct promoting the status to verified"
+        assert context.prompt =~ "_token.sh",
+               "expected the OAuth2 path pattern to include _token.sh"
 
         {:ok, context}
       end

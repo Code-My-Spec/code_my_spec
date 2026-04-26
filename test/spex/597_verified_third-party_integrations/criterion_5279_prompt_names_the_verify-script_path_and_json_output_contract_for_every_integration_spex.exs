@@ -1,15 +1,14 @@
-defmodule CodeMySpecSpex.QaIntegrationPlan.Rule2EachIntegrationCarriesVerifyScriptSpex do
+defmodule CodeMySpecSpex.Story597.Criterion5279Spex do
   @moduledoc """
-  Story: Verified third-party integrations
-  Rule 2 — Each integration carries a runnable verify script.
+  Story 597 — Verified third-party integrations
+  Criterion 5279 — Prompt names the verify-script path and JSON output contract for every integration.
 
-  The orchestration prompt instructs writing `verify_{name}.sh` per
-  integration with a structured-JSON output contract. OAuth2
-  integrations also get an `exchange_{name}_token.sh` for the
-  client-credential exchange.
+  Each integration carries a runnable verify script: the prompt names
+  the `verify_*` script path under .code_my_spec/qa/scripts/, instructs
+  reading credentials from environment variables, and lays out the
+  success/failure JSON contracts.
 
-  Both scenarios assert on prompt content — the agent receives a
-  deterministic checklist that doesn't depend on prior project state.
+  Surface: `start_task` MCP tool against `qa_integration_plan`.
   """
 
   use CodeMySpecSpex.Case
@@ -87,53 +86,6 @@ defmodule CodeMySpecSpex.QaIntegrationPlan.Rule2EachIntegrationCarriesVerifyScri
       and_ "the prompt names the JSON failure contract", context do
         assert context.prompt =~ ~s|"status": "error"|,
                "expected the failure JSON contract to be named verbatim"
-
-        {:ok, context}
-      end
-    end
-
-    scenario "OAuth2 integrations trigger an additional token-exchange script instruction" do
-      given_ "a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
-        {:ok, context}
-      end
-
-      given_ "the agent has signalled session start", context do
-        session_id = "spex-#{System.unique_integer([:positive])}"
-
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
-
-        {:ok, Map.put(context, :session_id, session_id)}
-      end
-
-      when_ "the agent calls start_task for the qa_integration_plan task", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          StartTask.execute(
-            %{
-              requirement_name: "qa_integration_plan",
-              entity_type: "project",
-              entity_id: to_string(context.project.id),
-              session_id: context.session_id
-            },
-            frame
-          )
-
-        {:ok, Map.put(context, :prompt, response_text(response))}
-      end
-
-      then_ "the prompt names the OAuth2 token-exchange script path pattern", context do
-        assert context.prompt =~ "exchange_",
-               "expected the prompt to mention the exchange_ script for OAuth2"
-
-        assert context.prompt =~ "_token.sh",
-               "expected the OAuth2 path pattern to include _token.sh"
 
         {:ok, context}
       end
