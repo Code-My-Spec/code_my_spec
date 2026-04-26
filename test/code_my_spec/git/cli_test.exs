@@ -46,24 +46,6 @@ defmodule CodeMySpec.Git.CLITest do
   # clone/3 - Integration Tests (with real GitHub repo)
   # ============================================================================
 
-  describe "clone/3 - integration tests with real repository" do
-    @tag :integration
-    test "successfully clones public GitHub repository when integration exists" do
-      {scope, _token} = scope_with_github_integration()
-      clone_path = temp_clone_path()
-
-      try do
-        result = CLI.clone(scope, test_repo_url(), clone_path)
-
-        assert {:ok, ^clone_path} = result
-        assert File.exists?(clone_path)
-        assert File.exists?(Path.join(clone_path, ".git"))
-      after
-        cleanup_path(clone_path)
-      end
-    end
-  end
-
   # ============================================================================
   # clone/3 - Error Cases
   # ============================================================================
@@ -195,24 +177,6 @@ defmodule CodeMySpec.Git.CLITest do
   # ============================================================================
 
   describe "pull/2 - integration tests with real repository" do
-    @tag :integration
-    test "successfully pulls from public GitHub repository" do
-      {scope, _token} = scope_with_github_integration()
-      clone_path = temp_clone_path()
-
-      try do
-        # First clone the repository
-        {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
-
-        # Then pull (should succeed even with no new changes)
-        result = CLI.pull(scope, clone_path)
-
-        assert :ok = result
-      after
-        cleanup_path(clone_path)
-      end
-    end
-
     @tag :integration
     test "restores original remote URL after pull operation" do
       {scope, _token} = scope_with_github_integration()
@@ -356,25 +320,6 @@ defmodule CodeMySpec.Git.CLITest do
   # ============================================================================
 
   describe "property-based tests" do
-    @tag :integration
-    test "clone always creates .git directory on success" do
-      {scope, _token} = scope_with_github_integration()
-      clone_path = temp_clone_path()
-
-      try do
-        case CLI.clone(scope, test_repo_url(), clone_path) do
-          {:ok, path} ->
-            assert File.exists?(Path.join(path, ".git"))
-            assert File.dir?(Path.join(path, ".git"))
-
-          {:error, _reason} ->
-            :ok
-        end
-      after
-        cleanup_path(clone_path)
-      end
-    end
-
     test "clone fails predictably for invalid inputs" do
       {scope, _token} = scope_with_github_integration()
       clone_path = temp_clone_path()

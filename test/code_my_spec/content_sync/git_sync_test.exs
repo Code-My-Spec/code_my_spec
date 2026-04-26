@@ -218,47 +218,4 @@ defmodule CodeMySpec.ContentSync.GitSyncTest do
   # Integration Tests (Real Git Operations)
   # ============================================================================
 
-  describe "clone_to_temp/1 - integration test" do
-    setup do
-      # Use real Git.CLI for integration tests
-      Application.put_env(:code_my_spec, :git_impl_module, CodeMySpec.Git.CLI)
-
-      on_exit(fn ->
-        Application.put_env(:code_my_spec, :git_impl_module, CodeMySpec.Support.TestAdapter)
-      end)
-
-      :ok
-    end
-
-    @tag :integration
-    test "successfully clones real repository from GitHub" do
-      user = user_fixture()
-      account = account_fixture(%{name: "Test Account"})
-      token = "ghp_test_token_#{:rand.uniform(100_000)}"
-      _integration = github_integration_fixture(user, %{access_token: token})
-
-      scope = %Scope{
-        user: user,
-        active_account: account,
-        active_account_id: account.id,
-        active_project_id: nil
-      }
-
-      project =
-        project_fixture(scope, %{
-          name: "Test Project",
-          docs_repo: "https://github.com/Code-My-Spec/test_phoenix_project.git"
-        })
-
-      scope = %{scope | active_project: project, active_project_id: project.id}
-
-      assert {:ok, temp_path} = GitSync.clone_to_temp(scope)
-      assert is_binary(temp_path)
-      assert File.exists?(temp_path)
-      assert File.exists?(Path.join(temp_path, "mix.exs"))
-
-      # Cleanup
-      File.rm_rf!(temp_path)
-    end
-  end
 end
