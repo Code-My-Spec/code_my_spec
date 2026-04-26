@@ -100,6 +100,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
           Logger.info("[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed")
           {:reply, TasksMapper.evaluate_passed_response(task), frame}
 
+        {:ok, :valid, info} ->
+          {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
+          Logger.info("[EvaluateTask] #{type_name(task_module)} passed with info — task #{task.id} completed")
+          {:reply, TasksMapper.evaluate_passed_response(task, info), frame}
+
         {:ok, :invalid, feedback} ->
           Logger.info("[EvaluateTask] #{type_name(task_module)} failed — feedback returned")
           {:reply, TasksMapper.evaluate_needs_work_response(task, feedback), frame}

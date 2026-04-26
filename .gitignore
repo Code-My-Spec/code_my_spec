@@ -73,3 +73,4 @@ artifacts/
 
 # Dynamically generated test cassettes (rewritten per test run)
 test/cassettes/oauth/google_login_new_user.json
+.claude/scheduled_tasks.lock

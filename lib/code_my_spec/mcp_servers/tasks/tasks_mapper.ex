@@ -13,12 +13,25 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
     |> Response.text(prompt <> footer)
   end
 
-  def evaluate_passed_response(task) do
+  def evaluate_passed_response(task, info \\ nil)
+
+  def evaluate_passed_response(task, nil) do
     task_name = task_type_name(task)
 
     Response.tool()
     |> Response.text("# #{task_name}: Passed\n\nTask completed successfully.\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin.")
   end
+
+  def evaluate_passed_response(task, info) when is_binary(info) and info != "" do
+    task_name = task_type_name(task)
+
+    Response.tool()
+    |> Response.text(
+      "# #{task_name}: Passed\n\nTask completed successfully.\n\n#{info}\n\nUse `get_next_requirement` to find your next task, then `start_task` to begin."
+    )
+  end
+
+  def evaluate_passed_response(task, _), do: evaluate_passed_response(task, nil)
 
   def evaluate_needs_work_response(task, feedback) do
     task_name = task_type_name(task)
