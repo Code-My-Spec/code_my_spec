@@ -72,7 +72,10 @@ jobs:
           # the compile/assemble chain. Full wipe is boringly reliable and
           # only costs ~60s of extra compile time.
           rm -rf _build/prod_cli release/
-          mix compile
+          # --warnings-as-errors locks in the boundary compiler — any new
+          # Web→Repo / lib→Web / spex→internals violation fails the release
+          # build instead of shipping a binary with the violation in it.
+          mix compile --warnings-as-errors
           mix release code_my_spec_cli
         env:
           BURRITO_TARGET: ${{ matrix.target }}
