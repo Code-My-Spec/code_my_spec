@@ -99,6 +99,8 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
     |> Response.error(Formatters.format_changeset_errors(changeset))
   end
 
+  def error(%Ecto.Changeset{} = changeset), do: validation_error(changeset)
+
   def error(:not_found) do
     Response.tool()
     |> Response.error("Persona not found in the active account.")

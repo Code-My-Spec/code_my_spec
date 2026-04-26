@@ -152,6 +152,23 @@ defmodule CodeMySpec.Personas.RemoteClient do
     end
   end
 
+  def delete_persona(%Scope{} = scope, %Persona{} = persona, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.delete(client, url: "/api/personas/#{persona.id}") do
+      {:ok, %{status: 200, body: body}} ->
+        deleted = deserialize_persona(body["data"])
+        delete_persona_locally(persona.id)
+        {:ok, deleted}
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+
+      {:ok, %{status: 422, body: body}} ->
+        {:error, body["error"] |> to_existing_atom_or_default(:unprocessable_entity)}
+    end
+  end
+
   def link_persona_to_story(%Scope{} = scope, persona_id, story_id, opts \\ []) do
     client = new(scope, opts)
 
@@ -360,5 +377,45 @@ defmodule CodeMySpec.Personas.RemoteClient do
       where: ps.persona_id == ^persona_id and ps.story_id == ^story_id
     )
     |> Repo.delete_all()
+  end
+
+  defp delete_persona_locally(id) do
+    import Ecto.Query
+
+    from(ps in PersonaStory, where: ps.persona_id == ^id)
+    |> Repo.delete_all()
+
+    case Repo.get(Persona, id) do
+      nil ->
+        :ok
+
+      persona ->
+        case Repo.delete(persona) do
+          {:ok, _} ->
+            :ok
+
+          {:error, changeset} ->
+            Logger.warning(
+              "[Personas.RemoteClient] Local delete failed for persona #{id}: #{inspect(changeset.errors)}"
+            )
+
+            :ok
+        end
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Personas.RemoteClient] Local delete raised for persona #{id}: #{Exception.message(e)}"
+      )
+
+      :ok
+  end
+
+  defp to_existing_atom_or_default(nil, default), do: default
+
+  defp to_existing_atom_or_default(str, default) when is_binary(str) do
+    String.to_existing_atom(str)
+  rescue
+    ArgumentError -> default
   end
 end

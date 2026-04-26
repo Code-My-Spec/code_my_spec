@@ -150,7 +150,7 @@ defmodule CodeMySpecWeb.Router do
     get "/stories-list/unsatisfied", StoriesController, :list_unsatisfied_stories
     get "/stories-list/component/:component_id", StoriesController, :list_component_stories
 
-    resources "/personas", PersonasController, only: [:index, :show, :create, :update] do
+    resources "/personas", PersonasController, only: [:index, :show, :create, :update, :delete] do
       post "/link-story", PersonasController, :link_story
       post "/unlink-story", PersonasController, :unlink_story
     end

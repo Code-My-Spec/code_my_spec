@@ -104,6 +104,21 @@ defmodule CodeMySpecWeb.PersonasController do
     end
   end
 
+  def delete(conn, %{"id" => id}) do
+    scope = conn.assigns.current_scope
+
+    with %{} = persona <- Personas.get_persona(scope, id) || {:error, :not_found},
+         {:ok, deleted} <- Personas.delete_persona(scope, persona) do
+      render(conn, :show, persona: deleted)
+    else
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{error: "not_found"})
+
+      {:error, reason} ->
+        conn |> put_status(:unprocessable_entity) |> json(%{error: to_string(reason)})
+    end
+  end
+
   # Nested `resources "/personas"` routes supply `personas_id` as the path
   # param (Phoenix's literal-pluralization for non-inflecting names). Fall
   # back to `"id"` so the action works whether called under `resources` or a
