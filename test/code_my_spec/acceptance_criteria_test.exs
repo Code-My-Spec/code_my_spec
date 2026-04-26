@@ -136,11 +136,10 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
-      assert_raise MatchError, fn ->
-        AcceptanceCriteria.update_criterion(other_scope, criterion, %{
-          description: "Attempt update"
-        })
-      end
+      assert {:error, :cross_project} =
+               AcceptanceCriteria.update_criterion(other_scope, criterion, %{
+                 description: "Attempt update"
+               })
     end
 
     test "broadcasts updated event on success" do
@@ -188,9 +187,8 @@ defmodule CodeMySpec.AcceptanceCriteriaTest do
       story = story_without_criteria(scope)
       criterion = criterion_fixture(scope, story)
 
-      assert_raise MatchError, fn ->
-        AcceptanceCriteria.delete_criterion(other_scope, criterion)
-      end
+      assert {:error, :cross_project} =
+               AcceptanceCriteria.delete_criterion(other_scope, criterion)
     end
 
     test "broadcasts deleted event on success" do

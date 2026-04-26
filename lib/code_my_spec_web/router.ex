@@ -163,6 +163,10 @@ defmodule CodeMySpecWeb.Router do
         PersonasController,
         :list_project_link_edges
 
+    # Acceptance Criteria — Three Amigos green cards
+    resources "/criteria", CriteriaController, only: [:show, :create, :update, :delete]
+    get "/criteria-list/story/:story_id", CriteriaController, :list_for_story
+
     post "/notifications/push", NotificationController, :push
 
     post "/permissions/request", PermissionController, :create

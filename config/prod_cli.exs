@@ -4,6 +4,9 @@ config :code_my_spec, env: :prod_cli
 config :code_my_spec, stories_implementation: CodeMySpec.Stories.RemoteClient
 config :code_my_spec, personas_implementation: CodeMySpec.Personas.RemoteClient
 
+config :code_my_spec,
+  acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.RemoteClient
+
 # SQLite adapter for CLI mode
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 

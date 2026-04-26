@@ -21,6 +21,8 @@ defmodule CodeMySpec.Personas.RemoteClient do
   other CLIs) into the local cache.
   """
 
+  require Logger
+
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Personas.Persona
   alias CodeMySpec.Personas.PersonaStory
@@ -306,12 +308,48 @@ defmodule CodeMySpec.Personas.RemoteClient do
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: :id
     )
+    |> case do
+      {:ok, _} ->
+        :ok
+
+      {:error, changeset} ->
+        Logger.warning(
+          "[Personas.RemoteClient] Local upsert failed for persona #{persona.id}: #{inspect(changeset.errors)}"
+        )
+
+        :ok
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Personas.RemoteClient] Local upsert raised for persona #{persona.id}: #{Exception.message(e)}"
+      )
+
+      :ok
   end
 
   defp upsert_link_locally(%PersonaStory{} = link) do
     %PersonaStory{}
     |> PersonaStory.changeset(%{persona_id: link.persona_id, story_id: link.story_id})
     |> Repo.insert(on_conflict: :nothing, conflict_target: [:persona_id, :story_id])
+    |> case do
+      {:ok, _} ->
+        :ok
+
+      {:error, changeset} ->
+        Logger.warning(
+          "[Personas.RemoteClient] Local link upsert failed for persona=#{link.persona_id} story=#{link.story_id}: #{inspect(changeset.errors)}"
+        )
+
+        :ok
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Personas.RemoteClient] Local link upsert raised for persona=#{link.persona_id} story=#{link.story_id}: #{Exception.message(e)}"
+      )
+
+      :ok
   end
 
   defp delete_link_locally(persona_id, story_id) do

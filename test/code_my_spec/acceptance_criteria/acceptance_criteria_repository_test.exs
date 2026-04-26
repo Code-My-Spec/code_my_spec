@@ -113,54 +113,55 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
     end
   end
 
-  describe "create_criterion/1" do
+  describe "create_criterion/3" do
     test "creates criterion with valid attributes" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
 
-      attrs = valid_criterion_attrs(scope, story)
-
       assert {:ok, %Criterion{} = criterion} =
-               AcceptanceCriteriaRepository.create_criterion(attrs)
+               AcceptanceCriteriaRepository.create_criterion(scope, story, %{
+                 description: "Test criterion",
+                 verified: false
+               })
 
-      assert criterion.description == attrs.description
+      assert criterion.description == "Test criterion"
       assert criterion.story_id == story.id
       assert criterion.project_id == scope.active_project.id
     end
 
     test "returns changeset error for invalid attributes" do
-      attrs = %{description: nil}
+      scope = full_scope_fixture()
+      story = story_fixture(scope)
 
       assert {:error, %Ecto.Changeset{}} =
-               AcceptanceCriteriaRepository.create_criterion(attrs)
+               AcceptanceCriteriaRepository.create_criterion(scope, story, %{description: nil})
     end
 
-    test "validates required fields" do
-      attrs = %{}
+    test "rejects cross-project stories" do
+      scope = full_scope_fixture()
+      other_scope = full_scope_fixture()
+      story = story_fixture(other_scope)
 
-      assert {:error, changeset} = AcceptanceCriteriaRepository.create_criterion(attrs)
-
-      assert %{
-               description: ["can't be blank"],
-               story_id: ["can't be blank"],
-               project_id: ["can't be blank"]
-             } = errors_on(changeset)
+      assert {:error, :cross_project} =
+               AcceptanceCriteriaRepository.create_criterion(scope, story, %{
+                 description: "Test"
+               })
     end
   end
 
-  describe "update_criterion/2" do
+  describe "update_criterion/3" do
     test "updates criterion with valid attributes" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
       criterion = criterion_fixture(scope, story)
 
-      update_attrs = %{description: "Updated description"}
+      assert {:ok, %Criterion{} = updated} =
+               AcceptanceCriteriaRepository.update_criterion(scope, criterion, %{
+                 description: "Updated description"
+               })
 
-      assert {:ok, %Criterion{} = updated_criterion} =
-               AcceptanceCriteriaRepository.update_criterion(criterion, update_attrs)
-
-      assert updated_criterion.description == "Updated description"
-      assert updated_criterion.id == criterion.id
+      assert updated.description == "Updated description"
+      assert updated.id == criterion.id
     end
 
     test "returns changeset error for invalid attributes" do
@@ -168,20 +169,32 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
       story = story_fixture(scope)
       criterion = criterion_fixture(scope, story)
 
-      invalid_attrs = %{description: nil}
-
       assert {:error, %Ecto.Changeset{}} =
-               AcceptanceCriteriaRepository.update_criterion(criterion, invalid_attrs)
+               AcceptanceCriteriaRepository.update_criterion(scope, criterion, %{
+                 description: nil
+               })
+    end
+
+    test "rejects cross-project criteria" do
+      scope = full_scope_fixture()
+      other_scope = full_scope_fixture()
+      story = story_fixture(other_scope)
+      criterion = criterion_fixture(other_scope, story)
+
+      assert {:error, :cross_project} =
+               AcceptanceCriteriaRepository.update_criterion(scope, criterion, %{
+                 description: "x"
+               })
     end
   end
 
-  describe "delete_criterion/1" do
+  describe "delete_criterion/2" do
     test "deletes criterion successfully" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
       criterion = criterion_fixture(scope, story)
 
-      assert {:ok, %Criterion{}} = AcceptanceCriteriaRepository.delete_criterion(criterion)
+      assert {:ok, %Criterion{}} = AcceptanceCriteriaRepository.delete_criterion(scope, criterion)
 
       assert is_nil(AcceptanceCriteriaRepository.get_criterion(scope, criterion.id))
     end
@@ -191,29 +204,26 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepositoryTest do
       story = story_fixture(scope)
       criterion = criterion_fixture(scope, story)
 
-      assert {:ok, deleted_criterion} = AcceptanceCriteriaRepository.delete_criterion(criterion)
+      assert {:ok, deleted} = AcceptanceCriteriaRepository.delete_criterion(scope, criterion)
 
-      assert deleted_criterion.id == criterion.id
-      assert deleted_criterion.description == criterion.description
+      assert deleted.id == criterion.id
+      assert deleted.description == criterion.description
+    end
+
+    test "rejects cross-project criteria" do
+      scope = full_scope_fixture()
+      other_scope = full_scope_fixture()
+      story = story_fixture(other_scope)
+      criterion = criterion_fixture(other_scope, story)
+
+      assert {:error, :cross_project} =
+               AcceptanceCriteriaRepository.delete_criterion(scope, criterion)
     end
   end
 
-  # Fixture helpers
-
-  defp valid_criterion_attrs(scope, story, attrs \\ %{}) do
-    Enum.into(attrs, %{
-      description: "Test criterion description",
-      story_id: story.id,
-      project_id: scope.active_project.id,
-      verified: false
-    })
-  end
-
   defp criterion_fixture(scope, story, attrs \\ %{}) do
-    attrs = valid_criterion_attrs(scope, story, attrs)
-
-    {:ok, criterion} = AcceptanceCriteriaRepository.create_criterion(attrs)
-
+    attrs = Enum.into(attrs, %{description: "Test criterion description", verified: false})
+    {:ok, criterion} = AcceptanceCriteriaRepository.create_criterion(scope, story, attrs)
     criterion
   end
 end

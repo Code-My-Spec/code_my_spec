@@ -1,12 +1,15 @@
-defmodule CodeMySpecSpex.Story80.Rule2PreexistingAdrsPreservedSpex do
+defmodule CodeMySpecSpex.Story80.Criterion5271Spex do
   @moduledoc """
   Story 80 — Architecture Decision Records
-  Rule 2 — Pre-existing ADR files are never overwritten.
+  Criterion 5271 — Retrofit developer's customized phoenix.md survives the auto-write pass.
 
   The retrofit persona: a developer adopting CodeMySpec on a Phoenix
-  app that already has its own ADRs. When technical_strategy runs,
-  any hand-written rationale for a standard-stack topic must survive
-  the auto-write pass so the team's historical context isn't erased.
+  app that already has its own ADRs. Hand-written rationale on a
+  standard-stack topic must survive the auto-write pass so the team's
+  historical context isn't erased.
+
+  Surface: `start_task` MCP tool against the `technical_strategy`
+  requirement.
   """
 
   use CodeMySpecSpex.Case

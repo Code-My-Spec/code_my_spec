@@ -1,12 +1,14 @@
-defmodule CodeMySpecSpex.Story80.Rule4PromptWalksWorkflowSpex do
+defmodule CodeMySpecSpex.Story80.Criterion5274Spex do
   @moduledoc """
   Story 80 — Architecture Decision Records
-  Rule 4 — The prompt walks the agent through the full decision workflow.
+  Criterion 5274 — Prompt lays out identify, research, ADR, update index, stop.
 
-  Observable through the start_task response text. The prompt must
-  guide the agent through four steps — identify topics, research and
-  write ADRs, update the decisions index, and stop — so the agent
-  always knows what "done" looks like without reading the module.
+  The start_task prompt walks the agent through identifying topics,
+  writing ADRs under the decisions directory, updating the decisions
+  index, and stopping when the work is complete.
+
+  Surface: `start_task` MCP tool against the `technical_strategy`
+  requirement.
   """
 
   use CodeMySpecSpex.Case
