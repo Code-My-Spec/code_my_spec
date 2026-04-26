@@ -125,6 +125,7 @@ defmodule CodeMySpec.Architecture.Proposal do
   @spec validate(t(), keyword()) :: {:ok, t()} | {:error, [validation_error()]}
   def validate(%__MODULE__{} = proposal, opts \\ []) do
     all_story_ids = Keyword.get(opts, :story_ids, [])
+    known_db_components = Keyword.get(opts, :db_components, [])
 
     errors =
       []
@@ -134,6 +135,7 @@ defmodule CodeMySpec.Architecture.Proposal do
       |> check_story_surface_mapping(proposal, all_story_ids)
       |> check_dependency_cycles(proposal)
       |> check_duplicate_names(proposal)
+      |> check_dependency_resolution(proposal, known_db_components)
 
     if errors == [] do
       {:ok, proposal}
@@ -402,38 +404,81 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   defp check_story_surface_mapping(errors, proposal, all_story_ids) do
-    # Stories must be mapped to surface components (LiveViews, Controllers, LiveContexts)
-    # This is required for BDD spec generation - we test user behavior at the surface level
-    # For live_context components, also count stories from children
-    surface_mapped =
-      proposal.surface_components
-      |> Enum.flat_map(fn comp ->
-        own_ids = Map.get(comp, :story_ids, [])
-        child_ids = comp |> Map.get(:children, []) |> Enum.flat_map(&Map.get(&1, :story_ids, []))
-        own_ids ++ child_ids
-      end)
-      |> MapSet.new()
-
+    all_linked = collect_all_linked_story_ids(proposal)
     all_ids = MapSet.new(all_story_ids)
-    missing_surface = MapSet.difference(all_ids, surface_mapped) |> MapSet.to_list()
+    orphans = MapSet.difference(all_ids, all_linked) |> MapSet.to_list()
 
-    if missing_surface == [] do
+    if orphans == [] do
       errors
     else
       [
         %{
           type: :stories_missing_surface,
-          message: "Each story must be mapped to a surface component (LiveView/Controller)",
-          details: %{story_ids: missing_surface}
+          message: "Each story must be linked to at least one component",
+          details: %{story_ids: orphans}
         }
         | errors
       ]
     end
   end
 
+  defp collect_all_linked_story_ids(proposal) do
+    surface_ids =
+      Enum.flat_map(proposal.surface_components, fn comp ->
+        own = Map.get(comp, :story_ids, [])
+        children = Map.get(comp, :children, []) |> Enum.flat_map(&Map.get(&1, :story_ids, []))
+        own ++ children
+      end)
+
+    context_ids =
+      Enum.flat_map(proposal.contexts, fn ctx ->
+        own = Map.get(ctx, :story_ids, [])
+        children = ctx.children |> Enum.flat_map(&Map.get(&1, :story_ids, []))
+        own ++ children
+      end)
+
+    MapSet.new(surface_ids ++ context_ids)
+  end
+
+  @doc """
+  Collects non-blocking warnings for a proposal.
+
+  Returns a list of warning strings for surface-preference violations
+  (stories whose only links are to non-surface components).
+  """
+  @spec collect_warnings(t()) :: [String.t()]
+  def collect_warnings(%__MODULE__{} = proposal) do
+    surface_linked =
+      proposal.surface_components
+      |> Enum.flat_map(fn comp ->
+        own = Map.get(comp, :story_ids, [])
+        children = Map.get(comp, :children, []) |> Enum.flat_map(&Map.get(&1, :story_ids, []))
+        own ++ children
+      end)
+      |> MapSet.new()
+
+    non_surface_links =
+      Enum.flat_map(proposal.contexts, fn ctx ->
+        own = Enum.map(Map.get(ctx, :story_ids, []), fn story_id -> {story_id, ctx.name} end)
+        children = Enum.flat_map(ctx.children, &child_story_links/1)
+        own ++ children
+      end)
+
+    non_surface_links
+    |> Enum.reject(fn {story_id, _} -> MapSet.member?(surface_linked, story_id) end)
+    |> Enum.map(fn {story_id, component_name} ->
+      "Surface preference: story #{story_id} is linked to non-surface component #{component_name}. Surface components (LiveView, Controller, Channel, MCP tool) are preferred."
+    end)
+  end
+
   defp check_dependency_cycles(errors, proposal) do
     graph = build_dependency_graph(proposal)
-    cycles = find_cycles(graph)
+    types = build_component_type_map(proposal)
+
+    cycles =
+      graph
+      |> find_cycles()
+      |> Enum.reject(&schema_only_cycle?(&1, types))
 
     if cycles == [] do
       errors
@@ -447,6 +492,64 @@ defmodule CodeMySpec.Architecture.Proposal do
         | errors
       ]
     end
+  end
+
+  defp build_component_type_map(proposal) do
+    context_entries =
+      Enum.flat_map(proposal.contexts, fn ctx ->
+        [{ctx.name, "context"} | Enum.map(ctx.children, &{&1.name, &1.type})]
+      end)
+
+    surface_entries =
+      Enum.flat_map(proposal.surface_components, fn comp ->
+        [
+          {comp.name, comp.type}
+          | Enum.map(Map.get(comp, :children, []), &{&1.name, &1.type})
+        ]
+      end)
+
+    Map.new(context_entries ++ surface_entries)
+  end
+
+  defp schema_only_cycle?(cycle, types) do
+    Enum.all?(cycle, fn name -> Map.get(types, name) == "schema" end)
+  end
+
+  defp check_dependency_resolution(errors, proposal, db_component_names) do
+    proposal_names = collect_all_component_names(proposal)
+    known = MapSet.union(MapSet.new(proposal_names), MapSet.new(db_component_names))
+
+    unresolved =
+      proposal.dependencies
+      |> Enum.reject(fn dep -> MapSet.member?(known, dep.to) end)
+      |> Enum.map(fn dep -> "#{dep.from} -> #{dep.to}" end)
+
+    if unresolved == [] do
+      errors
+    else
+      [
+        %{
+          type: :unresolved_dependency,
+          message: "Dependencies reference unknown components",
+          details: %{unresolved: unresolved}
+        }
+        | errors
+      ]
+    end
+  end
+
+  defp collect_all_component_names(proposal) do
+    context_names =
+      Enum.flat_map(proposal.contexts, fn ctx ->
+        [ctx.name | Enum.map(ctx.children, & &1.name)]
+      end)
+
+    surface_names =
+      Enum.flat_map(proposal.surface_components, fn comp ->
+        [comp.name | Enum.map(Map.get(comp, :children, []), & &1.name)]
+      end)
+
+    context_names ++ surface_names
   end
 
   defp check_duplicate_names(errors, proposal) do
@@ -574,22 +677,55 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   defp do_execute(proposal, scope, opts) do
     components = to_components(proposal)
-    working_dir = Keyword.get(opts, :working_dir, File.cwd!())
 
-    with {:ok, env} <- Environments.create(:cli, working_dir: working_dir),
-         {:ok, created_components} <- write_all_spec_files(env, components) do
+    case resolve_env(opts) do
+      {:ok, env, owned?} ->
+        try do
+          do_execute_with_env(proposal, scope, components, env)
+        after
+          if owned?, do: Environments.destroy(env)
+        end
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp resolve_env(opts) do
+    case Keyword.get(opts, :env) do
+      nil ->
+        working_dir = Keyword.get(opts, :working_dir, File.cwd!())
+
+        case Environments.create(:cli, working_dir: working_dir) do
+          {:ok, env} -> {:ok, env, true}
+          {:error, _} = err -> err
+        end
+
+      env ->
+        {:ok, env, false}
+    end
+  end
+
+  defp do_execute_with_env(proposal, scope, components, env) do
+    pre_existing_db_names = list_db_component_names(scope)
+
+    with {:ok, created_components} <- write_all_spec_files(env, components) do
       linked_count = sync_and_link_components(scope, created_components)
 
       Logger.debug(
         "[Proposal] sync_and_link_components complete, linked_count: #{linked_count}"
       )
 
+      warnings =
+        collect_warnings(proposal) ++ removed_component_warnings(proposal, pre_existing_db_names)
+
       result =
         {:ok,
          %{
            created_contexts: Enum.count(proposal.contexts),
            created_components: length(created_components),
-           linked_stories: linked_count
+           linked_stories: linked_count,
+           warnings: warnings
          }}
 
       Logger.info("[Proposal] Execution complete: #{inspect(result)}")
@@ -597,17 +733,29 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
-  defp write_all_spec_files(env, components) do
-    result =
-      Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
-        case write_spec_file(env, comp_attrs) do
-          :ok -> {:cont, {:ok, [comp_attrs | created]}}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+  defp list_db_component_names(scope) do
+    scope
+    |> Components.list_components()
+    |> Enum.map(& &1.module_name)
+  end
 
-    Environments.destroy(env)
-    result
+  defp removed_component_warnings(proposal, pre_existing_db_names) do
+    proposal_names = MapSet.new(collect_all_component_names(proposal))
+
+    pre_existing_db_names
+    |> Enum.reject(fn name -> MapSet.member?(proposal_names, name) end)
+    |> Enum.map(fn name ->
+      "Component removed from proposal but preserved in DB: #{name}. Delete the component manually if intended."
+    end)
+  end
+
+  defp write_all_spec_files(env, components) do
+    Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
+      case write_spec_file(env, comp_attrs) do
+        :ok -> {:cont, {:ok, [comp_attrs | created]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp sync_and_link_components(scope, components) do
@@ -645,22 +793,21 @@ defmodule CodeMySpec.Architecture.Proposal do
     end)
   end
 
-  # Link stories to surface components (liveview, live_context, controller)
+  # Link stories to any component that declares story_ids. Surface components
+  # are preferred (Rule 2) but non-surface links are accepted with a warning
+  # collected separately via collect_warnings/1.
   defp maybe_link_stories(scope, comp_attrs, component_id, linked_count) do
-    # Handle "(existing)" suffix in type (e.g., "liveview (existing)")
-    base_type = comp_attrs.type |> String.split(" ") |> hd()
+    story_ids = Map.get(comp_attrs, :story_ids, [])
 
-    if base_type in ["liveview", "live_context", "controller"] do
-      story_ids = Map.get(comp_attrs, :story_ids, [])
-
+    if story_ids == [] do
+      linked_count
+    else
       Logger.info(
         "[Proposal] Linking #{length(story_ids)} stories to #{comp_attrs.module_name}: #{inspect(story_ids)}"
       )
 
       link_stories_to_component(scope, story_ids, component_id)
       linked_count + length(story_ids)
-    else
-      linked_count
     end
   end
 
@@ -671,15 +818,23 @@ defmodule CodeMySpec.Architecture.Proposal do
           Logger.warning("[Proposal] Story #{story_id} not found, skipping link")
 
         story ->
-          case Stories.set_story_component(scope, story, component_id) do
-            {:ok, _story} ->
-              Logger.debug("[Proposal] Linked story #{story_id} to component #{component_id}")
-
-            {:error, reason} ->
-              Logger.warning("[Proposal] Failed to link story #{story_id}: #{inspect(reason)}")
-          end
+          set_story_component(scope, story, component_id)
       end
     end)
+  end
+
+  defp set_story_component(scope, story, component_id) do
+    case Stories.set_story_component(scope, story, component_id) do
+      {:ok, _story} ->
+        Logger.debug("[Proposal] Linked story #{story.id} to component #{component_id}")
+
+      {:error, reason} ->
+        Logger.warning("[Proposal] Failed to link story #{story.id}: #{inspect(reason)}")
+    end
+  end
+
+  defp child_story_links(child) do
+    Enum.map(Map.get(child, :story_ids, []), fn story_id -> {story_id, child.name} end)
   end
 
   defp sync_component_to_db(scope, attrs) do
