@@ -204,17 +204,16 @@ defmodule CodeMySpec.Git.CLITest do
   # ============================================================================
 
   describe "pull/2 - integration errors" do
-    @tag :integration
     test "returns error when integration not found" do
       scope = scope_without_integration()
       clone_path = temp_clone_path()
 
       try do
-        # Clone with a scope that has integration
-        {scope_with_integration, _token} = scope_with_github_integration()
-        {:ok, _path} = CLI.clone(scope_with_integration, test_repo_url(), clone_path)
+        # Local `git init` is enough — pull's integration check fires before any network.
+        File.mkdir_p!(clone_path)
+        {_, 0} = System.cmd("git", ["init"], cd: clone_path)
+        {_, 0} = System.cmd("git", ["remote", "add", "origin", "https://github.com/owner/repo.git"], cd: clone_path)
 
-        # Try to pull with scope without integration
         result = CLI.pull(scope, clone_path)
 
         assert {:error, :not_connected} = result

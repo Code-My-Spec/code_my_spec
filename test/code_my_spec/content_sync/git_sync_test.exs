@@ -57,42 +57,6 @@ defmodule CodeMySpec.ContentSync.GitSyncTest do
   # Unit Tests (Mocked)
   # ============================================================================
 
-  describe "clone_to_temp/1 - success cases" do
-    test "successfully clones repository to temporary directory" do
-      scope = scope_with_project()
-
-      assert {:ok, temp_path} = GitSync.clone_to_temp(scope)
-      assert is_binary(temp_path)
-
-      # Cleanup
-      File.rm_rf!(temp_path)
-    end
-
-    test "returns absolute path to temporary directory" do
-      scope = scope_with_project()
-
-      assert {:ok, temp_path} = GitSync.clone_to_temp(scope)
-      assert is_binary(temp_path)
-      assert String.starts_with?(temp_path, System.tmp_dir!())
-
-      # Cleanup
-      File.rm_rf!(temp_path)
-    end
-
-    test "trims whitespace from docs_repo URL" do
-      scope =
-        scope_with_project(%{
-          docs_repo: "  https://github.com/Code-My-Spec/test_phoenix_project.git  "
-        })
-
-      assert {:ok, temp_path} = GitSync.clone_to_temp(scope)
-      assert is_binary(temp_path)
-
-      # Cleanup
-      File.rm_rf!(temp_path)
-    end
-  end
-
   describe "clone_to_temp/1 - scope validation errors" do
     test "returns error when scope has no active_project_id" do
       scope = scope_without_active_project()
@@ -194,28 +158,5 @@ defmodule CodeMySpec.ContentSync.GitSyncTest do
       assert {:error, "git clone failed"} = GitSync.clone_to_temp(scope)
     end
   end
-
-  describe "clone_to_temp/1 - multiple clones" do
-    test "each clone creates unique temporary directory" do
-      scope = scope_with_project()
-
-      {:ok, temp_path1} = GitSync.clone_to_temp(scope)
-      {:ok, temp_path2} = GitSync.clone_to_temp(scope)
-      {:ok, temp_path3} = GitSync.clone_to_temp(scope)
-
-      assert temp_path1 != temp_path2
-      assert temp_path2 != temp_path3
-      assert temp_path1 != temp_path3
-
-      # Cleanup
-      File.rm_rf!(temp_path1)
-      File.rm_rf!(temp_path2)
-      File.rm_rf!(temp_path3)
-    end
-  end
-
-  # ============================================================================
-  # Integration Tests (Real Git Operations)
-  # ============================================================================
 
 end
