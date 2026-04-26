@@ -750,12 +750,15 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   defp write_all_spec_files(env, components) do
-    Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
-      case write_spec_file(env, comp_attrs) do
-        :ok -> {:cont, {:ok, [comp_attrs | created]}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
+    case Enum.reduce_while(components, {:ok, []}, fn comp_attrs, {:ok, created} ->
+           case write_spec_file(env, comp_attrs) do
+             :ok -> {:cont, {:ok, [comp_attrs | created]}}
+             {:error, reason} -> {:halt, {:error, reason}}
+           end
+         end) do
+      {:ok, created} -> {:ok, Enum.reverse(created)}
+      err -> err
+    end
   end
 
   defp sync_and_link_components(scope, components) do

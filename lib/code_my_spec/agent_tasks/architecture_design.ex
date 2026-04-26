@@ -71,8 +71,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     with {:ok, content} <- read_proposal(env),
          {:ok, proposal} <- Proposal.from_markdown(content, app_name: app_name),
          {:ok, story_ids} <- get_story_ids(scope),
-         {:ok, _validated} <- Proposal.validate(proposal, story_ids: story_ids),
-         {:ok, result} <- Proposal.execute(proposal, scope, working_dir: working_dir) do
+         db_components = list_db_component_names(scope),
+         {:ok, _validated} <-
+           Proposal.validate(proposal, story_ids: story_ids, db_components: db_components),
+         {:ok, result} <- Proposal.execute(proposal, scope, env: env, working_dir: working_dir) do
       IO.puts("\n✓ Proposal validated and executed successfully!")
 
       IO.puts(
@@ -81,7 +83,11 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
       IO.puts("  Linked #{result.linked_stories} stories")
       IO.puts("  Spec files written to .code_my_spec/spec/")
-      {:ok, :valid}
+
+      case Map.get(result, :warnings, []) do
+        [] -> {:ok, :valid}
+        warnings -> {:ok, :valid, format_warnings(warnings)}
+      end
     else
       {:error, :proposal_not_found} ->
         {:ok, :invalid, proposal_not_found_feedback()}
@@ -110,6 +116,17 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       {:ok, stories} -> {:ok, Enum.map(stories, & &1.id)}
       {:error, _} -> {:ok, []}
     end
+  end
+
+  defp list_db_component_names(scope) do
+    scope
+    |> Components.list_components()
+    |> Enum.map(& &1.module_name)
+  end
+
+  defp format_warnings(warnings) do
+    bullets = Enum.map_join(warnings, "\n", &"- #{&1}")
+    "## Warnings\n\n#{bullets}"
   end
 
   defp get_app_name(%{module_name: module_name}) when is_binary(module_name), do: module_name

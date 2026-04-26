@@ -145,8 +145,31 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert Enum.any?(errors, &(&1.type == :dependency_cycle))
     end
 
-    test "requires stories to be mapped to surface components" do
-      # Story mapped to context but not surface
+    test "rejects orphan stories that are not linked to any component" do
+      # Story 3 is unlinked anywhere
+      proposal =
+        Proposal.new(%{
+          app_name: "Fuellytics",
+          contexts: [
+            %{
+              name: "Fuellytics.A",
+              description: "A",
+              children: [%{name: "Fuellytics.A.X", type: "schema", story_ids: [1]}]
+            }
+          ],
+          surface_components: [
+            %{name: "FuellyticsWeb.DashboardLive", type: "liveview", story_ids: [2]}
+          ]
+        })
+
+      assert {:error, errors} = Proposal.validate(proposal, story_ids: [1, 2, 3])
+
+      assert Enum.any?(errors, fn err ->
+               err.type == :stories_missing_surface and 3 in err.details.story_ids
+             end)
+    end
+
+    test "accepts stories linked only to non-surface components (warning, not error)" do
       proposal =
         Proposal.new(%{
           app_name: "Fuellytics",
@@ -162,8 +185,10 @@ defmodule CodeMySpec.Architecture.ProposalTest do
           ]
         })
 
-      assert {:error, errors} = Proposal.validate(proposal, story_ids: [1, 2])
-      assert Enum.any?(errors, &(&1.type == :stories_missing_surface))
+      assert {:ok, _} = Proposal.validate(proposal, story_ids: [1, 2])
+      warnings = Proposal.collect_warnings(proposal)
+      assert Enum.any?(warnings, &(&1 =~ "story 1" and &1 =~ "Fuellytics.A.X"))
+      assert Enum.any?(warnings, &(&1 =~ "story 2" and &1 =~ "Fuellytics.A.X"))
     end
 
     test "accepts stories mapped to both surface and context" do
@@ -552,7 +577,8 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert "MetricFlowWeb.DashboardLive" in module_names
     end
 
-    test "links stories to surface components only", %{tmp_dir: tmp_dir, scope: scope} do
+    test "links stories to every component declaring story_ids; surface wins on overwrite",
+         %{tmp_dir: tmp_dir, scope: scope} do
       alias CodeMySpec.Stories
       alias CodeMySpec.Components
 
@@ -586,10 +612,10 @@ defmodule CodeMySpec.Architecture.ProposalTest do
 
       assert {:ok, result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
 
-      # Stories should be linked to surface component only
-      assert result.linked_stories == 2
+      # 5 link attempts: context (2) + child schema (1) + surface (2)
+      assert result.linked_stories == 5
 
-      # Verify the liveview got the story links
+      # Surface is processed last so it wins on the single component_id field
       liveview = Components.get_component_by_module_name(scope, "MetricFlowWeb.DashboardLive")
       story1_updated = Stories.get_story(scope, story1.id)
       story2_updated = Stories.get_story(scope, story2.id)
