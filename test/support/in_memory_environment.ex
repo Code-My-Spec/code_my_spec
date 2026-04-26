@@ -52,7 +52,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   @impl true
   def write_file(%Environment{} = env, path, content) do
     key = normalize(path, env.cwd)
-    mtime = DateTime.utc_now() |> DateTime.truncate(:second)
+    mtime = DateTime.utc_now()
     Agent.update(agent(env), &Map.put(&1, key, {content, mtime}))
     :ok
   end

@@ -158,7 +158,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironmentTest do
       :ok = InMemoryEnvironment.write_file(env, "a", "v1")
       {:ok, %{mtime: t1}} = InMemoryEnvironment.stat(env, "a")
 
-      Process.sleep(1100)
+      Process.sleep(2)
       :ok = InMemoryEnvironment.write_file(env, "a", "v2")
       {:ok, %{mtime: t2, size: 2}} = InMemoryEnvironment.stat(env, "a")
 

@@ -393,9 +393,9 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert result.changed_paths == []
       assert result.total_files >= 2
 
-      # Touch one file to bump mtime
-      :timer.sleep(1100)
+      # Bump mtime explicitly instead of sleeping past the 1s POSIX granularity
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\n  # changed\nend")
+      File.touch!(Path.join(tmp_dir, "lib/my_app/accounts.ex"), :erlang.system_time(:second) + 2)
 
       {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
       assert result.upserted == 1
