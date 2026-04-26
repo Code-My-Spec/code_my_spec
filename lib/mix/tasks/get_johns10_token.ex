@@ -7,6 +7,7 @@ defmodule Mix.Tasks.GetJohns10Token do
       mix get_johns10_token
 
   """
+  use Boundary, classify_to: CodeMySpec
   use Mix.Task
 
   alias CodeMySpec.{Repo, Users}

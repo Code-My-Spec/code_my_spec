@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.SetStoryComponent do
+  use Boundary, classify_to: CodeMySpec
+
   @moduledoc """
   Links a story to an architecture component by module name.
 

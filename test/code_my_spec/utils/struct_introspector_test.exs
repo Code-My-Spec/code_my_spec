@@ -1,7 +1,7 @@
-defmodule StructIntrospectorTest do
+defmodule CodeMySpec.Utils.StructIntrospectorTest do
   use ExUnit.Case
-  doctest StructIntrospector
-  alias StructIntrospector
+  doctest CodeMySpec.Utils.StructIntrospector
+  alias CodeMySpec.Utils.StructIntrospector
 
   test "introspects ComponentDesign struct" do
     Code.ensure_loaded(CodeMySpec.ComponentDesignFixture)

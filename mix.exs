@@ -46,9 +46,9 @@ defmodule CodeMySpec.MixProject do
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
   defp compilers(:test),
-    do: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+    do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app]
 
-  defp compilers(_), do: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
+  defp compilers(_), do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
 
   # Specifies your project dependencies.
   # mix archive.install hex phx_new 1.8.0-rc.4

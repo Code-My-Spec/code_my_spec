@@ -11,6 +11,8 @@ defmodule CodeMySpecLocalWeb do
   Markdown rendering for the API lives in `*Markdown` modules.
   """
 
+  use Boundary, top_level?: true, deps: [CodeMySpec], exports: :all
+
   def static_paths, do: ~w(local/assets)
 
   def router do

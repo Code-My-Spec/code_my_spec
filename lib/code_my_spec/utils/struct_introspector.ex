@@ -1,4 +1,4 @@
-defmodule StructIntrospector do
+defmodule CodeMySpec.Utils.StructIntrospector do
   @moduledoc """
   Provides introspection capabilities for Ecto schemas, extracting field
   specifications, requirements, and descriptions from schema definitions.
@@ -21,7 +21,7 @@ defmodule StructIntrospector do
   ## Examples
 
       iex> Code.ensure_loaded(CodeMySpec.ComponentDesignFixture)
-      iex> StructIntrospector.introspect(CodeMySpec.ComponentDesignFixture)
+      iex> CodeMySpec.Utils.StructIntrospector.introspect(CodeMySpec.ComponentDesignFixture)
       %{
         fields: [:purpose, :public_api, :execution_flow, :other_sections],
         required_fields: [:purpose, :public_api, :execution_flow],

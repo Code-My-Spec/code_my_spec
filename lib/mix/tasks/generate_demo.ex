@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.GenerateDemo do
+  use Boundary, classify_to: CodeMySpec
+
   @moduledoc """
   Generates demo Phoenix contexts with proper timing and automatic router injection.
 
