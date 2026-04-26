@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.UserPreferences
 
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
@@ -28,13 +29,43 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
   def handle_event("save_project", %{"project" => params}, socket) do
     scope = socket.assigns.current_scope
 
-    case Projects.create_project(scope, params) do
-      {:ok, _project} ->
+    attrs = Map.put(params, "module_name", derive_module_name(params["name"] || ""))
+
+    case Projects.create_project(scope, attrs) do
+      {:ok, project} ->
+        {:ok, _} = UserPreferences.select_active_project(scope, project.id)
         {:noreply, push_navigate(socket, to: ~p"/app")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset, as: "project"))}
     end
+  end
+
+  # Auto-derive a valid Elixir module name from the user's project name.
+  # Rules: replace non-alphanumeric chars with spaces, split on whitespace,
+  # strip leading digits per word, capitalize the first letter of each
+  # remaining word, join with no separator. Empty result falls back to
+  # "Project" + a short id.
+  defp derive_module_name(name) do
+    derived =
+      name
+      |> String.replace(~r/[^A-Za-z0-9]/u, " ")
+      |> String.split(~r/\s+/u, trim: true)
+      |> Enum.map(&String.replace(&1, ~r/^\d+/, ""))
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.map_join("", &capitalize_first/1)
+
+    if derived == "", do: "Project" <> short_id(), else: derived
+  end
+
+  defp capitalize_first(""), do: ""
+
+  defp capitalize_first(<<first::utf8, rest::binary>>) do
+    <<String.upcase(<<first::utf8>>)::binary, rest::binary>>
+  end
+
+  defp short_id do
+    :crypto.strong_rand_bytes(4) |> Base.encode16(case: :upper) |> String.slice(0, 6)
   end
 
   def render(assigns) do
