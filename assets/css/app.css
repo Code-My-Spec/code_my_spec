@@ -132,9 +132,24 @@
     --font-sans: "IBM Plex Sans", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
+/* Phase palette — methodology page six-phase loop. Defined as plain :root
+   custom properties (not @theme tokens) because they're only consumed via
+   `var(--color-cms-phase-N)` in inline styles. Tailwind v4 tree-shakes
+   @theme tokens that aren't referenced as utility classes; raw :root
+   custom properties are always preserved. Phase 1 is the brand red anchor. */
+:root {
+    --color-cms-phase-1: #ff3838;
+    --color-cms-phase-2: #fb923c;
+    --color-cms-phase-3: #22d3ee;
+    --color-cms-phase-4: #fde047;
+    --color-cms-phase-5: #a78bfa;
+    --color-cms-phase-6: #34d399;
+}
+
 /* ─── Brand system utilities — texture & geometry daisyUI doesn't model ──── */
 @layer utilities {
-    /* Chamfered corners — corner cuts, not radius. Three sizes. */
+    /* Chamfered corners — corner cuts, not radius. Four sizes; xl matches
+       the full-bleed cards (.harness-card, .proof-feature, .proof-stats). */
     .chamfer-sm {
         clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
     }
@@ -143,6 +158,9 @@
     }
     .chamfer-lg {
         clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+    }
+    .chamfer-xl {
+        clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
     }
 
     /* Top-left signal accent bar (80px wide, glowing red) — section markers */
@@ -221,15 +239,25 @@
         background: var(--ac);
     }
 
-    /* ─── Product zone — scoped conventions for /products/* pages ──────
-       Brand-system rules: all section/display headings uppercase,
-       eyebrow uses the index-slash-name convention with trailing red line. */
+    /* ─── Marketing-zone conventions ────────────────────────────────────
+       Per design-tokens.html v0.9, three intensity zones share one theme:
+         .brand-zone        — / and launch surfaces (40/60 red, full texture)
+         .product-page-zone — /products/*, /methodology, /docs (15/85 red)
+         .app-zone          — workspace LiveView (5/95 red, no chamfer/glow)
+
+       Brand and product zones share base typography (uppercase headings,
+       eyebrow conventions, chamfered/mono brand button). The brand zone may
+       layer additional intensity later; app zone stays plain DaisyUI. */
+    .brand-zone h1,
+    .brand-zone h2,
+    .brand-zone h3,
     .product-page-zone h1,
     .product-page-zone h2,
     .product-page-zone h3 {
         text-transform: uppercase;
     }
 
+    .brand-zone .eyebrow,
     .product-page-zone .eyebrow {
         font-family: var(--font-mono);
         font-size: 11px;
@@ -241,15 +269,41 @@
         align-items: center;
         gap: 12px;
     }
+    .brand-zone .eyebrow .idx,
     .product-page-zone .eyebrow .idx {
         color: var(--color-cms-text-mute);
     }
+    .brand-zone .eyebrow::after,
     .product-page-zone .eyebrow::after {
         content: "";
         flex: 1;
         height: 1px;
         background: linear-gradient(90deg, var(--color-cms-red), transparent);
         max-width: 200px;
+    }
+
+    /* Brand button override — chamfer + JetBrains Mono + white-on-hover.
+       Scoped to marketing zones so app surfaces (login, register, admin,
+       workspace) keep plain DaisyUI buttons. App zone is intentionally
+       restrained per design-tokens.html. */
+    .brand-zone .btn-primary,
+    .product-page-zone .btn-primary {
+        font-family: var(--font-mono);
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    }
+    .brand-zone .btn-primary:hover,
+    .product-page-zone .btn-primary:hover {
+        background: var(--color-cms-white);
+        border-color: var(--color-cms-white);
+    }
+
+    /* App-zone marker — no rules today. Declares the surface so future
+       brand styles can be safely scoped without leaking into the workspace. */
+    .app-zone {
+        /* intentional no-op */
     }
 
     /* ─── Differentiator card (product zone) ───────────────────────────
@@ -489,11 +543,76 @@
         opacity: 0.45;
         pointer-events: none;
     }
+
+    /* ─── Methodology stepper — six-phase loop ──────────────────────────
+       Each tab/panel sets --ac inline (one of --color-cms-phase-1..6); the
+       utilities below consume it so panels stay free of inline color/border
+       /shadow attributes. */
+    .method-tab {
+        transition: all 0.15s;
+    }
+    .method-tab:hover {
+        border-color: var(--ac);
+        color: var(--color-cms-text);
+    }
+    .method-tab.is-active {
+        background: rgba(255, 56, 56, 0.04);
+        border-color: var(--ac);
+    }
+    .method-tab.is-active::before {
+        content: "▸";
+        position: absolute;
+        left: -14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--ac);
+        font-family: var(--font-mono);
+        font-size: 14px;
+    }
+    .method-tab-num {
+        color: var(--ac);
+    }
+    .method-panel-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: var(--ac);
+        box-shadow: 0 0 14px var(--ac);
+    }
+    .method-panel-badge {
+        color: var(--ac);
+        border: 1px solid var(--ac);
+    }
+    .method-panel-tagline {
+        color: var(--ac);
+    }
+    .method-panel-bullet {
+        border-left: 2px solid var(--ac);
+    }
+    .method-panel-bullet-mark {
+        color: var(--ac);
+    }
+    .method-guide {
+        color: var(--ac);
+        border-bottom: 1px solid var(--ac);
+    }
+    .method-guide:hover {
+        color: var(--color-cms-white);
+    }
 }
 
 /* Set base font size to 16px to match original */
 html {
     font-size: 16px;
+}
+
+/* Methodology page — flowing dash animation on SVG feedback edges */
+@keyframes dash-flow {
+    to {
+        stroke-dashoffset: -40;
+    }
 }
 
 /* Add variants based on LiveView classes */

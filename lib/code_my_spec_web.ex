@@ -86,6 +86,8 @@ defmodule CodeMySpecWeb do
       import Phoenix.HTML
       # Core UI components
       import CodeMySpecWeb.CoreComponents
+      # Marketing-zone components (eyebrow, install_card)
+      import CodeMySpecWeb.MarketingComponents
 
       # Common modules used in templates
       alias CodeMySpecWeb.Layouts

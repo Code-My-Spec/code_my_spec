@@ -65,6 +65,35 @@ window.addEventListener("phx:page-loading-stop", (info) => {
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 
+// --- Marketing chrome: delegated copy-button handler ---
+// Any element with `.copy-btn[data-copy]` becomes a clipboard button.
+// Used by /codemyspec and /marketmyspec install cards across the marketing
+// pages. Delegation on document handles initial render, LiveView patches,
+// and pages added later — no per-page rebinding needed.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".copy-btn[data-copy]");
+  if (!btn) return;
+  const text = btn.getAttribute("data-copy");
+  const original = btn.textContent;
+  const restore = () => { btn.textContent = original; };
+  const done = () => { btn.textContent = "[ ✓ COPIED ]"; setTimeout(restore, 1800); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallback(text, done));
+  } else {
+    fallback(text, done);
+  }
+});
+
+function fallback(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch (_) {}
+  document.body.removeChild(ta);
+  done();
+}
+
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session

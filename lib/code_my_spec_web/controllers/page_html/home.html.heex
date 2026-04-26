@@ -1,5 +1,5 @@
 <Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
-<div class="product-page-zone hair-grid">
+<div class="brand-zone hair-grid">
   <%!-- ───────────── HERO ───────────── --%>
   <section class="border-b border-base-300 signal-top scanlines">
     <div class="max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-[1.1fr_1fr] gap-14 items-start">
@@ -19,7 +19,7 @@
         </p>
 
         <div class="mt-9 flex flex-wrap items-center gap-5">
-          <a href="#install-section" class="btn btn-primary font-mono chamfer-sm">
+          <a href="#install-section" class="btn btn-primary">
             ▸ Install a harness
           </a>
           <a
@@ -61,7 +61,7 @@
   <%!-- ───────────── PROBLEM ───────────── --%>
   <section class="border-b border-base-300 signal-top bg-gradient-to-b from-base-100 via-base-200/50 to-base-100">
     <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
-      <p class="eyebrow"><span class="idx">01</span><span>// the_frame</span></p>
+      <.eyebrow idx="01" name="the_frame" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight max-w-[22ch]">
         You don't have a team.<br /><span class="text-primary">You have to BE the team.</span>
       </h2>
@@ -81,7 +81,7 @@
   <%!-- ───────────── PLATFORM ───────────── --%>
   <section class="border-b border-base-300 signal-top bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,_rgba(255,56,56,0.06),_transparent_70%)]">
     <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
-      <p class="eyebrow"><span class="idx">02</span><span>// the_platform</span></p>
+      <.eyebrow idx="02" name="the_platform" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
         Two harnesses today.<br /><span class="text-primary">More as we need them.</span>
       </h2>
@@ -151,7 +151,7 @@
   <%!-- ───────────── WHO IT'S FOR ───────────── --%>
   <section class="border-b border-base-300 signal-top">
     <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
-      <p class="eyebrow"><span class="idx">03</span><span>// who_its_for</span></p>
+      <.eyebrow idx="03" name="who_its_for" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
         Built for the founder <span class="text-primary">doing every job.</span>
       </h2>
@@ -208,7 +208,7 @@
   <%!-- ───────────── PROOF ───────────── --%>
   <section class="border-b border-base-300 signal-top">
     <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
-      <p class="eyebrow"><span class="idx">04</span><span>// proof</span></p>
+      <.eyebrow idx="04" name="proof" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
         Real founder. Real apps.<br /><span class="text-primary">Real recursion.</span>
       </h2>
@@ -293,7 +293,7 @@
   <%!-- ───────────── PRICING ───────────── --%>
   <section class="border-b border-base-300 signal-top">
     <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28 text-center">
-      <p class="eyebrow justify-center mb-6"><span class="idx">05</span><span>// pricing</span></p>
+      <.eyebrow idx="05" name="pricing" align="center" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
         <span class="text-primary">Free</span> during early access.
       </h2>
@@ -330,7 +330,7 @@
   <%!-- ───────────── FAQ ───────────── --%>
   <section class="border-b border-base-300 signal-top">
     <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
-      <p class="eyebrow"><span class="idx">06</span><span>// objections</span></p>
+      <.eyebrow idx="06" name="objections" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight mb-3">
         Questions founders <span class="text-primary">actually ask.</span>
       </h2>
@@ -378,7 +378,7 @@
     class="signal-top scanlines bg-[radial-gradient(circle_at_75%_30%,_rgba(255,56,56,0.14),_transparent_55%),radial-gradient(circle_at_15%_80%,_rgba(255,56,56,0.06),_transparent_60%)]"
   >
     <div class="max-w-7xl mx-auto px-6 py-28 lg:py-32">
-      <p class="eyebrow"><span class="idx">07</span><span>// install</span></p>
+      <.eyebrow idx="07" name="install" />
       <h2 class="font-heading font-bold text-4xl md:text-6xl leading-[1.02] tracking-tight max-w-[14ch]">
         Pick a harness.<br /><span class="text-primary">Install it.</span>
       </h2>
@@ -387,67 +387,18 @@
       </p>
 
       <div class="mt-14 grid lg:grid-cols-2 gap-[18px]">
-        <%!-- /codemyspec install --%>
-        <div class="border-[1.5px] border-primary bg-gradient-to-b from-base-100 to-base-200 chamfer-lg overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-3.5 border-b border-primary/30 bg-gradient-to-r from-primary/15 to-transparent">
-            <span class="font-mono text-[11px] uppercase tracking-[0.22em] text-primary font-bold flex items-center gap-2.5">
-              <span class="w-1.5 h-1.5 bg-primary inline-block [box-shadow:0_0_6px_var(--color-cms-red)]"></span>
-              /codemyspec
-            </span>
-            <button
-              class="copy-btn font-mono text-[10px] uppercase tracking-[0.2em] text-primary border border-primary px-2.5 py-1.5 hover:bg-primary hover:text-base-100 transition"
-              data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install codemyspec@codemyspec"}
-            >
-              [ copy ]
-            </button>
-          </div>
-          <div class="px-4 py-4 font-mono text-sm">
-            <div class="flex gap-2.5 py-1">
-              <span class="text-primary font-bold select-none">▸</span>
-              <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
-            </div>
-            <div class="flex gap-2.5 py-1">
-              <span class="text-primary font-bold select-none">▸</span>
-              <span class="break-all">/plugin install codemyspec@codemyspec</span>
-            </div>
-          </div>
-          <div class="px-4 py-3.5 border-t border-primary/30">
-            <a href={~p"/products/code-my-spec"} class="font-mono text-[11px] uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 hover:text-base-content transition">
-              Read the engineering brief →
-            </a>
-          </div>
-        </div>
-
-        <%!-- /marketmyspec install --%>
-        <div class="border-[1.5px] border-cms-agent-bdd bg-gradient-to-b from-base-100 to-base-200 chamfer-lg overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-3.5 border-b border-base-300 bg-gradient-to-r from-cms-agent-bdd/15 to-transparent">
-            <span class="font-mono text-[11px] uppercase tracking-[0.22em] text-cms-agent-bdd font-bold flex items-center gap-2.5">
-              <span class="w-1.5 h-1.5 bg-cms-agent-bdd inline-block"></span>
-              /marketmyspec
-            </span>
-            <button
-              class="copy-btn font-mono text-[10px] uppercase tracking-[0.2em] text-cms-agent-bdd border border-cms-agent-bdd px-2.5 py-1.5 hover:bg-cms-agent-bdd hover:text-base-100 transition"
-              data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install marketmyspec@codemyspec"}
-            >
-              [ copy ]
-            </button>
-          </div>
-          <div class="px-4 py-4 font-mono text-sm">
-            <div class="flex gap-2.5 py-1">
-              <span class="text-cms-agent-bdd font-bold select-none">▸</span>
-              <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
-            </div>
-            <div class="flex gap-2.5 py-1">
-              <span class="text-cms-agent-bdd font-bold select-none">▸</span>
-              <span class="break-all">/plugin install marketmyspec@codemyspec</span>
-            </div>
-          </div>
-          <div class="px-4 py-3.5 border-t border-base-300">
-            <a href={~p"/products/market-my-spec"} class="font-mono text-[11px] uppercase tracking-[0.14em] text-cms-agent-bdd border-b border-cms-agent-bdd pb-0.5 hover:text-base-content transition">
-              Read the marketing brief →
-            </a>
-          </div>
-        </div>
+        <.install_card
+          harness="codemyspec"
+          accent="red"
+          brief_url={~p"/products/code-my-spec"}
+          brief_label="Read the engineering brief →"
+        />
+        <.install_card
+          harness="marketmyspec"
+          accent="bdd"
+          brief_url={~p"/products/market-my-spec"}
+          brief_label="Read the marketing brief →"
+        />
       </div>
 
       <p class="mt-10 text-center font-mono text-sm uppercase tracking-[0.14em] text-base-content/70">
@@ -458,26 +409,5 @@
       </p>
     </div>
   </section>
-
-  <script>
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const text = btn.getAttribute('data-copy');
-        const original = btn.textContent;
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch (_) {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          try { document.execCommand('copy'); } catch (_) {}
-          document.body.removeChild(ta);
-        }
-        btn.textContent = '[ ✓ COPIED ]';
-        setTimeout(() => { btn.textContent = original; }, 1800);
-      });
-    });
-  </script>
 </div>
 </Layouts.marketing>

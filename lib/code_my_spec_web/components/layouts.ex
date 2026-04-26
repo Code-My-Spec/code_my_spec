@@ -40,7 +40,7 @@ defmodule CodeMySpecWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <div class="drawer lg:drawer-open min-h-screen">
+    <div class="app-zone drawer lg:drawer-open min-h-screen">
       <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
 
       <div class="drawer-content flex flex-col bg-base-100">
