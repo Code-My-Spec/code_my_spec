@@ -66,35 +66,29 @@ defmodule CodeMySpec.Accounts.Member do
   """
   def validate_owner_exists(changeset, repo) do
     case get_field(changeset, :role) do
-      :owner ->
-        changeset
-
-      _ ->
-        user_id = get_field(changeset, :user_id)
-        account_id = get_field(changeset, :account_id)
-
-        if user_id && account_id do
-          case repo.get_by(__MODULE__, user_id: user_id, account_id: account_id) do
-            %{role: :owner} ->
-              owner_count =
-                repo.aggregate(
-                  from(m in __MODULE__, where: m.account_id == ^account_id and m.role == :owner),
-                  :count
-                )
-
-              if owner_count <= 1 do
-                add_error(changeset, :role, "account must have at least one owner")
-              else
-                changeset
-              end
-
-            _ ->
-              changeset
-          end
-        else
-          changeset
-        end
+      :owner -> changeset
+      _ -> ensure_existing_role_change_keeps_owner(changeset, repo)
     end
+  end
+
+  defp ensure_existing_role_change_keeps_owner(changeset, repo) do
+    user_id = get_field(changeset, :user_id)
+    account_id = get_field(changeset, :account_id)
+
+    with true <- !is_nil(user_id) and !is_nil(account_id),
+         %{role: :owner} <- repo.get_by(__MODULE__, user_id: user_id, account_id: account_id),
+         1 <- count_owners(repo, account_id) do
+      add_error(changeset, :role, "account must have at least one owner")
+    else
+      _ -> changeset
+    end
+  end
+
+  defp count_owners(repo, account_id) do
+    repo.aggregate(
+      from(m in __MODULE__, where: m.account_id == ^account_id and m.role == :owner),
+      :count
+    )
   end
 
   @doc """

@@ -8,35 +8,9 @@ defmodule CodeMySpec.IndexNow do
   @api_url "https://api.indexnow.org/IndexNow"
 
   def notify(urls) when is_list(urls) and urls != [] do
-    key = key()
-    host = host()
-
-    if key && host do
-      body =
-        Jason.encode!(%{
-          host: host,
-          key: key,
-          keyLocation: "https://#{host}/#{key}.txt",
-          urlList: urls
-        })
-
-      Task.start(fn ->
-        case Req.post(@api_url, body: body, headers: [{"content-type", "application/json"}]) do
-          {:ok, %{status: status}} when status in 200..299 ->
-            Logger.info("IndexNow: submitted #{length(urls)} URLs (#{status})")
-
-          {:ok, %{status: status, body: body}} ->
-            Logger.warning("IndexNow: unexpected status #{status}: #{inspect(body)}")
-
-          {:error, reason} ->
-            Logger.warning("IndexNow: request failed: #{inspect(reason)}")
-        end
-      end)
-
-      :ok
-    else
-      Logger.debug("IndexNow: skipped (key or host not configured)")
-      :skip
+    case {key(), host()} do
+      {key, host} when is_binary(key) and is_binary(host) -> dispatch(urls, key, host)
+      _ -> log_skipped()
     end
   end
 
@@ -56,6 +30,37 @@ defmodule CodeMySpec.IndexNow do
 
   def key do
     Application.get_env(:code_my_spec, :indexnow_key)
+  end
+
+  defp dispatch(urls, key, host) do
+    body =
+      Jason.encode!(%{
+        host: host,
+        key: key,
+        keyLocation: "https://#{host}/#{key}.txt",
+        urlList: urls
+      })
+
+    Task.start(fn -> post_index_now(body, length(urls)) end)
+    :ok
+  end
+
+  defp post_index_now(body, url_count) do
+    case Req.post(@api_url, body: body, headers: [{"content-type", "application/json"}]) do
+      {:ok, %{status: status}} when status in 200..299 ->
+        Logger.info("IndexNow: submitted #{url_count} URLs (#{status})")
+
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning("IndexNow: unexpected status #{status}: #{inspect(body)}")
+
+      {:error, reason} ->
+        Logger.warning("IndexNow: request failed: #{inspect(reason)}")
+    end
+  end
+
+  defp log_skipped do
+    Logger.debug("IndexNow: skipped (key or host not configured)")
+    :skip
   end
 
   defp host do

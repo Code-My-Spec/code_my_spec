@@ -65,19 +65,12 @@ defmodule CodeMySpec.Accounts.Account do
   end
 
   defp maybe_generate_slug(changeset) do
-    case get_field(changeset, :type) do
-      :personal ->
-        case get_field(changeset, :slug) do
-          nil ->
-            name = get_field(changeset, :name)
-            if name, do: put_change(changeset, :slug, generate_slug(name)), else: changeset
-
-          _ ->
-            changeset
-        end
-
-      _ ->
-        changeset
+    with :personal <- get_field(changeset, :type),
+         nil <- get_field(changeset, :slug),
+         name when is_binary(name) <- get_field(changeset, :name) do
+      put_change(changeset, :slug, generate_slug(name))
+    else
+      _ -> changeset
     end
   end
 

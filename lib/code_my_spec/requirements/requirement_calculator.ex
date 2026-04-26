@@ -147,6 +147,15 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  # Fallback for definitions without check_type (legacy or unknown)
+  defp check(%{check_type: nil, name: name}, _scope, _entity, _files, _ctx) do
+    {false, %{reason: "No check_type defined for requirement: #{name}"}}
+  end
+
+  defp check(%{check_type: check_type}, _scope, _entity, _files, _ctx) do
+    {false, %{reason: "Unknown check_type: #{check_type}"}}
+  end
+
   defp run_delegate(module, function, scope, entity) do
     module
     |> apply(function, [scope, entity])
@@ -160,15 +169,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
   defp normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
   defp normalize_delegate_result(_), do: {false, %{reason: "delegate check returned unexpected result"}}
-
-  # Fallback for definitions without check_type (legacy or unknown)
-  defp check(%{check_type: nil, name: name}, _scope, _entity, _files, _ctx) do
-    {false, %{reason: "No check_type defined for requirement: #{name}"}}
-  end
-
-  defp check(%{check_type: check_type}, _scope, _entity, _files, _ctx) do
-    {false, %{reason: "Unknown check_type: #{check_type}"}}
-  end
 
   # -- Config helpers --
 

@@ -24,13 +24,15 @@ defmodule CodeMySpec.Oauth.Application do
     validate_change(changeset, :redirect_uri, fn :redirect_uri, redirect_uri ->
       redirect_uri
       |> String.split(" ", trim: true)
-      |> Enum.reduce([], fn uri, errors ->
-        case validate_single_redirect_uri(uri) do
-          :ok -> errors
-          {:error, message} -> [{:redirect_uri, message} | errors]
-        end
-      end)
+      |> Enum.flat_map(&redirect_uri_errors/1)
     end)
+  end
+
+  defp redirect_uri_errors(uri) do
+    case validate_single_redirect_uri(uri) do
+      :ok -> []
+      {:error, message} -> [{:redirect_uri, message}]
+    end
   end
 
   defp validate_single_redirect_uri(uri) do
