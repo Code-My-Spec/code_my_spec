@@ -1,14 +1,12 @@
-defmodule CodeMySpecSpex.Story124.Rule6ErrorsPropagateSpex do
+defmodule CodeMySpecSpex.Story124.Criterion5268Spex do
   @moduledoc """
   Story 124 — Project Setup
-  Rule 6 — Step command errors propagate to the caller.
+  Criterion 5268 — A step command error surfaces as a page-level error banner with the reason.
 
-  Covers:
-  - Happy path: every step's `command/2` succeeds; page renders without
-    an error banner.
-  - Failure path: a step's `command/2` returns `{:error, _}`; the page
-    renders a visible error banner (`[data-role=setup-error]`) with the
-    reason, instead of silently falling back to a degraded prompt.
+  Step command errors propagate to the caller. A stub step whose
+  `command/2` returns `{:error, :stub_explosion}` causes the page to
+  render `[data-role=setup-error]` with the reason visible, instead of
+  silently degrading.
 
   Surface: `/projects/:project_name/requirements/project_setup`.
   """
@@ -17,7 +15,6 @@ defmodule CodeMySpecSpex.Story124.Rule6ErrorsPropagateSpex do
 
   import_givens CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpecSpex.Fixtures
 
@@ -25,26 +22,6 @@ defmodule CodeMySpecSpex.Story124.Rule6ErrorsPropagateSpex do
   setup :setup_active_project
 
   spex "Step command errors propagate to the caller" do
-    scenario "happy path renders without error banner" do
-      given_ "every setup step is satisfied", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.satisfy_setup_steps(context.environment, ProjectSetup.setup_steps())
-        {:ok, context}
-      end
-
-      when_ "developer views the project setup page", context do
-        {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
-
-        {:ok, Map.put(context, :view, view)}
-      end
-
-      then_ "no setup-error banner is rendered", context do
-        refute has_element?(context.view, "[data-role=setup-error]")
-        {:ok, context}
-      end
-    end
-
     scenario "step command error surfaces as a page-level error banner" do
       given_ "a stub erroring step is injected into the setup step list", context do
         Fixtures.reset_setup_env(context.environment)

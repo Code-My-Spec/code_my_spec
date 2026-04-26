@@ -1,11 +1,11 @@
-defmodule CodeMySpecSpex.Story124.Rule2SelfContainedPromptSpex do
+defmodule CodeMySpecSpex.Story124.Criterion5258Spex do
   @moduledoc """
   Story 124 — Project Setup
-  Rule 2 — The prompt is self-contained: one agent, one prompt, no back-and-forth.
+  Criterion 5258 — Every incomplete step's full prompt is inlined on one page.
 
-  The page contains the full inline prompt for every incomplete step —
-  a developer (or agent) reading the page has everything needed to
-  complete each unchecked step without drilling elsewhere.
+  The prompt is self-contained: a developer (or agent) reading the
+  setup page has every unchecked step's full instructions inline,
+  without drilling elsewhere.
 
   Surface: `/projects/:project_name/requirements/project_setup`.
   """
