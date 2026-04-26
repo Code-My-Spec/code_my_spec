@@ -4,9 +4,22 @@ defmodule CodeMySpec.Stories.RemoteClient do
 
   Implements the same public interface as StoriesRepository so it can be
   swapped in via the `:stories_implementation` config key.
+
+  ## Write-through
+
+  Mutations (`create_story`, `update_story`, `delete_story`,
+  `set_story_component`, `clear_story_component`) hit the server first,
+  then upsert/delete the returned record into the local SQLite cache.
+  Children that depend on a story locally (e.g. `BddRules` write-through)
+  rely on the parent row being present, so this keeps freshly-created
+  stories addressable without waiting for the boot-time `RemoteSync` pull.
   """
 
+  require Logger
+
+  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Auth.OAuthClient
+  alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -146,7 +159,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
 
     case Req.post(client, url: "/api/stories", json: %{story: stringify_attrs(attrs)}) do
       {:ok, %{status: 201, body: body}} ->
-        {:ok, deserialize_story(body["data"])}
+        story = deserialize_story(body["data"])
+        upsert_story_locally(story)
+        {:ok, story}
 
       {:ok, %{status: 422, body: body}} ->
         {:error, errors_to_changeset(body, %Story{})}
@@ -158,7 +173,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
 
     case Req.put(client, url: "/api/stories/#{story.id}", json: %{story: stringify_attrs(attrs)}) do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, deserialize_story(body["data"])}
+        updated = deserialize_story(body["data"])
+        upsert_story_locally(updated)
+        {:ok, updated}
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -173,7 +190,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
 
     case Req.delete(client, url: "/api/stories/#{story.id}") do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, deserialize_story(body["data"])}
+        deleted = deserialize_story(body["data"])
+        delete_story_locally(story.id)
+        {:ok, deleted}
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -188,7 +207,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
            json: %{component_id: component_id}
          ) do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, deserialize_story(body["data"])}
+        updated = deserialize_story(body["data"])
+        upsert_story_locally(updated)
+        {:ok, updated}
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -203,7 +224,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
 
     case Req.post(client, url: "/api/stories/#{story.id}/clear-component", json: %{}) do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, deserialize_story(body["data"])}
+        updated = deserialize_story(body["data"])
+        upsert_story_locally(updated)
+        {:ok, updated}
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -348,5 +371,114 @@ defmodule CodeMySpec.Stories.RemoteClient do
       {:ok, datetime, _offset} -> datetime
       {:error, _} -> nil
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Write-through to local SQLite cache
+  # ---------------------------------------------------------------------------
+
+  defp upsert_story_locally(%Story{} = story) do
+    attrs = %{
+      title: story.title,
+      description: story.description,
+      status: story.status,
+      priority: story.priority,
+      locked_at: story.locked_at,
+      lock_expires_at: story.lock_expires_at,
+      locked_by: story.locked_by,
+      project_id: story.project_id,
+      component_id: story.component_id
+    }
+
+    %Story{id: story.id}
+    |> Story.changeset(attrs)
+    |> Ecto.Changeset.put_change(:account_id, story.account_id)
+    |> Repo.insert(
+      on_conflict: {:replace_all_except, [:id, :inserted_at]},
+      conflict_target: :id
+    )
+    |> case do
+      {:ok, _} ->
+        upsert_criteria_locally(story.criteria || [], story.project_id)
+
+      {:error, changeset} ->
+        Logger.warning(
+          "[Stories.RemoteClient] Local upsert failed for story #{story.id}: #{inspect(changeset.errors)}"
+        )
+
+        :ok
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Stories.RemoteClient] Local upsert raised for story #{story.id}: #{Exception.message(e)}"
+      )
+
+      :ok
+  end
+
+  defp upsert_criteria_locally([], _project_id), do: :ok
+
+  defp upsert_criteria_locally(criteria, project_id) do
+    Enum.each(criteria, fn %Criterion{} = criterion ->
+      attrs = %{
+        description: criterion.description,
+        verified: criterion.verified,
+        verified_at: criterion.verified_at,
+        story_id: criterion.story_id,
+        project_id: criterion.project_id || project_id
+      }
+
+      case %Criterion{id: criterion.id}
+           |> Criterion.changeset(attrs)
+           |> Repo.insert(
+             on_conflict: {:replace_all_except, [:id, :inserted_at]},
+             conflict_target: :id
+           ) do
+        {:ok, _} ->
+          :ok
+
+        {:error, changeset} ->
+          Logger.warning(
+            "[Stories.RemoteClient] Local upsert failed for criterion #{criterion.id}: #{inspect(changeset.errors)}"
+          )
+      end
+    end)
+
+    :ok
+  rescue
+    e ->
+      Logger.warning(
+        "[Stories.RemoteClient] Local upsert raised for criteria: #{Exception.message(e)}"
+      )
+
+      :ok
+  end
+
+  defp delete_story_locally(id) do
+    case Repo.get(Story, id) do
+      nil ->
+        :ok
+
+      story ->
+        case Repo.delete(story) do
+          {:ok, _} ->
+            :ok
+
+          {:error, changeset} ->
+            Logger.warning(
+              "[Stories.RemoteClient] Local delete failed for story #{id}: #{inspect(changeset.errors)}"
+            )
+
+            :ok
+        end
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Stories.RemoteClient] Local delete raised for story #{id}: #{Exception.message(e)}"
+      )
+
+      :ok
   end
 end

@@ -1,8 +1,29 @@
 defmodule CodeMySpecWeb.UserSessionController do
   use CodeMySpecWeb, :controller
 
+  alias CodeMySpec.Accounts
+  alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
+  alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
+
+  def confirm(conn, %{"token" => token}) do
+    case Users.login_user_by_magic_link(token) do
+      {:ok, {user, tokens_to_disconnect}} ->
+        UserAuth.disconnect_sessions(tokens_to_disconnect)
+        provision_personal_account(user)
+
+        conn
+        |> put_session(:user_return_to, ~p"/app/onboarding")
+        |> put_flash(:info, "User confirmed successfully.")
+        |> UserAuth.log_in_user(user, %{"remember_me" => "true"})
+
+      _ ->
+        conn
+        |> put_flash(:error, "The link is invalid or it has expired.")
+        |> redirect(to: ~p"/users/log-in")
+    end
+  end
 
   def create(conn, %{"_action" => "confirmed"} = params) do
     conn
@@ -19,6 +40,7 @@ defmodule CodeMySpecWeb.UserSessionController do
     case Users.login_user_by_magic_link(token) do
       {:ok, {user, tokens_to_disconnect}} ->
         UserAuth.disconnect_sessions(tokens_to_disconnect)
+        provision_personal_account(user)
 
         conn
         |> put_flash(:info, info)
@@ -65,5 +87,15 @@ defmodule CodeMySpecWeb.UserSessionController do
     conn
     |> put_flash(:info, "Logged out successfully.")
     |> UserAuth.log_out_user()
+  end
+
+  # Idempotent — both helpers no-op on the second call. `ensure_personal_account`
+  # returns the existing personal Account if one is already linked to the user;
+  # `select_active_account` updates the existing UserPreference row in place.
+  defp provision_personal_account(user) do
+    scope = Scope.for_user(user)
+    account = Accounts.ensure_personal_account(scope)
+    {:ok, _} = UserPreferences.select_active_account(scope, account.id)
+    :ok
   end
 end

@@ -101,6 +101,7 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate user_scope_fixture(user, account, project), to: UsersFixtures
   defdelegate full_scope_fixture(), to: UsersFixtures
   defdelegate full_scope_fixture(project_attrs), to: UsersFixtures
+  defdelegate expire_magic_link_tokens_for(email), to: UsersFixtures
 
   # -- Accounts --
   defdelegate account_fixture(attrs \\ %{}), to: AccountsFixtures

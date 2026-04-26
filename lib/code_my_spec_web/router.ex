@@ -329,11 +329,11 @@ defmodule CodeMySpecWeb.Router do
       live "/users/register", UserLive.Registration, :new
       live "/users/check-email", UserLive.CheckEmail, :new
       live "/users/log-in", UserLive.Login, :new
-      live "/users/log-in/:token", UserLive.Confirmation, :new
       live "/invitations/accept", InvitationsLive.Accept, :new
       live "/invitations/accept/:token", InvitationsLive.Accept, :new
     end
 
+    get "/users/log-in/:token", UserSessionController, :confirm
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
   end

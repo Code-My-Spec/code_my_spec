@@ -125,4 +125,27 @@ defmodule CodeMySpec.UsersFixtures do
       set: [inserted_at: dt, authenticated_at: dt]
     )
   end
+
+  @doc """
+  Backdates every login token belonging to the user with the given email by 31
+  days, putting all magic links for that user past the verification window.
+
+  Used by Spex scenarios that need an "expired magic link" precondition —
+  there is no UI path that produces an expired token, so this is the
+  approved test-only bridge.
+  """
+  def expire_magic_link_tokens_for(email) when is_binary(email) do
+    dt = DateTime.add(DateTime.utc_now(:second), -31, :day)
+
+    CodeMySpec.Repo.update_all(
+      from(ut in Users.UserToken,
+        join: u in Users.User,
+        on: u.id == ut.user_id,
+        where: u.email == ^email and ut.context == "login"
+      ),
+      set: [inserted_at: dt, authenticated_at: dt]
+    )
+
+    :ok
+  end
 end

@@ -77,6 +77,12 @@ defmodule CodeMySpecSpex.SharedGivens do
     `:persona_research_task_started` for the per-story Three Amigos node.
     Produces `context.session_id` and `context.task_id`. Requires
     `context.story` from a prior given.
+  - `:registered_user_with_magic_link` — drives the `/users/register`
+    LiveView submit, captures the magic-link email through the Swoosh
+    test adapter, and extracts the magic-link URL from the email body.
+    Produces `context.registered_email` and `context.magic_link_url`.
+    Uses the main `CodeMySpecWeb.Endpoint` (auth lives there, not on
+    the local web).
 
   Add new shared givens only after a third spec duplicates setup.
   """
@@ -555,7 +561,55 @@ defmodule CodeMySpecSpex.SharedGivens do
      }}
   end
 
+  # The visitor has registered through the public registration LiveView and
+  # a magic-link email is sitting in the test mailbox. Drives the real
+  # /users/register form submit (CodeMySpecWeb endpoint, not local), captures
+  # the sent email through Swoosh's test adapter, and extracts the magic-link
+  # URL from the email body so subsequent `when_` steps can hit the same
+  # endpoint a real user's browser would.
+  given :registered_user_with_magic_link do
+    email = "spex-#{System.unique_integer([:positive])}@example.com"
+
+    # Dispatch through the main web endpoint explicitly — the auth routes
+    # live on CodeMySpecWeb, but this module's @endpoint is the local one,
+    # so we can't rely on `live/2`'s implicit `get/2` macro to pick the
+    # right endpoint. `dispatch/4` lets us name it.
+    mounted_conn =
+      Phoenix.ConnTest.dispatch(
+        Phoenix.ConnTest.build_conn(),
+        CodeMySpecWeb.Endpoint,
+        :get,
+        "/users/register"
+      )
+
+    {:ok, view, _html} = Phoenix.LiveViewTest.live(mounted_conn)
+
+    view
+    |> Phoenix.LiveViewTest.form("#registration_form", user: %{email: email})
+    |> Phoenix.LiveViewTest.render_submit()
+
+    sent_email =
+      receive do
+        {:email, %Swoosh.Email{} = mail} -> mail
+      after
+        500 -> raise "expected magic-link email to be delivered for #{email}"
+      end
+
+    true = Enum.any?(sent_email.to, fn {_name, addr} -> addr == email end)
+
+    magic_link_url = extract_magic_link_url!(sent_email)
+
+    {:ok, %{registered_email: email, magic_link_url: magic_link_url}}
+  end
+
   # -- Content helpers --
+
+  defp extract_magic_link_url!(%Swoosh.Email{text_body: body}) when is_binary(body) do
+    case Regex.run(~r{https?://\S+/users/log-in/[^\s.,;:!?\"'>)]+}, body) do
+      [url] -> url
+      _ -> raise "could not extract magic-link URL from email body: #{inspect(body)}"
+    end
+  end
 
   defp flatten_tool_response(%{content: parts}) when is_list(parts) do
     Enum.map_join(parts, "\n", fn
