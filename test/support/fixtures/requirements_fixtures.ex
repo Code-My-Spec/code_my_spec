@@ -131,7 +131,7 @@ defmodule CodeMySpec.RequirementsFixtures do
         %{
           path: path,
           role: role,
-          mtime: DateTime.utc_now() |> DateTime.truncate(:second),
+          mtime: DateTime.utc_now(),
           size: 100,
           component_id: component.id
         }

@@ -72,7 +72,7 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
 
     case File.stat(resolved_path, time: :posix) do
       {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
-        mtime = mtime_posix |> DateTime.from_unix!() |> DateTime.truncate(:second)
+        mtime = mtime_posix |> DateTime.from_unix!() |> Map.put(:microsecond, {0, 6})
         {:ok, %{mtime: mtime, size: size}}
 
       {:ok, _} ->

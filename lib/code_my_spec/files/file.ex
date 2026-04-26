@@ -81,7 +81,7 @@ defmodule CodeMySpec.Files.File do
   schema "files" do
     field :path, :string
     field :role, Ecto.Enum, values: @roles
-    field :mtime, :utc_datetime
+    field :mtime, :utc_datetime_usec
     field :size, :integer
     field :valid, :boolean
     field :validation_errors, :map
