@@ -1,12 +1,13 @@
-defmodule CodeMySpecSpex.CodeGeneration.Rule4ScaffoldLandsCleanSpex do
+defmodule CodeMySpecSpex.Story598.Criterion5305Spex do
   @moduledoc """
-  Story: Standard stack code generation
-  Rule 4 — The scaffold must land clean before completion.
+  Story 598 — Standard stack code generation
+  Criterion 5305 — Existing script triggers a confirmation step before overwrite.
 
-  The orchestration prompt requires four mix commands after the
-  generators run: `mix deps.get`, `mix compile`, `mix ecto.migrate`,
-  `mix test`. Each must be named explicitly so the agent has a
-  deterministic checklist before declaring the phase done.
+  When code_generation.sh already exists, the prompt names the existing
+  script path and instructs the agent to confirm with the user before
+  overwriting.
+
+  Surface: `start_task` MCP tool against `code_generation`.
   """
 
   use CodeMySpecSpex.Case
@@ -20,11 +21,16 @@ defmodule CodeMySpecSpex.CodeGeneration.Rule4ScaffoldLandsCleanSpex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The scaffold must land clean before completion" do
-    scenario "Prompt instructs the agent to run deps.get, compile, migrate, and test after generators" do
-      given_ "the project has a baseline mix.exs", context do
+  spex "Retrofit script is rewritten from the currently-detected state" do
+    scenario "Existing script triggers a confirmation step before overwrite" do
+      given_ "an existing code_generation.sh is present in the project", context do
         Fixtures.reset_setup_env(context.environment)
         Fixtures.with_baseline_project(context.environment)
+        Fixtures.with_full_script(context.environment)
+
+        assert Fixtures.script_exists?(context.environment),
+               "expected an existing generation script to be present"
+
         {:ok, context}
       end
 
@@ -57,30 +63,20 @@ defmodule CodeMySpecSpex.CodeGeneration.Rule4ScaffoldLandsCleanSpex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt instructs the agent to run mix deps.get", context do
-        assert context.prompt =~ "mix deps.get",
-               "expected the prompt to instruct running mix deps.get"
+      then_ "the prompt names the existing code_generation.sh path", context do
+        assert context.prompt =~ ".code_my_spec/tasks/code_generation.sh",
+               "expected the existing script path to be named in the prompt"
 
         {:ok, context}
       end
 
-      and_ "the prompt instructs the agent to run mix compile", context do
-        assert context.prompt =~ "mix compile",
-               "expected the prompt to instruct running mix compile"
+      and_ "the prompt instructs the agent to confirm with the user before overwriting",
+           context do
+        assert context.prompt =~ ~r/confirm with the\s+user/i,
+               "expected explicit confirmation guidance before overwrite"
 
-        {:ok, context}
-      end
-
-      and_ "the prompt instructs the agent to run mix ecto.migrate", context do
-        assert context.prompt =~ "mix ecto.migrate",
-               "expected the prompt to instruct running mix ecto.migrate"
-
-        {:ok, context}
-      end
-
-      and_ "the prompt instructs the agent to run mix test", context do
-        assert context.prompt =~ "mix test",
-               "expected the prompt to instruct running mix test"
+        assert context.prompt =~ ~r/overwrit/i,
+               "expected 'overwrite' wording in the confirmation guidance"
 
         {:ok, context}
       end
