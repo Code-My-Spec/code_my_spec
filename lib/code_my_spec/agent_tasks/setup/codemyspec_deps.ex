@@ -3,25 +3,21 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
   Setup step: required CodeMySpec dependencies present in mix.exs.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.Context
 
-  @required_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
-
-  def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Environments.read_file(env, "mix.exs") do
-      {:ok, content} ->
-        missing = Enum.reject(@required_deps, &dep_present?(content, &1))
-
-        if Enum.empty?(missing),
-          do: {:ok, :valid},
-          else: {:ok, :invalid, "Missing deps in `mix.exs`: #{Enum.map_join(missing, ", ", &":#{&1}")}"}
-
-      _ ->
-        {:ok, :invalid, "Cannot read `mix.exs`"}
+  def check(%Context{} = ctx) do
+    case Context.error(ctx, "mix.exs", :codemyspec_deps, "`mix.exs` not synced") do
+      nil -> :valid
+      msg -> {:invalid, msg}
     end
   end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
     {:ok, """
@@ -37,10 +33,5 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
 
     Then: `mix deps.get`
     """}
-  end
-
-  defp dep_present?(content, dep_name) do
-    atom_string = Atom.to_string(dep_name)
-    Regex.match?(~r/\{:#{atom_string}[,\s]/, content)
   end
 end

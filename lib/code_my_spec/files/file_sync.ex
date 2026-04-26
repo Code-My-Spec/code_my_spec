@@ -21,7 +21,7 @@ defmodule CodeMySpec.Files.FileSync do
   # Whitelist of roots walked on sync. Anything outside these trees is invisible
   # to FileSync — `deps/`, `_build/`, `node_modules/`, `priv/`, `assets/`, `.git/`
   # are never touched. Keep in sync with `classify/1`.
-  @sync_roots ["lib", "test", Paths.base_dir(), "CLAUDE.md"]
+  @sync_roots ["lib", "test", Paths.base_dir(), "CLAUDE.md", "mix.exs", ".credo.exs"]
 
   @ignored_dirs ~w(deps _build .git node_modules .elixir_ls .lexical)
 
@@ -279,6 +279,30 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
+  # Setup artifacts: each validator runs all the per-concern checks the setup
+  # steps used to do at evaluate-time, and persists the results into
+  # `validation_errors` keyed by concern. The corresponding Setup.* step then
+  # decides pass/fail by reading those keys — zero filesystem access.
+  def validate_entry(%{role: :mix_exs} = entry, env, _component_by_id) do
+    validate_setup_file(entry, env, &validate_mix_exs/1)
+  end
+
+  def validate_entry(%{role: :credo_exs} = entry, env, _component_by_id) do
+    validate_setup_file(entry, env, &validate_credo_exs/1)
+  end
+
+  def validate_entry(%{role: :claude_md} = entry, env, _component_by_id) do
+    validate_setup_file(entry, env, &validate_claude_md/1)
+  end
+
+  def validate_entry(%{role: :setup_config} = entry, env, _component_by_id) do
+    validate_setup_file(entry, env, &validate_setup_config/1)
+  end
+
+  def validate_entry(%{role: :test_support} = entry, env, _component_by_id) do
+    validate_setup_file(entry, env, &validate_test_support(&1, entry.path))
+  end
+
   @valid_by_existence_roles [
     :implementation,
     :test,
@@ -290,7 +314,8 @@ defmodule CodeMySpec.Files.FileSync do
     :json,
     :review,
     :architecture,
-    :integration
+    :integration,
+    :agents_md
   ]
 
   def validate_entry(%{role: role} = entry, _env, _component_by_id)
@@ -321,6 +346,209 @@ defmodule CodeMySpec.Files.FileSync do
         # No spec file or can't read test — valid by default
         Map.merge(entry, %{valid: true, validation_errors: nil})
     end
+  end
+
+  # -- Setup-artifact validators --
+  #
+  # Each validator returns `%{errors: map, data: map}`:
+  # - `errors` keys are concerns (atom-stringified by JSON when round-tripping
+  #   the DB :map column). Value `nil` = concern passes; string = fail message.
+  # - `data` keys are facts (e.g. extracted app_name) that other Setup.* steps
+  #   need to consume. Not part of validity.
+  #
+  # `valid` is true iff every value in `errors` is nil. Setup.* steps read both
+  # maps off the persisted File record's `validation_errors` and use the data
+  # for cross-file decisions (e.g. TestSupportNamespace needs app_name from
+  # mix_exs to know what namespace to look for in conn_case / data_case).
+
+  defp validate_setup_file(entry, env, validator) do
+    case Environments.read_file(env, entry.path) do
+      {:ok, content} ->
+        %{errors: errors, data: data} = validator.(content)
+        all_pass? = Enum.all?(errors, fn {_, v} -> is_nil(v) end)
+
+        Map.merge(entry, %{
+          valid: all_pass?,
+          validation_errors: %{"errors" => stringify_keys(errors), "data" => stringify_keys(data)}
+        })
+
+      {:error, reason} ->
+        Map.merge(entry, %{
+          valid: false,
+          validation_errors: %{
+            "errors" => %{"read" => "Read failed: #{inspect(reason)}"},
+            "data" => %{}
+          }
+        })
+    end
+  end
+
+  defp stringify_keys(map) do
+    Map.new(map, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  @required_mix_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
+
+  defp validate_mix_exs(content) do
+    {app_name_value, app_name_error} = extract_app_name_result(content)
+
+    %{
+      errors: %{
+        app_name: app_name_error,
+        compilers: validate_compilers(content),
+        codemyspec_deps: validate_codemyspec_deps(content),
+        spex_config: validate_spex_config(content)
+      },
+      data: %{app_name: app_name_value}
+    }
+  end
+
+  defp extract_app_name_result(content) do
+    case Regex.run(~r/app:\s*:(\w+)/, content) do
+      [_, name] -> {name, nil}
+      _ -> {nil, "Cannot extract app name from `mix.exs`"}
+    end
+  end
+
+  defp validate_compilers(content) do
+    has_boundary = Regex.match?(~r/compilers.*:boundary/s, content)
+    has_spex = Regex.match?(~r/compilers.*:spex/s, content)
+
+    if has_boundary and has_spex,
+      do: nil,
+      else: "Compilers not configured in `mix.exs` (need :boundary and :spex)"
+  end
+
+  defp validate_codemyspec_deps(content) do
+    missing =
+      Enum.reject(@required_mix_deps, fn dep ->
+        Regex.match?(~r/\{:#{Atom.to_string(dep)}[,\s]/, content)
+      end)
+
+    if missing == [],
+      do: nil,
+      else: "Missing deps in `mix.exs`: #{Enum.map_join(missing, ", ", &":#{&1}")}"
+  end
+
+  defp validate_spex_config(content) do
+    if Regex.match?(~r/spex:\s*:test/, content),
+      do: nil,
+      else: "`spex: :test` not found in preferred_envs in `mix.exs`"
+  end
+
+  defp validate_credo_exs(content) do
+    has_requires =
+      String.contains?(content, "credo_checks/framework") and
+        String.contains?(content, "credo_checks/local")
+
+    has_eval = String.contains?(content, "credo_checks/framework/checks.exs")
+
+    error =
+      if has_requires and has_eval do
+        nil
+      else
+        "`.credo.exs` missing custom check configuration (requires + eval_file)"
+      end
+
+    %{errors: %{custom_checks: error}, data: %{}}
+  end
+
+  defp validate_claude_md(content) do
+    error =
+      if String.contains?(content, "<!-- code_my_spec:start -->") do
+        nil
+      else
+        "`CLAUDE.md` exists but missing CodeMySpec managed section"
+      end
+
+    %{errors: %{managed_section: error}, data: %{}}
+  end
+
+  defp validate_setup_config(content) do
+    error =
+      case YamlElixir.read_from_string(content) do
+        {:ok, %{"ignored_paths" => paths}} when is_list(paths) and paths != [] ->
+          nil
+
+        {:ok, _} ->
+          "`.code_my_spec/config.yml` exists but has no `ignored_paths` list."
+
+        _ ->
+          "`.code_my_spec/config.yml` is not valid YAML"
+      end
+
+    %{errors: %{ignored_paths: error}, data: %{}}
+  end
+
+  # test/support files: which checks apply depends on filename. Dispatch on
+  # basename so each variant is a focused function. conn_case/data_case can't
+  # decide validity unilaterally (depends on app name from mix_exs), so they
+  # store the module name in `data` and the step does the cross-file compare.
+  defp validate_test_support(content, path) do
+    do_validate_test_support(Path.basename(path), content, path)
+  end
+
+  defp do_validate_test_support("conn_case.ex", content, path),
+    do: validate_test_support_case(content, path)
+
+  defp do_validate_test_support("data_case.ex", content, path),
+    do: validate_test_support_case(content, path)
+
+  defp do_validate_test_support(base, content, path) do
+    case test_support_kind(base) do
+      :boundary -> validate_test_support_boundary(content, path)
+      :spex_case -> validate_test_support_spex_case(content, path)
+      :unknown -> %{errors: %{}, data: %{}}
+    end
+  end
+
+  defp test_support_kind(base) do
+    cases = [
+      {"_spex.ex", :boundary},
+      {"_test_boundary.ex", :boundary},
+      {"_spex_case.ex", :spex_case}
+    ]
+
+    Enum.find_value(cases, :unknown, fn {suffix, kind} ->
+      if String.ends_with?(base, suffix), do: kind
+    end)
+  end
+
+  defp validate_test_support_boundary(content, path) do
+    error =
+      if String.contains?(content, "use Boundary"),
+        do: nil,
+        else: "Missing `use Boundary` in `#{path}`"
+
+    %{errors: %{has_use_boundary: error}, data: %{}}
+  end
+
+  defp validate_test_support_spex_case(content, path) do
+    required = ["use SexySpex", "import Phoenix.LiveViewTest"]
+    defmodule_ok = Regex.match?(~r/defmodule \S+Spex\.Case/, content)
+    missing = Enum.reject(required, &String.contains?(content, &1))
+
+    %{errors: %{spex_case_module: spex_case_error(defmodule_ok, missing, path)}, data: %{}}
+  end
+
+  defp spex_case_error(false, _missing, path),
+    do: "`#{path}` missing `defmodule <App>Spex.Case`"
+
+  defp spex_case_error(true, [], _path), do: nil
+
+  defp spex_case_error(true, missing, path),
+    do: "`#{path}` missing: #{Enum.join(missing, ", ")}"
+
+  defp validate_test_support_case(content, path) do
+    module_name =
+      case Regex.run(~r/defmodule\s+(\S+)\b/, content) do
+        [_, mod] -> mod
+        _ -> nil
+      end
+
+    error = if module_name, do: nil, else: "`#{path}` has no defmodule"
+
+    %{errors: %{has_defmodule: error}, data: %{module_name: module_name}}
   end
 
   defp validate_spec_content(entry, content, document_type) do
@@ -366,6 +594,7 @@ defmodule CodeMySpec.Files.FileSync do
   def classify(path) do
     Enum.find_value(
       [
+        &classify_setup_artifact/1,
         &classify_spec_or_review/1,
         &classify_code/1,
         &classify_docs/1,
@@ -374,6 +603,34 @@ defmodule CodeMySpec.Files.FileSync do
       ],
       & &1.(path)
     )
+  end
+
+  # Setup-time artifacts. Validated at sync time so the requirements graph
+  # can decide `project_setup` satisfaction with O(1) DB lookups instead of
+  # re-reading these files on every render.
+  defp classify_setup_artifact(path) do
+    cond do
+      path == "mix.exs" -> {path, :mix_exs}
+      path == ".credo.exs" -> {path, :credo_exs}
+      path == "CLAUDE.md" -> {path, :claude_md}
+      path == Path.join(Paths.base_dir(), "AGENTS.md") -> {path, :agents_md}
+      path == Path.join(Paths.base_dir(), "config.yml") -> {path, :setup_config}
+      test_support?(path) -> {path, :test_support}
+      true -> nil
+    end
+  end
+
+  # Five files in test/support/ are setup artifacts (boundary defs, ConnCase/
+  # DataCase, the Spex.Case template). The first three are app-name-prefixed.
+  defp test_support?(path) do
+    base = Path.basename(path)
+
+    String.starts_with?(path, "test/support/") and
+      (String.ends_with?(base, "_spex.ex") or
+         String.ends_with?(base, "_test_boundary.ex") or
+         String.ends_with?(base, "_spex_case.ex") or
+         base == "conn_case.ex" or
+         base == "data_case.ex")
   end
 
   defp classify_spec_or_review(path) do
@@ -432,12 +689,8 @@ defmodule CodeMySpec.Files.FileSync do
   end
 
   defp classify_config(path) do
-    cond do
-      path == "CLAUDE.md" -> {path, :config}
-      path == Path.join(Paths.base_dir(), "config.yml") -> {path, :config}
-      path == Path.join(Paths.tasks_dir(), "code_generation.sh") -> {path, :task_artifact}
-      true -> nil
-    end
+    if path == Path.join(Paths.tasks_dir(), "code_generation.sh"),
+      do: {path, :task_artifact}
   end
 
   # -- Private --

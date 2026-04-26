@@ -3,27 +3,21 @@ defmodule CodeMySpec.AgentTasks.Setup.CredoChecks do
   Setup step: .credo.exs configured with custom check paths.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.Context
 
-  def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Environments.read_file(env, ".credo.exs") do
-      {:ok, content} ->
-        has_requires =
-          String.contains?(content, "credo_checks/framework") and
-            String.contains?(content, "credo_checks/local")
-
-        has_eval = String.contains?(content, "credo_checks/framework/checks.exs")
-
-        if has_requires and has_eval,
-          do: {:ok, :valid},
-          else: {:ok, :invalid, "`.credo.exs` missing custom check configuration (requires + eval_file)"}
-
-      _ ->
-        {:ok, :invalid, "`.credo.exs` not found"}
+  def check(%Context{} = ctx) do
+    case Context.error(ctx, ".credo.exs", :custom_checks, "`.credo.exs` not found") do
+      nil -> :valid
+      msg -> {:invalid, msg}
     end
   end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
     {:ok, """

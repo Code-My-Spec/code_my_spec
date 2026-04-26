@@ -3,21 +3,21 @@ defmodule CodeMySpec.AgentTasks.Setup.SpexConfig do
   Setup step: spex preferred_envs configured in mix.exs.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.Context
 
-  def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Environments.read_file(env, "mix.exs") do
-      {:ok, content} ->
-        if Regex.match?(~r/spex:\s*:test/, content),
-          do: {:ok, :valid},
-          else: {:ok, :invalid, "`spex: :test` not found in preferred_envs in `mix.exs`"}
-
-      _ ->
-        {:ok, :invalid, "Cannot read `mix.exs`"}
+  def check(%Context{} = ctx) do
+    case Context.error(ctx, "mix.exs", :spex_config, "`mix.exs` not synced") do
+      nil -> :valid
+      msg -> {:invalid, msg}
     end
   end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
     {:ok, """

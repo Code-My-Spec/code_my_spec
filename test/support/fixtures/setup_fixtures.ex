@@ -34,6 +34,8 @@ defmodule CodeMySpec.SetupFixtures do
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Users.Scope
 
   @app_name "my_app"
   @app_mod "MyApp"
@@ -47,8 +49,23 @@ defmodule CodeMySpec.SetupFixtures do
   Note: Scenarios within a single `spex` block share the in-memory env.
   Call `reset/1` at the start of each scenario that needs a clean slate.
   """
-  @spec satisfy(Environment.t(), [module()]) :: :ok
-  def satisfy(env, steps) when is_list(steps) do
+  @spec satisfy(Scope.t() | Environment.t(), [module()]) :: :ok
+  def satisfy(%Scope{} = scope, steps) when is_list(steps) do
+    env = scope.environment
+    ensure_baseline_mix_exs(env)
+    Enum.each(steps, &satisfy_step(env, &1))
+
+    # Sync the seeded files into the DB so role-specific validators run and
+    # populate `valid` + `validation_errors`. The Setup.* step `check/1`
+    # functions read those persisted records — they no longer touch disk.
+    if scope.active_project_id do
+      {:ok, _} = FileSync.sync(scope)
+    end
+
+    :ok
+  end
+
+  def satisfy(%Environment{} = env, steps) when is_list(steps) do
     ensure_baseline_mix_exs(env)
     Enum.each(steps, &satisfy_step(env, &1))
     :ok

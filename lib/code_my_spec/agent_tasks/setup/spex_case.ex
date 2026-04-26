@@ -8,44 +8,29 @@ defmodule CodeMySpec.AgentTasks.Setup.SpexCase do
   sandbox. Think of it as ConnCase for spec files.
   """
 
-  alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
 
-  def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Helpers.extract_app_name(env) do
+  def check(%Context{} = ctx) do
+    case Context.app_name(ctx) do
       nil ->
-        {:ok, :invalid, "Could not determine app name from `mix.exs`"}
+        {:invalid, "Could not determine app name from `mix.exs`"}
 
-      app_name ->
-        mod = Macro.camelize(app_name)
-        path = Path.join(["test", "support", "#{app_name}_spex_case.ex"])
+      app ->
+        path = Path.join(["test", "support", "#{app}_spex_case.ex"])
 
-        required = [
-          "defmodule #{mod}Spex.Case",
-          "use SexySpex",
-          "import Phoenix.LiveViewTest"
-        ]
-
-        case Environments.read_file(env, path) do
-          {:ok, content} ->
-            missing = Enum.reject(required, &String.contains?(content, &1))
-
-            if missing == [] do
-              {:ok, :valid}
-            else
-              {:ok, :invalid, "`#{path}` missing: #{Enum.join(missing, ", ")}"}
-            end
-
-          {:error, :enoent} ->
-            {:ok, :invalid, "Missing `#{path}`"}
-
-          _ ->
-            {:ok, :invalid, "Cannot read `#{path}`"}
+        case Context.error(ctx, path, :spex_case_module, "Missing `#{path}`") do
+          nil -> :valid
+          msg -> {:invalid, msg}
         end
     end
   end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
     env = scope.environment

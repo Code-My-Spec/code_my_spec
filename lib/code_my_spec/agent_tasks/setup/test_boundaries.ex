@@ -3,35 +3,36 @@ defmodule CodeMySpec.AgentTasks.Setup.TestBoundaries do
   Setup step: boundary namespace modules exist in test/support/.
   """
 
-  alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
 
-  def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Helpers.extract_app_name(env) do
-      nil ->
-        {:ok, :invalid, "Could not determine app name from `mix.exs`"}
-
-      app_name ->
-        spex_path = Path.join(["test", "support", "#{app_name}_spex.ex"])
-        test_path = Path.join(["test", "support", "#{app_name}_test_boundary.ex"])
-
-        spex_ok = file_contains?(env, spex_path, "use Boundary")
-        test_ok = file_contains?(env, test_path, "use Boundary")
-
-        cond do
-          not spex_ok and not test_ok ->
-            {:ok, :invalid, "Missing both `#{spex_path}` and `#{test_path}` with `use Boundary`"}
-          not spex_ok ->
-            {:ok, :invalid, "Missing `#{spex_path}` with `use Boundary`"}
-          not test_ok ->
-            {:ok, :invalid, "Missing `#{test_path}` with `use Boundary`"}
-          true ->
-            {:ok, :valid}
-        end
+  def check(%Context{} = ctx) do
+    case Context.app_name(ctx) do
+      nil -> {:invalid, "Could not determine app name from `mix.exs`"}
+      app -> check_files(ctx, app)
     end
   end
+
+  defp check_files(ctx, app) do
+    spex_path = Path.join(["test", "support", "#{app}_spex.ex"])
+    test_path = Path.join(["test", "support", "#{app}_test_boundary.ex"])
+
+    spex_err = Context.error(ctx, spex_path, :has_use_boundary, "Missing `#{spex_path}` with `use Boundary`")
+    test_err = Context.error(ctx, test_path, :has_use_boundary, "Missing `#{test_path}` with `use Boundary`")
+
+    case {spex_err, test_err} do
+      {nil, nil} -> :valid
+      {nil, msg} -> {:invalid, msg}
+      {msg, nil} -> {:invalid, msg}
+      {msg1, _msg2} -> {:invalid, "Missing both `#{spex_path}` and `#{test_path}` with `use Boundary` (e.g. #{msg1})"}
+    end
+  end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
     env = scope.environment
@@ -55,12 +56,5 @@ defmodule CodeMySpec.AgentTasks.Setup.TestBoundaries do
     end
     ```
     """}
-  end
-
-  defp file_contains?(env, path, needle) do
-    case Environments.read_file(env, path) do
-      {:ok, content} -> String.contains?(content, needle)
-      _ -> false
-    end
   end
 end

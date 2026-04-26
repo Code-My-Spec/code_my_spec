@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5266Spex do
     scenario "a completed step renders with no prompt body" do
       given_ "only ApplicationInWeb is satisfied", context do
         Fixtures.reset_setup_env(context.environment)
-        Fixtures.satisfy_setup_steps(context.environment, [Setup.ApplicationInWeb])
+        Fixtures.satisfy_setup_steps(context.scope, [Setup.ApplicationInWeb])
         {:ok, context}
       end
 

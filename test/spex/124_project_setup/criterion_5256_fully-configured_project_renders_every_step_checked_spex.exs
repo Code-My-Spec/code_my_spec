@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
     scenario "fully-configured project renders every step checked" do
       given_ "every setup step is satisfied", context do
         Fixtures.reset_setup_env(context.environment)
-        Fixtures.satisfy_setup_steps(context.environment, ProjectSetup.setup_steps())
+        Fixtures.satisfy_setup_steps(context.scope, ProjectSetup.setup_steps())
         {:ok, context}
       end
 

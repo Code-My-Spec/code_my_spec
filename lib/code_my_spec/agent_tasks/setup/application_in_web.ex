@@ -1,26 +1,52 @@
 defmodule CodeMySpec.AgentTasks.Setup.ApplicationInWeb do
   @moduledoc """
   Setup step: Application module lives in the web namespace.
+
+  The file lives at `lib/{app}_web/application.ex` — `FileSync` already
+  syncs `lib/` and classifies it as `:implementation`, so we check
+  whether the path is registered as a synced File.
   """
 
-  alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.Environments
+  import Ecto.Query
 
-  def evaluate(scope, _task) do
-    env = scope.environment
+  alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
+  alias CodeMySpec.Files.File, as: FileRecord
+  alias CodeMySpec.Repo
 
-    case Helpers.extract_app_name(env) do
+  def check(%Context{} = ctx) do
+    case Context.app_name(ctx) do
       nil ->
-        {:ok, :invalid, "Could not determine app name from `mix.exs`"}
+        {:invalid, "Could not determine app name from `mix.exs`"}
 
-      app_name ->
-        web_path = Path.join(["lib", "#{app_name}_web", "application.ex"])
+      app ->
+        web_path = Path.join(["lib", "#{app}_web", "application.ex"])
 
-        if Environments.file_exists?(env, web_path),
-          do: {:ok, :valid},
-          else: {:ok, :invalid, "Application module not found at `#{web_path}` — still in `lib/#{app_name}/application.ex`"}
+        if web_application_synced?(ctx, web_path),
+          do: :valid,
+          else:
+            {:invalid,
+             "Application module not found at `#{web_path}` — still in `lib/#{app}/application.ex`"}
     end
   end
+
+  # `:implementation` files aren't preloaded into Setup.Context (would
+  # explode the result set). One targeted, project-scoped query — still
+  # cheaper than the filesystem stat the old check did, and correct against
+  # the synced state the rest of the graph is computed against.
+  defp web_application_synced?(%Context{project_id: nil}, _path), do: false
+
+  defp web_application_synced?(%Context{project_id: project_id}, path) do
+    FileRecord
+    |> where([f], f.project_id == ^project_id and f.path == ^path)
+    |> Repo.exists?()
+  end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
     env = scope.environment

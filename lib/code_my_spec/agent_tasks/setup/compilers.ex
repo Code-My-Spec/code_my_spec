@@ -3,24 +3,21 @@ defmodule CodeMySpec.AgentTasks.Setup.Compilers do
   Setup step: boundary and spex compilers configured in mix.exs.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.Context
 
-  def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Environments.read_file(env, "mix.exs") do
-      {:ok, content} ->
-        has_boundary = Regex.match?(~r/compilers.*:boundary/s, content)
-        has_spex = Regex.match?(~r/compilers.*:spex/s, content)
-
-        if has_boundary and has_spex,
-          do: {:ok, :valid},
-          else: {:ok, :invalid, "Compilers not configured in `mix.exs` (need :boundary and :spex)"}
-
-      _ ->
-        {:ok, :invalid, "Cannot read `mix.exs`"}
+  def check(%Context{} = ctx) do
+    case Context.error(ctx, "mix.exs", :compilers, "`mix.exs` not synced") do
+      nil -> :valid
+      msg -> {:invalid, msg}
     end
   end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
     {:ok, """

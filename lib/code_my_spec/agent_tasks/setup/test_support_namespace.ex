@@ -3,39 +3,43 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
   Setup step: ConnCase/DataCase use AppTest namespace.
   """
 
-  alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
 
   @test_support_files ["conn_case.ex", "data_case.ex"]
 
-  def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Helpers.extract_app_name(env) do
-      nil ->
-        {:ok, :invalid, "Could not determine app name from `mix.exs`"}
-
-      app_name ->
-        mod = Macro.camelize(app_name)
-        test_ns = "#{mod}Test"
-
-        wrong =
-          @test_support_files
-          |> Enum.reject(fn file ->
-            path = Path.join(["test", "support", file])
-
-            case Environments.read_file(env, path) do
-              {:ok, content} -> String.contains?(content, "defmodule #{test_ns}.")
-              {:error, :enoent} -> true
-              _ -> false
-            end
-          end)
-
-        if wrong == [],
-          do: {:ok, :valid},
-          else: {:ok, :invalid, "#{Enum.join(wrong, ", ")} not in `#{test_ns}` namespace under `test/support/`"}
+  def check(%Context{} = ctx) do
+    case Context.app_name(ctx) do
+      nil -> {:invalid, "Could not determine app name from `mix.exs`"}
+      app -> check_namespace(ctx, app)
     end
   end
+
+  defp check_namespace(ctx, app) do
+    test_ns = "#{Macro.camelize(app)}Test"
+
+    wrong = Enum.reject(@test_support_files, &file_in_namespace?(ctx, &1, test_ns))
+
+    if wrong == [],
+      do: :valid,
+      else: {:invalid, "#{Enum.join(wrong, ", ")} not in `#{test_ns}` namespace under `test/support/`"}
+  end
+
+  # Missing files are treated as OK (matches the original :enoent → true polarity).
+  defp file_in_namespace?(ctx, file, test_ns) do
+    path = Path.join(["test", "support", file])
+
+    case Context.data(ctx, path, :module_name) do
+      nil -> true
+      module -> String.starts_with?(module, "#{test_ns}.")
+    end
+  end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
     env = scope.environment

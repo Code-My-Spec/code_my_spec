@@ -3,16 +3,22 @@ defmodule CodeMySpec.AgentTasks.Setup.AgentsMd do
   Setup step: AGENTS.md generated in .code_my_spec/.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.Context
 
-  def evaluate(scope, _task) do
-    env = scope.environment
+  def check(%Context{} = ctx) do
     path = Path.join(CodeMySpec.Paths.base_dir(), "AGENTS.md")
 
-    if Environments.file_exists?(env, path),
-      do: {:ok, :valid},
-      else: {:ok, :invalid, "AGENTS.md not found at `#{path}`"}
+    if Context.file(ctx, path),
+      do: :valid,
+      else: {:invalid, "AGENTS.md not found at `#{path}`"}
   end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
     {:ok, """

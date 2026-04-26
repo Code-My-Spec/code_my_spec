@@ -3,24 +3,23 @@ defmodule CodeMySpec.AgentTasks.Setup.Rules do
   Setup step: default rules installed in .code_my_spec/rules/.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AgentTasks.Setup.Context
 
-  def evaluate(scope, _task) do
-    env = scope.environment
+  def check(%Context{} = ctx) do
     rules_path = CodeMySpec.Paths.rules_dir()
 
-    case Environments.list_directory(env, rules_path) do
-      {:ok, files} ->
-        md_files = Enum.filter(files, &String.ends_with?(&1, ".md"))
-
-        if md_files != [],
-          do: {:ok, :valid},
-          else: {:ok, :invalid, "No rule files found in `#{rules_path}`"}
-
-      _ ->
-        {:ok, :invalid, "Rules directory not found at `#{rules_path}`"}
+    case Context.files_with_role(ctx, :rule) do
+      [] -> {:invalid, "No rule files found in `#{rules_path}`"}
+      _ -> :valid
     end
   end
+
+  def evaluate(scope, _task) do
+    scope |> Context.load() |> check() |> wrap()
+  end
+
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
     {:ok, """

@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
         Fixtures.reset_setup_env(context.environment)
 
         Fixtures.satisfy_setup_steps(
-          context.environment,
+          context.scope,
           ProjectSetup.setup_steps() -- [Setup.CodemyspecDeps]
         )
 
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
       end
 
       when_ "developer satisfies CodemyspecDeps and re-mounts the page", context do
-        Fixtures.satisfy_setup_steps(context.environment, [Setup.CodemyspecDeps])
+        Fixtures.satisfy_setup_steps(context.scope, [Setup.CodemyspecDeps])
 
         {:ok, view, _html} =
           live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")

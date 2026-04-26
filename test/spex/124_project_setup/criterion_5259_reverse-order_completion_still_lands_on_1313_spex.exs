@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5259Spex do
         reversed = Enum.reverse(ProjectSetup.setup_steps())
 
         for mod <- reversed do
-          Fixtures.satisfy_setup_steps(context.environment, [mod])
+          Fixtures.satisfy_setup_steps(context.scope, [mod])
         end
 
         {:ok, context}

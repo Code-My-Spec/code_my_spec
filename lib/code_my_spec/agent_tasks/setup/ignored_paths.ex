@@ -7,9 +7,8 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
   so they don't pollute requirements with generated boilerplate.
   """
 
-  alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.{Environments, Paths}
-  alias CodeMySpec.Files.{ComponentSync, FileSync}
+  alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
+  alias CodeMySpec.Paths
 
   @config_file Path.join(Paths.base_dir(), "config.yml")
 
@@ -33,38 +32,21 @@ defmodule CodeMySpec.AgentTasks.Setup.IgnoredPaths do
     "lib/APP_web/controllers/page_*"
   ]
 
+  def check(%Context{} = ctx) do
+    missing = "`.code_my_spec/config.yml` not found. Framework modules will pollute task graphs."
+
+    case Context.error(ctx, @config_file, :ignored_paths, missing) do
+      nil -> :valid
+      msg -> {:invalid, msg}
+    end
+  end
+
   def evaluate(scope, _task) do
-    env = scope.environment
-
-    case Environments.read_file(env, @config_file) do
-      {:ok, content} ->
-        case YamlElixir.read_from_string(content) do
-          {:ok, %{"ignored_paths" => paths}} when is_list(paths) and paths != [] ->
-            run_sync(scope)
-            {:ok, :valid}
-
-          _ ->
-            {:ok, :invalid, "`.code_my_spec/config.yml` exists but has no `ignored_paths` list."}
-        end
-
-      _ ->
-        {:ok, :invalid,
-         "`.code_my_spec/config.yml` not found. Framework modules will pollute task graphs."}
-    end
+    scope |> Context.load() |> check() |> wrap()
   end
 
-  # Re-sync files and components so newly-ignored paths drop out of the graph.
-  # No-op if we don't have an active project to sync into.
-  defp run_sync(%{active_project_id: nil}), do: :ok
-
-  defp run_sync(scope) do
-    with {:ok, _} <- FileSync.sync(scope),
-         {:ok, _} <- ComponentSync.sync_from_files(scope) do
-      :ok
-    else
-      _ -> :ok
-    end
-  end
+  defp wrap(:valid), do: {:ok, :valid}
+  defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
     app_name = Helpers.extract_app_name(scope.environment) || "APP"

@@ -15,6 +15,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   end
 
   alias CodeMySpec.AgentTasks.Setup
+  alias CodeMySpec.AgentTasks.Setup.Context
 
   @setup_steps [
     Setup.ApplicationInWeb,
@@ -58,15 +59,18 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
   @doc """
   Generate setup instructions with inline prompts for incomplete steps.
 
-  Evaluates each step, shows completed steps as checked off, and inlines
-  the full command prompt for each incomplete step. One prompt, one agent.
+  Evaluates each step (against a single preloaded `Setup.Context`), shows
+  completed steps as checked off, and inlines the full command prompt for
+  each incomplete step. One prompt, one agent.
 
   Returns `{:error, reason}` if any incomplete step's `command/2` returns
   an error — the caller (LiveView, agent harness) must see it, not swallow it.
   """
   @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
   def command(scope, _task) do
-    with {:ok, steps} <- build_step_status(scope) do
+    ctx = Context.load(scope)
+
+    with {:ok, steps} <- build_step_status(scope, ctx) do
       done = Enum.count(steps, & &1.done)
       total = length(steps)
 
@@ -92,17 +96,19 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     end
   end
 
-  defp build_step_status(scope) do
+  defp build_step_status(scope, ctx) do
     setup_steps()
-    |> Enum.reduce_while({:ok, []}, fn mod, {:ok, acc} -> accumulate_step(mod, scope, acc) end)
+    |> Enum.reduce_while({:ok, []}, fn mod, {:ok, acc} ->
+      accumulate_step(mod, scope, ctx, acc)
+    end)
     |> case do
       {:ok, steps} -> {:ok, Enum.reverse(steps)}
       {:error, _} = err -> err
     end
   end
 
-  defp accumulate_step(mod, scope, acc) do
-    if step_done?(mod, scope) do
+  defp accumulate_step(mod, scope, ctx, acc) do
+    if step_done?(mod, ctx) do
       {:cont, {:ok, [%{name: step_name(mod), done: true, prompt: nil} | acc]}}
     else
       case mod.command(scope, %{}) do
@@ -118,28 +124,27 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     end
   end
 
-  defp step_done?(mod, scope) do
-    case mod.evaluate(scope, %{}) do
-      {:ok, :valid} -> true
-      _ -> false
-    end
-  end
+  defp step_done?(mod, ctx), do: mod.check(ctx) == :valid
 
   @doc """
-  Evaluate setup completion by running each step's evaluate.
+  Evaluate setup completion by running each step's pure `check/1` against a
+  single preloaded `Setup.Context`.
 
   Returns:
   - `{:ok, :valid}` if all steps pass
   - `{:ok, :invalid, feedback}` listing incomplete steps
 
-  Does not call steps' `command/2` — evaluation is a pure state check.
+  Pure observation — no side effects. One DB query (setup-role files) plus one
+  targeted query for the web Application file. Zero filesystem reads on the
+  hot path; ProjectStructure is the only step that stats the filesystem and
+  only when its directories haven't been created yet.
   """
   @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, _task, _opts \\ []) do
-    incomplete =
-      setup_steps()
-      |> Enum.reject(fn mod -> mod.evaluate(scope, %{}) == {:ok, :valid} end)
+    ctx = Context.load(scope)
+
+    incomplete = Enum.reject(setup_steps(), fn mod -> mod.check(ctx) == :valid end)
 
     if incomplete == [] do
       {:ok, :valid}
@@ -159,5 +164,4 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       _ -> {false, %{reason: "Setup evaluation failed"}}
     end
   end
-
 end

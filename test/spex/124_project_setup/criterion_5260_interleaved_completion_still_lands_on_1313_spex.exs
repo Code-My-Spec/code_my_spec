@@ -33,14 +33,14 @@ defmodule CodeMySpecSpex.Story124.Criterion5260Spex do
 
         # Zip-walk the halves, seeding one from each side per iteration.
         Enum.each(Enum.zip(first_half, second_half), fn {a, b} ->
-          Fixtures.satisfy_setup_steps(context.environment, [a])
-          Fixtures.satisfy_setup_steps(context.environment, [b])
+          Fixtures.satisfy_setup_steps(context.scope, [a])
+          Fixtures.satisfy_setup_steps(context.scope, [b])
         end)
 
         # Odd length — second_half has one extra.
         if length(second_half) > length(first_half) do
           leftover = Enum.drop(second_half, length(first_half))
-          Fixtures.satisfy_setup_steps(context.environment, leftover)
+          Fixtures.satisfy_setup_steps(context.scope, leftover)
         end
 
         {:ok, context}

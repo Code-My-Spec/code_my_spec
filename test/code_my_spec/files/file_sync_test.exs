@@ -7,9 +7,10 @@ defmodule CodeMySpec.Files.FileSyncTest do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "classify/1" do
@@ -47,17 +48,36 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert is_nil(FileSync.classify(".code_my_spec/qa/440/screenshots/01_page.png"))
     end
 
-    test "classifies CLAUDE.md as config" do
-      assert {:config, _} = swap(FileSync.classify("CLAUDE.md"))
+    test "classifies CLAUDE.md as claude_md" do
+      assert {:claude_md, _} = swap(FileSync.classify("CLAUDE.md"))
     end
 
-    test "classifies config.yml as config" do
-      assert {:config, _} = swap(FileSync.classify(".code_my_spec/config.yml"))
+    test "classifies config.yml as setup_config" do
+      assert {:setup_config, _} = swap(FileSync.classify(".code_my_spec/config.yml"))
+    end
+
+    test "classifies mix.exs as mix_exs" do
+      assert {:mix_exs, _} = swap(FileSync.classify("mix.exs"))
+    end
+
+    test "classifies .credo.exs as credo_exs" do
+      assert {:credo_exs, _} = swap(FileSync.classify(".credo.exs"))
+    end
+
+    test "classifies .code_my_spec/AGENTS.md as agents_md" do
+      assert {:agents_md, _} = swap(FileSync.classify(".code_my_spec/AGENTS.md"))
+    end
+
+    test "classifies test/support/<app>_spex.ex as test_support" do
+      assert {:test_support, _} = swap(FileSync.classify("test/support/my_app_spex.ex"))
+    end
+
+    test "classifies test/support/conn_case.ex as test_support" do
+      assert {:test_support, _} = swap(FileSync.classify("test/support/conn_case.ex"))
     end
 
     test "returns nil for unrecognized files" do
       assert is_nil(FileSync.classify("README.md"))
-      assert is_nil(FileSync.classify("mix.exs"))
       assert is_nil(FileSync.classify("assets/js/app.js"))
     end
 

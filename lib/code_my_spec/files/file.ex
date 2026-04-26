@@ -28,7 +28,13 @@ defmodule CodeMySpec.Files.File do
     :config,
     :architecture,
     :integration,
-    :task_artifact
+    :task_artifact,
+    :mix_exs,
+    :credo_exs,
+    :claude_md,
+    :setup_config,
+    :test_support,
+    :agents_md
   ]
 
   @type role ::
@@ -45,6 +51,12 @@ defmodule CodeMySpec.Files.File do
           | :architecture
           | :integration
           | :task_artifact
+          | :mix_exs
+          | :credo_exs
+          | :claude_md
+          | :setup_config
+          | :test_support
+          | :agents_md
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,

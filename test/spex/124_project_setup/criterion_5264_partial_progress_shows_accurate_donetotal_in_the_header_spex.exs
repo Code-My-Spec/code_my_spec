@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
       given_ "three specific steps are satisfied", context do
         Fixtures.reset_setup_env(context.environment)
 
-        Fixtures.satisfy_setup_steps(context.environment, [
+        Fixtures.satisfy_setup_steps(context.scope, [
           Setup.ApplicationInWeb,
           Setup.CodemyspecDeps,
           Setup.Compilers

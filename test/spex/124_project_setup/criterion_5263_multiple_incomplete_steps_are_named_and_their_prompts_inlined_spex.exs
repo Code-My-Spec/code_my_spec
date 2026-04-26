@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5263Spex do
         Fixtures.reset_setup_env(context.environment)
 
         Fixtures.satisfy_setup_steps(
-          context.environment,
+          context.scope,
           ProjectSetup.setup_steps() -- incomplete
         )
 

@@ -11,5 +11,7 @@ defmodule CodeMySpec.SetupFixtures.ErroringStep do
 
   def evaluate(_scope, _task), do: {:ok, :invalid, "stub is always invalid"}
 
+  def check(_ctx), do: {:invalid, "stub is always invalid"}
+
   def command(_scope, _task), do: {:error, :stub_explosion}
 end

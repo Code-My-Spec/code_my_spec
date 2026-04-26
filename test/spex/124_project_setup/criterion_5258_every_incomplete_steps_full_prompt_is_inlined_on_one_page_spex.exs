@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5258Spex do
       given_ "ApplicationInWeb and CodemyspecDeps are satisfied; the rest are not", context do
         Fixtures.reset_setup_env(context.environment)
 
-        Fixtures.satisfy_setup_steps(context.environment, [
+        Fixtures.satisfy_setup_steps(context.scope, [
           Setup.ApplicationInWeb,
           Setup.CodemyspecDeps
         ])
