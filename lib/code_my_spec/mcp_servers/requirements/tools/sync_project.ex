@@ -14,6 +14,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Auth.OAuthClient
+  alias CodeMySpec.BddRules.RemoteSync, as: BddRulesRemoteSync
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
@@ -66,7 +67,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
       [
         safe_sync("Stories", fn -> StoriesRemoteSync.sync(scope) end),
         safe_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end),
-        safe_sync("Personas", fn -> PersonasRemoteSync.sync(scope) end)
+        safe_sync("Personas", fn -> PersonasRemoteSync.sync(scope) end),
+        safe_sync("BddRules", fn -> BddRulesRemoteSync.sync(scope) end)
       ]
       |> Enum.join("\n")
     else

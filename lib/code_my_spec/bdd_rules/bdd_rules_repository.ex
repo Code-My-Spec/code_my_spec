@@ -73,6 +73,17 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
 
   def list_rules_for_story(%Scope{}, _story_id), do: []
 
+  @spec list_rules_for_project(Scope.t(), integer() | String.t()) :: [Rule.t()]
+  def list_rules_for_project(%Scope{active_account_id: account_id}, project_id)
+      when not is_nil(account_id) do
+    Rule
+    |> where([r], r.account_id == ^account_id and r.project_id == ^project_id)
+    |> order_by([r], asc: r.inserted_at, asc: r.id)
+    |> Repo.all()
+  end
+
+  def list_rules_for_project(%Scope{}, _project_id), do: []
+
   @spec get_rule(Scope.t(), Ecto.UUID.t()) :: Rule.t() | nil
   def get_rule(%Scope{active_account_id: account_id}, id) when not is_nil(account_id) do
     Rule

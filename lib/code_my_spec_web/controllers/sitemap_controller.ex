@@ -10,7 +10,19 @@ defmodule CodeMySpecWeb.SitemapController do
     documentation: "/documentation/"
   }
 
-  @static_locs ["/", "/blog", "/methodology", "/case-studies/metric-flow", "/author/john-davenport", "/pages/founder-story", "/pages/about", "/pages", "/documentation"]
+  @static_locs [
+    "/",
+    "/products/code-my-spec",
+    "/products/market-my-spec",
+    "/blog",
+    "/methodology",
+    "/case-studies/metric-flow",
+    "/author/john-davenport",
+    "/pages/founder-story",
+    "/pages/about",
+    "/pages",
+    "/documentation"
+  ]
 
   def index(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
@@ -35,10 +47,10 @@ defmodule CodeMySpecWeb.SitemapController do
       @content_types
       |> Enum.flat_map(fn {type, prefix} ->
         all_content
-        |> Enum.filter(fn c -> c.content_type == type end)
         |> Enum.filter(fn c ->
-          # Verify content is actually accessible at its public URL
-          ContentRepository.get_content_by_slug(nil, c.slug, type) != nil
+          # Match on type and verify content is actually accessible at its public URL.
+          c.content_type == type and
+            ContentRepository.get_content_by_slug(nil, c.slug, type) != nil
         end)
         |> Enum.map(fn content ->
           %{

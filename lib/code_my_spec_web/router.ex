@@ -166,6 +166,7 @@ defmodule CodeMySpecWeb.Router do
     # BDD Rules — Three Amigos blue cards
     resources "/bdd-rules", BddRulesController, only: [:show, :create, :update, :delete]
     get "/bdd-rules-list/story/:story_id", BddRulesController, :list_for_story
+    get "/bdd-rules-list/project/:project_id", BddRulesController, :list_for_project
 
     # Acceptance Criteria — Three Amigos green cards
     resources "/criteria", CriteriaController, only: [:show, :create, :update, :delete]

@@ -54,11 +54,19 @@ defmodule CodeMySpec.BddRules.RemoteClient do
 
   # Reads from the local SQLite cache. CLI-originated writes land via the
   # write-through in `create_rule/3`. The readiness checker hits this hot
-  # per story per requirement-graph rebuild — keep it local. Note: rules
-  # created on the server (web UI) require `BddRules.RemoteSync` to land
-  # locally; that sync is not yet wired.
+  # per story per requirement-graph rebuild — keep it local. Server-originated
+  # edits (web UI) land via `BddRules.RemoteSync` (boot + `sync_project`).
   def list_rules_for_story(%Scope{} = scope, story_id, _opts \\ []) do
     BddRulesRepository.list_rules_for_story(scope, story_id)
+  end
+
+  def list_rules_for_project(%Scope{} = scope, project_id, opts \\ []) do
+    client = new(scope, opts)
+
+    {:ok, %{status: 200, body: body}} =
+      Req.get(client, url: "/api/bdd-rules-list/project/#{project_id}")
+
+    Enum.map(body["data"], &deserialize_rule/1)
   end
 
   def get_rule(%Scope{} = scope, id, opts \\ []) do

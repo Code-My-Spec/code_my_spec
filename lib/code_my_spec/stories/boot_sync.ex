@@ -13,6 +13,7 @@ defmodule CodeMySpec.Stories.BootSync do
 
   import Ecto.Query
 
+  alias CodeMySpec.BddRules.RemoteSync, as: BddRulesRemoteSync
   alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
   alias CodeMySpec.Personas.RemoteSync, as: PersonasRemoteSync
   alias CodeMySpec.Projects.Project
@@ -47,6 +48,7 @@ defmodule CodeMySpec.Stories.BootSync do
 
     log_sync_result("Issues", project.name, IssuesRemoteSync.sync(scope))
     log_sync_result("Personas", project.name, PersonasRemoteSync.sync(scope))
+    log_sync_result("BddRules", project.name, BddRulesRemoteSync.sync(scope))
   end
 
   defp log_sync_result(label, project_name, :ok) do

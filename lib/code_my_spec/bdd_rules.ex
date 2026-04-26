@@ -68,6 +68,13 @@ defmodule CodeMySpec.BddRules do
   def list_rules_for_story(scope, story_id),
     do: impl().list_rules_for_story(scope, story_id)
 
+  @doc """
+  Lists every Rule in the given project. Used by `BddRules.RemoteSync` to
+  pull the server's authoritative rule set down to the local SQLite cache.
+  """
+  def list_rules_for_project(scope, project_id),
+    do: impl().list_rules_for_project(scope, project_id)
+
   @doc "Fetches a single Rule by id within the active account scope."
   def get_rule(scope, id), do: impl().get_rule(scope, id)
 

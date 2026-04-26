@@ -8,6 +8,7 @@ defmodule CodeMySpecLocalWeb.SyncLive do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Auth.OAuthClient
+  alias CodeMySpec.BddRules.RemoteSync, as: BddRulesRemoteSync
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
@@ -59,22 +60,21 @@ defmodule CodeMySpecLocalWeb.SyncLive do
     socket = assign(socket, sync_status: :running, sync_result: nil)
     scope = socket.assigns.scope
 
-    {stories_line, issues_line, personas_line} = run_remote_syncs(scope)
+    remote_lines = run_remote_syncs(scope)
 
     with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       {:noreply,
        assign(socket,
          sync_status: :done,
-         sync_result: [
-           stories_line,
-           issues_line,
-           personas_line,
-           {"Files", file_result.total_files},
-           {"Changed files", length(file_result.changed_paths)},
-           {"Components", length(comp_result.all_components)},
-           {"Changed components", length(comp_result.changed_component_ids)}
-         ]
+         sync_result:
+           remote_lines ++
+             [
+               {"Files", file_result.total_files},
+               {"Changed files", length(file_result.changed_paths)},
+               {"Components", length(comp_result.all_components)},
+               {"Changed components", length(comp_result.changed_component_ids)}
+             ]
        )}
     else
       {:error, reason} ->
@@ -105,17 +105,19 @@ defmodule CodeMySpecLocalWeb.SyncLive do
 
   defp run_remote_syncs(scope) do
     if OAuthClient.authenticated?() do
-      {
+      [
         safe_remote_sync("Stories", fn -> RemoteSync.sync(scope) end),
         safe_remote_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end),
-        safe_remote_sync("Personas", fn -> PersonasRemoteSync.sync(scope) end)
-      }
+        safe_remote_sync("Personas", fn -> PersonasRemoteSync.sync(scope) end),
+        safe_remote_sync("BddRules", fn -> BddRulesRemoteSync.sync(scope) end)
+      ]
     else
-      {
+      [
         {"Stories", "skipped — not authenticated"},
         {"Issues", "skipped — not authenticated"},
-        {"Personas", "skipped — not authenticated"}
-      }
+        {"Personas", "skipped — not authenticated"},
+        {"BddRules", "skipped — not authenticated"}
+      ]
     end
   end
 

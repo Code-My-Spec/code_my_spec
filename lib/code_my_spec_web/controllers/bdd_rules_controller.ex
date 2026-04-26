@@ -11,6 +11,12 @@ defmodule CodeMySpecWeb.BddRulesController do
     render(conn, :index, rules: rules)
   end
 
+  def list_for_project(conn, %{"project_id" => project_id}) do
+    scope = conn.assigns.current_scope
+    rules = BddRules.list_rules_for_project(scope, project_id)
+    render(conn, :index, rules: rules)
+  end
+
   def show(conn, %{"id" => id}) do
     scope = conn.assigns.current_scope
 

@@ -48,6 +48,7 @@ defmodule CodeMySpec.Stories.RemoteSync do
 
     case %Story{id: story.id}
          |> Story.changeset(attrs)
+         |> Ecto.Changeset.put_change(:account_id, story.account_id || scope.active_account_id)
          |> Repo.insert(
            on_conflict: {:replace_all_except, [:id, :inserted_at]},
            conflict_target: :id

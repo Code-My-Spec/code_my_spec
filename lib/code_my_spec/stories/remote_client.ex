@@ -77,7 +77,17 @@ defmodule CodeMySpec.Stories.RemoteClient do
     {:ok, %{status: 200, body: body}} =
       Req.get(client, url: "/api/stories-list/titles", params: params)
 
-    body["data"]
+    # Match StoriesRepository.list_story_titles/2 contract: atom-keyed
+    # maps. The JSON API hands back string keys, so we map them here so
+    # callers (like StoriesMapper) can pattern-match the same shape
+    # against either impl.
+    Enum.map(body["data"], fn t ->
+      %{
+        id: t["id"],
+        title: t["title"],
+        component_id: t["component_id"]
+      }
+    end)
   end
 
   def list_project_stories_by_priority(%Scope{} = scope, opts \\ []) do
