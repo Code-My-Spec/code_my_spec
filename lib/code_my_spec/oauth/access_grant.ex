@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Oauth.AccessGrant do
+  @moduledoc false
   use Ecto.Schema
   use ExOauth2Provider.AccessGrants.AccessGrant, otp_app: :code_my_spec
 

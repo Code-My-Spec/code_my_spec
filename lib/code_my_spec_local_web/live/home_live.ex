@@ -15,18 +15,20 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
   @impl true
   def handle_params(%{"project_name" => name}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      {:noreply,
-       assign(socket,
-         project: project,
-         scope: scope,
-         slug: project_slug(project),
-         dir_param: URI.encode_www_form(scope.cwd),
-         page_title: project.name,
-         error: nil
-       )}
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
+    case load_project_and_scope(name) do
+      {:ok, project, scope} ->
+        {:noreply,
+         assign(socket,
+           project: project,
+           scope: scope,
+           slug: project_slug(project),
+           dir_param: URI.encode_www_form(scope.cwd),
+           page_title: project.name,
+           error: nil
+         )}
+
+      {:error, msg} ->
+        {:noreply, assign(socket, error: "#{msg}")}
     end
   end
 

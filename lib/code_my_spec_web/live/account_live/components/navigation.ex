@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.AccountLive.Components.Navigation do
+  @moduledoc false
   use CodeMySpecWeb, :live_component
 
   alias CodeMySpec.Authorization

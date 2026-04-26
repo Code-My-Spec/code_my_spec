@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.ProjectLive.Components.ProjectBreadcrumb do
+  @moduledoc false
   use CodeMySpecWeb, :html
 
   @doc """

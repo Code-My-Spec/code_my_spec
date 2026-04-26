@@ -129,7 +129,7 @@ defmodule CodeMySpecWeb.ContentController do
 
   def show(conn, %{"slug" => slug}) do
     content_type = content_type_from_action(conn.private.phoenix_action)
-    is_protected = is_protected_action?(conn.private.phoenix_action)
+    is_protected = protected_action?(conn.private.phoenix_action)
     scope = conn.assigns[:current_scope]
 
     case load_and_verify_content(scope, slug, content_type, is_protected) do
@@ -184,7 +184,7 @@ defmodule CodeMySpecWeb.ContentController do
     end
   end
 
-  defp is_protected_action?(action) do
+  defp protected_action?(action) do
     action in [:private_blog, :private_page, :private_landing, :private_documentation]
   end
 
@@ -198,7 +198,7 @@ defmodule CodeMySpecWeb.ContentController do
         {:error, :not_found}
 
       content ->
-        if is_published?(content) do
+        if published?(content) do
           {:ok, content}
         else
           {:error, :not_published}
@@ -206,7 +206,7 @@ defmodule CodeMySpecWeb.ContentController do
     end
   end
 
-  defp is_published?(content) do
+  defp published?(content) do
     now = DateTime.utc_now()
 
     (is_nil(content.publish_at) || DateTime.compare(content.publish_at, now) != :gt) &&

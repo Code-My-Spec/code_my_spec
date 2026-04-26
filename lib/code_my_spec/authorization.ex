@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Authorization do
+  @moduledoc false
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Users.Scope
 

@@ -18,18 +18,19 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AnalyzeStoryLinkage do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      {:ok, stories} = Stories.list_project_stories(scope)
-      components = Components.list_components(scope)
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        {:ok, stories} = Stories.list_project_stories(scope)
+        components = Components.list_components(scope)
 
-      markdown = analyze(stories, components)
+        markdown = analyze(stories, components)
 
-      response =
-        Response.tool()
-        |> Response.text(markdown)
+        response =
+          Response.tool()
+          |> Response.text(markdown)
 
-      {:reply, response, frame}
-    else
+        {:reply, response, frame}
+
       {:error, reason} ->
         response = Response.tool() |> Response.error(inspect(reason))
         {:reply, response, frame}

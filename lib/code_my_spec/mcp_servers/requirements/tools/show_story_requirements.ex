@@ -16,22 +16,25 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
 
   @impl true
   def execute(%{story: story_ref}, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      story = resolve_story(scope, story_ref)
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        respond_with_story(scope, story_ref, frame)
 
-      case story do
-        nil ->
-          {:reply, RequirementsMapper.error("Story '#{story_ref}' not found"), frame}
-
-        story ->
-          nodes = RequirementGraph.compute_all(scope)
-          reqs = Enum.filter(nodes, &(&1.entity_type == "story" and &1.entity_id == story.id))
-
-          {:reply, story_response(story, reqs), frame}
-      end
-    else
       {:error, reason} ->
         {:reply, RequirementsMapper.error(reason), frame}
+    end
+  end
+
+  defp respond_with_story(scope, story_ref, frame) do
+    case resolve_story(scope, story_ref) do
+      nil ->
+        {:reply, RequirementsMapper.error("Story '#{story_ref}' not found"), frame}
+
+      story ->
+        nodes = RequirementGraph.compute_all(scope)
+        reqs = Enum.filter(nodes, &(&1.entity_type == "story" and &1.entity_id == story.id))
+
+        {:reply, story_response(story, reqs), frame}
     end
   end
 

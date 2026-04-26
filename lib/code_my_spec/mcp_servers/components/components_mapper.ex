@@ -1,4 +1,5 @@
 defmodule CodeMySpec.McpServers.Components.ComponentsMapper do
+  @moduledoc false
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Formatters
 

@@ -1,4 +1,5 @@
 defmodule CodeMySpec.McpServers.StoriesServer do
+  @moduledoc false
   use Anubis.Server,
     name: "stories-server",
     version: "1.0.0",

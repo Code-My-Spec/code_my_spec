@@ -18,10 +18,11 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ListQuestions do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      questions = Questions.list_questions_for_story(scope, get_param(params, :story_id))
-      {:reply, BddRulesMapper.questions_list_response(questions), frame}
-    else
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        questions = Questions.list_questions_for_story(scope, get_param(params, :story_id))
+        {:reply, BddRulesMapper.questions_list_response(questions), frame}
+
       {:error, reason} ->
         {:reply, BddRulesMapper.error(reason), frame}
     end

@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Content.ContentTag do
+  @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
 

@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.InvitationsLive.Components.PendingInvitations do
+  @moduledoc false
   use CodeMySpecWeb, :live_component
 
   import CodeMySpecWeb.CoreComponents

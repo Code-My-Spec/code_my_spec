@@ -18,11 +18,12 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitles do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      opts = if params[:search], do: [search: params[:search]], else: []
-      titles = Stories.list_story_titles(scope, opts)
-      {:reply, StoriesMapper.story_titles_response(titles), frame}
-    else
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        opts = if params[:search], do: [search: params[:search]], else: []
+        titles = Stories.list_story_titles(scope, opts)
+        {:reply, StoriesMapper.story_titles_response(titles), frame}
+
       {:error, atom} ->
         {:reply, StoriesMapper.error(atom), frame}
     end

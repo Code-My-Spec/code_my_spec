@@ -20,11 +20,12 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      all_components = Components.list_components_with_dependencies(scope)
-      health_summary = analyze_health(all_components, scope)
-      {:reply, health_response(health_summary), frame}
-    else
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        all_components = Components.list_components_with_dependencies(scope)
+        health_summary = analyze_health(all_components, scope)
+        {:reply, health_response(health_summary), frame}
+
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end

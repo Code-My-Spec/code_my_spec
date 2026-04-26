@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.AccountLive.Components.AccountsBreadcrumb do
+  @moduledoc false
   use CodeMySpecWeb, :html
 
   @doc """

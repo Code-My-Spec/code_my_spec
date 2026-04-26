@@ -1,4 +1,5 @@
 defmodule CodeMySpec.ContentAdmin.ContentAdminRepository do
+  @moduledoc false
   import Ecto.Query, warn: false
   alias CodeMySpec.Repo
   alias CodeMySpec.ContentAdmin.ContentAdmin

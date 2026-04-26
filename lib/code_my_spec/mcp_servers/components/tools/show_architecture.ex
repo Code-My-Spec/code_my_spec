@@ -21,10 +21,11 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      architecture = Components.show_architecture(scope)
-      {:reply, architecture_response(architecture), frame}
-    else
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        architecture = Components.show_architecture(scope)
+        {:reply, architecture_response(architecture), frame}
+
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end

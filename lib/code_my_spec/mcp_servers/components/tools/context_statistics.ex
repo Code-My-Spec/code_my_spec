@@ -21,11 +21,12 @@ defmodule CodeMySpec.McpServers.Components.Tools.ContextStatistics do
   def execute(params, frame) do
     sort_by = Map.get(params, :sort_by, "story_count")
 
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      components = Components.list_components_with_dependencies(scope)
-      statistics = build_statistics(components, sort_by)
-      {:reply, statistics_response(statistics), frame}
-    else
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        components = Components.list_components_with_dependencies(scope)
+        statistics = build_statistics(components, sort_by)
+        {:reply, statistics_response(statistics), frame}
+
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end

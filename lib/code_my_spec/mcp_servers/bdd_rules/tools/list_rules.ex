@@ -18,10 +18,11 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ListRules do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      rules = BddRules.list_rules_for_story(scope, get_param(params, :story_id))
-      {:reply, BddRulesMapper.rules_list_response(rules), frame}
-    else
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        rules = BddRules.list_rules_for_story(scope, get_param(params, :story_id))
+        {:reply, BddRulesMapper.rules_list_response(rules), frame}
+
       {:error, reason} ->
         {:reply, BddRulesMapper.error(reason), frame}
     end

@@ -127,7 +127,7 @@ defmodule CodeMySpecWeb.IntegrationsControllerLoginGoogleTest do
   end
 
   defp generate_rsa_keypair do
-    rsa_private = :public_key.generate_key({:rsa, 2048, 65537})
+    rsa_private = :public_key.generate_key({:rsa, 2048, 65_537})
     {:RSAPrivateKey, _v, n, e, _d, _p, _q, _e1, _e2, _c, _other} = rsa_private
 
     pem =

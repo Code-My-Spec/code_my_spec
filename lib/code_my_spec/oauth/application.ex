@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Oauth.Application do
+  @moduledoc false
   use Ecto.Schema
   use ExOauth2Provider.Applications.Application, otp_app: :code_my_spec
   import Ecto.Changeset

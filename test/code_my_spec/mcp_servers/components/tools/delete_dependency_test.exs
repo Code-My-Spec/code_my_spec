@@ -43,7 +43,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteDependencyTest do
 
     test "handles non-existent dependency" do
       scope = full_scope_fixture()
-      params = %{id: 99999}
+      params = %{id: 99_999}
       frame = %Frame{assigns: %{current_scope: scope}}
 
       assert_raise Ecto.NoResultsError, fn ->

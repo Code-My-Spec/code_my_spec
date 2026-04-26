@@ -30,65 +30,73 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   end
 
   defp apply_action(socket, :index, %{"project_name" => name}) do
-    with {:ok, project, scope} <- load_project(name) do
-      sessions = Sessions.list_sessions(scope)
+    case load_project(name) do
+      {:ok, project, scope} ->
+        sessions = Sessions.list_sessions(scope)
 
-      assign(socket,
-        project: project,
-        sessions: sessions,
-        session: nil,
-        task: nil,
-        page_title: "#{project.name} — Sessions",
-        error: nil
-      )
-    else
-      {:error, reason} -> assign(socket, error: "Failed to load project: #{inspect(reason)}")
+        assign(socket,
+          project: project,
+          sessions: sessions,
+          session: nil,
+          task: nil,
+          page_title: "#{project.name} — Sessions",
+          error: nil
+        )
+
+      {:error, reason} ->
+        assign(socket, error: "Failed to load project: #{inspect(reason)}")
     end
   end
 
   defp apply_action(socket, :show, %{"project_name" => name, "id" => id}) do
-    with {:ok, project, scope} <- load_project(name) do
-      case Sessions.get_session(scope, id) do
-        nil ->
-          assign(socket, project: project, error: "Session not found: #{id}")
-
-        session ->
-          assign(socket,
-            project: project,
-            session: session,
-            task: nil,
-            page_title: "#{project.name} — Session",
-            error: nil
-          )
-      end
-    else
+    case load_project(name) do
+      {:ok, project, scope} -> assign_session(socket, project, scope, id)
       {:error, reason} -> assign(socket, error: "Failed to load project: #{inspect(reason)}")
     end
   end
 
   defp apply_action(socket, :task_show, %{"project_name" => name, "id" => id, "task_id" => task_id}) do
-    with {:ok, project, scope} <- load_project(name) do
-      case Sessions.get_session(scope, id) do
-        nil ->
-          assign(socket, project: project, error: "Session not found: #{id}")
-
-        session ->
-          case Session.find_task(session, task_id) do
-            nil ->
-              assign(socket, project: project, error: "Task not found: #{task_id}")
-
-            task ->
-              assign(socket,
-                project: project,
-                session: session,
-                task: task,
-                page_title: "#{project.name} — Task",
-                error: nil
-              )
-          end
-      end
-    else
+    case load_project(name) do
+      {:ok, project, scope} -> assign_task(socket, project, scope, id, task_id)
       {:error, reason} -> assign(socket, error: "Failed to load project: #{inspect(reason)}")
+    end
+  end
+
+  defp assign_session(socket, project, scope, id) do
+    case Sessions.get_session(scope, id) do
+      nil ->
+        assign(socket, project: project, error: "Session not found: #{id}")
+
+      session ->
+        assign(socket,
+          project: project,
+          session: session,
+          task: nil,
+          page_title: "#{project.name} — Session",
+          error: nil
+        )
+    end
+  end
+
+  defp assign_task(socket, project, scope, id, task_id) do
+    case Sessions.get_session(scope, id) do
+      nil ->
+        assign(socket, project: project, error: "Session not found: #{id}")
+
+      session ->
+        case Session.find_task(session, task_id) do
+          nil ->
+            assign(socket, project: project, error: "Task not found: #{task_id}")
+
+          task ->
+            assign(socket,
+              project: project,
+              session: session,
+              task: task,
+              page_title: "#{project.name} — Task",
+              error: nil
+            )
+        end
     end
   end
 

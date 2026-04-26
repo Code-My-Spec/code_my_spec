@@ -20,11 +20,12 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      %{nodes: nodes} = Requirements.project_graph(scope)
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        %{nodes: nodes} = Requirements.project_graph(scope)
 
-      {:reply, RequirementsMapper.list_requirements_response(nodes), frame}
-    else
+        {:reply, RequirementsMapper.list_requirements_response(nodes), frame}
+
       {:error, reason} ->
         {:reply, RequirementsMapper.error(reason), frame}
     end

@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.AccountLive.Components.MembersList do
+  @moduledoc false
   use CodeMySpecWeb, :live_component
   import CodeMySpecWeb.CoreComponents
 

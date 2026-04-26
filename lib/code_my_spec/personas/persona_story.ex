@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Personas.PersonaStory do
+  @moduledoc false
   use Ecto.Schema
   import Ecto.Changeset
 

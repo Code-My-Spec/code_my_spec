@@ -1,4 +1,5 @@
 defmodule CodeMySpec.ElixirAstFixtures do
+  @moduledoc false
   def sample_module_with_single_alias do
     """
     defmodule MyApp.Example do

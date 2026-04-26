@@ -13,46 +13,51 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      stories = Stories.list_unsatisfied_stories(scope)
-      components = Components.list_components_with_dependencies(scope)
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        build_design_prompt(scope, frame)
 
-      prompt = """
-      You are an expert Elixir architect specializing in Phoenix contexts.
-      Your job is to design a clean context architecture that satisfies the user stories.
-      We will only focus on unsatisfied user stories for this conversation, so if there are no unsatisfied user stories, there's nothing to do.
-
-      **Unsatisfied User Stories:**
-      #{format_stories_context(stories)}
-
-      **Existing Components:**
-      #{format_components_context(components)}
-
-      **Your Role:**
-      - Map user stories to Phoenix contexts based on entity ownership
-      - Use business capability grouping within entity boundaries
-      - Ensure flat context structure (no nested contexts)
-      - Distinguish between domain contexts (own entities) and coordination contexts (orchestrate workflows)
-      - Create components and dependencies to represent the complete system
-
-      **Context Design Principles:**
-      - Each user story should map to exactly one context
-      - Domain contexts should own at least one entity type
-      - Coordination contexts orchestrate workflows across domains
-      - Dependencies should be explicit and justified
-      - Avoid circular dependencies
-      - Keep context responsibilities clear and focused
-
-      **Instructions:**
-      Start by reviewing the existing stories and components above, then guide me through creating or refining the context architecture.
-      Ask questions about domain boundaries, entity ownership, and workflow orchestration needs.
-      """
-
-      {:reply, ComponentsMapper.prompt_response(prompt), frame}
-    else
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end
+  end
+
+  defp build_design_prompt(scope, frame) do
+    stories = Stories.list_unsatisfied_stories(scope)
+    components = Components.list_components_with_dependencies(scope)
+
+    prompt = """
+    You are an expert Elixir architect specializing in Phoenix contexts.
+    Your job is to design a clean context architecture that satisfies the user stories.
+    We will only focus on unsatisfied user stories for this conversation, so if there are no unsatisfied user stories, there's nothing to do.
+
+    **Unsatisfied User Stories:**
+    #{format_stories_context(stories)}
+
+    **Existing Components:**
+    #{format_components_context(components)}
+
+    **Your Role:**
+    - Map user stories to Phoenix contexts based on entity ownership
+    - Use business capability grouping within entity boundaries
+    - Ensure flat context structure (no nested contexts)
+    - Distinguish between domain contexts (own entities) and coordination contexts (orchestrate workflows)
+    - Create components and dependencies to represent the complete system
+
+    **Context Design Principles:**
+    - Each user story should map to exactly one context
+    - Domain contexts should own at least one entity type
+    - Coordination contexts orchestrate workflows across domains
+    - Dependencies should be explicit and justified
+    - Avoid circular dependencies
+    - Keep context responsibilities clear and focused
+
+    **Instructions:**
+    Start by reviewing the existing stories and components above, then guide me through creating or refining the context architecture.
+    Ask questions about domain boundaries, entity ownership, and workflow orchestration needs.
+    """
+
+    {:reply, ComponentsMapper.prompt_response(prompt), frame}
   end
 
   defp format_stories_context([]),

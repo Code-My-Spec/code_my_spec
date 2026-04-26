@@ -12,10 +12,11 @@ defmodule CodeMySpec.McpServers.Components.Tools.OrphanedContexts do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      orphaned_contexts = Components.list_orphaned_contexts(scope)
-      {:reply, ComponentsMapper.components_list_response(orphaned_contexts), frame}
-    else
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        orphaned_contexts = Components.list_orphaned_contexts(scope)
+        {:reply, ComponentsMapper.components_list_response(orphaned_contexts), frame}
+
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end

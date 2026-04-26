@@ -191,7 +191,7 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
             Delete ContentAdmin
           </.button>
           <.link
-            :if={is_published?(@content_admin)}
+            :if={published?(@content_admin)}
             navigate={public_url(@content_admin)}
             class="btn btn-success"
           >
@@ -354,7 +354,7 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
     Enum.map_join(errors, "\n", fn {key, value} -> "#{key}: #{inspect(value, pretty: true)}" end)
   end
 
-  defp is_published?(content_admin) do
+  defp published?(content_admin) do
     now = DateTime.utc_now()
     publish_at = parse_datetime_from_metadata(get_in(content_admin.metadata, ["publish_at"]))
     expires_at = parse_datetime_from_metadata(get_in(content_admin.metadata, ["expires_at"]))

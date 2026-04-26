@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.UserAuth do
+  @moduledoc false
   use CodeMySpecWeb, :verified_routes
 
   import Plug.Conn

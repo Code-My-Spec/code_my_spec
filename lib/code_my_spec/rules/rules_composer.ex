@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Rules.RulesComposer do
+  @moduledoc false
   @default_separator "\n\n"
 
   def compose_rules(rules) do

@@ -118,9 +118,8 @@ defmodule CodeMySpec.Invitations do
   @spec list_pending_invitations(scope :: Scope.t(), account_id :: integer()) :: [Invitation.t()]
   def list_pending_invitations(scope, account_id)
       when not is_nil(account_id) do
-    with :ok <- validate_read_account_permission(scope, account_id) do
-      InvitationRepository.list_pending_invitations(scope, account_id)
-    else
+    case validate_read_account_permission(scope, account_id) do
+      :ok -> InvitationRepository.list_pending_invitations(scope, account_id)
       _ -> []
     end
   end

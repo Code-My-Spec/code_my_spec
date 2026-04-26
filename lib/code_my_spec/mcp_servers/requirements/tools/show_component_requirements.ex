@@ -16,22 +16,25 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements do
 
   @impl true
   def execute(%{component: component_ref}, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      component = resolve_component(scope, component_ref)
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        respond_with_component(scope, component_ref, frame)
 
-      case component do
-        nil ->
-          {:reply, RequirementsMapper.error("Component '#{component_ref}' not found"), frame}
-
-        component ->
-          nodes = RequirementGraph.compute_all(scope)
-          reqs = Enum.filter(nodes, &(&1.entity_type == "component" and to_string(&1.entity_id) == component.id))
-
-          {:reply, component_response(component, reqs), frame}
-      end
-    else
       {:error, reason} ->
         {:reply, RequirementsMapper.error(reason), frame}
+    end
+  end
+
+  defp respond_with_component(scope, component_ref, frame) do
+    case resolve_component(scope, component_ref) do
+      nil ->
+        {:reply, RequirementsMapper.error("Component '#{component_ref}' not found"), frame}
+
+      component ->
+        nodes = RequirementGraph.compute_all(scope)
+        reqs = Enum.filter(nodes, &(&1.entity_type == "component" and to_string(&1.entity_id) == component.id))
+
+        {:reply, component_response(component, reqs), frame}
     end
   end
 

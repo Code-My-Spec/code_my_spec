@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Tests.TestError do
+  @moduledoc false
   use Ecto.Schema
 
   @derive Jason.Encoder

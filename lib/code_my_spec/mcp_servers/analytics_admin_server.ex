@@ -1,4 +1,5 @@
 defmodule CodeMySpec.McpServers.AnalyticsAdminServer do
+  @moduledoc false
   use Anubis.Server,
     name: "analytics-admin-server",
     version: "1.0.0",

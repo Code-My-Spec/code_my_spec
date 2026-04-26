@@ -18,10 +18,11 @@ defmodule CodeMySpec.McpServers.Personas.Tools.ListPersonas do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      personas = Personas.list_personas(scope)
-      {:reply, PersonasMapper.personas_list_response(personas), frame}
-    else
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        personas = Personas.list_personas(scope)
+        {:reply, PersonasMapper.personas_list_response(personas), frame}
+
       {:error, reason} ->
         {:reply, PersonasMapper.error(reason), frame}
     end

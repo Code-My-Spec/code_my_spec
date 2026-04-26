@@ -46,27 +46,26 @@ defmodule CodeMySpec.Environments.Cli.TmuxAdapter do
   """
   @spec create_window(window_name :: String.t()) :: {:ok, String.t()} | {:error, term()}
   def create_window(window_name) do
-    with {:ok, session} <- get_current_session() do
-      case System.cmd("tmux", [
-             "new-window",
-             "-t",
-             session,
-             "-n",
-             window_name,
-             "-d",
-             # Don't switch to it
-             "-P",
-             "-F",
-             "\#{window_id}"
-           ]) do
-        {window_id, 0} ->
-          {:ok, String.trim(window_id)}
+    case get_current_session() do
+      {:ok, session} ->
+        case System.cmd("tmux", [
+               "new-window",
+               "-t",
+               session,
+               "-n",
+               window_name,
+               "-d",
+               # Don't switch to it
+               "-P",
+               "-F",
+               "\#{window_id}"
+             ]) do
+          {window_id, 0} -> {:ok, String.trim(window_id)}
+          {error, _code} -> {:error, error}
+        end
 
-        {error, _code} ->
-          {:error, error}
-      end
-    else
-      {:error, reason} -> {:error, reason}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -80,35 +79,37 @@ defmodule CodeMySpec.Environments.Cli.TmuxAdapter do
   def kill_window(window_name) do
     Logger.info("Attempting to kill window: #{window_name}")
 
-    with {:ok, session} <- get_current_session() do
-      target = "#{session}:#{window_name}"
-      Logger.info("Kill window target: #{target}")
+    case get_current_session() do
+      {:ok, session} ->
+        target = "#{session}:#{window_name}"
+        Logger.info("Kill window target: #{target}")
+        kill_window_at(target, window_name)
 
-      case System.cmd("tmux", ["kill-window", "-t", target]) do
-        {_output, 0} ->
-          Logger.info("Successfully killed window #{window_name}")
-          :ok
-
-        # Window doesn't exist - that's fine (idempotent)
-        {error, code} when is_binary(error) ->
-          Logger.warning("kill_window failed: #{inspect(error)} (exit code: #{code})")
-
-          # Empty error or "can't find window" means window doesn't exist
-          if error == "" or String.contains?(error, "can't find window") or
-               String.contains?(error, "no such window") do
-            Logger.info("Window #{window_name} doesn't exist, treating as success")
-            :ok
-          else
-            {:error, error}
-          end
-
-        {error, _code} ->
-          {:error, error}
-      end
-    else
       {:error, reason} ->
         Logger.warning("Could not get current session: #{inspect(reason)}")
         :ok
+    end
+  end
+
+  defp kill_window_at(target, window_name) do
+    case System.cmd("tmux", ["kill-window", "-t", target]) do
+      {_output, 0} ->
+        Logger.info("Successfully killed window #{window_name}")
+        :ok
+
+      {error, code} when is_binary(error) ->
+        Logger.warning("kill_window failed: #{inspect(error)} (exit code: #{code})")
+
+        if error == "" or String.contains?(error, "can't find window") or
+             String.contains?(error, "no such window") do
+          Logger.info("Window #{window_name} doesn't exist, treating as success")
+          :ok
+        else
+          {:error, error}
+        end
+
+      {error, _code} ->
+        {:error, error}
     end
   end
 
@@ -121,26 +122,29 @@ defmodule CodeMySpec.Environments.Cli.TmuxAdapter do
   """
   @spec send_keys(window_name :: String.t(), command :: String.t()) :: :ok | {:error, term()}
   def send_keys(window_name, command) do
-    with {:ok, session} <- get_current_session() do
-      case System.cmd("tmux", [
-             "send-keys",
-             "-l",
-             "-t",
-             "#{session}:#{window_name}",
-             command
-           ]) do
-        {_output, 0} ->
-          # Send Enter separately since -l makes C-m literal
-          case System.cmd("tmux", ["send-keys", "-t", "#{session}:#{window_name}", "C-m"]) do
-            {_output, 0} -> :ok
-            {error, _code} -> {:error, error}
-          end
-
-        {error, _code} ->
-          {:error, error}
-      end
-    else
+    case get_current_session() do
+      {:ok, session} -> send_keys_with_session(session, window_name, command)
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp send_keys_with_session(session, window_name, command) do
+    case System.cmd("tmux", [
+           "send-keys",
+           "-l",
+           "-t",
+           "#{session}:#{window_name}",
+           command
+         ]) do
+      {_output, 0} ->
+        # Send Enter separately since -l makes C-m literal
+        case System.cmd("tmux", ["send-keys", "-t", "#{session}:#{window_name}", "C-m"]) do
+          {_output, 0} -> :ok
+          {error, _code} -> {:error, error}
+        end
+
+      {error, _code} ->
+        {:error, error}
     end
   end
 
@@ -173,13 +177,15 @@ defmodule CodeMySpec.Environments.Cli.TmuxAdapter do
   """
   @spec list_windows(format :: String.t()) :: {:ok, String.t()} | {:error, term()}
   def list_windows(format \\ "\#{window_name}") do
-    with {:ok, session} <- get_current_session() do
-      case System.cmd("tmux", ["list-windows", "-t", session, "-F", format]) do
-        {output, 0} -> {:ok, output}
-        {error, _code} -> {:error, error}
-      end
-    else
-      {:error, reason} -> {:error, reason}
+    case get_current_session() do
+      {:ok, session} ->
+        case System.cmd("tmux", ["list-windows", "-t", session, "-F", format]) do
+          {output, 0} -> {:ok, output}
+          {error, _code} -> {:error, error}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -190,28 +196,31 @@ defmodule CodeMySpec.Environments.Cli.TmuxAdapter do
   """
   @spec window_exists?(window_name :: String.t()) :: boolean()
   def window_exists?(window_name) do
-    with {:ok, session} <- get_current_session() do
-      case System.cmd("tmux", [
-             "list-windows",
-             "-t",
-             session,
-             "-F",
-             "\#{window_name}"
-           ]) do
-        {output, 0} ->
-          output
-          |> String.trim()
-          |> String.split("\n")
-          |> Enum.any?(&(&1 == window_name))
-
-        {_error, _code} ->
-          false
-      end
-    else
+    case get_current_session() do
+      {:ok, session} -> window_in_list?(session, window_name)
       {:error, _} -> false
     end
   rescue
     _error -> false
+  end
+
+  defp window_in_list?(session, window_name) do
+    case System.cmd("tmux", [
+           "list-windows",
+           "-t",
+           session,
+           "-F",
+           "\#{window_name}"
+         ]) do
+      {output, 0} ->
+        output
+        |> String.trim()
+        |> String.split("\n")
+        |> Enum.any?(&(&1 == window_name))
+
+      {_error, _code} ->
+        false
+    end
   end
 
   @doc """

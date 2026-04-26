@@ -18,11 +18,12 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      result = Components.validate_dependency_graph(scope)
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        result = Components.validate_dependency_graph(scope)
 
-      {:reply, ArchitectureMapper.validation_result_response(result), frame}
-    else
+        {:reply, ArchitectureMapper.validation_result_response(result), frame}
+
       {:error, reason} ->
         {:reply, ArchitectureMapper.error(reason), frame}
     end

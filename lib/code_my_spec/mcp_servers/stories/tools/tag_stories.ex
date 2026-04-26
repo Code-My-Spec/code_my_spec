@@ -27,14 +27,15 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      results = Enum.map(params.story_ids, &tag_one(scope, &1, params.tag))
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        results = Enum.map(params.story_ids, &tag_one(scope, &1, params.tag))
 
-      successes = Enum.filter(results, &match?({:ok, _}, &1)) |> Enum.map(&elem(&1, 1))
-      failures = Enum.filter(results, &match?({:error, _, _}, &1))
+        successes = Enum.filter(results, &match?({:ok, _}, &1)) |> Enum.map(&elem(&1, 1))
+        failures = Enum.filter(results, &match?({:error, _, _}, &1))
 
-      {:reply, StoriesMapper.bulk_tag_response(successes, failures, params.tag), frame}
-    else
+        {:reply, StoriesMapper.bulk_tag_response(successes, failures, params.tag), frame}
+
       {:error, reason} ->
         {:reply, StoriesMapper.error(reason), frame}
     end

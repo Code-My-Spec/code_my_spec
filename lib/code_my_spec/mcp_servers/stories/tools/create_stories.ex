@@ -16,33 +16,38 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStories do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      {successes, failures} =
-        params.stories
-        |> Enum.with_index()
-        |> Enum.reduce({[], []}, fn {story, index}, {success_acc, failure_acc} ->
-          case Stories.create_story(scope, story) do
-            {:ok, created_story} ->
-              {[created_story | success_acc], failure_acc}
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        create_batch(scope, params, frame)
 
-            {:error, changeset} ->
-              {success_acc, [{index, changeset} | failure_acc]}
-          end
-        end)
-
-      successes = Enum.reverse(successes)
-      failures = Enum.reverse(failures)
-
-      case failures do
-        [] ->
-          {:reply, StoriesMapper.stories_batch_response(successes), frame}
-
-        _has_failures ->
-          {:reply, StoriesMapper.batch_errors_response(successes, failures), frame}
-      end
-    else
       {:error, reason} ->
         {:reply, StoriesMapper.error(reason), frame}
+    end
+  end
+
+  defp create_batch(scope, params, frame) do
+    {successes, failures} =
+      params.stories
+      |> Enum.with_index()
+      |> Enum.reduce({[], []}, fn {story, index}, {success_acc, failure_acc} ->
+        case Stories.create_story(scope, story) do
+          {:ok, created_story} ->
+            {[created_story | success_acc], failure_acc}
+
+          {:error, changeset} ->
+            {success_acc, [{index, changeset} | failure_acc]}
+        end
+      end)
+
+    successes = Enum.reverse(successes)
+    failures = Enum.reverse(failures)
+
+    case failures do
+      [] ->
+        {:reply, StoriesMapper.stories_batch_response(successes), frame}
+
+      _has_failures ->
+        {:reply, StoriesMapper.batch_errors_response(successes, failures), frame}
     end
   end
 end

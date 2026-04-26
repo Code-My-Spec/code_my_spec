@@ -252,7 +252,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     capitalized =
       Regex.scan(~r/\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\b/, text)
       |> Enum.map(&List.first/1)
-      |> Enum.reject(&is_common_word?/1)
+      |> Enum.reject(&common_word?/1)
 
     # Extract "As a X" patterns
     actors =
@@ -262,7 +262,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     capitalized ++ actors
   end
 
-  defp is_common_word?(word) do
+  defp common_word?(word) do
     common_words = ~w(I The A An In On At To For Of And Or But If Then When As So)
     word in common_words
   end

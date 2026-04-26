@@ -18,27 +18,27 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
 
   @impl true
   def execute(%{name: name} = params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      nodes = RequirementGraph.compute_all(scope)
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        respond_with_matches(scope, name, params, frame)
 
-      matches =
-        nodes
-        |> Enum.filter(&(&1.name == name))
-        |> maybe_filter_entity(params)
-
-      case matches do
-        [] ->
-          {:reply, RequirementsMapper.error("Requirement '#{name}' not found"), frame}
-
-        [single] ->
-          {:reply, detail_response(single), frame}
-
-        multiple ->
-          {:reply, list_response(name, multiple), frame}
-      end
-    else
       {:error, reason} ->
         {:reply, RequirementsMapper.error(reason), frame}
+    end
+  end
+
+  defp respond_with_matches(scope, name, params, frame) do
+    nodes = RequirementGraph.compute_all(scope)
+
+    matches =
+      nodes
+      |> Enum.filter(&(&1.name == name))
+      |> maybe_filter_entity(params)
+
+    case matches do
+      [] -> {:reply, RequirementsMapper.error("Requirement '#{name}' not found"), frame}
+      [single] -> {:reply, detail_response(single), frame}
+      multiple -> {:reply, list_response(name, multiple), frame}
     end
   end
 

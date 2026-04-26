@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Tests.TestResult do
+  @moduledoc false
   alias CodeMySpec.Tests.TestError
   use Ecto.Schema
 

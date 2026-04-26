@@ -29,17 +29,15 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
   @impl true
   def handle_params(%{"project_name" => name, "step" => step_id}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      load_step(socket, project, scope, step_id)
-    else
+    case load_project_and_scope(name) do
+      {:ok, project, scope} -> load_step(socket, project, scope, step_id)
       {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
     end
   end
 
   def handle_params(%{"project_name" => name}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name) do
-      load_checklist(socket, project, scope)
-    else
+    case load_project_and_scope(name) do
+      {:ok, project, scope} -> load_checklist(socket, project, scope)
       {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
     end
   end

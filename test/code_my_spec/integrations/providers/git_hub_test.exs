@@ -235,7 +235,7 @@ defmodule CodeMySpec.Integrations.Providers.GitHubTest do
 
     test "handles numeric provider_user_id by converting to string" do
       # GitHub sometimes returns numeric IDs
-      assent_user = github_assent_user_fixture(%{"sub" => 12345})
+      assent_user = github_assent_user_fixture(%{"sub" => 12_345})
 
       result = GitHub.normalize_user(assent_user)
 

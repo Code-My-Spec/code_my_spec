@@ -58,7 +58,7 @@ defmodule CodeMySpec.RequirementsFixtures do
         # Unknown requirement — return attrs as-is for backwards compat
         attrs
 
-      not satisfied and is_existence_check?(attrs.name) ->
+      not satisfied and existence_check?(attrs.name) ->
         # Don't create file — absence means unsatisfied
         attrs
 
@@ -66,7 +66,7 @@ defmodule CodeMySpec.RequirementsFixtures do
         path = file_path_for(scope, component, role)
 
         if path do
-          valid = if is_validity_check?(attrs.name), do: satisfied, else: satisfied
+          valid = if validity_check?(attrs.name), do: satisfied, else: satisfied
           seed_component_file(scope, component, role, path, valid)
         end
 
@@ -122,8 +122,8 @@ defmodule CodeMySpec.RequirementsFixtures do
       ])
   end
 
-  defp is_existence_check?(name), do: name in ~w(spec_file implementation_file test_file review_file json_file design_file)
-  defp is_validity_check?(name), do: name in ~w(spec_valid review_valid test_spec_alignment)
+  defp existence_check?(name), do: name in ~w(spec_file implementation_file test_file review_file json_file design_file)
+  defp validity_check?(name), do: name in ~w(spec_valid review_valid test_spec_alignment)
 
   defp seed_component_file(scope, component, role, path, valid) do
     {_count, [file]} =

@@ -17,10 +17,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListProjectTags do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      tags = Tags.list_project_tags(scope)
-      {:reply, StoriesMapper.project_tags_response(tags), frame}
-    else
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        tags = Tags.list_project_tags(scope)
+        {:reply, StoriesMapper.project_tags_response(tags), frame}
+
       {:error, reason} ->
         {:reply, StoriesMapper.error(reason), frame}
     end

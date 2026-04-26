@@ -13,42 +13,47 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame) do
-      unsatisfied_stories = Stories.list_unsatisfied_stories(scope)
-      {:reply, architecture_response, _} = ShowArchitecture.execute(%{}, frame)
-      dependency_validation = Components.validate_dependency_graph(scope)
+    case Validators.validate_scope(frame) do
+      {:ok, scope} ->
+        build_review_prompt(scope, frame)
 
-      prompt = """
-      ## Context Design Review
-
-      **Current Architecture:**
-      #{format_architecture_from_response(architecture_response)}
-
-      **Unsatisfied Stories:** #{length(unsatisfied_stories)} stories without assigned components
-      #{format_unsatisfied_stories(unsatisfied_stories)}
-
-      **Dependency Analysis:**
-      #{format_dependency_analysis(dependency_validation)}
-
-      **Review Questions:**
-      1. Are the context boundaries aligned with business capabilities?
-      2. Do any contexts have unclear or overlapping responsibilities?
-      3. Are there missing contexts needed to satisfy the user stories?
-      4. Are dependencies properly justified and non-circular?
-      5. Should any contexts be split or merged based on cohesion?
-
-      **Next Steps:**
-      Focus on:
-      - Assigning contexts to the #{length(unsatisfied_stories)} unsatisfied stories
-      - Reviewing dependency issues if any were found
-      - Ensuring each context has clear ownership boundaries
-      """
-
-      {:reply, ComponentsMapper.prompt_response(prompt), frame}
-    else
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end
+  end
+
+  defp build_review_prompt(scope, frame) do
+    unsatisfied_stories = Stories.list_unsatisfied_stories(scope)
+    {:reply, architecture_response, _} = ShowArchitecture.execute(%{}, frame)
+    dependency_validation = Components.validate_dependency_graph(scope)
+
+    prompt = """
+    ## Context Design Review
+
+    **Current Architecture:**
+    #{format_architecture_from_response(architecture_response)}
+
+    **Unsatisfied Stories:** #{length(unsatisfied_stories)} stories without assigned components
+    #{format_unsatisfied_stories(unsatisfied_stories)}
+
+    **Dependency Analysis:**
+    #{format_dependency_analysis(dependency_validation)}
+
+    **Review Questions:**
+    1. Are the context boundaries aligned with business capabilities?
+    2. Do any contexts have unclear or overlapping responsibilities?
+    3. Are there missing contexts needed to satisfy the user stories?
+    4. Are dependencies properly justified and non-circular?
+    5. Should any contexts be split or merged based on cohesion?
+
+    **Next Steps:**
+    Focus on:
+    - Assigning contexts to the #{length(unsatisfied_stories)} unsatisfied stories
+    - Reviewing dependency issues if any were found
+    - Ensuring each context has clear ownership boundaries
+    """
+
+    {:reply, ComponentsMapper.prompt_response(prompt), frame}
   end
 
   defp format_unsatisfied_stories([]) do

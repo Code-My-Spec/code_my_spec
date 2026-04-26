@@ -1,4 +1,5 @@
 defmodule CodeMySpecWeb.TypeaheadComponent do
+  @moduledoc false
   use CodeMySpecWeb, :live_component
 
   @impl true

@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Invitations.InvitationNotifier do
+  @moduledoc false
   import Swoosh.Email
 
   alias CodeMySpec.Mailer

@@ -18,12 +18,13 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      components = Components.list_components_with_dependencies(scope)
-      overview = Architecture.generate_overview(components)
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} ->
+        components = Components.list_components_with_dependencies(scope)
+        overview = Architecture.generate_overview(components)
 
-      {:reply, text_response(overview), frame}
-    else
+        {:reply, text_response(overview), frame}
+
       {:error, reason} ->
         {:reply, ArchitectureMapper.error(reason), frame}
     end

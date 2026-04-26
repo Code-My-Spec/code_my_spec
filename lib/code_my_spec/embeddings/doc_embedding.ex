@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Embeddings.DocEmbedding do
+  @moduledoc false
   use Ecto.Schema
 
   @primary_key {:id, :string, autogenerate: false}
