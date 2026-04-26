@@ -25,6 +25,7 @@ defmodule CodeMySpec.Personas.RemoteClient do
 
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Personas.Persona
+  alias CodeMySpec.Personas.PersonasRepository
   alias CodeMySpec.Personas.PersonaStory
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -61,13 +62,13 @@ defmodule CodeMySpec.Personas.RemoteClient do
     Enum.map(body["data"], &deserialize_persona/1)
   end
 
-  def list_personas_for_story(%Scope{} = scope, story_id, opts \\ []) do
-    client = new(scope, opts)
-
-    {:ok, %{status: 200, body: body}} =
-      Req.get(client, url: "/api/personas-list/story/#{story_id}")
-
-    Enum.map(body["data"], &deserialize_persona/1)
+  # Reads from the local SQLite cache. Server-originated edits land via
+  # `Personas.RemoteSync` (boot + `sync_project`); CLI-originated writes
+  # land via the write-through in `create_persona/2`. The readiness checker
+  # and Three Amigos UI hit this hot — keeping it local avoids an HTTP
+  # round-trip per story per requirement-graph rebuild.
+  def list_personas_for_story(%Scope{} = scope, story_id, _opts \\ []) do
+    PersonasRepository.list_personas_for_story(scope, story_id)
   end
 
   def list_personas_for_project(%Scope{} = scope, project_id, opts \\ []) do
