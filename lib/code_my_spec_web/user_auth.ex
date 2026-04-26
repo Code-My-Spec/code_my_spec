@@ -4,6 +4,8 @@ defmodule CodeMySpecWeb.UserAuth do
   import Plug.Conn
   import Phoenix.Controller
 
+  alias CodeMySpec.Accounts
+  alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
   alias ExOauth2Provider.AccessTokens
@@ -257,15 +259,28 @@ defmodule CodeMySpecWeb.UserAuth do
   def on_mount(:require_active_account, _params, _session, socket) do
     scope = socket.assigns.current_scope
 
-    if is_nil(scope.active_account) do
-      socket =
-        socket
-        |> Phoenix.LiveView.put_flash(:info, "Please select an account to continue.")
-        |> Phoenix.LiveView.redirect(to: ~p"/app/accounts/picker?#{[return_to: "/app/accounts"]}")
+    cond do
+      not is_nil(scope.active_account) ->
+        {:cont, socket}
 
-      {:halt, socket}
-    else
-      {:cont, socket}
+      Accounts.list_accounts(scope) == [] ->
+        # Self-heal: a logged-in user with zero accounts (e.g. legacy OAuth
+        # signups from before the IntegrationsController fix) gets a personal
+        # account on the spot. Idempotent — only triggers when the picker
+        # would be empty anyway.
+        account = Accounts.ensure_personal_account(scope)
+        {:ok, _pref} = UserPreferences.select_active_account(scope, account.id)
+        {:cont, Phoenix.Component.assign(socket, :current_scope, Scope.for_user(scope.user))}
+
+      true ->
+        socket =
+          socket
+          |> Phoenix.LiveView.put_flash(:info, "Please select an account to continue.")
+          |> Phoenix.LiveView.redirect(
+            to: ~p"/app/accounts/picker?#{[return_to: "/app/accounts"]}"
+          )
+
+        {:halt, socket}
     end
   end
 

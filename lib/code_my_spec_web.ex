@@ -90,6 +90,7 @@ defmodule CodeMySpecWeb do
       import CodeMySpecWeb.MarketingComponents
 
       # Common modules used in templates
+      alias CodeMySpecWeb.ExternalLinks
       alias CodeMySpecWeb.Layouts
       alias Phoenix.LiveView.JS
 

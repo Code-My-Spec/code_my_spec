@@ -745,7 +745,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
             <div class="mt-9 flex flex-wrap items-center gap-5">
               <a href={~p"/users/register"} class="btn btn-primary">▸ Try CodeMySpec</a>
               <a
-                href="https://cal.com/johndavenport"
+                href={ExternalLinks.cal_john()}
                 class="font-mono text-sm uppercase tracking-[0.14em] text-base-content border-b border-primary/30 hover:text-primary hover:border-primary transition pb-0.5"
               >
                 Talk to John →

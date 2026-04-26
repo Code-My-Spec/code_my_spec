@@ -69,7 +69,7 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
             <span>
               Rather talk it through?
               <a
-                href="https://cal.com/john-s10-davenport"
+                href={ExternalLinks.cal_john()}
                 target="_blank"
                 rel="noopener"
                 class="link link-primary"

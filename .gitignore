@@ -70,3 +70,6 @@ diagnostics.jsonl
 /CodeMySpec/bin/cms
 /CodeMySpec/bin/cms.exe
 artifacts/
+
+# Dynamically generated test cassettes (rewritten per test run)
+test/cassettes/oauth/google_login_new_user.json
