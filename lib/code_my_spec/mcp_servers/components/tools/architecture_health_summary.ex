@@ -104,17 +104,18 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
           dep.target_component.id
         end)
 
-      # Recursively get dependencies of dependencies
       indirect_deps =
         (component.outgoing_dependencies || [])
-        |> Enum.flat_map(fn dep ->
-          case Enum.find(all_components, &(&1.id == dep.target_component.id)) do
-            nil -> []
-            dep_component -> get_all_dependency_ids(dep_component, all_components, visited)
-          end
-        end)
+        |> Enum.flat_map(&indirect_dep_ids(&1, all_components, visited))
 
       direct_deps ++ indirect_deps
+    end
+  end
+
+  defp indirect_dep_ids(dep, all_components, visited) do
+    case Enum.find(all_components, &(&1.id == dep.target_component.id)) do
+      nil -> []
+      dep_component -> get_all_dependency_ids(dep_component, all_components, visited)
     end
   end
 

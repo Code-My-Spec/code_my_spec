@@ -37,22 +37,19 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
 
   defp resolve_story(scope, ref) do
     cond do
-      match?({:ok, _}, UUID.info(ref)) ->
-        Stories.get_story(scope, ref)
+      match?({:ok, _}, UUID.info(ref)) -> Stories.get_story(scope, ref)
+      integer_id?(ref) -> Stories.get_story(scope, String.to_integer(ref))
+      true -> find_story_by_title(scope, ref)
+    end
+  end
 
-      integer_id?(ref) ->
-        Stories.get_story(scope, String.to_integer(ref))
+  defp find_story_by_title(scope, ref) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} ->
+        Enum.find(stories, fn story -> String.downcase(story.title) == String.downcase(ref) end)
 
-      true ->
-        case Stories.list_project_stories(scope) do
-          {:ok, stories} ->
-            Enum.find(stories, fn story ->
-              String.downcase(story.title) == String.downcase(ref)
-            end)
-
-          _ ->
-            nil
-        end
+      _ ->
+        nil
     end
   end
 

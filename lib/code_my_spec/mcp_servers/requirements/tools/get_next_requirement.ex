@@ -33,17 +33,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         end
 
         case RequirementGraph.next_actionable(scope) do
-          [] ->
-            all = RequirementGraph.compute_all(scope)
-
-            if all == [] do
-              {:reply, RequirementsMapper.sync_required_response(), frame}
-            else
-              {:reply, RequirementsMapper.all_satisfied_response(), frame}
-            end
-
-          nodes ->
-            {:reply, RequirementsMapper.next_requirements_response(nodes), frame}
+          [] -> {:reply, empty_response(scope), frame}
+          nodes -> {:reply, RequirementsMapper.next_requirements_response(nodes), frame}
         end
 
       {:error, _reason} ->
@@ -57,5 +48,12 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   defp build_init_scope(frame) do
     working_dir = frame.assigns[:working_dir] || Validators.mcp_working_dir(frame)
     %{cwd: working_dir}
+  end
+
+  defp empty_response(scope) do
+    case RequirementGraph.compute_all(scope) do
+      [] -> RequirementsMapper.sync_required_response()
+      _ -> RequirementsMapper.all_satisfied_response()
+    end
   end
 end

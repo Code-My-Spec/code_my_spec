@@ -109,15 +109,17 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
     issues
     |> Enum.group_by(& &1.severity)
     |> Enum.sort_by(fn {sev, _} -> Issue.severity_index(sev) end)
-    |> Enum.map_join("\n\n", fn {severity, group} ->
-      items =
-        Enum.map_join(group, "\n", fn issue ->
-          source = if issue.source, do: " [#{issue.source}]", else: ""
-          "- `#{issue.id}` — #{issue.title} (#{issue.severity})#{source}"
-        end)
+    |> Enum.map_join("\n\n", &format_severity_group/1)
+  end
 
-      "### #{String.capitalize(to_string(severity))} (#{length(group)})\n\n#{items}"
-    end)
+  defp format_severity_group({severity, group}) do
+    items = Enum.map_join(group, "\n", &format_issue_line/1)
+    "### #{String.capitalize(to_string(severity))} (#{length(group)})\n\n#{items}"
+  end
+
+  defp format_issue_line(issue) do
+    source = if issue.source, do: " [#{issue.source}]", else: ""
+    "- `#{issue.id}` — #{issue.title} (#{issue.severity})#{source}"
   end
 
   defp format_stories([]) do

@@ -54,17 +54,7 @@ defmodule CodeMySpec.Tests do
 
     case System.cmd("mix", test_args, cd: project_root, stderr_to_stdout: true, env: env) do
       {raw_output, exit_code} ->
-        json_content =
-          case File.read(temp_file) do
-            {:ok, content} ->
-              unless caller_provided_file, do: File.rm(temp_file)
-              content
-
-            {:error, reason} ->
-              Logger.warning("Failed to read test results file #{temp_file}: #{inspect(reason)}")
-              unless caller_provided_file, do: File.rm(temp_file)
-              "{}"
-          end
+        json_content = read_test_results(temp_file, caller_provided_file)
 
         parse_test_results(json_content, %{
           file_path: file_path,
@@ -78,6 +68,21 @@ defmodule CodeMySpec.Tests do
     exception ->
       Logger.error("[Tests] Execution error: #{Exception.message(exception)}")
       {:error, {:execution_error, Exception.message(exception)}}
+  end
+
+  defp read_test_results(temp_file, caller_provided_file) do
+    result =
+      case File.read(temp_file) do
+        {:ok, content} ->
+          content
+
+        {:error, reason} ->
+          Logger.warning("Failed to read test results file #{temp_file}: #{inspect(reason)}")
+          "{}"
+      end
+
+    unless caller_provided_file, do: File.rm(temp_file)
+    result
   end
 
   defp extract_file_path(args) do

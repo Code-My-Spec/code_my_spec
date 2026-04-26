@@ -16,17 +16,7 @@ defmodule CodeMySpecWeb.ProjectLive.Components.ProjectBreadcrumb do
   attr :current_path, :string, default: "/"
 
   def project_breadcrumb(assigns) do
-    assigns =
-      assign_new(assigns, :current_project, fn ->
-        if assigns.scope.active_project_id do
-          case CodeMySpec.Projects.get_project(assigns.scope, assigns.scope.active_project_id) do
-            {:ok, project} -> project
-            {:error, :not_found} -> nil
-          end
-        else
-          nil
-        end
-      end)
+    assigns = assign_new(assigns, :current_project, fn -> resolve_current_project(assigns.scope) end)
 
     ~H"""
     <div class="breadcrumbs text-sm">
@@ -43,5 +33,14 @@ defmodule CodeMySpecWeb.ProjectLive.Components.ProjectBreadcrumb do
       </ul>
     </div>
     """
+  end
+
+  defp resolve_current_project(%{active_project_id: nil}), do: nil
+
+  defp resolve_current_project(%{active_project_id: project_id} = scope) do
+    case CodeMySpec.Projects.get_project(scope, project_id) do
+      {:ok, project} -> project
+      {:error, :not_found} -> nil
+    end
   end
 end

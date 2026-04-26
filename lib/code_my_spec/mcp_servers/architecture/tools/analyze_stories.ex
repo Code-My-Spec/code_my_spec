@@ -190,24 +190,24 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
       end)
       |> Enum.sort_by(fn {prefix, _} -> if prefix == "_other", do: "zzz", else: prefix end)
 
-    Enum.map_join(grouped, "\n\n", fn {prefix, tags} ->
-      prefix_label = if prefix == "_other", do: "Other", else: String.capitalize(prefix)
+    Enum.map_join(grouped, "\n\n", &format_prefix_group/1)
+  end
 
-      tag_lines =
-        Enum.map_join(tags, "\n", fn g ->
-          # Strip prefix for display if grouped
-          display_name =
-            case String.split(g.tag, ":", parts: 2) do
-              [_prefix, rest] -> rest
-              [name] -> name
-            end
+  defp format_prefix_group({prefix, tags}) do
+    prefix_label = if prefix == "_other", do: "Other", else: String.capitalize(prefix)
+    tag_lines = Enum.map_join(tags, "\n", &format_tag_line/1)
+    "**#{prefix_label}**\n#{tag_lines}"
+  end
 
-          ids = Enum.map_join(g.stories, ", ", & &1.id)
-          "  - #{display_name} (#{g.story_count}): #{ids}"
-        end)
+  defp format_tag_line(g) do
+    display_name =
+      case String.split(g.tag, ":", parts: 2) do
+        [_prefix, rest] -> rest
+        [name] -> name
+      end
 
-      "**#{prefix_label}**\n#{tag_lines}"
-    end)
+    ids = Enum.map_join(g.stories, ", ", & &1.id)
+    "  - #{display_name} (#{g.story_count}): #{ids}"
   end
 
   defp format_co_occurrences([]), do: ""

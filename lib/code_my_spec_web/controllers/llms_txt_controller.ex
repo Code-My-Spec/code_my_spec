@@ -89,22 +89,26 @@ defmodule CodeMySpecWeb.LlmsTxtController do
   end
 
   defp content_sections(base_url, content_by_type) do
-    Enum.flat_map(content_by_type, fn {type, entries} ->
-      section_title = section_label(type)
-      prefix = content_prefix(type)
+    Enum.flat_map(content_by_type, &type_section(&1, base_url))
+  end
 
-      lines =
-        entries
-        |> Enum.sort_by(& &1.publish_at, {:desc, DateTime})
-        |> Enum.map(fn content ->
-          title = content.title || content.slug
-          desc = content.meta_description || ""
-          desc_suffix = if desc != "", do: ": #{desc}", else: ""
-          "- [#{title}](#{base_url}#{prefix}#{content.slug})#{desc_suffix}"
-        end)
+  defp type_section({type, entries}, base_url) do
+    section_title = section_label(type)
+    prefix = content_prefix(type)
 
-      ["## #{section_title}", ""] ++ lines ++ [""]
-    end)
+    lines =
+      entries
+      |> Enum.sort_by(& &1.publish_at, {:desc, DateTime})
+      |> Enum.map(&content_line(&1, base_url, prefix))
+
+    ["## #{section_title}", ""] ++ lines ++ [""]
+  end
+
+  defp content_line(content, base_url, prefix) do
+    title = content.title || content.slug
+    desc = content.meta_description || ""
+    desc_suffix = if desc != "", do: ": #{desc}", else: ""
+    "- [#{title}](#{base_url}#{prefix}#{content.slug})#{desc_suffix}"
   end
 
   defp section_label(:blog), do: "Blog"

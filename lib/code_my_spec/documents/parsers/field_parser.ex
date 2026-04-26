@@ -45,16 +45,17 @@ defmodule CodeMySpec.Documents.Parsers.FieldParser do
 
   defp extract_data_rows(table_parts) do
     case Enum.find(table_parts, &match?({"tbody", _, _, _}, &1)) do
-      {"tbody", [], rows, %{}} ->
-        Enum.map(rows, fn {"tr", [], cells, %{}} ->
-          Enum.map(cells, fn
-            {"td", _attrs, content, %{}} -> extract_text(content) |> String.trim()
-          end)
-        end)
-
-      _ ->
-        []
+      {"tbody", [], rows, %{}} -> Enum.map(rows, &extract_row_cells/1)
+      _ -> []
     end
+  end
+
+  defp extract_row_cells({"tr", [], cells, %{}}) do
+    Enum.map(cells, &extract_cell_text/1)
+  end
+
+  defp extract_cell_text({"td", _attrs, content, %{}}) do
+    extract_text(content) |> String.trim()
   end
 
   defp normalize_field_map(map) do
