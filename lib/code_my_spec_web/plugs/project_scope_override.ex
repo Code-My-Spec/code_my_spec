@@ -12,8 +12,8 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   require Logger
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Repo
 
   @behaviour Plug
 
@@ -40,7 +40,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   end
 
   defp override_project(conn, scope, project_id) do
-    case Repo.get(Project, project_id) do
+    case Projects.get_project_by_id(project_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -49,7 +49,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
 
       %Project{} = project ->
         if Accounts.user_has_account_access?(scope, project.account_id) do
-          account = Repo.get(CodeMySpec.Accounts.Account, project.account_id)
+          account = Accounts.get_account_by_id(project.account_id)
 
           updated_scope = %{
             scope

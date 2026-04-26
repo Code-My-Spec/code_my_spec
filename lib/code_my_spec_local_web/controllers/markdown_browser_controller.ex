@@ -4,16 +4,16 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserController do
 
   Derives the library from the request path (e.g. `/knowledge` → `:knowledge`,
   `/project-knowledge` → `:project_knowledge`). Delegates to
-  `MarkdownBrowserLive.resolve/3` for path resolution and content.
+  `CodeMySpec.Knowledge.resolve/3` for path resolution and content.
   """
   use CodeMySpecLocalWeb, :controller
 
-  alias CodeMySpecLocalWeb.MarkdownBrowserLive
+  alias CodeMySpec.Knowledge
 
   def show(conn, %{"project_name" => project_name, "path" => path_segments}) do
     library = library_from_path(conn)
 
-    case MarkdownBrowserLive.resolve(library, path_segments, project_name) do
+    case Knowledge.resolve(library, path_segments, project_name) do
       {:ok, content} -> text(conn, content)
       {:error, :not_found} -> conn |> put_status(404) |> text("Not found")
       {:error, :invalid_path} -> conn |> put_status(400) |> text("Invalid path")
@@ -24,7 +24,7 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserController do
   def index(conn, %{"project_name" => project_name}) do
     library = library_from_path(conn)
 
-    case MarkdownBrowserLive.resolve(library, [], project_name) do
+    case Knowledge.resolve(library, [], project_name) do
       {:ok, content} -> text(conn, content)
       {:error, msg} -> conn |> put_status(400) |> text("#{msg}")
     end

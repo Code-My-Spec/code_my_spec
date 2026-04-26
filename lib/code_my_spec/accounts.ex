@@ -88,6 +88,20 @@ defmodule CodeMySpec.Accounts do
   end
 
   @doc """
+  Gets a single account by id WITHOUT a scope-based authorization
+  check. Returns `nil` if the account doesn't exist.
+
+  For use by web plugs / supervisors that need to load the account
+  before the scope has been fully constructed (e.g. mid-way through
+  building a scope from a request header). Callers are responsible
+  for any access check that's appropriate at the call site.
+  """
+  @spec get_account_by_id(any()) :: Account.t() | nil
+  def get_account_by_id(id) do
+    AccountsRepository.get_account(id)
+  end
+
+  @doc """
   Creates an account.
   """
   def create_account(%Scope{} = scope, attrs) do

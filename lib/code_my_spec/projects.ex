@@ -106,6 +106,69 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
+  Gets a project by id without an auth-bound scope.
+
+  For use by web-side plugs / supervisors that load a project before
+  the scope has been fully constructed (e.g. building scope from an
+  `X-Project-ID` header). Auth-checked callers should use
+  `get_project!/2` with a scope.
+  """
+  @spec get_project_by_id(String.t()) :: Project.t() | nil
+  def get_project_by_id(id) when is_binary(id) do
+    Repo.get(Project, id)
+  end
+
+  @doc """
+  Returns the distinct `account_id` for every project that has a
+  `local_path` set. Used by `CodeMySpecLocalWeb.SocketSupervisor` at
+  boot to start one socket per local-tracked account.
+  """
+  @spec list_local_account_ids() :: [Ecto.UUID.t()]
+  def list_local_account_ids do
+    from(p in Project,
+      where: not is_nil(p.local_path),
+      select: p.account_id,
+      distinct: true
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns any one project in the given account that has a
+  `local_path` set, or `nil`. Used by the local socket supervisor
+  to bootstrap a scope per local account.
+  """
+  @spec first_local_project_for_account(Ecto.UUID.t()) :: Project.t() | nil
+  def first_local_project_for_account(account_id) do
+    from(p in Project,
+      where: p.account_id == ^account_id and not is_nil(p.local_path),
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Preloads the project's OAuth application association.
+
+  Provides a stable hook for the project show LiveView to refresh
+  the association after a `:updated` broadcast without reaching
+  past the context into Repo.preload directly.
+  """
+  @spec preload_oauth_application(Project.t()) :: Project.t()
+  def preload_oauth_application(%Project{} = project) do
+    Repo.preload(project, :oauth_application)
+  end
+
+  @doc """
+  Same as `preload_oauth_application/1` but reloads the association
+  even if it was already loaded. Used after broadcast updates.
+  """
+  @spec reload_oauth_application(Project.t()) :: Project.t()
+  def reload_oauth_application(%Project{} = project) do
+    Repo.preload(project, :oauth_application, force: true)
+  end
+
+  @doc """
   Creates a project.
 
   ## Examples

@@ -10,9 +10,7 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
 
   require Logger
 
-  import Ecto.Query
-
-  alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Projects
   alias CodeMySpec.Projects.ProjectsSocket
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -49,21 +47,12 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
   end
 
   defp build_children do
-    Project
-    |> where([p], not is_nil(p.local_path))
-    |> select([p], p.account_id)
-    |> distinct(true)
-    |> Repo.all()
+    Projects.list_local_account_ids()
     |> Enum.flat_map(&children_for_account/1)
   end
 
   defp children_for_account(account_id) do
-    # Use any project in this account to build the scope
-    project =
-      Project
-      |> where([p], p.account_id == ^account_id and not is_nil(p.local_path))
-      |> limit(1)
-      |> Repo.one()
+    project = Projects.first_local_project_for_account(account_id)
 
     case Scope.for_local_project(project) do
       {:ok, scope} ->

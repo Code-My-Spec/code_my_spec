@@ -45,8 +45,10 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
       Projects.subscribe_projects(socket.assigns.current_scope)
     end
 
-    project = Projects.get_project!(socket.assigns.current_scope, id)
-    project = CodeMySpec.Repo.preload(project, :oauth_application)
+    project =
+      socket.assigns.current_scope
+      |> Projects.get_project!(id)
+      |> Projects.preload_oauth_application()
 
     {:ok,
      socket
@@ -116,7 +118,7 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
         {:updated, %CodeMySpec.Projects.Project{id: id} = project},
         %{assigns: %{project: %{id: id}}} = socket
       ) do
-    project = CodeMySpec.Repo.preload(project, :oauth_application, force: true)
+    project = Projects.reload_oauth_application(project)
 
     {:noreply,
      assign(socket,

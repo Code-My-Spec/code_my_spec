@@ -8,8 +8,7 @@ defmodule CodeMySpecWeb.OAuthController do
   use CodeMySpecWeb, :controller
 
   alias ExOauth2Provider.{Authorization, Token}
-  alias CodeMySpec.Oauth.Application
-  alias CodeMySpec.Repo
+  alias CodeMySpec.Oauth
 
   @doc """
   GET /oauth/authorize
@@ -229,17 +228,13 @@ defmodule CodeMySpecWeb.OAuthController do
   end
 
   defp create_oauth_application(params) do
-    attrs = %{
+    Oauth.register_application(%{
       name: params["client_name"] || "MCP Client",
       redirect_uri: (params["redirect_uris"] || []) |> Enum.join(" "),
       scopes: "read write",
       uid: generate_client_id(),
       secret: generate_client_secret()
-    }
-
-    %Application{}
-    |> Application.changeset(attrs)
-    |> Repo.insert()
+    })
   end
 
   defp generate_client_id,
