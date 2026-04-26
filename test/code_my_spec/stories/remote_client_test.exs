@@ -110,8 +110,11 @@ defmodule CodeMySpec.Stories.RemoteClientTest do
 
         if titles != [] do
           first = hd(titles)
-          assert Map.has_key?(first, "id")
-          assert Map.has_key?(first, "title")
+          # `list_story_titles/2` returns atom-keyed maps to match the
+          # StoriesRepository contract (so callers like StoriesMapper can
+          # pattern-match the same shape against either impl).
+          assert Map.has_key?(first, :id)
+          assert Map.has_key?(first, :title)
         end
       end
     end

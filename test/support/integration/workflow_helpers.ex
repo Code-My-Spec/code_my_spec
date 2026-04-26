@@ -80,18 +80,38 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   def seed_all_setup_steps(tmp_dir) do
     app = "my_app"
 
-    # mix.exs — satisfies CodemyspecDeps, Compilers, SpexConfig
+    # mix.exs — fixture for the setup-step validators (CodemyspecDeps,
+    # Compilers, SpexConfig). The validators are text/regex-based —
+    # they look for `:boundary`/`:spex` near "compilers" and the dep
+    # atoms in the file content. We deliberately keep the *real*
+    # `compilers:` value out of `def project` so that running
+    # `mix compile` against this fixture (StaticAnalysis pipeline does
+    # this in cwd) doesn't try to load `:boundary` / `:spex` compilers
+    # — the fixture has no deps installed, so those tasks aren't
+    # available. Defaults give a no-op compile, which is what we want.
     File.write!(Path.join(tmp_dir, "mix.exs"), """
     defmodule MyApp.MixProject do
       use Mix.Project
-      def project do
-        [app: :my_app, compilers: compilers(Mix.env())]
-      end
-      defp compilers(:test), do: [:boundary, :spex]
-      defp compilers(_), do: [:boundary]
+
+      # Production mix.exs sets:
+      #   compilers: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+      # The setup validators look for :boundary and :spex in the source
+      # text near "compilers"; they don't load the file as code.
+
+      def project, do: [app: :my_app, version: "0.0.0"]
+
       def cli, do: [preferred_envs: [spex: :test]]
-      defp deps do
-        [{:credo, "~> 1.0"}, {:client_utils, "~> 0.1"}, {:sobelow, "~> 0.1"}, {:sexy_spex, "~> 0.1"}, {:boundary, "~> 0.1"}]
+
+      # Required deps per setup: :credo, :client_utils, :sobelow, :sexy_spex, :boundary.
+      # Listed for the validator; not actually fetched in this fixture.
+      def deps do
+        [
+          {:credo, "~> 1.0"},
+          {:client_utils, "~> 0.1"},
+          {:sobelow, "~> 0.1"},
+          {:sexy_spex, "~> 0.1"},
+          {:boundary, "~> 0.1"}
+        ]
       end
     end
     """)
