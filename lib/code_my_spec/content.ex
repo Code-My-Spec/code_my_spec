@@ -26,6 +26,8 @@ defmodule CodeMySpec.Content do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias CodeMySpec.Repo
   alias CodeMySpec.Content.{Content, Tag, ContentTag, ContentRepository}
   alias CodeMySpec.Users.Scope
@@ -151,24 +153,7 @@ defmodule CodeMySpec.Content do
       # Log validation errors
       changesets
       |> Enum.filter(fn {cs, _index} -> not cs.valid? end)
-      |> Enum.each(fn {cs, index} ->
-        errors =
-          Ecto.Changeset.traverse_errors(cs, fn {msg, opts} ->
-            Enum.reduce(opts, msg, fn {key, value}, acc ->
-              String.replace(acc, "%{#{key}}", to_string(value))
-            end)
-          end)
-
-        title = Map.get(cs.changes, :title, "untitled")
-        error_string = CodeMySpec.Utils.changeset_error_to_string(cs)
-
-        Logger.error(
-          "Content validation failed at index #{index}: #{title} - #{error_string}",
-          changeset_errors: errors,
-          changeset_changes: cs.changes,
-          index: index
-        )
-      end)
+      |> Enum.each(&log_invalid_changeset/1)
 
       # Check for invalid changesets
       case Enum.find(changesets, fn {cs, _index} -> not cs.valid? end) do
@@ -318,6 +303,25 @@ defmodule CodeMySpec.Content do
       content
       |> Repo.reload!()
       |> ContentRepository.preload_tags()
+    end)
+  end
+
+  defp log_invalid_changeset({cs, index}) do
+    errors = Ecto.Changeset.traverse_errors(cs, &interpolate_error/1)
+    title = Map.get(cs.changes, :title, "untitled")
+    error_string = CodeMySpec.Utils.changeset_error_to_string(cs)
+
+    Logger.error(
+      "Content validation failed at index #{index}: #{title} - #{error_string}",
+      changeset_errors: errors,
+      changeset_changes: cs.changes,
+      index: index
+    )
+  end
+
+  defp interpolate_error({msg, opts}) do
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", to_string(value))
     end)
   end
 end

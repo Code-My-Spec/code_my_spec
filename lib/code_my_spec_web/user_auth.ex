@@ -349,31 +349,37 @@ defmodule CodeMySpecWeb.UserAuth do
   """
   def require_oauth_token(conn, _opts) do
     case get_req_header(conn, "authorization") do
-      ["Bearer " <> access_token] ->
-        case AccessTokens.get_by_token(access_token, otp_app: :code_my_spec) do
-          %{} = token ->
-            if AccessTokens.is_accessible?(token) do
-              user = Users.get_user!(token.resource_owner_id)
-              assign(conn, :current_scope, Scope.for_user(user))
-            else
-              send_unauthorized_response(
-                conn,
-                "invalid_token",
-                "The access token is expired or invalid"
-              )
-            end
-
-          nil ->
-            send_unauthorized_response(conn, "invalid_token", "The access token is invalid")
-        end
-
-      _other ->
-        send_unauthorized_response(
-          conn,
-          "invalid_request",
-          "The request is missing a required Authorization header"
-        )
+      ["Bearer " <> access_token] -> assign_oauth_scope(conn, access_token)
+      _other -> send_missing_auth_header(conn)
     end
+  end
+
+  defp assign_oauth_scope(conn, access_token) do
+    case AccessTokens.get_by_token(access_token, otp_app: :code_my_spec) do
+      %{} = token -> maybe_assign_scope_for_token(conn, token)
+      nil -> send_unauthorized_response(conn, "invalid_token", "The access token is invalid")
+    end
+  end
+
+  defp maybe_assign_scope_for_token(conn, token) do
+    if AccessTokens.is_accessible?(token) do
+      user = Users.get_user!(token.resource_owner_id)
+      assign(conn, :current_scope, Scope.for_user(user))
+    else
+      send_unauthorized_response(
+        conn,
+        "invalid_token",
+        "The access token is expired or invalid"
+      )
+    end
+  end
+
+  defp send_missing_auth_header(conn) do
+    send_unauthorized_response(
+      conn,
+      "invalid_request",
+      "The request is missing a required Authorization header"
+    )
   end
 
   defp send_unauthorized_response(conn, error_code, error_description) do

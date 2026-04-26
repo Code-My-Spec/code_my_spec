@@ -27,25 +27,18 @@ defmodule CodeMySpec.Accounts.MembersRepository do
           {:ok, Member.t()} | {:error, :not_found}
   def remove_user_from_account(user_id, account_id) do
     case Repo.get_by(Member, user_id: user_id, account_id: account_id) do
-      nil ->
-        {:error, :not_found}
-
-      member ->
-        case member.role do
-          :owner ->
-            owner_count = count_owners(account_id)
-
-            if owner_count > 1 do
-              Repo.delete(member)
-            else
-              {:error, :last_owner}
-            end
-
-          _ ->
-            Repo.delete(member)
-        end
+      nil -> {:error, :not_found}
+      member -> delete_member_unless_last_owner(member, account_id)
     end
   end
+
+  defp delete_member_unless_last_owner(%Member{role: :owner} = member, account_id) do
+    if count_owners(account_id) > 1,
+      do: Repo.delete(member),
+      else: {:error, :last_owner}
+  end
+
+  defp delete_member_unless_last_owner(member, _account_id), do: Repo.delete(member)
 
   @spec update_user_role(String.t(), String.t(), account_role()) ::
           {:ok, Member.t()} | {:error, Ecto.Changeset.t()}

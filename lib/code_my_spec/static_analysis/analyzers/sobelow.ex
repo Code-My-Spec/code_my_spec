@@ -153,33 +153,30 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
   end
 
   defp extract_json(output) do
-    # Find the JSON object by looking for the sobelow-specific pattern
-    # The JSON output from sobelow starts with {"findings":
-    # We need to find this pattern because compilation output may contain { characters
-    case :binary.match(output, "{\"findings\"") do
-      {start, _} ->
-        # Extract from the JSON start to the end of the output
-        potential_json = binary_part(output, start, byte_size(output) - start)
-        # Find the last } which should close the JSON object
-        case find_last_brace(potential_json) do
-          nil -> potential_json
-          end_pos -> binary_part(potential_json, 0, end_pos + 1)
-        end
+    # Find the JSON object by looking for the sobelow-specific pattern.
+    # Sobelow's JSON output starts with `{"findings":` (or `{\n  "findings"` if
+    # pretty-printed). Compilation output may contain `{` characters, so we
+    # anchor to one of those two start markers.
+    case extract_at_marker(output, "{\"findings\"") do
+      :nomatch -> extract_at_marker(output, "{\n") |> json_or_default(output)
+      potential_json -> trim_to_last_brace(potential_json)
+    end
+  end
 
-      :nomatch ->
-        # Try with newline formatting: {\n  "findings"
-        case :binary.match(output, "{\n") do
-          {start, _} ->
-            potential_json = binary_part(output, start, byte_size(output) - start)
+  defp extract_at_marker(output, marker) do
+    case :binary.match(output, marker) do
+      {start, _} -> binary_part(output, start, byte_size(output) - start)
+      :nomatch -> :nomatch
+    end
+  end
 
-            case find_last_brace(potential_json) do
-              nil -> potential_json
-              end_pos -> binary_part(potential_json, 0, end_pos + 1)
-            end
+  defp json_or_default(:nomatch, output), do: output
+  defp json_or_default(potential_json, _output), do: trim_to_last_brace(potential_json)
 
-          :nomatch ->
-            output
-        end
+  defp trim_to_last_brace(potential_json) do
+    case find_last_brace(potential_json) do
+      nil -> potential_json
+      end_pos -> binary_part(potential_json, 0, end_pos + 1)
     end
   end
 

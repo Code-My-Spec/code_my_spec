@@ -84,20 +84,7 @@ defmodule CodeMySpec.BddSpecs.Spec do
         changeset
         |> Ecto.Changeset.apply_action!(:insert)
 
-      scenarios =
-        case get_change(changeset, :scenarios) do
-          nil ->
-            []
-
-          scenario_changesets when is_list(scenario_changesets) ->
-            Enum.map(scenario_changesets, fn
-              %Ecto.Changeset{} = cs -> Ecto.Changeset.apply_action!(cs, :insert)
-              scenario -> scenario
-            end)
-
-          scenarios ->
-            scenarios
-        end
+      scenarios = apply_scenario_changes(get_change(changeset, :scenarios))
 
       %{data | scenarios: scenarios}
     else
@@ -123,4 +110,15 @@ defmodule CodeMySpec.BddSpecs.Spec do
 
     put_change(changeset, :scenarios, scenarios)
   end
+
+  defp apply_scenario_changes(nil), do: []
+
+  defp apply_scenario_changes(scenario_changesets) when is_list(scenario_changesets) do
+    Enum.map(scenario_changesets, &apply_scenario_change/1)
+  end
+
+  defp apply_scenario_changes(scenarios), do: scenarios
+
+  defp apply_scenario_change(%Ecto.Changeset{} = cs), do: Ecto.Changeset.apply_action!(cs, :insert)
+  defp apply_scenario_change(scenario), do: scenario
 end

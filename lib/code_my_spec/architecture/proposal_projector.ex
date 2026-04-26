@@ -234,17 +234,7 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
   defp project_dependencies(components) do
     deps =
       components
-      |> Enum.flat_map(fn component ->
-        outgoing = component.outgoing_dependencies || []
-
-        Enum.map(outgoing, fn dep ->
-          target = Enum.find(components, fn c -> c.id == dep.target_component_id end)
-
-          if target do
-            "- #{component.module_name} -> #{target.module_name}"
-          end
-        end)
-      end)
+      |> Enum.flat_map(&dep_lines_for(&1, components))
       |> Enum.reject(&is_nil/1)
       |> Enum.sort()
       |> Enum.uniq()
@@ -253,6 +243,18 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
       "## Dependencies\n"
     else
       "## Dependencies\n\n" <> Enum.join(deps, "\n") <> "\n"
+    end
+  end
+
+  defp dep_lines_for(component, components) do
+    outgoing = component.outgoing_dependencies || []
+    Enum.map(outgoing, &dep_line(component, &1, components))
+  end
+
+  defp dep_line(component, dep, components) do
+    case Enum.find(components, &(&1.id == dep.target_component_id)) do
+      nil -> nil
+      target -> "- #{component.module_name} -> #{target.module_name}"
     end
   end
 end
