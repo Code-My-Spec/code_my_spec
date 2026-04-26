@@ -11,30 +11,14 @@ defmodule CodeMySpec.Issues.RemoteSync do
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
-  @spec sync(Scope.t()) :: :ok | {:error, term()}
-  def sync(%Scope{} = scope) do
-    with {:ok, token} <- OAuthClient.get_token() do
-      client = RemoteClient.new(scope, token: token)
-
-      case RemoteClient.list_accepted_issues(client) do
-        {:ok, %{status: 200, body: %{"data" => issues}}} ->
-          remote_issues = Enum.map(issues, &RemoteClient.deserialize_issue/1)
-
-          Logger.debug(
-            "[IssuesRemoteSync] Upserting #{length(remote_issues)} issues from remote"
-          )
-
-          Enum.each(remote_issues, &upsert_issue/1)
-          :ok
-
-        {:ok, %{status: status, body: body}} ->
-          Logger.warning("[IssuesRemoteSync] Unexpected status: #{status}, body: #{inspect(body)}")
-          {:error, {:unexpected_status, status}}
-
-        {:error, reason} ->
-          Logger.warning("[IssuesRemoteSync] Failed to fetch remote issues: #{inspect(reason)}")
-          {:error, reason}
-      end
+  @spec sync(Scope.t(), keyword()) :: :ok | {:error, term()}
+  def sync(%Scope{} = scope, opts \\ []) do
+    with {:ok, token} <- OAuthClient.get_token(),
+         {:ok, issues} <-
+           RemoteClient.list_accepted_issues(scope, Keyword.put(opts, :token, token)) do
+      Logger.debug("[IssuesRemoteSync] Upserting #{length(issues)} issues from remote")
+      Enum.each(issues, &upsert_issue/1)
+      :ok
     end
   end
 

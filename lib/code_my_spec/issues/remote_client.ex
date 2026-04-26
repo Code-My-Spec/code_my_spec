@@ -1,11 +1,22 @@
 defmodule CodeMySpec.Issues.RemoteClient do
   @moduledoc """
   HTTP client for the remote Issues API.
+
+  Mirrors the shape of the other remote clients (`Stories`, `Personas`,
+  `BddRules`, `Questions`): public functions take a `%Scope{}`, build the
+  `Req` client internally, and return deserialized values (`%Issue{}` or
+  `[%Issue{}]`) — never raw `Req.Response` tuples. Used only by
+  `Issues.RemoteSync` and `Issues.sync_resolution_to_remote/2`; not a
+  swap-in repository implementation.
   """
 
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Users.Scope
+
+  # ---------------------------------------------------------------------------
+  # Client construction
+  # ---------------------------------------------------------------------------
 
   def new(%Scope{} = scope, opts \\ []) do
     token = opts[:token] || get_token!()
@@ -25,13 +36,44 @@ defmodule CodeMySpec.Issues.RemoteClient do
     token
   end
 
-  def list_accepted_issues(client) do
-    Req.get(client, url: "/api/issues", params: [status: "accepted"])
+  # ---------------------------------------------------------------------------
+  # Read operations
+  # ---------------------------------------------------------------------------
+
+  def list_accepted_issues(%Scope{} = scope, opts \\ []) do
+    client = new(scope, opts)
+
+    {:ok, %{status: 200, body: body}} =
+      Req.get(client, url: "/api/issues", params: [status: "accepted"])
+
+    {:ok, Enum.map(body["data"], &deserialize_issue/1)}
   end
 
-  def update_issue(client, issue_id, attrs) do
-    Req.put(client, url: "/api/issues/#{issue_id}", json: %{issue: attrs})
+  # ---------------------------------------------------------------------------
+  # Mutation operations
+  # ---------------------------------------------------------------------------
+
+  def update_issue(%Scope{} = scope, issue_id, attrs, opts \\ []) do
+    client = new(scope, opts)
+
+    case Req.put(client,
+           url: "/api/issues/#{issue_id}",
+           json: %{issue: stringify_attrs(attrs)}
+         ) do
+      {:ok, %{status: 200, body: body}} ->
+        {:ok, deserialize_issue(body["data"])}
+
+      {:ok, %{status: 404}} ->
+        {:error, :not_found}
+
+      {:ok, %{status: 422, body: body}} ->
+        {:error, body}
+    end
   end
+
+  # ---------------------------------------------------------------------------
+  # Deserialization
+  # ---------------------------------------------------------------------------
 
   def deserialize_issue(data) do
     %Issue{
@@ -52,6 +94,10 @@ defmodule CodeMySpec.Issues.RemoteClient do
     }
   end
 
+  # ---------------------------------------------------------------------------
+  # Private helpers
+  # ---------------------------------------------------------------------------
+
   defp build_headers(token, %Scope{active_project_id: pid}) when is_binary(pid) do
     [authorization: "Bearer #{token}", "x-project-id": pid]
   end
@@ -69,6 +115,13 @@ defmodule CodeMySpec.Issues.RemoteClient do
       nil -> req
       plug -> Req.merge(req, plug: plug)
     end
+  end
+
+  defp stringify_attrs(attrs) when is_map(attrs) do
+    Map.new(attrs, fn
+      {k, v} when is_atom(k) -> {Atom.to_string(k), v}
+      {k, v} -> {k, v}
+    end)
   end
 
   defp parse_enum(nil), do: nil
