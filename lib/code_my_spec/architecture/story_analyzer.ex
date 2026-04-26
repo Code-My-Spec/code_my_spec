@@ -276,23 +276,19 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     "#{app_name}.#{module_part}"
   end
 
-  defp build_context_description(theme) do
-    case theme do
-      "verification" -> "Handles verification workflows and photo validation"
-      "notification" -> "Manages SMS, email, and push notifications"
-      "authentication" -> "User authentication and session management"
-      "dashboard" -> "Real-time dashboard and monitoring interfaces"
-      "reporting" -> "Analytics, reports, and audit trail exports"
-      "configuration" -> "System configuration and rules management"
-      "integration" -> "External service integrations and webhooks"
-      "storage" -> "File storage and retrieval"
-      "driver" -> "Driver management and onboarding"
-      "vehicle" -> "Vehicle tracking and management"
-      "transaction" -> "Transaction processing and tracking"
-      "fraud" -> "Fraud detection and prevention"
-      _ -> "#{String.capitalize(theme)} domain"
-    end
-  end
+  defp build_context_description("verification"), do: "Handles verification workflows and photo validation"
+  defp build_context_description("notification"), do: "Manages SMS, email, and push notifications"
+  defp build_context_description("authentication"), do: "User authentication and session management"
+  defp build_context_description("dashboard"), do: "Real-time dashboard and monitoring interfaces"
+  defp build_context_description("reporting"), do: "Analytics, reports, and audit trail exports"
+  defp build_context_description("configuration"), do: "System configuration and rules management"
+  defp build_context_description("integration"), do: "External service integrations and webhooks"
+  defp build_context_description("storage"), do: "File storage and retrieval"
+  defp build_context_description("driver"), do: "Driver management and onboarding"
+  defp build_context_description("vehicle"), do: "Vehicle tracking and management"
+  defp build_context_description("transaction"), do: "Transaction processing and tracking"
+  defp build_context_description("fraud"), do: "Fraud detection and prevention"
+  defp build_context_description(theme), do: "#{String.capitalize(theme)} domain"
 
   defp find_related_entities(grouping, all_entities, stories) do
     grouping_stories =

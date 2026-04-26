@@ -157,21 +157,21 @@ defmodule CodeMySpec.Content do
 
       # Check for invalid changesets
       case Enum.find(changesets, fn {cs, _index} -> not cs.valid? end) do
-        nil ->
-          # All valid, insert content
-          content_records =
-            Enum.map(changesets, fn {changeset, _index} ->
-              Repo.insert!(changeset)
-            end)
-
-          Logger.info("Created #{length(content_records)} new content records")
-          content_records
-
-        {invalid_changeset, index} ->
-          Logger.error("Aborting sync_content due to validation failure at index #{index}")
-          Repo.rollback(invalid_changeset)
+        nil -> insert_valid_content(changesets)
+        {invalid_changeset, index} -> abort_sync_content(invalid_changeset, index)
       end
     end)
+  end
+
+  defp insert_valid_content(changesets) do
+    content_records = Enum.map(changesets, fn {changeset, _index} -> Repo.insert!(changeset) end)
+    Logger.info("Created #{length(content_records)} new content records")
+    content_records
+  end
+
+  defp abort_sync_content(invalid_changeset, index) do
+    Logger.error("Aborting sync_content due to validation failure at index #{index}")
+    Repo.rollback(invalid_changeset)
   end
 
   @doc """

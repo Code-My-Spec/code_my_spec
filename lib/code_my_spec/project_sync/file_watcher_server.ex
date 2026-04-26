@@ -199,28 +199,31 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
       |> where([p], not is_nil(p.local_path))
       |> CodeMySpec.Repo.all()
 
-    Enum.reduce(projects, state.watchers, fn project, watchers ->
-      root = project.local_path
+    Enum.reduce(projects, state.watchers, &maybe_add_watcher/2)
+  end
 
-      if Map.has_key?(watchers, root) or not File.dir?(root) do
+  defp maybe_add_watcher(project, watchers) do
+    root = project.local_path
+
+    cond do
+      Map.has_key?(watchers, root) -> watchers
+      not File.dir?(root) -> watchers
+      true -> add_watcher_for_project(project, root, watchers)
+    end
+  end
+
+  defp add_watcher_for_project(project, root, watchers) do
+    with {:ok, scope} <- Scope.for_local_project(project),
+         {:ok, watcher_pid} <- start_watcher(root) do
+      Logger.info("[FileWatcher] Auto-watching #{project.name} at #{root}")
+      Map.put(watchers, root, %{watcher_pid: watcher_pid, scope: scope})
+    else
+      {:error, reason} ->
+        Logger.warning("[FileWatcher] Could not watch #{root}: #{inspect(reason)}")
         watchers
-      else
-        case Scope.for_local_project(project) do
-          {:ok, scope} ->
-            case start_watcher(root) do
-              {:ok, watcher_pid} ->
-                Logger.info("[FileWatcher] Auto-watching #{project.name} at #{root}")
-                Map.put(watchers, root, %{watcher_pid: watcher_pid, scope: scope})
 
-              {:error, reason} ->
-                Logger.warning("[FileWatcher] Could not watch #{root}: #{inspect(reason)}")
-                watchers
-            end
-
-          {:error, _} ->
-            watchers
-        end
-      end
-    end)
+      _ ->
+        watchers
+    end
   end
 end

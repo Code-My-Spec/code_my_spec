@@ -443,25 +443,24 @@ defmodule CodeMySpec.Environments.Cli.TmuxAdapter do
     # -s specifies source pane, -t specifies destination window
     case System.cmd("tmux", ["break-pane", "-d", "-P", "-F", "\#{window_id}", "-s", pane_id]) do
       {window_id, 0} when is_binary(window_id) ->
-        window_id = String.trim(window_id)
-
-        # If window_name specified, rename the new window
-        if window_name do
-          case System.cmd("tmux", ["rename-window", "-t", window_id, window_name]) do
-            {_output, 0} ->
-              Logger.info("Broke pane to window #{window_id} and renamed to #{window_name}")
-              :ok
-
-            {error, code} ->
-              Logger.warning("rename-window failed: #{inspect(error)} (exit code: #{code})")
-              {:error, error}
-          end
-        else
-          :ok
-        end
+        maybe_rename_broken_window(String.trim(window_id), window_name)
 
       {error, code} ->
         Logger.warning("break_pane failed: #{inspect(error)} (exit code: #{code})")
+        {:error, error}
+    end
+  end
+
+  defp maybe_rename_broken_window(_window_id, nil), do: :ok
+
+  defp maybe_rename_broken_window(window_id, window_name) do
+    case System.cmd("tmux", ["rename-window", "-t", window_id, window_name]) do
+      {_output, 0} ->
+        Logger.info("Broke pane to window #{window_id} and renamed to #{window_name}")
+        :ok
+
+      {error, code} ->
+        Logger.warning("rename-window failed: #{inspect(error)} (exit code: #{code})")
         {:error, error}
     end
   end

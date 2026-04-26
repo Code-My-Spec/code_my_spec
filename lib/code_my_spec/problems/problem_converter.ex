@@ -30,23 +30,29 @@ defmodule CodeMySpec.Problems.ProblemConverter do
   @spec from_credo(map()) :: Problem.t()
   def from_credo(credo_data) do
     %Problem{
-      severity: map_credo_severity(credo_data[:priority] || credo_data["priority"]),
+      severity: map_credo_severity(field(credo_data, :priority)),
       source: "credo",
       source_type: :static_analysis,
-      file_path: credo_data[:filename] || credo_data["filename"],
-      line: credo_data[:line_no] || credo_data["line_no"],
-      message: credo_data[:message] || credo_data["message"],
-      category: map_credo_category(credo_data[:category] || credo_data["category"]),
-      rule: credo_data[:check] || credo_data["check"],
+      file_path: field(credo_data, :filename),
+      line: field(credo_data, :line_no),
+      message: field(credo_data, :message),
+      category: map_credo_category(field(credo_data, :category)),
+      rule: field(credo_data, :check),
       metadata: %{
-        "check" => credo_data[:check] || credo_data["check"],
-        "priority" => credo_data[:priority] || credo_data["priority"],
-        "category" => credo_data[:category] || credo_data["category"],
-        "column" => credo_data[:column] || credo_data["column"],
-        "trigger" => credo_data[:trigger] || credo_data["trigger"],
-        "scope" => credo_data[:scope] || credo_data["scope"]
+        "check" => field(credo_data, :check),
+        "priority" => field(credo_data, :priority),
+        "category" => field(credo_data, :category),
+        "column" => field(credo_data, :column),
+        "trigger" => field(credo_data, :trigger),
+        "scope" => field(credo_data, :scope)
       }
     }
+  end
+
+  # Credo's JSON output gives string keys; the doctest example uses atom keys.
+  # `field/2` looks up either form.
+  defp field(data, key) when is_atom(key) do
+    Map.get(data, key) || Map.get(data, Atom.to_string(key))
   end
 
   @doc """
