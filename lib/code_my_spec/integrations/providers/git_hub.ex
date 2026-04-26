@@ -68,6 +68,6 @@ defmodule CodeMySpec.Integrations.Providers.GitHub do
   end
 
   defp build_redirect_uri do
-    "#{CodeMySpecWeb.Endpoint.url()}/auth/github/callback"
+    "#{CodeMySpec.PublicUrl.base()}/auth/github/callback"
   end
 end

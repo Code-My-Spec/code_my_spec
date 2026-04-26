@@ -82,6 +82,6 @@ defmodule CodeMySpec.Integrations.Providers.Google do
   end
 
   defp build_redirect_uri do
-    "#{CodeMySpecWeb.Endpoint.url()}/auth/google/callback"
+    "#{CodeMySpec.PublicUrl.base()}/auth/google/callback"
   end
 end

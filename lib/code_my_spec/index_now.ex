@@ -43,7 +43,7 @@ defmodule CodeMySpec.IndexNow do
   def notify(_), do: :ok
 
   def notify_content_sync(content_list) when is_list(content_list) do
-    base_url = CodeMySpecWeb.Endpoint.url()
+    base_url = CodeMySpec.PublicUrl.base()
 
     urls =
       Enum.map(content_list, fn content ->
@@ -59,7 +59,7 @@ defmodule CodeMySpec.IndexNow do
   end
 
   defp host do
-    case CodeMySpecWeb.Endpoint.url() do
+    case CodeMySpec.PublicUrl.base() do
       "https://" <> host -> host
       "http://" <> host -> host
       _ -> nil

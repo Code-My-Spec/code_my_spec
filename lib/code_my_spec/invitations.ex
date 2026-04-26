@@ -252,7 +252,7 @@ defmodule CodeMySpec.Invitations do
 
   defp send_invitation_email(invitation) do
     # In a real implementation, you would generate the proper URL
-    url = "#{CodeMySpecWeb.Endpoint.url()}/invitations/accept/#{invitation.token}"
+    url = "#{CodeMySpec.PublicUrl.base()}/invitations/accept/#{invitation.token}"
 
     case InvitationNotifier.deliver_invitation_email(invitation, url) do
       {:ok, _} -> :ok
