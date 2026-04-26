@@ -15,7 +15,7 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
         data-just-confirmed={to_string(@just_confirmed)}
         class="max-w-2xl mx-auto px-6 py-16"
       >
-        <h1 class="text-3xl font-heading font-bold mb-4">Welcome to CodeMySpec</h1>
+        <h1 class="text-3xl font-bold mb-4">Welcome to CodeMySpec</h1>
 
         <p class="text-base-content/80 mb-10">
           Hey &mdash; I'm John. CodeMySpec drives Phoenix projects from user stories
@@ -25,7 +25,7 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
         <div class="flex flex-col gap-6">
           <div class="bg-base-200 rounded-lg p-6 border border-primary/30">
             <div class="flex items-baseline justify-between mb-2 gap-3">
-              <h2 class="text-xl font-heading font-semibold">
+              <h2 class="text-xl font-semibold">
                 Install the Claude Code extension
               </h2>
               <span class="badge badge-primary badge-sm shrink-0">Recommended</span>
@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.AppLive.Onboarding do
           </div>
 
           <div class="bg-base-200 rounded-lg p-5">
-            <h3 class="font-heading font-semibold mb-2">Just want to draft stories?</h3>
+            <h3 class="font-semibold mb-2">Just want to draft stories?</h3>
             <p class="text-sm text-base-content/70 mb-3">
               Not on Claude Code? Point any MCP client at the remote Product Manager
               server. It interviews you and writes structured user stories.

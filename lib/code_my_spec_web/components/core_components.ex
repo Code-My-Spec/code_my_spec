@@ -282,7 +282,7 @@ defmodule CodeMySpecWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex justify-between items-center mb-6", "pb-4"]}>
       <div>
-        <h1 class="text-3xl font-heading font-bold">
+        <h1 class="text-3xl font-bold">
           {render_slot(@inner_block)}
         </h1>
         <p :if={@subtitle != []} class="text-sm text-base-content/70">

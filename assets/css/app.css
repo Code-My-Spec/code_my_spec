@@ -300,10 +300,13 @@
         border-color: var(--color-cms-white);
     }
 
-    /* App-zone marker — no rules today. Declares the surface so future
-       brand styles can be safely scoped without leaking into the workspace. */
-    .app-zone {
-        /* intentional no-op */
+    /* App-zone — workspace surfaces (5/95 red, no chamfer/glow per
+       design-tokens.html v0.9). Defensive override: any `font-heading`
+       class that creeps into an app template falls back to body font.
+       Templates should drop `font-heading` at the source; this rule is
+       belt-and-suspenders so a stray usage can't reintroduce Space Mono. */
+    .app-zone .font-heading {
+        font-family: var(--font-body);
     }
 
     /* ─── Differentiator card (product zone) ───────────────────────────

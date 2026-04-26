@@ -98,7 +98,7 @@ defmodule CodeMySpecWeb.Layouts do
           <div class="p-6 border-b border-base-300">
             <a href={~p"/app"} class="flex items-center gap-3">
               <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-6 w-6" />
-              <span class="text-lg font-heading font-semibold">CodeMySpec</span>
+              <span class="text-lg font-semibold">CodeMySpec</span>
             </a>
           </div>
           <ul class="menu p-4 w-64 min-h-full text-base-content">

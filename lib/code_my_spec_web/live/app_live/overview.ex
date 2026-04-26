@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div>
-        <h1 class="text-3xl font-heading font-bold mb-6">Overview</h1>
+        <h1 class="text-3xl font-bold mb-6">Overview</h1>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div class="stat bg-base-200 rounded-lg">
             <div class="stat-title">Projects</div>

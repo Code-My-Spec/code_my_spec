@@ -66,7 +66,7 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
         <%= if @request do %>
           <div class="card bg-base-200 shadow-xl">
             <div class="card-body">
-              <h2 class="card-title text-2xl font-heading">
+              <h2 class="card-title text-2xl">
                 Claude Code Permission Request
               </h2>
 
