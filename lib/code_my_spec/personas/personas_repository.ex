@@ -42,6 +42,29 @@ defmodule CodeMySpec.Personas.PersonasRepository do
 
   def update_persona(%Scope{}, _persona, _attrs), do: {:error, :missing_active_account}
 
+  @spec delete_persona(Scope.t(), Persona.t()) ::
+          {:ok, Persona.t()} | {:error, :missing_active_account | :cross_account}
+  def delete_persona(%Scope{active_account_id: account_id}, %Persona{} = persona)
+      when not is_nil(account_id) and persona.account_id == account_id do
+    Repo.transaction(fn -> do_delete_persona(persona) end)
+  end
+
+  def delete_persona(%Scope{active_account_id: account_id}, %Persona{})
+      when not is_nil(account_id),
+      do: {:error, :cross_account}
+
+  def delete_persona(%Scope{}, _persona), do: {:error, :missing_active_account}
+
+  defp do_delete_persona(%Persona{} = persona) do
+    from(ps in PersonaStory, where: ps.persona_id == ^persona.id)
+    |> Repo.delete_all()
+
+    case Repo.delete(persona) do
+      {:ok, deleted} -> deleted
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
   @spec list_personas(Scope.t()) :: [Persona.t()]
   def list_personas(%Scope{active_account_id: account_id}) when not is_nil(account_id) do
     Persona
@@ -115,6 +138,20 @@ defmodule CodeMySpec.Personas.PersonasRepository do
 
   def unlink_persona_from_story(%Scope{}, _persona_id, _story_id),
     do: {:error, :missing_active_account}
+
+  @spec list_stories_for_persona(Scope.t(), Ecto.UUID.t()) :: [Story.t()]
+  def list_stories_for_persona(%Scope{active_account_id: account_id}, persona_id)
+      when not is_nil(account_id) do
+    from(s in Story,
+      join: ps in PersonaStory,
+      on: ps.story_id == s.id,
+      where: s.account_id == ^account_id and ps.persona_id == ^persona_id,
+      order_by: [asc: s.title]
+    )
+    |> Repo.all()
+  end
+
+  def list_stories_for_persona(%Scope{}, _persona_id), do: []
 
   @spec list_personas_for_story(Scope.t(), integer()) :: [Persona.t()]
   def list_personas_for_story(%Scope{active_account_id: account_id}, story_id)

@@ -46,6 +46,33 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
     |> Response.text(summary)
   end
 
+  def unlink_response(persona_id, story_id) do
+    summary =
+      "Persona unlinked: persona_id `#{persona_id}` ↮ story_id `#{story_id}`."
+
+    Response.tool()
+    |> Response.text(summary)
+  end
+
+  def update_response(persona) do
+    headline = (persona.headline && "\nHeadline: #{persona.headline}") || ""
+
+    summary = """
+    Persona updated: "#{persona.name}" (slug: `#{persona.slug}`, id: `#{persona.id}`, type: `#{persona.persona_type}`).#{headline}
+    """
+
+    Response.tool()
+    |> Response.text(String.trim(summary))
+  end
+
+  def delete_response(persona) do
+    summary =
+      "Persona deleted: \"#{persona.name}\" (slug: `#{persona.slug}`, id: `#{persona.id}`). All `persona_stories` links removed."
+
+    Response.tool()
+    |> Response.text(summary)
+  end
+
   def personas_list_response([]) do
     Response.tool()
     |> Response.text(

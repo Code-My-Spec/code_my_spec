@@ -17,6 +17,7 @@ defmodule CodeMySpec.Personas do
 
   def create_persona(scope, attrs), do: impl().create_persona(scope, attrs)
   def update_persona(scope, persona, attrs), do: impl().update_persona(scope, persona, attrs)
+  def delete_persona(scope, persona), do: impl().delete_persona(scope, persona)
   def list_personas(scope), do: impl().list_personas(scope)
   def get_persona(scope, id), do: impl().get_persona(scope, id)
   def get_persona_by_slug(scope, slug), do: impl().get_persona_by_slug(scope, slug)
@@ -29,6 +30,9 @@ defmodule CodeMySpec.Personas do
 
   def list_personas_for_story(scope, story_id),
     do: impl().list_personas_for_story(scope, story_id)
+
+  def list_stories_for_persona(scope, persona_id),
+    do: impl().list_stories_for_persona(scope, persona_id)
 
   def list_personas_for_project(scope, project_id),
     do: impl().list_personas_for_project(scope, project_id)
