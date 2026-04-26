@@ -56,8 +56,7 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListCustomMetrics do
   end
 
   defp format_metrics(metrics) do
-    metrics
-    |> Enum.map(fn metric ->
+    Enum.map_join(metrics, "\n", fn metric ->
       restricted_type =
         if metric.restrictedMetricType do
           Enum.join(metric.restrictedMetricType, ", ")
@@ -75,7 +74,6 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListCustomMetrics do
       - Restricted Metric Type: #{restricted_type}
       """
     end)
-    |> Enum.join("\n")
   end
 
   defp error_response(message) when is_binary(message) do

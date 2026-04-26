@@ -36,9 +36,8 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     component = Components.get_component!(scope, task.component_id)
     project = scope.active_project
 
-    with {:ok, rules} <- get_design_rules(scope, component),
-         {:ok, prompt} <- build_spec_prompt(scope, component, project, rules) do
-      {:ok, prompt}
+    with {:ok, rules} <- get_design_rules(scope, component) do
+      build_spec_prompt(scope, component, project, rules)
     end
   end
 

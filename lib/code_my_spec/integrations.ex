@@ -94,10 +94,8 @@ defmodule CodeMySpec.Integrations do
     with {:ok, provider_module} <- get_provider_module(provider),
          {:ok, token_response} <-
            exchange_code_for_token(provider_module, callback_params, session_params),
-         {:ok, normalized_user} <- provider_module.normalize_user(token_response.user),
-         {:ok, integration} <-
-           persist_integration(scope, provider, token_response, normalized_user) do
-      {:ok, integration}
+         {:ok, normalized_user} <- provider_module.normalize_user(token_response.user) do
+      persist_integration(scope, provider, token_response, normalized_user)
     end
   end
 

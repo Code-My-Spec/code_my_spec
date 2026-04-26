@@ -84,10 +84,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     field = config_field(config)
     value = Map.get(entity, field)
 
-    if not is_nil(value) do
-      {true, %{status: "#{field} is set"} |> Map.put(field, value)}
-    else
+    if is_nil(value) do
       {false, %{reason: "#{field} is not set"}}
+    else
+      {true, %{status: "#{field} is set"} |> Map.put(field, value)}
     end
   end
 
@@ -106,9 +106,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     # Must have a test file before declaring tests passing
     has_test_file = Enum.any?(files, &(&1.role == :test))
 
-    if not has_test_file do
-      {false, %{reason: "No test file exists yet"}}
-    else
+    if has_test_file do
       count = get_problem_count(scope, entity_id(entity), "exunit", ctx)
 
       if count == 0 do
@@ -116,6 +114,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
       else
         {false, %{reason: "#{count} test failure(s)", count: count}}
       end
+    else
+      {false, %{reason: "No test file exists yet"}}
     end
   end
 

@@ -11,12 +11,9 @@ defmodule CodeMySpec.McpServers.Formatters do
     errors = extract_errors(changeset)
 
     error_lines =
-      Enum.map(errors, fn {field, messages} ->
-        messages
-        |> Enum.map(fn msg -> "- **#{field}**: #{msg}" end)
-        |> Enum.join("\n")
+      Enum.map_join(errors, "\n", fn {field, messages} ->
+        Enum.map_join(messages, "\n", fn msg -> "- **#{field}**: #{msg}" end)
       end)
-      |> Enum.join("\n")
 
     guidance = generate_fix_guidance(errors)
 

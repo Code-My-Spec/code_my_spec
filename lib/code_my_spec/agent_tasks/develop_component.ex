@@ -56,8 +56,7 @@ defmodule CodeMySpec.AgentTasks.DevelopComponent do
       {:ok, :valid}
     else
       names =
-        missing
-        |> Enum.map(fn c ->
+        Enum.map_join(missing, "\n", fn c ->
           missing_roles =
             [:spec, :implementation, :test]
             |> Enum.reject(fn role -> Files.has_file?(scope, c.id, role) end)
@@ -65,7 +64,6 @@ defmodule CodeMySpec.AgentTasks.DevelopComponent do
 
           "- #{c.module_name || c.name} (component_id: #{c.id}) missing: #{missing_roles}"
         end)
-        |> Enum.join("\n")
 
       {:ok, :invalid, "Files still missing:\n#{names}"}
     end

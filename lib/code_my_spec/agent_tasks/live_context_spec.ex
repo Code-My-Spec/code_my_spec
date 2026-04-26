@@ -36,9 +36,8 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     project = scope.active_project
 
     with {:ok, rules} <- get_design_rules(scope),
-         similar <- Components.list_similar_components(scope, component),
-         {:ok, prompt} <- build_spec_prompt(component, project, rules, similar) do
-      {:ok, prompt}
+         similar <- Components.list_similar_components(scope, component) do
+      build_spec_prompt(component, project, rules, similar)
     end
   end
 

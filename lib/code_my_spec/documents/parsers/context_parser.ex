@@ -207,7 +207,7 @@ defmodule CodeMySpec.Documents.Parsers.ContextParser do
   end
 
   defp extract_text(nodes) when is_list(nodes) do
-    nodes |> Enum.map(&extract_text/1) |> Enum.join("") |> String.trim()
+    nodes |> Enum.map_join("", &extract_text/1) |> String.trim()
   end
 
   defp extract_text(text) when is_binary(text), do: text

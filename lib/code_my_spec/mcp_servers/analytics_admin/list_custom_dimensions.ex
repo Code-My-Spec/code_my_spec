@@ -56,8 +56,7 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListCustomDimensions do
   end
 
   defp format_dimensions(dimensions) do
-    dimensions
-    |> Enum.map(fn dimension ->
+    Enum.map_join(dimensions, "\n", fn dimension ->
       """
       Custom Dimension: #{dimension.displayName || "Unnamed"}
       - Name: #{dimension.name}
@@ -66,7 +65,6 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListCustomDimensions do
       - Description: #{dimension.description || "No description"}
       """
     end)
-    |> Enum.join("\n")
   end
 
   defp error_response(message) when is_binary(message) do

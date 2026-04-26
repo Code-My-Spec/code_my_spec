@@ -14,7 +14,7 @@ defmodule CodeMySpec.Embeddings.DocExtractor do
   def extract(build_dir, app_name) do
     ebin = Path.join([build_dir, "lib", to_string(app_name), "ebin"])
 
-    unless File.dir?(ebin) do
+    if not File.dir?(ebin) do
       {:error, "Not found: #{ebin}. Is the dependency compiled?"}
     else
       docs =
@@ -87,11 +87,10 @@ defmodule CodeMySpec.Embeddings.DocExtractor do
     functions =
       func_docs
       |> Enum.filter(fn {_id, _anno, _sigs, doc, _meta} -> has_doc?(doc) end)
-      |> Enum.map(fn {{kind, name, arity}, _anno, signatures, doc, _meta} ->
+      |> Enum.map_join("\n", fn {{kind, name, arity}, _anno, signatures, doc, _meta} ->
         sig = format_signature(kind, name, arity, signatures)
         "## #{sig}\n\n#{extract_text(doc)}\n"
       end)
-      |> Enum.join("\n")
 
     String.trim(header <> "\n" <> functions)
   end

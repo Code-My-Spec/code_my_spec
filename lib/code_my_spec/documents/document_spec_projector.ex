@@ -31,18 +31,16 @@ defmodule CodeMySpec.Documents.DocumentSpecProjector do
   defp format_type_name(component_type) do
     component_type
     |> String.split("_")
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", &String.capitalize/1)
   end
 
   defp format_sections(sections, descriptions) do
     sections
     |> List.flatten()
-    |> Enum.map(fn section ->
+    |> Enum.map_join("\n\n", fn section ->
       description = Map.get(descriptions, section, "No description available")
       "### #{format_section_name(section)}\n\n#{description}"
     end)
-    |> Enum.join("\n\n")
   end
 
   defp format_optional_sections([], _descriptions) do
@@ -56,7 +54,6 @@ defmodule CodeMySpec.Documents.DocumentSpecProjector do
   defp format_section_name(section) do
     section
     |> String.split(" ")
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", &String.capitalize/1)
   end
 end

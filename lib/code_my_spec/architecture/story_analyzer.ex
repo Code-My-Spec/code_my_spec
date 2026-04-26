@@ -271,8 +271,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
     module_part =
       theme
       |> String.split("_")
-      |> Enum.map(&String.capitalize/1)
-      |> Enum.join()
+      |> Enum.map_join("", &String.capitalize/1)
 
     "#{app_name}.#{module_part}"
   end
@@ -302,8 +301,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
 
     grouping_text =
       grouping_stories
-      |> Enum.map(&"#{&1.title} #{&1.description}")
-      |> Enum.join(" ")
+      |> Enum.map_join(" ", &"#{&1.title} #{&1.description}")
       |> String.downcase()
 
     all_entities
@@ -314,17 +312,15 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
   end
 
   defp format_domain_groupings(groupings) do
-    groupings
-    |> Enum.map(fn g ->
+    Enum.map_join(groupings, "\n\n", fn g ->
       "**#{String.capitalize(g.theme)}** (#{g.story_count} stories)\n- Story IDs: #{Enum.join(g.story_ids, ", ")}"
     end)
-    |> Enum.join("\n\n")
   end
 
   defp format_context_suggestions(contexts) do
     contexts
     |> Enum.with_index(1)
-    |> Enum.map(fn {ctx, idx} ->
+    |> Enum.map_join("\n", fn {ctx, idx} ->
       entities_str =
         if ctx.entities == [], do: "None detected", else: Enum.join(ctx.entities, ", ")
 
@@ -336,25 +332,20 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
          - Stories: #{story_ids_str}
       """
     end)
-    |> Enum.join("\n")
   end
 
   defp format_surface_patterns(patterns) do
-    patterns
-    |> Enum.map(fn p ->
+    Enum.map_join(patterns, "\n\n", fn p ->
       story_ids = Enum.join(p.story_ids, ", ")
       "- **#{p.pattern}** (Stories: #{story_ids})\n  → Suggest: #{p.suggestion}"
     end)
-    |> Enum.join("\n\n")
   end
 
   defp format_entities(entities) do
     if entities == [] do
       "No entities detected with significant frequency."
     else
-      entities
-      |> Enum.map(&"- #{&1}")
-      |> Enum.join("\n")
+      Enum.map_join(entities, "\n", &"- #{&1}")
     end
   end
 

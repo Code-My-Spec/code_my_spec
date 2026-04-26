@@ -99,9 +99,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
       end)
       |> Enum.uniq_by(& &1["component"]["id"])
 
-    entry_points
-    |> Enum.map(&format_component_tree(&1))
-    |> Enum.join("\n\n")
+    Enum.map_join(entry_points, "\n\n", &format_component_tree/1)
   end
 
   defp format_component_tree(%{"component" => comp}) do
@@ -129,8 +127,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
   end
 
   defp format_component_stories(stories) do
-    stories
-    |> Enum.map(fn story ->
+    Enum.map_join(stories, "\n", fn story ->
       criteria =
         if story["acceptance_criteria"] == [] do
           ""
@@ -141,14 +138,11 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
 
       "    - **#{story["title"]}**: #{story["description"]}#{criteria}"
     end)
-    |> Enum.join("\n")
   end
 
   defp format_component_dependencies(dependencies) do
-    dependencies
-    |> Enum.map(fn dep ->
+    Enum.map_join(dependencies, "\n", fn dep ->
       "    - #{dep["target"]["name"]} (#{dep["target"]["type"]})"
     end)
-    |> Enum.join("\n")
   end
 end

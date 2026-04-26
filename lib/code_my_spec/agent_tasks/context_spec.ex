@@ -41,9 +41,8 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
     with {:ok, rules} <- get_design_rules(scope),
          similar <- Components.list_similar_components(scope, component),
-         stories <- Stories.list_component_stories(scope, component.id),
-         {:ok, prompt} <- build_spec_prompt(component, project, rules, stories, similar) do
-      {:ok, prompt}
+         stories <- Stories.list_component_stories(scope, component.id) do
+      build_spec_prompt(component, project, rules, stories, similar)
     end
   end
 

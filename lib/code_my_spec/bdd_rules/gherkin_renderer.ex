@@ -81,10 +81,9 @@ defmodule CodeMySpec.BddRules.GherkinRenderer do
 
     text
     |> String.split("\n")
-    |> Enum.map(fn
+    |> Enum.map_join("\n", fn
       "" -> ""
       line -> pad <> line
     end)
-    |> Enum.join("\n")
   end
 end

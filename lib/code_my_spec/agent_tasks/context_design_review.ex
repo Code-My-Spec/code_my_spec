@@ -36,17 +36,15 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     with {:ok, context_spec_path} <- get_context_spec_path(context_component, project),
          {:ok, child_spec_paths} <- get_child_spec_paths(scope, context_component, project),
          {:ok, stories} <- get_user_stories(scope, context_component),
-         {:ok, review_file_path} <- calculate_review_file_path(context_spec_path),
-         {:ok, prompt} <-
-           build_review_prompt(
-             project,
-             context_component,
-             context_spec_path,
-             child_spec_paths,
-             stories,
-             review_file_path
-           ) do
-      {:ok, prompt}
+         {:ok, review_file_path} <- calculate_review_file_path(context_spec_path) do
+      build_review_prompt(
+        project,
+        context_component,
+        context_spec_path,
+        child_spec_paths,
+        stories,
+        review_file_path
+      )
     end
   end
 

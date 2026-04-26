@@ -73,9 +73,7 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.CreateCustomDimension do
   defp validate_params(params) do
     scope = Map.get(params, :scope)
 
-    if scope not in @valid_scopes do
-      {:error, :invalid_scope, scope}
-    else
+    if scope in @valid_scopes do
       custom_dimension = %{
         displayName: params.display_name,
         parameterName: params.parameter_name,
@@ -90,6 +88,8 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.CreateCustomDimension do
         end
 
       {:ok, custom_dimension}
+    else
+      {:error, :invalid_scope, scope}
     end
   end
 

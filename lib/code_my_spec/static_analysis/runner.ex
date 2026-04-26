@@ -73,9 +73,8 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
          {:ok, analyzer_module} <- resolve_analyzer(analyzer_name),
          {:ok, :available} <- check_availability(analyzer_module, scope),
          opts_with_cwd = ensure_cwd_option(opts, scope),
-         {:ok, problems} <- execute_analyzer(analyzer_module, scope, opts_with_cwd),
-         {:ok, validated_problems} <- validate_problems(problems, scope) do
-      {:ok, validated_problems}
+         {:ok, problems} <- execute_analyzer(analyzer_module, scope, opts_with_cwd) do
+      validate_problems(problems, scope)
     end
   end
 

@@ -77,9 +77,7 @@ defmodule Mix.Tasks.GenerateDemo do
           content
           |> String.split("\n")
           |> Enum.map(&String.trim/1)
-          |> Enum.filter(&(String.length(&1) > 0))
-          # Skip comments
-          |> Enum.filter(&(not String.starts_with?(&1, "#")))
+          |> Enum.filter(&(String.length(&1) > 0 and not String.starts_with?(&1, "#")))
           |> join_multiline_commands()
 
         {:ok, commands}
@@ -120,10 +118,8 @@ defmodule Mix.Tasks.GenerateDemo do
 
     final_commands
     |> Enum.reverse()
-    # Only keep actual mix commands
-    |> Enum.filter(&String.contains?(&1, "mix "))
-    # Filter out malformed commands
-    |> Enum.filter(&(String.length(&1) > 10))
+    # Only keep actual mix commands, filter out malformed (too short)
+    |> Enum.filter(&(String.contains?(&1, "mix ") and String.length(&1) > 10))
   end
 
   defp generate_demo_with_commands(commands, delay) do
@@ -204,19 +200,18 @@ defmodule Mix.Tasks.GenerateDemo do
         routes_section
         |> String.split("\n")
         |> Enum.map(&String.trim/1)
-        |> Enum.filter(&(String.length(&1) > 0))
         |> Enum.filter(
-          &String.starts_with?(&1, [
-            "live ",
-            "get ",
-            "post ",
-            "put ",
-            "patch ",
-            "delete ",
-            "resources "
-          ])
+          &(String.length(&1) > 0 and
+              String.starts_with?(&1, [
+                "live ",
+                "get ",
+                "post ",
+                "put ",
+                "patch ",
+                "delete ",
+                "resources "
+              ]))
         )
-        |> Enum.map(&String.trim/1)
 
       _ ->
         # Fallback: look for any lines that look like routes
@@ -275,10 +270,7 @@ defmodule Mix.Tasks.GenerateDemo do
     case Regex.run(browser_scope_pattern, content) do
       [full_match, scope_start, existing_routes, scope_end] ->
         # Format new routes with proper indentation
-        formatted_routes =
-          routes
-          |> Enum.map(&"    #{&1}")
-          |> Enum.join("\n")
+        formatted_routes = Enum.map_join(routes, "\n", &"    #{&1}")
 
         # Combine existing routes with new ones
         new_scope_content =

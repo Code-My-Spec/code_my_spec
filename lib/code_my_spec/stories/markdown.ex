@@ -38,19 +38,12 @@ defmodule CodeMySpec.Stories.Markdown do
   def format_stories(stories, project_name \\ nil)
 
   def format_stories(stories, nil) when is_list(stories) do
-    stories
-    |> Enum.map(&format_story_section/1)
-    |> Enum.join("\n\n")
+    Enum.map_join(stories, "\n\n", &format_story_section/1)
   end
 
   def format_stories(stories, project_name) when is_list(stories) and is_binary(project_name) do
     header = "# #{project_name}\n\n"
-
-    story_sections =
-      stories
-      |> Enum.map(&format_story_section/1)
-      |> Enum.join("\n\n")
-
+    story_sections = Enum.map_join(stories, "\n\n", &format_story_section/1)
     header <> story_sections
   end
 
@@ -181,11 +174,7 @@ defmodule CodeMySpec.Stories.Markdown do
       if story.acceptance_criteria == [] do
         ""
       else
-        criteria_list =
-          story.acceptance_criteria
-          |> Enum.map(&"- #{&1}")
-          |> Enum.join("\n")
-
+        criteria_list = Enum.map_join(story.acceptance_criteria, "\n", &"- #{&1}")
         "**Acceptance Criteria**\n#{criteria_list}"
       end
 

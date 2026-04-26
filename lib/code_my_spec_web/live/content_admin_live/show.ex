@@ -351,9 +351,7 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
   defp format_parse_errors(errors) when errors == %{}, do: "No error details available"
 
   defp format_parse_errors(errors) do
-    errors
-    |> Enum.map(fn {key, value} -> "#{key}: #{inspect(value, pretty: true)}" end)
-    |> Enum.join("\n")
+    Enum.map_join(errors, "\n", fn {key, value} -> "#{key}: #{inspect(value, pretty: true)}" end)
   end
 
   defp is_published?(content_admin) do

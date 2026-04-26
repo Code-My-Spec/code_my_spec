@@ -190,12 +190,10 @@ defmodule CodeMySpec.Environments.MockTmuxAdapter do
     titles = Process.get(:mock_pane_titles, %{})
 
     output =
-      panes
-      |> Enum.map(fn pane_id ->
+      Enum.map_join(panes, "\n", fn pane_id ->
         title = Map.get(titles, pane_id, "")
         "#{pane_id}:#{title}"
       end)
-      |> Enum.join("\n")
 
     {:ok, output}
   end

@@ -82,8 +82,7 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListKeyEvents do
   end
 
   defp format_key_events(key_events) do
-    key_events
-    |> Enum.map(fn event ->
+    Enum.map_join(key_events, "\n", fn event ->
       """
       Key Event: #{event.eventName || "Unnamed"}
       - Name: #{event.name}
@@ -93,7 +92,6 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListKeyEvents do
       - Custom: #{event.custom || false}
       """
     end)
-    |> Enum.join("\n")
   end
 
   defp error_response(message) when is_binary(message) do

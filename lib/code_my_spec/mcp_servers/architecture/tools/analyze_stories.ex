@@ -172,12 +172,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
   end
 
   defp format_flat_tags(groupings) do
-    groupings
-    |> Enum.map(fn g ->
-      ids = g.stories |> Enum.map(& &1.id) |> Enum.join(", ")
+    Enum.map_join(groupings, "\n", fn g ->
+      ids = Enum.map_join(g.stories, ", ", & &1.id)
       "- **#{g.tag}** (#{g.story_count}): #{ids}"
     end)
-    |> Enum.join("\n")
   end
 
   defp format_grouped_by_prefix(groupings) do
@@ -192,13 +190,11 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
       end)
       |> Enum.sort_by(fn {prefix, _} -> if prefix == "_other", do: "zzz", else: prefix end)
 
-    grouped
-    |> Enum.map(fn {prefix, tags} ->
+    Enum.map_join(grouped, "\n\n", fn {prefix, tags} ->
       prefix_label = if prefix == "_other", do: "Other", else: String.capitalize(prefix)
 
       tag_lines =
-        tags
-        |> Enum.map(fn g ->
+        Enum.map_join(tags, "\n", fn g ->
           # Strip prefix for display if grouped
           display_name =
             case String.split(g.tag, ":", parts: 2) do
@@ -206,25 +202,21 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
               [name] -> name
             end
 
-          ids = g.stories |> Enum.map(& &1.id) |> Enum.join(", ")
+          ids = Enum.map_join(g.stories, ", ", & &1.id)
           "  - #{display_name} (#{g.story_count}): #{ids}"
         end)
-        |> Enum.join("\n")
 
       "**#{prefix_label}**\n#{tag_lines}"
     end)
-    |> Enum.join("\n\n")
   end
 
   defp format_co_occurrences([]), do: ""
 
   defp format_co_occurrences(co_occurrences) do
     lines =
-      co_occurrences
-      |> Enum.map(fn %{tags: [t1, t2], count: count} ->
+      Enum.map_join(co_occurrences, "\n", fn %{tags: [t1, t2], count: count} ->
         "- #{t1} + #{t2} (#{count} stories)"
       end)
-      |> Enum.join("\n")
 
     """
 
@@ -240,8 +232,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories do
     lines =
       untagged
       |> Enum.take(10)
-      |> Enum.map(fn s -> "- [#{s.id}] #{s.title}" end)
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", fn s -> "- [#{s.id}] #{s.title}" end)
 
     more = if length(untagged) > 10, do: "\n_...and #{length(untagged) - 10} more_", else: ""
 

@@ -53,9 +53,7 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
     parts =
       if unsatisfied != [] do
         story_list =
-          unsatisfied
-          |> Enum.map(fn s -> "  - Story #{s.id}: #{s.title}" end)
-          |> Enum.join("\n")
+          Enum.map_join(unsatisfied, "\n", fn s -> "  - Story #{s.id}: #{s.title}" end)
 
         parts ++ ["**#{length(unsatisfied)} stories without surface components:**\n#{story_list}"]
       else
@@ -65,9 +63,7 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
     parts =
       if orphaned != [] do
         orphan_list =
-          orphaned
-          |> Enum.map(fn c -> "  - #{c.module_name}" end)
-          |> Enum.join("\n")
+          Enum.map_join(orphaned, "\n", fn c -> "  - #{c.module_name}" end)
 
         parts ++
           ["**#{length(orphaned)} orphaned contexts** (no stories, not depended on):\n#{orphan_list}"]

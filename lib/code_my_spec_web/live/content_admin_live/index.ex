@@ -477,9 +477,7 @@ defmodule CodeMySpecWeb.ContentAdminLive.Index do
   defp format_parse_errors(errors) when errors == %{}, do: nil
 
   defp format_parse_errors(errors) do
-    errors
-    |> Enum.map(fn {key, value} -> "#{key}: #{inspect(value)}" end)
-    |> Enum.join("\n")
+    Enum.map_join(errors, "\n", fn {key, value} -> "#{key}: #{inspect(value)}" end)
   end
 
   defp assign_push_error(socket, type, message, debug_info) do

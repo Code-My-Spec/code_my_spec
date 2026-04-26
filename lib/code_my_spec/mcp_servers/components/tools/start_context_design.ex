@@ -59,9 +59,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
     do: "The requirements for all user stories have been satisfied."
 
   defp format_stories_context(stories) do
-    stories
-    |> Enum.map(&format_story_summary/1)
-    |> Enum.join("\n\n")
+    Enum.map_join(stories, "\n\n", &format_story_summary/1)
   end
 
   defp format_story_summary(story) do
@@ -71,9 +69,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
           "No acceptance criteria defined"
 
         criteria ->
-          criteria
-          |> Enum.map(&"- #{&1}")
-          |> Enum.join("\n")
+          Enum.map_join(criteria, "\n", &"- #{&1}")
       end
 
     """
@@ -88,9 +84,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
   defp format_components_context([]), do: "No components currently exist for this project."
 
   defp format_components_context(components) do
-    components
-    |> Enum.map(&format_component_summary/1)
-    |> Enum.join("\n\n")
+    Enum.map_join(components, "\n\n", &format_component_summary/1)
   end
 
   defp format_component_summary(component) do
@@ -109,9 +103,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.StartContextDesign do
   defp format_dependencies([]), do: "None"
 
   defp format_dependencies(dependencies) do
-    dependencies
-    |> Enum.map(&"- #{&1.target_component.name}")
-    |> Enum.join("\n")
+    Enum.map_join(dependencies, "\n", &"- #{&1.target_component.name}")
   end
 
   defp criteria_descriptions(story) do

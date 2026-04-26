@@ -117,16 +117,13 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
   defp format_stories([], _style), do: "No stories currently exist for this project."
 
   defp format_stories(stories, :basic) do
-    stories
-    |> Enum.map(&format_story_basic/1)
-    |> Enum.join("\n\n")
+    Enum.map_join(stories, "\n\n", &format_story_basic/1)
   end
 
   defp format_stories(stories, :numbered) do
     stories
     |> Enum.with_index(1)
-    |> Enum.map(&format_story_numbered/1)
-    |> Enum.join("\n\n")
+    |> Enum.map_join("\n\n", &format_story_numbered/1)
   end
 
   defp format_story_basic(story) do
@@ -162,8 +159,6 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
   defp format_criteria([], _prefix), do: "No acceptance criteria defined"
 
   defp format_criteria(criteria, prefix) do
-    criteria
-    |> Enum.map(&"#{prefix}#{&1}")
-    |> Enum.join("\n")
+    Enum.map_join(criteria, "\n", &"#{prefix}#{&1}")
   end
 end
