@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5376Spex do
   @expected_module_name "FuellyticsApp"
 
   spex "Hyphenated name title-cases each segment as one word" do
-    scenario ~s(Submitting "fuellytics-app" derives module_name "FuellyticsApp") do
+    scenario "Submitting `fuellytics-app` derives module_name FuellyticsApp" do
       given_ :registered_user_with_magic_link
       given_ :empty_state_user_on_onboarding
 

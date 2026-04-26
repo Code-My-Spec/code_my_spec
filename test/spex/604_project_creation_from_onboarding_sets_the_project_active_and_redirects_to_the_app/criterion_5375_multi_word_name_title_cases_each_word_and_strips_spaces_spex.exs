@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5375Spex do
   @expected_module_name "MyProject"
 
   spex "Multi-word name title-cases each word and strips spaces" do
-    scenario ~s(Submitting "my project" derives module_name "MyProject") do
+    scenario "Submitting `my project` derives module_name MyProject" do
       given_ :registered_user_with_magic_link
       given_ :empty_state_user_on_onboarding
 

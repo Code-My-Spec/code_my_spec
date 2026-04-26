@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5377Spex do
   @expected_module_name "RdPartyTool"
 
   spex "Leading number is stripped from derivation" do
-    scenario ~s(Submitting "3rd party tool" derives module_name "RdPartyTool") do
+    scenario "Submitting `3rd party tool` derives module_name RdPartyTool" do
       given_ :registered_user_with_magic_link
       given_ :empty_state_user_on_onboarding
 
