@@ -165,62 +165,43 @@ defmodule CodeMySpec.ContentSync.HtmlProcessor do
   @spec detect_event_handlers(Floki.html_tree()) :: [map()]
   defp detect_event_handlers(document) do
     document
-    |> Floki.traverse_and_update([], fn element, acc ->
-      case element do
-        {tag, attributes, _children} when is_list(attributes) ->
-          violations =
-            Enum.flat_map(attributes, fn {attr_name, _attr_value} ->
-              if attr_name in @event_handler_attributes do
-                [
-                  %{
-                    type: "event_handler",
-                    element: tag,
-                    attribute: attr_name
-                  }
-                ]
-              else
-                []
-              end
-            end)
-
-          {element, acc ++ violations}
-
-        _ ->
-          {element, acc}
-      end
-    end)
+    |> Floki.traverse_and_update([], &collect_event_handler_violations/2)
     |> elem(1)
+  end
+
+  defp collect_event_handler_violations({tag, attributes, _children} = element, acc)
+       when is_list(attributes) do
+    violations = Enum.flat_map(attributes, &event_handler_violation(&1, tag))
+    {element, acc ++ violations}
+  end
+
+  defp collect_event_handler_violations(element, acc), do: {element, acc}
+
+  defp event_handler_violation({attr_name, _attr_value}, tag) do
+    if attr_name in @event_handler_attributes,
+      do: [%{type: "event_handler", element: tag, attribute: attr_name}],
+      else: []
   end
 
   # Detects javascript: protocol in href and src attributes
   @spec detect_javascript_protocol(Floki.html_tree()) :: [map()]
   defp detect_javascript_protocol(document) do
-    document
-    |> Floki.traverse_and_update([], fn element, acc ->
-      case element do
-        {tag, attributes, _children} when is_list(attributes) ->
-          violations =
-            Enum.flat_map(attributes, fn {attr_name, attr_value} ->
-              if attr_name in ["href", "src"] and has_javascript_protocol?(attr_value) do
-                [
-                  %{
-                    type: "javascript_protocol",
-                    element: tag,
-                    attribute: attr_name
-                  }
-                ]
-              else
-                []
-              end
-            end)
-
-          {element, acc ++ violations}
-
-        _ ->
-          {element, acc}
-      end
-    end)
+    Floki.traverse_and_update(document, [], &collect_js_protocol_violations/2)
     |> elem(1)
+  end
+
+  defp collect_js_protocol_violations({tag, attributes, _children} = element, acc)
+       when is_list(attributes) do
+    violations = Enum.flat_map(attributes, &js_protocol_violation(&1, tag))
+    {element, acc ++ violations}
+  end
+
+  defp collect_js_protocol_violations(element, acc), do: {element, acc}
+
+  defp js_protocol_violation({attr_name, attr_value}, tag) do
+    if attr_name in ["href", "src"] and has_javascript_protocol?(attr_value),
+      do: [%{type: "javascript_protocol", element: tag, attribute: attr_name}],
+      else: []
   end
 
   # Checks if a string starts with "javascript:" (case-insensitive, with optional whitespace)

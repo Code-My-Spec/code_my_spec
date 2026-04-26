@@ -518,25 +518,25 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
   def check_test_alignment(spec_content, test_content) do
     spec_assertions = extract_top_level_assertions(spec_content)
 
-    if spec_assertions == [] do
-      {:ok, :aligned}
-    else
-      case Code.string_to_quoted(test_content) do
-        {:ok, ast} ->
-          test_names = extract_test_names(ast)
-          missing = Enum.reject(spec_assertions, &assertion_has_matching_test?(&1, test_names))
-          extra = Enum.reject(test_names, &test_has_matching_assertion?(&1, spec_assertions))
+    if spec_assertions == [],
+      do: {:ok, :aligned},
+      else: compare_assertions_to_test_ast(spec_assertions, test_content)
+  end
 
-          if missing == [] and extra == [] do
-            {:ok, :aligned}
-          else
-            {:ok, :misaligned, %{missing: missing, extra: extra}}
-          end
-
-        {:error, _} ->
-          {:ok, :aligned}
-      end
+  defp compare_assertions_to_test_ast(spec_assertions, test_content) do
+    case Code.string_to_quoted(test_content) do
+      {:ok, ast} -> classify_alignment(spec_assertions, extract_test_names(ast))
+      {:error, _} -> {:ok, :aligned}
     end
+  end
+
+  defp classify_alignment(spec_assertions, test_names) do
+    missing = Enum.reject(spec_assertions, &assertion_has_matching_test?(&1, test_names))
+    extra = Enum.reject(test_names, &test_has_matching_assertion?(&1, spec_assertions))
+
+    if missing == [] and extra == [],
+      do: {:ok, :aligned},
+      else: {:ok, :misaligned, %{missing: missing, extra: extra}}
   end
 
   defp check_top_level_test_assertions(assertions_text, test_path, project_id) do
@@ -545,51 +545,56 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     if spec_assertions == [] or not File.exists?(test_path) do
       []
     else
-      case ElixirAst.get_test_assertions(test_path) do
-        {:ok, test_assertions} ->
-          test_names =
-            test_assertions
-            |> Enum.map(fn t -> t.test_name end)
-            |> Enum.uniq()
-
-          missing =
-            spec_assertions
-            |> Enum.reject(&assertion_has_matching_test?(&1, test_names))
-            |> Enum.map(fn assertion ->
-              %Problem{
-                severity: :warning,
-                source_type: :static_analysis,
-                source: "spec_alignment",
-                file_path: test_path,
-                line: 1,
-                message: "Missing test for spec assertion: '#{assertion}'",
-                category: "missing_test",
-                project_id: project_id
-              }
-            end)
-
-          extra =
-            test_names
-            |> Enum.reject(&test_has_matching_assertion?(&1, spec_assertions))
-            |> Enum.map(fn test_name ->
-              %Problem{
-                severity: :warning,
-                source_type: :static_analysis,
-                source: "spec_alignment",
-                file_path: test_path,
-                line: 1,
-                message: "Test '#{test_name}' has no matching spec assertion",
-                category: "extra_test",
-                project_id: project_id
-              }
-            end)
-
-          missing ++ extra
-
-        {:error, _} ->
-          []
-      end
+      compare_top_level_assertions(spec_assertions, test_path, project_id)
     end
+  end
+
+  defp compare_top_level_assertions(spec_assertions, test_path, project_id) do
+    case ElixirAst.get_test_assertions(test_path) do
+      {:ok, test_assertions} ->
+        test_names = test_assertions |> Enum.map(& &1.test_name) |> Enum.uniq()
+
+        missing =
+          spec_assertions
+          |> Enum.reject(&assertion_has_matching_test?(&1, test_names))
+          |> Enum.map(&missing_assertion_problem(&1, test_path, project_id))
+
+        extra =
+          test_names
+          |> Enum.reject(&test_has_matching_assertion?(&1, spec_assertions))
+          |> Enum.map(&extra_test_problem(&1, test_path, project_id))
+
+        missing ++ extra
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp missing_assertion_problem(assertion, test_path, project_id) do
+    %Problem{
+      severity: :warning,
+      source_type: :static_analysis,
+      source: "spec_alignment",
+      file_path: test_path,
+      line: 1,
+      message: "Missing test for spec assertion: '#{assertion}'",
+      category: "missing_test",
+      project_id: project_id
+    }
+  end
+
+  defp extra_test_problem(test_name, test_path, project_id) do
+    %Problem{
+      severity: :warning,
+      source_type: :static_analysis,
+      source: "spec_alignment",
+      file_path: test_path,
+      line: 1,
+      message: "Test '#{test_name}' has no matching spec assertion",
+      category: "extra_test",
+      project_id: project_id
+    }
   end
 
   @doc false

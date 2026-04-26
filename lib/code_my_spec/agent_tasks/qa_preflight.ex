@@ -72,16 +72,19 @@ defmodule CodeMySpec.AgentTasks.QaPreflight do
   defp read_integration_specs(env) do
     case Environments.glob(env, Path.join(@integrations_dir, "*.md")) do
       files when is_list(files) and files != [] ->
-        Enum.map(files, fn file ->
-          case Environments.read_file(env, file) do
-            {:ok, content} -> {file, content}
-            _ -> nil
-          end
-        end)
+        files
+        |> Enum.map(&read_integration_spec(env, &1))
         |> Enum.reject(&is_nil/1)
 
       _ ->
         []
+    end
+  end
+
+  defp read_integration_spec(env, file) do
+    case Environments.read_file(env, file) do
+      {:ok, content} -> {file, content}
+      _ -> nil
     end
   end
 
@@ -247,22 +250,25 @@ defmodule CodeMySpec.AgentTasks.QaPreflight do
   defp check_all_verified(env) do
     case Environments.glob(env, Path.join(@integrations_dir, "*.md")) do
       files when is_list(files) and files != [] ->
-        Enum.reduce_while(files, :ok, fn file, :ok ->
-          case Environments.read_file(env, file) do
-            {:ok, content} ->
-              if String.contains?(String.downcase(content), "verified") do
-                {:cont, :ok}
-              else
-                {:halt, {:error, "Integration `#{file}` is not verified. Run the verify script against the app."}}
-              end
-
-            _ ->
-              {:halt, {:error, "Cannot read integration spec `#{file}`."}}
-          end
-        end)
+        Enum.reduce_while(files, :ok, fn file, :ok -> verify_integration_spec(env, file) end)
 
       _ ->
         {:error, "No integration specs found but index implies integrations are needed."}
+    end
+  end
+
+  defp verify_integration_spec(env, file) do
+    case Environments.read_file(env, file) do
+      {:ok, content} ->
+        if String.contains?(String.downcase(content), "verified"),
+          do: {:cont, :ok},
+          else:
+            {:halt,
+             {:error,
+              "Integration `#{file}` is not verified. Run the verify script against the app."}}
+
+      _ ->
+        {:halt, {:error, "Cannot read integration spec `#{file}`."}}
     end
   end
 end

@@ -21,29 +21,24 @@ defmodule CodeMySpec.Components.DependencyTree do
   def build([]), do: []
 
   def build(components) when is_list(components) do
-    sorted_components = topological_sort(components)
-
-    sorted_components
-    |> Enum.reduce(%{}, fn component, processed_map ->
-      # Build nested dependencies using only already-processed components
-      nested_dependencies =
-        case component.dependencies do
-          %Ecto.Association.NotLoaded{} ->
-            []
-
-          dependencies ->
-            dependencies
-            |> Enum.map(fn dep ->
-              # Get the processed version (with nested tree) or fall back to original
-              Map.get(processed_map, dep.id, dep)
-            end)
-        end
-
-      updated_component = %{component | dependencies: nested_dependencies}
-      Map.put(processed_map, component.id, updated_component)
-    end)
+    components
+    |> topological_sort()
+    |> Enum.reduce(%{}, &fold_processed_component/2)
     |> Map.values()
     |> Enum.sort_by(& &1.id)
+  end
+
+  defp fold_processed_component(component, processed_map) do
+    nested_dependencies = nested_deps(component.dependencies, processed_map)
+    updated_component = %{component | dependencies: nested_dependencies}
+    Map.put(processed_map, component.id, updated_component)
+  end
+
+  # Build nested dependencies using only already-processed components.
+  defp nested_deps(%Ecto.Association.NotLoaded{}, _processed_map), do: []
+
+  defp nested_deps(dependencies, processed_map) when is_list(dependencies) do
+    Enum.map(dependencies, &Map.get(processed_map, &1.id, &1))
   end
 
   @doc """
@@ -199,13 +194,14 @@ defmodule CodeMySpec.Components.DependencyTree do
         []
 
       dependencies ->
-        dependencies
-        |> Enum.map(fn dependency ->
-          case Map.get(component_map, dependency.id) do
-            nil -> dependency
-            found_component -> build_nested_tree(found_component, component_map, visited)
-          end
-        end)
+        Enum.map(dependencies, &resolve_dependency(&1, component_map, visited))
+    end
+  end
+
+  defp resolve_dependency(dependency, component_map, visited) do
+    case Map.get(component_map, dependency.id) do
+      nil -> dependency
+      found_component -> build_nested_tree(found_component, component_map, visited)
     end
   end
 end

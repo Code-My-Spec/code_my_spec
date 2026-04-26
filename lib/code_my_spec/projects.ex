@@ -4,9 +4,9 @@ defmodule CodeMySpec.Projects do
   """
 
   import Ecto.Query, warn: false
-  alias CodeMySpec.Repo
-
+  alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -252,8 +252,6 @@ defmodule CodeMySpec.Projects do
   end
 
   defp create_oauth_app(%Scope{} = scope, %Project{} = project) do
-    alias CodeMySpec.Oauth.Application
-
     plaintext_secret = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
 
     attrs = %{
@@ -264,23 +262,19 @@ defmodule CodeMySpec.Projects do
       secret: plaintext_secret
     }
 
-    case Repo.transaction(fn ->
-           case %Application{} |> Application.changeset(attrs) |> Repo.insert() do
-             {:ok, oauth_app} ->
-               case update_project(scope, project, %{oauth_application_id: oauth_app.id}) do
-                 {:ok, updated_project} ->
-                   Repo.preload(updated_project, :oauth_application, force: true)
-
-                 {:error, changeset} ->
-                   Repo.rollback(changeset)
-               end
-
-             {:error, changeset} ->
-               Repo.rollback(changeset)
-           end
-         end) do
+    case Repo.transaction(fn -> insert_and_link_oauth_app(scope, project, attrs) end) do
       {:ok, project} -> {:ok, project, plaintext_secret}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_and_link_oauth_app(scope, project, attrs) do
+    with {:ok, oauth_app} <- %Application{} |> Application.changeset(attrs) |> Repo.insert(),
+         {:ok, updated_project} <-
+           update_project(scope, project, %{oauth_application_id: oauth_app.id}) do
+      Repo.preload(updated_project, :oauth_application, force: true)
+    else
+      {:error, changeset} -> Repo.rollback(changeset)
     end
   end
 
@@ -290,7 +284,6 @@ defmodule CodeMySpec.Projects do
   """
   def regenerate_oauth_secret(%Scope{} = scope, %Project{} = project) do
     true = project.account_id == scope.active_account_id
-    alias CodeMySpec.Oauth.Application
 
     project = Repo.preload(project, :oauth_application, force: true)
 
@@ -324,16 +317,18 @@ defmodule CodeMySpec.Projects do
         {:ok, project}
 
       oauth_app ->
-        Repo.transaction(fn ->
-          case update_project(scope, project, %{oauth_application_id: nil}) do
-            {:ok, updated_project} ->
-              Repo.delete!(oauth_app)
-              %{updated_project | oauth_application: nil}
+        Repo.transaction(fn -> unlink_and_delete_oauth_app(scope, project, oauth_app) end)
+    end
+  end
 
-            {:error, changeset} ->
-              Repo.rollback(changeset)
-          end
-        end)
+  defp unlink_and_delete_oauth_app(scope, project, oauth_app) do
+    case update_project(scope, project, %{oauth_application_id: nil}) do
+      {:ok, updated_project} ->
+        Repo.delete!(oauth_app)
+        %{updated_project | oauth_application: nil}
+
+      {:error, changeset} ->
+        Repo.rollback(changeset)
     end
   end
 

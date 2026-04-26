@@ -94,26 +94,35 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     satisfaction_map = Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
 
     {updated_nodes, changed?} =
-      Enum.map_reduce(nodes, false, fn node, any_changed ->
-        if node.satisfied do
-          sources = Map.get(incoming, node_key(node), [])
-
-          any_unsatisfied =
-            Enum.any?(sources, fn source_key ->
-              Map.get(satisfaction_map, source_key, true) == false
-            end)
-
-          if any_unsatisfied do
-            {%{node | satisfied: false, details: Map.put(node.details || %{}, :reason, "prerequisites not yet satisfied")}, true}
-          else
-            {node, any_changed}
-          end
-        else
-          {node, any_changed}
-        end
-      end)
+      Enum.map_reduce(nodes, false, &maybe_unsatisfy_node(&1, &2, incoming, satisfaction_map))
 
     if changed?, do: do_clamp(updated_nodes, incoming), else: updated_nodes
+  end
+
+  defp maybe_unsatisfy_node(node, any_changed, _incoming, _satisfaction_map)
+       when not node.satisfied,
+       do: {node, any_changed}
+
+  defp maybe_unsatisfy_node(node, any_changed, incoming, satisfaction_map) do
+    sources = Map.get(incoming, node_key(node), [])
+
+    if any_unsatisfied?(sources, satisfaction_map),
+      do: {unsatisfy(node), true},
+      else: {node, any_changed}
+  end
+
+  defp any_unsatisfied?(sources, satisfaction_map) do
+    Enum.any?(sources, fn source_key ->
+      Map.get(satisfaction_map, source_key, true) == false
+    end)
+  end
+
+  defp unsatisfy(node) do
+    %{
+      node
+      | satisfied: false,
+        details: Map.put(node.details || %{}, :reason, "prerequisites not yet satisfied")
+    }
   end
 
   # -- Edge computation --
@@ -135,29 +144,30 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp component_tree_edges(ctx, config) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
-    |> Enum.flat_map(fn story ->
-      surface = Enum.find(ctx.components, &(&1.id == story.component_id))
+    |> Enum.flat_map(&edges_for_story_surface(&1, ctx, config))
+  end
 
-      if surface do
-        # Surface component edges
-        surface_edges = edges_for_component(surface, story, config)
+  defp edges_for_story_surface(story, ctx, config) do
+    case Enum.find(ctx.components, &(&1.id == story.component_id)) do
+      nil -> []
+      surface ->
+        edges_for_component(surface, story, config) ++
+          dep_edges_for_surface(surface, story, ctx, config)
+    end
+  end
 
-        # Direct dependency edges (contexts the surface depends on)
-        dep_edges =
-          case surface.dependencies do
-            %Ecto.Association.NotLoaded{} -> []
-            deps when is_list(deps) ->
-              Enum.flat_map(deps, fn dep ->
-                dep_comp = Enum.find(ctx.components, &(&1.id == dep.id))
-                if dep_comp, do: edges_for_component(dep_comp, story, config), else: []
-              end)
-          end
+  defp dep_edges_for_surface(surface, story, ctx, config) do
+    case surface.dependencies do
+      %Ecto.Association.NotLoaded{} -> []
+      deps when is_list(deps) -> Enum.flat_map(deps, &edges_for_dep(&1, story, ctx, config))
+    end
+  end
 
-        surface_edges ++ dep_edges
-      else
-        []
-      end
-    end)
+  defp edges_for_dep(dep, story, ctx, config) do
+    case Enum.find(ctx.components, &(&1.id == dep.id)) do
+      nil -> []
+      dep_comp -> edges_for_component(dep_comp, story, config)
+    end
   end
 
   defp edges_for_component(comp, story, config) do
@@ -189,53 +199,66 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Sibling deps (same parent) are handled by template instantiation.
   # Cross-context deps gate the dependent's first requirement.
   defp cross_context_dependency_edges(ctx, config) do
-    ctx.components
-    |> Enum.flat_map(fn comp ->
-      deps = case comp.dependencies do
-        %Ecto.Association.NotLoaded{} -> []
-        deps when is_list(deps) -> deps
-        _ -> []
-      end
+    Enum.flat_map(ctx.components, &edges_from_component_deps(&1, ctx, config))
+  end
 
-      Enum.flat_map(deps, fn dep ->
-        dep_comp = Enum.find(ctx.components, &(&1.id == dep.id))
+  defp edges_from_component_deps(comp, ctx, config) do
+    comp
+    |> component_deps()
+    |> Enum.flat_map(&cross_context_edge_for_dep(&1, comp, ctx, config))
+  end
 
-        if dep_comp do
-          dep_defs =
-            ComponentRegistry.get_requirements_for_type(dep_comp.type)
-            |> filter_definitions_by_config(config)
+  defp component_deps(comp) do
+    case comp.dependencies do
+      %Ecto.Association.NotLoaded{} -> []
+      deps when is_list(deps) -> deps
+      _ -> []
+    end
+  end
 
-          comp_defs =
-            ComponentRegistry.get_requirements_for_type(comp.type)
-            |> filter_definitions_by_config(config)
+  defp cross_context_edge_for_dep(dep, comp, ctx, config) do
+    with %_{} = dep_comp <- Enum.find(ctx.components, &(&1.id == dep.id)),
+         dep_terminal when not is_nil(dep_terminal) <- dep_terminal_def(dep_comp, config),
+         target when not is_nil(target) <- cross_context_target(comp, dep_comp, config),
+         false <- skip_cross_context?(comp, dep_comp) do
+      [
+        %{
+          from: {"component", dep_comp.id, dep_terminal.name},
+          to: {"component", comp.id, target.name}
+        }
+      ]
+    else
+      _ -> []
+    end
+  end
 
-          dep_terminal = List.last(dep_defs)
-          siblings? = comp.parent_component_id != nil and
-                      comp.parent_component_id == dep_comp.parent_component_id
+  defp dep_terminal_def(dep_comp, config) do
+    dep_comp.type
+    |> ComponentRegistry.get_requirements_for_type()
+    |> filter_definitions_by_config(config)
+    |> List.last()
+  end
 
-          # Siblings: gate implementation only. Cross-context: gate everything.
-          target =
-            if siblings? do
-              find_def(comp_defs, "implementation_file")
-            else
-              List.first(comp_defs)
-            end
+  defp cross_context_target(comp, dep_comp, config) do
+    comp_defs =
+      comp.type
+      |> ComponentRegistry.get_requirements_for_type()
+      |> filter_definitions_by_config(config)
 
-          # Skip cross-context edges for child components — parent_child_edges
-          # propagates ordering from the parent context to its children.
-          skip? = not siblings? and comp.parent_component_id != nil
+    if siblings?(comp, dep_comp),
+      do: find_def(comp_defs, "implementation_file"),
+      else: List.first(comp_defs)
+  end
 
-          if dep_terminal && target && not skip? do
-            [%{from: {"component", dep_comp.id, dep_terminal.name},
-               to: {"component", comp.id, target.name}}]
-          else
-            []
-          end
-        else
-          []
-        end
-      end)
-    end)
+  defp siblings?(comp, dep_comp) do
+    comp.parent_component_id != nil and
+      comp.parent_component_id == dep_comp.parent_component_id
+  end
+
+  # Skip cross-context edges for child components — parent_child_edges
+  # propagates ordering from the parent context to its children.
+  defp skip_cross_context?(comp, dep_comp) do
+    not siblings?(comp, dep_comp) and comp.parent_component_id != nil
   end
 
   # Cross-entity: project.issues_resolved → story.component_linked
@@ -367,22 +390,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # :parent and :self nodes map to the component itself.
   # :child nodes map to EACH child — one key per child per template ID.
   defp build_id_map(template, component, children) do
-    Enum.flat_map(template, fn def ->
-      case def.node_scope do
-        :parent ->
-          [{def.id, [{"component", component.id, def.name}]}]
-
-        :self ->
-          [{def.id, [{"component", component.id, def.name}]}]
-
-        :child ->
-          keys = Enum.map(children, fn child ->
-            {"component", child.id, def.name}
-          end)
-          [{def.id, keys}]
-      end
-    end)
+    template
+    |> Enum.flat_map(&id_map_entries(&1, component, children))
     |> Map.new()
+  end
+
+  defp id_map_entries(def, component, _children) when def.node_scope in [:parent, :self] do
+    [{def.id, [{"component", component.id, def.name}]}]
+  end
+
+  defp id_map_entries(def, _component, children) do
+    keys = Enum.map(children, &{"component", &1.id, def.name})
+    [{def.id, keys}]
   end
 
   # Build edges by resolving template prerequisite IDs to real node keys.
@@ -605,21 +624,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp find_priority_from_parent(nil, _parent_map, acc), do: acc
 
   defp find_priority_from_parent(component_id, parent_map, acc) do
-    case Map.get(acc, component_id) do
-      nil ->
-        parent_id = Map.get(parent_map, component_id)
-        if parent_id do
-          acc = find_priority_from_parent(parent_id, parent_map, acc)
-          case Map.get(acc, parent_id) do
-            nil -> acc
-            priority -> Map.put(acc, component_id, priority)
-          end
-        else
-          acc
-        end
+    if Map.has_key?(acc, component_id),
+      do: acc,
+      else: walk_to_parent(component_id, parent_map, acc)
+  end
 
-      _priority ->
-        acc
+  defp walk_to_parent(component_id, parent_map, acc) do
+    case Map.get(parent_map, component_id) do
+      nil -> acc
+      parent_id -> inherit_priority(component_id, parent_id, parent_map, acc)
+    end
+  end
+
+  defp inherit_priority(component_id, parent_id, parent_map, acc) do
+    acc = find_priority_from_parent(parent_id, parent_map, acc)
+
+    case Map.get(acc, parent_id) do
+      nil -> acc
+      priority -> Map.put(acc, component_id, priority)
     end
   end
 
