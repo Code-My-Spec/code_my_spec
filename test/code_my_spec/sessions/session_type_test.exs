@@ -43,6 +43,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ResearchTopic,
       AgentTasks.StartImplementation,
       AgentTasks.TechnicalStrategy,
+      AgentTasks.ThreeAmigos,
       AgentTasks.TriageIssues,
       AgentTasks.WriteBddSpecs
     ]
@@ -83,6 +84,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ResearchTopic",
       "StartImplementation",
       "TechnicalStrategy",
+      "ThreeAmigos",
       "TriageIssues",
       "WriteBddSpecs"
     ]

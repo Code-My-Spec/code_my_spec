@@ -29,7 +29,13 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
 
     # Set local_path so the WorkingDirScope plug can find this project
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
-    scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
+
+    scope = %{
+      scope
+      | active_project: project,
+        environment: Environment.new(:local, tmp_dir),
+        cwd: tmp_dir
+    }
 
     external_id = "workflow-#{System.unique_integer([:positive])}"
     {:ok, session} = Sessions.find_or_create_session(scope, external_id)
@@ -101,6 +107,18 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     File.write!(Path.join(test_support, "#{app}_spex.ex"), "defmodule MyAppSpex do\n  use Boundary\nend")
     File.write!(Path.join(test_support, "#{app}_test_boundary.ex"), "defmodule MyAppTest do\n  use Boundary\nend")
 
+    # SpexCase — validator requires defmodule <App>Spex.Case + use SexySpex + import Phoenix.LiveViewTest
+    File.write!(
+      Path.join(test_support, "#{app}_spex_case.ex"),
+      """
+      defmodule MyAppSpex.Case do
+        use ExUnit.CaseTemplate
+        use SexySpex
+        import Phoenix.LiveViewTest
+      end
+      """
+    )
+
     # TestSupportNamespace
     File.write!(Path.join(test_support, "conn_case.ex"), "defmodule MyAppTest.ConnCase do\nend")
     File.write!(Path.join(test_support, "data_case.ex"), "defmodule MyAppTest.DataCase do\nend")
@@ -147,6 +165,10 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
       - lib/#{app}/application.ex
       - lib/#{app}_web/endpoint.ex
     """)
+
+    # ProjectStructure — required spec dirs
+    File.mkdir_p!(Path.join([tmp_dir, base, "spec", app]))
+    File.mkdir_p!(Path.join([tmp_dir, base, "spec", "#{app}_web"]))
 
     :ok
   end

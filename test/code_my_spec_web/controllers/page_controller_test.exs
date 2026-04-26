@@ -1,17 +1,19 @@
 defmodule CodeMySpecWeb.PageControllerTest do
   use CodeMySpecTest.ConnCase
 
-  test "GET /", %{conn: conn} do
-    conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "Keep your architecture."
-  end
-
-  test "primary CTA points unauthenticated visitors to registration", %{conn: conn} do
+  test "GET / renders the marketing home page", %{conn: conn} do
     conn = get(conn, ~p"/")
     body = html_response(conn, 200)
 
-    assert body =~ "Get started free"
-    assert body =~ ~s|href="/users/register"|
-    refute body =~ "Open the workspace"
+    # Hero copy from the current home.html.heex.
+    assert body =~ "Run your entire software business"
+    assert body =~ "from your terminal."
+  end
+
+  test "home page links to the install section", %{conn: conn} do
+    conn = get(conn, ~p"/")
+    body = html_response(conn, 200)
+
+    assert body =~ ~s|href="#install-section"|
   end
 end

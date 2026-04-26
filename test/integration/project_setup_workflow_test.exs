@@ -10,6 +10,7 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
 
   import CodeMySpec.Integration.WorkflowHelpers
 
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Sessions
@@ -36,7 +37,7 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
 
     # Step 2: start_task → all 12 steps unchecked (empty tmp dir)
     prompt = call_start_task_text!(frame, req1, session_id)
-    assert prompt =~ "Project Setup (0/12)"
+    assert prompt =~ "Project Setup (0/13)"
     assert prompt =~ "- [ ] **Claude md**"
     assert prompt =~ "Task ID:"
 
@@ -46,21 +47,25 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     assert task
     task_id = task.id
 
-    # Step 3: simulate agent completing one step — write CLAUDE.md with managed section
+    # Step 3: simulate agent completing one step — write CLAUDE.md with managed section.
+    # Since 403b3cc, setup checks read from File records (sync-time), not the
+    # filesystem directly — sync changed files after writing.
     claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
     File.write!(claude_md_path, "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
+    {:ok, _} = FileSync.sync_changed(scope, base_dir: tmp_dir)
 
-    # Step 4: start_task again → Claude md now shows [x], count is 1/12
+    # Step 4: start_task again → Claude md now shows [x], count is 1/13
     prompt2 = call_start_task_text!(frame, req1, session_id)
-    assert prompt2 =~ "Project Setup (1/12)"
+    assert prompt2 =~ "Project Setup (1/13)"
     assert prompt2 =~ "- [x] **Claude md**"
 
     # Step 5: seed all remaining steps in the tmp dir
     seed_all_setup_steps(tmp_dir)
+    {:ok, _} = FileSync.sync_changed(scope, base_dir: tmp_dir)
 
-    # Step 6: start_task again → all 12 steps now satisfied
+    # Step 6: start_task again → all 13 steps now satisfied
     prompt3 = call_start_task_text!(frame, req1, session_id)
-    assert prompt3 =~ "Project Setup (12/12)"
+    assert prompt3 =~ "Project Setup (13/13)"
     refute prompt3 =~ "- [ ] "
 
     # Step 7: stop hook → evaluates task → passes → allows stop (not in continuous mode)
