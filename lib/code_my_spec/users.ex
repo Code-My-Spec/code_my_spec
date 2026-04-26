@@ -98,10 +98,17 @@ defmodule CodeMySpec.Users do
         {:ok, get_user!(user_id), :existing}
 
       nil ->
-        case get_user_by_email(email) do
-          %User{} = user -> {:ok, user, :existing}
-          nil -> register_oauth_user(%{email: email})
-        end
+        find_or_register_by_email(email)
+    end
+  end
+
+  defp find_or_register_by_email(nil), do: {:error, :missing_email}
+  defp find_or_register_by_email(""), do: {:error, :missing_email}
+
+  defp find_or_register_by_email(email) when is_binary(email) do
+    case get_user_by_email(email) do
+      %User{} = user -> {:ok, user, :existing}
+      nil -> register_oauth_user(%{email: email})
     end
   end
 

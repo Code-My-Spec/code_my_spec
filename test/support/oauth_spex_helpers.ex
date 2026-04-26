@@ -38,6 +38,24 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   clean up the file. Returns `:ok`.
   """
   def build_google_cassette!(cassette_name, user_claims) do
+    build_google_cassette_with_token!(cassette_name, user_claims, fn id_token ->
+      %{
+        "access_token" => "ya29.test_access_token",
+        "expires_in" => 3599,
+        "token_type" => "Bearer",
+        "id_token" => id_token
+      }
+    end)
+  end
+
+  @doc """
+  Variant of `build_google_cassette!/2` that lets the caller shape the token
+  endpoint response. Used by criterion 5369 to inject a broken
+  (`access_token: ""`) response and verify the controller still logs the
+  user in.
+  """
+  def build_google_cassette_with_token!(cassette_name, user_claims, token_response_fn)
+      when is_function(token_response_fn, 1) do
     {pem, n, e} = generate_rsa_keypair()
     client_id = Application.fetch_env!(:code_my_spec, :google_client_id)
     id_token = sign_id_token(pem, user_claims, client_id)
@@ -47,7 +65,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
       "version" => "2.0",
       "interactions" => [
         openid_configuration_interaction(),
-        token_interaction(id_token),
+        token_interaction_with_response(token_response_fn.(id_token)),
         jwks_interaction(jwk)
       ]
     }
@@ -225,7 +243,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
     }
   end
 
-  defp token_interaction(id_token) do
+  defp token_interaction_with_response(body_json) do
     %{
       "recorded_at" => "2026-04-25T23:00:01Z",
       "request" => %{
@@ -240,12 +258,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
         "status" => 200,
         "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
         "body_type" => "json",
-        "body_json" => %{
-          "access_token" => "ya29.test_access_token",
-          "expires_in" => 3599,
-          "token_type" => "Bearer",
-          "id_token" => id_token
-        }
+        "body_json" => body_json
       }
     }
   end

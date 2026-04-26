@@ -66,14 +66,15 @@ defmodule CodeMySpecSpex.Story602.Criterion5368Spex do
 
         case result do
           {:ok, _view, html} ->
-            # The settings template renders "Connected" (in green) when
-            # @google_connected is true, and "Not connected" when it is false.
-            assert html =~ "Connected",
-                   "expected the settings page to show Google as Connected after signup, " <>
-                     "but 'Connected' was not found in the rendered HTML"
+            # The Google block renders a "Disconnect" link when connected
+            # and a "Connect Google" CTA when not. Anchor on the Google-specific
+            # CTA so other providers (GitHub, also unconnected on a fresh user)
+            # don't pollute the assertion via the shared "Not connected" label.
+            refute html =~ "Connect Google",
+                   "expected no \"Connect Google\" CTA after the Google integration is saved"
 
-            refute html =~ "Not connected",
-                   "expected 'Not connected' to be absent when Google integration is saved"
+            assert html =~ "Disconnect",
+                   "expected a Disconnect link in the Google block after signup"
 
             :ok
 

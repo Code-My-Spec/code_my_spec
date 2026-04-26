@@ -20,7 +20,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
 
   use CodeMySpecWeb, :controller
 
-  alias CodeMySpec.{Accounts, Integrations, Users}
+  alias CodeMySpec.{Accounts, Integrations, UserPreferences, Users}
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
 
@@ -127,7 +127,8 @@ defmodule CodeMySpecWeb.IntegrationsController do
          {:ok, user, status} <-
            Users.find_or_register_oauth_user(provider, normalized_user) do
       scope = Scope.for_user(user)
-      Accounts.ensure_personal_account(scope)
+      account = Accounts.ensure_personal_account(scope)
+      {:ok, _} = UserPreferences.select_active_account(scope, account.id)
       Integrations.save_integration(scope, provider, token, normalized_user)
 
       conn =
@@ -139,6 +140,15 @@ defmodule CodeMySpecWeb.IntegrationsController do
 
       UserAuth.log_in_user(conn, user, %{"remember_me" => "true"})
     else
+      {:error, :missing_email} ->
+        conn
+        |> put_flash(
+          :error,
+          "We couldn't get an email address from #{provider_name(provider)}. " <>
+            "Try a different sign-in method or grant email access."
+        )
+        |> redirect(to: ~p"/users/log-in")
+
       {:error, %Ecto.Changeset{} = changeset} ->
         Logger.error("Social login registration failed: #{inspect(changeset)}")
 
