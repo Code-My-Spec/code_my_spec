@@ -69,6 +69,6 @@ defmodule CodeMySpecSpex.Story603.Criterion5373Spex do
       _other -> Phoenix.LiveViewTest.assert_redirect(view)
     end
   rescue
-    e in [ExUnit.AssertionError] -> raise e
+    e in [ExUnit.AssertionError] -> reraise e, __STACKTRACE__
   end
 end

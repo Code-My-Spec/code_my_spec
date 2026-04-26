@@ -160,7 +160,7 @@ defmodule CodeMySpec.Code.ElixirAstTest do
 
       # Functions with default arguments may appear with different arities
       greet_functions = Enum.filter(functions, fn f -> f.name == :greet end)
-      assert length(greet_functions) >= 1
+      assert greet_functions != []
     end
 
     test "handles functions with guards", %{tmp_dir: tmp_dir} do
@@ -252,7 +252,7 @@ defmodule CodeMySpec.Code.ElixirAstTest do
 
       # Validate describe_blocks field is populated
       addition_test = Enum.find(tests, fn t -> t.description =~ "addition" end)
-      assert length(addition_test.describe_blocks) > 0
+      assert addition_test.describe_blocks != []
       assert hd(addition_test.describe_blocks) =~ "addition"
     end
 
@@ -303,7 +303,7 @@ defmodule CodeMySpec.Code.ElixirAstTest do
       assert {:ok, tests} = ElixirAst.get_test_assertions(path)
 
       # Should find both the doctest and regular test
-      assert length(tests) >= 1
+      assert tests != []
       assert Enum.any?(tests, fn t -> t.test_name == "simple test" end)
     end
 

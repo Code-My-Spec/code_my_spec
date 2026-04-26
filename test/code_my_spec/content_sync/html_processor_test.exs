@@ -371,7 +371,7 @@ defmodule CodeMySpec.ContentSync.HtmlProcessorTest do
       assert result.parse_errors.error_type == "DisallowedContent"
       assert result.parse_errors.message == "HTML contains disallowed JavaScript content"
       assert is_list(result.parse_errors.violations)
-      assert length(result.parse_errors.violations) > 0
+      assert result.parse_errors.violations != []
     end
 
     test "detects script tag violation type" do

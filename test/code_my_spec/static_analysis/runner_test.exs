@@ -49,7 +49,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       analyzers = Runner.list_analyzers()
 
       assert is_list(analyzers)
-      assert length(analyzers) > 0
+      assert analyzers != []
 
       Enum.each(analyzers, fn analyzer ->
         assert is_atom(analyzer)
@@ -138,7 +138,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
       {:ok, problems} = Runner.run(scope, :spec_alignment)
 
-      assert length(problems) > 0
+      assert problems != []
 
       Enum.each(problems, fn problem ->
         assert problem.project_id == scope.active_project_id
@@ -274,7 +274,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
         # Should have problems from spec_alignment (at minimum)
         # Other analyzers may not be available without deps
-        assert length(problems) > 0, "Expected at least one problem"
+        assert problems != [], "Expected at least one problem"
         assert Enum.any?(problems, fn p -> p.source == "spec_alignment" end)
       end
     end
@@ -298,7 +298,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         assert is_list(problems)
 
         # Problems shouldn't be from SpecAlignment since no spec directory
-        if length(problems) > 0 do
+        if problems != [] do
           refute Enum.any?(problems, fn p -> p.source == "spec_alignment" end)
         end
       end

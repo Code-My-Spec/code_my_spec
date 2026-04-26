@@ -178,15 +178,15 @@ defmodule CodeMySpec.Stories.Markdown do
     description_section = story.description
 
     criteria_section =
-      if length(story.acceptance_criteria) > 0 do
+      if story.acceptance_criteria == [] do
+        ""
+      else
         criteria_list =
           story.acceptance_criteria
           |> Enum.map(&"- #{&1}")
           |> Enum.join("\n")
 
         "**Acceptance Criteria**\n#{criteria_list}"
-      else
-        ""
       end
 
     [title_section, description_section, criteria_section]

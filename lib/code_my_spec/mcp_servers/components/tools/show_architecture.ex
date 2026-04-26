@@ -46,7 +46,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
 
     components_with_stories =
       Enum.count(architecture, fn %{component: c} ->
-        length(c.stories || []) > 0
+        (c.stories || []) != []
       end)
 
     total_dependencies =
@@ -101,7 +101,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ShowArchitecture do
       metrics: %{
         story_count: length(component.stories || []),
         dependency_count: length(component.outgoing_dependencies || []),
-        has_stories: length(component.stories || []) > 0
+        has_stories: (component.stories || []) != []
       }
     }
   end

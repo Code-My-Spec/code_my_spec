@@ -24,7 +24,7 @@ defmodule CodeMySpec.McpServers.StoriesServerTest do
       components = StoriesServer.__components__()
 
       # Should have components for tools, resources, and prompts
-      assert length(components) > 0
+      assert components != []
 
       # Check we have tools
       tools = StoriesServer.__components__(:tool)
@@ -95,7 +95,7 @@ defmodule CodeMySpec.McpServers.StoriesServerTest do
     test "protocol versions are supported" do
       versions = StoriesServer.supported_protocol_versions()
       assert is_list(versions)
-      assert length(versions) > 0
+      assert versions != []
       # Should support recent MCP protocol versions
       assert Enum.any?(versions, &String.contains?(&1, "2024"))
     end

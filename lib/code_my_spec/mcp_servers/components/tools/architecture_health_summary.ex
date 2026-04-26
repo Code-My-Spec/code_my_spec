@@ -45,7 +45,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
     # Components with stories (entry points)
     entry_components =
       Enum.filter(components, fn c ->
-        length(c.stories || []) > 0
+        (c.stories || []) != []
       end)
 
     # Get all component IDs that are dependencies of entry points
@@ -59,7 +59,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary do
 
     dependency_count =
       Enum.count(components, fn c ->
-        length(c.stories || []) == 0 and MapSet.member?(dependency_ids, c.id)
+        (c.stories || []) == [] and MapSet.member?(dependency_ids, c.id)
       end)
 
     orphaned_count = total_components - entry_count - dependency_count

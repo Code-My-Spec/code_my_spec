@@ -151,7 +151,7 @@ defmodule CodeMySpec.BddSpecs.Scenario do
   """
   @spec has_steps?(t()) :: boolean()
   def has_steps?(%__MODULE__{given_steps: given, when_steps: when_s, then_steps: then_s}) do
-    length(given) > 0 or length(when_s) > 0 or length(then_s) > 0
+    given != [] or when_s != [] or then_s != []
   end
 
   @doc """

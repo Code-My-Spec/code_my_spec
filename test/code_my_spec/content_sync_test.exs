@@ -142,7 +142,7 @@ defmodule CodeMySpec.ContentSyncTest do
 
       # Verify content was synced to database
       content_admin = ContentAdmin.list_all_content(scope)
-      assert length(content_admin) > 0
+      assert content_admin != []
     end
   end
 

@@ -85,7 +85,7 @@ defmodule CodeMySpec.Components.ComponentStatus do
   """
   def determine_test_status(failing_tests, actual_files, expected_test_file) do
     has_test_file = expected_test_file in actual_files
-    has_failing_tests = length(failing_tests) > 0
+    has_failing_tests = failing_tests != []
 
     cond do
       not has_test_file -> :not_run

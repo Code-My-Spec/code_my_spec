@@ -164,7 +164,7 @@ defmodule Mix.Tasks.GenerateDemo do
       end)
 
     # Inject all collected routes at once
-    if length(results) > 0 do
+    if results != [] do
       inject_routes_to_router(results)
     end
 
@@ -226,7 +226,7 @@ defmodule Mix.Tasks.GenerateDemo do
     end
   end
 
-  defp inject_routes_to_router(routes) when length(routes) > 0 do
+  defp inject_routes_to_router([_ | _] = routes) do
     router_path = find_router_file()
 
     case File.read(router_path) do

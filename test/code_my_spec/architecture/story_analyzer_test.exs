@@ -139,7 +139,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
 
       upload_pattern = Enum.find(patterns, &(&1.pattern == "File Upload"))
       assert upload_pattern
-      assert length(upload_pattern.story_ids) >= 1
+      assert upload_pattern.story_ids != []
     end
 
     test "detects notification pattern" do
@@ -166,7 +166,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzerTest do
 
       contexts = StoryAnalyzer.suggest_contexts(stories, app_name: "Fuellytics")
 
-      assert length(contexts) >= 1
+      assert contexts != []
       assert Enum.all?(contexts, &String.starts_with?(&1.name, "Fuellytics."))
     end
 

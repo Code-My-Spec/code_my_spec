@@ -45,8 +45,7 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListCustomDimensions do
     end
   end
 
-  defp format_response(%{customDimensions: dimensions})
-       when is_list(dimensions) and length(dimensions) > 0 do
+  defp format_response(%{customDimensions: [_ | _] = dimensions}) do
     Response.tool()
     |> Response.text(format_dimensions(dimensions))
   end

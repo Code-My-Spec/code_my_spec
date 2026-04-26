@@ -61,8 +61,7 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListKeyEvents do
     end
   end
 
-  defp format_response(%{keyEvents: key_events} = result)
-       when is_list(key_events) and length(key_events) > 0 do
+  defp format_response(%{keyEvents: [_ | _] = key_events} = result) do
     text = format_key_events(key_events)
 
     text =

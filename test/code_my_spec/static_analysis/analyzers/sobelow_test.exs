@@ -136,10 +136,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     test "returns {:ok, list(Problem.t())} when sobelow runs", %{scope: scope} do
       use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
-        assert Enum.count(problems) > 0
+        assert not Enum.empty?(problems)
 
         assert is_list(problems)
-        assert Enum.count(problems) > 0
+        assert not Enum.empty?(problems)
 
         Enum.each(problems, fn problem ->
           assert %Problem{} = problem
@@ -151,7 +151,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     test "sets source to \"sobelow\" for all problems", %{scope: scope} do
       use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
-        assert Enum.count(problems) > 0
+        assert not Enum.empty?(problems)
 
         Enum.each(problems, fn problem ->
           assert problem.source == "sobelow"
@@ -163,7 +163,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     test "sets source_type to :static_analysis for all problems", %{scope: scope} do
       use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
-        assert Enum.count(problems) > 0
+        assert not Enum.empty?(problems)
 
         Enum.each(problems, fn problem ->
           assert problem.source_type == :static_analysis
@@ -175,7 +175,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     test "sets category to \"security\" for all problems", %{scope: scope} do
       use_cmd_cassette "static_analysis_sobelow_run", ignore: [[:opts, :cd]] do
         {:ok, problems} = Sobelow.run(scope, [])
-        assert Enum.count(problems) > 0
+        assert not Enum.empty?(problems)
 
         Enum.each(problems, fn problem ->
           assert problem.category == "security"

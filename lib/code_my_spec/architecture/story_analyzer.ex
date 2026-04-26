@@ -157,7 +157,7 @@ defmodule CodeMySpec.Architecture.StoryAnalyzer do
         suggestion: pattern_def.suggestion
       }
     end)
-    |> Enum.filter(&(length(&1.story_ids) > 0))
+    |> Enum.filter(&(&1.story_ids != []))
     |> Enum.sort_by(&length(&1.story_ids), :desc)
   end
 

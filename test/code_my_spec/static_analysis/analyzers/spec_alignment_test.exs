@@ -132,7 +132,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
       assert Enum.any?(problems, fn p -> p.message =~ "missing_function/1" end)
     end
 
@@ -167,7 +167,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
       assert Enum.any?(problems, fn p -> p.message =~ "extra_function" end)
     end
 
@@ -211,7 +211,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
 
       assert Enum.any?(problems, fn p ->
                p.message =~ "greet/1" and p.message =~ "Type signature mismatch"
@@ -279,7 +279,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
 
       assert Enum.any?(problems, fn p ->
                p.message =~ "test assertion" and p.message =~ "non-empty string"
@@ -350,7 +350,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
       assert Enum.any?(problems, fn p -> p.message =~ "Extra test found" end)
     end
 
@@ -548,7 +548,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
       assert Enum.all?(problems, fn p -> p.source == "spec_alignment" end)
     end
 
@@ -584,7 +584,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
       assert Enum.all?(problems, fn p -> p.source_type == :static_analysis end)
     end
 
@@ -664,7 +664,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
       assert {:ok, problems} = SpecAlignment.run(scope, [])
 
-      assert length(problems) > 0
+      assert problems != []
       assert Enum.all?(problems, fn p -> is_binary(p.file_path) end)
     end
 

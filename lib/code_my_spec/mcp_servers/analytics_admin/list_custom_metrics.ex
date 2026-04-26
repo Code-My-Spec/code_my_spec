@@ -45,8 +45,7 @@ defmodule CodeMySpec.McpServers.AnalyticsAdmin.Tools.ListCustomMetrics do
     end
   end
 
-  defp format_response(%{customMetrics: metrics})
-       when is_list(metrics) and length(metrics) > 0 do
+  defp format_response(%{customMetrics: [_ | _] = metrics}) do
     Response.tool()
     |> Response.text(format_metrics(metrics))
   end

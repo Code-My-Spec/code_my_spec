@@ -108,7 +108,7 @@ defmodule CodeMySpec.Stories.RemoteClientTest do
         titles = RemoteClient.list_story_titles(scope, plug: plug, token: token)
         assert is_list(titles)
 
-        if length(titles) > 0 do
+        if titles != [] do
           first = hd(titles)
           assert Map.has_key?(first, "id")
           assert Map.has_key?(first, "title")

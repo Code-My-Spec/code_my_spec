@@ -112,17 +112,17 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
     header = "**#{comp["name"]}** (#{comp["type"]}) - #{comp["description"]}"
 
     stories_section =
-      if length(comp["stories"]) > 0 do
-        "\n  Stories:\n#{stories_text}"
-      else
+      if comp["stories"] == [] do
         "\n  No stories"
+      else
+        "\n  Stories:\n#{stories_text}"
       end
 
     deps_section =
-      if length(comp["dependencies"]) > 0 do
-        "\n  Dependencies:\n#{deps_text}"
-      else
+      if comp["dependencies"] == [] do
         ""
+      else
+        "\n  Dependencies:\n#{deps_text}"
       end
 
     "#{header}#{stories_section}#{deps_section}"
@@ -132,11 +132,11 @@ defmodule CodeMySpec.McpServers.Components.Tools.ReviewContextDesign do
     stories
     |> Enum.map(fn story ->
       criteria =
-        if length(story["acceptance_criteria"]) > 0 do
+        if story["acceptance_criteria"] == [] do
+          ""
+        else
           criteria_list = Enum.map(story["acceptance_criteria"], &"      - #{&1}")
           "\n    Acceptance Criteria:\n#{Enum.join(criteria_list, "\n")}"
-        else
-          ""
         end
 
       "    - **#{story["title"]}**: #{story["description"]}#{criteria}"

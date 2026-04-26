@@ -298,7 +298,7 @@ defmodule CodeMySpec.Accounts.AccountsRepositoryTest do
       # Test by_type query
       type_query = AccountsRepository.by_type(:team)
       type_results = Repo.all(type_query)
-      assert length(type_results) >= 1
+      assert type_results != []
 
       # Test with_preloads query
       preload_query = AccountsRepository.with_preloads([:members])

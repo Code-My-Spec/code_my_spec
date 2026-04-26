@@ -21,7 +21,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
 
       %{nodes: nodes} = Requirements.project_graph(scope)
 
-      assert length(nodes) > 0
+      assert nodes != []
 
       Enum.each(nodes, fn node ->
         assert %Requirement{} = node

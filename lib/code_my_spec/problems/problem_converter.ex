@@ -27,7 +27,7 @@ defmodule CodeMySpec.Problems.ProblemConverter do
       iex> problem.severity
       :error
   """
-  @spec from_credo(map()) :: %Problem{}
+  @spec from_credo(map()) :: Problem.t()
   def from_credo(credo_data) do
     %Problem{
       severity: map_credo_severity(credo_data[:priority] || credo_data["priority"]),
@@ -67,7 +67,7 @@ defmodule CodeMySpec.Problems.ProblemConverter do
       iex> problem.severity
       :warning
   """
-  @spec from_compiler(map()) :: %Problem{}
+  @spec from_compiler(map()) :: Problem.t()
   def from_compiler(compiler_data) do
     message = compiler_data[:message] || compiler_data["message"]
 
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Problems.ProblemConverter do
       iex> problem.severity
       :error
   """
-  @spec from_test_failure(CodeMySpec.Tests.TestError.t() | map()) :: %Problem{}
+  @spec from_test_failure(CodeMySpec.Tests.TestError.t() | map()) :: Problem.t()
   def from_test_failure(%CodeMySpec.Tests.TestError{} = test_error) do
     %Problem{
       severity: :error,
