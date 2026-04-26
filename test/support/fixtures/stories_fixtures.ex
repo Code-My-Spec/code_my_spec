@@ -16,7 +16,10 @@ defmodule CodeMySpec.StoriesFixtures do
         locked_at: ~U[2025-07-17 12:48:00Z],
         priority: 42,
         status: :in_progress,
-        title: Faker.Person.first_name() <> " " <> Faker.Person.last_name()
+        # Faker.Person names like "O'Kon" contain apostrophes that the LiveView
+        # HTML-escapes to `&#39;`, breaking `assert html =~ story.title` in
+        # tests that exercise the rendered page. Lorem words are ASCII-only.
+        title: "Story #{Faker.Lorem.word()} #{System.unique_integer([:positive])}"
       })
 
     {:ok, story} = CodeMySpec.Stories.create_story(scope, attrs)
