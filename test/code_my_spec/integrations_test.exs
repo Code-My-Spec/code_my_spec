@@ -184,6 +184,68 @@ defmodule CodeMySpec.IntegrationsTest do
     end
   end
 
+  describe "Google login cassette shape (one-time recording)" do
+    # Records a real Google OIDC login flow into
+    # test/cassettes/oauth/google_login_shape.json — captures the actual
+    # response shapes from openid-configuration, the token endpoint, and JWKS.
+    # The id_token + JWKS keys are scrubbed to <TEST_*_PLACEHOLDER>; spex
+    # tests load this template and inject a per-test id_token signed with a
+    # fresh RSA keypair. This way the cassette has real Google response shape
+    # forever (catches drift) without committing time-bound real id_tokens.
+    #
+    # To record (re-record):
+    #   1. delete test/cassettes/oauth/google_login_shape.json
+    #   2. set TEST_GOOGLE_REFRESH_TOKEN to a fresh refresh_token
+    #   3. mix test --only record_google_login_shape
+    #
+    # Without the env var the test is excluded; without the cassette the
+    # spex tests that depend on it fail loudly.
+    @tag :record_google_login_shape
+    test "captures openid-configuration + token endpoint + JWKS in one cassette" do
+      refresh_token =
+        System.get_env("TEST_GOOGLE_REFRESH_TOKEN") ||
+          flunk("TEST_GOOGLE_REFRESH_TOKEN required to re-record the shape cassette")
+
+      client_id = Application.fetch_env!(:code_my_spec, :google_client_id)
+      client_secret = Application.fetch_env!(:code_my_spec, :google_client_secret)
+
+      with_cassette "google_login_shape", shape_cassette_opts(), fn plug ->
+        # 1. openid-configuration discovery
+        {:ok, _} = Req.get(plug: plug, url: "https://accounts.google.com/.well-known/openid-configuration")
+
+        # 2. Token endpoint — using grant_type=refresh_token gives us the
+        # same response shape Google returns for grant_type=authorization_code
+        # (access_token + id_token + scope + expires_in). Match on
+        # method+uri only, so the spex tests' POST body doesn't have to
+        # match this body.
+        body =
+          URI.encode_query(%{
+            "grant_type" => "refresh_token",
+            "refresh_token" => refresh_token,
+            "client_id" => client_id,
+            "client_secret" => client_secret
+          })
+
+        {:ok, _} =
+          Req.post(
+            plug: plug,
+            url: "https://oauth2.googleapis.com/token",
+            body: body,
+            headers: [{"content-type", "application/x-www-form-urlencoded"}]
+          )
+
+        # 3. JWKS
+        {:ok, _} = Req.get(plug: plug, url: "https://www.googleapis.com/oauth2/v3/certs")
+      end
+
+      shape_path = Path.join(@cassette_dir, "google_login_shape.json")
+      assert File.exists?(shape_path), "shape cassette must be written"
+
+      shape = shape_path |> File.read!() |> Jason.decode!()
+      assert length(shape["interactions"]) == 3
+    end
+  end
+
   # Test Helpers
 
   defp create_test_integration(scope, provider, overrides \\ []) do
@@ -226,6 +288,32 @@ defmodule CodeMySpec.IntegrationsTest do
         {~r/"access_token"\s*:\s*"[^"]+"/, ~s("access_token":"<REDACTED>")},
         {~r/"refresh_token"\s*:\s*"[^"]+"/, ~s("refresh_token":"<REDACTED>")},
         {~r/"id_token"\s*:\s*"[^"]+"/, ~s("id_token":"<REDACTED>")}
+      ]
+    ]
+  end
+
+  # Scrub real shape recording → swap id_token + JWKS key material for
+  # placeholder strings the build_google_cassette_from_shape! helper
+  # injects per-test values into.
+  defp shape_cassette_opts do
+    [
+      cassette_dir: @cassette_dir,
+      mode: :record,
+      match_requests_on: [:method, :uri],
+      filter_request_headers: ["authorization", "cookie"],
+      filter_response_headers: ["set-cookie"],
+      filter_sensitive_data: [
+        # form-encoded request body
+        {~r/refresh_token=[^&\s"]+/, "refresh_token=<REDACTED>"},
+        {~r/client_secret=[^&\s"]+/, "client_secret=<REDACTED>"},
+        # JSON response body — token endpoint returns these
+        {~r/"access_token"\s*:\s*"[^"]+"/, ~s("access_token":"<REDACTED>")},
+        {~r/"refresh_token"\s*:\s*"[^"]+"/, ~s("refresh_token":"<REDACTED>")},
+        {~r/"id_token"\s*:\s*"[^"]+"/, ~s("id_token":"<TEST_ID_TOKEN_PLACEHOLDER>")},
+        # JWKS — replace `n` (modulus) values with placeholder so test-time
+        # helper can inject our test public key. `kid`, `kty`, `alg`,
+        # `use`, `e` are stable structure that's safe to keep.
+        {~r/"n"\s*:\s*"[^"]+"/, ~s("n":"<TEST_JWK_N_PLACEHOLDER>")}
       ]
     ]
   end

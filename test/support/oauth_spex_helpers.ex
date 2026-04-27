@@ -3,47 +3,36 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   Shared helpers for Story 602 BDD specs that exercise the OAuth callback surface.
 
   Provides:
-  - `build_google_cassette!/2` — generates a fresh RSA keypair, signs a JWT,
-    and writes a ReqCassette-format JSON cassette for a single Google OIDC flow.
+  - `build_google_cassette!/2` — loads `test/cassettes/oauth/google_login_shape.json`
+    (a real Google OIDC recording with id_token + JWKS keys scrubbed to
+    placeholders) and injects a fresh per-test id_token + matching JWK.
+    Catches drift on Google's response shape forever (everything except
+    the cryptographic material is real Google data) without binding tests
+    to time-bound real id_tokens.
+  - `build_google_cassette_with_token!/3` — escape hatch for failure-path
+    tests that need to override the token endpoint response (e.g. 5369's
+    broken `access_token`). Stays manufactured because the failure mode
+    being exercised isn't shape-bound.
   - `build_github_cassette!/3` — writes a GitHub OAuth cassette with supplied
-    user data and email list.
+    user data and email list. **Still fully manufactured** — TODO migrate
+    to the same shape-injecting pattern (GitHub has no JWT/JWKS step, so
+    the migration is simpler than Google was).
   - `with_assent_plug/2` — injects ReqCassette's plug into the Assent HTTP
     adapter for the duration of a single call block.
-  - `do_google_callback/3` — drives the full GET /auth/google/callback request
-    with the correct session flags and returns the resulting conn.
-  - `do_github_callback/3` — drives the full GET /auth/github/callback request
-    and returns the resulting conn.
+  - `do_google_callback/3` / `do_github_callback/3` — drive the full
+    `GET /auth/<provider>/callback` request with the correct session flags
+    and return the resulting conn.
 
-  These helpers isolate the OAuth cassette machinery so that each of the 10
-  story-602 spec files stays focused on its single scenario rather than
-  repeating RSA/JWT/cassette setup.
+  ## Re-recording the Google shape cassette
 
-  ## TODO: replace manufactured cassettes with real recordings
+  See `record_google_login_shape` test in
+  `test/code_my_spec/integrations_test.exs`:
 
-  All 10 story-602 spex files currently exercise OAuth callbacks against
-  cassettes manufactured at test time (RSA keypair generated per run, JWT
-  signed in-process, JSON written to disk). This avoids needing real Google
-  / GitHub credentials, but it does NOT validate that we still parse what
-  the providers actually send.
+      rm test/cassettes/oauth/google_login_shape.json
+      TEST_GOOGLE_REFRESH_TOKEN=<rt> mix test --only record_google_login_shape
 
-  The `Integrations.refresh_token/2` test in
-  `test/code_my_spec/integrations_test.exs` shows the recording pattern
-  (`mode: :record` + `:record_google_refresh` tag + env-gated refresh_token):
-  the test records once against the real provider when explicit, then
-  replays the on-disk cassette forever. Migrating these helpers to the
-  same pattern would mean:
-
-  1. Capture a real Google login response (one valid id_token + jwks +
-     openid-configuration). ID tokens have an `exp` claim — committing one
-     means tests fail when it expires, OR we record against a Google
-     account whose token we then fix the clock around. Either way, real.
-  2. Capture real GitHub user + emails responses. Easier — no JWT
-     expiration to worry about.
-  3. Drop `build_google_cassette!/2`, `build_github_cassette!/3`, and the
-     RSA / JWT helpers below.
-
-  Until that work happens these manufactured cassettes are a known
-  fidelity gap.
+  Get a refresh_token by visiting `/app/users/settings` on the dev server
+  and clicking "Connect Google" (the integration flow keeps `prompt=consent`).
   """
 
   import Phoenix.ConnTest
@@ -59,19 +48,65 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   @authorization_endpoint "https://accounts.google.com/o/oauth2/v2/auth"
   @kid "test-google-key-1"
 
+  @shape_cassette_path "test/cassettes/oauth/google_login_shape.json"
+
   @doc """
-  Builds a Google OIDC cassette from a fresh RSA keypair and writes it to
-  `test/cassettes/oauth/<cassette_name>.json`. Registers an `on_exit` to
-  clean up the file. Returns `:ok`.
+  Builds a Google OIDC cassette by loading the real-shape recording at
+  `test/cassettes/oauth/google_login_shape.json` and injecting a fresh
+  per-test id_token + matching JWK so signature verification passes.
+
+  The recording was captured against real Google (see the
+  `record_google_login_shape` test in `integrations_test.exs`); the id_token
+  and JWKS keys were scrubbed to placeholders that this helper fills in
+  with values bound to a fresh RSA keypair generated per test. That gives
+  us drift detection on Google's response shape (everything else in the
+  cassette is real Google data) without binding tests to time-bound real
+  id_tokens.
   """
   def build_google_cassette!(cassette_name, user_claims) do
-    build_google_cassette_with_token!(cassette_name, user_claims, fn id_token ->
-      %{
-        "access_token" => "ya29.test_access_token",
-        "expires_in" => 3599,
-        "token_type" => "Bearer",
-        "id_token" => id_token
-      }
+    {pem, n, e} = generate_rsa_keypair()
+    client_id = Application.fetch_env!(:code_my_spec, :google_client_id)
+    id_token = sign_id_token(pem, user_claims, client_id)
+    jwk = public_jwk(n, e)
+
+    shape =
+      @shape_cassette_path
+      |> File.read!()
+      |> Jason.decode!()
+
+    cassette =
+      shape
+      |> inject_id_token(id_token)
+      |> inject_jwks([jwk])
+
+    File.mkdir_p!(@cassette_dir)
+    path = Path.join(@cassette_dir, cassette_name <> ".json")
+    File.write!(path, Jason.encode!(cassette, pretty: true))
+    ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
+    :ok
+  end
+
+  defp inject_id_token(cassette, id_token) do
+    update_in(cassette, ["interactions"], fn interactions ->
+      Enum.map(interactions, fn interaction ->
+        if get_in(interaction, ["request", "uri"]) == @token_endpoint do
+          put_in(interaction, ["response", "body_json", "id_token"], id_token)
+        else
+          interaction
+        end
+      end)
+    end)
+  end
+
+  defp inject_jwks(cassette, jwks) do
+    update_in(cassette, ["interactions"], fn interactions ->
+      Enum.map(interactions, fn interaction ->
+        if get_in(interaction, ["request", "uri"]) == @jwks_uri do
+          put_in(interaction, ["response", "body_json", "keys"], jwks)
+        else
+          interaction
+        end
+      end)
     end)
   end
 
