@@ -188,15 +188,43 @@ defmodule CodeMySpecWeb.Layouts do
   def marketing(assigns) do
     ~H"""
     <div class="min-h-screen flex flex-col">
-      <!-- Navbar -->
+      <!-- Navbar — mirrors the app layout's hamburger pattern: nav links collapse
+           into a dropdown on <lg, render horizontally on lg+. Auth buttons stay
+           visible across breakpoints (only two of them; they fit). -->
       <header class="border-b border-base-300">
-        <nav class="navbar max-w-7xl mx-auto">
-          <div class="flex-1">
-            <a href={~p"/"} class="btn btn-ghost text-xl">
+        <nav class="navbar max-w-7xl mx-auto px-4">
+          <div class="navbar-start">
+            <div class="dropdown">
+              <label
+                tabindex="0"
+                class="btn btn-square btn-ghost lg:hidden"
+                aria-label="Open menu"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  class="inline-block w-5 h-5 stroke-current"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </label>
+              <ul
+                tabindex="0"
+                class="menu menu-sm dropdown-content mt-3 z-10 p-2 shadow bg-base-200 rounded-box w-56"
+              >
+                <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
+                <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
+                <li><.link href={~p"/methodology"}>Method</.link></li>
+                <li><.link href={~p"/blog"}>Blog</.link></li>
+                <li><.link href={~p"/documentation"}>Docs</.link></li>
+              </ul>
+            </div>
+            <a href={~p"/"} class="btn btn-ghost text-xl normal-case">
               <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-8 w-8" width="32" height="32" /> CodeMySpec
             </a>
           </div>
-          <div class="flex-none">
+          <div class="navbar-center hidden lg:flex">
             <ul class="menu menu-horizontal px-1">
               <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
               <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
@@ -205,14 +233,14 @@ defmodule CodeMySpecWeb.Layouts do
               <li><.link href={~p"/documentation"}>Docs</.link></li>
             </ul>
           </div>
-          <div class="flex-none">
+          <div class="navbar-end gap-2">
             <%= if @current_scope do %>
               <span class="hidden">{@current_scope.user.email}</span>
-              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost">Log out</.link>
-              <.link href={~p"/app"} class="btn btn-primary">Open workspace</.link>
+              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm sm:btn-md">Log out</.link>
+              <.link href={~p"/app"} class="btn btn-primary btn-sm sm:btn-md">Open workspace</.link>
             <% else %>
-              <.link href={~p"/users/log-in"} class="btn btn-ghost">Log in</.link>
-              <.link href={~p"/users/register"} class="btn btn-primary">Register</.link>
+              <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm sm:btn-md">Log in</.link>
+              <.link href={~p"/users/register"} class="btn btn-primary btn-sm sm:btn-md">Register</.link>
             <% end %>
           </div>
         </nav>
