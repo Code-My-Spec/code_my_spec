@@ -1,0 +1,78 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-04-27T02:31:44.367564Z",
+      "request": {
+        "body": "refresh_token=<REDACTED>&grant_type=refresh_token&client_id=657486809717-gn93clskcgd4j8aui3kolh77bi8os6t1.apps.googleusercontent.com&client_secret=<REDACTED>",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/x-www-form-urlencoded"
+          ],
+          "user-agent": [
+            "Assent-0.3.1"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://oauth2.googleapis.com/token"
+      },
+      "response": {
+        "body_json": {
+          "access_token": "<REDACTED>",
+          "expires_in": 3599,
+          "id_token": "<REDACTED>",
+          "refresh_token_expires_in": 604472,
+          "scope": "openid https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/analytics.edit https://www.googleapis.com/auth/userinfo.email",
+          "token_type": "Bearer"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, max-age=0, must-revalidate"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Mon, 27 Apr 2026 02:31:44 GMT"
+          ],
+          "expires": [
+            "Mon, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "server": [
+            "scaffolding on HTTPServer2"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

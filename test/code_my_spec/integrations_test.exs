@@ -116,33 +116,39 @@ defmodule CodeMySpec.IntegrationsTest do
 
     @moduletag :capture_log
 
-    @doc """
-    Records or replays a real Google token-endpoint response.
-
-    First run (no cassette on disk): set `TEST_GOOGLE_REFRESH_TOKEN` to a real
-    refresh_token (obtain by visiting `/app/users/settings` on the dev server
-    and clicking "Connect Google" — the integration flow keeps `prompt=consent`
-    so Google issues a refresh_token). Then run:
-
-        mix test test/code_my_spec/integrations_test.exs --only record_google_refresh
-
-    ReqCassette will hit Google for real, capture the response, scrub the
-    sensitive headers, and write `test/cassettes/oauth/google_refresh_success.json`.
-    Subsequent runs replay against that file with no network access required.
-    """
-    @tag :record_google_refresh
+    # Records (first time) or replays (every time after) a real Google
+    # token-endpoint response.
+    #
+    # Replay: cassette exists on disk → uses a placeholder refresh_token, the
+    # body never goes over the wire, and ReqCassette returns the recorded
+    # response. Runs as part of the default suite.
+    #
+    # Re-record: delete the cassette and set TEST_GOOGLE_REFRESH_TOKEN to a
+    # real refresh_token (visit /app/users/settings on the dev server →
+    # Connect Google → integration flow keeps prompt=consent → refresh_token
+    # gets persisted, copy from integrations table). Then `mix test` reruns
+    # the test, which records, scrubs, and writes the cassette. Revoke the
+    # token afterward.
     test "swaps in a fresh access_token from Google's token endpoint",
          %{scope: scope} do
       cassette_path = Path.join(@cassette_dir, @cassette_name <> ".json")
 
-      refresh_token =
-        System.get_env("TEST_GOOGLE_REFRESH_TOKEN") ||
+      cond do
+        File.exists?(cassette_path) ->
+          :replay
+
+        is_binary(System.get_env("TEST_GOOGLE_REFRESH_TOKEN")) ->
+          :record
+
+        true ->
           flunk("""
-          set TEST_GOOGLE_REFRESH_TOKEN to record this cassette. Get one by:
-          1. visit /app/users/settings on the dev server
-          2. click "Connect Google" (integration flow, not login)
-          3. read the refresh_token off integrations table for your user
+          missing cassette at #{cassette_path} and no TEST_GOOGLE_REFRESH_TOKEN
+          set to record one. See the comment block above this test.
           """)
+      end
+
+      refresh_token =
+        System.get_env("TEST_GOOGLE_REFRESH_TOKEN") || "1//placeholder_refresh_token"
 
       {:ok, _original} =
         create_test_integration(scope, :google,
@@ -159,9 +165,6 @@ defmodule CodeMySpec.IntegrationsTest do
           assert DateTime.compare(refreshed.expires_at, DateTime.utc_now()) == :gt
         end)
       end
-
-      assert File.exists?(cassette_path),
-             "cassette should have been recorded at #{cassette_path}"
     end
 
     test "returns :no_refresh_token when the integration was stored without one",
@@ -204,17 +207,26 @@ defmodule CodeMySpec.IntegrationsTest do
   # mode: :record means "record on cassette/interaction miss, replay otherwise"
   # — first run with a real refresh_token captures the response, all
   # subsequent runs replay against the on-disk JSON without network.
+  #
+  # filter_sensitive_data redacts secrets from the recorded JSON via regex
+  # before write. Mirrors integrations_controller_login_test.exs cassette_opts.
   defp cassette_opts do
     [
       cassette_dir: @cassette_dir,
       mode: :record,
       match_requests_on: [:method, :uri],
-      # access_token leaks into the URL as a query param sometimes; strip
-      # it. refresh_token + client_secret live in the form-encoded body
-      # which req_cassette serializes as `<filtered>` when match_requests_on
-      # excludes :body.
       filter_request_headers: ["authorization", "cookie"],
-      filter_response_headers: ["set-cookie"]
+      filter_response_headers: ["set-cookie"],
+      filter_sensitive_data: [
+        # form-encoded request body
+        {~r/refresh_token=[^&\s"]+/, "refresh_token=<REDACTED>"},
+        {~r/client_secret=[^&\s"]+/, "client_secret=<REDACTED>"},
+        {~r/access_token=[^&\s"]+/, "access_token=<REDACTED>"},
+        # JSON response body — id_token is a signed JWT containing PII
+        {~r/"access_token"\s*:\s*"[^"]+"/, ~s("access_token":"<REDACTED>")},
+        {~r/"refresh_token"\s*:\s*"[^"]+"/, ~s("refresh_token":"<REDACTED>")},
+        {~r/"id_token"\s*:\s*"[^"]+"/, ~s("id_token":"<REDACTED>")}
+      ]
     ]
   end
 
