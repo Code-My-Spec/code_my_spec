@@ -2,61 +2,49 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   @moduledoc """
   Agent task for fixing accepted QA issues.
 
-  Reads accepted issues from the database, filters to those at or above the
-  specified severity that haven't been resolved, and builds a prompt instructing
-  the agent to fix each issue and document the resolution.
-
-  Accepts an optional minimum severity via `task.state["topic"]` (default: :medium).
+  Reads every accepted issue from the database and builds a prompt
+  instructing the agent to fix each one and document the resolution.
+  No severity filter — whatever made it past triage gets fixed
+  (story 608, rule 1).
 
   Two main functions:
   - `command/2` — Reads accepted issues from DB, builds fix prompt
-  - `evaluate/2` — Checks that all medium+ issues are resolved (via tool or file fallback)
+  - `evaluate/2` — Checks that every accepted issue has been resolved
   """
 
   alias CodeMySpec.{Issues, Paths}
   alias CodeMySpec.Issues.Issue
 
-
   @doc """
-  Read accepted unresolved issues and build a fix prompt.
-
-  Queries the database for accepted issues at or above the minimum severity
-  that lack a resolution, and builds a prompt with fix instructions.
+  Read accepted issues and build a fix prompt.
 
   Returns `{:ok, prompt_text}`
   """
-  def command(scope, task) do
-    min_severity = get_min_severity(task)
-    unresolved = list_unresolved_at_severity(scope, min_severity)
-
-    prompt = build_prompt(unresolved, min_severity)
+  def command(scope, _task) do
+    unresolved = Issues.list_by_status(scope, :accepted)
+    prompt = build_prompt(unresolved)
     {:ok, prompt}
   end
 
   @doc """
-  Check that all medium+ accepted issues are resolved.
-
-  Falls back to reconciling file-based resolutions for any the agent missed
-  with the tool, then checks whether unresolved blocking issues remain.
-
-  Uses :medium as the blocking threshold regardless of the session's min_severity.
+  Check that every accepted issue has been resolved.
 
   Returns:
-  - `{:ok, :valid}` when no blocking unresolved issues remain
-  - `{:ok, :invalid, feedback}` when unresolved blocking issues exist
+  - `{:ok, :valid}` when no accepted issues remain
+  - `{:ok, :invalid, feedback}` when accepted issues exist; feedback
+    names each remaining issue and instructs the agent to call
+    `resolve_issue`.
   """
   def evaluate(scope, _task) do
-    remaining = list_unresolved_at_severity(scope, :medium)
-
-    case remaining do
+    case Issues.list_by_status(scope, :accepted) do
       [] ->
         {:ok, :valid}
 
       issues ->
-        names = Enum.map_join(issues, "\n", &"- `#{&1.title}`")
+        names = Enum.map_join(issues, "\n", &"- `#{&1.id}` — #{&1.title}")
 
         {:ok, :invalid,
-         "#{length(issues)} unresolved medium+ issue(s):\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
+         "#{length(issues)} unresolved accepted issue(s):\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
     end
   end
 
@@ -68,15 +56,15 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   # Prompt Building
   # ============================================================================
 
-  defp build_prompt([], min_severity) do
+  defp build_prompt([]) do
     """
     # Fix Issues
 
-    No unresolved accepted issues found at #{min_severity}+ severity. Nothing to fix.
+    No unresolved accepted issues. Nothing to fix.
     """
   end
 
-  defp build_prompt(unresolved, min_severity) do
+  defp build_prompt(unresolved) do
     grouped_by_scope =
       unresolved
       |> Enum.group_by(& &1.scope)
@@ -93,7 +81,9 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     """
     # Fix Issues
 
-    You are fixing accepted QA issues at **#{min_severity}+** severity.
+    You are fixing every accepted QA issue. The working set is whatever
+    triage promoted to `accepted`; there is no severity filter at this
+    layer.
 
     ## Tools
 
@@ -126,6 +116,20 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     - **docs** — Fix documentation (specs, README, user stories)
 
     Read the scope before fixing — a `qa` issue means the seeds or scripts need updating, not the app code.
+
+    ## Regressions
+
+    If a fix breaks a previously-passing test, that's a regression. Fix
+    the regression in source code — never silence it. Specifically:
+
+    - **Do not** add `@tag :pending` or `@tag :skip` to a failing test
+      to make it stop running.
+    - **Do not** weaken assertions to make a failing test pass.
+    - **Do not** delete a failing test rather than diagnose why it
+      broke.
+
+    Diagnose the actual cause, fix the offending code, and re-run
+    `mix test` until it's green before calling `resolve_issue`.
 
     ## QA Context
 
@@ -167,34 +171,6 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
       #{issue.description}\
       """
-    end)
-  end
-
-  # ============================================================================
-  # Helpers
-  # ============================================================================
-
-  defp get_min_severity(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "" do
-    parse_severity(topic)
-  end
-
-  defp get_min_severity(_task), do: :medium
-
-  defp parse_severity(value) when is_binary(value) do
-    case String.downcase(String.trim(value)) do
-      "critical" -> :critical
-      "high" -> :high
-      "medium" -> :medium
-      "low" -> :low
-      "info" -> :info
-      _ -> :medium
-    end
-  end
-
-  defp list_unresolved_at_severity(scope, min_severity) do
-    Issues.list_by_status(scope, :accepted)
-    |> Enum.filter(fn issue ->
-      Issue.severity_index(issue.severity) <= Issue.severity_index(min_severity)
     end)
   end
 end
