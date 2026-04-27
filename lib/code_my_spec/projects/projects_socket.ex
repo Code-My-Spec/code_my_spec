@@ -84,7 +84,7 @@ defmodule CodeMySpec.Projects.ProjectsSocket do
   @impl Slipstream
   def handle_disconnect(_reason, socket) do
     Logger.info("[ProjectsSocket] Disconnected, will reconnect")
-    {:ok, reconnect(socket)}
+    reconnect(socket)
   end
 
   # -- Private ----------------------------------------------------------------
