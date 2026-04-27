@@ -26,11 +26,14 @@ defmodule CodeMySpecSpex.Story605.Criterion5384Spex do
       given_ :registered_user_with_magic_link
       given_ :empty_state_user_on_onboarding
 
-      when_ "Tab B creates a project for the same user account", context do
-        # Precondition: the form is visible in Tab A (the original session).
+      and_ "Tab A initially shows the project-name form", context do
         assert has_element?(context.view, "input[name='project[name]']"),
                "precondition failed: expected form to be visible in Tab A at mount"
 
+        {:ok, context}
+      end
+
+      when_ "Tab B creates a project for the same user account", context do
         # Open a second LiveView connection for the same user (same session cookie).
         tab_b_conn =
           Phoenix.ConnTest.dispatch(
