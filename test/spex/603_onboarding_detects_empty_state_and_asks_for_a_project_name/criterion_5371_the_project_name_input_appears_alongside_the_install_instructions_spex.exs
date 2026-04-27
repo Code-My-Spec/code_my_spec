@@ -11,8 +11,6 @@ defmodule CodeMySpecSpex.Story603.Criterion5371Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import_givens CodeMySpecSpex.SharedGivens
 
   spex "The project-name input appears alongside the install instructions" do

@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story603.Criterion5373Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import_givens CodeMySpecSpex.SharedGivens
 
   spex "Submitting a valid project name creates the project from the same page" do

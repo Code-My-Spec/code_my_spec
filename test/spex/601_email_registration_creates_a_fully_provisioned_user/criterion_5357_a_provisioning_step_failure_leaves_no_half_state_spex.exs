@@ -19,8 +19,6 @@ defmodule CodeMySpecSpex.Story601.Criterion5357Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-  @moduletag :pending
 
   spex "Provisioning is atomic" do
     scenario "A provisioning step failure leaves no half-state" do

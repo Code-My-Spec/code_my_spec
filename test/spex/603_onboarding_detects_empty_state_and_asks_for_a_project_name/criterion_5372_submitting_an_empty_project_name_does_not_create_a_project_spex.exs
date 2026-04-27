@@ -12,8 +12,6 @@ defmodule CodeMySpecSpex.Story603.Criterion5372Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import_givens CodeMySpecSpex.SharedGivens
 
   spex "Submitting an empty project name does not create a project" do

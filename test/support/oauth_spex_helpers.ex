@@ -43,6 +43,8 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   (login flow strips `prompt=consent`).
   """
 
+  use Boundary, deps: []
+
   import Phoenix.ConnTest
   import Plug.Conn
   import ReqCassette

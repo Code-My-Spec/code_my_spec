@@ -11,8 +11,6 @@ defmodule CodeMySpecSpex.Story603.Criterion5370Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import_givens CodeMySpecSpex.SharedGivens
 
   spex "Onboarding renders a project-name input on empty state" do
