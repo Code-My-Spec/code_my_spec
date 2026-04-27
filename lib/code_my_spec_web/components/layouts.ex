@@ -113,6 +113,18 @@ defmodule CodeMySpecWeb.Layouts do
             <li><a href={~p"/app/content_admin"}>Content</a></li>
             <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
             <li><a href={~p"/app/users/settings"}>Settings</a></li>
+            <%= if @current_scope do %>
+              <li class="border-t border-base-300 mt-2 pt-2">
+                <div class="text-xs opacity-60 px-2 truncate" title={@current_scope.user.email}>
+                  {@current_scope.user.email}
+                </div>
+              </li>
+              <li>
+                <.link href={~p"/users/log-out"} method="delete">
+                  <.icon name="hero-arrow-right-on-rectangle" class="size-4" /> Log out
+                </.link>
+              </li>
+            <% end %>
           </ul>
         </aside>
       </div>
@@ -187,16 +199,17 @@ defmodule CodeMySpecWeb.Layouts do
 
   def marketing(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col">
-      <!-- Navbar — mirrors the app layout's hamburger pattern: nav links collapse
-           into a dropdown on <lg, render horizontally on lg+. Auth buttons stay
-           visible across breakpoints (only two of them; they fit). -->
-      <header class="border-b border-base-300">
-        <nav class="navbar max-w-7xl mx-auto px-4">
-          <div class="navbar-start">
-            <div class="dropdown">
+    <div class="drawer">
+      <input id="marketing-drawer-toggle" type="checkbox" class="drawer-toggle" />
+
+      <div class="drawer-content min-h-screen flex flex-col">
+        <!-- Navbar — hamburger toggles the drawer on <lg; on lg+ the nav renders
+             inline with a Products submenu (DaisyUI menu details/summary). -->
+        <header class="border-b border-base-300">
+          <nav class="navbar max-w-7xl mx-auto px-4">
+            <div class="navbar-start">
               <label
-                tabindex="0"
+                for="marketing-drawer-toggle"
                 class="btn btn-square btn-ghost lg:hidden"
                 aria-label="Open menu"
               >
@@ -209,46 +222,42 @@ defmodule CodeMySpecWeb.Layouts do
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </label>
-              <ul
-                tabindex="0"
-                class="menu menu-sm dropdown-content mt-3 z-10 p-2 shadow bg-base-200 rounded-box w-56"
-              >
-                <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
-                <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
+              <a href={~p"/"} class="btn btn-ghost text-xl normal-case">
+                <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-8 w-8" width="32" height="32" /> CodeMySpec
+              </a>
+            </div>
+            <div class="navbar-center hidden lg:flex">
+              <ul class="menu menu-horizontal menu-md px-1">
+                <li>
+                  <details>
+                    <summary>Products</summary>
+                    <ul class="bg-base-200 rounded-box w-48 z-10">
+                      <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
+                      <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
+                    </ul>
+                  </details>
+                </li>
                 <li><.link href={~p"/methodology"}>Method</.link></li>
                 <li><.link href={~p"/blog"}>Blog</.link></li>
                 <li><.link href={~p"/documentation"}>Docs</.link></li>
               </ul>
             </div>
-            <a href={~p"/"} class="btn btn-ghost text-xl normal-case">
-              <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-8 w-8" width="32" height="32" /> CodeMySpec
-            </a>
-          </div>
-          <div class="navbar-center hidden lg:flex">
-            <ul class="menu menu-horizontal px-1">
-              <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
-              <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
-              <li><.link href={~p"/methodology"}>Method</.link></li>
-              <li><.link href={~p"/blog"}>Blog</.link></li>
-              <li><.link href={~p"/documentation"}>Docs</.link></li>
-            </ul>
-          </div>
-          <div class="navbar-end gap-2">
-            <%= if @current_scope do %>
-              <span class="hidden">{@current_scope.user.email}</span>
-              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm sm:btn-md">Log out</.link>
-              <.link href={~p"/app"} class="btn btn-primary btn-sm sm:btn-md">Open workspace</.link>
-            <% else %>
-              <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm sm:btn-md">Log in</.link>
-              <.link href={~p"/users/register"} class="btn btn-primary btn-sm sm:btn-md">Register</.link>
-            <% end %>
-          </div>
-        </nav>
-      </header>
+            <div class="navbar-end gap-2">
+              <%= if @current_scope do %>
+                <span class="hidden">{@current_scope.user.email}</span>
+                <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm sm:btn-md">Log out</.link>
+                <.link href={~p"/app"} class="btn btn-primary btn-sm sm:btn-md">Open workspace</.link>
+              <% else %>
+                <.link href={~p"/users/log-in"} class="btn btn-ghost btn-sm sm:btn-md">Log in</.link>
+                <.link href={~p"/users/register"} class="btn btn-primary btn-sm sm:btn-md">Register</.link>
+              <% end %>
+            </div>
+          </nav>
+        </header>
 
-      <main class="flex-1">
-        {render_slot(@inner_block)}
-      </main>
+        <main class="flex-1">
+          {render_slot(@inner_block)}
+        </main>
 
       <footer class="border-t border-base-300">
         <div class="max-w-7xl mx-auto px-6 py-10">
@@ -296,6 +305,45 @@ defmodule CodeMySpecWeb.Layouts do
       </footer>
 
       <.flash_group flash={@flash} />
+      </div>
+
+      <div class="drawer-side z-20">
+        <label for="marketing-drawer-toggle" aria-label="close menu" class="drawer-overlay"></label>
+        <aside class="w-72 min-h-full bg-base-200 flex flex-col">
+          <div class="p-6 border-b border-base-300">
+            <a href={~p"/"} class="flex items-center gap-3">
+              <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-6 w-6" />
+              <span class="text-lg font-semibold">CodeMySpec</span>
+            </a>
+          </div>
+          <ul class="menu p-4 text-base-content flex-1">
+            <li>
+              <details open>
+                <summary>Products</summary>
+                <ul>
+                  <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
+                  <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
+                </ul>
+              </details>
+            </li>
+            <li><.link href={~p"/methodology"}>Method</.link></li>
+            <li><.link href={~p"/blog"}>Blog</.link></li>
+            <li><.link href={~p"/documentation"}>Docs</.link></li>
+          </ul>
+          <div class="p-4 border-t border-base-300 flex flex-col gap-2">
+            <%= if @current_scope do %>
+              <div class="text-xs opacity-60 px-1 truncate" title={@current_scope.user.email}>
+                {@current_scope.user.email}
+              </div>
+              <.link href={~p"/app"} class="btn btn-primary btn-block">Open workspace</.link>
+              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-block">Log out</.link>
+            <% else %>
+              <.link href={~p"/users/log-in"} class="btn btn-ghost btn-block">Log in</.link>
+              <.link href={~p"/users/register"} class="btn btn-primary btn-block">Register</.link>
+            <% end %>
+          </div>
+        </aside>
+      </div>
     </div>
     """
   end
