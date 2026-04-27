@@ -4,7 +4,7 @@ defmodule CodeMySpecWeb.UserLive.AuthFlowIntegrationTest do
   don't already cover.
 
   Story 601 spex (`test/spex/601_*`) drive register → magic-link
-  click → provisioning → /app/onboarding. This file picks up the
+  click → provisioning → /app. This file picks up the
   one bit not in scope of that story: the **resend button** on
   `/users/check-email`. The requirements doc held the
   check-email/resend logic out of scope of 601, so it needs its

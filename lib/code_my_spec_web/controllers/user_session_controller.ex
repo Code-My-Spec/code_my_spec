@@ -1,20 +1,16 @@
 defmodule CodeMySpecWeb.UserSessionController do
   use CodeMySpecWeb, :controller
 
-  alias CodeMySpec.Accounts
-  alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
 
   def confirm(conn, %{"token" => token}) do
     case Users.login_user_by_magic_link(token) do
       {:ok, {user, tokens_to_disconnect}} ->
         UserAuth.disconnect_sessions(tokens_to_disconnect)
-        provision_personal_account(user)
 
         conn
-        |> put_session(:user_return_to, ~p"/app/onboarding")
+        |> put_session(:user_return_to, ~p"/app")
         |> put_flash(:info, "User confirmed successfully.")
         |> UserAuth.log_in_user(user, %{"remember_me" => "true"})
 
@@ -27,7 +23,7 @@ defmodule CodeMySpecWeb.UserSessionController do
 
   def create(conn, %{"_action" => "confirmed"} = params) do
     conn
-    |> put_session(:user_return_to, ~p"/app/onboarding")
+    |> put_session(:user_return_to, ~p"/app")
     |> create(params, "User confirmed successfully.")
   end
 
@@ -40,7 +36,6 @@ defmodule CodeMySpecWeb.UserSessionController do
     case Users.login_user_by_magic_link(token) do
       {:ok, {user, tokens_to_disconnect}} ->
         UserAuth.disconnect_sessions(tokens_to_disconnect)
-        provision_personal_account(user)
 
         conn
         |> put_flash(:info, info)
@@ -87,20 +82,5 @@ defmodule CodeMySpecWeb.UserSessionController do
     conn
     |> put_flash(:info, "Logged out successfully.")
     |> UserAuth.log_out_user()
-  end
-
-  # Returning users with an existing active-account preference keep whatever
-  # they previously selected. Only provision + select on first login (when no
-  # preference exists yet) — select_active_account also clears active_project_id,
-  # so re-running it on every login would silently nuke project selection too.
-  defp provision_personal_account(user) do
-    scope = Scope.for_user(user)
-
-    if is_nil(scope.active_account_id) do
-      account = Accounts.ensure_personal_account(scope)
-      {:ok, _} = UserPreferences.select_active_account(scope, account.id)
-    end
-
-    :ok
   end
 end

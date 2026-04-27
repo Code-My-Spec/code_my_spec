@@ -227,13 +227,6 @@ defmodule CodeMySpecWeb.Router do
   scope "/app", CodeMySpecWeb do
     pipe_through [:browser, :require_authenticated_user]
 
-    live_session :onboarding,
-      on_mount: [
-        {CodeMySpecWeb.UserAuth, :require_authenticated}
-      ] do
-      live "/onboarding", AppLive.Onboarding
-    end
-
     live_session :require_authenticated_user,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
@@ -256,6 +249,7 @@ defmodule CodeMySpecWeb.Router do
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
+        {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account}
       ] do
       live "/projects", ProjectLive.Index, :index
@@ -275,7 +269,9 @@ defmodule CodeMySpecWeb.Router do
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
+        {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account},
+        {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
         {CodeMySpecWeb.UserAuth, :require_active_project}
       ] do
       live "/stories", StoryLive.Index, :index

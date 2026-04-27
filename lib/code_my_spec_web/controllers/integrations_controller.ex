@@ -20,7 +20,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
 
   use CodeMySpecWeb, :controller
 
-  alias CodeMySpec.{Accounts, Integrations, UserPreferences, Users}
+  alias CodeMySpec.{Integrations, Users}
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
 
@@ -128,16 +128,11 @@ defmodule CodeMySpecWeb.IntegrationsController do
            Users.find_or_register_oauth_user(provider, normalized_user) do
       scope = Scope.for_user(user)
 
-      if is_nil(scope.active_account_id) do
-        account = Accounts.ensure_personal_account(scope)
-        {:ok, _} = UserPreferences.select_active_account(scope, account.id)
-      end
-
       Integrations.save_integration(scope, provider, token, normalized_user)
 
       conn =
         if status == :new do
-          put_session(conn, :user_return_to, ~p"/app/onboarding")
+          put_session(conn, :user_return_to, ~p"/app")
         else
           conn
         end

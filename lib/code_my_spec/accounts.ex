@@ -112,10 +112,23 @@ defmodule CodeMySpec.Accounts do
   end
 
   @doc """
-  Creates a personal account for the user.
+  Creates a personal account for the user. Name defaults to the local
+  part of the user's email.
   """
   def create_personal_account(%Scope{} = scope) do
     with {:ok, account} <- AccountsRepository.create_personal_account(scope.user.id) do
+      broadcast_account(scope, {:created, account})
+      {:ok, account}
+    end
+  end
+
+  @doc """
+  Creates a personal account for the user with caller-supplied attrs.
+  Used by the inline create-account form on /app so the user can name
+  their first account intentionally.
+  """
+  def create_personal_account(%Scope{} = scope, attrs) when is_map(attrs) do
+    with {:ok, account} <- AccountsRepository.create_personal_account(scope.user.id, attrs) do
       broadcast_account(scope, {:created, account})
       {:ok, account}
     end

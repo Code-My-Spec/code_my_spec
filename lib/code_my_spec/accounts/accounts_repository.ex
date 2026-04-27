@@ -57,13 +57,20 @@ defmodule CodeMySpec.Accounts.AccountsRepository do
     user = Repo.get!(User, user_id)
     name = extract_name_from_email(user.email)
 
-    attrs = %{
-      name: name,
-      slug: String.downcase(name) |> String.replace(~r/[^a-z0-9]/, "-")
-    }
+    create_personal_account(user_id, %{name: name})
+  end
+
+  @spec create_personal_account(user_id :: integer(), attrs :: map()) ::
+          {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
+  def create_personal_account(user_id, attrs) when is_map(attrs) do
+    attrs_with_type =
+      attrs
+      |> stringify_keys()
+      |> Map.put("type", "personal")
 
     Repo.transaction(fn ->
-      with {:ok, account} <- create_account_with_type(attrs, :personal),
+      with {:ok, account} <-
+             attrs_with_type |> Account.create_changeset() |> Repo.insert(),
            {:ok, _member} <-
              create_member(%{user_id: user_id, account_id: account.id, role: :owner}) do
         account
@@ -145,5 +152,12 @@ defmodule CodeMySpec.Accounts.AccountsRepository do
     email
     |> String.split("@")
     |> List.first()
+  end
+
+  defp stringify_keys(map) do
+    Map.new(map, fn
+      {k, v} when is_atom(k) -> {Atom.to_string(k), v}
+      pair -> pair
+    end)
   end
 end

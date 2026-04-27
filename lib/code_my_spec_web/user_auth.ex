@@ -6,6 +6,7 @@ defmodule CodeMySpecWeb.UserAuth do
   import Phoenix.Controller
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
@@ -197,13 +198,23 @@ defmodule CodeMySpecWeb.UserAuth do
       on user_token.
       Redirects to login page if there's no logged user.
 
+    * `:require_at_least_one_account` - Requires the user owns at least one
+      account. If they own zero, redirects to /app where the wizard
+      handles account creation. Must be used after `:require_authenticated`.
+
     * `:require_active_account` - Requires that the user has an active
-      account selected in their scope. Redirects to account picker if not.
-      Must be used after `:require_authenticated`.
+      account selected in their scope. Auto-picks the first account when
+      one exists but none is active. Stack after `:require_at_least_one_account`
+      so the empty-list case is already redirected.
+
+    * `:require_at_least_one_project` - Requires the user owns at least one
+      project in their active account. If they own zero, redirects to /app
+      where the wizard handles project creation. Must be used after
+      `:require_active_account` so the active-account is in scope.
 
     * `:require_active_project` - Requires that the user has an active
-      project selected in their scope. Redirects to project picker if not.
-      Must be used after `:require_authenticated`.
+      project selected in their scope. Auto-picks the first project when
+      one exists but none is active. Stack after `:require_at_least_one_project`.
 
   ## Examples
 
@@ -257,31 +268,38 @@ defmodule CodeMySpecWeb.UserAuth do
     end
   end
 
+  def on_mount(:require_at_least_one_account, _params, _session, socket) do
+    scope = socket.assigns.current_scope
+
+    if Accounts.list_accounts(scope) == [] do
+      socket = Phoenix.LiveView.redirect(socket, to: ~p"/app")
+      {:halt, socket}
+    else
+      {:cont, socket}
+    end
+  end
+
   def on_mount(:require_active_account, _params, _session, socket) do
     scope = socket.assigns.current_scope
 
-    cond do
-      not is_nil(scope.active_account) ->
-        {:cont, socket}
+    if is_nil(scope.active_account) do
+      [first | _] = Accounts.list_accounts(scope)
+      {:ok, _} = UserPreferences.select_active_account(scope, first.id)
+      new_scope = Scope.for_user(scope.user)
+      {:cont, Phoenix.Component.assign(socket, :current_scope, new_scope)}
+    else
+      {:cont, socket}
+    end
+  end
 
-      Accounts.list_accounts(scope) == [] ->
-        # Self-heal: a logged-in user with zero accounts (e.g. legacy OAuth
-        # signups from before the IntegrationsController fix) gets a personal
-        # account on the spot. Idempotent — only triggers when the picker
-        # would be empty anyway.
-        account = Accounts.ensure_personal_account(scope)
-        {:ok, _pref} = UserPreferences.select_active_account(scope, account.id)
-        {:cont, Phoenix.Component.assign(socket, :current_scope, Scope.for_user(scope.user))}
+  def on_mount(:require_at_least_one_project, _params, _session, socket) do
+    scope = socket.assigns.current_scope
 
-      true ->
-        socket =
-          socket
-          |> Phoenix.LiveView.put_flash(:info, "Please select an account to continue.")
-          |> Phoenix.LiveView.redirect(
-            to: ~p"/app/accounts/picker?#{[return_to: "/app/accounts"]}"
-          )
-
-        {:halt, socket}
+    if Projects.list_projects(scope) == [] do
+      socket = Phoenix.LiveView.redirect(socket, to: ~p"/app")
+      {:halt, socket}
+    else
+      {:cont, socket}
     end
   end
 
@@ -289,12 +307,10 @@ defmodule CodeMySpecWeb.UserAuth do
     scope = socket.assigns.current_scope
 
     if is_nil(scope.active_project) do
-      socket =
-        socket
-        |> Phoenix.LiveView.put_flash(:info, "Please select a project to continue.")
-        |> Phoenix.LiveView.redirect(to: ~p"/app/projects/picker?#{[return_to: "/projects"]}")
-
-      {:halt, socket}
+      [first | _] = Projects.list_projects(scope)
+      {:ok, _} = UserPreferences.select_active_project(scope, first.id)
+      new_scope = Scope.for_user(scope.user)
+      {:cont, Phoenix.Component.assign(socket, :current_scope, new_scope)}
     else
       {:cont, socket}
     end

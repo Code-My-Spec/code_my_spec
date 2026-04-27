@@ -101,7 +101,7 @@ defmodule CodeMySpecWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/app/onboarding"
+      assert redirected_to(conn) == ~p"/app"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "User confirmed successfully."
 
       assert Users.get_user!(user.id).confirmed_at
