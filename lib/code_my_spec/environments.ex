@@ -5,7 +5,15 @@ defmodule CodeMySpec.Environments do
 
   This module delegates to specific environment implementations while maintaining
   a consistent interface through the opaque Environment struct.
+
+  Declared as its own Boundary so spex specs can write into the
+  in-memory environment they were handed by the case setup. Spex always
+  drives the `:memory` adapter (`CodeMySpec.Support.InMemoryEnvironment`),
+  so reaching through `Environments.write_file/3` etc. never touches the
+  real filesystem.
   """
+
+  use Boundary, deps: [CodeMySpec], exports: :all
 
   alias CodeMySpec.Environments.Environment
 
