@@ -43,14 +43,9 @@ defmodule CodeMySpecSpex.Story602.Criterion5369Spex do
         # field, so the Integration changeset fails validation and the upsert
         # returns {:error, changeset}. The controller fires-and-forgets the
         # result, so the user is still logged in despite the save failure.
-        OAuthHelpers.build_google_cassette_with_token!(cassette_name, user_claims, fn id_token ->
-          %{
-            "access_token" => "",
-            "expires_in" => 3599,
-            "token_type" => "Bearer",
-            "id_token" => id_token
-          }
-        end)
+        OAuthHelpers.build_google_cassette!(cassette_name, user_claims,
+          token_response_overrides: %{"access_token" => ""}
+        )
 
         {:ok,
          Map.merge(context, %{

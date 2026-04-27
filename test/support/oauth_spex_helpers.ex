@@ -9,10 +9,9 @@ defmodule CodeMySpecSpex.OAuthHelpers do
     Catches drift on Google's response shape forever (everything except
     the cryptographic material is real Google data) without binding tests
     to time-bound real id_tokens.
-  - `build_google_cassette_with_token!/3` — escape hatch for failure-path
-    tests that need to override the token endpoint response (e.g. 5369's
-    broken `access_token`). Stays manufactured because the failure mode
-    being exercised isn't shape-bound.
+    Failure-path scenarios pass `:token_response_overrides` opts to merge
+    arbitrary fields into the token endpoint response (criterion 5369 sets
+    `access_token: ""` to drive a save-failure code path).
   - `build_github_cassette!/3` — loads `test/cassettes/oauth/github_login_shape.json`
     (a real recording of GitHub's /user and /user/emails responses, with PII
     scrubbed to placeholders) and replaces the response bodies with the
@@ -54,7 +53,6 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   @issuer "https://accounts.google.com"
   @token_endpoint "https://oauth2.googleapis.com/token"
   @jwks_uri "https://www.googleapis.com/oauth2/v3/certs"
-  @authorization_endpoint "https://accounts.google.com/o/oauth2/v2/auth"
   @kid "test-google-key-1"
 
   @shape_cassette_path "test/cassettes/oauth/google_login_shape.json"
@@ -71,8 +69,17 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   us drift detection on Google's response shape (everything else in the
   cassette is real Google data) without binding tests to time-bound real
   id_tokens.
+
+  ## Options
+
+  - `:token_response_overrides` — map merged into the token endpoint
+    response body before write. Used by criterion 5369 to inject a broken
+    (`access_token: ""`) response without abandoning the real-shape
+    recording. Don't override `id_token` — that gets re-injected after
+    the merge with a freshly-signed JWT.
   """
-  def build_google_cassette!(cassette_name, user_claims) do
+  def build_google_cassette!(cassette_name, user_claims, opts \\ []) do
+    overrides = Keyword.get(opts, :token_response_overrides, %{})
     {pem, n, e} = generate_rsa_keypair()
     client_id = Application.fetch_env!(:code_my_spec, :google_client_id)
     id_token = sign_id_token(pem, user_claims, client_id)
@@ -85,6 +92,7 @@ defmodule CodeMySpecSpex.OAuthHelpers do
 
     cassette =
       shape
+      |> merge_token_response(overrides)
       |> inject_id_token(id_token)
       |> inject_jwks([jwk])
 
@@ -93,6 +101,20 @@ defmodule CodeMySpecSpex.OAuthHelpers do
     File.write!(path, Jason.encode!(cassette, pretty: true))
     ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
     :ok
+  end
+
+  defp merge_token_response(cassette, overrides) when overrides == %{}, do: cassette
+
+  defp merge_token_response(cassette, overrides) do
+    update_in(cassette, ["interactions"], fn interactions ->
+      Enum.map(interactions, fn interaction ->
+        if get_in(interaction, ["request", "uri"]) == @token_endpoint do
+          update_in(interaction, ["response", "body_json"], &Map.merge(&1, overrides))
+        else
+          interaction
+        end
+      end)
+    end)
   end
 
   defp inject_id_token(cassette, id_token) do
@@ -117,35 +139,6 @@ defmodule CodeMySpecSpex.OAuthHelpers do
         end
       end)
     end)
-  end
-
-  @doc """
-  Variant of `build_google_cassette!/2` that lets the caller shape the token
-  endpoint response. Used by criterion 5369 to inject a broken
-  (`access_token: ""`) response and verify the controller still logs the
-  user in.
-  """
-  def build_google_cassette_with_token!(cassette_name, user_claims, token_response_fn)
-      when is_function(token_response_fn, 1) do
-    {pem, n, e} = generate_rsa_keypair()
-    client_id = Application.fetch_env!(:code_my_spec, :google_client_id)
-    id_token = sign_id_token(pem, user_claims, client_id)
-    jwk = public_jwk(n, e)
-
-    cassette = %{
-      "version" => "2.0",
-      "interactions" => [
-        openid_configuration_interaction(),
-        token_interaction_with_response(token_response_fn.(id_token)),
-        jwks_interaction(jwk)
-      ]
-    }
-
-    File.mkdir_p!(@cassette_dir)
-    path = Path.join(@cassette_dir, cassette_name <> ".json")
-    File.write!(path, Jason.encode!(cassette, pretty: true))
-    ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
-    :ok
   end
 
   @github_shape_cassette_path "test/cassettes/oauth/github_login_shape.json"
@@ -305,138 +298,4 @@ defmodule CodeMySpecSpex.OAuthHelpers do
     }
   end
 
-  defp openid_configuration_interaction do
-    %{
-      "recorded_at" => "2026-04-25T23:00:00Z",
-      "request" => %{
-        "method" => "GET",
-        "uri" => "https://accounts.google.com/.well-known/openid-configuration",
-        "query_string" => "",
-        "headers" => %{"accept" => ["application/json"]},
-        "body_type" => "text",
-        "body" => ""
-      },
-      "response" => %{
-        "status" => 200,
-        "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
-        "body_type" => "json",
-        "body_json" => %{
-          "issuer" => @issuer,
-          "authorization_endpoint" => @authorization_endpoint,
-          "token_endpoint" => @token_endpoint,
-          "jwks_uri" => @jwks_uri,
-          "response_types_supported" => ["code"],
-          "subject_types_supported" => ["public"],
-          "id_token_signing_alg_values_supported" => ["RS256"],
-          "scopes_supported" => ["openid", "email", "profile"],
-          "token_endpoint_auth_methods_supported" => ["client_secret_post"],
-          "claims_supported" => ["aud", "email", "email_verified", "exp", "iat", "iss", "sub"],
-          "code_challenge_methods_supported" => ["S256"],
-          "grant_types_supported" => ["authorization_code"]
-        }
-      }
-    }
-  end
-
-  defp token_interaction_with_response(body_json) do
-    %{
-      "recorded_at" => "2026-04-25T23:00:01Z",
-      "request" => %{
-        "method" => "POST",
-        "uri" => @token_endpoint,
-        "query_string" => "",
-        "headers" => %{"content-type" => ["application/x-www-form-urlencoded"]},
-        "body_type" => "text",
-        "body" => "<filtered>"
-      },
-      "response" => %{
-        "status" => 200,
-        "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
-        "body_type" => "json",
-        "body_json" => body_json
-      }
-    }
-  end
-
-  defp jwks_interaction(jwk) do
-    %{
-      "recorded_at" => "2026-04-25T23:00:02Z",
-      "request" => %{
-        "method" => "GET",
-        "uri" => @jwks_uri,
-        "query_string" => "",
-        "headers" => %{"accept" => ["application/json"]},
-        "body_type" => "text",
-        "body" => ""
-      },
-      "response" => %{
-        "status" => 200,
-        "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
-        "body_type" => "json",
-        "body_json" => %{"keys" => [jwk]}
-      }
-    }
-  end
-
-  defp github_token_interaction do
-    %{
-      "recorded_at" => "2026-04-25T23:00:00Z",
-      "request" => %{
-        "method" => "POST",
-        "uri" => "https://github.com/login/oauth/access_token",
-        "query_string" => "",
-        "headers" => %{"content-type" => ["application/x-www-form-urlencoded"]},
-        "body_type" => "text",
-        "body" => "<filtered>"
-      },
-      "response" => %{
-        "status" => 200,
-        "headers" => %{
-          "content-type" => ["application/x-www-form-urlencoded; charset=utf-8"]
-        },
-        "body_type" => "text",
-        "body" => "access_token=test_github_token&scope=user%3Aemail&token_type=bearer"
-      }
-    }
-  end
-
-  defp github_user_interaction(user_json) do
-    %{
-      "recorded_at" => "2026-04-25T23:00:01Z",
-      "request" => %{
-        "method" => "GET",
-        "uri" => "https://api.github.com/user",
-        "query_string" => "",
-        "headers" => %{"accept" => ["application/json"]},
-        "body_type" => "text",
-        "body" => ""
-      },
-      "response" => %{
-        "status" => 200,
-        "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
-        "body_type" => "json",
-        "body_json" => user_json
-      }
-    }
-  end
-
-  defp github_emails_interaction(emails_json) do
-    %{
-      "recorded_at" => "2026-04-25T23:00:02Z",
-      "request" => %{
-        "method" => "GET",
-        "uri" => "https://api.github.com/user/emails",
-        "query_string" => "",
-        "headers" => %{"accept" => ["application/json"]},
-        "body_type" => "text",
-        "body" => ""
-      },
-      "response" => %{
-        "status" => 200,
-        "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
-        "body_type" => "json",
-        "body_json" => emails_json
-      }
-    }
-  end
 end
