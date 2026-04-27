@@ -19,21 +19,26 @@ defmodule CodeMySpec.Issues.RemoteClient do
   # ---------------------------------------------------------------------------
 
   def new(%Scope{} = scope, opts \\ []) do
-    token = opts[:token] || get_token!()
+    with {:ok, token} <- token_for(opts) do
+      client =
+        Req.new(
+          base_url: get_base_url(),
+          headers: build_headers(token, scope),
+          decode_json: [keys: :strings],
+          retry: :transient,
+          max_retries: 3
+        )
+        |> maybe_plug(opts)
 
-    Req.new(
-      base_url: get_base_url(),
-      headers: build_headers(token, scope),
-      decode_json: [keys: :strings],
-      retry: :transient,
-      max_retries: 3
-    )
-    |> maybe_plug(opts)
+      {:ok, client}
+    end
   end
 
-  defp get_token! do
-    {:ok, token} = OAuthClient.get_token()
-    token
+  defp token_for(opts) do
+    case opts[:token] do
+      nil -> OAuthClient.get_token()
+      token -> {:ok, token}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -41,35 +46,41 @@ defmodule CodeMySpec.Issues.RemoteClient do
   # ---------------------------------------------------------------------------
 
   def list_accepted_issues(%Scope{} = scope, opts \\ []) do
-    client = new(scope, opts)
-
-    {:ok, %{status: 200, body: body}} =
-      Req.get(client, url: "/api/issues", params: [status: "accepted"])
-
-    {:ok, Enum.map(body["data"], &deserialize_issue/1)}
+    with {:ok, client} <- new(scope, opts),
+         {:ok, response} <- Req.get(client, url: "/api/issues", params: [status: "accepted"]) do
+      handle_list_response(response)
+    end
   end
+
+  defp handle_list_response(%{status: 200, body: body}),
+    do: {:ok, Enum.map(body["data"], &deserialize_issue/1)}
+
+  defp handle_list_response(%{status: status, body: body}),
+    do: {:error, {:unexpected_status, status, body}}
 
   # ---------------------------------------------------------------------------
   # Mutation operations
   # ---------------------------------------------------------------------------
 
   def update_issue(%Scope{} = scope, issue_id, attrs, opts \\ []) do
-    client = new(scope, opts)
-
-    case Req.put(client,
-           url: "/api/issues/#{issue_id}",
-           json: %{issue: stringify_attrs(attrs)}
-         ) do
-      {:ok, %{status: 200, body: body}} ->
-        {:ok, deserialize_issue(body["data"])}
-
-      {:ok, %{status: 404}} ->
-        {:error, :not_found}
-
-      {:ok, %{status: 422, body: body}} ->
-        {:error, body}
+    with {:ok, client} <- new(scope, opts),
+         {:ok, response} <-
+           Req.put(client,
+             url: "/api/issues/#{issue_id}",
+             json: %{issue: stringify_attrs(attrs)}
+           ) do
+      handle_update_response(response)
     end
   end
+
+  defp handle_update_response(%{status: 200, body: body}),
+    do: {:ok, deserialize_issue(body["data"])}
+
+  defp handle_update_response(%{status: 404}), do: {:error, :not_found}
+  defp handle_update_response(%{status: 422, body: body}), do: {:error, {:validation, body}}
+
+  defp handle_update_response(%{status: status, body: body}),
+    do: {:error, {:unexpected_status, status, body}}
 
   # ---------------------------------------------------------------------------
   # Deserialization
