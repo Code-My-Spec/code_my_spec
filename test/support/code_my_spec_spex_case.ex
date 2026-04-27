@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Case do
   - Phoenix.ConnTest for HTTP assertions
   - Phoenix.LiveViewTest for driving LiveViews
   - SexySpex DSL (spex/scenario/given_/when_/then_)
-  - DB sandbox via Fixtures
+  - DB sandbox setup
   - Auth helpers via Fixtures (no direct Users context access)
 
   Specs compose Givens and interact through the Web layer. They cannot
@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Case do
   """
   use ExUnit.CaseTemplate
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias CodeMySpecSpex.Fixtures
 
   using do
@@ -32,7 +33,8 @@ defmodule CodeMySpecSpex.Case do
   end
 
   setup tags do
-    Fixtures.setup_sandbox(tags)
+    pid = Sandbox.start_owner!(CodeMySpec.Repo, shared: not tags[:async])
+    on_exit(fn -> Sandbox.stop_owner(pid) end)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 

@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Fixtures do
   Local-only state (ProjectConfiguration, etc.) must be set up through
   the UI like any other user action.
   """
-  use Boundary, deps: [CodeMySpec, CodeMySpecTest]
+  use Boundary, deps: [CodeMySpec]
 
   alias CodeMySpec.{
     AccountsFixtures,
@@ -32,11 +32,6 @@ defmodule CodeMySpecSpex.Fixtures do
     Users,
     UsersFixtures
   }
-
-  alias CodeMySpecTest.DataCase
-
-  # -- Sandbox / session setup --
-  defdelegate setup_sandbox(tags), to: DataCase
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
   def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)

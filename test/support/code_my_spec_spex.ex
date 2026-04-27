@@ -5,6 +5,7 @@ defmodule CodeMySpecSpex do
     deps: [
       CodeMySpec.Environments,
       CodeMySpec.McpServers,
+      CodeMySpec.Repo,
       CodeMySpecSpex.Fixtures,
       CodeMySpecWeb,
       CodeMySpecLocalWeb
