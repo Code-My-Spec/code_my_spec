@@ -246,6 +246,74 @@ defmodule CodeMySpec.IntegrationsTest do
     end
   end
 
+  describe "GitHub login cassette shape (one-time recording)" do
+    # Records real GitHub /user and /user/emails responses into
+    # test/cassettes/oauth/github_login_shape.json — captures the actual
+    # response shape (which fields GitHub returns, what types, etc).
+    # PII fields are scrubbed to placeholders; spex tests load this template
+    # and inject per-scenario user_json + emails_json. The token-exchange
+    # interaction is prepended manually because we'd need a fresh OAuth
+    # auth_code from the browser flow to record it for real, and the
+    # response shape is trivial (access_token + scope + token_type).
+    #
+    # To re-record:
+    #   1. delete test/cassettes/oauth/github_login_shape.json
+    #   2. set TEST_GITHUB_ACCESS_TOKEN to a real OAuth access_token
+    #      (read from integrations table for a real user)
+    #   3. mix test --only record_github_login_shape
+    @tag :record_github_login_shape
+    test "captures /user and /user/emails responses, prepends synthetic token interaction" do
+      access_token =
+        System.get_env("TEST_GITHUB_ACCESS_TOKEN") ||
+          flunk("TEST_GITHUB_ACCESS_TOKEN required to re-record the shape cassette")
+
+      auth = [{"authorization", "Bearer #{access_token}"}, {"accept", "application/json"}]
+
+      with_cassette "github_login_shape", github_shape_cassette_opts(), fn plug ->
+        # GET /user
+        {:ok, _} = Req.get(plug: plug, url: "https://api.github.com/user", headers: auth)
+        # GET /user/emails
+        {:ok, _} = Req.get(plug: plug, url: "https://api.github.com/user/emails", headers: auth)
+      end
+
+      shape_path = Path.join(@cassette_dir, "github_login_shape.json")
+      shape = shape_path |> File.read!() |> Jason.decode!()
+
+      # Prepend a synthetic token-exchange interaction so the shape file is
+      # self-contained. Spex test-time helper replaces the access_token with
+      # a placeholder anyway; what matters is the response shape Assent
+      # parses (`access_token`, `scope`, `token_type`).
+      token_interaction = %{
+        "recorded_at" => "2026-04-25T23:00:00Z",
+        "request" => %{
+          "method" => "POST",
+          "uri" => "https://github.com/login/oauth/access_token",
+          "query_string" => "",
+          "headers" => %{"content-type" => ["application/x-www-form-urlencoded"]},
+          "body_type" => "text",
+          "body" => "<filtered>"
+        },
+        "response" => %{
+          "status" => 200,
+          "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
+          "body_type" => "json",
+          "body_json" => %{
+            "access_token" => "<TEST_ACCESS_TOKEN_PLACEHOLDER>",
+            "scope" => "read:user,user:email",
+            "token_type" => "bearer"
+          }
+        }
+      }
+
+      shape =
+        update_in(shape, ["interactions"], fn interactions -> [token_interaction | interactions] end)
+
+      File.write!(shape_path, Jason.encode!(shape, pretty: true))
+
+      assert length(shape["interactions"]) == 3
+    end
+  end
+
   # Test Helpers
 
   defp create_test_integration(scope, provider, overrides \\ []) do
@@ -317,6 +385,58 @@ defmodule CodeMySpec.IntegrationsTest do
       ]
     ]
   end
+
+  # GitHub /user response is an object full of PII (id, login, name, email,
+  # avatar_url, etc.); /user/emails returns an array of email objects. The
+  # spex test-time helper replaces the entire response body with per-test
+  # user_json / emails_json, but we still scrub here so the committed shape
+  # file never holds real account data.
+  defp github_shape_cassette_opts do
+    [
+      cassette_dir: @cassette_dir,
+      mode: :record,
+      match_requests_on: [:method, :uri],
+      filter_request_headers: ["authorization", "cookie"],
+      filter_response_headers: ["set-cookie", "x-github-request-id", "x-ratelimit-remaining"],
+      # The whole /user object body is PII. Easier to wholesale-replace via
+      # filter_response than try to redact every PII field with regex.
+      filter_response: &scrub_github_response/1
+    ]
+  end
+
+  defp scrub_github_response(%{"body_json" => body} = response) when is_map(body) do
+    # /user response is a single user object — replace any string field that
+    # looks like PII; preserve numeric/boolean fields and structural keys.
+    %{response | "body_json" => scrub_github_user(body)}
+  end
+
+  defp scrub_github_response(%{"body_json" => list} = response) when is_list(list) do
+    # /user/emails response is an array of email objects.
+    %{response | "body_json" => Enum.map(list, &scrub_github_email/1)}
+  end
+
+  defp scrub_github_response(response), do: response
+
+  @github_pii_fields ~w(login name email avatar_url html_url url node_id gravatar_id
+    bio blog company location twitter_username notification_email
+    followers_url following_url gists_url starred_url subscriptions_url
+    organizations_url repos_url events_url received_events_url)
+
+  defp scrub_github_user(map) when is_map(map) do
+    Enum.reduce(@github_pii_fields, map, fn key, acc ->
+      if Map.has_key?(acc, key) and is_binary(Map.get(acc, key)) do
+        Map.put(acc, key, "<TEST_#{String.upcase(key)}_PLACEHOLDER>")
+      else
+        acc
+      end
+    end)
+  end
+
+  defp scrub_github_email(%{"email" => _} = entry) do
+    Map.put(entry, "email", "<TEST_EMAIL_PLACEHOLDER>")
+  end
+
+  defp scrub_github_email(entry), do: entry
 
   defp with_assent_plug(plug, fun) do
     previous = Application.get_env(:assent, :http_adapter)

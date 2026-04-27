@@ -13,26 +13,35 @@ defmodule CodeMySpecSpex.OAuthHelpers do
     tests that need to override the token endpoint response (e.g. 5369's
     broken `access_token`). Stays manufactured because the failure mode
     being exercised isn't shape-bound.
-  - `build_github_cassette!/3` — writes a GitHub OAuth cassette with supplied
-    user data and email list. **Still fully manufactured** — TODO migrate
-    to the same shape-injecting pattern (GitHub has no JWT/JWKS step, so
-    the migration is simpler than Google was).
+  - `build_github_cassette!/3` — loads `test/cassettes/oauth/github_login_shape.json`
+    (a real recording of GitHub's /user and /user/emails responses, with PII
+    scrubbed to placeholders) and replaces the response bodies with the
+    supplied per-test user_json + emails_json. The token-exchange
+    interaction in the shape file is synthetic — we can't record it for
+    real without a fresh OAuth auth_code, and its response shape is trivial.
   - `with_assent_plug/2` — injects ReqCassette's plug into the Assent HTTP
     adapter for the duration of a single call block.
   - `do_google_callback/3` / `do_github_callback/3` — drive the full
     `GET /auth/<provider>/callback` request with the correct session flags
     and return the resulting conn.
 
-  ## Re-recording the Google shape cassette
+  ## Re-recording the shape cassettes
 
-  See `record_google_login_shape` test in
+  See `record_google_login_shape` and `record_github_login_shape` tests in
   `test/code_my_spec/integrations_test.exs`:
 
+      # Google
       rm test/cassettes/oauth/google_login_shape.json
       TEST_GOOGLE_REFRESH_TOKEN=<rt> mix test --only record_google_login_shape
 
-  Get a refresh_token by visiting `/app/users/settings` on the dev server
-  and clicking "Connect Google" (the integration flow keeps `prompt=consent`).
+      # GitHub
+      rm test/cassettes/oauth/github_login_shape.json
+      TEST_GITHUB_ACCESS_TOKEN=<at> mix test --only record_github_login_shape
+
+  Tokens come from the dev DB integrations table — the existing rows for
+  your user have valid access_tokens; the Google one needs a refresh_token
+  which is only persisted via the integration flow at `/app/users/settings`
+  (login flow strips `prompt=consent`).
   """
 
   import Phoenix.ConnTest
@@ -139,26 +148,50 @@ defmodule CodeMySpecSpex.OAuthHelpers do
     :ok
   end
 
+  @github_shape_cassette_path "test/cassettes/oauth/github_login_shape.json"
+  @github_user_url "https://api.github.com/user"
+  @github_user_emails_url "https://api.github.com/user/emails"
+
   @doc """
-  Builds a GitHub OAuth cassette. `user_json` is the map returned from
-  GET /user (must include "id", "login", etc.). `emails_json` is the list
-  returned from GET /user/emails. Uses fixed replay values for code/state.
+  Builds a GitHub OAuth cassette by loading the real-shape recording at
+  `test/cassettes/oauth/github_login_shape.json` and replacing the /user
+  and /user/emails response bodies with `user_json` and `emails_json`.
+
+  The recording captured a real GitHub /user object (with PII scrubbed to
+  placeholders); injecting per-test bodies preserves the real response
+  shape (HTTP status, headers, response wrapper) while letting each scenario
+  exercise its own user/email data. The token-exchange interaction in the
+  shape file is synthetic — its response shape is trivial and we can't
+  record it for real without a fresh OAuth auth_code.
   """
   def build_github_cassette!(cassette_name, user_json, emails_json) do
-    cassette = %{
-      "version" => "2.0",
-      "interactions" => [
-        github_token_interaction(),
-        github_user_interaction(user_json),
-        github_emails_interaction(emails_json)
-      ]
-    }
+    shape =
+      @github_shape_cassette_path
+      |> File.read!()
+      |> Jason.decode!()
+
+    cassette =
+      shape
+      |> inject_response_body(@github_user_url, user_json)
+      |> inject_response_body(@github_user_emails_url, emails_json)
 
     File.mkdir_p!(@cassette_dir)
     path = Path.join(@cassette_dir, cassette_name <> ".json")
     File.write!(path, Jason.encode!(cassette, pretty: true))
     ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
     :ok
+  end
+
+  defp inject_response_body(cassette, target_uri, body) do
+    update_in(cassette, ["interactions"], fn interactions ->
+      Enum.map(interactions, fn interaction ->
+        if get_in(interaction, ["request", "uri"]) == target_uri do
+          put_in(interaction, ["response", "body_json"], body)
+        else
+          interaction
+        end
+      end)
+    end)
   end
 
   @doc """

@@ -1,4 +1,4 @@
-ExUnit.start(exclude: [:scenario, :e2e, :pending, :record_google_login_shape])
+ExUnit.start(exclude: [:scenario, :e2e, :pending, :record_google_login_shape, :record_github_login_shape])
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 
 case System.get_env("LOG_LEVEL") do
