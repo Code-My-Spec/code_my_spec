@@ -44,6 +44,10 @@ defmodule CodeMySpec.Integrations.Providers.Google do
       client_id: client_id,
       client_secret: client_secret,
       redirect_uri: redirect_uri,
+      # Login flow lets OIDC discovery overwrite this; refresh flow uses it
+      # directly because refresh_access_token/3 does not redo discovery.
+      token_url: "https://oauth2.googleapis.com/token",
+      auth_method: :client_secret_post,
       authorization_params: [
         scope: "email profile https://www.googleapis.com/auth/analytics.edit",
         access_type: "offline",

@@ -209,6 +209,71 @@ defmodule CodeMySpec.Integrations do
     persist_integration(scope, provider, token, normalized_user)
   end
 
+  @doc """
+  Refresh the stored access token for a provider integration.
+
+  Calls the provider's `refresh_token` grant against its token endpoint and
+  upserts the integration with the new `access_token`, `expires_at`, and —
+  when the provider rotates them — a new `refresh_token`. Granted scopes
+  and provider_metadata are preserved.
+
+  ## Errors
+
+  - `:not_found` — no integration exists for this user/provider
+  - `:no_refresh_token` — integration was stored without a refresh_token
+    (the user needs to re-authenticate)
+  - other terms — provider returned an error (token revoked, etc.)
+  """
+  @spec refresh_token(Scope.t(), provider()) ::
+          {:ok, Integration.t()} | {:error, :not_found | :no_refresh_token | term()}
+  def refresh_token(%Scope{} = scope, provider) do
+    with {:ok, integration} <- get_integration(scope, provider),
+         {:ok, refresh_token} <- fetch_refresh_token(integration),
+         {:ok, provider_module} <- get_provider_module(provider),
+         {:ok, token_response} <- assent_refresh(provider_module, refresh_token) do
+      persist_refreshed_token(scope, provider, integration, token_response)
+    end
+  end
+
+  defp fetch_refresh_token(%Integration{refresh_token: rt}) when is_binary(rt) and rt != "",
+    do: {:ok, rt}
+
+  defp fetch_refresh_token(_), do: {:error, :no_refresh_token}
+
+  defp assent_refresh(provider_module, refresh_token) do
+    # Mirror Assent.Strategy.OAuth2.Base/OIDC.Base's set_config: strategy
+    # defaults underneath, our provider config on top. Otherwise required
+    # keys like :base_url (set by the strategy, not us) are missing because
+    # we are calling refresh_access_token/3 directly.
+    user_config = provider_module.config()
+
+    config =
+      user_config
+      |> provider_module.strategy().default_config()
+      |> Keyword.merge(user_config)
+
+    Assent.Strategy.OAuth2.refresh_access_token(config, %{"refresh_token" => refresh_token})
+  end
+
+  defp persist_refreshed_token(scope, provider, integration, token_response) do
+    attrs = %{
+      access_token: token_response["access_token"],
+      refresh_token: token_response["refresh_token"] || integration.refresh_token,
+      expires_at: calculate_expires_at(token_response),
+      granted_scopes: refreshed_scopes(token_response, integration),
+      provider_metadata: integration.provider_metadata
+    }
+
+    IntegrationRepository.upsert_integration(scope, provider, attrs)
+  end
+
+  defp refreshed_scopes(token_response, integration) do
+    case parse_scopes(token_response["scope"]) do
+      [] -> integration.granted_scopes
+      scopes -> scopes
+    end
+  end
+
   # Private Helpers
 
   defp get_provider_module(provider) do

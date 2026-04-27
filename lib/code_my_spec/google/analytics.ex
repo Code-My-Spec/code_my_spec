@@ -504,11 +504,12 @@ defmodule CodeMySpec.Google.Analytics do
 
   # Private Functions
 
-  defp get_valid_token(_scope, integration) do
+  defp get_valid_token(scope, integration) do
     if integration_expired?(integration) do
-      # TODO: Implement token refresh logic
-      # For now, return error if token is expired
-      {:error, :token_expired}
+      case Integrations.refresh_token(scope, :google) do
+        {:ok, refreshed} -> {:ok, refreshed.access_token}
+        {:error, _} = error -> error
+      end
     else
       {:ok, integration.access_token}
     end
