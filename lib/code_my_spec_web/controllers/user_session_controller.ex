@@ -89,13 +89,18 @@ defmodule CodeMySpecWeb.UserSessionController do
     |> UserAuth.log_out_user()
   end
 
-  # Idempotent — both helpers no-op on the second call. `ensure_personal_account`
-  # returns the existing personal Account if one is already linked to the user;
-  # `select_active_account` updates the existing UserPreference row in place.
+  # Returning users with an existing active-account preference keep whatever
+  # they previously selected. Only provision + select on first login (when no
+  # preference exists yet) — select_active_account also clears active_project_id,
+  # so re-running it on every login would silently nuke project selection too.
   defp provision_personal_account(user) do
     scope = Scope.for_user(user)
-    account = Accounts.ensure_personal_account(scope)
-    {:ok, _} = UserPreferences.select_active_account(scope, account.id)
+
+    if is_nil(scope.active_account_id) do
+      account = Accounts.ensure_personal_account(scope)
+      {:ok, _} = UserPreferences.select_active_account(scope, account.id)
+    end
+
     :ok
   end
 end

@@ -127,8 +127,12 @@ defmodule CodeMySpecWeb.IntegrationsController do
          {:ok, user, status} <-
            Users.find_or_register_oauth_user(provider, normalized_user) do
       scope = Scope.for_user(user)
-      account = Accounts.ensure_personal_account(scope)
-      {:ok, _} = UserPreferences.select_active_account(scope, account.id)
+
+      if is_nil(scope.active_account_id) do
+        account = Accounts.ensure_personal_account(scope)
+        {:ok, _} = UserPreferences.select_active_account(scope, account.id)
+      end
+
       Integrations.save_integration(scope, provider, token, normalized_user)
 
       conn =

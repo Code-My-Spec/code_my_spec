@@ -5,13 +5,21 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
   active-account preference.
 
   When a user who already has a personal account (and has selected a different
-  account as active) signs in via OAuth again, the callback must not reset their
-  active-account preference. The user should remain on whichever account they
-  had selected.
+  account as active, with an active project under it) signs in via OAuth again,
+  the callback must not reset their active-account or active-project preference.
+  The user should remain on whichever account+project they had selected.
 
-  Observable through the public surface: after a second OAuth login, navigating
-  to a require_active_account route proceeds without a picker redirect (because
-  the previously selected account is still active in their session).
+  `UserPreferences.select_active_account/2` clears `active_project_id` as a
+  side effect, so a callback that re-selects the same account on every login
+  silently nukes the user's project selection too. This spec exercises both
+  axes — account preserved AND project preserved.
+
+  Observable through the public surface: after a second OAuth login, the
+  account picker still marks the org account "Current", and the project
+  picker still marks the previously-selected project "Current". The picker
+  emits the "Current" badge only next to the active item — a weaker
+  `html =~ name` assertion would pass even after the preference flipped,
+  because both accounts appear in the list.
   """
 
   use CodeMySpecSpex.Case
@@ -23,21 +31,20 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
 
 
   spex "Subsequent OAuth login does not overwrite an existing active-account preference" do
-    scenario "returning Google user keeps their previously selected account as active" do
-      given_ "an existing user has selected an org account as their active account", context do
+    scenario "returning Google user keeps their org account and project as active" do
+      given_ "an existing user has selected an org account and project as active", context do
         unique = System.unique_integer([:positive])
         email = "returning-5365-#{unique}@example.com"
 
-        # Pre-existing user — created via Fixtures, the approved bridge,
-        # to set up state without going through the OAuth surface twice.
         user = Fixtures.user_fixture(%{email: email})
-
         org_account = Fixtures.account_with_owner_fixture(user)
+        org_scope = Fixtures.user_scope_fixture(user, org_account)
+        project = Fixtures.project_fixture(org_scope, %{name: "Org Project 5365 #{unique}"})
 
-        Fixtures.select_active_account(
-          Fixtures.user_scope_fixture(user, org_account),
-          org_account.id
-        )
+        # Persist active account first — select_active_account nulls active_project_id
+        # by design, so we set the project after the account.
+        Fixtures.select_active_account(org_scope, org_account.id)
+        Fixtures.select_active_project(org_scope, project.id)
 
         user_claims = %{
           "sub" => "google-sub-5365-#{unique}",
@@ -50,7 +57,8 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
          Map.merge(context, %{
            email: email,
            user_claims: user_claims,
-           org_account: org_account
+           org_account: org_account,
+           project: project
          })}
       end
 
@@ -116,22 +124,54 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
         end
       end
 
-      then_ "the picker confirms the org account is still selected, not the personal one",
+      then_ "the account picker marks the org account as currently active, not the personal one",
             context do
-        # Visit the picker directly — it renders the active account with a
-        # "Currently active" badge. This proves the OAuth callback didn't
-        # silently flip the preference back to the personal account.
         {:ok, _view, html} =
           context.second_conn
           |> recycle()
           |> live("/app/accounts/picker")
 
-        assert html =~ context.org_account.name,
-               "expected the org account name to appear on the picker"
+        assert active_li_text(html, context.org_account.name) =~ "Current",
+               "expected the org account to carry the 'Current' badge after a second OAuth login; " <>
+                 "if the personal account got the badge instead, the OAuth callback " <>
+                 "overwrote the active-account preference."
+
+        :ok
+      end
+
+      then_ "the project picker still shows the previously-selected project as currently active",
+            context do
+        # select_active_account/2 nulls active_project_id as a side effect.
+        # If the OAuth callback re-selected the active account on every login,
+        # the project would silently disappear from the preference even when
+        # the same account was chosen.
+        {:ok, _view, html} =
+          context.second_conn
+          |> recycle()
+          |> live("/app/projects/picker")
+
+        assert active_li_text(html, context.project.name) =~ "Current",
+               "expected the previously-selected project to carry the 'Current' badge; " <>
+                 "if active_project_id is nil, no project will have the badge — that means " <>
+                 "the OAuth callback ran select_active_account, which clears active_project_id."
 
         :ok
       end
     end
   end
 
+  # Both pickers render a `<div class="badge badge-primary">Current</div>` only
+  # inside the <li> for the currently-active item. Find the <li> containing
+  # `label` and return its text — callers assert the text contains "Current".
+  defp active_li_text(html, label) do
+    {:ok, doc} = Floki.parse_document(html)
+
+    doc
+    |> Floki.find("li")
+    |> Enum.find(&(Floki.text(&1) =~ label))
+    |> case do
+      nil -> ""
+      li -> Floki.text(li)
+    end
+  end
 end
