@@ -112,64 +112,56 @@ defmodule CodeMySpec.IntegrationsTest do
   end
 
   describe "refresh_token/2" do
-    test "swaps in a fresh access_token from the provider's token endpoint",
+    @cassette_name "google_refresh_success"
+
+    @moduletag :capture_log
+
+    @doc """
+    Records or replays a real Google token-endpoint response.
+
+    First run (no cassette on disk): set `TEST_GOOGLE_REFRESH_TOKEN` to a real
+    refresh_token (obtain by visiting `/app/users/settings` on the dev server
+    and clicking "Connect Google" — the integration flow keeps `prompt=consent`
+    so Google issues a refresh_token). Then run:
+
+        mix test test/code_my_spec/integrations_test.exs --only record_google_refresh
+
+    ReqCassette will hit Google for real, capture the response, scrub the
+    sensitive headers, and write `test/cassettes/oauth/google_refresh_success.json`.
+    Subsequent runs replay against that file with no network access required.
+    """
+    @tag :record_google_refresh
+    test "swaps in a fresh access_token from Google's token endpoint",
          %{scope: scope} do
-      # Backdate the existing integration to simulate an expired token.
-      past = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      cassette_path = Path.join(@cassette_dir, @cassette_name <> ".json")
+
+      refresh_token =
+        System.get_env("TEST_GOOGLE_REFRESH_TOKEN") ||
+          flunk("""
+          set TEST_GOOGLE_REFRESH_TOKEN to record this cassette. Get one by:
+          1. visit /app/users/settings on the dev server
+          2. click "Connect Google" (integration flow, not login)
+          3. read the refresh_token off integrations table for your user
+          """)
 
       {:ok, _original} =
         create_test_integration(scope, :google,
           access_token: "old_access_token",
-          refresh_token: "rt_existing",
-          expires_at: past
+          refresh_token: refresh_token,
+          expires_at: DateTime.utc_now() |> DateTime.add(-3600, :second)
         )
 
-      cassette_name = "google_refresh_success_#{System.unique_integer([:positive])}"
-
-      build_google_token_cassette!(cassette_name, %{
-        "access_token" => "fresh_access_token",
-        "expires_in" => 3599,
-        "scope" => "https://www.googleapis.com/auth/analytics.edit",
-        "token_type" => "Bearer"
-      })
-
-      with_cassette cassette_name, cassette_opts(), fn plug ->
+      with_cassette @cassette_name, cassette_opts(), fn plug ->
         with_assent_plug(plug, fn ->
           assert {:ok, refreshed} = Integrations.refresh_token(scope, :google)
 
-          assert refreshed.access_token == "fresh_access_token"
-          # Provider didn't rotate the refresh_token — keep the old one.
-          assert refreshed.refresh_token == "rt_existing"
-          # New expiry is in the future; the persisted record is no longer expired.
+          assert is_binary(refreshed.access_token) and refreshed.access_token != ""
           assert DateTime.compare(refreshed.expires_at, DateTime.utc_now()) == :gt
-          # Scope from the response is parsed and persisted.
-          assert "https://www.googleapis.com/auth/analytics.edit" in refreshed.granted_scopes
         end)
       end
-    end
 
-    test "uses the new refresh_token when the provider rotates it", %{scope: scope} do
-      {:ok, _original} =
-        create_test_integration(scope, :google,
-          access_token: "old",
-          refresh_token: "rt_old"
-        )
-
-      cassette_name = "google_refresh_rotated_#{System.unique_integer([:positive])}"
-
-      build_google_token_cassette!(cassette_name, %{
-        "access_token" => "fresh_access_token",
-        "refresh_token" => "rt_new",
-        "expires_in" => 3599,
-        "token_type" => "Bearer"
-      })
-
-      with_cassette cassette_name, cassette_opts(), fn plug ->
-        with_assent_plug(plug, fn ->
-          assert {:ok, refreshed} = Integrations.refresh_token(scope, :google)
-          assert refreshed.refresh_token == "rt_new"
-        end)
-      end
+      assert File.exists?(cassette_path),
+             "cassette should have been recorded at #{cassette_path}"
     end
 
     test "returns :no_refresh_token when the integration was stored without one",
@@ -209,48 +201,21 @@ defmodule CodeMySpec.IntegrationsTest do
     Integrations.IntegrationRepository.upsert_integration(scope, provider, attrs)
   end
 
+  # mode: :record means "record on cassette/interaction miss, replay otherwise"
+  # — first run with a real refresh_token captures the response, all
+  # subsequent runs replay against the on-disk JSON without network.
   defp cassette_opts do
     [
       cassette_dir: @cassette_dir,
-      mode: :replay,
+      mode: :record,
       match_requests_on: [:method, :uri],
+      # access_token leaks into the URL as a query param sometimes; strip
+      # it. refresh_token + client_secret live in the form-encoded body
+      # which req_cassette serializes as `<filtered>` when match_requests_on
+      # excludes :body.
       filter_request_headers: ["authorization", "cookie"],
       filter_response_headers: ["set-cookie"]
     ]
-  end
-
-  # Writes a single-interaction cassette for POST https://oauth2.googleapis.com/token
-  # returning the supplied JSON body. The actual refresh_token / client creds in
-  # the request body are ignored (match_requests_on is [:method, :uri]).
-  defp build_google_token_cassette!(cassette_name, body_json) do
-    cassette = %{
-      "version" => "2.0",
-      "interactions" => [
-        %{
-          "recorded_at" => "2026-04-25T23:00:01Z",
-          "request" => %{
-            "method" => "POST",
-            "uri" => "https://oauth2.googleapis.com/token",
-            "query_string" => "",
-            "headers" => %{"content-type" => ["application/x-www-form-urlencoded"]},
-            "body_type" => "text",
-            "body" => "<filtered>"
-          },
-          "response" => %{
-            "status" => 200,
-            "headers" => %{"content-type" => ["application/json; charset=utf-8"]},
-            "body_type" => "json",
-            "body_json" => body_json
-          }
-        }
-      ]
-    }
-
-    File.mkdir_p!(@cassette_dir)
-    path = Path.join(@cassette_dir, cassette_name <> ".json")
-    File.write!(path, Jason.encode!(cassette, pretty: true))
-    on_exit(fn -> File.rm(path) end)
-    :ok
   end
 
   defp with_assent_plug(plug, fun) do

@@ -17,6 +17,33 @@ defmodule CodeMySpecSpex.OAuthHelpers do
   These helpers isolate the OAuth cassette machinery so that each of the 10
   story-602 spec files stays focused on its single scenario rather than
   repeating RSA/JWT/cassette setup.
+
+  ## TODO: replace manufactured cassettes with real recordings
+
+  All 10 story-602 spex files currently exercise OAuth callbacks against
+  cassettes manufactured at test time (RSA keypair generated per run, JWT
+  signed in-process, JSON written to disk). This avoids needing real Google
+  / GitHub credentials, but it does NOT validate that we still parse what
+  the providers actually send.
+
+  The `Integrations.refresh_token/2` test in
+  `test/code_my_spec/integrations_test.exs` shows the recording pattern
+  (`mode: :record` + `:record_google_refresh` tag + env-gated refresh_token):
+  the test records once against the real provider when explicit, then
+  replays the on-disk cassette forever. Migrating these helpers to the
+  same pattern would mean:
+
+  1. Capture a real Google login response (one valid id_token + jwks +
+     openid-configuration). ID tokens have an `exp` claim — committing one
+     means tests fail when it expires, OR we record against a Google
+     account whose token we then fix the clock around. Either way, real.
+  2. Capture real GitHub user + emails responses. Easier — no JWT
+     expiration to worry about.
+  3. Drop `build_google_cassette!/2`, `build_github_cassette!/3`, and the
+     RSA / JWT helpers below.
+
+  Until that work happens these manufactured cassettes are a known
+  fidelity gap.
   """
 
   import Phoenix.ConnTest
