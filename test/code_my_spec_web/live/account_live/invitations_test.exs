@@ -225,10 +225,14 @@ defmodule CodeMySpecWeb.AccountLive.InvitationsTest do
       |> form("#invite-form", invitation: %{email: existing_member.email, role: "member"})
       |> render_submit()
 
-      _html = render(invitations_live)
-      assert has_element?(invitations_live, "form#invite-form")
-      # TODO: Fix this test
-      # assert html =~ "has already been taken"
+      html = render(invitations_live)
+
+      assert has_element?(invitations_live, "form#invite-form"),
+             "expected the invite form to remain so the error stays visible"
+
+      assert html =~ "User already has access to this account",
+             "expected the duplicate-member error from Invitations.invite_user/4 " <>
+               "to render on the form"
     end
 
     test "non-admins cannot see invite form", %{conn: conn, user: user} do

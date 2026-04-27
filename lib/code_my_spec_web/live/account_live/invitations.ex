@@ -112,7 +112,7 @@ defmodule CodeMySpecWeb.AccountLive.Invitations do
          |> assign(:invite_form, to_form(Invitation.changeset(%Invitation{}, %{})))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :invite_form, to_form(changeset))}
+        {:noreply, assign(socket, :invite_form, to_form(changeset, action: :validate))}
 
       {:error, :user_already_member} ->
         changeset =
@@ -120,7 +120,7 @@ defmodule CodeMySpecWeb.AccountLive.Invitations do
           |> Invitation.changeset(invitation_params)
           |> Ecto.Changeset.add_error(:email, "User already has access to this account")
 
-        {:noreply, assign(socket, :invite_form, to_form(changeset))}
+        {:noreply, assign(socket, :invite_form, to_form(changeset, action: :validate))}
 
       {:error, :not_authorized} ->
         {:noreply, put_flash(socket, :error, "You are not authorized to invite users")}
