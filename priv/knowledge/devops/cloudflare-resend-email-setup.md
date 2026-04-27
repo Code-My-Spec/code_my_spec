@@ -1,133 +1,157 @@
 # Cloudflare + Resend Email Setup
 
-How to configure transactional email for a Phoenix app using **Resend** as the email provider with a domain managed by **Cloudflare DNS**.
+How to configure transactional email for a Phoenix app using **Resend** as the provider with a domain on **Cloudflare DNS**. Outbound only — for inbound, see Cloudflare Email Routing or Resend Inbound separately.
+
+> **As of 2026-04-26**, Resend's verification flow uses a `send` subdomain pointing at Amazon SES (their underlying transport) plus a single DKIM TXT. Older guides describing three `resend*._domainkey` CNAMEs and an apex SPF `include:send.resend.com` are stale.
 
 ## Overview
 
-- **Email provider**: [Resend](https://resend.com) — API-based transactional email service
-- **DNS provider**: Cloudflare — manages domain DNS records including email authentication (SPF, DKIM, DMARC)
+- **Email provider**: [Resend](https://resend.com) — API-based transactional email
+- **DNS provider**: Cloudflare — manages SPF/DKIM/DMARC for the sending domain
 - **Elixir library**: [Swoosh](https://hexdocs.pm/swoosh) with `Swoosh.Adapters.Resend`
-- **API client**: `Swoosh.ApiClient.Req` (uses the Req HTTP library already in the project)
+- **API client**: `Swoosh.ApiClient.Req` (Req is already in the project)
 
-## 1. Create a Resend Account & API Key
+## 1. Resend account & API key
 
 1. Sign up at [resend.com](https://resend.com)
-2. Go to **API Keys** → **Create API Key**
-3. Name it after the environment (e.g. `fuellytics-prod`)
-4. Copy the key — it starts with `re_` (e.g. `re_ivXHbYW9_...`)
-5. Store it in your environment secrets file (e.g. `envs/prod.env`):
+2. **API Keys** → **Create API Key**, name it after the env (e.g. `code-my-spec-prod`)
+3. Copy the key — starts with `re_`
+4. Store in your env secrets file:
+
+   ```bash
+   RESEND_API_KEY=re_your_api_key_here
+   ```
+
+## 2. Add the domain in Resend
+
+Either via dashboard (**Domains** → **Add Domain**) or API:
 
 ```bash
-RESEND_API_KEY=re_your_api_key_here
+curl -sS -X POST https://api.resend.com/domains \
+  -H "Authorization: Bearer $RESEND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"yourdomain.com","region":"us-east-1"}'
 ```
 
-## 2. Add Your Domain in Resend
+The response includes a domain `id` and a `records` array — three records to publish in DNS.
 
-1. In the Resend dashboard, go to **Domains** → **Add Domain**
-2. Enter your domain (e.g. `fuellytics.com` or `fuellytics.app`)
-3. Resend will provide DNS records you need to add — typically:
-   - **SPF** (TXT record)
-   - **DKIM** (CNAME records, usually 3)
-   - **DMARC** (TXT record, optional but recommended)
+## 3. Add DNS records in Cloudflare
 
-## 3. Add DNS Records in Cloudflare
+The actual record set depends on your Resend region. For `us-east-1` you'll get:
 
-In your Cloudflare dashboard for the domain:
+| Type | Name | Content | Priority | Proxy |
+|------|------|---------|----------|-------|
+| TXT | `resend._domainkey` | DKIM key from Resend response (`p=MIGf...`) | — | N/A |
+| MX | `send` | `feedback-smtp.us-east-1.amazonses.com` | 10 | N/A |
+| TXT | `send` | `v=spf1 include:amazonses.com ~all` | — | N/A |
 
-1. Go to **DNS** → **Records**
-2. Add each record Resend provides:
+> **EU region**: hostname is `feedback-smtp.eu-west-1.amazonses.com` and SPF stays `include:amazonses.com`. Other regions follow the same pattern.
 
-### SPF Record
+> The DKIM and `send` SPF/MX records do not affect any existing apex mail records — Resend uses `send.yourdomain.com` as the bounce/Return-Path subdomain, which provides DMARC alignment via DKIM (`d=yourdomain.com`) without touching apex MX.
 
-| Type | Name | Content | Proxy |
-|------|------|---------|-------|
-| TXT | `@` | `v=spf1 include:send.resend.com ~all` | N/A (TXT records are never proxied) |
+### Apex SPF (optional but recommended)
 
-> If you already have an SPF record (e.g. for another email provider), merge the `include:` directive into the existing record rather than creating a second one. Only one SPF record is allowed per domain.
+If your apex has no other senders, set an explicit reject so spoofers can't impersonate `@yourdomain.com`:
 
-### DKIM Records
-
-Resend provides 3 CNAME records for DKIM signing. Add them exactly as shown:
-
-| Type | Name | Content | Proxy |
-|------|------|---------|-------|
-| CNAME | `resend._domainkey` | *(value from Resend dashboard)* | **DNS only** (grey cloud) |
-| CNAME | `resend2._domainkey` | *(value from Resend dashboard)* | **DNS only** (grey cloud) |
-| CNAME | `resend3._domainkey` | *(value from Resend dashboard)* | **DNS only** (grey cloud) |
-
-> **Important**: DKIM CNAME records must NOT be proxied (orange cloud). Toggle to **DNS only** (grey cloud) or they won't resolve correctly.
-
-### DMARC Record (recommended)
-
-| Type | Name | Content | Proxy |
-|------|------|---------|-------|
-| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@yourdomain.com` | N/A |
-
-4. Go back to Resend dashboard and click **Verify** — it checks DNS propagation
-5. Once verified, the domain status shows **Verified** and you can send from any address `@yourdomain.com`
-
-## 4. Configure the Phoenix App
-
-### Dependencies (mix.exs)
-
-Swoosh and Req should already be in your deps:
-
-```elixir
-{:swoosh, "~> 1.16"},
-{:req, "~> 0.5"},
+```
+TXT @ "v=spf1 -all"
 ```
 
-### Mailer Module
+Resend mail still passes DMARC because DKIM signs with `d=yourdomain.com` (aligned with the From header).
+
+### DMARC (recommended)
+
+```
+TXT _dmarc "v=DMARC1; p=none; rua=mailto:dmarc@yourdomain.com"
+```
+
+Start with `p=none` to monitor, tighten to `p=quarantine` then `p=reject` once you've confirmed Resend mail is aligned.
+
+### Doing it via Cloudflare API
+
+If you have a Cloudflare API token with `Zone:DNS:Edit`:
+
+```bash
+ZONE=$(curl -sS "https://api.cloudflare.com/client/v4/zones?name=yourdomain.com" \
+  -H "Authorization: Bearer $CF_TOKEN" | jq -r '.result[0].id')
+
+# DKIM
+curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records" \
+  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"type":"TXT","name":"resend._domainkey","content":"<dkim-from-resend>","ttl":1,"proxied":false}'
+
+# Bounce subdomain MX
+curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records" \
+  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"type":"MX","name":"send","content":"feedback-smtp.us-east-1.amazonses.com","priority":10,"ttl":1}'
+
+# Bounce subdomain SPF
+curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records" \
+  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"type":"TXT","name":"send","content":"v=spf1 include:amazonses.com ~all","ttl":1,"proxied":false}'
+```
+
+## 4. Trigger verification
+
+Cloudflare propagates within seconds; resolvers may negative-cache. Trigger Resend's verifier and poll:
+
+```bash
+DOMAIN_ID=<id from step 2>
+
+curl -sS -X POST "https://api.resend.com/domains/$DOMAIN_ID/verify" \
+  -H "Authorization: Bearer $RESEND_API_KEY"
+
+# Poll status (typically clears in 1–10 minutes)
+curl -sS "https://api.resend.com/domains/$DOMAIN_ID" \
+  -H "Authorization: Bearer $RESEND_API_KEY" | jq '{status, records: [.records[] | {type, name, status}]}'
+```
+
+When `status: "verified"` you can send from any address `@yourdomain.com`.
+
+## 5. Configure the Phoenix app
+
+### Mailer module
 
 ```elixir
-# lib/my_app/mailer.ex
-defmodule MyApp.Mailer do
-  use Swoosh.Mailer, otp_app: :my_app
+# lib/code_my_spec/mailer.ex
+defmodule CodeMySpec.Mailer do
+  use Swoosh.Mailer, otp_app: :code_my_spec
 end
 ```
 
-### Config: Development (config/dev.exs)
-
-Use the local adapter — emails are viewable at `/dev/mailbox`:
+### Config: dev (`config/dev.exs`)
 
 ```elixir
-config :my_app, MyApp.Mailer, adapter: Swoosh.Adapters.Local
-
-# Disable the API client (not needed for local adapter)
+config :code_my_spec, CodeMySpec.Mailer, adapter: Swoosh.Adapters.Local
 config :swoosh, :api_client, false
 ```
 
-### Config: Test (config/test.exs)
+Local mailbox at `/dev/mailbox` (when `dev_routes: true`).
+
+### Config: test (`config/test.exs`)
 
 ```elixir
-config :my_app, MyApp.Mailer, adapter: Swoosh.Adapters.Test
+config :code_my_spec, CodeMySpec.Mailer, adapter: Swoosh.Adapters.Test
 config :swoosh, :api_client, false
 ```
 
-### Config: Production (config/prod.exs)
-
-Enable the Req-based API client for Swoosh:
+### Config: prod (`config/prod.exs`)
 
 ```elixir
-# Use Req as the Swoosh API client for Resend
-config :swoosh, :api_client, Swoosh.ApiClient.Req
+config :swoosh, api_client: Swoosh.ApiClient.Req
 ```
 
-### Config: Runtime (config/runtime.exs)
-
-Configure the Resend adapter with the API key from the environment:
+### Config: runtime (`config/runtime.exs`)
 
 ```elixir
 if config_env() == :prod do
-  config :my_app, MyApp.Mailer,
+  config :code_my_spec, CodeMySpec.Mailer,
     adapter: Swoosh.Adapters.Resend,
     api_key: env!("RESEND_API_KEY", :string, "")
 end
 ```
 
-### Docker Compose
-
-Pass the API key through to the app container:
+### Docker Compose / env passthrough
 
 ```yaml
 services:
@@ -136,50 +160,56 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
 ```
 
-## 5. Sending Emails
-
-### Basic Email
+## 6. Sending
 
 ```elixir
 import Swoosh.Email
 
 new()
 |> to("user@example.com")
-|> from({"MyApp", "noreply@mydomain.com"})
+|> from({"CodeMySpec", "contact@codemyspec.com"})
 |> subject("Welcome!")
-|> text_body("Hello from MyApp")
-|> MyApp.Mailer.deliver()
+|> text_body("Hello.")
+|> CodeMySpec.Mailer.deliver()
 ```
 
-### With Attachments
+The `from` address must use a verified domain.
 
-```elixir
-attachment = Swoosh.Attachment.new({:data, binary_data}, filename: "report.pdf")
+## 7. Migrating from Mailgun (or other Swoosh adapters)
 
-new()
-|> to(recipient)
-|> from({"MyApp", "noreply@mydomain.com"})
-|> subject("Your Report")
-|> text_body("See attached.")
-|> Swoosh.Email.attachment(attachment)
-|> MyApp.Mailer.deliver()
+The Swoosh API is adapter-agnostic — only the runtime config changes. From Mailgun:
+
+```diff
+ config :code_my_spec, CodeMySpec.Mailer,
+-  adapter: Swoosh.Adapters.Mailgun,
+-  api_key: System.get_env("MAILGUN_API_KEY"),
+-  domain: System.get_env("MAILGUN_DOMAIN")
++  adapter: Swoosh.Adapters.Resend,
++  api_key: env!("RESEND_API_KEY", :string, "")
 ```
 
-### From Address
+Then clean stale DNS:
 
-The `from` address must use a domain verified in Resend. Common pattern:
+| Record | Action |
+|--------|--------|
+| `CNAME email.<domain> → mailgun.org` | Delete (Mailgun click-tracking) |
+| `TXT smtp._domainkey.<domain>` | Delete (Mailgun DKIM) |
+| `TXT @ "v=spf1 include:mailgun.org ~all"` | Delete or replace with `v=spf1 -all` |
+| `MX @ → mxa/mxb.mailgun.org` | **Don't delete blindly** — these are inbound. Decide where receiving goes first (Cloudflare Email Routing, Resend Inbound, or kill entirely). |
 
-```elixir
-@default_from {"MyApp", "noreply@mydomain.com"}
-```
-
-## 6. Troubleshooting
+## 8. Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| Emails not sending in prod | Check `RESEND_API_KEY` is set and non-empty |
-| Resend domain not verifying | Ensure DKIM CNAMEs are **DNS only** (not proxied) in Cloudflare |
-| SPF failures | Ensure only one SPF TXT record exists on the domain |
-| Emails going to spam | Add DMARC record, ensure SPF + DKIM both pass |
-| `** (RuntimeError) :api_client is not set` | Add `config :swoosh, :api_client, Swoosh.ApiClient.Req` in prod.exs |
-| Dev mailbox not showing | Ensure `dev_routes: true` in config and visit `/dev/mailbox` |
+| Emails not sending in prod | `RESEND_API_KEY` is set and non-empty |
+| Domain stuck `pending` past 10 min | Re-verify each record with `dig +short <type> <name> @<authoritative-ns>`; common cause is typoed DKIM TXT |
+| `(RuntimeError) :api_client is not set` | Add `config :swoosh, api_client: Swoosh.ApiClient.Req` to `prod.exs` |
+| Mail goes to spam | Add DMARC, confirm `send` MX/SPF + DKIM all show `verified` in Resend |
+| `403 Domain is not verified` from Resend | The `from` address domain must match a verified Resend domain (or subdomain) |
+| Dev mailbox empty | Set `dev_routes: true` and visit `/dev/mailbox` |
+
+## References
+
+- Resend domain verification — https://resend.com/docs/dashboard/domains/introduction
+- Swoosh Resend adapter — https://hexdocs.pm/swoosh/Swoosh.Adapters.Resend.html
+- Project usage knowledge — `priv/knowledge/resend/`

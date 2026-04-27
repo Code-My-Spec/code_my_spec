@@ -126,7 +126,6 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :code_my_spec, CodeMySpec.Mailer,
-    adapter: Swoosh.Adapters.Mailgun,
-    api_key: System.get_env("MAILGUN_API_KEY"),
-    domain: System.get_env("MAILGUN_DOMAIN")
+    adapter: Swoosh.Adapters.Resend,
+    api_key: env!("RESEND_API_KEY", :string, "")
 end
