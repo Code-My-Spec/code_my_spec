@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5151Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5151Spex do
         refute body =~ "personas_complete",
                "expected personas_complete to clear with optional section included"
 
-        :ok
+        {:ok, context}
       end
     end
   end

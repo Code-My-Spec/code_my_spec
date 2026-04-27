@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5268Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpecSpex.Fixtures
 

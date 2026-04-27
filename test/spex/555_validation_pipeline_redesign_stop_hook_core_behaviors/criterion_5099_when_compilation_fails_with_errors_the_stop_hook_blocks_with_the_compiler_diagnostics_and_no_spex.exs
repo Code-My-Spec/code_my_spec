@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
         assert reason =~ "lib/example_context.ex",
                "reason must reference the offending file, got:\n#{reason}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "no test or credo output appears in the block reason",
@@ -89,7 +89,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5099Spex do
         refute reason =~ ~r/\bexunit\b/i,
                "exunit must not run when compile errors, got:\n#{reason}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

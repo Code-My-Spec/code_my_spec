@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5167Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5167Spex do
         assert body =~ ~r/passed|complete/i,
                "expected response to indicate the task passed, got #{inspect(context.evaluate_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

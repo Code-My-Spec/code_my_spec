@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story597.Criterion5285Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask

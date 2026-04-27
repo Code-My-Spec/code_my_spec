@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5379Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Active project preference is set to the new project" do
     scenario "Active project preference is set after onboarding submit" do
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5379Spex do
 
         case conn.status do
           200 ->
-            :ok
+            {:ok, context}
 
           302 ->
             target = redirected_to(conn)
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5379Spex do
                    "expected scope.active_project to be set after onboarding submit — " <>
                      "got picker redirect to #{target}"
 
-            :ok
+            {:ok, context}
 
           status ->
             flunk("unexpected status #{status} reaching /app/stories")

@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5384Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "A project added in another tab does not flip the form mid-session" do
     scenario "A project added in another tab does not flip the form mid-session without a refresh" do
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5384Spex do
                  "was created in Tab B — `empty_state?` must not flip mid-session " <>
                  "without a page refresh"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5091Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5091Spex do
         assert context.response["decision"] == "block",
                "compile_warnings=block must block on a compiler warning, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the blocking section enumerates the compiler warning",
@@ -109,7 +109,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5091Spex do
         assert reason =~ ~r/unused/i,
                "blocking section must include the warning message, got:\n#{reason}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the advisory section summarizes exunit as a single line with no detail",
@@ -136,7 +136,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5091Spex do
         refute advisory_block =~ "exunit failure fixture",
                "advisory section must not include the exunit message body, got:\n#{advisory_block}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
         assert body =~ ~r/reject|does not belong|cross-account/i,
                "expected an explicit rejection"
 
-        :ok
+        {:ok, context}
       end
     end
   end

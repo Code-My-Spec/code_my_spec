@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5106Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5106Spex do
         assert context.response["reason"] =~ @broken_spec_path,
                "reason must reference the broken spec file, got: #{inspect(context.response["reason"])}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

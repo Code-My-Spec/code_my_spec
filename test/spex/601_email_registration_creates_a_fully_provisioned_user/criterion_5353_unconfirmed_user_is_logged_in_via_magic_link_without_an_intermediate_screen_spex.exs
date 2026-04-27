@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5353Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Magic link click confirms + logs in directly without intermediate screen" do
     scenario "Unconfirmed user is logged in via magic link without an intermediate screen" do
@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5353Spex do
                "expected a session token to be set after the magic-link click, " <>
                  "indicating the user is logged in directly"
 
-        :ok
+        {:ok, context}
       end
     end
   end

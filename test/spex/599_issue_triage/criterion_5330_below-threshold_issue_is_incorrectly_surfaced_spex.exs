@@ -11,9 +11,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -65,7 +62,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
         refute prompt =~ low_issue.id,
                "expected prompt to exclude the low-severity issue #{low_issue.id}, but found it in: #{inspect(prompt)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the prompt's stated threshold reads medium", context do
@@ -74,7 +71,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
         assert prompt =~ ~r/medium/i,
                "expected the prompt to mention the :medium threshold, got: #{inspect(prompt)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

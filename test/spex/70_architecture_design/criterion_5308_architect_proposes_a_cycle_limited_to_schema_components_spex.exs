@@ -11,9 +11,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -128,7 +125,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
         assert body =~ ~r/passed/i,
                "expected Passed for schema-only cycle, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "execution proceeds without cycle warnings", context do
@@ -138,7 +135,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
         refute body =~ ~r/circular dependency.*#{Regex.escape("Accounts.User")}|#{Regex.escape("Accounts.User")}.*circular/i,
                "expected no cycle rejection for schema-only cycle, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

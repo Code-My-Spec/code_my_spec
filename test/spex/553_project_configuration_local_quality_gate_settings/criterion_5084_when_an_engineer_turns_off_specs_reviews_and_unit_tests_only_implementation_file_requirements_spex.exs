@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5084Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5084Spex do
         refute html =~ "test_file"
         refute html =~ "tests_passing"
 
-        :ok
+        {:ok, context}
       end
     end
   end

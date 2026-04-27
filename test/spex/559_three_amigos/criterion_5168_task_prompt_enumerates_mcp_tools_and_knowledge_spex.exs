@@ -21,9 +21,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5168Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -84,7 +81,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5168Spex do
         assert prompt =~ ~r/knowledge\s+MCP|semantic_search/,
                "expected prompt to point to the knowledge MCP for protocol guidance, got #{inspect(prompt)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5082Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5082Spex do
         refute html =~ "review_valid",
                "graph must not contain review_valid after toggling require_reviews off"
 
-        :ok
+        {:ok, context}
       end
     end
   end

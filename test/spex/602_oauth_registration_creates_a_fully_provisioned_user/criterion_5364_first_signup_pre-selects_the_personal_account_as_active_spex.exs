@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5364Spex do
                "expected no account-picker redirect on first signup; " <>
                  "the personal account should already be active"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the session resolves to the new Google identity on the settings page",
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5364Spex do
                "expected /app/users/settings to render the OAuth user's email " <>
                  "after first signup"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the user reaches an account-protected route without a picker detour",
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5364Spex do
 
         case result do
           {:ok, _view, _html} ->
-            :ok
+            {:ok, context}
 
           {:error, {:live_redirect, %{to: to}}} ->
             if to =~ "picker" do

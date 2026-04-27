@@ -14,9 +14,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
@@ -50,7 +47,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
         assert body =~ ~r/accepted/i,
                "expected response to confirm acceptance, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the response indicates the category is bug", context do
@@ -59,7 +56,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
         assert body =~ ~r/bug/i,
                "expected response to reflect category :bug, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "no story_id is required for the call to succeed", context do
@@ -68,7 +65,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
         refute body =~ ~r/error|invalid|required/i,
                "expected no error when accepting as :bug without story_id, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

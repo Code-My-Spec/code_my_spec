@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5174Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -95,7 +95,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5174Spex do
         assert body =~ context.story.title,
                "expected story title in feature, got #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "every rule statement appears as a `Rule:` block", context do
@@ -107,7 +107,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5174Spex do
         assert body =~ ~r/Rule:\s*Suspended drivers receive notification/,
                "expected second rule block, got #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "every scenario title and body is present", context do
@@ -133,7 +133,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5174Spex do
                  "expected Gherkin body fragment `#{fragment}`, got #{inspect(body)}"
         end
 
-        :ok
+        {:ok, context}
       end
     end
   end

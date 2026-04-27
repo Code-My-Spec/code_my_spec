@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5359Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "After successful auth user lands on /app/onboarding" do
     scenario "Successful magic link authentication redirects to /app/onboarding" do
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5359Spex do
         assert redirected_to(context.conn) == "/app/onboarding",
                "expected redirect to /app/onboarding"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5135Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5135Spex do
         assert context.prompt =~ "persona_research/pm_intake.md"
         assert context.prompt =~ "persona_research/primary_research.md"
 
-        :ok
+        {:ok, context}
       end
     end
   end

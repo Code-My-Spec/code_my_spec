@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -118,7 +115,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
         assert body =~ ~r/passed/i,
                "expected Passed in the evaluate response, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the evaluation feedback contains no surface-preference warnings for the story",
@@ -132,7 +129,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
         refute body =~ ~r/non-surface.*#{Regex.escape(story_id)}|#{Regex.escape(story_id)}.*non-surface/i,
                "expected no surface-preference warning for story #{story_id}, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

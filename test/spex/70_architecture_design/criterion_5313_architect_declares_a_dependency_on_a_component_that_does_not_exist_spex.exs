@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -121,7 +118,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
         assert body =~ ~r/needs work/i,
                "expected rejection for dangling reference, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the rejection feedback names the unresolved reference", context do
@@ -135,7 +132,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
         assert body =~ "#{app}Web.StoryLive.Index",
                "expected rejection feedback to name the source component, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "execution does not run", context do
@@ -147,7 +144,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
         refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected no spec stub at #{spec_path} when proposal was rejected"
 
-        :ok
+        {:ok, context}
       end
     end
   end

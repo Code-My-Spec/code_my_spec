@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5161Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -117,7 +117,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5161Spex do
         refute body =~ "three_amigos_complete" and body =~ story_id,
                "expected the graph to advance past three_amigos_complete for story #{story_id}, got #{inspect(response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

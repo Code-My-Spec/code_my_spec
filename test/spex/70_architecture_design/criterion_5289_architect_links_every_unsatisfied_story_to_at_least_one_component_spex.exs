@@ -14,9 +14,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -136,7 +133,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
         assert body =~ ~r/passed/i,
                "expected Passed in the evaluate response, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "execution creates spec stubs for any new components", context do
@@ -153,7 +150,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
                  "expected spec stub at #{spec_path} to be written by execution"
         end
 
-        :ok
+        {:ok, context}
       end
     end
   end

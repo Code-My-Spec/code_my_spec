@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5083Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5083Spex do
         refute html =~ "tests_passing",
                "graph must not contain tests_passing after toggling require_unit_tests off"
 
-        :ok
+        {:ok, context}
       end
     end
   end

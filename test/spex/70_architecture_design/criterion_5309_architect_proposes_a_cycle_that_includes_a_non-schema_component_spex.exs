@@ -11,9 +11,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -129,7 +126,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         assert body =~ ~r/needs work/i,
                "expected rejection for context-component cycle, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the rejection feedback names the cycle path", context do
@@ -142,7 +139,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         assert body =~ "Stories",
                "expected cycle path to mention Stories, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "execution does not run", context do
@@ -154,7 +151,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected no spec stub at #{spec_path} when proposal was rejected"
 
-        :ok
+        {:ok, context}
       end
     end
   end

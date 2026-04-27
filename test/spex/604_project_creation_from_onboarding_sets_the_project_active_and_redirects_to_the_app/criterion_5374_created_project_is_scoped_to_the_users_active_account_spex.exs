@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5374Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Created project belongs to the user's active account" do
     scenario "Created project is scoped to the user's active account" do
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5374Spex do
         assert html =~ "My First Project",
                "expected the new project to appear in /app/projects (account-scoped listing)"
 
-        :ok
+        {:ok, context}
       end
     end
   end

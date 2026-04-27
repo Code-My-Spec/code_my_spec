@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
@@ -123,7 +123,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
         assert body =~ context.second_slug,
                "expected feedback to name the second persona"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the feedback names 'founder' with summary.md as its gap", context do
@@ -135,7 +135,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
         assert body =~ ~r/#{context.persona_slug}[\s\S]{0,200}summary\.md|summary\.md[\s\S]{0,200}#{context.persona_slug}/,
                "expected feedback to attribute summary.md as the gap for '#{context.persona_slug}'"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the feedback names 'agency_pm' with sources.md as its gap", context do
@@ -144,7 +144,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
         assert body =~ ~r/#{context.second_slug}[\s\S]{0,200}sources\.md|sources\.md[\s\S]{0,200}#{context.second_slug}/,
                "expected feedback to attribute sources.md as the gap for '#{context.second_slug}'"
 
-        :ok
+        {:ok, context}
       end
     end
   end

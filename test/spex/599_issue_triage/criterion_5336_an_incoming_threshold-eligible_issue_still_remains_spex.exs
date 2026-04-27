@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
@@ -88,7 +85,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
         assert body =~ ~r/needs work|invalid/i,
                "expected a needs-work response, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the feedback names the remaining incoming issue", context do
@@ -97,7 +94,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
         assert body =~ context.issue_b.title,
                "expected feedback to name the remaining issue '#{context.issue_b.title}', got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the feedback instructs the agent to use accept_issue or dismiss_issue", context do
@@ -106,7 +103,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
         assert body =~ ~r/accept_issue|dismiss_issue/,
                "expected feedback to reference accept_issue or dismiss_issue, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5130Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5130Spex do
         assert body =~ ~r/summary\.md|sources\.md/,
                "expected feedback to name a specific artifact (per-artifact detail)"
 
-        :ok
+        {:ok, context}
       end
     end
   end

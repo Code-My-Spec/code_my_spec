@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5137Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5137Spex do
         assert context.prompt =~ ~r/source leads|ask the PM/i,
                "expected prompt to direct asking the PM for source leads"
 
-        :ok
+        {:ok, context}
       end
     end
   end

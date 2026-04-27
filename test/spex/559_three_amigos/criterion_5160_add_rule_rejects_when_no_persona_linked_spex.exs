@@ -25,9 +25,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5160Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.ListRules
@@ -72,7 +69,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5160Spex do
         assert body =~ ~r/persona/i,
                "expected the error to mention persona linkage, got #{inspect(context.add_response)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the rule does not appear in list_rules for the story", context do
@@ -89,7 +86,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5160Spex do
         refute body =~ "Suspended cards cannot be used",
                "expected no rules on the story, got #{inspect(list_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

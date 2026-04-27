@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5169Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5169Spex do
         assert body =~ ~r/rule/i,
                "expected the error to mention the rule lookup, got #{inspect(context.add_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

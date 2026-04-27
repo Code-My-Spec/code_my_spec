@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
         assert context.response == %{},
                "no-changes stop must skip the pipeline and allow, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

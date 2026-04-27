@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5164Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5164Spex do
         assert body =~ ~r/no personas/i,
                "expected response to name the missing-persona failure, got #{inspect(context.evaluate_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

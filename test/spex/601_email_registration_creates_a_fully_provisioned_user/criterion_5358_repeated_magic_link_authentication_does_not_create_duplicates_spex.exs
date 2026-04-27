@@ -1,36 +1,33 @@
 defmodule CodeMySpecSpex.Story601.Criterion5358Spex do
   @moduledoc """
-  Story 601 — Email registration creates a fully provisioned user
-  Criterion 5358 — Rule: Provisioning is idempotent.
+  Story 601 — Email registration logs the user in via magic link.
+  Criterion 5358 — Rule: Magic-link authentication is idempotent.
 
-  A user who has already been provisioned via a prior magic-link click
-  can authenticate again via a fresh magic link without creating
-  duplicate Account, Member, or UserPreference rows.
-
-  Setup uses the public registration LiveView for the first link, then
-  drives the public /users/log-in LiveView's magic-link form to issue
-  a second link to the same email. The second magic-link click is
-  observed through the public surface — reaching /app/accounts cleanly
-  (200) means account resolution is still unambiguous after the
-  second auth.
+  A user who has already authenticated once can request another magic
+  link to the same email and click it; the second click logs the same
+  user in (no duplicate User row is created). Observed at the surface
+  layer: the second auth still 302s to /app/onboarding, the resulting
+  session token resolves to a logged-in user, and a follow-up GET to
+  /app/users/settings (which only requires :require_authenticated)
+  succeeds — confirming the session belongs to a unique, live user.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
-  spex "Provisioning is idempotent" do
+  spex "Magic-link auth is idempotent" do
     scenario "Repeated magic-link authentication does not create duplicates" do
       given_ :registered_user_with_magic_link
 
-      given_ "the user has already been provisioned by clicking the first magic link",
+      given_ "the user has already authenticated once via the first magic link",
              context do
-        # Drive the magic-link controller once on a throwaway conn so the user
-        # gets confirmed + provisioned. The session it produces is irrelevant
-        # to the assertion that follows — what matters is the side-effect on
-        # the DB.
+        # Drive the first magic-link controller on a throwaway conn so
+        # the user is now confirmed. The session it produces is irrelevant
+        # to the assertion — what matters is that a second auth still
+        # works for the same email.
         first_conn = Phoenix.ConnTest.build_conn()
         _ = get(first_conn, context.magic_link_url)
 
@@ -71,19 +68,32 @@ defmodule CodeMySpecSpex.Story601.Criterion5358Spex do
         {:ok, Map.put(context, :conn, conn)}
       end
 
-      then_ "the second authentication is accepted with no duplicate-account ambiguity",
-            context do
+      then_ "the second authentication redirects to /app/onboarding", context do
+        assert context.conn.status == 302,
+               "expected a 302 after the second magic-link auth, " <>
+                 "got status #{context.conn.status}"
+
+        assert redirected_to(context.conn) == "/app/onboarding",
+               "expected the second magic-link auth to land at /app/onboarding"
+
+        {:ok, context}
+      end
+
+      then_ "the resulting session resolves to a single logged-in user", context do
         assert get_session(context.conn, :user_token),
-               "expected session token after second magic-link authentication"
+               "expected a session token after the second magic-link authentication"
 
-        accounts_conn = get(recycle(context.conn), "/app/accounts")
+        # Hit a route that only requires :require_authenticated (no active
+        # account needed). A duplicate user or a broken session would
+        # surface here as a 302 to /users/log-in or a 500.
+        settings_conn = get(recycle(context.conn), "/app/users/settings")
 
-        assert accounts_conn.status == 200,
-               "expected /app/accounts to return 200 — duplicates would cause " <>
-                 "require_active_account to redirect to the picker. " <>
-                 "Got status #{accounts_conn.status}."
+        assert settings_conn.status == 200,
+               "expected /app/users/settings to return 200 after the second " <>
+                 "magic-link auth — duplicate users would break session resolution. " <>
+                 "Got status #{settings_conn.status}."
 
-        :ok
+        {:ok, context}
       end
     end
   end

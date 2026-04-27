@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5101Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   @fixture_dir "test/fixtures/validation/pipeline_clean_run"
 
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5101Spex do
         assert context.response == %{},
                "freestyle clean run must produce empty allow, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

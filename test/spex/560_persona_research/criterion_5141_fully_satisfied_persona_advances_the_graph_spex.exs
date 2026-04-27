@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
         refute body =~ "personas_complete",
                "expected the graph to advance past personas_complete once artifacts exist"
 
-        :ok
+        {:ok, context}
       end
     end
   end

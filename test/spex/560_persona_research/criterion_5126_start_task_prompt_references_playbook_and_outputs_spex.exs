@@ -14,9 +14,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5126Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
@@ -67,7 +64,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5126Spex do
         assert body =~ "pm_intake.md",
                "expected prompt to name pm_intake.md as an intake reference"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the prompt names the expected output paths", context do
@@ -82,7 +79,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5126Spex do
         assert body =~ "sources.md",
                "expected prompt to name sources.md as an output artifact"
 
-        :ok
+        {:ok, context}
       end
     end
   end

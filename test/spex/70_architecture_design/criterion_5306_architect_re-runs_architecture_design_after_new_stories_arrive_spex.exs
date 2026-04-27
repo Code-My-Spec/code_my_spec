@@ -14,9 +14,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5306Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -83,7 +80,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5306Spex do
         assert prompt =~ context.new_story.title,
                "expected start_task prompt to include the new unsatisfied story title, got: #{inspect(prompt)}"
 
-        :ok
+        {:ok, context}
       end
 
       when_ "the architect adds a new component for the new story and submits", context do
@@ -145,7 +142,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5306Spex do
         assert CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected spec stub at #{spec_path} to be created for the new component"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the existing component is untouched", context do
@@ -166,7 +163,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5306Spex do
                "expected no rejection when re-running with an existing component, got: #{inspect(body)}"
 
         _ = existing_spec_path
-        :ok
+        {:ok, context}
       end
     end
   end

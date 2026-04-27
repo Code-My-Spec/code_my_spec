@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5131Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5131Spex do
         assert context.prompt =~ ~r/intake/i, "expected prompt to reference an intake step"
         assert context.prompt =~ ~r/question/i, "expected prompt to instruct asking questions"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5361Spex do
         refute Plug.Conn.get_session(context.conn, :user_token),
                "expected no user_token when the provider returns no email address"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the response is a redirect to the login page (not a crash)", context do
@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5361Spex do
                "expected redirect to /users/log-in when provider returns no email, " <>
                  "got: #{inspect(redirected_to(conn))}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

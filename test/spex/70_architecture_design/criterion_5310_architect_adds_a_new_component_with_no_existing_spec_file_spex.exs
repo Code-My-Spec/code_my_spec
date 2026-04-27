@@ -11,9 +11,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -130,7 +127,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
         assert body =~ ~r/passed/i,
                "expected Passed for new-component proposal, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "execution writes a spec stub at the conventional path", context do
@@ -140,7 +137,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
         assert CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected spec stub at #{spec_path} to be created by execution"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the spec stub has the expected module-level sections", context do
@@ -155,7 +152,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
         assert content =~ "module",
                "expected spec stub to declare the component type, got: #{inspect(content)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

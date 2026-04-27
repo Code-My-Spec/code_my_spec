@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5372Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Submitting an empty project name does not create a project" do
     scenario "Submitting an empty project name does not create a project" do
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5372Spex do
                "expected to still be on the onboarding page (project-name prompt visible) " <>
                  "after submitting an empty value"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the page shows feedback that the field is required", context do
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5372Spex do
                "expected a 'required'/'can't be blank' message after empty submit, " <>
                  "got rendered HTML without expected feedback"
 
-        :ok
+        {:ok, context}
       end
     end
   end

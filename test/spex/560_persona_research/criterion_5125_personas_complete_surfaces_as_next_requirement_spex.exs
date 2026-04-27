@@ -14,9 +14,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5125Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
 
@@ -48,7 +45,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5125Spex do
         assert body =~ "project_setup",
                "expected response to name project_setup as the next gate, got #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

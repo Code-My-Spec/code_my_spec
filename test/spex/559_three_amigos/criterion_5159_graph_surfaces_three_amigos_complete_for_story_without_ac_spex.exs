@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5159Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5159Spex do
         assert body =~ to_string(context.story.id),
                "expected response to reference story #{context.story.id}, got #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
@@ -99,14 +99,14 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
         assert body =~ context.persona_slug,
                "expected feedback to name the persona slug"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the response feedback names sources.md as the missing artifact", context do
         assert response_text(context.response) =~ "sources.md",
                "expected feedback to name sources.md as the missing file"
 
-        :ok
+        {:ok, context}
       end
     end
   end

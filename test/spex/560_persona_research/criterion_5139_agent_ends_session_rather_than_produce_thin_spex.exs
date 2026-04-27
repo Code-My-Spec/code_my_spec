@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5139Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5139Spex do
         assert context.prompt =~ ~r/low-evidence|thin in/i,
                "expected prompt to explicitly forbid low-evidence personas"
 
-        :ok
+        {:ok, context}
       end
     end
   end

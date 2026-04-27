@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5367Spex do
         assert html_google =~ context.email
         assert html_github =~ context.email
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the picker shows one personal account after the cross-provider sign-in",
@@ -139,7 +139,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5367Spex do
                  "to be the one rendered, confirming the GitHub callback linked " <>
                  "to the existing Google user"
 
-        :ok
+        {:ok, context}
       end
     end
   end

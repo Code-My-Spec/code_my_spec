@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -132,7 +129,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
         assert body =~ ~r/needs work/i,
                "expected a needs-work rejection, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the rejection feedback names the unlinked story", context do
@@ -142,7 +139,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
         assert body =~ story_c_id,
                "expected rejection feedback to name story #{story_c_id}, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "no spec stubs are created", context do
@@ -159,7 +156,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
                  "expected no spec stub at #{spec_path} when proposal was rejected"
         end
 
-        :ok
+        {:ok, context}
       end
     end
   end

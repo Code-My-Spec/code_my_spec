@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5108Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Problems
@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5108Spex do
         assert context.response == %{},
                "spec_validation off must allow stop, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "no spec_validation problems are persisted", context do
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5108Spex do
         assert problems == [],
                "spec_validation off must skip the validator and persist no problems, got: #{inspect(problems)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

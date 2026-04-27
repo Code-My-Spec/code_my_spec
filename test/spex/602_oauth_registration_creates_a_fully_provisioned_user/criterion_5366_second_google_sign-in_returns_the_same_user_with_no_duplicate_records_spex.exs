@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5366Spex do
         assert html_1 =~ context.user_claims["email"]
         assert html_2 =~ context.user_claims["email"]
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the picker shows exactly one personal account after the second sign-in",
@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5366Spex do
                  "sign-in, got #{personal_badge_count} — a duplicate personal account " <>
                  "was created on the second callback"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5105Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5105Spex do
         assert context.response == %{},
                "block_changed must treat untouched spec_validation problems as advisory, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

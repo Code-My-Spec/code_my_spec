@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5170Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.AcceptanceCriteria
@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5170Spex do
         assert body =~ ~r/\[ \]\s+\*\*three_amigos_complete\*\*/,
                "expected three_amigos_complete to be unsatisfied after deleting all criteria, got #{inspect(response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

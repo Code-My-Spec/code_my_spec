@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5148Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5148Spex do
         assert body =~ ~r/Needs work|incomplete|stray/i, "expected failure feedback"
         assert body =~ "notes.md", "expected feedback to name the stray notes.md"
 
-        :ok
+        {:ok, context}
       end
     end
   end

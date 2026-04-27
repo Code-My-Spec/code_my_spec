@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5378Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   @input "!!!"
 
@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5378Spex do
                "expected module_name to match Project + short-id when the submitted " <>
                  "name has no alphanumeric characters"
 
-        :ok
+        {:ok, context}
       end
     end
   end

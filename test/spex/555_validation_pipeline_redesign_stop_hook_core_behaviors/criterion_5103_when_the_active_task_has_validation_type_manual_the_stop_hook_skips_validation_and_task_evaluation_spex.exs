@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
         assert context.response == %{},
                "manual-validation short-circuit must produce empty allow, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

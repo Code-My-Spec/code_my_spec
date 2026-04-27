@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
         refute body =~ "personas_complete",
                "expected personas_complete to clear when both files exist"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5381Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Returning user with one project sees install instructions, no project-name input" do
     scenario "Returning Sam with one project sees install instructions, no project-name input" do
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5381Spex do
                "expected the project-name input to be absent for a returning user " <>
                  "who already has a project in their active account"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the install instructions are still visible", context do
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5381Spex do
                "expected the Claude Code install instructions to remain on " <>
                  "/app/onboarding regardless of project count"
 
-        :ok
+        {:ok, context}
       end
     end
   end

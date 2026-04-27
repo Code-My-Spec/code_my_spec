@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5377Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   @input "3rd party tool"
   @expected_module_name "RdPartyTool"
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5377Spex do
                  context.edit_html =~ ~r{value="#{@expected_module_name}"[^>]*name="project\[module_name\]"},
                "expected module_name input to have value=\"#{@expected_module_name}\" on the edit page"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5089Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -89,7 +89,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5089Spex do
         assert context.response == %{},
                "dont_block must allow the stop even when failures exist, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5087Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5087Spex do
         assert context.response == %{},
                "expected allow response, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

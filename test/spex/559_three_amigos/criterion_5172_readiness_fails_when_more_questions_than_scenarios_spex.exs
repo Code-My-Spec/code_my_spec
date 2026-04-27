@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5172Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
@@ -115,7 +115,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5172Spex do
         assert body =~ ~r/scenarios?\s*>\s*questions?|too many open questions|story.*not.*ready/i,
                "expected response to name the scenarios>questions failure, got #{inspect(context.evaluate_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

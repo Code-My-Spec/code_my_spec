@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5095Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5095Spex do
 
       then_ "the stop is blocked", context do
         assert context.response["decision"] == "block"
-        :ok
+        {:ok, context}
       end
 
       then_ "the reason fits under the 4 KB cap", context do
@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5095Spex do
         assert byte_size(reason) <= @total_cap,
                "reason must fit under #{@total_cap} bytes, got #{byte_size(reason)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "a size-limit footer is appended when content overflows", context do
@@ -99,7 +99,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5095Spex do
         assert reason =~ ~r/omitted/i,
                "overflow footer must indicate omissions, got tail:\n#{String.slice(reason, -300, 300)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

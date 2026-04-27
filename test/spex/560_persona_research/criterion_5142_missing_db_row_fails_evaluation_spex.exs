@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5142Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5142Spex do
         assert body =~ ~r/Needs work|incomplete|missing|invalid|no personas/i,
                "expected blocking feedback for a project with no linked personas"
 
-        :ok
+        {:ok, context}
       end
     end
   end

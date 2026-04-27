@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5382Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "First-time Sam with zero projects still sees the project-name input" do
     scenario "First-time Sam with zero projects still sees the project-name input" do
@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5382Spex do
                "expected a project-name input to be rendered for a first-time user " <>
                  "who has no projects in their active account"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the page prompts Sam to name their first project", context do
@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5382Spex do
                "expected a prompt asking the user to name their first project " <>
                  "on /app/onboarding when in empty state"
 
-        :ok
+        {:ok, context}
       end
     end
   end

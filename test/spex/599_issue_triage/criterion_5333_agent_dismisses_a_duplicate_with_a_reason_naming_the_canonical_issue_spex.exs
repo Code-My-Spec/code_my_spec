@@ -11,9 +11,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
@@ -76,7 +73,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
         assert body =~ ~r/dismissed/i,
                "expected the duplicate to be :dismissed, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the duplicate's resolution captures the reason", context do
@@ -85,7 +82,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
         assert body =~ ~r/dismissed/i,
                "expected dismiss confirmation, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the canonical issue remains :accepted", context do
@@ -99,7 +96,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
         assert body =~ ~r/accepted/i,
                "expected the canonical to remain :accepted, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

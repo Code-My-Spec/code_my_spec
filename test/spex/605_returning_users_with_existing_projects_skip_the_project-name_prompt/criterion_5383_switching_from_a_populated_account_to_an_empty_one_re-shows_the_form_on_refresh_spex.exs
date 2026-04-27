@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5383Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Switching to an empty account re-shows the project-name form on refresh" do
     scenario "Switching from a populated account to an empty one re-shows the form on refresh" do
@@ -95,7 +95,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5383Spex do
                "expected the project-name input to reappear on /app/onboarding " <>
                  "after switching to a team account that has no projects"
 
-        :ok
+        {:ok, context}
       end
     end
   end

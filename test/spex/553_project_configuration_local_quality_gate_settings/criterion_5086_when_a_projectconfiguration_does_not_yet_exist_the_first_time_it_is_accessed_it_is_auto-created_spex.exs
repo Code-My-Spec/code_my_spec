@@ -15,9 +15,6 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -43,7 +40,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
         assert has_element?(context.config_live, "[data-test='require-unit-tests']:checked"),
                "require_unit_tests must default to true"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "analyzer selects show the documented defaults", context do
@@ -69,7 +66,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
                  ~r/name="configuration\[qa_validation\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
                "qa_validation must default to block_changed"
 
-        :ok
+        {:ok, context}
       end
     end
   end

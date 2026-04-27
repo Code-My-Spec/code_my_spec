@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5090Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5090Spex do
         assert context.response["reason"] =~ ~r/spex/i,
                "block reason must mention spex, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end
@@ -114,7 +114,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5090Spex do
         scenario "asserts false" do
           then_ "fails", _context do
             assert 1 == 2, "spex failure fixture"
-            :ok
+            {:ok, _context}
           end
         end
       end

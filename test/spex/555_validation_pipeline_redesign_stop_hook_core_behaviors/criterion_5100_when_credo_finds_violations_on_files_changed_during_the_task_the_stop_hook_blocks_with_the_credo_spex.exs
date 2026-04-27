@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   @fixture_dir "test/fixtures/validation/pipeline_credo_blocks"
 
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
         assert reason =~ "Modules should have a @moduledoc tag",
                "reason must include the credo message, got:\n#{reason}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -168,7 +168,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
         assert body =~ ~r/\[ \]\s+\*\*personas_complete\*\*/,
                "expected personas_complete to be unsatisfied at the project level, got #{inspect(response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5098Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5098Spex do
         assert context.response == %{},
                "clean pipeline run must allow the stop, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

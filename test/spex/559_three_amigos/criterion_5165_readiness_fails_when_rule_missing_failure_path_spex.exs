@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5165Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5165Spex do
         assert body =~ ~r/failure[-_ ]path|failure scenario/i,
                "expected response to name the missing failure-path coverage, got #{inspect(context.evaluate_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

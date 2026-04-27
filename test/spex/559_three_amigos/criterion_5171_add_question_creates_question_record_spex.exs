@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5171Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5171Spex do
         assert body =~ "mid-transaction cards",
                "expected list_questions to return the question text, got #{inspect(list_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

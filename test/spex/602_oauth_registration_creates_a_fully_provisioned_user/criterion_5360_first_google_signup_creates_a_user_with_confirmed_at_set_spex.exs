@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5360Spex do
         refute redirected_to(context.conn) =~ "confirm",
                "expected no confirmation-step redirect for an OAuth-registered user"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the logged-in session resolves to the new Google identity on the settings page",
@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5360Spex do
                "expected /app/users/settings to render the OAuth user's email " <>
                  "(#{context.user_claims["email"]}), confirming the session resolves to that user"
 
-        :ok
+        {:ok, context}
       end
     end
   end

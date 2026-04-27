@@ -13,9 +13,6 @@ defmodule CodeMySpecSpex.Story80.Criterion5271Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -72,7 +69,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5271Spex do
         assert content =~ "We chose Phoenix because of internal expertise on the platform team",
                "expected hand-written phoenix.md content to survive the auto-write pass"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5132Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5132Spex do
         assert context.prompt =~ "Pain Points"
         assert context.prompt =~ "Context"
         assert context.prompt =~ "Decision Drivers"
-        :ok
+        {:ok, context}
       end
     end
   end

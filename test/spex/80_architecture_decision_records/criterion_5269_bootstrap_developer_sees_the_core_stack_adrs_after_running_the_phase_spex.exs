@@ -11,9 +11,6 @@ defmodule CodeMySpecSpex.Story80.Criterion5269Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -69,7 +66,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5269Spex do
                  "expected ADR for #{topic} to exist after start_task"
         end
 
-        :ok
+        {:ok, context}
       end
     end
   end

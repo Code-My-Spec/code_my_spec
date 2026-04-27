@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5094Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5094Spex do
         assert reason =~ ~r/exunit\s*\(15\)/,
                "source header must show total count of 15, got:\n#{reason}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "exactly 10 problem detail lines appear for exunit", context do
@@ -94,7 +94,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5094Spex do
         assert length(detail_lines) == 10,
                "expected 10 enumerated exunit lines, got #{length(detail_lines)}:\n#{Enum.join(detail_lines, "\n")}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "an overflow footer names the remaining count and the source",
@@ -107,7 +107,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5094Spex do
         assert reason =~ "get_issue",
                "overflow footer must point the agent at get_issue, got:\n#{reason}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5376Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   @input "fuellytics-app"
   @expected_module_name "FuellyticsApp"
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5376Spex do
                  context.edit_html =~ ~r{value="#{@expected_module_name}"[^>]*name="project\[module_name\]"},
                "expected module_name input to have value=\"#{@expected_module_name}\" on the edit page"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5368Spex do
             assert html =~ "Disconnect",
                    "expected a Disconnect link in the Google block after signup"
 
-            :ok
+            {:ok, context}
 
           {:error, {:live_redirect, %{to: to}}} ->
             flunk(

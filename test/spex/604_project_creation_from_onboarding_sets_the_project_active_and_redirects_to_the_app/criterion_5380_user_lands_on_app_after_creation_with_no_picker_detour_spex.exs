@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5380Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "User lands on /app after creation with no picker detour" do
     scenario "User lands on /app after creation with no picker detour" do
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5380Spex do
         refute target =~ ~r"/picker",
                "expected redirect target to NOT be a picker URL, got: #{target}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "following the redirect does not bounce through any picker", context do
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5380Spex do
 
         case conn.status do
           200 ->
-            :ok
+            {:ok, context}
 
           302 ->
             next = redirected_to(conn)
@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5380Spex do
                    "expected no project-picker bounce after onboarding submit, " <>
                      "got: #{next}"
 
-            :ok
+            {:ok, context}
 
           status ->
             flunk("unexpected status #{status} after following redirect to #{context.redirect_target}")

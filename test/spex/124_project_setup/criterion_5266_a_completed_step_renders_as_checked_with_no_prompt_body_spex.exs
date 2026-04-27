@@ -10,9 +10,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5266Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpecSpex.Fixtures

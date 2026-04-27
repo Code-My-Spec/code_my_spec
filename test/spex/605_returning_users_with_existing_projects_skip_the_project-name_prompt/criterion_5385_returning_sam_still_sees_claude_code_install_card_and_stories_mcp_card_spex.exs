@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5385Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Returning Sam still sees Claude Code install card and Stories MCP card" do
     scenario "Returning Sam still sees Claude Code install card and stories MCP card" do
@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5385Spex do
                "expected the 'Install the Claude Code extension' card heading to " <>
                  "be visible for a returning user"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the Stories MCP card is visible", context do
@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5385Spex do
                "expected the 'Just want to draft stories?' card to be visible " <>
                  "for a returning user"
 
-        :ok
+        {:ok, context}
       end
     end
   end

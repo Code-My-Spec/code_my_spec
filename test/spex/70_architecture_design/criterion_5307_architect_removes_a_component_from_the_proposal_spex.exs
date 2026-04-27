@@ -13,9 +13,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -135,7 +132,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
         refute body =~ ~r/error.*Stories\.RemoteClient|Stories\.RemoteClient.*error/i,
                "expected no deletion error for Stories.RemoteClient, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the evaluation feedback warns about the removed component", context do
@@ -147,7 +144,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
         assert body =~ "RemoteClient",
                "expected the warning to name RemoteClient, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

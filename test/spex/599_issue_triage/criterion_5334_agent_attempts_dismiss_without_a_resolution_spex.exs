@@ -10,9 +10,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
@@ -47,7 +44,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
         assert body =~ ~r/error|invalid|required/i,
                "expected a validation error when dismissing with empty reason, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the issue's status remains :incoming", context do
@@ -61,7 +58,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
         assert body =~ ~r/incoming/i,
                "expected issue status to remain :incoming, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

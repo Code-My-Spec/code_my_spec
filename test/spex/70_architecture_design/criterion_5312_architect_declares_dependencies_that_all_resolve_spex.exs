@@ -11,9 +11,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -123,7 +120,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
         refute body =~ ~r/dangling|unresolved|not found/i,
                "expected all dependencies to resolve, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the validator accepts the proposal", context do
@@ -135,7 +132,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
         assert body =~ ~r/passed/i,
                "expected Passed for proposal with valid dependencies, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

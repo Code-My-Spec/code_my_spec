@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5156Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5156Spex do
         assert body =~ to_string(context.second_story.id),
                "expected MCP response to name the story_id in the confirmation"
 
-        :ok
+        {:ok, context}
       end
     end
   end

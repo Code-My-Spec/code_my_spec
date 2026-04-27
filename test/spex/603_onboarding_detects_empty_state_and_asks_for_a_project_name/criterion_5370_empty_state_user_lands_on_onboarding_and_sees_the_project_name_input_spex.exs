@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5370Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Onboarding renders a project-name input on empty state" do
     scenario "Empty-state user lands on onboarding and sees the project-name input" do
@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5370Spex do
                "expected a project-name text input on /app/onboarding when the " <>
                  "user has zero projects in their active account"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the input is labeled with a project-naming prompt", context do
@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5370Spex do
                  context.html =~ ~r/project.*?(name|call)/i,
                "expected a project-naming prompt label on the onboarding page"
 
-        :ok
+        {:ok, context}
       end
     end
   end

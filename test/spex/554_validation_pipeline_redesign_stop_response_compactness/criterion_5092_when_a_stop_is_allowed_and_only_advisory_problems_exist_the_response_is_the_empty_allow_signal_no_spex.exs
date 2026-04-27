@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5092Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5092Spex do
         assert context.response == %{},
                "allow response must be an empty map, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "no advisory field (reason/decision/problems) appears in the response",
@@ -89,7 +89,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5092Spex do
         refute Map.has_key?(context.response, "problems"),
                "allow response must not include a problems field, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

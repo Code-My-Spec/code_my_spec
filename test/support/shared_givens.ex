@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.SharedGivens do
 
       defmodule CodeMySpecSpex.SomeSpex do
         use CodeMySpecSpex.Case
-        import_givens CodeMySpecSpex.SharedGivens
+        import CodeMySpecSpex.SharedGivens
 
         spex "..." do
           scenario "..." do
@@ -77,6 +77,11 @@ defmodule CodeMySpecSpex.SharedGivens do
     `:persona_research_task_started` for the per-story Three Amigos node.
     Produces `context.session_id` and `context.task_id`. Requires
     `context.story` from a prior given.
+  - `:fix_issues_task_started` — drives session_start + start_task for
+    the `issues_resolved` requirement on the active project. Returns the
+    fix-issues prompt so specs can assert on its content or pass the
+    task_id forward into evaluate_task scenarios. Produces
+    `context.session_id`, `context.task_id`, and `context.prompt`.
   - `:registered_user_with_magic_link` — drives the `/users/register`
     LiveView submit, captures the magic-link email through the Swoosh
     test adapter, and extracts the magic-link URL from the email body.
@@ -85,10 +90,14 @@ defmodule CodeMySpecSpex.SharedGivens do
     the local web).
   - `:empty_state_user_on_onboarding` — chains
     `:registered_user_with_magic_link`, follows the magic-link URL to
-    complete provisioning, then connects the onboarding LiveView in
-    that session. Produces `context.conn`, `context.view`, and
-    `context.html` (initial render). Use this in any story-603 spec
-    that needs to interact with the onboarding form.
+    log the user in, then drives the inline create-account form on
+    /app/onboarding (story 606's first onboarding step) so the user
+    has an active account before subsequent steps inspect the
+    project-name form. Re-mounts /app/onboarding after the form
+    submit so `context.view` / `context.html` reflect the post-account
+    state. Produces `context.conn`, `context.view`, and `context.html`.
+    Use this in any story-603/604/605 spec that needs to interact with
+    the project-name form.
 
   Add new shared givens only after a third spec duplicates setup.
   """
@@ -113,7 +122,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # Writes a context spec file into the in-memory environment, triggers the
   # real sync pipeline via the /sync LiveView button, and fetches the
   # component that sync derived.
-  given :synced_context_component do
+  register_given :synced_context_component, context do
     scope = context.scope
     env = context.environment
 
@@ -131,13 +140,13 @@ defmodule CodeMySpecSpex.SharedGivens do
       component =
       Fixtures.get_component_by_module_name(scope, @component_module_name)
 
-    {:ok, %{component: component}}
+    {:ok, Map.put(context, :component, component)}
   end
 
   # Creates an unlinked story (matches production flow — stories arrive from
   # server sync with no component_id), then links it to the component via
   # the real linkage API.
-  given :story_linked_to_component do
+  register_given :story_linked_to_component, context do
     scope = context.scope
     component = context.component
 
@@ -149,15 +158,15 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     {:ok, linked_story} = Fixtures.set_story_component(scope, story, component.id)
 
-    {:ok, %{story: linked_story}}
+    {:ok, Map.put(context, :story, linked_story)}
   end
 
   # The engineer has opened the project configuration page.
-  given :on_configuration_page do
+  register_given :on_configuration_page, context do
     {:ok, config_live, _html} =
       live(context.conn, "/projects/#{context.project.name}/configuration")
 
-    {:ok, %{config_live: config_live}}
+    {:ok, Map.put(context, :config_live, config_live)}
   end
 
   # Plants an empty `deps/credo` directory inside the stub working
@@ -166,16 +175,16 @@ defmodule CodeMySpecSpex.SharedGivens do
   # the memfs-backed spec environment and the pipeline silently
   # no-ops credo. Pair with a cassette that replays the actual
   # `mix credo` output.
-  given :credo_available do
+  register_given :credo_available, context do
     File.mkdir_p!(Path.join([context.scope.cwd, "deps", "credo"]))
-    {:ok, %{}}
+    {:ok, context}
   end
 
   # Like :synced_context_component but produces a liveview-typed
   # component so the liveview_graph applies. Specs that need a :self
   # :sub_agent requirement (e.g. `test_spec_alignment`) can start a
   # task on this component. Produces `context.liveview_component`.
-  given :synced_liveview_component do
+  register_given :synced_liveview_component, context do
     scope = context.scope
     env = context.environment
 
@@ -209,7 +218,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       component =
       Fixtures.get_component_by_module_name(scope, "ExampleContextWeb.DashboardLive")
 
-    {:ok, %{liveview_component: component}}
+    {:ok, Map.put(context, :liveview_component, component)}
   end
 
   # Drives the real POST /api/hooks/session-start hook and the
@@ -219,7 +228,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # :synced_context_component wrote and synced the spec file — so
   # TaskEvaluator passes via RequirementCalculator with no extra
   # artifacts needed.
-  given :context_spec_task_started do
+  register_given :context_spec_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -244,7 +253,7 @@ defmodule CodeMySpecSpex.SharedGivens do
         frame
       )
 
-    {:ok, %{session_id: session_id}}
+    {:ok, Map.put(context, :session_id, session_id)}
   end
 
   # The agent has signalled SessionStart and called the start_task MCP tool
@@ -252,7 +261,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # real contract the harness drives — we post to the same HTTP hook and
   # invoke the same MCP tool module, so the pipeline sees a real active
   # `WriteBddSpecs` task whose `analyzers/0` returns `[:spex_stale]`.
-  given :bdd_task_started do
+  register_given :bdd_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -277,7 +286,7 @@ defmodule CodeMySpecSpex.SharedGivens do
         frame
       )
 
-    {:ok, %{session_id: session_id}}
+    {:ok, Map.put(context, :session_id, session_id)}
   end
 
   # The PM has created a persona through the account library surface and
@@ -290,7 +299,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # personas row originates through the same contract the agent uses in
   # production. The story is fixtured via the bridge (stories arrive from
   # server sync in production — using the bridge here matches that pattern).
-  given :persona_exists do
+  register_given :persona_exists, context do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
     {:reply, _response, _frame} =
@@ -315,7 +324,12 @@ defmodule CodeMySpecSpex.SharedGivens do
       CodeMySpec.Personas.link_persona_to_story(context.scope, persona.id, story.id)
 
     {:ok,
-     %{persona_slug: persona.slug, persona_id: persona.id, persona: persona, story: story}}
+     Map.merge(context, %{
+       persona_slug: persona.slug,
+       persona_id: persona.id,
+       persona: persona,
+       story: story
+     })}
   end
 
   # The agent has signalled SessionStart and called start_task for the
@@ -324,7 +338,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # + MCP call so the pipeline sees a live `PersonaResearch` task.
   # Captures the active task id from the session so specs can call
   # `evaluate_task` against it (personas_complete is manual-validation).
-  given :persona_research_task_started do
+  register_given :persona_research_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -352,14 +366,14 @@ defmodule CodeMySpecSpex.SharedGivens do
     session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
     task = CodeMySpec.Sessions.Session.active_task(session)
 
-    {:ok, %{session_id: session_id, task_id: task && task.id}}
+    {:ok, Map.merge(context, %{session_id: session_id, task_id: task && task.id})}
   end
 
   # Drives session_start + start_task and returns the prompt text so specs
   # can assert directly on the instructions the agent receives. Use this
   # when a spec tests static prompt content (e.g., "the prompt tells the
   # agent to X") rather than pipeline side effects.
-  given :persona_research_prompt do
+  register_given :persona_research_prompt, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -397,7 +411,7 @@ defmodule CodeMySpecSpex.SharedGivens do
           inspect(other)
       end
 
-    {:ok, %{session_id: session_id, prompt: prompt}}
+    {:ok, Map.merge(context, %{session_id: session_id, prompt: prompt})}
   end
 
   # The agent has signalled SessionStart and called start_task for the
@@ -406,7 +420,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # the pipeline sees a live `TechnicalStrategy` task. start_task's
   # handler runs `command/2`, which writes missing pre-made ADRs to the
   # env as a side effect and returns the prompt text.
-  given :technical_strategy_task_started do
+  register_given :technical_strategy_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -437,19 +451,19 @@ defmodule CodeMySpecSpex.SharedGivens do
     task = CodeMySpec.Sessions.Session.active_task(session)
 
     {:ok,
-     %{
+     Map.merge(context, %{
        session_id: session_id,
        task_id: task && task.id,
        prompt: prompt,
        start_response: response
-     }}
+     })}
   end
 
   # The agent has signalled SessionStart and called start_task for the
   # `code_generation` requirement on the active project. start_task runs
   # `CodeGeneration.command/2`, which returns the orchestration prompt
   # (no side effects on disk — code_generation is a pure prompt builder).
-  given :code_generation_task_started do
+  register_given :code_generation_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -480,19 +494,19 @@ defmodule CodeMySpecSpex.SharedGivens do
     task = CodeMySpec.Sessions.Session.active_task(session)
 
     {:ok,
-     %{
+     Map.merge(context, %{
        session_id: session_id,
        task_id: task && task.id,
        prompt: prompt,
        start_response: response
-     }}
+     })}
   end
 
   # The agent has signalled SessionStart and called start_task for the
   # `three_amigos_complete` requirement on `context.story`. Same shape as
   # the other *_task_started givens — drives the real hook + MCP call so
   # the pipeline sees a live `ThreeAmigos` task.
-  given :three_amigos_task_started do
+  register_given :three_amigos_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -520,7 +534,51 @@ defmodule CodeMySpecSpex.SharedGivens do
     session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
     task = CodeMySpec.Sessions.Session.active_task(session)
 
-    {:ok, %{session_id: session_id, task_id: task && task.id}}
+    {:ok, Map.merge(context, %{session_id: session_id, task_id: task && task.id})}
+  end
+
+  # The agent has signalled SessionStart and called start_task for the
+  # `issues_resolved` requirement on the active project. start_task runs
+  # `FixIssues.command/2`, which reads accepted issues from the DB and
+  # returns the fix-issues prompt. issues_resolved is manual-validation
+  # so the task stays open for evaluate_task to drive in `when_` steps.
+  register_given :fix_issues_task_started, context do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "issues_resolved",
+          entity_type: "project",
+          entity_id: to_string(context.project.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    prompt = flatten_tool_response(response)
+
+    session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
+    task = CodeMySpec.Sessions.Session.active_task(session)
+
+    {:ok,
+     Map.merge(context, %{
+       session_id: session_id,
+       task_id: task && task.id,
+       prompt: prompt,
+       start_response: response
+     })}
   end
 
   # The agent has signalled SessionStart and called start_task for the
@@ -528,7 +586,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # runs `QaIntegrationPlan.command/2`, which returns the orchestration
   # prompt (no side effects on disk — qa_integration_plan is a pure
   # prompt builder).
-  given :qa_integration_plan_task_started do
+  register_given :qa_integration_plan_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
@@ -559,12 +617,12 @@ defmodule CodeMySpecSpex.SharedGivens do
     task = CodeMySpec.Sessions.Session.active_task(session)
 
     {:ok,
-     %{
+     Map.merge(context, %{
        session_id: session_id,
        task_id: task && task.id,
        prompt: prompt,
        start_response: response
-     }}
+     })}
   end
 
   # The visitor has registered through the public registration LiveView and
@@ -573,7 +631,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # the sent email through Swoosh's test adapter, and extracts the magic-link
   # URL from the email body so subsequent `when_` steps can hit the same
   # endpoint a real user's browser would.
-  given :registered_user_with_magic_link do
+  register_given :registered_user_with_magic_link, context do
     email = "spex-#{System.unique_integer([:positive])}@example.com"
 
     # Dispatch through the main web endpoint explicitly — the auth routes
@@ -605,7 +663,7 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     magic_link_url = extract_magic_link_url!(sent_email)
 
-    {:ok, %{registered_email: email, magic_link_url: magic_link_url}}
+    {:ok, Map.merge(context, %{registered_email: email, magic_link_url: magic_link_url})}
   end
 
   # The visitor has registered through the public registration LiveView,
@@ -614,11 +672,14 @@ defmodule CodeMySpecSpex.SharedGivens do
   # sitting on /app/onboarding with a connected LiveView socket. Subsequent
   # `when_` / `then_` steps interact with `context.view` (LiveView) or
   # assert against `context.html` (initial render).
-  given :empty_state_user_on_onboarding do
+  register_given :empty_state_user_on_onboarding, context do
     %{magic_link_url: magic_link_url} = context
 
     auth_path = URI.parse(magic_link_url).path
 
+    # Magic-link confirm logs the user in. No account is provisioned
+    # by the auth flow anymore — story 606 made account creation an
+    # explicit first onboarding step.
     auth_conn =
       Phoenix.ConnTest.dispatch(
         Phoenix.ConnTest.build_conn(),
@@ -627,7 +688,11 @@ defmodule CodeMySpecSpex.SharedGivens do
         auth_path
       )
 
-    onboarding_conn =
+    # Mount onboarding while the user has zero accounts — the LV
+    # shows the create-account form. Submit it via the LV so the
+    # account + member + active-account preference are written
+    # through the same surface a real user uses.
+    account_form_conn =
       Phoenix.ConnTest.dispatch(
         Phoenix.ConnTest.recycle(auth_conn),
         CodeMySpecWeb.Endpoint,
@@ -635,9 +700,25 @@ defmodule CodeMySpecSpex.SharedGivens do
         "/app/onboarding"
       )
 
+    {:ok, account_view, _html} = Phoenix.LiveViewTest.live(account_form_conn)
+
+    account_view
+    |> Phoenix.LiveViewTest.form("#account_form", account: %{name: "Personal"})
+    |> Phoenix.LiveViewTest.render_submit()
+
+    # Re-mount /app/onboarding now that the active account is set —
+    # the LV is in the project-name step that downstream specs assert on.
+    onboarding_conn =
+      Phoenix.ConnTest.dispatch(
+        Phoenix.ConnTest.recycle(account_form_conn),
+        CodeMySpecWeb.Endpoint,
+        :get,
+        "/app/onboarding"
+      )
+
     {:ok, view, html} = Phoenix.LiveViewTest.live(onboarding_conn)
 
-    {:ok, %{conn: onboarding_conn, view: view, html: html}}
+    {:ok, Map.merge(context, %{conn: onboarding_conn, view: view, html: html})}
   end
 
   # -- Content helpers --

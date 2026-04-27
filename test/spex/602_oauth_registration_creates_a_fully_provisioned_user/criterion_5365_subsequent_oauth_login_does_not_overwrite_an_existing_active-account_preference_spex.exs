@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
         refute destination == "/app/onboarding",
                "expected returning user not to be sent to onboarding again"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the session reaches an account-protected route without a picker detour",
@@ -107,7 +107,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
 
         case result do
           {:ok, _view, _html} ->
-            :ok
+            {:ok, context}
 
           {:error, {kind, %{to: to}}} when kind in [:live_redirect, :redirect] ->
             if to =~ "picker" do
@@ -136,7 +136,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
                  "if the personal account got the badge instead, the OAuth callback " <>
                  "overwrote the active-account preference."
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the project picker still shows the previously-selected project as currently active",
@@ -155,7 +155,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5365Spex do
                  "if active_project_id is nil, no project will have the badge — that means " <>
                  "the OAuth callback ran select_active_account, which clears active_project_id."
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -118,7 +115,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
         refute body =~ ~r/needs work/i,
                "expected non-surface link to produce a warning, not a rejection, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "execution proceeds", context do
@@ -127,7 +124,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
         assert body =~ ~r/passed/i,
                "expected Passed (execution proceeded), got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the evaluation feedback contains a warning naming the story and its non-surface link",
@@ -141,7 +138,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
         assert body =~ story_id,
                "expected warning to name story #{story_id}, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

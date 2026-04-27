@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5163Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5163Spex do
         assert body =~ ~r/no rules/i,
                "expected response to name the missing-rules failure, got #{inspect(context.evaluate_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

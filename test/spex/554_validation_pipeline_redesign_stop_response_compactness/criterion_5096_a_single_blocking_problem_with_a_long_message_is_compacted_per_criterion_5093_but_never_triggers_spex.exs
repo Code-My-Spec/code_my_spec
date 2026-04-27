@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5096Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5096Spex do
 
       then_ "the stop is blocked", context do
         assert context.response["decision"] == "block"
-        :ok
+        {:ok, context}
       end
 
       then_ "the exunit line is compacted to roughly the per-problem cap",
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5096Spex do
         assert exunit_line =~ "...",
                "compacted line must end with ellipsis indicating truncation, got:\n#{exunit_line}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "no overflow footer is appended", context do
@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5096Spex do
         assert byte_size(reason) <= @total_cap,
                "reason must fit under #{@total_cap} bytes, got #{byte_size(reason)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

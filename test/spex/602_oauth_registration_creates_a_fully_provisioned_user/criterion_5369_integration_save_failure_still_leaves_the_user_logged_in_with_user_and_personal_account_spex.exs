@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5369Spex do
                "expected /app/users/settings to render the OAuth user's email " <>
                  "even though the integration save failed"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the user has a personal account despite the integration save failure", context do
@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5369Spex do
                "expected the personal account named after the email local-part " <>
                  "(#{local_part}) to be listed on the picker"
 
-        :ok
+        {:ok, context}
       end
     end
   end

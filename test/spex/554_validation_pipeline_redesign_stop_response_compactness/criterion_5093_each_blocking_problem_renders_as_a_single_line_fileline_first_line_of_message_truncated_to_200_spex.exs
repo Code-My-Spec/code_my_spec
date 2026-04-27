@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5093Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5093Spex do
         assert context.response["decision"] == "block",
                "block_all must block on an exunit failure, got: #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the exunit entry is a single line with file, line, and first message line",
@@ -99,7 +99,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5093Spex do
         assert exunit_line =~ "exunit failure fixture",
                "exunit entry must include the first line of the assertion message, got: #{exunit_line}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the compacted line strips stacktrace and multi-line body",
@@ -112,7 +112,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5093Spex do
         refute reason =~ ~r/^code:/m,
                "compacted reason must not contain the 'code:' assertion dump, got:\n#{reason}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the compacted line stays under the per-problem length cap",
@@ -129,7 +129,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5093Spex do
         assert String.length(exunit_line) <= 250,
                "compacted exunit entry must be <= 250 chars, got #{String.length(exunit_line)}: #{exunit_line}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

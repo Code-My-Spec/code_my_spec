@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5128Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5128Spex do
         assert body =~ "personas_complete" or body =~ "project_setup",
                "expected the graph to remain blocked before personas_complete; got #{inspect(context.next_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

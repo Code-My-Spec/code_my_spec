@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5354Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.Fixtures
 
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5354Spex do
         refute get_session(context.conn, :user_token),
                "expected no session token to be set for an expired magic link"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "they see a clear \"link invalid or expired\" message with a path to request a new one",
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5354Spex do
         assert html =~ "invalid" or html =~ "expired",
                "expected a 'link invalid or expired' message on the login page"
 
-        :ok
+        {:ok, context}
       end
     end
   end

@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5085Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5085Spex do
         assert html =~ "tests_passing",
                "graph must contain tests_passing after re-enabling require_unit_tests"
 
-        :ok
+        {:ok, context}
       end
     end
   end

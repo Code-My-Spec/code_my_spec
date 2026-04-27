@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5386Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "First-time Sam sees install cards alongside the project-name form" do
     scenario "First-time Sam sees install cards alongside the project-name form" do
@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5386Spex do
                "expected the project-name input to be present on the initial render " <>
                  "for a first-time user"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the Claude Code install card is also rendered on the same page", context do
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5386Spex do
                "expected the Claude Code install instructions to appear alongside " <>
                  "the project-name form on /app/onboarding for a first-time user"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the Stories MCP card is also rendered on the same page", context do
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5386Spex do
                "expected the Stories MCP card to appear alongside the project-name " <>
                  "form on /app/onboarding for a first-time user"
 
-        :ok
+        {:ok, context}
       end
     end
   end

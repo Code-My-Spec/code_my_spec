@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5362Spex do
                "expected redirect to onboarding for new GitHub user, " <>
                  "got: #{inspect(redirected_to(context.conn))}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the account picker lists a personal account named after the user's email",
@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5362Spex do
                "expected the personal account named after the email local-part " <>
                  "(#{local_part}) to appear on the picker"
 
-        :ok
+        {:ok, context}
       end
     end
   end

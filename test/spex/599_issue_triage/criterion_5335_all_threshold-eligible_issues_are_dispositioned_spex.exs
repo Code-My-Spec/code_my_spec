@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5335Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
@@ -99,7 +96,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5335Spex do
         assert body =~ ~r/passed|completed|satisfied|valid/i,
                "expected a passing evaluate response, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the task transitions to :completed", context do
@@ -108,7 +105,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5335Spex do
         assert body =~ ~r/passed|completed/i,
                "expected task to be marked completed, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

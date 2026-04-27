@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story602.Criterion5363Spex do
         case context.live_result do
           {:ok, _view, _html} ->
             # Mount succeeded — self-heal fired and the user can see /app/projects.
-            :ok
+            {:ok, context}
 
           {:error, {:live_redirect, %{to: to}}} ->
             flunk(

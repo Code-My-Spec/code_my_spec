@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5133Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5133Spex do
         assert context.prompt =~ ~r/challenge/i,
                "expected prompt to instruct challenging thin input"
 
-        :ok
+        {:ok, context}
       end
     end
   end

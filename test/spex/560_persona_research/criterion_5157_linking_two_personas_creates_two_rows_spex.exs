@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
         assert first_body =~ to_string(context.persona_id)
         assert second_body =~ to_string(context.second_persona_id)
 
-        :ok
+        {:ok, context}
       end
     end
   end

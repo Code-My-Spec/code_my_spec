@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5145Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5145Spex do
         assert body =~ ~r/start a persona|no personas/i,
                "expected feedback to direct starting a persona research session"
 
-        :ok
+        {:ok, context}
       end
     end
   end

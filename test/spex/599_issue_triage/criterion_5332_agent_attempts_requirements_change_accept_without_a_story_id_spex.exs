@@ -15,9 +15,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5332Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
@@ -56,7 +53,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5332Spex do
         assert body =~ ~r/story_id|story/i,
                "expected the error to name the missing story_id, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the issue's status remains :incoming", context do
@@ -70,7 +67,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5332Spex do
         assert body =~ ~r/incoming/i,
                "expected the issue status to remain :incoming, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

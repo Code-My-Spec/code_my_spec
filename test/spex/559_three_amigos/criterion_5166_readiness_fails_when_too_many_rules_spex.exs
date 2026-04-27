@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5166Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5166Spex do
         assert body =~ ~r/rules?\s*<\s*10|too many rules|slice/i,
                "expected response to name the rules-ceiling failure and slice instruction, got #{inspect(context.evaluate_response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

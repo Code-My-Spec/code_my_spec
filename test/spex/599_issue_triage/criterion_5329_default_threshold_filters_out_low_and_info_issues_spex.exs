@@ -13,9 +13,6 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -85,7 +82,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
                  "expected prompt to include issue #{issue.id} (#{issue.severity}), got: #{inspect(prompt)}"
         end
 
-        :ok
+        {:ok, context}
       end
 
       then_ "no low or info issues appear in the prompt", context do
@@ -96,7 +93,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
                  "expected prompt to exclude issue #{issue.id} (#{issue.severity}), but it appears in: #{inspect(prompt)}"
         end
 
-        :ok
+        {:ok, context}
       end
     end
   end

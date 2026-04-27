@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5373Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "Submitting a valid project name creates the project from the same page" do
     scenario "Submitting a valid project name creates the project from the same page" do
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5373Spex do
                "expected to be navigated AWAY from /app/onboarding after creation, " <>
                  "got: #{target}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

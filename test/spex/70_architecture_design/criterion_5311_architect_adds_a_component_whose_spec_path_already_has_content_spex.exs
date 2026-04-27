@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
   """
 
   use CodeMySpecSpex.Case
-
-  import_givens CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -146,7 +143,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
         assert body =~ ~r/passed/i,
                "expected Passed, got: #{inspect(body)}"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "execution does not overwrite the existing spec file", context do
@@ -155,7 +152,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
         assert content =~ "Hand-written spec — must NOT be overwritten by architecture execution.",
                "expected existing spec file content to be preserved, got: #{inspect(content)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

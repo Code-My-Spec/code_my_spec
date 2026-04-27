@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5371Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   spex "The project-name input appears alongside the install instructions" do
     scenario "The project-name input appears alongside the install instructions" do
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5371Spex do
                "expected the project-name input (offset #{input_pos}) to appear before " <>
                  "the install instructions (offset #{install_pos}) — must not be buried below"
 
-        :ok
+        {:ok, context}
       end
 
       then_ "the input is part of the same onboarding view, not behind a link",
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5371Spex do
         assert has_element?(context.view, "input[name='project[name]']"),
                "expected the input to be rendered inline on the onboarding page"
 
-        :ok
+        {:ok, context}
       end
     end
   end

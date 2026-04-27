@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5150Spex do
 
   use CodeMySpecSpex.Case
 
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
 
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5150Spex do
         assert body =~ ~r/evidence/i,
                "expected feedback to name Evidence as the missing required section, got #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end

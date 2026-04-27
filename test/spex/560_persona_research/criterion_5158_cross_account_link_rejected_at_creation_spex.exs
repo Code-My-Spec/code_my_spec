@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
   """
 
   use CodeMySpecSpex.Case
-  import_givens CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
         assert body =~ ~r/cross-account|does not belong|account/i,
                "expected MCP response to reject the cross-account link, got #{inspect(context.response)}"
 
-        :ok
+        {:ok, context}
       end
     end
   end
