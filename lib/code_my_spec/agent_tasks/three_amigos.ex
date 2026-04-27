@@ -110,6 +110,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   end
 
   defp prompt(story) do
+    base_url = Application.get_env(:code_my_spec, :base_url, "http://localhost:4000")
+    session_url = "#{base_url}/app/stories/#{story.id}/three-amigos"
+
     """
     # Three Amigos — Story #{story.id}: #{story.title}
 
@@ -127,6 +130,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     Pass `story_id: #{story.id}` to every MCP tool call below
     (`add_persona` is account-scoped and doesn't need it; everything
     else does).
+
+    **Session URL** (share this with the PM so they can watch cards
+    appear in real time): #{session_url}
     """ <> protocol_body()
   end
 
