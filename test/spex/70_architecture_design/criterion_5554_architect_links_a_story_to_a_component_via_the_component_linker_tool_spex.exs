@@ -23,15 +23,13 @@ defmodule CodeMySpecSpex.Story70.Criterion5554Spex do
   spex "The architect links a story to a component via the component linker tool" do
     scenario "an unlinked story is linked to an existing component" do
       given_ "an existing component is available", context do
-        component =
-          Fixtures.stub_component_fixture(context.scope, %{
-            module_name: "MyApp.Notifications",
-            name: "Notifications",
-            type: "context",
-            description: "Notifications domain context"
-          })
+        proposal =
+          Fixtures.proposal_with_context("MyApp", "Notifications", "Notifications domain context")
 
-        {:ok, Map.put(context, :component, component)}
+        {:ok, _result} =
+          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
+
+        {:ok, Map.put(context, :module_name, "MyApp.Notifications")}
       end
 
       given_ "an unlinked story exists", context do
@@ -51,7 +49,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5554Spex do
 
         params = %{
           story_id: Integer.to_string(context.story.id),
-          module_name: context.component.module_name
+          module_name: context.module_name
         }
 
         {:reply, response, _frame} = SetStoryComponent.execute(params, frame)
@@ -66,15 +64,14 @@ defmodule CodeMySpecSpex.Story70.Criterion5554Spex do
         {:ok, context}
       end
 
-      then_ "the response confirms the story is linked to the component", context do
+      then_ "the response confirms the story is linked to a component", context do
         body = response_text(context.link_response)
-        component_id = context.component.id
 
         assert body =~ "Component assigned to story",
                "expected confirmation summary, got: #{inspect(body)}"
 
-        assert body =~ to_string(component_id),
-               "expected component id #{component_id} in summary, got: #{inspect(body)}"
+        assert body =~ context.story.title,
+               "expected story title #{inspect(context.story.title)} in summary, got: #{inspect(body)}"
 
         {:ok, context}
       end

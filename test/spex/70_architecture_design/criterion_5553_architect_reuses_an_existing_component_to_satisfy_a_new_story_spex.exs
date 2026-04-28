@@ -24,15 +24,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5553Spex do
   spex "The architect reuses an existing component to satisfy a new story" do
     scenario "no new component is created when an existing one fits" do
       given_ "an existing component fits the new story", context do
-        component =
-          Fixtures.stub_component_fixture(context.scope, %{
-            module_name: "MyApp.Accounts",
-            name: "Accounts",
-            type: "context",
-            description: "Accounts domain"
-          })
+        proposal = Fixtures.proposal_with_context("MyApp", "Accounts", "Accounts domain")
 
-        {:ok, Map.put(context, :component, component)}
+        {:ok, _result} =
+          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
+
+        {:ok, Map.put(context, :module_name, "MyApp.Accounts")}
       end
 
       given_ "a new story arrives without a component_id", context do
@@ -60,7 +57,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5553Spex do
 
         params = %{
           story_id: Integer.to_string(context.story.id),
-          module_name: context.component.module_name
+          module_name: context.module_name
         }
 
         {:reply, response, _frame} = SetStoryComponent.execute(params, frame)

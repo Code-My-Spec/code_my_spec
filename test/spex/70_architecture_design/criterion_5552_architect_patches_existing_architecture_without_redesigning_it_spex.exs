@@ -28,38 +28,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5552Spex do
 
   spex "Patch-mode evaluate does not auto-execute the pre-existing proposal" do
     scenario "agent patches via tools — evaluate skips execute, no false warnings" do
-      given_ "the project has an existing component", context do
-        existing =
-          Fixtures.stub_component_fixture(context.scope, %{
-            module_name: "MyApp.Existing",
-            name: "Existing",
-            type: "context",
-            description: "An existing context"
-          })
+      given_ "the project has an existing component and a populated proposal.md",
+             context do
+        proposal = Fixtures.proposal_with_context("MyApp", "Existing", "An existing context")
 
-        {:ok, Map.put(context, :existing, existing)}
-      end
-
-      given_ "a populated proposal.md mentions only the existing component", context do
-        app = context.project.module_name || "MyApp"
-
-        proposal = """
-        # Architecture Proposal
-
-        ## Contexts
-
-        ### #{app}.Existing
-
-        - **Type:** context
-        - **Description:** An existing context
-        """
-
-        :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
-            Paths.proposal_path(),
-            proposal
-          )
+        {:ok, _result} =
+          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
 
         {:ok, context}
       end

@@ -27,15 +27,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5558Spex do
   spex "The architect rewrites proposal in patch mode and triggers execution manually" do
     scenario "rewrite + manual execute creates new components and links stories" do
       given_ "the project has an existing component", context do
-        existing =
-          Fixtures.stub_component_fixture(context.scope, %{
-            module_name: "MyApp.Existing",
-            name: "Existing",
-            type: "context",
-            description: "An existing context"
-          })
+        proposal = Fixtures.proposal_with_context("MyApp", "Existing", "An existing context")
 
-        {:ok, Map.put(context, :existing, existing)}
+        {:ok, _result} =
+          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
+
+        {:ok, Map.put(context, :existing_module, "MyApp.Existing")}
       end
 
       given_ "a new unsatisfied story exists on the project", context do
@@ -122,8 +119,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5558Spex do
         {:reply, response, _frame} = ListComponents.execute(%{}, frame)
         body = response_text(response)
 
-        assert body =~ context.existing.module_name,
-               "expected pre-existing #{context.existing.module_name} to be preserved, got: #{inspect(body)}"
+        assert body =~ context.existing_module,
+               "expected pre-existing #{context.existing_module} to be preserved, got: #{inspect(body)}"
 
         {:ok, context}
       end
