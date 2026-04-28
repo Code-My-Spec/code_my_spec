@@ -17,6 +17,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   alias CodeMySpec.Environments.Environment
 
   @proposal_path Paths.proposal_path()
+  @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
 
   def orchestrate(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
@@ -40,6 +41,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     stories = Stories.list_unsatisfied_stories(scope)
     component_count = Components.count_components(scope)
 
+    env = scope.environment || Environment.new(:cli, working_dir || File.cwd!())
+    record_session_start_state(env)
+
     # Generate fresh architecture views
     output_dir =
       if working_dir do
@@ -53,6 +57,18 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     {:ok, prompt}
   end
 
+  defp record_session_start_state(env) do
+    if Environments.file_exists?(env, @proposal_path) do
+      Environments.write_file(env, @patch_mode_marker, "1")
+    else
+      Environments.delete_file(env, @patch_mode_marker)
+    end
+  end
+
+  defp patch_mode?(env), do: Environments.file_exists?(env, @patch_mode_marker)
+
+  defp clear_patch_mode_marker(env), do: Environments.delete_file(env, @patch_mode_marker)
+
   @doc """
   Evaluate the architecture design session output.
 
@@ -63,10 +79,47 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   """
   def evaluate(scope, _task) do
     working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
+    env = scope.environment || Environment.new(:cli, working_dir)
+
+    if patch_mode?(env) do
+      result = evaluate_patch_mode(scope)
+      clear_patch_mode_marker(env)
+      result
+    else
+      result = evaluate_initial_mode(scope, env, working_dir)
+      clear_patch_mode_marker(env)
+      result
+    end
+  end
+
+  # Patch mode: proposal pre-existed at session start. The architect used the
+  # incremental tools (`create_component`, `set_story_component`) — or chose
+  # not to do anything — without rewriting the proposal end-to-end. Skip
+  # auto-execution of the (now potentially stale) proposal and verify the
+  # gate directly: every project story has a linked component.
+  defp evaluate_patch_mode(scope) do
+    case unlinked_story_ids(scope) do
+      [] -> {:ok, :valid}
+      ids -> {:ok, :invalid, unlinked_stories_feedback(ids)}
+    end
+  end
+
+  @doc """
+  Forces a full read-validate-execute cycle on the proposal regardless of
+  patch mode. Called by the `execute_proposal` MCP tool when the architect
+  explicitly chooses the rewrite path in patch mode.
+  """
+  @spec execute_proposal(map()) ::
+          {:ok, :valid} | {:ok, :valid, String.t()} | {:ok, :invalid, String.t()}
+  def execute_proposal(scope) do
+    working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
+    env = scope.environment || Environment.new(:cli, working_dir)
+    evaluate_initial_mode(scope, env, working_dir)
+  end
+
+  defp evaluate_initial_mode(scope, env, working_dir) do
     project = scope.active_project
     app_name = get_app_name(project)
-
-    env = scope.environment || Environment.new(:cli, working_dir)
 
     with {:ok, content} <- read_proposal(env),
          {:ok, proposal} <- Proposal.from_markdown(content, app_name: app_name),
@@ -92,6 +145,28 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       {:error, reason} ->
         {:ok, :invalid, "Error: #{inspect(reason)}"}
     end
+  end
+
+  defp unlinked_story_ids(scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} ->
+        stories
+        |> Enum.reject(&(&1.component_id != nil))
+        |> Enum.map(& &1.id)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp unlinked_stories_feedback(ids) do
+    """
+    Some stories are not linked to a component:
+
+    #{Enum.map_join(ids, "\n", &"- Story #{&1}")}
+
+    Use `set_story_component` to link each story, or rewrite #{@proposal_path} and call `execute_proposal` to apply a fresh design.
+    """
   end
 
   defp read_proposal(env) do

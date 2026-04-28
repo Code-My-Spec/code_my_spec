@@ -24,4 +24,7 @@ defmodule CodeMySpec.McpServers.ArchitectureServer do
   # Architecture analysis
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
+
+  # Patch-mode proposal execution
+  component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
 end

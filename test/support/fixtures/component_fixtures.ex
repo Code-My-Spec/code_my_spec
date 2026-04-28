@@ -4,6 +4,7 @@ defmodule CodeMySpec.ComponentsFixtures do
   entities via the `CodeMySpec.Components` context.
   """
 
+  alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Components
   alias CodeMySpec.Repo
@@ -23,6 +24,21 @@ defmodule CodeMySpec.ComponentsFixtures do
       })
 
     {:ok, component} = Components.create_component(scope, attrs)
+    component
+  end
+
+  @doc """
+  Generate a stub component — creates a DB row AND writes a stub spec file
+  at the conventional path through the scope's environment.
+
+  Mirrors the behavior of the `create_component` MCP tool. Use this in tests
+  that need a pre-existing component with its spec stub already on disk
+  (e.g. patch-mode scenarios where the architect has previously stubbed
+  components and is now linking stories or filling specs in).
+  """
+  def stub_component_fixture(scope, attrs \\ %{}) do
+    component = component_fixture(scope, attrs)
+    :ok = SpecStub.write_for_scope(scope, component)
     component
   end
 

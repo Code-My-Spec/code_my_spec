@@ -13,6 +13,7 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   require Logger
 
+  alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Stories
@@ -856,15 +857,9 @@ defmodule CodeMySpec.Architecture.Proposal do
   end
 
   defp write_spec_file(env, attrs) do
-    spec_path = build_spec_path(attrs.module_name)
-
-    # Only write if file doesn't exist - preserve existing specs
-    if Environments.file_exists?(env, spec_path) do
-      Logger.debug("[Proposal] Spec file already exists, skipping: #{spec_path}")
-      :ok
-    else
-      spec_content = generate_spec_template(attrs)
-      Environments.write_file(env, spec_path, spec_content)
+    case SpecStub.write(env, attrs) do
+      :ok -> :ok
+      {:error, _} = err -> err
     end
   end
 
@@ -877,47 +872,5 @@ defmodule CodeMySpec.Architecture.Proposal do
     end)
     |> Enum.uniq()
     |> length()
-  end
-
-  defp build_spec_path(module_name) do
-    path_parts =
-      module_name
-      |> String.trim()
-      |> String.split(".")
-      |> Enum.map(&String.trim/1)
-      |> Enum.map(&Macro.underscore/1)
-
-    Path.join([CodeMySpec.Paths.spec_dir() | path_parts]) <> ".spec.md"
-  end
-
-  defp generate_spec_template(attrs) do
-    deps = attrs[:dependencies] || []
-
-    base = """
-    # #{attrs.module_name}
-
-    #{attrs.description || "No description provided"}
-
-    ## Type
-
-    #{attrs.type}
-    """
-
-    if deps != [] do
-      base <> """
-
-      ## Dependencies
-
-      #{format_spec_dependencies(deps)}
-      """
-    else
-      base
-    end
-  end
-
-  defp format_spec_dependencies([]), do: "- None"
-
-  defp format_spec_dependencies(deps) do
-    Enum.map_join(deps, "\n", &"- #{&1}")
   end
 end

@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   alias CodeMySpec.{
     AccountsFixtures,
+    BddSpecs,
     CodeGenerationFixtures,
     Components,
     ComponentsFixtures,
@@ -108,11 +109,16 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Components --
   defdelegate component_fixture(scope, attrs \\ %{}), to: ComponentsFixtures
+  defdelegate stub_component_fixture(scope, attrs \\ %{}), to: ComponentsFixtures
   defdelegate get_component_by_module_name(scope, module_name), to: Components
 
   # -- Stories --
   defdelegate story_fixture(scope, attrs \\ %{}), to: StoriesFixtures
   defdelegate set_story_component(scope, story, component_id), to: Stories
+  defdelegate get_story(scope, story_id), to: Stories
+
+  # -- BDD Specs --
+  defdelegate spec_file_path(story, criterion), to: BddSpecs
 
   # -- Sessions --
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures

@@ -15,7 +15,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.BddSpecs.Parser
-  alias CodeMySpec.Compile
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Stories
@@ -91,10 +90,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Prompt
   # ============================================================================
 
-  defp build_prompt(story, component, app_name, app_module, spex_module) do
+  defp build_prompt(story, component, app_name, _app_module, spex_module) do
     criteria = story.criteria || []
     component_type = component.type
-    conn_case = "#{app_module}Web.ConnCase"
 
     criteria_sections =
       Enum.map_join(criteria, "\n\n", fn criterion ->
@@ -139,14 +137,19 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     5. Run `mix compile` to verify
     6. STOP and wait for validation before the next spec
 
-    #{testing_setup(component_type, conn_case, spex_module)}
+    #{testing_setup(component_type, spex_module)}
 
     ## Spex DSL Quick Reference
 
+    Every spec file uses `#{spex_module}.Case` as its base — that case
+    template wires up `Phoenix.ConnTest`, `Phoenix.LiveViewTest`, the
+    SexySpex DSL, and the DB sandbox. Never reach for
+    `<App>Web.ConnCase` directly; always go through `#{spex_module}.Case`.
+
     ```elixir
     defmodule #{spex_module}.FeatureNameSpex do
-      use SexySpex
-      #{if component_type in ["liveview", "controller"], do: "use #{conn_case}\n      import Phoenix.LiveViewTest\n", else: ""}
+      use #{spex_module}.Case
+
       spex "feature name" do
         scenario "description" do
           given_ "setup", context do
@@ -174,6 +177,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     - Never return a bare map — wrap in `{:ok, map}`
 
     ## Reference Files
+    - Case template: `test/support/#{app_name}_spex_case.ex` — defines `#{spex_module}.Case`
     - Boundary definition: `#{@spex_dir}/#{app_name}_spex.ex`
     - Shared givens: `test/support/shared_givens.ex`
     """
@@ -278,17 +282,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     end
   end
 
-  defp testing_setup("liveview", conn_case, spex_module) do
+  defp testing_setup("liveview", spex_module) do
     """
     ## LiveView Testing
 
-    Use `Phoenix.LiveViewTest`. Test what users SEE and DO.
+    `#{spex_module}.Case` already imports `Phoenix.LiveViewTest`. Test what users SEE and DO.
 
     ```elixir
     defmodule #{spex_module}.FeatureSpex do
-      use SexySpex
-      use #{conn_case}
-      import Phoenix.LiveViewTest
+      use #{spex_module}.Case
 
       spex "feature" do
         scenario "user interaction" do
@@ -317,16 +319,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
   end
 
-  defp testing_setup("controller", conn_case, spex_module) do
+  defp testing_setup("controller", spex_module) do
     """
     ## Controller Testing
 
-    Use `Phoenix.ConnTest`. Test HTTP requests and responses.
+    `#{spex_module}.Case` already imports `Phoenix.ConnTest`. Test HTTP requests and responses.
 
     ```elixir
     defmodule #{spex_module}.FeatureSpex do
-      use SexySpex
-      use #{conn_case}
+      use #{spex_module}.Case
 
       spex "feature" do
         scenario "API call" do
@@ -348,11 +349,36 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
   end
 
-  defp testing_setup(_type, _conn_case, _spex_module) do
+  defp testing_setup(_type, spex_module) do
     """
     ## Testing
 
-    Use standard ExUnit assertions in Given/When/Then steps.
+    `#{spex_module}.Case` provides the SexySpex DSL plus standard ExUnit
+    assertions. Drive the component's real interaction surface from
+    Given/When/Then steps; never call context functions directly.
+
+    ```elixir
+    defmodule #{spex_module}.FeatureSpex do
+      use #{spex_module}.Case
+
+      spex "feature" do
+        scenario "behavior" do
+          given_ "setup", context do
+            {:ok, context}
+          end
+
+          when_ "action through the real surface", context do
+            {:ok, context}
+          end
+
+          then_ "outcome is observable through the same surface", context do
+            assert true
+            :ok
+          end
+        end
+      end
+    end
+    ```
     """
   end
 
@@ -372,28 +398,139 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       end)
       |> Enum.reject(fn {_, _, result} -> result == :ok end)
       |> Enum.map(fn {criterion, spec_path, {:error, reason}} ->
-        "Criterion #{criterion.id} (#{criterion.description}): #{format_error(reason)}\n  Expected: `#{spec_path}`"
+        "Criterion #{criterion.id} (#{criterion.description}): #{format_error(reason, spec_path)}\n  Expected: `#{spec_path}`"
       end)
 
     if Enum.empty?(errors) do
-      validate_compilation(scope)
+      {:ok, :valid}
     else
       {:ok, :invalid, "Spec issues:\n\n#{Enum.join(errors, "\n\n")}"}
+    end
+  end
+
+  defp format_error(reason, spec_path) do
+    case reason do
+      :file_not_found ->
+        "Spec file not found"
+
+      :no_scenarios ->
+        "Must contain at least one scenario"
+
+      :missing_steps ->
+        "All scenarios must have Given/When/Then steps"
+
+      :missing_spex_case ->
+        "Spec must `use <App>Spex.Case` as the base case template " <>
+          "(provides SexySpex DSL + Phoenix.ConnTest + Phoenix.LiveViewTest + DB sandbox). " <>
+          "Do not `use <App>Web.ConnCase` directly from a spec."
+
+      {:syntax_error, %{line: line, message: msg}} when is_integer(line) ->
+        "Compilation failed:\n  #{spec_path}:#{line}: #{msg}"
+
+      {:syntax_error, %{message: msg}} ->
+        "Compilation failed:\n  #{spec_path}: #{msg}"
+
+      {:parse_error, parse_reason} ->
+        "Parse error: #{inspect(parse_reason)}"
+
+      other ->
+        inspect(other)
     end
   end
 
   defp validate_single_spec(env, spec_path) do
     case Environments.read_file(env, spec_path) do
       {:ok, content} ->
-        case Parser.parse(content, spec_path) do
-          {:ok, spec} -> validate_spec_content(spec)
-          {:error, reason} -> {:error, {:parse_error, reason}}
+        with :ok <- validate_compiles(content, spec_path),
+             {:ok, spec} <- safe_parse(content, spec_path),
+             :ok <- validate_uses_spex_case(content) do
+          validate_spec_content(spec)
         end
 
       _ ->
         {:error, :file_not_found}
     end
   end
+
+  # Compile each spec file in-process via `Code.string_to_quoted/2` —
+  # cheap, deterministic, and operates on the in-memory string rather
+  # than shelling out to `mix compile`. Catches syntax errors with
+  # `{file, line}` location info; semantic issues like undefined
+  # macros are caught by `validate_uses_spex_case/1` instead.
+  defp validate_compiles(content, spec_path) do
+    case Code.string_to_quoted(content, file: spec_path) do
+      {:ok, _ast} ->
+        :ok
+
+      {:error, {meta, msg, token}} ->
+        line = line_from_meta(meta)
+        message = format_string_to_quoted_message(msg, token)
+        {:error, {:syntax_error, %{line: line, message: message}}}
+    end
+  end
+
+  defp safe_parse(content, spec_path) do
+    case Parser.parse(content, spec_path) do
+      {:ok, spec} -> {:ok, spec}
+      {:error, reason} -> {:error, {:parse_error, reason}}
+    end
+  end
+
+  defp line_from_meta(meta) when is_list(meta), do: Keyword.get(meta, :line)
+  defp line_from_meta(line) when is_integer(line), do: line
+  defp line_from_meta(_), do: nil
+
+  defp format_string_to_quoted_message({header, body}, token)
+       when is_binary(header) and is_binary(body) do
+    "#{header}#{body}#{token}"
+  end
+
+  defp format_string_to_quoted_message(msg, token) when is_binary(msg) do
+    "#{msg}#{token}"
+  end
+
+  defp format_string_to_quoted_message(msg, _token), do: inspect(msg)
+
+  # The `spex/scenario/given_/when_/then_` macros only resolve when the
+  # spec module pulls in SexySpex. The project's colocated case template
+  # `<App>Spex.Case` does that — and also wires up ConnTest, LiveViewTest,
+  # and the DB sandbox. A spec that reaches for `<App>Web.ConnCase` (or
+  # `use SexySpex` directly) would compile in isolation but breaks the
+  # established pattern, so reject it at validation time rather than
+  # surface a confusing macro error at run time.
+  #
+  # AST walk (rather than a textual regex) so a comment that mentions
+  # `<App>Spex.Case` doesn't satisfy the check by accident.
+  defp validate_uses_spex_case(content) do
+    case Code.string_to_quoted(content) do
+      {:ok, ast} ->
+        if uses_spex_case?(ast),
+          do: :ok,
+          else: {:error, :missing_spex_case}
+
+      {:error, _} ->
+        # Code couldn't even parse it — let the Spex parser surface
+        # the parse error in its own pass.
+        :ok
+    end
+  end
+
+  defp uses_spex_case?(ast) do
+    ast
+    |> Macro.prewalker()
+    |> Enum.any?(fn
+      {:use, _, [{:__aliases__, _, parts} | _]} -> spex_case_alias?(parts)
+      _ -> false
+    end)
+  end
+
+  defp spex_case_alias?(parts) when is_list(parts) and length(parts) >= 2 do
+    parts
+    |> Enum.map_join(".", &Atom.to_string/1)
+    |> String.match?(~r/Spex\.Case$/)
+  end
+
+  defp spex_case_alias?(_), do: false
 
   defp validate_spec_content(spec) do
     cond do
@@ -407,23 +544,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     not Enum.empty?(scenario.given_steps) or
       not Enum.empty?(scenario.when_steps) or
       not Enum.empty?(scenario.then_steps)
-  end
-
-  defp validate_compilation(scope) do
-    env = scope.environment
-
-    if env && Environments.file_exists?(env, "mix.exs") do
-      case Compile.execute(cwd: env.cwd) do
-        %{status: :ok} ->
-          {:ok, :valid}
-
-        %{status: :error, data: %{compiler_results: diagnostics}} ->
-          feedback = format_compilation_feedback(diagnostics)
-          {:ok, :invalid, feedback}
-      end
-    else
-      {:ok, :valid}
-    end
   end
 
   # ============================================================================
@@ -447,29 +567,4 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp camelize(name) do
     name |> String.split("_") |> Enum.map_join("", &String.capitalize/1)
   end
-
-  defp format_error(:file_not_found), do: "Spec file not found"
-  defp format_error(:no_scenarios), do: "Must contain at least one scenario"
-  defp format_error(:missing_steps), do: "All scenarios must have Given/When/Then steps"
-  defp format_error({:parse_error, reason}), do: "Parse error: #{inspect(reason)}"
-  defp format_error(other), do: inspect(other)
-
-  defp format_compilation_feedback(diagnostics) when is_list(diagnostics) do
-    errors =
-      Enum.map_join(diagnostics, "\n", fn d ->
-        file = Map.get(d, :file) || Map.get(d, "file") || "unknown"
-        msg = Map.get(d, :message) || Map.get(d, "message") || "unknown"
-        pos = Map.get(d, :position) || Map.get(d, "position")
-        line = if pos, do: Map.get(pos, :line) || Map.get(pos, "line")
-        if line, do: "  #{file}:#{line}: #{msg}", else: "  #{file}: #{msg}"
-      end)
-
-    "Compilation failed:\n\n```\n#{errors}\n```"
-  end
-
-  defp format_compilation_feedback(output) when is_binary(output) do
-    "Compilation failed:\n\n```\n#{output}\n```"
-  end
-
-  defp format_compilation_feedback(_), do: "Compilation failed."
 end
