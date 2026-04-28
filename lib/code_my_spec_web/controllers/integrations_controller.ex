@@ -132,7 +132,9 @@ defmodule CodeMySpecWeb.IntegrationsController do
 
       conn =
         if status == :new do
-          put_session(conn, :user_return_to, ~p"/app")
+          conn
+          |> put_session(:user_return_to, ~p"/app")
+          |> put_flash(:info, "User confirmed successfully.")
         else
           conn
         end
