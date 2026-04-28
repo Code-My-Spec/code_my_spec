@@ -27,7 +27,6 @@ defmodule CodeMySpecSpex.Fixtures do
     ProblemsFixtures,
     ProjectsFixtures,
     QaIntegrationPlanFixtures,
-    SessionsFixtures,
     SetupFixtures,
     TechnicalStrategyFixtures,
     UserPreferences,
@@ -119,9 +118,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- BDD Specs --
   defdelegate spec_file_path(story, criterion), to: BddSpecs
-
-  # -- Sessions --
-  defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
 
   # -- Problems --
   defdelegate problem_fixture(scope, attrs \\ %{}), to: ProblemsFixtures
