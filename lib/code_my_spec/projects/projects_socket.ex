@@ -82,9 +82,16 @@ defmodule CodeMySpec.Projects.ProjectsSocket do
   end
 
   @impl Slipstream
-  def handle_disconnect(_reason, socket) do
-    Logger.info("[ProjectsSocket] Disconnected, will reconnect")
-    reconnect(socket)
+  def handle_disconnect(reason, socket) do
+    case build_ws_url() do
+      {:ok, uri} ->
+        Logger.info("[ProjectsSocket] Disconnected (#{inspect(reason)}), reconnecting with fresh token")
+        connect(socket, uri: uri)
+
+      {:error, token_error} ->
+        Logger.warning("[ProjectsSocket] Disconnected (#{inspect(reason)}); cannot refresh token: #{inspect(token_error)}")
+        reconnect(socket)
+    end
   end
 
   # -- Private ----------------------------------------------------------------
