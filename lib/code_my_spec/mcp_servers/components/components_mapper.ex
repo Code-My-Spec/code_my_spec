@@ -4,21 +4,13 @@ defmodule CodeMySpec.McpServers.Components.ComponentsMapper do
   alias CodeMySpec.McpServers.Formatters
 
   def component_response(component) do
-    similar_components =
-      case Map.get(component, :similar_components, :not_loaded) do
-        %Ecto.Association.NotLoaded{} -> []
-        similar when is_list(similar) -> Enum.map(similar, &component_summary/1)
-        _ -> []
-      end
-
     Response.tool()
     |> Response.json(%{
       id: component.id,
       name: component.name,
       type: component.type,
       module_name: component.module_name,
-      description: component.description,
-      similar_components: similar_components
+      description: component.description
     })
   end
 

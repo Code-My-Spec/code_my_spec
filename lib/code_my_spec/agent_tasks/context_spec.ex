@@ -30,7 +30,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   - Project context
   - Context details
   - User stories
-  - Similar components
 
   Returns {:ok, prompt_text}
   """
@@ -39,10 +38,9 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     project = scope.active_project
 
     with {:ok, rules} <- get_design_rules(scope),
-         similar <- Components.list_similar_components(scope, component),
          stories <- Stories.list_component_stories(scope, component.id) do
       diagnostics = previous_validation_diagnostics(scope, component, project)
-      build_spec_prompt(component, project, rules, stories, similar, diagnostics)
+      build_spec_prompt(component, project, rules, stories, diagnostics)
     end
   end
 
@@ -110,10 +108,9 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     {:ok, rules}
   end
 
-  defp build_spec_prompt(context, project, rules, stories, similar_components, diagnostics) do
+  defp build_spec_prompt(context, project, rules, stories, diagnostics) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
     stories_text = format_stories(stories)
-    similar_text = format_similar_components(project, similar_components)
     document_spec = DocumentSpecProjector.project_spec("context_spec")
     %{spec_file: spec_file_path} = Utils.component_files(context, project)
 
@@ -133,9 +130,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
     # User Stories this context satisfies
     #{stories_text}
-
-    # Similar Components
-    #{similar_text}
 
     # How to write the document
     #{document_spec}
@@ -180,25 +174,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
     #{feedback}
     """
-  end
-
-  defp format_similar_components(_project, []), do: "No similar components provided"
-
-  defp format_similar_components(project, similar_components) do
-    similar_components
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {component, index} ->
-      files = Utils.component_files(component, project)
-
-      """
-      #{index}. #{component.name} (#{component.type})
-         Description: #{component.description || "No description"}
-         Design: #{files.spec_file}
-         Implementation: #{files.code_file}
-         Test: #{files.test_file}
-      """
-      |> String.trim()
-    end)
   end
 
   defp format_stories([]), do: "No user stories provided"

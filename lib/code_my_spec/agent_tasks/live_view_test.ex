@@ -25,8 +25,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
     project = scope.active_project
 
     with {:ok, test_rules} <- get_test_rules(scope, component) do
-      similar_components = Components.list_similar_components(scope, component)
-      {:ok, prompt} = build_test_prompt(scope, component, project, test_rules, similar_components)
+      {:ok, prompt} = build_test_prompt(scope, component, project, test_rules)
       {:ok, prompt}
     end
   end
@@ -66,9 +65,8 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
     end
   end
 
-  defp build_test_prompt(scope, component, project, test_rules, similar_components) do
+  defp build_test_prompt(scope, component, project, test_rules) do
     test_rules_text = Enum.map_join(test_rules, "\n\n", & &1.content)
-    similar_text = format_similar_components(project, similar_components)
 
     %{spec_file: spec_file_path, test_file: test_file_path} =
       Utils.component_files(component, project)
@@ -123,9 +121,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
       Component Design File: #{spec_file_path}
       Core Components: #{core_components_path}
 
-      Similar Components (for test pattern inspiration):
-      #{similar_text}
-
       Test Rules:
       #{test_rules_text}
 
@@ -148,25 +143,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewTest do
   defp core_components_path(project) do
     web_module = Macro.underscore(project.module_name <> "Web")
     "lib/#{web_module}/components/core_components.ex"
-  end
-
-  defp format_similar_components(_project, []), do: "No similar components provided"
-
-  defp format_similar_components(project, similar_components) do
-    similar_components
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {component, index} ->
-      files = Utils.component_files(component, project)
-
-      """
-      #{index}. #{component.name} (#{component.type})
-         Description: #{component.description || "No description"}
-         Spec: #{files.spec_file}
-         Implementation: #{files.code_file}
-         Test: #{files.test_file}
-      """
-      |> String.trim()
-    end)
   end
 
   defp implementation_exists?(scope, component) do

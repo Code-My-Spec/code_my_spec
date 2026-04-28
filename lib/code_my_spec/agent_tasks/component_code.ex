@@ -22,7 +22,6 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   Called by the slash command to build the implementation prompt with:
   - Spec file location
   - Test file location
-  - Similar components for patterns
   - Coding rules
 
   Returns {:ok, prompt_text}
@@ -32,8 +31,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     project = scope.active_project
 
     with {:ok, rules} <- get_implementation_rules(scope, component) do
-      similar_components = Components.list_similar_components(scope, component)
-      {:ok, prompt} = build_implementation_prompt(project, component, rules, similar_components)
+      {:ok, prompt} = build_implementation_prompt(project, component, rules)
       {:ok, prompt}
     end
   end
@@ -84,7 +82,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     end
   end
 
-  defp build_implementation_prompt(project, component, rules, similar_components) do
+  defp build_implementation_prompt(project, component, rules) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
 
     %{
@@ -92,8 +90,6 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       code_file: code_file_path,
       test_file: test_file_path
     } = Utils.component_files(component, project)
-
-    similar_components_text = format_similar_components(project, similar_components)
 
     prompt =
       """
@@ -114,11 +110,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       3. Create all necessary module files following the component spec
       4. Implement all public API functions specified in the spec
       5. Ensure the implementation satisfies the tests
-      6. Follow project patterns for similar components
-      7. Create schemas, migrations, or supporting code as needed
-
-      Similar Components (for implementation pattern inspiration):
-      #{similar_components_text}
+      6. Create schemas, migrations, or supporting code as needed
 
       Coding Rules:
       #{rules_text}
@@ -127,24 +119,5 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       """
 
     {:ok, prompt}
-  end
-
-  defp format_similar_components(_project, []), do: "No similar components provided"
-
-  defp format_similar_components(project, similar_components) do
-    similar_components
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {component, index} ->
-      files = Utils.component_files(component, project)
-
-      """
-      #{index}. #{component.name} (#{component.type})
-         Description: #{component.description || "No description"}
-         Spec: #{files.spec_file}
-         Implementation: #{files.code_file}
-         Test: #{files.test_file}
-      """
-      |> String.trim()
-    end)
   end
 end

@@ -3,7 +3,6 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
-  alias CodeMySpecWeb.ComponentLive.SimilarComponentsSelector
 
   @impl true
   def render(assigns) do
@@ -25,14 +24,6 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
           label="Parent Component"
           prompt="Choose a parent component (optional)"
           options={Enum.map(@contexts, &{&1.name, &1.id})}
-        />
-
-        <.live_component
-          module={SimilarComponentsSelector}
-          id="similar-components-selector"
-          current_scope={@current_scope}
-          component={@component}
-          selected_similar_ids={@selected_similar_ids}
         />
 
         <footer>
@@ -60,15 +51,10 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
     component = Components.get_component!(scope, id)
     contexts = Components.list_contexts(scope)
 
-    # Load similar components for editing
-    similar_components = Components.list_similar_components(scope, component)
-    similar_component_ids = Enum.map(similar_components, & &1.id)
-
     socket
     |> assign(:page_title, "Edit Component")
     |> assign(:component, component)
     |> assign(:contexts, contexts)
-    |> assign(:selected_similar_ids, similar_component_ids)
     |> assign(
       :form,
       to_form(Components.change_component(socket.assigns.current_scope, component))
@@ -87,7 +73,6 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
     |> assign(:page_title, "New Component")
     |> assign(:component, component)
     |> assign(:contexts, contexts)
-    |> assign(:selected_similar_ids, [])
     |> assign(
       :form,
       to_form(Components.change_component(socket.assigns.current_scope, component))
@@ -110,11 +95,6 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
     save_component(socket, socket.assigns.live_action, component_params)
   end
 
-  @impl true
-  def handle_info({:similar_components_updated, similar_ids}, socket) do
-    {:noreply, assign(socket, :selected_similar_ids, similar_ids)}
-  end
-
   defp save_component(socket, :edit, component_params) do
     case Components.update_component(
            socket.assigns.current_scope,
@@ -122,13 +102,6 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
            component_params
          ) do
       {:ok, component} ->
-        # Update similar components association
-        update_similar_components(
-          socket.assigns.current_scope,
-          component,
-          socket.assigns.selected_similar_ids
-        )
-
         {:noreply,
          socket
          |> put_flash(:info, "Component updated successfully")
@@ -144,13 +117,6 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
   defp save_component(socket, :new, component_params) do
     case Components.create_component(socket.assigns.current_scope, component_params) do
       {:ok, component} ->
-        # Set similar components association
-        update_similar_components(
-          socket.assigns.current_scope,
-          component,
-          socket.assigns.selected_similar_ids
-        )
-
         {:noreply,
          socket
          |> put_flash(:info, "Component created successfully")
@@ -165,18 +131,4 @@ defmodule CodeMySpecWeb.ComponentLive.Form do
 
   defp return_path(_scope, "index", _component), do: ~p"/app/components"
   defp return_path(_scope, "show", _component), do: ~p"/app/components"
-
-  defp update_similar_components(scope, component, similar_ids) when is_list(similar_ids) do
-    # Sync the similar_components join table to match the selected IDs
-    # This handles adds, removes, and clearing all similar components
-    case Components.sync_similar_components(scope, component, similar_ids) do
-      {:ok, _component} ->
-        :ok
-
-      {:error, reason} ->
-        require Logger
-        Logger.error("Failed to sync similar components: #{inspect(reason)}")
-        :error
-    end
-  end
 end

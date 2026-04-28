@@ -15,8 +15,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_scope(frame),
          component when not is_nil(component) <-
-           Components.get_component(scope, params.component_id),
-         component <- load_similar_components(scope, component) do
+           Components.get_component(scope, params.component_id) do
       {:reply, ComponentsMapper.component_response(component), frame}
     else
       nil ->
@@ -25,10 +24,5 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
       {:error, atom} ->
         {:reply, ComponentsMapper.error(atom), frame}
     end
-  end
-
-  defp load_similar_components(scope, component) do
-    similar = Components.list_similar_components(scope, component)
-    %{component | similar_components: similar}
   end
 end

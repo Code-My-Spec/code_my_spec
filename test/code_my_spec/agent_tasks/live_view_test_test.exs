@@ -198,34 +198,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewTestTest do
       assert prompt =~ "Test Rules"
     end
 
-    test "includes similar components with file paths when available", %{
-      task: task,
-      scope: scope,
-      component: component,
-      project: project
-    } do
-      similar =
-        component_fixture(scope, %{
-          name: "SettingsLive",
-          type: "liveview",
-          module_name: "TestAppWeb.SettingsLive",
-          description: "Settings page",
-          project_id: project.id
-        })
-
-      {:ok, _} = Components.add_similar_component(scope, component, similar)
-
-      assert {:ok, prompt} = LiveViewTest.command(scope, task)
-      assert prompt =~ similar.name
-    end
-
-    test "handles empty similar components list with fallback text", %{
-      task: task,
-      scope: scope
-    } do
-      assert {:ok, prompt} = LiveViewTest.command(scope, task)
-      assert prompt =~ "No similar components" or prompt =~ "Similar Components"
-    end
   end
 
   # ============================================================================

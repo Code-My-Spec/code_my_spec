@@ -117,8 +117,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
         "The tests don't exist yet."
       end
 
-    similar_components_clause = build_similar_components_clause(scope, component)
-
     prompt =
       """
       Generate a LiveView spec for the following.
@@ -130,7 +128,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
       #{parent_component_clause}
       #{existing_implementation_clause}
       #{existing_test_clause}
-      #{similar_components_clause}
 
       Design Rules:
       #{rules_text}
@@ -142,16 +139,5 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
       """
 
     {:ok, prompt}
-  end
-
-  defp build_similar_components_clause(scope, component) do
-    case Components.list_similar_components(scope, component) do
-      [] ->
-        ""
-
-      similar_components ->
-        names = Enum.map_join(similar_components, ", ", & &1.name)
-        "Similar Components (for pattern inspiration): #{names}"
-    end
   end
 end

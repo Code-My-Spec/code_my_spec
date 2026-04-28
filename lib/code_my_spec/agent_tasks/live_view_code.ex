@@ -28,7 +28,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
   Called by the slash command to build the implementation prompt with:
   - Spec file location
   - Test file location
-  - Similar components for patterns
   - Coding rules
   - Resources directory for progressive-disclosure LiveView guidance
 
@@ -39,11 +38,10 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
     project = scope.active_project
 
     with {:ok, rules} <- get_implementation_rules(scope, component) do
-      similar_components = Components.list_similar_components(scope, component)
       bdd_spec_files = get_bdd_spec_files(scope, component)
 
       {:ok, prompt} =
-        build_implementation_prompt(project, component, rules, similar_components, bdd_spec_files)
+        build_implementation_prompt(project, component, rules, bdd_spec_files)
 
       {:ok, prompt}
     end
@@ -143,7 +141,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
     end
   end
 
-  defp build_implementation_prompt(project, component, rules, similar_components, bdd_spec_files) do
+  defp build_implementation_prompt(project, component, rules, bdd_spec_files) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
 
     %{
@@ -152,7 +150,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
       test_file: test_file_path
     } = Utils.component_files(component, project)
 
-    similar_components_text = format_similar_components(project, similar_components)
     bdd_spec_text = format_bdd_spec_instructions(bdd_spec_files)
     core_components_path = core_components_path(project)
 
@@ -179,11 +176,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
       6. Create all necessary module files following the component spec
       7. Implement all public API functions specified in the spec
       8. Ensure the implementation satisfies the tests
-      9. Follow project patterns for similar components
       #{bdd_spec_text}
-
-      Similar Components (for implementation pattern inspiration):
-      #{similar_components_text}
 
       Coding Rules:
       #{rules_text}
@@ -213,24 +206,5 @@ defmodule CodeMySpec.AgentTasks.LiveViewCode do
 
     Run them with: mix spex <file_path>
     """
-  end
-
-  defp format_similar_components(_project, []), do: "No similar components provided"
-
-  defp format_similar_components(project, similar_components) do
-    similar_components
-    |> Enum.with_index(1)
-    |> Enum.map_join("\n\n", fn {component, index} ->
-      files = Utils.component_files(component, project)
-
-      """
-      #{index}. #{component.name} (#{component.type})
-         Description: #{component.description || "No description"}
-         Spec: #{files.spec_file}
-         Implementation: #{files.code_file}
-         Test: #{files.test_file}
-      """
-      |> String.trim()
-    end)
   end
 end

@@ -214,25 +214,6 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpecTest do
       assert prompt =~ parent_spec_path
     end
 
-    test "includes similar components for pattern inspiration", %{tmp_dir: tmp_dir} do
-      scope = create_scope(tmp_dir)
-      component = create_liveview_component(scope)
-
-      similar =
-        component_fixture(scope, %{
-          name: "SettingsLive",
-          type: "liveview",
-          module_name: "TestAppWeb.SettingsLive",
-          description: "Settings page"
-        })
-
-      {:ok, _} = Components.add_similar_component(scope, component, similar)
-      task = create_task(scope, component)
-
-      assert {:ok, prompt} = LiveViewSpec.command(scope, task)
-      assert prompt =~ similar.name or prompt =~ similar.module_name
-    end
-
     test "includes UI spec format guidance with route, interactions, and structural Design section",
          %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
