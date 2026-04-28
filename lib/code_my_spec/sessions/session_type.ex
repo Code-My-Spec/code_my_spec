@@ -39,6 +39,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.RefactorModule,
     AgentTasks.ResearchTopic,
     AgentTasks.StartImplementation,
+    AgentTasks.StoryInterview,
     AgentTasks.TechnicalStrategy,
     AgentTasks.ThreeAmigos,
     AgentTasks.TriageIssues,

@@ -628,6 +628,20 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         validation_type: :manual
       }),
       new!(%{
+        id: 6,
+        name: "acceptance_criteria_exist",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{
+          module: CodeMySpec.Requirements.AcceptanceCriteriaChecker,
+          function: :complete?
+        },
+        satisfied_by: AgentTasks.StoryInterview,
+        artifact_type: :specification,
+        description: "Story has at least one acceptance criterion",
+        prerequisites: [1]
+      }),
+      new!(%{
         id: 2,
         name: "bdd_specs_exist",
         node_scope: :self,
@@ -636,7 +650,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.WriteBddSpecs,
         artifact_type: :tests,
         description: "BDD spec files exist for story",
-        prerequisites: [1]
+        prerequisites: [6]
       }),
       new!(%{
         id: 3,
@@ -764,7 +778,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [6]
       }),
 
-      # QA chain (separate from main — gated on qa_setup so all QA work has a plan)
+      # QA chain — gated on qa_setup so all QA work has a plan, and run after
+      # issues are resolved so per-story work begins from a clean slate.
       new!(%{
         id: 14,
         name: "qa_setup",
@@ -775,7 +790,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :review,
         description:
           "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
-        prerequisites: []
+        prerequisites: [7]
       }),
       new!(%{
         id: 8,

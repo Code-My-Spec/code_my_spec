@@ -261,13 +261,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     not siblings?(comp, dep_comp) and comp.parent_component_id != nil
   end
 
-  # Cross-entity: project.issues_resolved → story.component_linked
+  # Cross-entity: project.qa_setup → story.component_linked
   defp project_to_story_edges(ctx) do
     project_id = ctx.stories |> List.first() |> then(fn s -> s && s.project_id end)
 
     if project_id && ctx.stories != [] do
       Enum.map(ctx.stories, fn story ->
-        %{from: {"project", project_id, "issues_resolved"}, to: {"story", story.id, "component_linked"}}
+        %{from: {"project", project_id, "qa_setup"}, to: {"story", story.id, "component_linked"}}
       end)
     else
       []
