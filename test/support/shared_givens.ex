@@ -72,6 +72,11 @@ defmodule CodeMySpecSpex.SharedGivens do
     Mirror of the code_generation given for the integration-credentials
     flow. Produces `context.session_id`, `context.task_id`, and
     `context.prompt`.
+  - `:qa_setup_task_started` — drives session_start + start_task for the
+    `qa_setup` requirement on the active project. Returns the planning
+    prompt so specs can assert on its content or pass the task_id forward
+    into evaluate_task scenarios. Produces `context.session_id`,
+    `context.task_id`, and `context.prompt`.
   - `:three_amigos_task_started` — drives session_start + start_task for
     the `three_amigos_complete` requirement on `context.story`. Mirror of
     `:persona_research_task_started` for the per-story Three Amigos node.
@@ -556,6 +561,48 @@ defmodule CodeMySpecSpex.SharedGivens do
       StartTask.execute(
         %{
           requirement_name: "issues_resolved",
+          entity_type: "project",
+          entity_id: to_string(context.project.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    prompt = flatten_tool_response(response)
+
+    {:ok,
+     Map.merge(context, %{
+       session_id: session_id,
+       task_id: extract_task_id(response),
+       prompt: prompt,
+       start_response: response
+     })}
+  end
+
+  # The agent has signalled SessionStart and called start_task for the
+  # `qa_setup` requirement on the active project. start_task runs
+  # `QaSetup.command/2`, which globs `lib/*_web/router.ex`, lists existing
+  # qa seed scripts and helper scripts, and returns the planning prompt.
+  # qa_setup is manual-validation so the task stays open for evaluate_task
+  # to drive in `when_` steps.
+  register_given :qa_setup_task_started, context do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "qa_setup",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id

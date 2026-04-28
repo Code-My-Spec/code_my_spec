@@ -129,6 +129,15 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     "missing required section(s): #{formatted}"
   end
 
+  defp translate_error("Empty required sections: " <> sections) do
+    formatted =
+      sections
+      |> String.split(", ")
+      |> Enum.map_join(", ", &"`## #{title_case(&1)}`")
+
+    "missing content under required section(s): #{formatted}"
+  end
+
   defp translate_error(reason), do: "invalid: #{reason}"
 
   defp title_case(string) do

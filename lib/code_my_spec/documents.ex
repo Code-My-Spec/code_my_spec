@@ -128,6 +128,7 @@ defmodule CodeMySpec.Documents do
          :ok <- validate_h1_title(markdown_content, document_type),
          {:ok, sections} <- MarkdownParser.parse(markdown_content),
          :ok <- validate_required_sections(sections, doc_def.required_sections),
+         :ok <- validate_section_bodies(sections, doc_def.required_sections),
          :ok <-
            validate_additional_sections(
              sections,
@@ -184,6 +185,39 @@ defmodule CodeMySpec.Documents do
       {:error, "Missing required sections: #{Enum.join(missing, ", ")}"}
     end
   end
+
+  defp validate_section_bodies(sections, required_sections) do
+    empty =
+      required_sections
+      |> Enum.reject(fn
+        section when is_binary(section) ->
+          not section_empty?(Map.get(sections, section))
+
+        alternatives when is_list(alternatives) ->
+          Enum.any?(alternatives, fn alt ->
+            Map.has_key?(sections, alt) and not section_empty?(Map.get(sections, alt))
+          end)
+      end)
+      |> Enum.map(fn
+        section when is_binary(section) -> section
+        alternatives when is_list(alternatives) -> Enum.join(alternatives, " OR ")
+      end)
+
+    if Enum.empty?(empty) do
+      :ok
+    else
+      {:error, "Empty required sections: #{Enum.join(empty, ", ")}"}
+    end
+  end
+
+  # Only plain-text sections (no custom parser) can be detected as empty
+  # at this layer. Sections with parsers (e.g. components, functions) may
+  # legitimately return `[]` when the header is present but no H3 entries
+  # are defined — that's a structural emptiness the parser owns, not a
+  # missing-body concern.
+  defp section_empty?(nil), do: true
+  defp section_empty?(value) when is_binary(value), do: String.trim(value) == ""
+  defp section_empty?(_), do: false
 
   # Metadata sections allowed in any document type
   @metadata_sections ["type"]
