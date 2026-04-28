@@ -49,8 +49,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     full_path |> Path.dirname() |> File.mkdir_p!()
 
     File.write!(full_path, """
-    defmodule MyApp.UserLoginSpex do
-      use Spex
+    defmodule MyAppSpex.UserLoginSpex do
+      use MyAppSpex.Case
 
       spex "user login" do
         scenario "valid credentials" do
@@ -213,8 +213,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
         full_path |> Path.dirname() |> File.mkdir_p!()
 
         File.write!(full_path, """
-        defmodule MyApp.EmptySpex do
-          use Spex
+        defmodule MyAppSpex.EmptySpex do
+          use MyAppSpex.Case
           spex "empty" do
           end
         end

@@ -170,14 +170,23 @@ defmodule CodeMySpec.BddSpecs do
   @doc """
   Returns the conventional file path for a story/criterion spec.
 
+  Accepts either `%Story{}`/`%Criterion{}` structs (the production
+  caller's shape) or plain maps with `:id` plus the relevant text
+  field — `:title` for the story, `:description` for the criterion.
+  Specs that drive the surface MCP tools (`CreateStory`, `GetStory`)
+  parse the response into a map and pass it directly here.
+
   ## Examples
 
       iex> spec_file_path(story, criterion)
       "test/spex/42_user_authentication/criterion_1_valid_credentials_spex.exs"
 
   """
-  @spec spec_file_path(Story.t(), Criterion.t()) :: String.t()
-  def spec_file_path(%Story{} = story, %Criterion{} = criterion) do
+  @spec spec_file_path(
+          Story.t() | %{id: term(), title: String.t()},
+          Criterion.t() | %{id: term(), description: String.t()}
+        ) :: String.t()
+  def spec_file_path(%{id: _, title: _} = story, %{id: _, description: _} = criterion) do
     story_slug = slugify(story.title)
     story_dir = "#{story.id}_#{story_slug}"
     criterion_slug = slugify(criterion.description)

@@ -7,7 +7,9 @@ defmodule CodeMySpecSpex.Story559.Criterion5164Spex do
   readiness condition.
 
   Exercises the readiness gate's persona-linkage clause via the
-  public EvaluateTask MCP surface.
+  public EvaluateTask MCP surface. Story is created through the
+  `CreateStory` MCP tool (via `StoryHelpers`) — same surface the
+  agent uses in production.
 
   Depends on:
     - `BddRulesChecker.complete?/2` ✓
@@ -18,10 +20,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5164Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.TaskResponseHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,9 +33,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5164Spex do
     scenario "evaluate_task returns a needs-work response naming the missing persona linkage" do
       given_ "a story exists with no personas linked", context do
         story =
-          Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Story with no persona linkage",
-            description: "Drives the persona-linkage failure path."
+            description: "Drives the persona-linkage failure path.",
+            acceptance_criteria: ["readiness gate fails on missing persona linkage"]
           )
 
         {:ok, Map.put(context, :story, story)}
@@ -62,15 +66,4 @@ defmodule CodeMySpecSpex.Story559.Criterion5164Spex do
       end
     end
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: text} -> text
-      %{"text" => text} -> text
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

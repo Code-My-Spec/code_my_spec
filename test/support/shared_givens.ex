@@ -36,8 +36,8 @@ defmodule CodeMySpecSpex.SharedGivens do
     LiveView. Produces `context.config_live`.
   - `:bdd_task_started` — drives the real session_start hook + StartTask
     MCP tool to create an active `WriteBddSpecs` task on a story.
-    Produces `context.session_id`. Requires `context.story` from
-    `:story_linked_to_component`.
+    Produces `context.session_id`, `context.task_id`, `context.prompt`,
+    and `context.start_response`. Requires `context.story`.
   - `:context_spec_task_started` — drives session_start + start_task for
     the `spec_file` requirement on `context.component` (satisfied by
     `:synced_context_component`'s synced spec file). Gives specs a
@@ -267,6 +267,8 @@ defmodule CodeMySpecSpex.SharedGivens do
   # real contract the harness drives — we post to the same HTTP hook and
   # invoke the same MCP tool module, so the pipeline sees a real active
   # `WriteBddSpecs` task whose `analyzers/0` returns `[:spex_stale]`.
+  # Captures `session_id`, `task_id`, and `prompt` so specs can drive
+  # `evaluate_task` directly or assert on prompt content.
   register_given :bdd_task_started, context do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
@@ -281,7 +283,7 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, _response, _frame} =
+    {:reply, response, _frame} =
       StartTask.execute(
         %{
           requirement_name: "bdd_specs_exist",
@@ -292,7 +294,15 @@ defmodule CodeMySpecSpex.SharedGivens do
         frame
       )
 
-    {:ok, Map.put(context, :session_id, session_id)}
+    prompt = flatten_tool_response(response)
+
+    {:ok,
+     Map.merge(context, %{
+       session_id: session_id,
+       task_id: extract_task_id(response),
+       prompt: prompt,
+       start_response: response
+     })}
   end
 
   # The PM has created a persona through the account library surface and

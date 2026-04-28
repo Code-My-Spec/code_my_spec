@@ -24,6 +24,7 @@ BDD specs use **Phoenix.LiveViewTest** for LiveView interactions — mounting vi
 | DSL macros          | `spex`, `scenario`, `given_`, `when_`, `then_`, `and_` |
 | File pattern        | `test/spex/**/*_spex.exs`                       |
 | Run command         | `mix spex`                                      |
+| Case template       | `AppSpex.Case` in `test/support/app_spex_case.ex` (every spec `use`s this) |
 | Boundary module     | `AppSpex` in `test/spex/app_spex.ex`            |
 | Shared givens       | `AppSpex.SharedGivens` in `test/support/shared_givens.ex` |
 
@@ -66,25 +67,31 @@ end
 
 ```elixir
 defmodule MyAppSpex.UserRegistrationSpex do
-  use SexySpex                    # ExUnit.Case (async: false) + DSL import
-  use MyAppWeb.ConnCase           # Provides conn, endpoint, routing helpers
-  import Phoenix.LiveViewTest     # live/2, form/3, element/3, render_click/1, etc.
+  use MyAppSpex.Case              # The colocated case template — wires up
+                                  # SexySpex DSL, ConnTest, LiveViewTest, sandbox
 
   import_givens MyAppSpex.SharedGivens  # Shared step definitions
 end
 ```
 
-`use SexySpex` expands to:
+`use MyAppSpex.Case` is the only case `use` a spec needs — it's the project's
+single base template (defined in `test/support/<app>_spex_case.ex`). It composes:
 
-```elixir
-use ExUnit.Case, async: false
-import SexySpex.DSL
-require Logger
-```
+- `use SexySpex` → ExUnit.Case (async: false), DSL import (`spex`, `scenario`,
+  `given_`, `when_`, `then_`, `and_`)
+- `import Phoenix.ConnTest` → `post/3`, `json_response/2`, `build_conn/0`, etc.
+- `import Phoenix.LiveViewTest` → `live/2`, `form/3`, `element/3`,
+  `render_click/1`, `render_submit/1`, `has_element?/2`, etc.
+- DB sandbox setup (auto on every test)
+- A baseline `conn` in the test context
 
-`use MyAppWeb.ConnCase` provides the `conn` in the test context and sets up the endpoint. `import Phoenix.LiveViewTest` brings in `live/2`, `form/3`, `element/3`, `render_click/1`, `render_submit/1`, `has_element?/2`, etc.
+Reach for `use MyAppSpex.Case` directly — never `use MyAppWeb.ConnCase` from a
+spec, never separately `use SexySpex` or `import Phoenix.LiveViewTest`. The
+single `use` line keeps every spec consistent and lets the case template evolve
+in one place.
 
-All standard ExUnit features remain available: `setup_all`, `setup`, `on_exit`, `assert`, `refute`, `assert_raise`.
+All standard ExUnit features remain available: `setup_all`, `setup`, `on_exit`,
+`assert`, `refute`, `assert_raise`.
 
 ### Macros
 
@@ -179,9 +186,7 @@ Test what users **see and do** through LiveViewTest. Do not call context functio
 
 ```elixir
 defmodule MyAppSpex.UserRegistrationSpex do
-  use SexySpex
-  use MyAppWeb.ConnCase
-  import Phoenix.LiveViewTest
+  use MyAppSpex.Case
 
   import_givens MyAppSpex.SharedGivens
 
@@ -257,12 +262,11 @@ end
 
 ### Controller Specs (Surface Layer)
 
-Controller specs that test JSON APIs or form POST endpoints use `Phoenix.ConnTest` directly:
+Controller specs that test JSON APIs or form POST endpoints — same single `use` line; `Phoenix.ConnTest` is provided by the case template:
 
 ```elixir
 defmodule MyAppSpex.ResourceApiSpex do
-  use SexySpex
-  use MyAppWeb.ConnCase
+  use MyAppSpex.Case
 
   import_givens MyAppSpex.SharedGivens
 
@@ -325,9 +329,7 @@ end
 
 ```elixir
 defmodule MyAppSpex.DashboardSpex do
-  use SexySpex
-  use MyAppWeb.ConnCase
-  import Phoenix.LiveViewTest
+  use MyAppSpex.Case
 
   import_givens MyAppSpex.SharedGivens
 
@@ -369,7 +371,7 @@ BDD specs test **user-facing behavior**, not internal implementation. This enfor
 | Test what users see                    | `assert render(view) =~ "Welcome"`                  | `assert Users.get!(id).active?`         |
 | Set up state through UI               | `form("#reg-form", user: attrs) \|> render_submit()` | `Users.create_user(scope, attrs)`       |
 | Assert on user feedback                | `assert render(view) =~ "saved"`                    | `assert {:ok, _} = Things.create(...)` |
-| Use web layer dependencies only        | `use MyAppWeb.ConnCase`                              | `alias MyApp.Users`                     |
+| Use web layer dependencies only        | `use MyAppSpex.Case`                                 | `alias MyApp.Users`                     |
 
 > The `boundary` library enforces this surface-layer constraint at compile time. See `../boundary.md`.
 
@@ -434,11 +436,9 @@ Since Spex is built on ExUnit, all standard callbacks and assertions are availab
 
 ```elixir
 defmodule MyAppSpex.FeatureSpex do
-  use SexySpex
-  use MyAppWeb.ConnCase
-  import Phoenix.LiveViewTest
+  use MyAppSpex.Case
 
-  # ConnCase setup already provides :conn in context
+  # The case template's setup already provides :conn in context.
   # Add additional setup if needed:
   setup context do
     # additional setup here
@@ -510,9 +510,7 @@ Spex produces structured output with visual markers:
 
 ```elixir
 defmodule MyAppSpex.ThingManagementSpex do
-  use SexySpex
-  use MyAppWeb.ConnCase
-  import Phoenix.LiveViewTest
+  use MyAppSpex.Case
 
   import_givens MyAppSpex.SharedGivens
 
