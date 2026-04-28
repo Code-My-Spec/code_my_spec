@@ -284,9 +284,15 @@ defmodule CodeMySpecWeb.UserAuth do
 
     if is_nil(scope.active_account) do
       [first | _] = Accounts.list_accounts(scope)
-      {:ok, _} = UserPreferences.select_active_account(scope, first.id)
-      new_scope = Scope.for_user(scope.user)
-      {:cont, Phoenix.Component.assign(socket, :current_scope, new_scope)}
+
+      case UserPreferences.select_active_account(scope, first.id) do
+        {:ok, _} ->
+          new_scope = Scope.for_user(scope.user)
+          {:cont, Phoenix.Component.assign(socket, :current_scope, new_scope)}
+
+        {:error, _} ->
+          {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/app/accounts/picker")}
+      end
     else
       {:cont, socket}
     end

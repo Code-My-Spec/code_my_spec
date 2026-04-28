@@ -22,10 +22,16 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
       is_nil(scope.active_account) ->
         [first | _] = Accounts.list_accounts(scope)
-        {:ok, _} = UserPreferences.select_active_account(scope, first.id)
-        new_scope = Scope.for_user(scope.user)
-        socket = Phoenix.Component.assign(socket, :current_scope, new_scope)
-        {:ok, assign_project_or_ready(socket, new_scope)}
+
+        case UserPreferences.select_active_account(scope, first.id) do
+          {:ok, _} ->
+            new_scope = Scope.for_user(scope.user)
+            socket = Phoenix.Component.assign(socket, :current_scope, new_scope)
+            {:ok, assign_project_or_ready(socket, new_scope)}
+
+          {:error, _} ->
+            {:ok, Phoenix.LiveView.redirect(socket, to: ~p"/app/accounts/picker")}
+        end
 
       true ->
         {:ok, assign_project_or_ready(socket, scope)}
