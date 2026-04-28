@@ -524,6 +524,65 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
     ]
   end
 
+  def controller_graph do
+    [
+      new!(%{
+        id: 1,
+        name: "spec_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ControllerSpec,
+        artifact_type: :specification,
+        description: "Controller specification file exists",
+        prerequisites: []
+      }),
+      new!(%{
+        id: 2,
+        name: "spec_valid",
+        node_scope: :self,
+        check_type: :file_valid,
+        config: %{role: :spec},
+        satisfied_by: AgentTasks.ControllerSpec,
+        artifact_type: :specification,
+        description: "Controller specification is valid",
+        prerequisites: [1]
+      }),
+      new!(%{
+        id: 3,
+        name: "test_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :test},
+        satisfied_by: AgentTasks.ComponentTest,
+        artifact_type: :tests,
+        description: "Controller test file exists",
+        prerequisites: [2]
+      }),
+      new!(%{
+        id: 4,
+        name: "implementation_file",
+        node_scope: :self,
+        check_type: :file_exists,
+        config: %{role: :implementation},
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Controller implementation file exists",
+        prerequisites: [3]
+      }),
+      new!(%{
+        id: 5,
+        name: "tests_passing",
+        node_scope: :self,
+        check_type: :tests_passing,
+        satisfied_by: AgentTasks.ComponentCode,
+        artifact_type: :code,
+        description: "Controller tests are passing",
+        prerequisites: [4]
+      })
+    ]
+  end
+
   def liveview_graph do
     [
       new!(%{
@@ -866,6 +925,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   def graph_for_type("context"), do: context_graph()
   def graph_for_type("coordination_context"), do: context_graph()
   def graph_for_type("live_context"), do: live_context_graph()
+  def graph_for_type("controller"), do: controller_graph()
   def graph_for_type("schema"), do: schema_graph()
   def graph_for_type("behaviour"), do: behaviour_graph()
   def graph_for_type("json"), do: json_graph()

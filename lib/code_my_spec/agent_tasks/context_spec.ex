@@ -21,7 +21,6 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
-
   @doc """
   Generate the command/prompt for Claude to create a context spec.
 
@@ -42,7 +41,8 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     with {:ok, rules} <- get_design_rules(scope),
          similar <- Components.list_similar_components(scope, component),
          stories <- Stories.list_component_stories(scope, component.id) do
-      build_spec_prompt(component, project, rules, stories, similar)
+      diagnostics = previous_validation_diagnostics(scope, component, project)
+      build_spec_prompt(component, project, rules, stories, similar, diagnostics)
     end
   end
 
@@ -110,7 +110,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     {:ok, rules}
   end
 
-  defp build_spec_prompt(context, project, rules, stories, similar_components) do
+  defp build_spec_prompt(context, project, rules, stories, similar_components, diagnostics) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
     stories_text = format_stories(stories)
     similar_text = format_similar_components(project, similar_components)
@@ -119,7 +119,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
 
     prompt = """
     Your task is to generate a specification for a Phoenix bounded context.
-
+    #{diagnostics}
     # Project
 
     Project: #{project.name}
@@ -147,6 +147,39 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     """
 
     {:ok, prompt}
+  end
+
+  defp previous_validation_diagnostics(scope, component, project) do
+    component = ComponentRepository.get_component(scope, component.id)
+    spec_reqs = Requirements.check_artifact_requirements(scope, component, :specification)
+    unsatisfied = Enum.filter(spec_reqs, &(not &1.satisfied))
+
+    file_missing? = Enum.any?(unsatisfied, &(&1.name == "spec_file"))
+
+    cond do
+      Enum.empty?(unsatisfied) -> ""
+      file_missing? -> ""
+      true -> format_diagnostics(unsatisfied, component, project)
+    end
+  end
+
+  defp format_diagnostics(unsatisfied, component, project) do
+    %{spec_file: spec_file_path} = Utils.component_files(component, project)
+
+    feedback =
+      RequirementsFormatter.format_unsatisfied(unsatisfied,
+        context: "Previous validation failed for #{spec_file_path}:"
+      )
+
+    """
+
+    # Previous validation diagnostics
+
+    Re-read the spec file at the path above and revise it to address each
+    diagnostic below before re-writing the spec.
+
+    #{feedback}
+    """
   end
 
   defp format_similar_components(_project, []), do: "No similar components provided"

@@ -15,6 +15,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.ContextDesignReview,
     AgentTasks.ContextImplementation,
     AgentTasks.ContextSpec,
+    AgentTasks.ControllerSpec,
     AgentTasks.DesignUi,
     AgentTasks.DevelopComponent,
     AgentTasks.DevelopContext,
