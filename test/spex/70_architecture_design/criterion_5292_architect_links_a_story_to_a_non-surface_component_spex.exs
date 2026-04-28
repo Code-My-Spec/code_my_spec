@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,7 +24,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
   spex "Surface components are the preferred linkage target" do
     scenario "Architect links a story to a non-surface component" do
       given_ "an unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — architecture design")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — architecture design",
+            description: "Architecture design",
+            acceptance_criteria: ["Architecture design criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

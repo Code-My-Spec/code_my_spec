@@ -18,17 +18,17 @@ defmodule CodeMySpecSpex.Story559.Criterion5160Spex do
     - Server-side and write-through stack for the new `Rules` context
       (Personas-pattern: RemoteClient, BootSync, RemoteSync,
       `:rules_implementation` config).
-    - A `:story_without_personas` shared given that fixtures a story
+    - A `:story_without_personas` shared given that creates a story
       with no `persona_stories` rows. Could be inlined here via
-      `Fixtures.story_fixture/2` if the shared given is overkill for
-      one spec.
+      `StoryHelpers.create_story/2` if the shared given is overkill
+      for one spec.
   """
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.ListRules
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,9 +37,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5160Spex do
     scenario "MCP tool returns a validation error and no rule is created" do
       given_ "a story exists with no personas linked", context do
         story =
-          Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Story with no persona",
-            description: "Drives the persona-linkage rejection path."
+            description: "Drives the persona-linkage rejection path.",
+            acceptance_criteria: ["Persona linkage is enforced at add_rule"]
           )
 
         {:ok, Map.put(context, :story, story)}

@@ -2,7 +2,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
   @moduledoc """
   Surface-level story setup for spex tests. Drives the same MCP tools
   the agent uses in production — `CreateStory`, `SetStoryComponent`,
-  `GetStory` — instead of reaching into `Fixtures.story_fixture`.
+  `GetStory` — keeping spec setup on the agent surface.
 
   Returns plain maps shaped to match what `BddSpecs.spec_file_path/2`
   needs (`:id`, `:title`, `:criteria`, with each criterion exposing

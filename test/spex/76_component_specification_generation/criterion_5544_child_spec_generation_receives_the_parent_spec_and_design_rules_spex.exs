@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5544Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,12 +28,14 @@ defmodule CodeMySpecSpex.Story76.Criterion5544Spex do
 
       given_ "a child Component exists under the synced parent", context do
         child =
-          Fixtures.component_fixture(context.scope, %{
+          ComponentHelpers.create(context.scope,
             type: "schema",
             module_name: "ExampleContext.User",
             name: "ExampleContext User",
             parent_component_id: context.component.id
-          })
+          )
+
+        :ok = ComponentHelpers.delete_stub(context.scope, child)
 
         {:ok, Map.put(context, :child, child)}
       end

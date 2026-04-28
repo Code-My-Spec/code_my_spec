@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,7 +23,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
   spex "Cyclic dependencies among non-schema components are rejected" do
     scenario "Architect proposes a cycle that includes a non-schema component" do
       given_ "an unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — stories and criteria")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — stories and criteria",
+            description: "Stories and criteria",
+            acceptance_criteria: ["Stories and criteria criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

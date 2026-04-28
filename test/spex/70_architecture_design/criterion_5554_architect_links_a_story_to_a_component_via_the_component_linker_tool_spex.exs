@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5554Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,7 +34,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5554Spex do
       end
 
       given_ "an unlinked story exists", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — needs notifications")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — needs notifications",
+            description: "Needs notifications",
+            acceptance_criteria: ["Notifications criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

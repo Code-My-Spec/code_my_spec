@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5558Spex do
   alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.Paths
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -36,7 +37,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5558Spex do
       end
 
       given_ "a new unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "New story — needs feature")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "New story — needs feature",
+            description: "Needs new feature",
+            acceptance_criteria: ["New feature criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

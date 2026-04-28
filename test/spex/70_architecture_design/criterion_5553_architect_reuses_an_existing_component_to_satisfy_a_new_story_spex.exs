@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5553Spex do
   alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,7 +34,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5553Spex do
       end
 
       given_ "a new story arrives without a component_id", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — fits Accounts")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — fits Accounts",
+            description: "Story fits Accounts",
+            acceptance_criteria: ["Story fits Accounts criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

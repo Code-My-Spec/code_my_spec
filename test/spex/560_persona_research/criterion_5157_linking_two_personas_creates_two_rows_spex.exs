@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpec.Personas
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -38,9 +38,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
 
       given_ "a target story exists", context do
         story =
-          Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Target story",
-            description: "Two personas will link to this"
+            description: "Two personas will link to this",
+            acceptance_criteria: ["Two personas link to one story"]
           )
 
         {:ok, Map.put(context, :target_story, story)}

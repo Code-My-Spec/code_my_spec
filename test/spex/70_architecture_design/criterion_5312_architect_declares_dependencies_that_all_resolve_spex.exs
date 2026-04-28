@@ -15,7 +15,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,18 +27,23 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
         app = context.project.module_name || "MyApp"
 
         stories_component =
-          Fixtures.component_fixture(context.scope, %{
+          ComponentHelpers.create(context.scope,
             module_name: "#{app}.Stories",
             name: "Stories",
             type: "context",
             description: "Stories domain"
-          })
+          )
 
         {:ok, Map.put(context, :stories_component, stories_component)}
       end
 
       given_ "an unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — view story list")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — view story list",
+            description: "Story list view",
+            acceptance_criteria: ["List view criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

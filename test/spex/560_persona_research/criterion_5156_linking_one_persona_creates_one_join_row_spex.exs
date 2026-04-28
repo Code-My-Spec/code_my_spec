@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5156Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -22,9 +22,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5156Spex do
 
       given_ "a second story exists", context do
         story =
-          Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Second story",
-            description: "A second story to link to"
+            description: "A second story to link to",
+            acceptance_criteria: ["Persona linkage to a second story is observable"]
           )
 
         {:ok, Map.put(context, :second_story, story)}

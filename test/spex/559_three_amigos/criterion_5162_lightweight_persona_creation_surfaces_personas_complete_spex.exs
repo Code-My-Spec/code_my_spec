@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -49,9 +49,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
     scenario "agent adds persona inline, finishes Three Amigos, graph advances to personas_complete" do
       given_ "a story exists with no AC and no personas linked", context do
         story =
-          Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Story driving lightweight persona creation",
-            description: "Drives Three Amigos with no pre-existing persona in the account library."
+            description: "Drives Three Amigos with no pre-existing persona in the account library.",
+            acceptance_criteria: ["Three Amigos drives lightweight persona creation"]
           )
 
         {:ok, Map.put(context, :story, story)}

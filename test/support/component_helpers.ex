@@ -7,9 +7,9 @@ defmodule CodeMySpecSpex.ComponentHelpers do
   delegate (a read accessor, mirroring how
   `:synced_context_component` reads the result of its sync click).
 
-  Use this instead of `Fixtures.component_fixture` when a spec needs
-  a Component without going through the full architecture-proposal
-  flow but does want surface-driven creation.
+  Use this when a spec needs a Component without going through the
+  full architecture-proposal flow but does want surface-driven
+  creation.
 
   Note: `CreateComponent` writes a stub spec file at the canonical
   path as a side effect — the spec body is left for the

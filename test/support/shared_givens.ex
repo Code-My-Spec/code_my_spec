@@ -28,10 +28,9 @@ defmodule CodeMySpecSpex.SharedGivens do
   - `:synced_context_component` — writes a context spec file into the
     in-memory environment, triggers sync via the /sync LiveView button,
     pattern-matches the resulting component. Produces `context.component`.
-  - `:story_linked_to_component` — creates an unlinked story (arrives from
-    server sync in production), then links it to `context.component` via
-    `Stories.set_story_component`. Produces `context.story`. Requires
-    `context.component` from a prior given.
+  - `:story_linked_to_component` — drives `CreateStory` + `SetStoryComponent`
+    MCP tools to create a story and link it to `context.component`.
+    Produces `context.story`. Requires `context.component` from a prior given.
   - `:on_configuration_page` — navigates to the project configuration
     LiveView. Produces `context.config_live`.
   - `:bdd_task_started` — drives the real session_start hook + StartTask
@@ -118,6 +117,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
 
@@ -149,20 +149,16 @@ defmodule CodeMySpecSpex.SharedGivens do
     {:ok, Map.put(context, :component, component)}
   end
 
-  # Creates an unlinked story (matches production flow — stories arrive from
-  # server sync with no component_id), then links it to the component via
-  # the real linkage API.
+  # Creates a story and links it to the component via the same MCP tools the
+  # agent uses in production (CreateStory + SetStoryComponent), keeping setup
+  # on the surface the harness drives.
   register_given :story_linked_to_component, context do
-    scope = context.scope
-    component = context.component
-
-    story =
-      Fixtures.story_fixture(scope,
+    linked_story =
+      StoryHelpers.create_and_link(context.scope, context.component.module_name,
         title: "Example user story",
-        description: "An example for BDD specs"
+        description: "An example for BDD specs",
+        acceptance_criteria: ["Example acceptance criterion"]
       )
-
-    {:ok, linked_story} = Fixtures.set_story_component(scope, story, component.id)
 
     {:ok, Map.put(context, :story, linked_story)}
   end
@@ -334,9 +330,10 @@ defmodule CodeMySpecSpex.SharedGivens do
     persona_id = extract_persona_id(create_response)
 
     story =
-      Fixtures.story_fixture(context.scope,
+      StoryHelpers.create_story(context.scope,
         title: "Persona-linked story",
-        description: "Story used to link the persona onto the active project."
+        description: "Story used to link the persona onto the active project.",
+        acceptance_criteria: ["Persona is linked to a story on the active project"]
       )
 
     {:reply, _link_response, _frame} =

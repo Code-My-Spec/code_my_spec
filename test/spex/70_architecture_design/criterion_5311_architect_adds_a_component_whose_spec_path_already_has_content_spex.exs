@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,7 +24,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
   spex "Existing spec files are not overwritten" do
     scenario "Architect adds a component whose spec path already has content" do
       given_ "an unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — remote client")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — remote client",
+            description: "Remote client",
+            acceptance_criteria: ["Remote client criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

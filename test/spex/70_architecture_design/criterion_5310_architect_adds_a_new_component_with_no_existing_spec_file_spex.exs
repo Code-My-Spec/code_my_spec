@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,7 +23,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
   spex "New components get spec file stubs created at the conventional path" do
     scenario "Architect adds a new component with no existing spec file" do
       given_ "an unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — remote story sync")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — remote story sync",
+            description: "Remote story sync",
+            acceptance_criteria: ["Remote sync criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

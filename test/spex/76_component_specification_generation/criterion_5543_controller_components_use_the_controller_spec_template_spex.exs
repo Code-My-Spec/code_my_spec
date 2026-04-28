@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5543Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,11 +26,13 @@ defmodule CodeMySpecSpex.Story76.Criterion5543Spex do
     scenario "Controller Components use the controller spec template" do
       given_ "a controller Component exists with no spec file on disk", context do
         component =
-          Fixtures.component_fixture(context.scope, %{
+          ComponentHelpers.create(context.scope,
             type: "controller",
             module_name: "Story76Web.UsersController",
             name: "Story76Web UsersController"
-          })
+          )
+
+        :ok = ComponentHelpers.delete_stub(context.scope, component)
 
         {:ok, Map.put(context, :component, component)}
       end

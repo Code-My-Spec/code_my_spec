@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5552Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -39,7 +40,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5552Spex do
       end
 
       given_ "an unsatisfied story exists", context do
-        story = Fixtures.story_fixture(context.scope, title: "New story — patch mode")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "New story — patch mode",
+            description: "Needs to land via patch mode",
+            acceptance_criteria: ["Patch mode criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

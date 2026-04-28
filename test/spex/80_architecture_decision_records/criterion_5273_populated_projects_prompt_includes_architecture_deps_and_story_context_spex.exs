@@ -15,7 +15,9 @@ defmodule CodeMySpecSpex.Story80.Criterion5273Spex do
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,15 +31,25 @@ defmodule CodeMySpecSpex.Story80.Criterion5273Spex do
       end
 
       given_ "the project has at least one component", context do
-        component = Fixtures.component_fixture(context.scope)
+        unique = System.unique_integer([:positive])
+
+        component =
+          ComponentHelpers.create(context.scope,
+            name: "TestComponent#{unique}",
+            type: "context",
+            module_name: "TestComponent#{unique}",
+            description: "A test component"
+          )
+
         {:ok, Map.put(context, :component, component)}
       end
 
       given_ "the project has a story titled 'Fleet manager suspends a driver card'", context do
         story =
-          Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Fleet manager suspends a driver card",
-            description: "Allow fleet managers to suspend a driver's fuel card."
+            description: "Allow fleet managers to suspend a driver's fuel card.",
+            acceptance_criteria: ["Suspended cards cannot be used"]
           )
 
         {:ok, Map.put(context, :story, story)}

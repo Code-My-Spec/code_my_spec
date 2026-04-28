@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5542Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -22,11 +22,13 @@ defmodule CodeMySpecSpex.Story76.Criterion5542Spex do
     scenario "live_context Components instantiate the live-context graph" do
       given_ "a live_context Component exists with no spec file on disk", context do
         component =
-          Fixtures.component_fixture(context.scope, %{
+          ComponentHelpers.create(context.scope,
             type: "live_context",
             module_name: "Story76Web.SpecLive",
             name: "Story76Web SpecLive"
-          })
+          )
+
+        :ok = ComponentHelpers.delete_stub(context.scope, component)
 
         {:ok, Map.put(context, :component, component)}
       end

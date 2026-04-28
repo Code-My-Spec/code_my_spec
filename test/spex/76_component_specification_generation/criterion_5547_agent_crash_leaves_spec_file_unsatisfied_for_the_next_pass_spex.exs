@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5547Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,11 +25,13 @@ defmodule CodeMySpecSpex.Story76.Criterion5547Spex do
     scenario "Agent crash leaves spec_file unsatisfied for the next pass" do
       given_ "a context Component exists with no spec file on disk", context do
         component =
-          Fixtures.component_fixture(context.scope, %{
+          ComponentHelpers.create(context.scope,
             type: "context",
             module_name: "Story76.NoFile",
             name: "Story76 NoFile"
-          })
+          )
+
+        :ok = ComponentHelpers.delete_stub(context.scope, component)
 
         {:ok, Map.put(context, :component, component)}
       end

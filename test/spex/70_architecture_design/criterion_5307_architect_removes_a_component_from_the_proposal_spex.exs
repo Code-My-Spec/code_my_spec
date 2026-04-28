@@ -17,7 +17,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,12 +29,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
         app = context.project.module_name || "MyApp"
 
         existing_component =
-          Fixtures.component_fixture(context.scope, %{
+          ComponentHelpers.create(context.scope,
             module_name: "#{app}.Stories.RemoteClient",
             name: "RemoteClient",
             type: "context",
             description: "Remote client for story sync — persisted in DB"
-          })
+          )
 
         {:ok, Map.put(context, :existing_component, existing_component)}
       end
@@ -77,8 +78,10 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
 
         # A new story is included so the proposal satisfies the "all stories linked" gate
         new_story =
-          Fixtures.story_fixture(context.scope,
-            title: "New story — needs architecture"
+          StoryHelpers.create_story(context.scope,
+            title: "New story — needs architecture",
+            description: "Needs architecture description",
+            acceptance_criteria: ["New story criterion"]
           )
 
         proposal = """

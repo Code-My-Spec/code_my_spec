@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,7 +24,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
   spex "Every declared dependency must reference a known component" do
     scenario "Architect declares a dependency on a component that does not exist" do
       given_ "an unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — view story list")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — view story list",
+            description: "View story list",
+            acceptance_criteria: ["List view criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

@@ -32,10 +32,11 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateComponent do
         "json",
         "liveview",
         "liveview_component",
+        "controller",
         "module"
       ],
       description:
-        "Component type: context, coordination_context, live_context, schema, behaviour, json, liveview, liveview_component, or module."
+        "Component type: context, coordination_context, live_context, schema, behaviour, json, liveview, liveview_component, controller, or module."
 
     field :module_name, :string, required: true
     field :description, :string, required: false

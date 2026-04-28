@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -42,9 +43,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
         }
 
         story =
-          Fixtures.story_fixture(scope_with_project,
+          StoryHelpers.create_story(scope_with_project,
             title: "Foreign story",
-            description: "This story belongs to a different account."
+            description: "This story belongs to a different account.",
+            acceptance_criteria: ["Cross-account links are rejected at creation"]
           )
 
         {:ok, Map.put(context, :foreign_story_id, story.id)}

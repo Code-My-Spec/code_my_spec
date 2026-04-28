@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,9 +26,26 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
   spex "Every unsatisfied story must be linked before the proposal can execute" do
     scenario "Architect links every unsatisfied story to at least one component" do
       given_ "three unsatisfied stories exist on the project", context do
-        story_a = Fixtures.story_fixture(context.scope, title: "Story A — feature one")
-        story_b = Fixtures.story_fixture(context.scope, title: "Story B — feature two")
-        story_c = Fixtures.story_fixture(context.scope, title: "Story C — feature three")
+        story_a =
+          StoryHelpers.create_story(context.scope,
+            title: "Story A — feature one",
+            description: "Story A description",
+            acceptance_criteria: ["Story A criterion"]
+          )
+
+        story_b =
+          StoryHelpers.create_story(context.scope,
+            title: "Story B — feature two",
+            description: "Story B description",
+            acceptance_criteria: ["Story B criterion"]
+          )
+
+        story_c =
+          StoryHelpers.create_story(context.scope,
+            title: "Story C — feature three",
+            description: "Story C description",
+            acceptance_criteria: ["Story C criterion"]
+          )
 
         {:ok,
          Map.merge(context, %{

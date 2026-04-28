@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5168Spex do
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,9 +32,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5168Spex do
     scenario "start_task response prompt names the expected tools" do
       given_ "a story exists in the active project", context do
         story =
-          Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Story for prompt-content test",
-            description: "Used to assert on the Three Amigos task prompt."
+            description: "Used to assert on the Three Amigos task prompt.",
+            acceptance_criteria: ["Task prompt enumerates the Three Amigos MCP tools"]
           )
 
         {:ok, Map.put(context, :story, story)}

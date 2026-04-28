@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -59,9 +60,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
           CodeMySpec.Personas.get_persona_by_slug(context.scope, "agency_pm")
 
         second_story =
-          CodeMySpecSpex.Fixtures.story_fixture(context.scope,
+          StoryHelpers.create_story(context.scope,
             title: "Second persona-linked story",
-            description: "Story used to link the second persona onto the active project."
+            description: "Story used to link the second persona onto the active project.",
+            acceptance_criteria: ["Second persona links to the project via its own story"]
           )
 
         {:ok, _} =

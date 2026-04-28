@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,7 +23,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
   spex "Cyclic dependencies among schemas are permitted (Ecto bidirectional associations)" do
     scenario "Architect proposes a cycle limited to schema components" do
       given_ "an unsatisfied story exists on the project", context do
-        story = Fixtures.story_fixture(context.scope, title: "Story — user accounts")
+        story =
+          StoryHelpers.create_story(context.scope,
+            title: "Story — user accounts",
+            description: "User accounts",
+            acceptance_criteria: ["User accounts criterion"]
+          )
 
         {:ok, Map.put(context, :story, story)}
       end

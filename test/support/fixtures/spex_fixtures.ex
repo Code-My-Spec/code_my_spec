@@ -7,9 +7,12 @@ defmodule CodeMySpecSpex.Fixtures do
   not on `CodeMySpec` or `CodeMySpecTest` directly.
 
   Only surfaces fixtures for state that **originates server-side and
-  syncs into the local app** — users, accounts, projects, stories.
-  Local-only state (ProjectConfiguration, etc.) must be set up through
-  the UI like any other user action.
+  syncs into the local app** — users, accounts, projects. Components
+  and stories are surface-creatable through MCP tools, so spex tests
+  drive them directly via `CodeMySpecSpex.ComponentHelpers` and
+  `CodeMySpecSpex.StoryHelpers`. Local-only state
+  (ProjectConfiguration, etc.) must be set up through the UI like
+  any other user action.
   """
   use Boundary, deps: [CodeMySpec]
 
@@ -19,7 +22,6 @@ defmodule CodeMySpecSpex.Fixtures do
     BddSpecs,
     CodeGenerationFixtures,
     Components,
-    ComponentsFixtures,
     EnvironmentFixtures,
     Environments,
     ProblemsFixtures,
@@ -27,8 +29,6 @@ defmodule CodeMySpecSpex.Fixtures do
     QaIntegrationPlanFixtures,
     SessionsFixtures,
     SetupFixtures,
-    Stories,
-    StoriesFixtures,
     TechnicalStrategyFixtures,
     UserPreferences,
     Users,
@@ -109,7 +109,6 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
 
   # -- Components --
-  defdelegate component_fixture(scope, attrs \\ %{}), to: ComponentsFixtures
   defdelegate get_component_by_module_name(scope, module_name), to: Components
 
   # -- Architecture --
@@ -117,10 +116,6 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate proposal_with_surface_and_context(opts \\ []), to: ArchitectureFixtures
   defdelegate with_proposal(env, content), to: ArchitectureFixtures
   defdelegate with_executed_proposal(scope, env, content), to: ArchitectureFixtures
-
-  # -- Stories --
-  defdelegate story_fixture(scope, attrs \\ %{}), to: StoriesFixtures
-  defdelegate set_story_component(scope, story, component_id), to: Stories
 
   # -- BDD Specs --
   defdelegate spec_file_path(story, criterion), to: BddSpecs

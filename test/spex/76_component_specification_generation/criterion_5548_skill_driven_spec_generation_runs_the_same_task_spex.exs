@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5548Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -21,11 +21,13 @@ defmodule CodeMySpecSpex.Story76.Criterion5548Spex do
     scenario "Skill-driven spec generation runs the same task" do
       given_ "a context Component exists with no spec file on disk", context do
         component =
-          Fixtures.component_fixture(context.scope, %{
+          ComponentHelpers.create(context.scope,
             type: "context",
             module_name: "Story76.SkillTriggered",
             name: "Story76 SkillTriggered"
-          })
+          )
+
+        :ok = ComponentHelpers.delete_stub(context.scope, component)
 
         {:ok, Map.put(context, :component, component)}
       end
