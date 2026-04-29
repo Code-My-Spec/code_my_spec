@@ -33,8 +33,7 @@ defmodule CodeMySpecLocalWeb.SkillController do
     },
     "develop" => %{
       "context" => "develop_context",
-      "liveview" => "develop_live_view",
-      "refactor" => "refactor_module"
+      "liveview" => "develop_live_view"
     },
     "qa" => %{
       nil => "qa_app",

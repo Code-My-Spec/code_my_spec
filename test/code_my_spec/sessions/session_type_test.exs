@@ -17,11 +17,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.ComponentTest,
       AgentTasks.ContextComponentSpecs,
       AgentTasks.ContextDesignReview,
-      AgentTasks.ContextImplementation,
       AgentTasks.ContextSpec,
       AgentTasks.ControllerSpec,
       AgentTasks.DesignUi,
-      AgentTasks.DevelopComponent,
       AgentTasks.DevelopContext,
       AgentTasks.DevelopController,
       AgentTasks.DevelopLiveContext,
@@ -40,7 +38,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.QaPreflight,
       AgentTasks.QaSetup,
       AgentTasks.QaStory,
-      AgentTasks.RefactorModule,
       AgentTasks.ResearchTopic,
       AgentTasks.StartImplementation,
       AgentTasks.StoryInterview,
@@ -60,11 +57,9 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "ComponentTest",
       "ContextComponentSpecs",
       "ContextDesignReview",
-      "ContextImplementation",
       "ContextSpec",
       "ControllerSpec",
       "DesignUi",
-      "DevelopComponent",
       "DevelopContext",
       "DevelopController",
       "DevelopLiveContext",
@@ -83,7 +78,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "QaPreflight",
       "QaSetup",
       "QaStory",
-      "RefactorModule",
       "ResearchTopic",
       "StartImplementation",
       "StoryInterview",
@@ -120,7 +114,6 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert {:ok, AgentTasks.ComponentTest} = SessionType.cast("ComponentTest")
       assert {:ok, AgentTasks.ContextSpec} = SessionType.cast("ContextSpec")
       assert {:ok, AgentTasks.ContextComponentSpecs} = SessionType.cast("ContextComponentSpecs")
-      assert {:ok, AgentTasks.ContextImplementation} = SessionType.cast("ContextImplementation")
       assert {:ok, AgentTasks.ContextDesignReview} = SessionType.cast("ContextDesignReview")
       assert {:ok, AgentTasks.ArchitectureDesign} = SessionType.cast("ArchitectureDesign")
       assert {:ok, AgentTasks.ProjectSetup} = SessionType.cast("ProjectSetup")

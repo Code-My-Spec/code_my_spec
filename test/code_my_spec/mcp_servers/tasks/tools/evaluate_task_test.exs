@@ -8,29 +8,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTaskTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpec.Repo
   alias CodeMySpec.Sessions
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
-  end
-
-  describe "execute/2 — evaluate pass" do
-    test "marks task completed when evaluate returns :valid" do
-      {scope, session, task} = setup_active_task(CodeMySpec.AgentTasks.RefactorModule)
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      assert {:reply, response, ^frame} =
-               EvaluateTask.execute(%{task_id: task.id, session_id: session.id}, frame)
-
-      refute response.isError
-      content = response_text(response)
-      assert content =~ "passed" or content =~ "completed"
-
-      # Task should be marked completed in DB
-      updated_session = Sessions.get_session(scope, session.id)
-      updated_task = Enum.find(updated_session.tasks, &(&1.id == task.id))
-      assert updated_task.status == :completed
-    end
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "execute/2 — terminal state" do

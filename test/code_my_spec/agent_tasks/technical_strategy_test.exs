@@ -215,12 +215,12 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       assert prompt =~ "daisyui"
     end
 
-    test "does NOT include knowledge base building steps (handled by ResearchTopics)", %{scope: scope, task: task} do
+    test "does NOT include knowledge base building steps", %{scope: scope, task: task} do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       refute prompt =~ "Build Knowledge Base"
     end
 
-    test "does NOT include bootstrap/library installation steps (handled by ProjectBootstrap)", %{
+    test "does NOT include bootstrap/library installation steps", %{
       scope: scope,
       task: task
     } do
@@ -320,7 +320,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       end)
     end
 
-    test "does NOT check for knowledge entries (handled by ResearchTopics)", %{scope: scope, task: task} do
+    test "does NOT check for knowledge entries", %{scope: scope, task: task} do
       env = scope.environment
       write_all_premade_decisions(env)
       write_existing_decision(env, "wallaby")

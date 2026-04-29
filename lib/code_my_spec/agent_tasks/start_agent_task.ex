@@ -40,7 +40,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "fix_bdd_specs" => AgentTasks.FixBddSpecs,
     "develop_controller" => AgentTasks.DevelopController,
     "develop_live_view" => AgentTasks.DevelopLiveView,
-    "implement_context" => AgentTasks.ContextImplementation,
     "component_code" => AgentTasks.ComponentCode,
     "component_test" => AgentTasks.ComponentTest,
     "project_setup" => AgentTasks.ProjectSetup,

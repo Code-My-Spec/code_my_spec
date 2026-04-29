@@ -7,8 +7,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   standard stack choices and guides the agent through cursory research and
   ADR creation for remaining topics.
 
-  Focused purely on decisions — deep research is handled by ResearchTopics,
-  bootstrap/implementation by ProjectBootstrap.
+  Focused purely on decisions.
 
   Two phases:
   1. **Pre-made decisions** — auto-writes ADRs for standard stack choices before prompting

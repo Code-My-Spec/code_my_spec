@@ -105,7 +105,6 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
       assert %{"available" => available} = Jason.decode!(conn.resp_body)
       assert "context" in available
       assert "liveview" in available
-      assert "refactor" in available
     end
   end
 
@@ -129,7 +128,6 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
       {"design", "strategy", 200},
       {"develop", "context", 200},
       {"develop", "liveview", 200},
-      {"develop", "refactor", 200},
       {"qa", nil, 200},
       {"qa", "story", 200},
       {"qa", "integrations", 200},
