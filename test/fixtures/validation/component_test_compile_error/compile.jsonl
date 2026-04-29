@@ -1,0 +1,1 @@
+{"severity":"error","file":"test/example_context_test.exs","line":3,"message":"missing terminator: end (for \"do\" starting at line 1)"}

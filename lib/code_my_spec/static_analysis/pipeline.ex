@@ -27,7 +27,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   @role_analyzers %{
     implementation: [:credo, :exunit_stale],
-    test: [:credo, :exunit_stale],
+    test: [:credo],
     spec: [:validate_spec],
     bdd_spec: [:validate_bdd],
     qa_brief: [:validate_qa],
@@ -103,30 +103,53 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   }
 
   @doc """
-  Resolve which analyzers to run: merge role-derived with task-declared,
-  then drop analyzers whose `ProjectConfiguration` field is `:off`.
+  Resolve which analyzers to run.
+
+  Three layers:
+  - **Role-derived** — concerns that always apply to a file role (credo
+    on code files, validators on spec files).
+  - **Task-declared** — concerns the active task adds via `analyzers/0`.
+  - **Task-excluded** — concerns the active task removes via
+    `excluded_analyzers/0`. ComponentTest uses this to opt out of
+    `:exunit_stale` while the agent is writing tests, since exunit
+    failures are expected until the implementation lands.
+
+  After merging the first two and subtracting the third, any analyzer
+  whose `ProjectConfiguration` field is `:off` gets dropped.
   """
   @spec resolve_analyzers(map() | nil, [map()], map()) :: [atom()]
   def resolve_analyzers(task, changed_files, config) do
     role_derived = analyzers_for_roles(changed_files)
     task_declared = task_analyzers(task)
+    task_excluded = task_excluded_analyzers(task)
 
-    merged = (role_derived ++ task_declared) |> Enum.uniq()
+    merged =
+      (role_derived ++ task_declared)
+      |> Enum.uniq()
+      |> Enum.reject(&(&1 in task_excluded))
+
     filtered = apply_config_filter(merged, config)
 
     Logger.info(
-      "[Pipeline] Analyzers: #{inspect(filtered)} (#{resolve_source(role_derived, task_declared, task)}#{config_note(merged -- filtered)})"
+      "[Pipeline] Analyzers: #{inspect(filtered)} (#{resolve_source(role_derived, task_declared, task_excluded, task)}#{config_note(merged -- filtered)})"
     )
 
     filtered
   end
 
-  defp resolve_source(_role_derived, [], _task), do: "role-derived"
+  defp resolve_source(_role_derived, [], [], _task), do: "role-derived"
 
-  defp resolve_source(role_derived, task_declared, task) do
+  defp resolve_source(role_derived, task_declared, task_excluded, task) do
     type_name = task.session_type |> Atom.to_string() |> String.split(".") |> List.last()
-    "role-derived #{inspect(role_derived)} + #{type_name}.analyzers/0 #{inspect(task_declared)}"
+
+    "role-derived #{inspect(role_derived)} + #{type_name}.analyzers/0 #{inspect(task_declared)}" <>
+      excluded_note(type_name, task_excluded)
   end
+
+  defp excluded_note(_type_name, []), do: ""
+
+  defp excluded_note(type_name, excluded),
+    do: " - #{type_name}.excluded_analyzers/0 #{inspect(excluded)}"
 
   defp config_note([]), do: ""
   defp config_note(dropped), do: " — dropped by config: #{inspect(dropped)}"
@@ -147,6 +170,18 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
     if module && function_exported?(module, :analyzers, 0) do
       module.analyzers()
+    else
+      []
+    end
+  end
+
+  defp task_excluded_analyzers(nil), do: []
+
+  defp task_excluded_analyzers(task) do
+    module = task.session_type
+
+    if module && function_exported?(module, :excluded_analyzers, 0) do
+      module.excluded_analyzers()
     else
       []
     end

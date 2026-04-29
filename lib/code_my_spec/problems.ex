@@ -29,4 +29,5 @@ defmodule CodeMySpec.Problems do
 
   # Renderer functions
   defdelegate render_stop_response(blocking, advisory, opts \\ []), to: ProblemRenderer
+  defdelegate truncate_to_cap(text, opts \\ []), to: ProblemRenderer
 end

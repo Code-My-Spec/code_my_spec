@@ -1,0 +1,13 @@
+{
+  "commands": [
+    {
+      "command": "mix",
+      "args": ["compile", "--return-errors"],
+      "opts": {"env": {"MIX_ENV": "test", "DIAGNOSTICS_OUTPUT": "*"}, "stderr_to_stdout": true},
+      "output": "",
+      "exit_code": 0,
+      "recorded_at": "2026-04-28T00:00:00Z"
+    }
+  ],
+  "ports": []
+}

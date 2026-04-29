@@ -15,6 +15,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
+  alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
@@ -172,7 +173,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     Re-read the spec file at the path above and revise it to address each
     diagnostic below before re-writing the spec.
 
-    #{feedback}
+    #{Problems.truncate_to_cap(feedback)}
     """
   end
 

@@ -10,12 +10,21 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
+  alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
 
-  def analyzers, do: [:exunit_stale]
+  def analyzers, do: []
+
+  # While the agent is writing tests, exunit failures are expected (the
+  # implementation may not exist yet) — running `mix test --stale` would
+  # block the stop with TDD-mode failures. Opt out of exunit_stale here
+  # so the role-derived `[:credo, :exunit_stale]` for any in-scope impl
+  # file (which can land in changed_files when sync timing collides
+  # with the second-truncated `started_at`) doesn't trigger it.
+  def excluded_analyzers, do: [:exunit_stale]
 
   @doc """
   Generate the command/prompt for Claude to write component tests.
@@ -23,8 +32,8 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   Called by the slash command to build the prompt with:
   - Spec file location
   - Test rules
-  - Similar components for patterns
   - TDD context (implementation exists or not)
+  - Prior validator/analyzer diagnostics on a re-fire
 
   Returns {:ok, prompt_text}
   """
@@ -33,7 +42,8 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     project = scope.active_project
 
     with {:ok, test_rules} <- get_test_rules(scope, component) do
-      {:ok, prompt} = build_test_prompt(scope, component, project, test_rules)
+      diagnostics = previous_validation_diagnostics(scope, component, project)
+      {:ok, prompt} = build_test_prompt(scope, component, project, test_rules, diagnostics)
       {:ok, prompt}
     end
   end
@@ -90,7 +100,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     end
   end
 
-  defp build_test_prompt(scope, component, project, test_rules) do
+  defp build_test_prompt(scope, component, project, test_rules, diagnostics) do
     test_rules_text = Enum.map_join(test_rules, "\n\n", & &1.content)
 
     %{spec_file: spec_file_path, test_file: test_file_path} =
@@ -127,7 +137,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       """
       Generate tests and fixtures for the following Phoenix component.
       #{tdd_section}
-
+      #{diagnostics}
       Tests should be grouped by describe blocks that match the function signature EXACTLY.
       Any blocks that don't match the test assertions in the spec will be rejected and you'll have to redo them.
 
@@ -166,5 +176,59 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   defp implementation_exists?(scope, component) do
     code_reqs = Requirements.check_artifact_requirements(scope, component, :code)
     Enum.any?(code_reqs, &(&1.name == "implementation_file" && &1.satisfied))
+  end
+
+  # Surfaces prior validator + analyzer diagnostics on a re-fire so the
+  # agent doesn't repeat the same mistake. Skipped on the first attempt
+  # (test_file missing) — there's nothing to diagnose yet.
+  defp previous_validation_diagnostics(scope, component, project) do
+    component = ComponentRepository.get_component(scope, component.id)
+    test_reqs = Requirements.check_artifact_requirements(scope, component, :tests)
+    unsatisfied = Enum.filter(test_reqs, &(not &1.satisfied))
+    file_missing? = Enum.any?(unsatisfied, &(&1.name == "test_file"))
+
+    if file_missing? do
+      ""
+    else
+      format_diagnostics(scope, component, project, unsatisfied)
+    end
+  end
+
+  defp format_diagnostics(scope, component, project, unsatisfied) do
+    %{test_file: test_file_path} = Utils.component_files(component, project)
+
+    req_section =
+      case unsatisfied do
+        [] ->
+          nil
+
+        reqs ->
+          RequirementsFormatter.format_unsatisfied(reqs,
+            context: "Previous validation failed for #{test_file_path}:"
+          )
+      end
+
+    problem_section = ProblemFeedback.for_test_task(scope, component, project)
+
+    body =
+      [req_section, problem_section]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.join("\n\n")
+
+    case body do
+      "" ->
+        ""
+
+      content ->
+        """
+
+        # Previous validation diagnostics
+
+        Re-read the test file at the path above and revise it to address each
+        diagnostic below before re-writing.
+
+        #{Problems.truncate_to_cap(content)}
+        """
+    end
   end
 end

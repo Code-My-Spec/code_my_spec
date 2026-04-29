@@ -254,23 +254,43 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp enforce_total_cap(text, blocking, advisory) do
-    if byte_size(text) <= @total_response_cap do
+  defp enforce_total_cap(text, _blocking, _advisory) do
+    truncate_to_cap(text)
+  end
+
+  @doc """
+  Truncates a feedback string to fit within the agent context budget.
+
+  Used by stop-hook responses, agent task prompts, and any other path
+  that ships diagnostic text to the model — keeps a flood of problems
+  from blowing the context window.
+
+  ## Options
+
+    * `:cap` — byte cap (default: `#{@total_response_cap}`).
+    * `:footer` — text appended on truncation (default:
+      `"\\n... more problems omitted (response size limit)"`).
+
+  Truncation is newline-aware: when the text exceeds the cap the
+  function trims at the last full newline that fits inside the budget
+  (cap minus footer size) so we don't leave half a line dangling.
+  """
+  @spec truncate_to_cap(String.t(), keyword()) :: String.t()
+  def truncate_to_cap(text, opts \\ []) when is_binary(text) do
+    cap = Keyword.get(opts, :cap, @total_response_cap)
+    footer = Keyword.get(opts, :footer, "\n... more problems omitted (response size limit)")
+
+    if byte_size(text) <= cap do
       text
     else
-      footer = "\n... more problems omitted (response size limit)"
-      # Leave room for the footer, then truncate at the last full newline.
-      budget = @total_response_cap - byte_size(footer)
-      trimmed = truncate_at_newline(text, budget, blocking, advisory)
-      trimmed <> footer
+      budget = cap - byte_size(footer)
+      truncate_at_newline(text, budget) <> footer
     end
   end
 
-  defp truncate_at_newline(text, budget, _blocking, _advisory)
-       when byte_size(text) <= budget,
-       do: text
+  defp truncate_at_newline(text, budget) when byte_size(text) <= budget, do: text
 
-  defp truncate_at_newline(text, budget, _blocking, _advisory) do
+  defp truncate_at_newline(text, budget) do
     chunk = binary_part(text, 0, budget)
 
     case :binary.matches(chunk, "\n") do
