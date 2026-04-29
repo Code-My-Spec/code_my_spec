@@ -322,24 +322,29 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.flat_map_reduce([], fn component, all_edges ->
       children = Map.get(children_by_parent, component.id, [])
 
-      template =
-        component.type
-        |> RequirementDefinitionData.graph_for_type()
-        |> filter_definitions_by_config(config)
+      original_template = RequirementDefinitionData.graph_for_type(component.type)
+      filtered_template = filter_definitions_by_config(original_template, config)
 
-      {nodes, edges} = instantiate_template(scope, ctx, template, component, children)
+      {nodes, edges} =
+        instantiate_template(scope, ctx, filtered_template, original_template, component, children)
+
       {nodes, all_edges ++ edges}
     end)
   end
 
   # Instantiate a single graph template for a component + its children.
-  defp instantiate_template(scope, ctx, template, component, children) do
-    parent_defs = Enum.filter(template, &(&1.node_scope == :parent))
-    child_defs = Enum.filter(template, &(&1.node_scope == :child))
-    self_defs = Enum.filter(template, &(&1.node_scope == :self))
+  # `filtered_template` is the template with config-disabled artifact types
+  # rejected. `original_template` is the unfiltered template — used by
+  # `build_template_edges/3` to walk through filtered or empty-scope
+  # prerequisites and splice the chain through to a surviving ancestor
+  # whose node actually exists in the rendered graph.
+  defp instantiate_template(scope, ctx, filtered_template, original_template, component, children) do
+    parent_defs = Enum.filter(filtered_template, &(&1.node_scope == :parent))
+    child_defs = Enum.filter(filtered_template, &(&1.node_scope == :child))
+    self_defs = Enum.filter(filtered_template, &(&1.node_scope == :self))
 
     # Build ID → node_key map for edge resolution
-    id_map = build_id_map(template, component, children)
+    id_map = build_id_map(filtered_template, component, children)
 
     # Instantiate parent nodes (once for the component)
     parent_nodes =
@@ -367,8 +372,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     all_nodes = parent_nodes ++ self_nodes ++ child_nodes
 
-    # Build edges from template prerequisites
-    edges = build_template_edges(template, id_map)
+    # Build edges from template prerequisites, splicing through filtered or
+    # empty-scope ancestors using the original template as the walk graph.
+    edges = build_template_edges(filtered_template, id_map, original_template)
 
     {all_nodes, edges}
   end
@@ -393,25 +399,74 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # Build edges by resolving template prerequisite IDs to real node keys.
   #
+  # When a prerequisite was filtered out by configuration (the def is
+  # absent from `id_map`), the chain is spliced: walk the original
+  # template's prereq DAG backwards until a def that survived filtering
+  # is reached. Edges from the surviving ancestor land on the surviving
+  # descendant, keeping the downstream node correctly gated on real
+  # upstream work rather than silently disconnected.
+  #
+  # Surviving defs whose scope has no instances (e.g. a `:child` def
+  # for a component with no children) are kept as-is — they produce
+  # no edges, matching the pre-filter no-children topology where
+  # nothing was gated through that scope either.
+  #
   # Edge semantics depend on the node_scope of source and target:
   # - child → child (same scope): zip by child (each child's node depends on its OWN prereq)
   # - parent → child: fan-out (one parent node → each child's node)
   # - child → parent: fan-in (each child's node → one parent node)
   # - same scope single: direct edge
-  defp build_template_edges(template, id_map) do
-    scope_by_id = Map.new(template, &{&1.id, &1.node_scope})
+  defp build_template_edges(filtered_template, id_map, original_template \\ nil) do
+    walk_template = original_template || filtered_template
+    by_id = Map.new(walk_template, &{&1.id, &1})
+    scope_by_id = Map.new(walk_template, &{&1.id, &1.node_scope})
 
-    Enum.flat_map(template, fn def ->
-      to_keys = Map.get(id_map, def.id, [])
+    Enum.flat_map(filtered_template, &edges_for_def(&1, by_id, id_map, scope_by_id))
+  end
 
-      Enum.flat_map(def.prerequisites, fn prereq_id ->
-        from_keys = Map.get(id_map, prereq_id, [])
-        from_scope = Map.get(scope_by_id, prereq_id)
-        to_scope = def.node_scope
+  defp edges_for_def(def, by_id, id_map, scope_by_id) do
+    to_keys = Map.get(id_map, def.id, [])
 
-        build_edges_for_scopes(from_scope, to_scope, from_keys, to_keys)
-      end)
+    Enum.flat_map(def.prerequisites, fn prereq_id ->
+      prereq_id
+      |> walk_past_filtered(by_id, id_map, MapSet.new())
+      |> Enum.flat_map(&edges_from_effective_prereq(&1, def, to_keys, id_map, scope_by_id))
     end)
+  end
+
+  defp edges_from_effective_prereq(eff_id, def, to_keys, id_map, scope_by_id) do
+    from_keys = Map.get(id_map, eff_id, [])
+    from_scope = Map.get(scope_by_id, eff_id)
+    build_edges_for_scopes(from_scope, def.node_scope, from_keys, to_keys)
+  end
+
+  # Walk the original template backwards through any defs that were
+  # filtered out by config (and thus have no entry in `id_map`).
+  # The walk terminates the moment it reaches a def that survived
+  # filtering — even if that def's scope has no instances. This keeps
+  # the splice scoped to the configuration-induced gap, leaving the
+  # natural no-children chain shape unchanged for unfiltered runs.
+  defp walk_past_filtered(prereq_id, by_id, id_map, visited) do
+    cond do
+      MapSet.member?(visited, prereq_id) ->
+        []
+
+      Map.has_key?(id_map, prereq_id) ->
+        [prereq_id]
+
+      true ->
+        visited = MapSet.put(visited, prereq_id)
+
+        case Map.get(by_id, prereq_id) do
+          nil ->
+            []
+
+          def ->
+            def.prerequisites
+            |> Enum.flat_map(&walk_past_filtered(&1, by_id, id_map, visited))
+            |> Enum.uniq()
+        end
+    end
   end
 
   # Both child: pair by position (each child connects to itself)
