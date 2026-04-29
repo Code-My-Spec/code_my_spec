@@ -126,13 +126,10 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     {comp_sigma, comp_zone_total_height} =
       Enum.reduce(tiers, {[], comp_zone_y}, fn {_depth, tier_components}, {all_nodes, tier_y} ->
         tree_layouts =
-          Enum.map(tier_components, fn comp ->
-            if MapSet.member?(parent_ids, comp.id) do
-              layout_context_tree_nodes(comp, components, comp_reqs_by_id, actionable_set)
-            else
-              layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set)
-            end
-          end)
+          Enum.map(
+            tier_components,
+            &tree_layout_for_top_level(&1, parent_ids, components, comp_reqs_by_id, actionable_set)
+          )
 
         {tier_nodes, tier_height} = place_component_trees(tree_layouts, tier_y)
         {all_nodes ++ tier_nodes, tier_y - tier_height - @row_gap}
@@ -171,12 +168,13 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     all_sigma = early_sigma ++ pre_sigma ++ comp_sigma ++ post_sigma ++ late_sigma
     all_keys = MapSet.new(all_sigma, & &1.key)
 
-    # Edges: direct mapping — no summary rewriting needed
+    raw_edges = Enum.map(edges, fn e -> {key_to_string(e.from), key_to_string(e.to), e} end)
+
+    orphan_source_keys = orphan_reference_source_keys(raw_edges, all_keys)
+    all_sigma = mark_orphan_references(all_sigma, orphan_source_keys)
+
     sigma_edges =
-      edges
-      |> Enum.map(fn e ->
-        {key_to_string(e.from), key_to_string(e.to), e}
-      end)
+      raw_edges
       |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and MapSet.member?(all_keys, t) end)
       |> Enum.uniq_by(fn {f, t, _} -> {f, t} end)
       |> Enum.reject(fn {f, t, _} -> f == t end)
@@ -188,6 +186,28 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     %{nodes: all_sigma, edges: sigma_edges}
   end
 
+  # Source keys of edges whose target is missing from the rendered set.
+  # Story 562 surfaces these as `orphan_reference: true` rather than silently
+  # dropping the edge — matches the rule "edges trace back to real nodes."
+  defp orphan_reference_source_keys(raw_edges, all_keys) do
+    raw_edges
+    |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and not MapSet.member?(all_keys, t) end)
+    |> MapSet.new(fn {f, _, _} -> f end)
+  end
+
+  defp mark_orphan_references(nodes, orphan_keys) do
+    Enum.map(nodes, fn node ->
+      attrs =
+        Map.put(
+          node.attributes,
+          :orphan_reference,
+          MapSet.member?(orphan_keys, node.key)
+        )
+
+      %{node | attributes: attrs}
+    end)
+  end
+
   @doc """
   Single context graph: context requirements as a vertical chain in the center,
   children fanning out between the phase gate nodes (spec_valid, review_valid).
@@ -195,150 +215,32 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @spec component_graph(Scope.t(), String.t()) :: map()
   def component_graph(%Scope{} = scope, component_id) do
     %{nodes: nodes, edges: edges} = Requirements.project_graph(scope)
-    actionable = Requirements.next_actionable_project(scope)
-
-    actionable_set =
-      MapSet.new(actionable, fn n -> {n.entity_type, n.entity_id, n.name} end)
+    actionable_set = build_actionable_set(scope)
 
     components = Components.list_components(scope)
     children = Enum.filter(components, &(&1.parent_component_id == component_id))
     tree_ids = MapSet.new([component_id | Enum.map(children, & &1.id)])
-
-    tree_nodes = Enum.filter(nodes, fn n ->
-      n.entity_type == "component" and MapSet.member?(tree_ids, n.entity_id)
-    end)
-
+    tree_nodes = filter_tree_nodes(nodes, tree_ids)
     comp_reqs_by_id = Enum.group_by(tree_nodes, & &1.entity_id)
 
-    req_gap = 400
-    child_col_gap = 500
-    child_req_gap = 300
+    layout = %{req_gap: 400, child_col_gap: 500, child_req_gap: 300}
 
-    # Context requirements sorted by definition order
-    context_reqs = Map.get(comp_reqs_by_id, component_id, [])
-    context_type = (Enum.find(components, &(&1.id == component_id)) || %{type: "context"}).type
-    ctx_def_order =
-      ComponentRegistry.get_requirements_for_type(context_type)
-      |> Enum.with_index()
-      |> Map.new(fn {d, i} -> {d.name, i} end)
-
-    sorted_ctx_reqs = Enum.sort_by(context_reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
-
-    # Sort children by dependency depth: schemas first, then repos, etc.
+    context_type = component_type(components, component_id)
+    sorted_ctx_reqs = sort_context_reqs(comp_reqs_by_id, component_id, context_type)
     sorted_children = sort_children_by_dependency(children, components)
-    child_count = length(sorted_children)
+    children_with_reqs = partition_children_reqs(sorted_children, comp_reqs_by_id, context_type)
 
-    # Build child requirement order from context template's :child nodes
-    child_def_order = context_child_definition_order(context_type)
-
-    # Split child reqs into spec phase (spec_file, spec_valid) and impl phase (rest)
-    spec_phase_names = MapSet.new(["spec_file", "spec_valid"])
-
-    children_with_reqs =
-      Enum.map(sorted_children, fn child ->
-        child_reqs = Map.get(comp_reqs_by_id, child.id, [])
-        sorted = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
-
-        spec_reqs = Enum.filter(sorted, fn r -> r.name in spec_phase_names end)
-        impl_reqs = Enum.reject(sorted, fn r -> r.name in spec_phase_names end)
-
-        %{child: child, spec_reqs: spec_reqs, impl_reqs: impl_reqs}
-      end)
-
-    # Count max rows per phase for gap sizing
-    max_spec_rows = children_with_reqs |> Enum.map(fn c -> length(c.spec_reqs) end) |> Enum.max(fn -> 0 end)
-    max_impl_rows = children_with_reqs |> Enum.map(fn c -> length(c.impl_reqs) end) |> Enum.max(fn -> 0 end)
-
-    specs_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "spec_valid"))
-    impl_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "review_valid"))
-
-    # Layout context column at x=0, inserting gaps for child zones
-    {context_sigma, _y_cursor} =
-      sorted_ctx_reqs
-      |> Enum.with_index()
-      |> Enum.reduce({[], 0}, fn {req, idx}, {acc, y} ->
-        node = mk_node(nkey(req), short_req_label(req), 0, -y, 14, cls(req, actionable_set),
-          entity_type: "component", entity_id: req.entity_id, name: req.name)
-
-        extra =
-          cond do
-            idx == specs_idx and child_count > 0 -> (max_spec_rows + 1) * child_req_gap
-            idx == impl_idx and child_count > 0 -> (max_impl_rows + 1) * child_req_gap
-            true -> 0
-          end
-
-        {acc ++ [node], y + req_gap + extra}
-      end)
-
-    # Position spec-phase children after spec_valid
-    specs_y =
-      if specs_idx do
-        ctx_node = Enum.at(context_sigma, specs_idx)
-        if ctx_node, do: ctx_node.attributes.y, else: 0
-      else
-        0
-      end
+    {context_sigma, specs_y, impl_y} =
+      build_context_column(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, 14)
 
     spec_child_sigma =
-      children_with_reqs
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {cwr, col_idx} ->
-        x = (col_idx - (child_count - 1) / 2) * child_col_gap
-
-        cwr.spec_reqs
-        |> Enum.with_index()
-        |> Enum.map(fn {req, req_idx} ->
-          y = specs_y - ((req_idx + 1) * child_req_gap)
-          mk_node(nkey(req), short_req_label(req), x, y, 10, cls(req, actionable_set),
-            entity_type: "component", entity_id: req.entity_id, name: req.name)
-        end)
-      end)
-
-    # Position impl-phase children after review_valid
-    impl_y =
-      if impl_idx do
-        ctx_node = Enum.at(context_sigma, impl_idx)
-        if ctx_node, do: ctx_node.attributes.y, else: 0
-      else
-        0
-      end
+      build_phase_child_sigma(children_with_reqs, :spec_reqs, specs_y, layout, actionable_set, 10)
 
     impl_child_sigma =
-      children_with_reqs
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {cwr, col_idx} ->
-        x = (col_idx - (child_count - 1) / 2) * child_col_gap
-
-        cwr.impl_reqs
-        |> Enum.with_index()
-        |> Enum.map(fn {req, req_idx} ->
-          y = impl_y - ((req_idx + 1) * child_req_gap)
-          mk_node(nkey(req), short_req_label(req), x, y, 10, cls(req, actionable_set),
-            entity_type: "component", entity_id: req.entity_id, name: req.name)
-        end)
-      end)
+      build_phase_child_sigma(children_with_reqs, :impl_reqs, impl_y, layout, actionable_set, 10)
 
     all_sigma = context_sigma ++ spec_child_sigma ++ impl_child_sigma
-    all_keys = MapSet.new(all_sigma, & &1.key)
-
-    # Edges: filter to this tree, both directions
-    tree_node_keys = MapSet.new(tree_nodes, fn n -> {n.entity_type, n.entity_id, n.name} end)
-
-    sigma_edges =
-      edges
-      |> Enum.filter(fn e ->
-        MapSet.member?(tree_node_keys, e.from) and MapSet.member?(tree_node_keys, e.to)
-      end)
-      |> Enum.map(fn e ->
-        {key_to_string(e.from), key_to_string(e.to), e}
-      end)
-      |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and MapSet.member?(all_keys, t) end)
-      |> Enum.uniq_by(fn {f, t, _} -> {f, t} end)
-      |> Enum.reject(fn {f, t, _} -> f == t end)
-      |> Enum.map(fn {f, t, _e} ->
-        %{key: "#{f}->#{t}", source: f, target: t,
-          attributes: %{size: 2, color: "#64748b", type: "arrow"}}
-      end)
+    sigma_edges = component_graph_edges(edges, tree_nodes, all_sigma)
 
     %{nodes: all_sigma, edges: sigma_edges}
   end
@@ -411,22 +313,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     dep_edges =
       all_groups
-      |> Enum.flat_map(fn {_id, group} ->
-        from_key = summary_key(group.component.id)
-        deps = group.component.dependencies || []
-
-        Enum.flat_map(deps, fn dep ->
-          dep_ctx_id = Map.get(child_to_context, dep.id, dep.id)
-          to_key = summary_key(dep_ctx_id)
-
-          if to_key != from_key and MapSet.member?(all_keys, to_key) do
-            [%{key: "dep_#{from_key}->#{to_key}", source: from_key, target: to_key,
-              attributes: %{size: 2, color: "#6366f1", type: "arrow"}}]
-          else
-            []
-          end
-        end)
-      end)
+      |> Enum.flat_map(&group_dep_edges(&1, child_to_context, all_keys))
       |> Enum.uniq_by(& &1.key)
 
     %{nodes: sigma_nodes, edges: dep_edges, layout: "force"}
@@ -446,108 +333,27 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     children =
       components
       |> Enum.filter(&(&1.parent_component_id == context.id))
+      |> sort_children_by_dependency(components)
 
-    # Sort children by dependency depth: schemas first, then repos, etc.
-    children = sort_children_by_dependency(children, components)
+    sorted_ctx = sort_context_reqs(comp_reqs_by_id, context.id, context.type)
+    children_with_reqs = partition_children_reqs(children, comp_reqs_by_id, context.type)
 
-    ctx_reqs = Map.get(comp_reqs_by_id, context.id, [])
-    ctx_def_order =
-      ComponentRegistry.get_requirements_for_type(context.type)
-      |> Enum.with_index()
-      |> Map.new(fn {d, i} -> {d.name, i} end)
+    layout = %{req_gap: @ctx_req_gap, child_col_gap: @child_col_gap, child_req_gap: @child_req_gap}
 
-    sorted_ctx = Enum.sort_by(ctx_reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
-    child_count = length(children)
-
-    # Use context template's :child node order for consistent Y alignment
-    child_def_order = context_child_definition_order(context.type)
-
-    children_with_reqs =
-      Enum.map(children, fn child ->
-        child_reqs = Map.get(comp_reqs_by_id, child.id, [])
-        sorted = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
-
-        %{
-          child: child,
-          spec_reqs: Enum.filter(sorted, &(&1.name in @spec_phase_names)),
-          impl_reqs: Enum.reject(sorted, &(&1.name in @spec_phase_names))
-        }
-      end)
-
-    max_spec_rows = children_with_reqs |> Enum.map(&length(&1.spec_reqs)) |> Enum.max(fn -> 0 end)
-    max_impl_rows = children_with_reqs |> Enum.map(&length(&1.impl_reqs)) |> Enum.max(fn -> 0 end)
-
-    specs_idx = Enum.find_index(sorted_ctx, &(&1.name == "spec_valid"))
-    impl_idx = Enum.find_index(sorted_ctx, &(&1.name == "review_valid"))
-
-    # Context column at x=0, gaps inserted for child fan-out zones
-    {ctx_nodes, y_cursor} =
-      sorted_ctx
-      |> Enum.with_index()
-      |> Enum.reduce({[], 0}, fn {req, idx}, {acc, y} ->
-        node = mk_node(nkey(req), comp_label(req), 0, -y, 8, cls(req, actionable_set),
-          entity_type: "component", entity_id: req.entity_id, name: req.name)
-
-        extra =
-          cond do
-            idx == specs_idx and child_count > 0 -> (max_spec_rows + 1) * @child_req_gap
-            idx == impl_idx and child_count > 0 -> (max_impl_rows + 1) * @child_req_gap
-            true -> 0
-          end
-
-        {acc ++ [node], y + @ctx_req_gap + extra}
-      end)
-
-    # Spec-phase children fan out after spec_valid
-    specs_y =
-      if specs_idx do
-        ctx_node = Enum.at(ctx_nodes, specs_idx)
-        if ctx_node, do: ctx_node.attributes.y, else: 0
-      else
-        0
-      end
+    {ctx_nodes, y_cursor, specs_y, impl_y} =
+      build_context_column_with_cursor(sorted_ctx, children_with_reqs, layout, actionable_set, 8, &comp_label/1)
 
     spec_child_nodes =
-      children_with_reqs
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {cwr, col_idx} ->
-        x = (col_idx - (child_count - 1) / 2) * @child_col_gap
-
-        cwr.spec_reqs
-        |> Enum.with_index()
-        |> Enum.map(fn {req, req_idx} ->
-          y = specs_y - ((req_idx + 1) * @child_req_gap)
-          mk_node(nkey(req), comp_label(req), x, y, 5, cls(req, actionable_set),
-            entity_type: "component", entity_id: req.entity_id, name: req.name)
-        end)
-      end)
-
-    # Impl-phase children fan out after review_valid
-    impl_y =
-      if impl_idx do
-        ctx_node = Enum.at(ctx_nodes, impl_idx)
-        if ctx_node, do: ctx_node.attributes.y, else: 0
-      else
-        0
-      end
+      build_phase_child_sigma_with_label(
+        children_with_reqs, :spec_reqs, specs_y, layout, actionable_set, 5, &comp_label/1)
 
     impl_child_nodes =
-      children_with_reqs
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {cwr, col_idx} ->
-        x = (col_idx - (child_count - 1) / 2) * @child_col_gap
-
-        cwr.impl_reqs
-        |> Enum.with_index()
-        |> Enum.map(fn {req, req_idx} ->
-          y = impl_y - ((req_idx + 1) * @child_req_gap)
-          mk_node(nkey(req), comp_label(req), x, y, 5, cls(req, actionable_set),
-            entity_type: "component", entity_id: req.entity_id, name: req.name)
-        end)
-      end)
+      build_phase_child_sigma_with_label(
+        children_with_reqs, :impl_reqs, impl_y, layout, actionable_set, 5, &comp_label/1)
 
     all_nodes = ctx_nodes ++ spec_child_nodes ++ impl_child_nodes
-    width = if child_count > 0, do: child_count * @child_col_gap, else: 0
+    child_count = length(children)
+    width = if child_count == 0, do: 0, else: child_count * @child_col_gap
     {all_nodes, width, y_cursor}
   end
 
@@ -598,20 +404,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   defp resolve_depths(depths, dep_graph) do
-    updated =
-      Enum.reduce(depths, depths, fn {id, depth}, acc ->
-        if is_nil(depth) do
-          dep_depths = Enum.map(dep_graph[id] || [], &Map.get(acc, &1))
-
-          if Enum.all?(dep_depths, &(not is_nil(&1))) do
-            Map.put(acc, id, Enum.max(dep_depths, fn -> 0 end) + 1)
-          else
-            acc
-          end
-        else
-          acc
-        end
-      end)
+    updated = Enum.reduce(depths, depths, &resolve_depth_step(&1, &2, dep_graph))
 
     if updated == depths do
       # No progress — remaining nils get depth 0 (circular deps or missing)
@@ -621,64 +414,76 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     end
   end
 
-  # Arrange tree layouts side by side, centered around x=0, offset to comp_zone_y.
-  defp place_component_trees(tree_layouts, comp_zone_y) do
-    if tree_layouts == [] do
-      {[], 0}
+  defp resolve_depth_step({_id, depth}, acc, _dep_graph) when not is_nil(depth), do: acc
+
+  defp resolve_depth_step({id, _depth}, acc, dep_graph) do
+    dep_depths = Enum.map(dep_graph[id] || [], &Map.get(acc, &1))
+
+    if Enum.all?(dep_depths, &(not is_nil(&1))) do
+      Map.put(acc, id, Enum.max(dep_depths, fn -> 0 end) + 1)
     else
-      widths = Enum.map(tree_layouts, fn {_, w, _} -> max(w, 200) end)
-      total_width = Enum.sum(widths) + (length(widths) - 1) * @tree_gap
-
-      {all_nodes, _x, max_height} =
-        tree_layouts
-        |> Enum.zip(widths)
-        |> Enum.reduce({[], -total_width / 2, 0}, fn {{nodes, _w, height}, effective_w}, {acc, x, max_h} ->
-          center_x = x + effective_w / 2
-
-          offset_nodes =
-            Enum.map(nodes, fn node ->
-              attrs = node.attributes
-              %{node | attributes: %{attrs | x: attrs.x + center_x, y: attrs.y + comp_zone_y}}
-            end)
-
-          {acc ++ offset_nodes, x + effective_w + @tree_gap, max(max_h, height)}
-        end)
-
-      {all_nodes, max_height}
+      acc
     end
+  end
+
+  # Arrange tree layouts side by side, centered around x=0, offset to comp_zone_y.
+  defp place_component_trees([], _comp_zone_y), do: {[], 0}
+
+  defp place_component_trees(tree_layouts, comp_zone_y) do
+    widths = Enum.map(tree_layouts, fn {_, w, _} -> max(w, 200) end)
+    total_width = Enum.sum(widths) + (length(widths) - 1) * @tree_gap
+
+    {all_nodes, _x, max_height} =
+      tree_layouts
+      |> Enum.zip(widths)
+      |> Enum.reduce({[], -total_width / 2, 0}, &place_one_tree(&1, &2, comp_zone_y))
+
+    {all_nodes, max_height}
+  end
+
+  defp place_one_tree({{nodes, _w, height}, effective_w}, {acc, x, max_h}, comp_zone_y) do
+    center_x = x + effective_w / 2
+    offset_nodes = offset_tree_nodes(nodes, center_x, comp_zone_y)
+    {acc ++ offset_nodes, x + effective_w + @tree_gap, max(max_h, height)}
+  end
+
+  defp offset_tree_nodes(nodes, center_x, comp_zone_y) do
+    Enum.map(nodes, fn node ->
+      attrs = node.attributes
+      %{node | attributes: %{attrs | x: attrs.x + center_x, y: attrs.y + comp_zone_y}}
+    end)
   end
 
   # Sort children by dependency depth within their sibling group.
   # Uses explicit dependency edges when available, falls back to type priority.
   defp sort_children_by_dependency(children, all_components) do
     child_ids = MapSet.new(children, & &1.id)
+    sibling_deps = Map.new(children, &{&1.id, child_sibling_deps(&1, all_components, child_ids)})
 
-    # Build sibling dependency graph: child_id → [dep_child_ids]
-    sibling_deps =
-      Map.new(children, fn child ->
-        deps = case child do
-          %{dependencies: deps} when is_list(deps) ->
-            deps |> Enum.map(& &1.id) |> Enum.filter(&MapSet.member?(child_ids, &1))
-          _ ->
-            # No deps loaded — check if any sibling has edges via all_components
-            case Enum.find(all_components, &(&1.id == child.id)) do
-              %{dependencies: deps} when is_list(deps) ->
-                deps |> Enum.map(& &1.id) |> Enum.filter(&MapSet.member?(child_ids, &1))
-              _ -> []
-            end
-        end
-        {child.id, deps}
-      end)
-
-    # Compute depth: 0 = no sibling deps, N = max(dep depths) + 1
     initial = Map.new(children, fn c ->
       {c.id, if(sibling_deps[c.id] == [], do: 0, else: nil)}
     end)
+
     depths = resolve_depths(initial, sibling_deps)
 
     Enum.sort_by(children, fn c ->
       {Map.get(depths, c.id, 0), Map.get(@type_priority, c.type, 5), c.module_name}
     end)
+  end
+
+  defp child_sibling_deps(%{dependencies: deps}, _all_components, child_ids) when is_list(deps) do
+    filter_dep_ids(deps, child_ids)
+  end
+
+  defp child_sibling_deps(child, all_components, child_ids) do
+    case Enum.find(all_components, &(&1.id == child.id)) do
+      %{dependencies: deps} when is_list(deps) -> filter_dep_ids(deps, child_ids)
+      _ -> []
+    end
+  end
+
+  defp filter_dep_ids(deps, allowed_ids) do
+    deps |> Enum.map(& &1.id) |> Enum.filter(&MapSet.member?(allowed_ids, &1))
   end
 
   # Build a definition order map for :child nodes from the context template.
@@ -780,5 +585,203 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     RequirementDefinitionData.story_requirements()
     |> Enum.with_index()
     |> Map.new(fn {d, i} -> {d.name, i} end)
+  end
+
+  # -- Shared layout helpers --
+
+  defp build_actionable_set(scope) do
+    Requirements.next_actionable_project(scope)
+    |> MapSet.new(fn n -> {n.entity_type, n.entity_id, n.name} end)
+  end
+
+  defp filter_tree_nodes(nodes, tree_ids) do
+    Enum.filter(nodes, fn n ->
+      n.entity_type == "component" and MapSet.member?(tree_ids, n.entity_id)
+    end)
+  end
+
+  defp component_type(components, component_id) do
+    (Enum.find(components, &(&1.id == component_id)) || %{type: "context"}).type
+  end
+
+  defp definition_index(component_type) do
+    ComponentRegistry.get_requirements_for_type(component_type)
+    |> Enum.with_index()
+    |> Map.new(fn {d, i} -> {d.name, i} end)
+  end
+
+  defp sort_context_reqs(comp_reqs_by_id, component_id, context_type) do
+    reqs = Map.get(comp_reqs_by_id, component_id, [])
+    ctx_def_order = definition_index(context_type)
+    Enum.sort_by(reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
+  end
+
+  defp partition_children_reqs(sorted_children, comp_reqs_by_id, context_type) do
+    child_def_order = context_child_definition_order(context_type)
+
+    Enum.map(sorted_children, fn child ->
+      child_reqs = Map.get(comp_reqs_by_id, child.id, [])
+      sorted = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
+
+      %{
+        child: child,
+        spec_reqs: Enum.filter(sorted, &(&1.name in @spec_phase_names)),
+        impl_reqs: Enum.reject(sorted, &(&1.name in @spec_phase_names))
+      }
+    end)
+  end
+
+  defp max_phase_rows(children_with_reqs, key) do
+    children_with_reqs |> Enum.map(&length(Map.fetch!(&1, key))) |> Enum.max(fn -> 0 end)
+  end
+
+  defp build_context_column(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size) do
+    {nodes, _y_cursor, specs_y, impl_y} =
+      build_context_column_with_cursor(
+        sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size, &short_req_label/1)
+
+    {nodes, specs_y, impl_y}
+  end
+
+  defp build_context_column_with_cursor(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size, label_fn) do
+    child_count = length(children_with_reqs)
+    max_spec = max_phase_rows(children_with_reqs, :spec_reqs)
+    max_impl = max_phase_rows(children_with_reqs, :impl_reqs)
+    specs_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "spec_valid"))
+    impl_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "review_valid"))
+
+    state = %{
+      layout: layout,
+      actionable_set: actionable_set,
+      size: size,
+      label_fn: label_fn,
+      specs_idx: specs_idx,
+      impl_idx: impl_idx,
+      child_count: child_count,
+      max_spec: max_spec,
+      max_impl: max_impl
+    }
+
+    {nodes, y_cursor} =
+      sorted_ctx_reqs
+      |> Enum.with_index()
+      |> Enum.reduce({[], 0}, &context_column_step(&1, &2, state))
+
+    {nodes, y_cursor, phase_y(nodes, specs_idx), phase_y(nodes, impl_idx)}
+  end
+
+  defp context_column_step({req, idx}, {acc, y}, state) do
+    node =
+      mk_node(
+        nkey(req),
+        state.label_fn.(req),
+        0,
+        -y,
+        state.size,
+        cls(req, state.actionable_set),
+        entity_type: "component",
+        entity_id: req.entity_id,
+        name: req.name
+      )
+
+    extra = column_extra_y(idx, state)
+    {acc ++ [node], y + state.layout.req_gap + extra}
+  end
+
+  defp column_extra_y(idx, %{specs_idx: idx, child_count: c} = state) when c > 0,
+    do: (state.max_spec + 1) * state.layout.child_req_gap
+
+  defp column_extra_y(idx, %{impl_idx: idx, child_count: c} = state) when c > 0,
+    do: (state.max_impl + 1) * state.layout.child_req_gap
+
+  defp column_extra_y(_idx, _state), do: 0
+
+  defp phase_y(_nodes, nil), do: 0
+
+  defp phase_y(nodes, idx) do
+    case Enum.at(nodes, idx) do
+      nil -> 0
+      node -> node.attributes.y
+    end
+  end
+
+  defp build_phase_child_sigma(children_with_reqs, phase, base_y, layout, actionable_set, size) do
+    build_phase_child_sigma_with_label(
+      children_with_reqs, phase, base_y, layout, actionable_set, size, &short_req_label/1)
+  end
+
+  defp build_phase_child_sigma_with_label(children_with_reqs, phase, base_y, layout, actionable_set, size, label_fn) do
+    child_count = length(children_with_reqs)
+
+    children_with_reqs
+    |> Enum.with_index()
+    |> Enum.flat_map(&child_phase_nodes(&1, phase, base_y, layout, actionable_set, size, label_fn, child_count))
+  end
+
+  defp child_phase_nodes({cwr, col_idx}, phase, base_y, layout, actionable_set, size, label_fn, child_count) do
+    x = (col_idx - (child_count - 1) / 2) * layout.child_col_gap
+
+    cwr
+    |> Map.fetch!(phase)
+    |> Enum.with_index()
+    |> Enum.map(fn {req, req_idx} ->
+      y = base_y - (req_idx + 1) * layout.child_req_gap
+
+      mk_node(nkey(req), label_fn.(req), x, y, size, cls(req, actionable_set),
+        entity_type: "component", entity_id: req.entity_id, name: req.name)
+    end)
+  end
+
+  defp component_graph_edges(edges, tree_nodes, all_sigma) do
+    tree_node_keys = MapSet.new(tree_nodes, fn n -> {n.entity_type, n.entity_id, n.name} end)
+    all_keys = MapSet.new(all_sigma, & &1.key)
+
+    edges
+    |> Enum.filter(fn e ->
+      MapSet.member?(tree_node_keys, e.from) and MapSet.member?(tree_node_keys, e.to)
+    end)
+    |> Enum.map(fn e -> {key_to_string(e.from), key_to_string(e.to), e} end)
+    |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and MapSet.member?(all_keys, t) end)
+    |> Enum.uniq_by(fn {f, t, _} -> {f, t} end)
+    |> Enum.reject(fn {f, t, _} -> f == t end)
+    |> Enum.map(fn {f, t, _e} ->
+      %{
+        key: "#{f}->#{t}",
+        source: f,
+        target: t,
+        attributes: %{size: 2, color: "#64748b", type: "arrow"}
+      }
+    end)
+  end
+
+  defp tree_layout_for_top_level(comp, parent_ids, components, comp_reqs_by_id, actionable_set) do
+    if MapSet.member?(parent_ids, comp.id) do
+      layout_context_tree_nodes(comp, components, comp_reqs_by_id, actionable_set)
+    else
+      layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set)
+    end
+  end
+
+  defp group_dep_edges({_id, group}, child_to_context, all_keys) do
+    from_key = summary_key(group.component.id)
+    deps = group.component.dependencies || []
+    Enum.flat_map(deps, &dep_edge(&1, from_key, child_to_context, all_keys))
+  end
+
+  defp dep_edge(dep, from_key, child_to_context, all_keys) do
+    to_key = summary_key(Map.get(child_to_context, dep.id, dep.id))
+
+    if to_key != from_key and MapSet.member?(all_keys, to_key) do
+      [
+        %{
+          key: "dep_#{from_key}->#{to_key}",
+          source: from_key,
+          target: to_key,
+          attributes: %{size: 2, color: "#6366f1", type: "arrow"}
+        }
+      ]
+    else
+      []
+    end
   end
 end

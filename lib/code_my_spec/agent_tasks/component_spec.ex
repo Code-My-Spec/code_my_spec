@@ -20,7 +20,6 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   alias CodeMySpec.Rules
   alias CodeMySpec.Utils
 
-
   @doc """
   Generate the command/prompt for Claude to create a component spec.
 
@@ -100,7 +99,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
   defp get_design_rules(scope, component) do
     component_type = component.type
 
-    Rules.find_matching_rules(component_type, "design", scope.environment.cwd)
+    Rules.find_matching_rules(component_type, "design", scope.environment)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

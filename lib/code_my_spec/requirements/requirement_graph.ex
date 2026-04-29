@@ -138,9 +138,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       story_to_project_edges(ctx)
   end
 
-  # Cross-entity: story ↔ surface component + its direct context dependencies.
-  # Gives fan-out: story → surface + each context dep → back to story.
-  # Context trees are internally connected via context_container_edges.
+  # Cross-entity: story ↔ surface component only.
+  # The story's terminal requirement depends on the surface's terminal
+  # requirement; context dependencies reach the story transitively
+  # through the surface via cross_context_dependency_edges. This is
+  # rule 3 of story 562: the chain flows through the surface, not as
+  # direct prerequisites of the story.
   defp component_tree_edges(ctx, config) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
@@ -150,23 +153,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp edges_for_story_surface(story, ctx, config) do
     case Enum.find(ctx.components, &(&1.id == story.component_id)) do
       nil -> []
-      surface ->
-        edges_for_component(surface, story, config) ++
-          dep_edges_for_surface(surface, story, ctx, config)
-    end
-  end
-
-  defp dep_edges_for_surface(surface, story, ctx, config) do
-    case surface.dependencies do
-      %Ecto.Association.NotLoaded{} -> []
-      deps when is_list(deps) -> Enum.flat_map(deps, &edges_for_dep(&1, story, ctx, config))
-    end
-  end
-
-  defp edges_for_dep(dep, story, ctx, config) do
-    case Enum.find(ctx.components, &(&1.id == dep.id)) do
-      nil -> []
-      dep_comp -> edges_for_component(dep_comp, story, config)
+      surface -> edges_for_component(surface, story, config)
     end
   end
 
