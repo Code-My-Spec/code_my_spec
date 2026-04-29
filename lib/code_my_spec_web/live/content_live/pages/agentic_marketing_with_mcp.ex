@@ -145,6 +145,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
      socket
      |> assign(:copy, @copy)
      |> assign(@copy.metadata)
+     |> assign(:page_title, @copy.metadata.meta_title)
      |> assign(:canonical_url, canonical)
      |> assign(:og_image, nil)
      |> assign(:og_type, "article")

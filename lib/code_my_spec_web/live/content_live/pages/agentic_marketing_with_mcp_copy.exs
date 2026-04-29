@@ -2,10 +2,10 @@
   metadata: %{
     meta_title: "Marketing isn't a content problem. It's a system problem.",
     meta_description:
-      "An engineer's six-month rebuild of marketing as an engineering problem. Strategy, daily plan, cadence, measurement — running on rails through Claude Code and a few MCP servers.",
+      "An engineer's six-week rebuild of marketing as an engineering problem. Strategy, daily plan, cadence, measurement, running on rails through Claude Code and a few MCP servers.",
     og_title: "Marketing isn't a content problem. It's a system problem.",
     og_description:
-      "An engineer's six-month rebuild of marketing as an engineering problem. Running on rails through Claude Code and a few MCP servers.",
+      "An engineer's six-week rebuild of marketing as an engineering problem. Running on rails through Claude Code and a few MCP servers.",
     author: "John Davenport",
     tags: [
       "marketing",
@@ -25,7 +25,7 @@
     title_lines: ["Marketing isn't", "a content problem.", "It's a system problem."],
     title_accent_index: 2,
     deck:
-      "An engineer's six-month rebuild of marketing as an engineering problem. Strategy, daily plan, cadence, measurement — running on rails through Claude Code and a few MCP servers. The honest version.",
+      "An engineer's six-week rebuild of marketing as an engineering problem. Strategy, daily plan, cadence, measurement, running on rails through Claude Code and a few MCP servers. The honest version.",
     meta: [
       %{label: "30 min", suffix: "read"},
       %{label: "top of funnel", suffix: nil},
@@ -39,7 +39,7 @@
     "I've been building software for years and I'm terrible at marketing. Not \"humble brag\" terrible. Actually terrible. I've shipped products nobody used because I couldn't bring myself to tell anyone about them. Building is my happy place. Marketing is paralyzing.",
   intro_paragraphs: [
     "But I needed to market the harness. So I did what any engineer would do. I turned it into an engineering problem.",
-    "Here's what six months taught me. <strong>Marketing isn't a content problem. It's a system problem.</strong> Reddit one week, X the next, half-built newsletter, occasional LinkedIn — it all adds up to busy, not effective. What I needed wasn't more tactics. It was a strategy → daily plan → cadence → measurement loop, running on rails."
+    "Here's what six weeks taught me. <strong>Marketing isn't a content problem. It's a system problem.</strong> Reddit one week, X the next, half-built newsletter, occasional LinkedIn. It all adds up to busy, not effective. What I needed wasn't more tactics. It was a strategy → daily plan → cadence → measurement loop, running on rails."
   ],
   loop_diagram: %{
     fig_label: "// fig_01 · the_loop",
@@ -53,7 +53,7 @@
     paragraphs: [
       "I sat down with Claude and came up with a strategy based on some theories I had. My users hang out on Reddit. I had a few subs in mind where my experience was relevant. So we started there.",
       "First thing: hook up a Reddit MCP server. Now Claude can scan subreddits and pull thread details. We started commenting, being helpful in threads where my experience was relevant. No grand plan. Just show up and be useful.",
-      "After a couple weeks, I wanted to know if any of this was working. So I added a Google Analytics MCP server. Now I could pull traffic reports right from Claude Code. And I could see it — people were actually clicking through from my comments.",
+      "After a couple weeks, I wanted to know if any of this was working. So I added a Google Analytics MCP server. Now I could pull traffic reports right from Claude Code. And I could see it. People were actually clicking through from my comments.",
       "Then something interesting happened. I saw people signing up. Not a flood, but real registrations. So I added Google Analytics admin capabilities and set up conversion tracking so I could see the full funnel.",
       "I started researching the people who signed up. Who were they? Where did they come from? Which comments drove them?",
       "Then I wanted to make sure I was set up for SEO, because the Reddit comments were driving traffic but I had basically zero organic search presence. Added the Google Search Console MCP. Immediately found that Google thought my canonical URL was an old ngrok tunnel from development. Fixed it the same day."
@@ -70,7 +70,7 @@
     name: "the_daily_loop",
     title: "What the daily loop actually looks like",
     intro:
-      "I tell Claude to scan Reddit. It uses a Reddit MCP server to pull hot and new posts from the subs where my audience hangs out — r/ChatGPTCoding, r/vibecoding, r/ClaudeAI, founder communities. It writes lead files: little markdown docs with the thread title, score, top comment vibe, and an angle for why my experience is relevant. I pick 2-3 threads.",
+      "I tell Claude to scan Reddit. It uses a Reddit MCP server to pull hot and new posts from the subs where my audience hangs out: r/ChatGPTCoding, r/vibecoding, r/ClaudeAI, founder communities. It writes lead files: little markdown docs with the thread title, score, top comment vibe, and an angle for why my experience is relevant. I pick 2-3 threads.",
     steps: [
       %{
         n: "01",
@@ -86,7 +86,7 @@
         actor: "claude",
         title: "Talking points, not a comment.",
         body:
-          "Claude gives me the angle and the key insight to hit — not a ready-to-post comment. AI-written comments read like AI-written comments and Reddit can tell."
+          "Claude gives me the angle and the key insight to hit, not a ready-to-post comment. AI-written comments read like AI-written comments and Reddit can tell."
       },
       %{
         n: "03",
@@ -119,7 +119,7 @@
     idx: "03",
     name: "the_stack",
     title: "Which MCP servers make up the marketing stack",
-    intro: "Four servers, each doing one thing. Plus one SEO plugin that earned its keep on day one.",
+    intro: "Three servers, each doing one thing. Plus one SEO plugin that earned its keep on day one.",
     mcps: [
       %{
         role: "// reddit",
@@ -144,14 +144,6 @@
         desc:
           "Indexing status. Query impressions. Canonical issues. Found out Google thought my canonical URL was an old ngrok tunnel. Would never have caught that without it.",
         repo: "mcp-gsc"
-      },
-      %{
-        role: "// twitter",
-        name: "Twitter MCP",
-        pill: "channel",
-        desc:
-          "Same pattern as Reddit. Search conversations. Surface reply opportunities. Draft tweets. Different rooms, same loop.",
-        repo: "twitter-mcp"
       }
     ],
     seo_section: %{
@@ -172,13 +164,13 @@
         label: "failure_01",
         title: "AI-drafted comments bomb.",
         body:
-          "Reddit can tell. The comments that perform are the ones I dictate and Claude polishes. Natural cadence, tangents, genuine reactions — that's what makes it human."
+          "Reddit can tell. The comments that perform are the ones I dictate and Claude polishes. Natural cadence, tangents, genuine reactions. That's what makes it human."
       },
       %{
         label: "failure_02",
         title: "Homepage links die.",
         body:
-          "Links to specific content work. Links to homepage don't. My best comment linked to one article. Drove sessions for three months. Worst posts were homepage links — 4 second average duration, 75% bounce."
+          "Links to specific content work. Links to homepage don't. My best comment linked to one article. Drove sessions for weeks. Worst posts were homepage links: 4 second average duration, 75% bounce."
       },
       %{
         label: "failure_03",
@@ -227,7 +219,7 @@
         label: "finding_02",
         lead: "Empathy comments produce depth.",
         body:
-          "A reply on a \"month 3 wall\" frustration thread drove only 12 sessions — but those users averaged 17 minutes and 13.8 pages each."
+          "A reply on a \"month 3 wall\" frustration thread drove only 12 sessions, but those users averaged 17 minutes and 13.8 pages each."
       },
       %{
         label: "finding_03",
@@ -248,7 +240,7 @@
     name: "why_files",
     title: "Why storing everything as files makes the system work",
     paragraphs: [
-      "The leads, the touchpoints, the content, the strategy docs, the analytics baselines — it's all git-tracked markdown. When I scan Reddit next week, Claude reads the touchpoints and knows what I've already said, which threads I've engaged, and what angles worked. The system remembers what I forget.",
+      "The leads, the touchpoints, the content, the strategy docs, the analytics baselines: it's all git-tracked markdown. When I scan Reddit next week, Claude reads the touchpoints and knows what I've already said, which threads I've engaged, and what angles worked. The system remembers what I forget.",
       "Marketing advice for founders usually falls into \"just put yourself out there\" (useless) or \"hire a marketer\" (expensive). What actually works is treating it like engineering. Define inputs. Build a process. Create feedback loops. Iterate on data. You don't need a marketing degree. You need Claude Code, a few MCP servers, and the willingness to show up where your users talk."
     ]
   },
