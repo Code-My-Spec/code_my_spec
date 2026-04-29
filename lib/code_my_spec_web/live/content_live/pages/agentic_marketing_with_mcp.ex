@@ -77,6 +77,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
   def mount(_params, _session, socket) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = "#{base_url}/blog/agentic-marketing-with-mcp"
+    og_image = "#{base_url}/images/og-blog-agentic-marketing-with-mcp.png"
 
     json_ld =
       Jason.encode!([
@@ -87,6 +88,12 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
           "headline" => @copy.metadata.meta_title,
           "description" => @copy.metadata.meta_description,
           "url" => canonical,
+          "image" => %{
+            "@type" => "ImageObject",
+            "url" => og_image,
+            "width" => 1200,
+            "height" => 630
+          },
           "datePublished" => @published_at,
           "dateModified" => @published_at,
           "author" => %{
@@ -147,7 +154,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
      |> assign(@copy.metadata)
      |> assign(:page_title, @copy.metadata.meta_title)
      |> assign(:canonical_url, canonical)
-     |> assign(:og_image, nil)
+     |> assign(:og_image, og_image)
      |> assign(:og_type, "article")
      |> assign(:article_published_time, @published_at)
      |> assign(:json_ld, json_ld)}
