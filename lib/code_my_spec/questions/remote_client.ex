@@ -21,6 +21,22 @@ defmodule CodeMySpec.Questions.RemoteClient do
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
+  @error_atoms %{
+    "story_not_found" => :story_not_found,
+    "cross_account" => :cross_account,
+    "not_found" => :not_found,
+    "missing_active_scope" => :missing_active_scope,
+    "unprocessable_entity" => :unprocessable_entity
+  }
+
+  @question_error_fields %{
+    "account_id" => :account_id,
+    "project_id" => :project_id,
+    "story_id" => :story_id,
+    "text" => :text,
+    "status" => :status
+  }
+
   # ---------------------------------------------------------------------------
   # Client construction
   # ---------------------------------------------------------------------------
@@ -76,8 +92,10 @@ defmodule CodeMySpec.Questions.RemoteClient do
     case Req.post(client, url: "/api/questions", json: %{question: payload}) do
       {:ok, %{status: 201, body: body}} ->
         question = deserialize_question(body["data"])
-        upsert_question_locally(question)
-        {:ok, question}
+
+        with {:ok, _} <- upsert_question_locally(question) do
+          {:ok, question}
+        end
 
       {:ok, %{status: 401}} ->
         {:error, :missing_active_scope}
@@ -102,8 +120,10 @@ defmodule CodeMySpec.Questions.RemoteClient do
          ) do
       {:ok, %{status: 200, body: body}} ->
         updated = deserialize_question(body["data"])
-        upsert_question_locally(updated)
-        {:ok, updated}
+
+        with {:ok, _} <- upsert_question_locally(updated) do
+          {:ok, updated}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -122,14 +142,16 @@ defmodule CodeMySpec.Questions.RemoteClient do
     case Req.delete(client, url: "/api/questions/#{question.id}") do
       {:ok, %{status: 200, body: body}} ->
         deleted = deserialize_question(body["data"])
-        delete_question_locally(question.id)
-        {:ok, deleted}
+
+        with {:ok, _} <- delete_question_locally(question.id) do
+          {:ok, deleted}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
 
       {:ok, %{status: 422, body: body}} ->
-        {:error, body["error"] |> to_existing_atom_or_default(:unprocessable_entity)}
+        {:error, parse_error_atom(body["error"])}
     end
   end
 
@@ -196,7 +218,7 @@ defmodule CodeMySpec.Questions.RemoteClient do
   defp errors_to_changeset(%{"errors" => errors}, %_mod{} = struct) do
     errors
     |> Enum.reduce(Ecto.Changeset.change(struct), fn {field, messages}, changeset ->
-      field_atom = String.to_existing_atom(field)
+      field_atom = Map.get(@question_error_fields, field, :base)
 
       Enum.reduce(List.wrap(messages), changeset, fn msg, cs ->
         Ecto.Changeset.add_error(cs, field_atom, msg)
@@ -212,13 +234,10 @@ defmodule CodeMySpec.Questions.RemoteClient do
     |> Map.put(:valid?, false)
   end
 
-  defp to_existing_atom_or_default(nil, default), do: default
+  defp parse_error_atom(nil), do: :unprocessable_entity
 
-  defp to_existing_atom_or_default(str, default) when is_binary(str) do
-    String.to_existing_atom(str)
-  rescue
-    ArgumentError -> default
-  end
+  defp parse_error_atom(str) when is_binary(str),
+    do: Map.get(@error_atoms, str, :unprocessable_entity)
 
   defp parse_datetime(nil), do: nil
 
@@ -252,7 +271,7 @@ defmodule CodeMySpec.Questions.RemoteClient do
 
   defp delete_question_locally(id) do
     case Repo.get(Question, id) do
-      nil -> :ok
+      nil -> {:ok, nil}
       question -> Repo.delete(question)
     end
   end

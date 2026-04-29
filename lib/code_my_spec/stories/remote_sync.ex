@@ -25,7 +25,25 @@ defmodule CodeMySpec.Stories.RemoteSync do
          {:ok, stories} <-
            RemoteClient.list_project_stories(scope, Keyword.put(opts, :token, token)) do
       Logger.debug("[RemoteSync] Upserting #{length(stories)} stories from remote")
-      Enum.each(stories, &upsert_story(&1, scope))
+
+      # Per-record isolation: a single bad record (FK violation, type cast
+      # error, etc.) shouldn't take down the whole sync. Each upsert runs
+      # in its own task; if it crashes, we log and move on. SQLite is
+      # single-writer, so max_concurrency stays at 1.
+      stories
+      |> Task.async_stream(&upsert_story(&1, scope),
+        max_concurrency: 1,
+        on_timeout: :kill_task,
+        ordered: false
+      )
+      |> Enum.each(fn
+        {:ok, _} ->
+          :ok
+
+        {:exit, reason} ->
+          Logger.warning("[RemoteSync] Story upsert task crashed: #{inspect(reason)}")
+      end)
+
       :ok
     end
   end
@@ -53,15 +71,17 @@ defmodule CodeMySpec.Stories.RemoteSync do
            on_conflict: {:replace_all_except, [:id, :inserted_at]},
            conflict_target: :id
          ) do
-      {:ok, _} ->
+      {:ok, _} = ok ->
         upsert_criteria(story.criteria || [], project_id)
+        ok
 
-      {:error, changeset} ->
-        Logger.warning("[RemoteSync] Failed to upsert story #{story.id}: #{inspect(changeset.errors)}")
+      {:error, changeset} = error ->
+        Logger.warning(
+          "[RemoteSync] Failed to upsert story #{story.id}: #{inspect(changeset.errors)}"
+        )
+
+        error
     end
-  rescue
-    e ->
-      Logger.warning("[RemoteSync] Failed to upsert story #{story.id}: #{Exception.message(e)}")
   end
 
   defp upsert_criteria([], _project_id), do: :ok

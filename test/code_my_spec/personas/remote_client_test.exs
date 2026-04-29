@@ -102,6 +102,34 @@ defmodule CodeMySpec.Personas.RemoteClientTest do
 
       assert Repo.aggregate(Persona, :count) == before_count
     end
+
+    test "surfaces local FK violation as {:error, changeset}", %{scope: scope} do
+      # Server returns 201 referencing an account_id that doesn't exist in
+      # the local DB. The write-through upsert hits the assoc_constraint and
+      # the public function must return {:error, _} — never {:ok, _}.
+      orphan_account_id = Ecto.UUID.generate()
+
+      server_persona = %{
+        "id" => Ecto.UUID.generate(),
+        "slug" => "orphan",
+        "name" => "Orphan",
+        "headline" => nil,
+        "persona_type" => "proto",
+        "account_id" => orphan_account_id,
+        "inserted_at" => "2026-04-28T12:00:00Z",
+        "updated_at" => "2026-04-28T12:00:00Z"
+      }
+
+      plug = stub_response(201, %{"data" => server_persona})
+
+      assert {:error, %Ecto.Changeset{valid?: false}} =
+               RemoteClient.create_persona(
+                 scope,
+                 %{slug: "orphan", name: "Orphan"},
+                 plug: plug,
+                 token: "test"
+               )
+    end
   end
 
   # ---------------------------------------------------------------------------

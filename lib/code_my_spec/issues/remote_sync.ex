@@ -17,7 +17,24 @@ defmodule CodeMySpec.Issues.RemoteSync do
          {:ok, issues} <-
            RemoteClient.list_accepted_issues(scope, Keyword.put(opts, :token, token)) do
       Logger.debug("[IssuesRemoteSync] Upserting #{length(issues)} issues from remote")
-      Enum.each(issues, &upsert_issue/1)
+
+      # Per-record isolation via Task: one bad record (FK violation, type
+      # cast error, etc.) shouldn't take down the whole sync. SQLite is
+      # single-writer, so max_concurrency stays at 1.
+      issues
+      |> Task.async_stream(&upsert_issue/1,
+        max_concurrency: 1,
+        on_timeout: :kill_task,
+        ordered: false
+      )
+      |> Enum.each(fn
+        {:ok, _} ->
+          :ok
+
+        {:exit, reason} ->
+          Logger.warning("[IssuesRemoteSync] Upsert task crashed: #{inspect(reason)}")
+      end)
+
       :ok
     end
   end
@@ -37,17 +54,24 @@ defmodule CodeMySpec.Issues.RemoteSync do
       account_id: issue.account_id
     }
 
-    %Issue{id: issue.id}
-    |> Issue.changeset(attrs)
-    |> Ecto.Changeset.put_change(:project_id, issue.project_id)
-    |> Ecto.Changeset.put_change(:account_id, issue.account_id)
-    |> Ecto.Changeset.put_change(:status, issue.status)
-    |> Repo.insert(
-      on_conflict: {:replace_all_except, [:id, :inserted_at]},
-      conflict_target: :id
-    )
-  rescue
-    e ->
-      Logger.warning("[IssuesRemoteSync] Failed to upsert issue #{issue.id}: #{Exception.message(e)}")
+    case %Issue{id: issue.id}
+         |> Issue.changeset(attrs)
+         |> Ecto.Changeset.put_change(:project_id, issue.project_id)
+         |> Ecto.Changeset.put_change(:account_id, issue.account_id)
+         |> Ecto.Changeset.put_change(:status, issue.status)
+         |> Repo.insert(
+           on_conflict: {:replace_all_except, [:id, :inserted_at]},
+           conflict_target: :id
+         ) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, changeset} = error ->
+        Logger.warning(
+          "[IssuesRemoteSync] Failed to upsert issue #{issue.id}: #{inspect(changeset.errors)}"
+        )
+
+        error
+    end
   end
 end

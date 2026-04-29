@@ -18,13 +18,27 @@ defmodule CodeMySpec.BddRules.RemoteClient do
   for a sync pull.
   """
 
-  require Logger
-
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.BddRules.BddRulesRepository
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+
+  @error_atoms %{
+    "story_not_found" => :story_not_found,
+    "persona_linkage_required" => :persona_linkage_required,
+    "cross_account" => :cross_account,
+    "not_found" => :not_found,
+    "missing_active_scope" => :missing_active_scope,
+    "unprocessable_entity" => :unprocessable_entity
+  }
+
+  @rule_error_fields %{
+    "account_id" => :account_id,
+    "project_id" => :project_id,
+    "story_id" => :story_id,
+    "statement" => :statement
+  }
 
   # ---------------------------------------------------------------------------
   # Client construction
@@ -89,8 +103,10 @@ defmodule CodeMySpec.BddRules.RemoteClient do
     case Req.post(client, url: "/api/bdd-rules", json: %{rule: payload}) do
       {:ok, %{status: 201, body: body}} ->
         rule = deserialize_rule(body["data"])
-        upsert_rule_locally(rule)
-        {:ok, rule}
+
+        with {:ok, _} <- upsert_rule_locally(rule) do
+          {:ok, rule}
+        end
 
       {:ok, %{status: 401}} ->
         {:error, :missing_active_scope}
@@ -118,8 +134,10 @@ defmodule CodeMySpec.BddRules.RemoteClient do
          ) do
       {:ok, %{status: 200, body: body}} ->
         updated = deserialize_rule(body["data"])
-        upsert_rule_locally(updated)
-        {:ok, updated}
+
+        with {:ok, _} <- upsert_rule_locally(updated) do
+          {:ok, updated}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -138,14 +156,16 @@ defmodule CodeMySpec.BddRules.RemoteClient do
     case Req.delete(client, url: "/api/bdd-rules/#{rule.id}") do
       {:ok, %{status: 200, body: body}} ->
         deleted = deserialize_rule(body["data"])
-        delete_rule_locally(rule.id)
-        {:ok, deleted}
+
+        with {:ok, _} <- delete_rule_locally(rule.id) do
+          {:ok, deleted}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
 
       {:ok, %{status: 422, body: body}} ->
-        {:error, body["error"] |> to_existing_atom_or_default(:unprocessable_entity)}
+        {:error, parse_error_atom(body["error"])}
     end
   end
 
@@ -201,7 +221,7 @@ defmodule CodeMySpec.BddRules.RemoteClient do
   defp errors_to_changeset(%{"errors" => errors}, %_mod{} = struct) do
     errors
     |> Enum.reduce(Ecto.Changeset.change(struct), fn {field, messages}, changeset ->
-      field_atom = String.to_existing_atom(field)
+      field_atom = Map.get(@rule_error_fields, field, :base)
 
       Enum.reduce(List.wrap(messages), changeset, fn msg, cs ->
         Ecto.Changeset.add_error(cs, field_atom, msg)
@@ -217,13 +237,10 @@ defmodule CodeMySpec.BddRules.RemoteClient do
     |> Map.put(:valid?, false)
   end
 
-  defp to_existing_atom_or_default(nil, default), do: default
+  defp parse_error_atom(nil), do: :unprocessable_entity
 
-  defp to_existing_atom_or_default(str, default) when is_binary(str) do
-    String.to_existing_atom(str)
-  rescue
-    ArgumentError -> default
-  end
+  defp parse_error_atom(str) when is_binary(str),
+    do: Map.get(@error_atoms, str, :unprocessable_entity)
 
   defp parse_datetime(nil), do: nil
 
@@ -252,50 +269,12 @@ defmodule CodeMySpec.BddRules.RemoteClient do
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: :id
     )
-    |> case do
-      {:ok, _} ->
-        :ok
-
-      {:error, changeset} ->
-        Logger.warning(
-          "[BddRules.RemoteClient] Local upsert failed for rule #{rule.id}: #{inspect(changeset.errors)}"
-        )
-
-        :ok
-    end
-  rescue
-    e ->
-      Logger.warning(
-        "[BddRules.RemoteClient] Local upsert raised for rule #{rule.id}: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 
   defp delete_rule_locally(id) do
     case Repo.get(Rule, id) do
-      nil ->
-        :ok
-
-      rule ->
-        case Repo.delete(rule) do
-          {:ok, _} ->
-            :ok
-
-          {:error, changeset} ->
-            Logger.warning(
-              "[BddRules.RemoteClient] Local delete failed for rule #{id}: #{inspect(changeset.errors)}"
-            )
-
-            :ok
-        end
+      nil -> {:ok, nil}
+      rule -> Repo.delete(rule)
     end
-  rescue
-    e ->
-      Logger.warning(
-        "[BddRules.RemoteClient] Local delete raised for rule #{id}: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 end

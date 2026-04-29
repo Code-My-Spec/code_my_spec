@@ -15,13 +15,24 @@ defmodule CodeMySpec.Stories.RemoteClient do
   stories addressable without waiting for the boot-time `RemoteSync` pull.
   """
 
-  require Logger
-
   alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+
+  @story_error_fields %{
+    "title" => :title,
+    "description" => :description,
+    "status" => :status,
+    "priority" => :priority,
+    "locked_at" => :locked_at,
+    "lock_expires_at" => :lock_expires_at,
+    "locked_by" => :locked_by,
+    "project_id" => :project_id,
+    "component_id" => :component_id,
+    "account_id" => :account_id
+  }
 
   # ---------------------------------------------------------------------------
   # Client construction
@@ -160,8 +171,10 @@ defmodule CodeMySpec.Stories.RemoteClient do
     case Req.post(client, url: "/api/stories", json: %{story: stringify_attrs(attrs)}) do
       {:ok, %{status: 201, body: body}} ->
         story = deserialize_story(body["data"])
-        upsert_story_locally(story)
-        {:ok, story}
+
+        with {:ok, _} <- upsert_story_locally(story) do
+          {:ok, story}
+        end
 
       {:ok, %{status: 422, body: body}} ->
         {:error, errors_to_changeset(body, %Story{})}
@@ -174,8 +187,10 @@ defmodule CodeMySpec.Stories.RemoteClient do
     case Req.put(client, url: "/api/stories/#{story.id}", json: %{story: stringify_attrs(attrs)}) do
       {:ok, %{status: 200, body: body}} ->
         updated = deserialize_story(body["data"])
-        upsert_story_locally(updated)
-        {:ok, updated}
+
+        with {:ok, _} <- upsert_story_locally(updated) do
+          {:ok, updated}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -191,8 +206,10 @@ defmodule CodeMySpec.Stories.RemoteClient do
     case Req.delete(client, url: "/api/stories/#{story.id}") do
       {:ok, %{status: 200, body: body}} ->
         deleted = deserialize_story(body["data"])
-        delete_story_locally(story.id)
-        {:ok, deleted}
+
+        with {:ok, _} <- delete_story_locally(story.id) do
+          {:ok, deleted}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -208,8 +225,10 @@ defmodule CodeMySpec.Stories.RemoteClient do
          ) do
       {:ok, %{status: 200, body: body}} ->
         updated = deserialize_story(body["data"])
-        upsert_story_locally(updated)
-        {:ok, updated}
+
+        with {:ok, _} <- upsert_story_locally(updated) do
+          {:ok, updated}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -225,8 +244,10 @@ defmodule CodeMySpec.Stories.RemoteClient do
     case Req.post(client, url: "/api/stories/#{story.id}/clear-component", json: %{}) do
       {:ok, %{status: 200, body: body}} ->
         updated = deserialize_story(body["data"])
-        upsert_story_locally(updated)
-        {:ok, updated}
+
+        with {:ok, _} <- upsert_story_locally(updated) do
+          {:ok, updated}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -298,7 +319,7 @@ defmodule CodeMySpec.Stories.RemoteClient do
   defp errors_to_changeset(%{"errors" => errors}, %Story{} = story) do
     errors
     |> Enum.reduce(Ecto.Changeset.change(story), fn {field, messages}, changeset ->
-      field_atom = String.to_existing_atom(field)
+      field_atom = Map.get(@story_error_fields, field, :base)
 
       Enum.reduce(List.wrap(messages), changeset, fn msg, cs ->
         Ecto.Changeset.add_error(cs, field_atom, msg)
@@ -390,37 +411,42 @@ defmodule CodeMySpec.Stories.RemoteClient do
       component_id: story.component_id
     }
 
-    %Story{id: story.id}
-    |> Story.changeset(attrs)
-    |> Ecto.Changeset.put_change(:account_id, story.account_id)
-    |> Repo.insert(
-      on_conflict: {:replace_all_except, [:id, :inserted_at]},
-      conflict_target: :id
-    )
-    |> case do
-      {:ok, _} ->
-        upsert_criteria_locally(story.criteria || [], story.project_id)
+    # `:first_version_id` and `:current_version_id` are managed by PaperTrail
+    # and are NOT NULL FKs in test/web envs (CLI envs make them nullable).
+    # On INSERT Postgres validates NOT NULL on the candidate row *before*
+    # ON CONFLICT fires, so we must seed the changeset with the existing
+    # row's version ids when re-syncing — otherwise the conflict update never
+    # gets a chance to run. Excluding them from `:replace_all_except` then
+    # preserves whatever was already there.
+    version_overrides =
+      case Repo.get(Story, story.id) do
+        nil -> %{}
+        existing -> %{
+          first_version_id: existing.first_version_id,
+          current_version_id: existing.current_version_id
+        }
+      end
 
-      {:error, changeset} ->
-        Logger.warning(
-          "[Stories.RemoteClient] Local upsert failed for story #{story.id}: #{inspect(changeset.errors)}"
-        )
-
-        :ok
+    with {:ok, persisted} <-
+           %Story{id: story.id}
+           |> Story.changeset(attrs)
+           |> Ecto.Changeset.put_change(:account_id, story.account_id)
+           |> Ecto.Changeset.change(version_overrides)
+           |> Repo.insert(
+             on_conflict:
+               {:replace_all_except,
+                [:id, :inserted_at, :first_version_id, :current_version_id]},
+             conflict_target: :id
+           ),
+         :ok <- upsert_criteria_locally(story.criteria || [], story.project_id) do
+      {:ok, persisted}
     end
-  rescue
-    e ->
-      Logger.warning(
-        "[Stories.RemoteClient] Local upsert raised for story #{story.id}: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 
   defp upsert_criteria_locally([], _project_id), do: :ok
 
   defp upsert_criteria_locally(criteria, project_id) do
-    Enum.each(criteria, fn %Criterion{} = criterion ->
+    Enum.reduce_while(criteria, :ok, fn %Criterion{} = criterion, _acc ->
       attrs = %{
         description: criterion.description,
         verified: criterion.verified,
@@ -435,50 +461,16 @@ defmodule CodeMySpec.Stories.RemoteClient do
              on_conflict: {:replace_all_except, [:id, :inserted_at]},
              conflict_target: :id
            ) do
-        {:ok, _} ->
-          :ok
-
-        {:error, changeset} ->
-          Logger.warning(
-            "[Stories.RemoteClient] Local upsert failed for criterion #{criterion.id}: #{inspect(changeset.errors)}"
-          )
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
       end
     end)
-
-    :ok
-  rescue
-    e ->
-      Logger.warning(
-        "[Stories.RemoteClient] Local upsert raised for criteria: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 
   defp delete_story_locally(id) do
     case Repo.get(Story, id) do
-      nil ->
-        :ok
-
-      story ->
-        case Repo.delete(story) do
-          {:ok, _} ->
-            :ok
-
-          {:error, changeset} ->
-            Logger.warning(
-              "[Stories.RemoteClient] Local delete failed for story #{id}: #{inspect(changeset.errors)}"
-            )
-
-            :ok
-        end
+      nil -> {:ok, nil}
+      story -> Repo.delete(story)
     end
-  rescue
-    e ->
-      Logger.warning(
-        "[Stories.RemoteClient] Local delete raised for story #{id}: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 end

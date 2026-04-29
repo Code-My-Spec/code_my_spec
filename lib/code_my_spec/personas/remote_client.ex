@@ -21,14 +21,29 @@ defmodule CodeMySpec.Personas.RemoteClient do
   other CLIs) into the local cache.
   """
 
-  require Logger
-
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Personas.Persona
   alias CodeMySpec.Personas.PersonasRepository
   alias CodeMySpec.Personas.PersonaStory
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+
+  @error_atoms %{
+    "cross_account" => :cross_account,
+    "not_found" => :not_found,
+    "missing_active_account" => :missing_active_account,
+    "unprocessable_entity" => :unprocessable_entity
+  }
+
+  @persona_error_fields %{
+    "slug" => :slug,
+    "name" => :name,
+    "headline" => :headline,
+    "persona_type" => :persona_type,
+    "account_id" => :account_id,
+    "persona_id" => :persona_id,
+    "story_id" => :story_id
+  }
 
   # ---------------------------------------------------------------------------
   # Client construction
@@ -121,8 +136,10 @@ defmodule CodeMySpec.Personas.RemoteClient do
     case Req.post(client, url: "/api/personas", json: %{persona: stringify_attrs(attrs)}) do
       {:ok, %{status: 201, body: body}} ->
         persona = deserialize_persona(body["data"])
-        upsert_persona_locally(persona)
-        {:ok, persona}
+
+        with {:ok, _} <- upsert_persona_locally(persona) do
+          {:ok, persona}
+        end
 
       {:ok, %{status: 401}} ->
         {:error, :missing_active_account}
@@ -141,8 +158,10 @@ defmodule CodeMySpec.Personas.RemoteClient do
          ) do
       {:ok, %{status: 200, body: body}} ->
         updated = deserialize_persona(body["data"])
-        upsert_persona_locally(updated)
-        {:ok, updated}
+
+        with {:ok, _} <- upsert_persona_locally(updated) do
+          {:ok, updated}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
@@ -158,14 +177,16 @@ defmodule CodeMySpec.Personas.RemoteClient do
     case Req.delete(client, url: "/api/personas/#{persona.id}") do
       {:ok, %{status: 200, body: body}} ->
         deleted = deserialize_persona(body["data"])
-        delete_persona_locally(persona.id)
-        {:ok, deleted}
+
+        with {:ok, _} <- delete_persona_locally(persona.id) do
+          {:ok, deleted}
+        end
 
       {:ok, %{status: 404}} ->
         {:error, :not_found}
 
       {:ok, %{status: 422, body: body}} ->
-        {:error, body["error"] |> to_existing_atom_or_default(:unprocessable_entity)}
+        {:error, parse_error_atom(body["error"])}
     end
   end
 
@@ -178,8 +199,10 @@ defmodule CodeMySpec.Personas.RemoteClient do
          ) do
       {:ok, %{status: 201, body: body}} ->
         link = deserialize_persona_story(body["data"])
-        upsert_link_locally(link)
-        {:ok, link}
+
+        with {:ok, _} <- upsert_link_locally(link) do
+          {:ok, link}
+        end
 
       {:ok, %{status: 422, body: %{"error" => "cross_account"}}} ->
         {:error, :cross_account}
@@ -268,7 +291,7 @@ defmodule CodeMySpec.Personas.RemoteClient do
   defp errors_to_changeset(%{"errors" => errors}, %_mod{} = struct) do
     errors
     |> Enum.reduce(Ecto.Changeset.change(struct), fn {field, messages}, changeset ->
-      field_atom = String.to_existing_atom(field)
+      field_atom = Map.get(@persona_error_fields, field, :base)
 
       Enum.reduce(List.wrap(messages), changeset, fn msg, cs ->
         Ecto.Changeset.add_error(cs, field_atom, msg)
@@ -326,48 +349,12 @@ defmodule CodeMySpec.Personas.RemoteClient do
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: :id
     )
-    |> case do
-      {:ok, _} ->
-        :ok
-
-      {:error, changeset} ->
-        Logger.warning(
-          "[Personas.RemoteClient] Local upsert failed for persona #{persona.id}: #{inspect(changeset.errors)}"
-        )
-
-        :ok
-    end
-  rescue
-    e ->
-      Logger.warning(
-        "[Personas.RemoteClient] Local upsert raised for persona #{persona.id}: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 
   defp upsert_link_locally(%PersonaStory{} = link) do
     %PersonaStory{}
     |> PersonaStory.changeset(%{persona_id: link.persona_id, story_id: link.story_id})
     |> Repo.insert(on_conflict: :nothing, conflict_target: [:persona_id, :story_id])
-    |> case do
-      {:ok, _} ->
-        :ok
-
-      {:error, changeset} ->
-        Logger.warning(
-          "[Personas.RemoteClient] Local link upsert failed for persona=#{link.persona_id} story=#{link.story_id}: #{inspect(changeset.errors)}"
-        )
-
-        :ok
-    end
-  rescue
-    e ->
-      Logger.warning(
-        "[Personas.RemoteClient] Local link upsert raised for persona=#{link.persona_id} story=#{link.story_id}: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 
   defp delete_link_locally(persona_id, story_id) do
@@ -386,36 +373,13 @@ defmodule CodeMySpec.Personas.RemoteClient do
     |> Repo.delete_all()
 
     case Repo.get(Persona, id) do
-      nil ->
-        :ok
-
-      persona ->
-        case Repo.delete(persona) do
-          {:ok, _} ->
-            :ok
-
-          {:error, changeset} ->
-            Logger.warning(
-              "[Personas.RemoteClient] Local delete failed for persona #{id}: #{inspect(changeset.errors)}"
-            )
-
-            :ok
-        end
+      nil -> {:ok, nil}
+      persona -> Repo.delete(persona)
     end
-  rescue
-    e ->
-      Logger.warning(
-        "[Personas.RemoteClient] Local delete raised for persona #{id}: #{Exception.message(e)}"
-      )
-
-      :ok
   end
 
-  defp to_existing_atom_or_default(nil, default), do: default
+  defp parse_error_atom(nil), do: :unprocessable_entity
 
-  defp to_existing_atom_or_default(str, default) when is_binary(str) do
-    String.to_existing_atom(str)
-  rescue
-    ArgumentError -> default
-  end
+  defp parse_error_atom(str) when is_binary(str),
+    do: Map.get(@error_atoms, str, :unprocessable_entity)
 end
