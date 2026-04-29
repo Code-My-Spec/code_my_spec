@@ -46,19 +46,24 @@ defmodule CodeMySpecWeb.Router do
     get "/documentation", ContentController, :documentation_index
     get "/pages", ContentController, :pages_index
 
+    # Content routes that remain as LiveViews (have interactivity).
+    # NOTE: must come BEFORE the `/blog/:slug` dead-view route so the LiveView
+    # wins the match.
+    live_session :public_content,
+      on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
+      live "/methodology", ContentLive.Pages.Methodology, :methodology
+      live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
+      live "/blog/agentic-marketing-with-mcp",
+           ContentLive.Pages.AgenticMarketingWithMcp,
+           :agentic_marketing_with_mcp
+      live "/author/john-davenport", AuthorLive, :author
+    end
+
     # Content detail pages (dead views — static content, no WebSocket)
     get "/blog/:slug", ContentController, :blog
     get "/pages/:slug", ContentController, :page
     get "/landing/:slug", ContentController, :landing
     get "/documentation/:slug", ContentController, :documentation
-
-    # Content routes that remain as LiveViews (have interactivity)
-    live_session :public_content,
-      on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
-      live "/methodology", ContentLive.Pages.Methodology, :methodology
-      live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
-      live "/author/john-davenport", AuthorLive, :author
-    end
   end
 
   # Protected content routes (dead views)
