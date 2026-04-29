@@ -195,15 +195,15 @@
     idx: "05",
     name: "results",
     title: "What the numbers actually look like",
-    intro: "Six weeks of running the loop. Pulled from GA4 and Search Console MCP tools.",
+    intro: "Six weeks of running the loop. Pulled from GA4, Search Console, and prod.",
     snapshot: %{
-      head_left: "// snapshot · t+6w",
-      head_right: "source · ga4 + gsc",
+      head_left: "// snapshot · 2026-04-28",
+      head_right: "source · ga4 + gsc + prod",
       stats: [
-        %{value: "80", unit: "users", label: "// peak day", ctx: "Two consecutive all-time records in one week. 61 → 80."},
-        %{value: "107", unit: "sessions", label: "// reddit utm · 3d", ctx: "Average 4:25 per session. People are reading entire articles."},
-        %{value: "30", unit: "users", label: "// registered", ctx: "7 signups in last 7 days. Pace tripled month-over-month."},
-        %{value: "9/10", unit: nil, label: "// reg page source", ctx: "Of people who hit registration, came from Reddit comments."},
+        %{value: "311", unit: "users", label: "// peak day", ctx: "All-time record. 4/27 wave drove the harness's biggest day so far."},
+        %{value: "944", unit: "sessions", label: "// 7d traffic", ctx: "+73% week-over-week. The loop compounding."},
+        %{value: "44", unit: "%", label: "// blog engagement", ctx: "On this post, 4/28. Top page on the site by users."},
+        %{value: "25", unit: "users", label: "// registered (april)", ctx: "Real signups in April, prod-verified. Slow but durable."},
         %{value: "17", unit: "min", label: "// deepest cohort", ctx: "Empathy reply on a \"month 3 wall\" thread. 13.8 pages avg."},
         %{value: "87", unit: "↑", label: "// top comment", ctx: "No link. Reputation comment. Compounds quietly."}
       ]
