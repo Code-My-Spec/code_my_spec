@@ -90,13 +90,31 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   defp format_satisfied_by_groups(nodes) do
     nodes
-    |> Enum.group_by(& &1.satisfied_by)
+    |> group_by_preserving_order(& &1.satisfied_by)
     |> Enum.map_join("\n\n", fn {mod, group_nodes} ->
       name = short_module_name(mod)
       items = Enum.map_join(group_nodes, "\n", &orchestrate_node/1)
 
       "### #{name}\n\n#{items}"
     end)
+  end
+
+  # Like Enum.group_by/2, but yields a list (not a map) ordered by the
+  # position of each key's first occurrence in the input. Preserves
+  # priority ordering from `next_actionable` — critical for rule 6
+  # (story-linked components appear before unlinked ones).
+  defp group_by_preserving_order(items, key_fn) do
+    items
+    |> Enum.reduce({[], %{}}, fn item, {keys, groups} ->
+      key = key_fn.(item)
+
+      if Map.has_key?(groups, key) do
+        {keys, Map.update!(groups, key, &(&1 ++ [item]))}
+      else
+        {keys ++ [key], Map.put(groups, key, [item])}
+      end
+    end)
+    |> then(fn {keys, groups} -> Enum.map(keys, &{&1, groups[&1]}) end)
   end
 
   defp orchestration_prompt(:develop_context) do
@@ -124,7 +142,11 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
     body =
       if Code.ensure_loaded?(mod) and function_exported?(mod, :orchestrate, 1) do
-        mod.orchestrate(node)
+        case mod.orchestrate(node) do
+          {:ok, text} when is_binary(text) -> text
+          {:error, _reason} -> node.description || to_string(node.name)
+          text when is_binary(text) -> text
+        end
       else
         node.description || to_string(node.name)
       end

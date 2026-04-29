@@ -1,0 +1,115 @@
+defmodule CodeMySpecSpex.Story561.Criterion5624Spex do
+  @moduledoc """
+  Story 561 — Next Actionable Requirements
+  Criterion 5624 — A component linked to no story sorts after all
+  story-linked components.
+
+  Surface: get_next_requirement MCP tool. Two contexts are written
+  to the in-memory environment via the real /sync pipeline — one
+  linked to a story, one not. The orchestration grouping must
+  scope to the linked context (it sorts first by priority + link
+  rank), and the orphan must not appear ahead of the linked one.
+  """
+
+  use CodeMySpecSpex.Case
+
+  import Phoenix.LiveViewTest
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.GraphContentFixtures, as: Content
+  alias CodeMySpecSpex.StoryHelpers
+  alias CodeMySpecSpex.TaskResponseHelpers
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  spex "Story-linked contexts sort before orphan contexts" do
+    scenario "the orchestration group scopes to the story-linked context, not the orphan" do
+      given_ "two contexts synced via the real /sync pipeline", context do
+        env = context.environment
+
+        Enum.each(["LinkedContext", "OrphanContext"], fn module ->
+          :ok =
+            Environments.write_file(
+              env,
+              Content.spec_path(module),
+              Content.context_spec(module, type: "context", dependencies: [])
+            )
+
+          :ok =
+            Environments.write_file(
+              env,
+              Content.impl_path(module),
+              Content.impl_file(module)
+            )
+        end)
+
+        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/sync")
+        sync_live |> element("button[phx-click='sync']") |> render_click()
+
+        linked = Fixtures.get_component_by_module_name(context.scope, "LinkedContext")
+        orphan = Fixtures.get_component_by_module_name(context.scope, "OrphanContext")
+
+        {:ok, Map.merge(context, %{linked: linked, orphan: orphan})}
+      end
+
+      and_ "a story is linked to LinkedContext (with explicit priority 1)", context do
+        story =
+          StoryHelpers.create_and_link(context.scope, "LinkedContext",
+            title: "Linked context work",
+            description: "As an engineer, I want the linked context to take precedence.",
+            acceptance_criteria: ["LinkedContext receives the next dispatch"],
+            priority: 1
+          )
+
+        {:ok, Map.put(context, :linked_story, story)}
+      end
+
+      when_ "the agent calls get_next_requirement", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
+      end
+
+      then_ "the linked context appears in the response and the orphan does not eclipse it",
+            context do
+        linked_id = context.linked.id
+        orphan_id = context.orphan.id
+
+        linked_pos = position_of(context.response_text, "entity_id=`#{linked_id}`")
+        orphan_pos = position_of(context.response_text, "entity_id=`#{orphan_id}`")
+
+        cond do
+          linked_pos != nil and orphan_pos == nil ->
+            :ok
+
+          linked_pos == nil and orphan_pos != nil ->
+            flunk(
+              "orphan-only response: priority sort favored unlinked over linked. Response: #{context.response_text}"
+            )
+
+          linked_pos != nil and orphan_pos != nil ->
+            assert linked_pos < orphan_pos,
+                   "linked context (pos #{linked_pos}) must appear before orphan (pos #{orphan_pos}). Response: #{context.response_text}"
+
+          true ->
+            flunk(
+              "neither linked nor orphan appeared in the actionable response. Response: #{context.response_text}"
+            )
+        end
+
+        {:ok, context}
+      end
+    end
+  end
+
+  defp position_of(text, substring) do
+    case :binary.match(text, substring) do
+      {pos, _len} -> pos
+      :nomatch -> nil
+    end
+  end
+end

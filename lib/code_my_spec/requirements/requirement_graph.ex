@@ -541,25 +541,30 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # -- Sorting --
-  # Actionable nodes sorted by story priority only.
-  # The graph edges already encode execution order.
+  # Actionable nodes sorted by (priority, link_rank).
+  # link_rank breaks ties so story-linked components always sort
+  # before orphan components, and project-level requirements sort
+  # after both. The graph edges already encode within-chain
+  # execution order.
   defp sort_by_story_priority(nodes, ctx) do
     story_by_id = Map.new(ctx.stories, &{&1.id, &1})
     component_priority = build_component_priority_map(ctx)
-
-    Enum.sort_by(nodes, fn node ->
-      case node.entity_type do
-        "story" ->
-          (story_by_id[node.entity_id] && story_by_id[node.entity_id].priority) || 999
-
-        "component" ->
-          Map.get(component_priority, node.entity_id, 999)
-
-        "project" ->
-          999
-      end
-    end)
+    Enum.sort_by(nodes, &priority_sort_key(&1, story_by_id, component_priority))
   end
+
+  defp priority_sort_key(%{entity_type: "story", entity_id: id}, story_by_id, _comp_priority) do
+    story = Map.get(story_by_id, id)
+    {(story && story.priority) || 999, 0}
+  end
+
+  defp priority_sort_key(%{entity_type: "component", entity_id: id}, _story_by_id, comp_priority) do
+    case Map.fetch(comp_priority, id) do
+      {:ok, priority} -> {priority, 0}
+      :error -> {999, 1}
+    end
+  end
+
+  defp priority_sort_key(%{entity_type: "project"}, _story_by_id, _comp_priority), do: {999, 2}
 
   # Build a map of component_id → best (lowest) story priority.
   # A component inherits priority from:

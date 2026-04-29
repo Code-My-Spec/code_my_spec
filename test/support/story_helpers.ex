@@ -31,15 +31,19 @@ defmodule CodeMySpecSpex.StoryHelpers do
   def create_story(scope, attrs) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, response, _frame} =
-      CreateStory.execute(
-        %{
-          title: Keyword.fetch!(attrs, :title),
-          description: Keyword.fetch!(attrs, :description),
-          acceptance_criteria: Keyword.fetch!(attrs, :acceptance_criteria)
-        },
-        frame
-      )
+    base_params = %{
+      title: Keyword.fetch!(attrs, :title),
+      description: Keyword.fetch!(attrs, :description),
+      acceptance_criteria: Keyword.fetch!(attrs, :acceptance_criteria)
+    }
+
+    params =
+      case Keyword.fetch(attrs, :priority) do
+        {:ok, priority} -> Map.put(base_params, :priority, priority)
+        :error -> base_params
+      end
+
+    {:reply, response, _frame} = CreateStory.execute(params, frame)
 
     response
     |> extract_id()

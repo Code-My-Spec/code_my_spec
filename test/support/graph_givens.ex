@@ -67,6 +67,18 @@ defmodule CodeMySpecSpex.GraphGivens do
     each linked to one story. Produces `context.surfaces` (list of
     components) and `context.stories` (list of stories).
 
+  - `:fully_satisfied_project` — full project satisfaction state.
+    Composes existing bridge fixtures (`SetupFixtures`,
+    `TechnicalStrategyFixtures`, `CodeGenerationFixtures`,
+    `QaIntegrationPlanFixtures`, `ArchitectureFixtures`) plus
+    persona MCP creation, story MCP creation, and inline
+    qa/journey/bdd file writes. Lands the project in a state
+    where `next_actionable/1` returns `[]` (or as close as we
+    can get without reproducing test_spec_alignment). Produces
+    `context.component`, `context.story`, `context.persona_slug`,
+    `context.persona_id`. See `FullSatisfactionFixtures` for the
+    composition details and known gaps.
+
   Add new givens here only after a third spec duplicates setup
   inside an inline given_ block.
   """
@@ -224,6 +236,12 @@ defmodule CodeMySpecSpex.GraphGivens do
        dep_context: dep_context,
        story: story
      })}
+  end
+
+  # -- Full satisfaction state --
+
+  register_given :fully_satisfied_project, context do
+    {:ok, CodeMySpecSpex.FullSatisfactionFixtures.apply(context)}
   end
 
   # -- Topology: four stories, four LiveView surfaces --
