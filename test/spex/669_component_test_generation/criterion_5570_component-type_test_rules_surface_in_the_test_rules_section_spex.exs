@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story669.Criterion5570Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -27,10 +28,8 @@ defmodule CodeMySpecSpex.Story669.Criterion5570Spex do
 
   spex "Component Test Generation" do
     scenario "Component-type test rules surface in the Test Rules section" do
-      given_ "a test rule for the context component type is on disk", context do
-        rules_dir = Path.join(context.scope.cwd, ".code_my_spec/rules")
-        File.mkdir_p!(rules_dir)
-
+      given_ "a test rule for the context component type is in the project environment",
+             context do
         rule_body = """
         ---
         component_type: "context"
@@ -42,9 +41,12 @@ defmodule CodeMySpecSpex.Story669.Criterion5570Spex do
         #{@rule_signature}
         """
 
-        File.write!(Path.join(rules_dir, "context_test.md"), rule_body)
-
-        on_exit(fn -> File.rm_rf!(Path.join(context.scope.cwd, ".code_my_spec")) end)
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/rules/context_test.md",
+            rule_body
+          )
 
         {:ok, context}
       end

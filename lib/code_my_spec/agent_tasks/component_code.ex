@@ -68,7 +68,16 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   end
 
   def orchestrate(node) do
-    "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+    case node do
+      %{name: name, entity_type: entity_type, entity_id: entity_id, entity_name: entity_name}
+      when is_binary(name) and not is_nil(entity_type) and not is_nil(entity_id) and
+             not is_nil(entity_name) ->
+        {:ok,
+         "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{name}` for #{entity_type} `#{entity_id}` (#{entity_name})"}
+
+      _ ->
+        {:error, :invalid_node}
+    end
   end
 
   # Private functions
@@ -76,7 +85,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   defp get_implementation_rules(scope, component) do
     component_type = component.type
 
-    Rules.find_matching_rules(component_type, "code", scope.environment.cwd)
+    Rules.find_matching_rules(component_type, "code", scope.environment)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

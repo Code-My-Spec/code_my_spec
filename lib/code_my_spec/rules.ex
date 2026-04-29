@@ -1,44 +1,67 @@
 defmodule CodeMySpec.Rules do
   @moduledoc """
-  Simple local file-based rules system.
-  Reads rules from markdown files with YAML frontmatter in .code_my_spec/rules/.
+  Simple file-based rules system.
+  Reads rules from markdown files with YAML frontmatter in `.code_my_spec/rules/`.
+
+  Filesystem access goes through `CodeMySpec.Environments` so spex tests
+  can drive setup through the in-memory environment. When called without
+  an environment, falls back to direct `File.*` reads in the process cwd.
   """
 
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
+
   defstruct [:name, :content, :component_type, :session_type]
+
+  @rules_dir ".code_my_spec/rules"
 
   @doc """
   Finds matching rules based on component type and session type.
   Supports wildcard matching with "*".
 
-  When `working_dir` is provided, reads rules from `<working_dir>/.code_my_spec/rules/`.
-  When omitted, reads from the relative `.code_my_spec/rules/` path (process cwd).
+  The third argument is the execution environment (`Environment.t()`)
+  to read rule files from. When `nil`, falls back to the process
+  filesystem at the relative `.code_my_spec/rules/` path.
 
   ## Examples
 
-      iex> find_matching_rules("context", "coding", "/path/to/project")
+      iex> find_matching_rules("context", "coding", scope.environment)
       [%Rules{}, ...]
 
   """
-  def find_matching_rules(component_type, session_type, working_dir \\ nil) do
-    rules_dir = resolve_rules_dir(working_dir)
-
-    load_all_rules(rules_dir)
+  def find_matching_rules(component_type, session_type, env_or_nil \\ nil) do
+    env_or_nil
+    |> load_all_rules()
     |> filter_matching(component_type, session_type)
   end
 
-  defp resolve_rules_dir(nil), do: CodeMySpec.Paths.rules_dir()
-  defp resolve_rules_dir(working_dir), do: Path.join(working_dir, CodeMySpec.Paths.rules_dir())
-
   # Private functions
 
-  defp load_all_rules(rules_directory) do
-    case File.exists?(rules_directory) do
+  defp load_all_rules(%Environment{} = env) do
+    case Environments.list_directory(env, @rules_dir) do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&String.ends_with?(&1, ".md"))
+        |> Enum.map(&Path.join(@rules_dir, &1))
+        |> Enum.map(&parse_env_rule_file(env, &1))
+        |> Enum.filter(&match?({:ok, _}, &1))
+        |> Enum.map(fn {:ok, rule} -> rule end)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp load_all_rules(nil) do
+    rules_dir = CodeMySpec.Paths.rules_dir()
+
+    case File.exists?(rules_dir) do
       true ->
-        rules_directory
+        rules_dir
         |> File.ls!()
         |> Enum.filter(&String.ends_with?(&1, ".md"))
-        |> Enum.map(&Path.join(rules_directory, &1))
-        |> Enum.map(&parse_rule_file/1)
+        |> Enum.map(&Path.join(rules_dir, &1))
+        |> Enum.map(&parse_disk_rule_file/1)
         |> Enum.filter(&match?({:ok, _}, &1))
         |> Enum.map(fn {:ok, rule} -> rule end)
 
@@ -47,22 +70,31 @@ defmodule CodeMySpec.Rules do
     end
   end
 
-  defp parse_rule_file(file_path) do
-    with {:ok, content} <- File.read(file_path),
-         {:ok, frontmatter, markdown} <- parse_frontmatter(content) do
-      rule_name = Path.basename(file_path, ".md")
-
-      rule = %__MODULE__{
-        name: rule_name,
-        content: String.trim(markdown),
-        component_type: Map.get(frontmatter, "component_type", "*"),
-        session_type: Map.get(frontmatter, "session_type", "*")
-      }
-
-      {:ok, rule}
-    else
+  defp parse_env_rule_file(env, path) do
+    case Environments.read_file(env, path) do
+      {:ok, content} -> build_rule(path, content)
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp parse_disk_rule_file(path) do
+    case File.read(path) do
+      {:ok, content} -> build_rule(path, content)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp build_rule(path, content) do
+    {:ok, frontmatter, markdown} = parse_frontmatter(content)
+
+    rule = %__MODULE__{
+      name: Path.basename(path, ".md"),
+      content: String.trim(markdown),
+      component_type: Map.get(frontmatter, "component_type", "*"),
+      session_type: Map.get(frontmatter, "session_type", "*")
+    }
+
+    {:ok, rule}
   end
 
   defp parse_frontmatter(content) do

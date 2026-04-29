@@ -96,7 +96,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
   # Private functions
 
   defp get_design_rules(scope) do
-    rules = Rules.find_matching_rules("live_context", "design", scope.environment.cwd)
+    rules = Rules.find_matching_rules("live_context", "design", scope.environment)
     {:ok, rules}
   end
 

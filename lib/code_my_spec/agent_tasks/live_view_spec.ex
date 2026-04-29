@@ -75,7 +75,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
   defp get_design_rules(_scope, %{type: ""}), do: {:error, :invalid_component_type}
 
   defp get_design_rules(scope, component) do
-    Rules.find_matching_rules(component.type, "design", scope.environment.cwd)
+    Rules.find_matching_rules(component.type, "design", scope.environment)
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

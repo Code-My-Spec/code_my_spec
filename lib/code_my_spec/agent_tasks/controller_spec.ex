@@ -65,7 +65,7 @@ defmodule CodeMySpec.AgentTasks.ControllerSpec do
   end
 
   defp get_design_rules(scope, component) do
-    rules = Rules.find_matching_rules(component.type, "design", scope.environment.cwd)
+    rules = Rules.find_matching_rules(component.type, "design", scope.environment)
     {:ok, rules}
   end
 

@@ -105,7 +105,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
   # Private functions
 
   defp get_design_rules(scope) do
-    rules = Rules.find_matching_rules("context", "design", scope.environment.cwd)
+    rules = Rules.find_matching_rules("context", "design", scope.environment)
     {:ok, rules}
   end
 
