@@ -3,7 +3,9 @@ defmodule CodeMySpec.Stories.StoriesSocket do
   Long-lived Slipstream WebSocket client that connects to the server's
   stories channel and upserts stories into the local database when events arrive.
 
-  Started from BootSync after initial story sync. Reconnects automatically.
+  Started from `CodeMySpecLocalWeb.SocketSupervisor` per local account, in
+  parallel with the initial bulk pull from `Stories.BootSync`. Reconnects
+  automatically with a fresh OAuth token on disconnect.
   """
 
   use Slipstream

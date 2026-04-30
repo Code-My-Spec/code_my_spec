@@ -3,8 +3,9 @@ defmodule CodeMySpec.Issues.IssuesSocket do
   Long-lived Slipstream WebSocket client that connects to the server's
   issues channel and upserts issues into the local database when events arrive.
 
-  Started under the application supervision tree. Reconnects automatically
-  on disconnect.
+  Started from `CodeMySpecLocalWeb.SocketSupervisor` per local account, in
+  parallel with the initial bulk pull from `Stories.BootSync`. Reconnects
+  automatically with a fresh OAuth token on disconnect.
   """
 
   use Slipstream

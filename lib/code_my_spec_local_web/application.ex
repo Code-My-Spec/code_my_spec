@@ -33,8 +33,8 @@ defmodule CodeMySpecLocalWeb.Application do
       {CodeMySpec.McpServers.LocalServer, transport: {:streamable_http, start: true}},
       CodeMySpecLocalWeb.Endpoint,
       CodeMySpec.ProjectSync.FileWatcherServer,
-      CodeMySpec.Stories.BootSync,
-      CodeMySpecLocalWeb.SocketSupervisor
+      CodeMySpecLocalWeb.SocketSupervisor,
+      CodeMySpec.Stories.BootSync
     ]
 
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
