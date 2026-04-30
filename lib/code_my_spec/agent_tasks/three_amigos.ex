@@ -19,7 +19,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   Mirrors the persona research task pattern.
   """
 
-  alias CodeMySpec.Requirements.BddRulesChecker
+  alias CodeMySpec.Requirements.{BddRulesChecker, CheckerResult}
   alias CodeMySpec.Stories
 
   @spec analyzers() :: [atom()]
@@ -59,17 +59,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, task) do
     story = resolve_story(scope, task)
-
-    case BddRulesChecker.complete?(scope, story) do
-      {true, _detail} ->
-        {:ok, :valid}
-
-      {false, %{reason: reason}} when is_binary(reason) ->
-        {:ok, :invalid, reason}
-
-      {false, detail} ->
-        {:ok, :invalid, inspect(detail)}
-    end
+    scope |> BddRulesChecker.complete?(story) |> CheckerResult.to_evaluation()
   end
 
   defp resolve_story(scope, %{entity_type: :story, entity_id: entity_id}) when is_binary(entity_id) do

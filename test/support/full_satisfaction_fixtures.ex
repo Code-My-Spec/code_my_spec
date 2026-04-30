@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   - `project_setup` — via `Fixtures.satisfy_setup_steps/2`
   - `technical_strategy` — via `Fixtures.with_decisions_index/1`
   - `personas_complete` — DB persona via MCP + summary.md + sources.md
+  - `stories_exist` — DB story via `StoryHelpers.create_and_link/3`
   - `code_generation` — via `Fixtures.with_full_script/1`
   - `qa_integration_plan` — via `Fixtures.with_verified_integration_spec/2`
   - `architecture_designed` — via `Fixtures.with_proposal/2`

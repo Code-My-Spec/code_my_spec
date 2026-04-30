@@ -770,6 +770,21 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         validation_type: :manual
       }),
       new!(%{
+        id: 15,
+        name: "stories_exist",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.StoriesChecker, function: :exist?},
+        satisfied_by: AgentTasks.StoryInterview,
+        artifact_type: :specification,
+        description:
+          "At least one story exists for the project (acceptance criteria come later via Three Amigos)",
+        prerequisites: [1],
+        # Multi-turn PM intake conversation — same rationale as
+        # personas_complete and three_amigos_complete.
+        validation_type: :manual
+      }),
+      new!(%{
         id: 3,
         name: "code_generation",
         node_scope: :self,
@@ -801,7 +816,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.ArchitectureDesign,
         artifact_type: :specification,
         description: "Architecture proposal executed",
-        prerequisites: [4]
+        prerequisites: [4, 15]
       }),
       new!(%{
         id: 6,

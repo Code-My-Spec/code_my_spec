@@ -51,6 +51,7 @@ defmodule CodeMySpec.Stories do
   """
   def list_stories(scope), do: impl().list_stories(scope)
   def list_project_stories(scope), do: impl().list_project_stories(scope)
+  def project_has_stories?(scope), do: impl().project_has_stories?(scope)
 
   @doc """
   Lists stories with pagination and optional search.

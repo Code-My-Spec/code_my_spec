@@ -5,14 +5,16 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.{ComponentSync, FileSync}
+  alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Stories
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "project_graph/1 — full project with stories, contexts, and dependencies" do
@@ -161,11 +163,35 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       # Component tree has no files yet, so bdd_specs_passing should be blocked
       refute MapSet.member?(actionable_keys, {"story", "bdd_specs_passing"})
     end
+
+    test "stories_exist surfaces when project_setup is satisfied and no stories exist" do
+      {scope, _tmp_dir} = setup_project_with_setup_only()
+
+      actionable = Requirements.next_actionable_project(scope)
+      names = MapSet.new(actionable, & &1.name)
+
+      assert MapSet.member?(names, "stories_exist"),
+             "stories_exist should surface as actionable on a project with setup but no stories — got #{inspect(MapSet.to_list(names))}"
+
+      # And architecture is still gated until at least one story exists.
+      refute MapSet.member?(names, "architecture_designed"),
+             "architecture_designed should remain blocked until stories_exist is satisfied"
+    end
+
+    test "stories_exist drops out of actionable once a story is created" do
+      {scope, _tmp_dir} = setup_full_project()
+
+      actionable = Requirements.next_actionable_project(scope)
+      names = MapSet.new(actionable, & &1.name)
+
+      refute MapSet.member?(names, "stories_exist"),
+             "stories_exist should be satisfied when at least one story exists on the project"
+    end
   end
 
   # -- Setup helpers --
 
-  defp setup_full_project do
+  defp setup_project_with_setup_only do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
@@ -177,10 +203,15 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
         environment: Environment.new(:local, tmp_dir)
     }
 
-    # Seed minimal setup files so project_setup passes, then sync
-    CodeMySpec.Integration.WorkflowHelpers.seed_all_setup_steps(tmp_dir)
+    WorkflowHelpers.seed_all_setup_steps(tmp_dir)
     {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-    CodeMySpec.Files.ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
+    ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
+
+    {scope, tmp_dir}
+  end
+
+  defp setup_full_project do
+    {scope, tmp_dir} = setup_project_with_setup_only()
 
     # Create context with child component
     {:ok, context} =

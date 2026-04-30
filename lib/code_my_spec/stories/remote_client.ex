@@ -72,6 +72,13 @@ defmodule CodeMySpec.Stories.RemoteClient do
     {:ok, Enum.map(body["data"], &deserialize_story/1)}
   end
 
+  def project_has_stories?(%Scope{} = scope, opts \\ []) do
+    case list_project_stories(scope, opts) do
+      {:ok, [_ | _]} -> true
+      _ -> false
+    end
+  end
+
   def list_project_stories_paginated(%Scope{} = scope, opts \\ []) do
     {client_opts, query_opts} = split_opts(opts)
     client = new(scope, client_opts)

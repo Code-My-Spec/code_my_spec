@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
   `{boolean, map}` return into the standard task-evaluation tuple.
   """
 
-  alias CodeMySpec.Requirements.PersonasChecker
+  alias CodeMySpec.Requirements.{CheckerResult, PersonasChecker}
 
   @spec analyzers() :: [atom()]
   def analyzers, do: []
@@ -31,16 +31,7 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
   @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, _task) do
-    case PersonasChecker.complete?(scope, nil) do
-      {true, _detail} ->
-        {:ok, :valid}
-
-      {false, %{reason: reason}} when is_binary(reason) ->
-        {:ok, :invalid, reason}
-
-      {false, detail} ->
-        {:ok, :invalid, inspect(detail)}
-    end
+    scope |> PersonasChecker.complete?(nil) |> CheckerResult.to_evaluation()
   end
 
   defp prompt do

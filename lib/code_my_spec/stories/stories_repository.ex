@@ -24,6 +24,10 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     {:ok, stories}
   end
 
+  def project_has_stories?(%Scope{} = scope) do
+    Repo.exists?(from s in Story, where: s.project_id == ^scope.active_project.id)
+  end
+
   @doc """
   Lists stories with pagination and optional search.
   Returns {stories, total_count}.
