@@ -301,6 +301,68 @@ defmodule CodeMySpec.Requirements.TopologyTest do
 
   # ── fans_out_to_children?/3 ───────────────────────────────────────
 
+  # ── transitive_reduction/1 ────────────────────────────────────────
+
+  describe "transitive_reduction/1" do
+    test "drops a direct edge when a longer path exists" do
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+      c = req(entity_type: "p", entity_id: 1, name: "c")
+
+      edges = [edge(k(a), k(b)), edge(k(b), k(c)), edge(k(a), k(c))]
+      reduced = Topology.transitive_reduction(edges)
+
+      assert MapSet.new(reduced) ==
+               MapSet.new([edge(k(a), k(b)), edge(k(b), k(c))])
+    end
+
+    test "preserves edges with no alternative path (linear chain)" do
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+      c = req(entity_type: "p", entity_id: 1, name: "c")
+
+      edges = [edge(k(a), k(b)), edge(k(b), k(c))]
+      assert Topology.transitive_reduction(edges) == edges
+    end
+
+    test "preserves a diamond's branch edges (two distinct paths to the same target)" do
+      # a → b, a → c, b → d, c → d  — both b→d and c→d survive,
+      # neither has a longer path through the other.
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+      c = req(entity_type: "p", entity_id: 1, name: "c")
+      d = req(entity_type: "p", entity_id: 1, name: "d")
+
+      edges = [edge(k(a), k(b)), edge(k(a), k(c)), edge(k(b), k(d)), edge(k(c), k(d))]
+      reduced = Topology.transitive_reduction(edges)
+
+      assert MapSet.new(reduced) == MapSet.new(edges)
+    end
+
+    test "drops a→d when a→b→c→d exists alongside the direct edge" do
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+      c = req(entity_type: "p", entity_id: 1, name: "c")
+      d = req(entity_type: "p", entity_id: 1, name: "d")
+
+      edges = [
+        edge(k(a), k(b)),
+        edge(k(b), k(c)),
+        edge(k(c), k(d)),
+        edge(k(a), k(d))
+      ]
+
+      reduced = Topology.transitive_reduction(edges)
+
+      assert MapSet.new(reduced) ==
+               MapSet.new([edge(k(a), k(b)), edge(k(b), k(c)), edge(k(c), k(d))])
+    end
+
+    test "empty edge list reduces to empty" do
+      assert Topology.transitive_reduction([]) == []
+    end
+  end
+
   describe "fans_out_to_children?/3" do
     test "true when a parent-scope node has outgoing edges to nodes of the same type with different entity_id" do
       parent = req(entity_type: "component", entity_id: 1, name: "spec_valid", parent_entity_id: 1)

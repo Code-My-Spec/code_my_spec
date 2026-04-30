@@ -189,6 +189,41 @@ defmodule CodeMySpec.Requirements.Topology do
   end
 
   @doc """
+  Returns `edges` with transitively-redundant edges removed. An
+  edge `A → B` is redundant iff there exists a path
+  `A → … → B` of length ≥ 2 — i.e., one of `A`'s other successors
+  reaches `B`. The longer path enforces the same gating, so
+  reachability is preserved.
+
+  Expects a DAG; cycles produce undefined edge selection but the
+  algorithm terminates via the visited set.
+  """
+  @spec transitive_reduction([edge()]) :: [edge()]
+  def transitive_reduction(edges) do
+    outgoing = group_edges(edges, & &1.from, & &1.to)
+
+    Enum.reject(edges, fn %{from: a, to: b} ->
+      outgoing
+      |> Map.get(a, [])
+      |> Enum.any?(fn s -> s != b and reachable?(s, b, outgoing, MapSet.new()) end)
+    end)
+  end
+
+  defp reachable?(from, to, _outgoing, _visited) when from == to, do: true
+
+  defp reachable?(from, to, outgoing, visited) do
+    if MapSet.member?(visited, from) do
+      false
+    else
+      visited = MapSet.put(visited, from)
+
+      outgoing
+      |> Map.get(from, [])
+      |> Enum.any?(&reachable?(&1, to, outgoing, visited))
+    end
+  end
+
+  @doc """
   True iff `node` has at least one outgoing edge to one of its
   children — a node that shares `node`'s `entity_type` AND whose
   `parent_entity_id` is `node.entity_id`. The structural signature

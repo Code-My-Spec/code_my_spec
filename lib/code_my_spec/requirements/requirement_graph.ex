@@ -16,6 +16,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
   @type node_key :: {String.t(), any(), String.t()}
@@ -127,15 +128,21 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Edge computation --
 
-  defp compute_edges(_nodes, ctx, config) do
+  defp compute_edges(nodes, ctx, config) do
     # Template edges are computed during instantiation (stored in ctx)
     template_edges = ctx[:template_edges] || []
 
-    template_edges ++
-      project_to_story_edges(ctx) ++
-      component_tree_edges(ctx, config) ++
-      cross_context_dependency_edges(ctx, config) ++
-      story_to_project_edges(ctx)
+    node_keys = MapSet.new(nodes, &Topology.node_key/1)
+
+    (template_edges ++
+       project_to_story_edges(ctx) ++
+       component_tree_edges(ctx, config) ++
+       cross_context_dependency_edges(ctx, config) ++
+       story_to_project_edges(ctx))
+    |> Enum.filter(fn %{from: f, to: t} ->
+      MapSet.member?(node_keys, f) and MapSet.member?(node_keys, t)
+    end)
+    |> Topology.transitive_reduction()
   end
 
   # Cross-entity: story ↔ surface component only.
