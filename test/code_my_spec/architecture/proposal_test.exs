@@ -305,7 +305,8 @@ defmodule CodeMySpec.Architecture.ProposalTest do
           ],
           surface_components: [
             %{name: "MetricFlowWeb.AILive", type: "liveview", story_ids: [1]}
-          ]
+          ],
+          dependencies: [%{from: "MetricFlowWeb.AILive", to: "MetricFlow.AI"}]
         })
 
       assert {:ok, _} = Proposal.validate(proposal)
@@ -579,8 +580,8 @@ defmodule CodeMySpec.Architecture.ProposalTest do
 
     test "links stories to every component declaring story_ids; surface wins on overwrite",
          %{tmp_dir: tmp_dir, scope: scope} do
-      alias CodeMySpec.Stories
       alias CodeMySpec.Components
+      alias CodeMySpec.Stories
 
       # Create stories to link
       {:ok, story1} = Stories.create_story(scope, %{title: "Story 1", description: "First story"})
@@ -638,8 +639,8 @@ defmodule CodeMySpec.Architecture.ProposalTest do
     end
 
     test "links stories to pre-existing surface components", %{tmp_dir: tmp_dir, scope: scope} do
-      alias CodeMySpec.Stories
       alias CodeMySpec.Components
+      alias CodeMySpec.Stories
 
       # Create a component that already exists before proposal execution
       {:ok, existing_component} =

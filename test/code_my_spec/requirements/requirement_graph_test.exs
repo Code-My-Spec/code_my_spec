@@ -83,6 +83,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
+      # Write an impl file so the component survives ComponentSync.cleanup_removed
+      # and isn't classified as infrastructure (its path isn't in the seeded
+      # infrastructure_paths list).
+      File.mkdir_p!(Path.join(tmp_dir, "lib/my_app"))
+      File.write!(
+        Path.join(tmp_dir, "lib/my_app/widget.ex"),
+        "defmodule MyApp.Widget do\nend\n"
+      )
+
       {:ok, _} =
         Components.create_component(scope, %{
           name: "Widget",

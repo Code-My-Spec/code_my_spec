@@ -36,6 +36,7 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   @type context :: %{
           name: String.t(),
+          type: String.t(),
           description: String.t(),
           children: [component()],
           story_ids: [integer()]
@@ -137,6 +138,7 @@ defmodule CodeMySpec.Architecture.Proposal do
       |> check_dependency_cycles(proposal)
       |> check_duplicate_names(proposal)
       |> check_dependency_resolution(proposal, known_db_components)
+      |> check_orphan_components(proposal)
 
     if errors == [] do
       {:ok, proposal}
@@ -175,7 +177,7 @@ defmodule CodeMySpec.Architecture.Proposal do
       |> Enum.flat_map(fn ctx ->
         parent = %{
           module_name: ctx.name,
-          type: "context",
+          type: Map.get(ctx, :type, "context"),
           description: ctx.description,
           story_ids: ctx.story_ids,
           dependencies: Map.get(deps_map, ctx.name, [])
@@ -252,6 +254,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     Enum.map(contexts, fn ctx ->
       %{
         name: normalize_name(ctx),
+        type: get_attr(ctx, :type, "context"),
         description: get_attr(ctx, :description, ""),
         children: normalize_components(get_attr(ctx, :children, [])),
         story_ids: get_attr(ctx, :story_ids, [])
@@ -322,10 +325,15 @@ defmodule CodeMySpec.Architecture.Proposal do
     app_name = Macro.camelize(proposal.app_name)
     app_web = "#{app_name}Web"
 
-    # Contexts must start with app_name
+    # Contexts must start with app_name. Infrastructure-typed entries
+    # (framework-generated modules like the OTP application or web endpoint)
+    # bypass this — they live at canonical Phoenix paths whose module names
+    # don't follow the App. namespace.
     invalid_contexts =
       proposal.contexts
-      |> Enum.reject(fn ctx -> String.starts_with?(ctx.name, "#{app_name}.") end)
+      |> Enum.reject(fn ctx ->
+        ctx.type == "infrastructure" or String.starts_with?(ctx.name, "#{app_name}.")
+      end)
       |> Enum.map(& &1.name)
 
     # Surface components must start with app_name + "Web"
@@ -539,6 +547,87 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
+  # Every non-infrastructure context must be either (a) directly story-linked
+  # (own or via a child), or (b) reachable as a transitive dependency from a
+  # story-linked component. Otherwise it's an orphan — declared but with no
+  # work to drive, which is the architectural smell the rule catches.
+  #
+  # Infrastructure-typed contexts (framework-generated OTP/web modules) are
+  # exempt. They're declared so they're tracked, not because they need
+  # specs/tests/implementation work.
+  defp check_orphan_components(errors, proposal) do
+    story_linked_names = collect_story_linked_names(proposal)
+    deps_graph = build_dependency_graph(proposal)
+    reachable = transitive_reachable(story_linked_names, deps_graph)
+
+    orphans =
+      proposal.contexts
+      |> Enum.reject(fn ctx ->
+        ctx.type == "infrastructure" or
+          context_story_linked?(ctx) or
+          MapSet.member?(reachable, ctx.name)
+      end)
+      |> Enum.map(& &1.name)
+
+    if orphans == [] do
+      errors
+    else
+      [
+        %{
+          type: :orphan_components,
+          message:
+            "Components must be linked to a story, transitively depended on by a story-linked component, or marked as infrastructure",
+          details: %{orphan_components: orphans}
+        }
+        | errors
+      ]
+    end
+  end
+
+  defp context_story_linked?(ctx) do
+    Map.get(ctx, :story_ids, []) != [] or
+      Enum.any?(Map.get(ctx, :children, []), fn child ->
+        Map.get(child, :story_ids, []) != []
+      end)
+  end
+
+  defp collect_story_linked_names(proposal) do
+    surface_names =
+      proposal.surface_components
+      |> Enum.filter(fn comp ->
+        Map.get(comp, :story_ids, []) != [] or
+          Enum.any?(Map.get(comp, :children, []), fn child ->
+            Map.get(child, :story_ids, []) != []
+          end)
+      end)
+      |> Enum.map(& &1.name)
+
+    context_names =
+      proposal.contexts
+      |> Enum.filter(&context_story_linked?/1)
+      |> Enum.map(& &1.name)
+
+    MapSet.new(surface_names ++ context_names)
+  end
+
+  defp transitive_reachable(seeds, deps_graph) do
+    Enum.reduce(seeds, MapSet.new(), fn seed, acc ->
+      walk_deps(seed, deps_graph, acc)
+    end)
+  end
+
+  defp walk_deps(node, deps_graph, visited) do
+    if MapSet.member?(visited, node) do
+      visited
+    else
+      visited = MapSet.put(visited, node)
+
+      deps_graph
+      |> Map.get(node, [])
+      |> Enum.reduce(visited, fn neighbor, acc -> walk_deps(neighbor, deps_graph, acc) end)
+    end
+  end
+
   defp collect_all_component_names(proposal) do
     context_names =
       Enum.flat_map(proposal.contexts, fn ctx ->
@@ -581,7 +670,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     end
   end
 
-  @valid_types ~w(context schema module liveview liveview_component live_context controller component channel plug)
+  @valid_types ~w(context schema module liveview liveview_component live_context controller component channel plug infrastructure)
 
   defp check_invalid_types(errors, proposal) do
     # Collect all types from children and surface components
@@ -754,6 +843,14 @@ defmodule CodeMySpec.Architecture.Proposal do
     components
     |> Enum.reduce_while({:ok, []}, &write_one_spec(env, &1, &2))
     |> finalize_spec_writes()
+  end
+
+  # Infrastructure components are framework-generated modules (OTP application,
+  # web endpoint, mailer, etc.). They get a Component row in the DB but no spec
+  # stub — their requirement graph template is empty, so no agent work is
+  # driven for them.
+  defp write_one_spec(_env, %{type: "infrastructure"} = comp_attrs, {:ok, created}) do
+    {:cont, {:ok, [comp_attrs | created]}}
   end
 
   defp write_one_spec(env, comp_attrs, {:ok, created}) do

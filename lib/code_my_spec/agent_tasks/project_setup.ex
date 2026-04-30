@@ -26,7 +26,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
     Setup.TestSupportNamespace,
     Setup.SpexCase,
     Setup.ProjectStructure,
-    Setup.IgnoredPaths,
     Setup.AgentsMd,
     Setup.Rules,
     Setup.CredoChecks,

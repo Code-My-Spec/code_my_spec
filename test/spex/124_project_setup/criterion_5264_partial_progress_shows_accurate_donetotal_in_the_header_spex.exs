@@ -5,7 +5,10 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
 
   Progress is visible in the prompt: with three steps explicitly
   satisfied (and TestSupportNamespace passing by default), the header
-  reads `Project Setup (4/13)`.
+  reads `Project Setup (4/12)`.
+
+  TestSupportNamespace passes by default — see fixture invariants in
+  `test/support/fixtures/setup_fixtures.ex`.
 
   Surface: `/projects/:project_name/requirements/project_setup`.
   """
@@ -20,7 +23,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
   spex "Progress is visible in the prompt" do
     scenario "partial progress shows accurate (done/total) header" do
       # Fixture satisfies 3 steps explicitly. TestSupportNamespace passes
-      # by default (missing conn_case.ex / data_case.ex), giving 4/13.
+      # by default (missing conn_case.ex / data_case.ex), giving 4/12.
       given_ "three specific steps are satisfied", context do
         Fixtures.reset_setup_env(context.environment)
 
@@ -40,8 +43,8 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
         {:ok, Map.put(context, :view, view)}
       end
 
-      then_ "the header reads Project Setup (4/13)", context do
-        assert render(context.view) =~ "Project Setup (4/13)"
+      then_ "the header reads Project Setup (4/12)", context do
+        assert render(context.view) =~ "Project Setup (4/12)"
         {:ok, context}
       end
     end

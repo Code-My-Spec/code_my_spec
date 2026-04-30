@@ -40,6 +40,7 @@ defmodule CodeMySpec.Documents.Parsers.ContextParser do
 
     %{
       name: module_name,
+      type: fields["type"] || "context",
       description: description,
       story_ids: parse_story_ids(fields["stories"]),
       children: children

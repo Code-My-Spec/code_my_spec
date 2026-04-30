@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5263Spex do
   Criterion 5263 — Multiple incomplete steps are named and their prompts inlined.
 
   Completion is gated per-step. With three steps incomplete, the header
-  reports 10/13 and each incomplete step's inline prompt heading is
+  reports 9/12 and each incomplete step's inline prompt heading is
   rendered.
 
   Surface: `/projects/:project_name/requirements/project_setup`.
@@ -40,8 +40,8 @@ defmodule CodeMySpecSpex.Story124.Criterion5263Spex do
         {:ok, Map.put(context, :view, view)}
       end
 
-      then_ "the progress header reports 10/13", context do
-        assert render(context.view) =~ "Project Setup (10/13)"
+      then_ "the progress header reports 9/12", context do
+        assert render(context.view) =~ "Project Setup (9/12)"
         {:ok, context}
       end
 

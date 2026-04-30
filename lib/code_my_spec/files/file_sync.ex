@@ -34,13 +34,13 @@ defmodule CodeMySpec.Files.FileSync do
   def sync(%Scope{environment: env} = scope, _opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
-    # Load ignored paths from config
-    ignored_patterns = load_ignored_paths(scope)
-
-    # Stream filesystem, classify, stat — filtering ignored
+    # `infrastructure_paths` is no longer a sync-time filter — it's a classifier
+    # consulted by `ComponentSync`. Framework files now sync into the DB and
+    # get tagged with `type: "infrastructure"` downstream, giving them an empty
+    # requirement graph (no work driven) without removing them from tracking.
     file_entries =
       env
-      |> stream_files(ignored_patterns)
+      |> stream_files()
       |> Enum.to_list()
 
     scan_ms = System.monotonic_time(:millisecond) - start
@@ -105,11 +105,9 @@ defmodule CodeMySpec.Files.FileSync do
   def sync_changed(%Scope{environment: env} = scope, _opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
-    ignored_patterns = load_ignored_paths(scope)
-
     file_entries =
       env
-      |> stream_files(ignored_patterns)
+      |> stream_files()
       |> Enum.to_list()
 
     scan_ms = System.monotonic_time(:millisecond) - start
@@ -190,10 +188,9 @@ defmodule CodeMySpec.Files.FileSync do
   def sync_path(%Scope{environment: env} = scope, abs_path, opts \\ []) do
     base_dir = Keyword.get(opts, :base_dir, env.cwd || ".")
     rel_path = Path.relative_to(abs_path, base_dir)
-    ignored_patterns = load_ignored_paths(scope)
 
     cond do
-      ignored_path?(rel_path) or matches_ignored_pattern?(rel_path, ignored_patterns) ->
+      ignored_path?(rel_path) ->
         {:ok, %{changed_path: nil}}
 
       classified = classify(rel_path) ->
@@ -467,17 +464,17 @@ defmodule CodeMySpec.Files.FileSync do
   defp validate_setup_config(content) do
     error =
       case YamlElixir.read_from_string(content) do
-        {:ok, %{"ignored_paths" => paths}} when is_list(paths) and paths != [] ->
+        {:ok, %{"infrastructure_paths" => paths}} when is_list(paths) and paths != [] ->
           nil
 
         {:ok, _} ->
-          "`.code_my_spec/config.yml` exists but has no `ignored_paths` list."
+          "`.code_my_spec/config.yml` exists but has no `infrastructure_paths` list."
 
         _ ->
           "`.code_my_spec/config.yml` is not valid YAML"
       end
 
-    %{errors: %{ignored_paths: error}, data: %{}}
+    %{errors: %{infrastructure_paths: error}, data: %{}}
   end
 
   # test/support files: which checks apply depends on filename. Dispatch on
@@ -720,12 +717,22 @@ defmodule CodeMySpec.Files.FileSync do
     end)
   end
 
-  defp load_ignored_paths(%Scope{cwd: nil}), do: []
+  @doc """
+  Loads `infrastructure_paths` from `.code_my_spec/config.yml`.
 
-  defp load_ignored_paths(%Scope{cwd: cwd}) do
+  Returns the list of path patterns the user has classified as framework
+  infrastructure. ComponentSync uses this list to tag matching components
+  with `type: "infrastructure"` so they get an empty requirement graph
+  (no spec/test/impl work driven) but still appear as first-class
+  components in the architecture view.
+  """
+  @spec load_infrastructure_paths(Scope.t()) :: [String.t()]
+  def load_infrastructure_paths(%Scope{cwd: nil}), do: []
+
+  def load_infrastructure_paths(%Scope{cwd: cwd}) do
     case Scope.read_local_config(cwd) do
       {:ok, config} ->
-        case config["ignored_paths"] do
+        case config["infrastructure_paths"] do
           list when is_list(list) -> list
           _ -> []
         end
@@ -734,6 +741,10 @@ defmodule CodeMySpec.Files.FileSync do
         []
     end
   end
+
+  @doc "Whether `path` matches any of `patterns` (literal or `*` glob)."
+  @spec infrastructure_path?(String.t(), [String.t()]) :: boolean()
+  def infrastructure_path?(path, patterns), do: matches_ignored_pattern?(path, patterns)
 
   # .code_my_spec/qa/{story_id}/brief.md
   defp match_qa_file?(path, filename) do

@@ -16,13 +16,12 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   - `.code_my_spec/tasks/code_generation.sh` — reproducible script of all generator commands run
   """
 
+  alias CodeMySpec.AgentTasks.Setup.Helpers
+  alias CodeMySpec.{Environments, Paths}
 
   def orchestrate(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
-
-  alias CodeMySpec.{Environments, Paths}
-  alias CodeMySpec.AgentTasks.Setup.Helpers
 
   @artifact_path Path.join(Paths.tasks_dir(), "code_generation.sh")
 
@@ -307,12 +306,14 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     2. Run `mix ecto.migrate` to apply all pending migrations
     3. Run `mix test` to verify nothing is broken
 
-    ### Step 4: Update Ignored Paths
+    ### Step 4: Update Infrastructure Paths
 
     The generators create framework/infrastructure modules that should be added
-    to `.code_my_spec/config.yml` `ignored_paths`. Add paths for generated modules
-    like `lib/#{app_name}/vault.ex`, `lib/#{app_name}/encrypted/*`,
-    `lib/#{app_name}/authorization.ex`, etc.
+    to `.code_my_spec/config.yml` `infrastructure_paths`. Add paths for generated
+    modules like `lib/#{app_name}/vault.ex`, `lib/#{app_name}/encrypted/*`,
+    `lib/#{app_name}/authorization.ex`, etc. ComponentSync will tag matching
+    components with `type: "infrastructure"` so they get an empty requirement
+    graph (no work driven) but still appear as first-class components.
 
     ### Step 5: Record the Generation Script
 

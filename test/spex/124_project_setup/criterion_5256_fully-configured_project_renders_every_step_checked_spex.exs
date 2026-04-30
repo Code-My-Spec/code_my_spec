@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
   Criterion 5256 — Fully-configured project renders every step checked.
 
   Setup is idempotent: re-running on a project where every step is
-  already satisfied renders all 13 steps as checked, with no inline
+  already satisfied renders all 12 steps as checked, with no inline
   prompts.
 
   Surface: `/projects/:project_name/requirements/project_setup`.
@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
       end
 
       then_ "the progress header reports all steps done", context do
-        assert render(context.view) =~ "Project Setup (13/13)"
+        assert render(context.view) =~ "Project Setup (12/12)"
         {:ok, context}
       end
 

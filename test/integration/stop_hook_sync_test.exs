@@ -56,33 +56,36 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # Test 2: ignored components excluded from tracking
   # ============================================================================
 
-  describe "ignored components" do
-    test "files matching ignored_paths config are excluded from sync" do
+  describe "infrastructure_paths classification" do
+    test "files matching infrastructure_paths config are tagged as infrastructure" do
       {scope, tmp_dir} = setup_component_scenario()
 
-      # Write config with ignored paths
       config_dir = Path.join(tmp_dir, ".code_my_spec")
       File.mkdir_p!(config_dir)
 
       File.write!(Path.join(config_dir, "config.yml"), """
-      ignored_paths:
-        - "lib/my_app/ignored.ex"
-        - ".code_my_spec/spec/my_app/ignored.spec.md"
+      infrastructure_paths:
+        - "lib/my_app/infra.ex"
       """)
 
-      # Write files for both tracked and ignored
+      # Write files for both regular and infra-classified components
       write_spec_file(tmp_dir, "my_app/tracked", "MyApp.Tracked")
       write_impl_file(tmp_dir, "my_app/tracked", "MyApp.Tracked")
-      write_spec_file(tmp_dir, "my_app/ignored", "MyApp.Ignored")
-      write_impl_file(tmp_dir, "my_app/ignored", "MyApp.Ignored")
+      write_impl_file(tmp_dir, "my_app/infra", "MyApp.Infra")
 
-      # Sync files + components
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
       {:ok, comp_result} = FileComponentSync.sync_from_files(scope, base_dir: tmp_dir)
 
-      module_names = Enum.map(comp_result.all_components, & &1.module_name)
-      assert "MyApp.Tracked" in module_names
-      refute "MyApp.Ignored" in module_names
+      by_name = Map.new(comp_result.all_components, &{&1.module_name, &1})
+
+      assert Map.has_key?(by_name, "MyApp.Tracked")
+      assert by_name["MyApp.Tracked"].type != "infrastructure"
+
+      assert Map.has_key?(by_name, "MyApp.Infra"),
+             "expected MyApp.Infra to be synced (classify, not skip)"
+
+      assert by_name["MyApp.Infra"].type == "infrastructure",
+             "expected MyApp.Infra to be classified as infrastructure"
     end
   end
 

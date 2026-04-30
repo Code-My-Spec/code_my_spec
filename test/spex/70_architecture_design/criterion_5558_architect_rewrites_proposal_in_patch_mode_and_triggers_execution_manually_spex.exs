@@ -77,6 +77,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5558Spex do
         ## Dependencies
 
         - #{app}Web.FeatureLive -> #{app}.Feature
+        - #{app}.Feature -> #{app}.Existing
         """
 
         :ok =

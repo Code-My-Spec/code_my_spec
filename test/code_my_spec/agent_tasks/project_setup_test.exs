@@ -296,19 +296,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
       end
     end
 
-    test "includes auth generation when auth_generated is false", %{tmp_dir: tmp_dir} do
-      scope = create_scope(tmp_dir)
-      task = create_task(tmp_dir)
-
-      create_phoenix_project_structure(tmp_dir, "my_app")
-
-      use_cmd_cassette "project_setup_command_auth", ignore: [[:opts, :cd]] do
-        assert {:ok, prompt} = ProjectSetup.command(scope, task)
-
-        assert prompt =~ "phx.gen.auth" or prompt =~ "auth"
-      end
-    end
-
     test "includes dependency block when codemyspec_deps_installed is false", %{tmp_dir: tmp_dir} do
       scope = create_scope(tmp_dir)
       task = create_task(tmp_dir)

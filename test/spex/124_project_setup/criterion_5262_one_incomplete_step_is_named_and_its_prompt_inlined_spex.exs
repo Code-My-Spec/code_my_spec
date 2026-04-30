@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5262Spex do
   Criterion 5262 — One incomplete step is named and its prompt inlined.
 
   Completion is gated per-step. With one step incomplete, the header
-  reports 12/13 and only that step's inline prompt heading is rendered.
+  reports 11/12 and only that step's inline prompt heading is rendered.
 
   Surface: `/projects/:project_name/requirements/project_setup`.
   """
@@ -37,8 +37,8 @@ defmodule CodeMySpecSpex.Story124.Criterion5262Spex do
         {:ok, Map.put(context, :view, view)}
       end
 
-      then_ "the progress header reports 12/13", context do
-        assert render(context.view) =~ "Project Setup (12/13)"
+      then_ "the progress header reports 11/12", context do
+        assert render(context.view) =~ "Project Setup (11/12)"
         {:ok, context}
       end
 

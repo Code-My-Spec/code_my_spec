@@ -22,6 +22,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -52,28 +53,18 @@ defmodule CodeMySpec.Files.ComponentSync do
     start = System.monotonic_time(:millisecond)
     env = scope.environment
 
-    project_id = scope.active_project_id
+    {spec_files, impl_files} = query_files(scope, changed_paths)
 
-    # Query files — scoped to changed_paths when doing incremental sync
-    {spec_files, impl_files} =
-      if incremental? do
-        {
-          File
-          |> where([f], f.project_id == ^project_id and f.role == :spec and f.path in ^changed_paths)
-          |> Repo.all(),
-          File
-          |> where([f], f.project_id == ^project_id and f.role == :implementation and f.path in ^changed_paths)
-          |> Repo.all()
-        }
-      else
-        {
-          File |> where([f], f.project_id == ^project_id and f.role == :spec) |> Repo.all(),
-          File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
-        }
-      end
+    # `infrastructure_paths` classifies framework-generated modules as
+    # `type: "infrastructure"` — components for them get an empty
+    # requirement graph, so no agent work is driven. The classifier wins
+    # over the impl-only type fallback (`module`) but loses to an
+    # explicit type written in a spec file (the architect's word is
+    # authoritative when present).
+    infra_paths = FileSync.load_infrastructure_paths(scope)
 
     spec_data = Enum.map(spec_files, &parse_spec_file(&1, env))
-    impl_data = Enum.map(impl_files, &parse_impl_file(&1, env))
+    impl_data = Enum.map(impl_files, &parse_impl_file(&1, env, infra_paths))
     merged = merge_by_module_name(spec_data, impl_data)
 
     if merged == [] do
@@ -81,59 +72,76 @@ defmodule CodeMySpec.Files.ComponentSync do
       Logger.info("[Files.ComponentSync] No components to sync (#{ms}ms)")
       {:ok, %{all_components: [], changed_component_ids: []}}
     else
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      do_sync(scope, merged, incremental?, start)
+    end
+  end
 
-      # Load all existing components (needed for parent/dependency resolution)
-      existing_components = Components.list_components(scope)
-      existing_map = Map.new(existing_components, &{&1.module_name, &1})
+  defp query_files(%Scope{active_project_id: project_id}, changed_paths) when is_list(changed_paths) do
+    {
+      File
+      |> where([f], f.project_id == ^project_id and f.role == :spec and f.path in ^changed_paths)
+      |> Repo.all(),
+      File
+      |> where([f], f.project_id == ^project_id and f.role == :implementation and f.path in ^changed_paths)
+      |> Repo.all()
+    }
+  end
 
-      # Upsert only affected components
-      synced_components = Enum.map(merged, &upsert_component(scope, &1, now))
+  defp query_files(%Scope{active_project_id: project_id}, _changed_paths) do
+    {
+      File |> where([f], f.project_id == ^project_id and f.role == :spec) |> Repo.all(),
+      File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
+    }
+  end
 
-      # Build full component map: existing merged with freshly synced
-      component_map =
-        existing_map
-        |> Map.merge(Map.new(synced_components, &{&1.module_name, &1}))
+  defp do_sync(scope, merged, incremental?, start) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      # Detect which components changed (new or updated)
-      changed_component_ids =
-        synced_components
-        |> Enum.filter(fn c ->
-          case Map.get(existing_map, c.module_name) do
-            nil -> true
-            existing -> existing.updated_at != c.updated_at
-          end
-        end)
-        |> Enum.map(& &1.id)
+    existing_components = Components.list_components(scope)
+    existing_map = Map.new(existing_components, &{&1.module_name, &1})
 
-      # Derive parent relationships (only for affected components)
-      update_parent_relationships(scope, synced_components, component_map)
+    synced_components = Enum.map(merged, &upsert_component(scope, &1, now))
 
-      # Sync dependencies from spec declarations (only for affected components)
-      sync_dependencies(scope, merged, component_map)
+    component_map =
+      Map.merge(existing_map, Map.new(synced_components, &{&1.module_name, &1}))
 
-      # Only cleanup removed components on full sync
-      unless incremental? do
-        all_module_names = MapSet.new(merged, & &1.module_name)
-        cleanup_removed(scope, existing_components, all_module_names)
-      end
+    changed_component_ids = compute_changed_ids(synced_components, existing_map)
 
-      # Backfill component_id on affected files only
-      affected_map = Map.new(synced_components, &{&1.module_name, &1})
-      backfill_file_owners(scope, affected_map)
+    update_parent_relationships(scope, synced_components, component_map)
+    sync_dependencies(scope, merged, component_map)
 
-      ms = System.monotonic_time(:millisecond) - start
+    unless incremental? do
+      all_module_names = MapSet.new(merged, & &1.module_name)
+      cleanup_removed(scope, existing_components, all_module_names)
+    end
 
-      Logger.info(
-        "[Files.ComponentSync] #{length(synced_components)} components synced in #{ms}ms " <>
-          "(#{length(changed_component_ids)} changed)"
-      )
+    affected_map = Map.new(synced_components, &{&1.module_name, &1})
+    backfill_file_owners(scope, affected_map)
 
-      {:ok,
-       %{
-         all_components: synced_components,
-         changed_component_ids: changed_component_ids
-       }}
+    ms = System.monotonic_time(:millisecond) - start
+
+    Logger.info(
+      "[Files.ComponentSync] #{length(synced_components)} components synced in #{ms}ms " <>
+        "(#{length(changed_component_ids)} changed)"
+    )
+
+    {:ok,
+     %{
+       all_components: synced_components,
+       changed_component_ids: changed_component_ids
+     }}
+  end
+
+  defp compute_changed_ids(synced_components, existing_map) do
+    synced_components
+    |> Enum.filter(&component_changed?(&1, existing_map))
+    |> Enum.map(& &1.id)
+  end
+
+  defp component_changed?(component, existing_map) do
+    case Map.get(existing_map, component.module_name) do
+      nil -> true
+      existing -> existing.updated_at != component.updated_at
     end
   end
 
@@ -159,7 +167,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     }
   end
 
-  defp parse_impl_file(%File{path: path} = _file, env) do
+  defp parse_impl_file(%File{path: path} = _file, env, infra_paths) do
     fallback = module_name_from_path(path, :implementation)
 
     module_name =
@@ -174,7 +182,9 @@ defmodule CodeMySpec.Files.ComponentSync do
           fallback
       end
 
-    %{module_name: module_name, type: nil, description: nil, dependencies: []}
+    type = if FileSync.infrastructure_path?(path, infra_paths), do: "infrastructure", else: nil
+
+    %{module_name: module_name, type: type, description: nil, dependencies: []}
   end
 
   # -- Module name derivation --
@@ -244,22 +254,27 @@ defmodule CodeMySpec.Files.ComponentSync do
   # -- Parent relationships --
 
   defp update_parent_relationships(scope, components, component_map) do
-    Enum.each(components, fn component ->
-      case find_nearest_ancestor(component.module_name, component_map) do
-        nil ->
-          if component.parent_component_id do
-            Components.update_component(scope, component, %{parent_component_id: nil})
-          end
+    Enum.each(components, &reparent_component(scope, &1, component_map))
+  end
 
-        parent when parent.id != component.id ->
-          if parent.id != component.parent_component_id do
-            Components.update_component(scope, component, %{parent_component_id: parent.id})
-          end
+  defp reparent_component(scope, component, component_map) do
+    case find_nearest_ancestor(component.module_name, component_map) do
+      nil -> maybe_clear_parent(scope, component)
+      parent when parent.id != component.id -> maybe_set_parent(scope, component, parent)
+      _ -> :ok
+    end
+  end
 
-        _ ->
-          :ok
-      end
-    end)
+  defp maybe_clear_parent(_scope, %{parent_component_id: nil}), do: :ok
+
+  defp maybe_clear_parent(scope, component) do
+    Components.update_component(scope, component, %{parent_component_id: nil})
+  end
+
+  defp maybe_set_parent(_scope, %{parent_component_id: same_id}, %{id: same_id}), do: :ok
+
+  defp maybe_set_parent(scope, component, parent) do
+    Components.update_component(scope, component, %{parent_component_id: parent.id})
   end
 
   defp find_nearest_ancestor(module_name, component_map) do
@@ -372,9 +387,6 @@ defmodule CodeMySpec.Files.ComponentSync do
       [single] -> "#{single}/#{dir}"
     end
   end
-
-  # -- Ignored components --
-
 
   # -- Spec content extraction (reused from Components.Sync) --
 

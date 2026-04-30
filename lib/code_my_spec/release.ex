@@ -3,6 +3,8 @@ defmodule CodeMySpec.Release do
   Used for executing DB release tasks when run in production without Mix
   installed.
   """
+  alias CodeMySpec.Utils.Data
+
   @app :code_my_spec
 
   def migrate do
@@ -21,13 +23,13 @@ defmodule CodeMySpec.Release do
   def import_data(file_path, opts \\ []) do
     load_app()
     Application.ensure_all_started(@app)
-    CodeMySpec.Utils.Data.import_account(file_path, opts)
+    Data.import_account(file_path, opts)
   end
 
   def export_data(account_id, file_path) do
     load_app()
     Application.ensure_all_started(@app)
-    CodeMySpec.Utils.Data.export_account(account_id, file_path)
+    Data.export_account(account_id, file_path)
   end
 
   defp repos do

@@ -23,9 +23,6 @@ defmodule CodeMySpec.SetupFixtures do
   - `ProjectStructure` satisfies by writing `.keep` files under the
     required directories (InMemoryEnvironment treats a path with
     descendants as an existing directory).
-  - `IgnoredPaths` runs `FileSync` + `ComponentSync` on evaluate when
-    the scope has an `active_project_id`. This is intentional — specs
-    exercise the full sync pipeline against the in-memory env.
 
   See `.code_my_spec/issues/project-setup/fixtures.md` for the
   complete step→state inventory and break-matrix.
@@ -135,14 +132,6 @@ defmodule CodeMySpec.SetupFixtures do
     Environments.write_file(env, ".code_my_spec/rules/.keep", "")
     Environments.write_file(env, ".code_my_spec/spec/#{@app_name}/.keep", "")
     Environments.write_file(env, ".code_my_spec/spec/#{@app_name}_web/.keep", "")
-  end
-
-  defp satisfy_step(env, Setup.IgnoredPaths) do
-    Environments.write_file(
-      env,
-      ".code_my_spec/config.yml",
-      "ignored_paths:\n  - lib/#{@app_name}/repo.ex\n"
-    )
   end
 
   defp satisfy_step(env, Setup.AgentsMd) do

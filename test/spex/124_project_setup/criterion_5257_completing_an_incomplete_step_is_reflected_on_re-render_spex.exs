@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
           live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
 
         html = render(view)
-        assert html =~ "Project Setup (12/13)"
+        assert html =~ "Project Setup (11/12)"
         assert html =~ step_prompt_heading(Setup.CodemyspecDeps, context.scope)
 
         {:ok, Map.put(context, :view, view)}
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
       end
 
       then_ "the progress header reports all steps done", context do
-        assert render(context.view) =~ "Project Setup (13/13)"
+        assert render(context.view) =~ "Project Setup (12/12)"
         {:ok, context}
       end
 

@@ -179,11 +179,26 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     # ClaudeMd
     File.write!(Path.join(tmp_dir, "CLAUDE.md"), "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
 
-    # IgnoredPaths
+    # infrastructure_paths — framework-generated modules that ComponentSync
+    # tags as `type: "infrastructure"` (empty requirement graph, no work driven).
+    # The list mirrors the standard Phoenix scaffold; projects can edit it.
     File.write!(Path.join([tmp_dir, base, "config.yml"]), """
-    ignored_paths:
+    infrastructure_paths:
       - lib/#{app}/application.ex
+      - lib/#{app}/repo.ex
+      - lib/#{app}/mailer.ex
+      - lib/#{app}/release.ex
+      - lib/#{app}.ex
+      - lib/#{app}_web.ex
+      - lib/#{app}_web/application.ex
       - lib/#{app}_web/endpoint.ex
+      - lib/#{app}_web/router.ex
+      - lib/#{app}_web/telemetry.ex
+      - lib/#{app}_web/gettext.ex
+      - lib/#{app}_web/components/core_components.ex
+      - lib/#{app}_web/components/layouts.ex
+      - lib/#{app}_web/controllers/error_*
+      - lib/#{app}_web/controllers/page_*
     """)
 
     # ProjectStructure — required spec dirs

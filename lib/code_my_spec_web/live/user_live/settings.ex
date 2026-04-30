@@ -3,8 +3,8 @@ defmodule CodeMySpecWeb.UserLive.Settings do
 
   on_mount {CodeMySpecWeb.UserAuth, :require_sudo_mode}
 
-  alias CodeMySpec.Users
   alias CodeMySpec.Integrations
+  alias CodeMySpec.Users
 
   def render(assigns) do
     ~H"""
