@@ -750,7 +750,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.TechnicalStrategy,
         artifact_type: :specification,
         description: "Technical strategy decisions file exists",
-        prerequisites: [1]
+        prerequisites: [15]
       }),
       new!(%{
         id: 13,
@@ -816,7 +816,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.ArchitectureDesign,
         artifact_type: :specification,
         description: "Architecture proposal executed",
-        prerequisites: [4, 15]
+        prerequisites: [4]
       }),
       new!(%{
         id: 6,
@@ -935,6 +935,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   def graph_for_type("json"), do: json_graph()
   def graph_for_type("liveview"), do: liveview_graph()
   def graph_for_type("liveview_component"), do: liveview_graph()
+  def graph_for_type("infrastructure"), do: []
   def graph_for_type(_), do: default_graph()
 
   # ═══════════════════════════════════════════════════════════════════════

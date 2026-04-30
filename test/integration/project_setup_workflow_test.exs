@@ -15,9 +15,10 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Sessions
   alias CodeMySpecLocalWeb.Hooks.StopController
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
     setup_workflow_scenario()
   end
 
@@ -37,7 +38,7 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
 
     # Step 2: start_task → all 12 steps unchecked (empty tmp dir)
     prompt = call_start_task_text!(frame, req1, session_id)
-    assert prompt =~ "Project Setup (0/13)"
+    assert prompt =~ "Project Setup (0/12)"
     assert prompt =~ "- [ ] **Claude md**"
     assert prompt =~ "Task ID:"
 
@@ -54,18 +55,18 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     File.write!(claude_md_path, "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
     {:ok, _} = FileSync.sync_changed(scope, base_dir: tmp_dir)
 
-    # Step 4: start_task again → Claude md now shows [x], count is 1/13
+    # Step 4: start_task again → Claude md now shows [x], count is 1/12
     prompt2 = call_start_task_text!(frame, req1, session_id)
-    assert prompt2 =~ "Project Setup (1/13)"
+    assert prompt2 =~ "Project Setup (1/12)"
     assert prompt2 =~ "- [x] **Claude md**"
 
     # Step 5: seed all remaining steps in the tmp dir
     seed_all_setup_steps(tmp_dir)
     {:ok, _} = FileSync.sync_changed(scope, base_dir: tmp_dir)
 
-    # Step 6: start_task again → all 13 steps now satisfied
+    # Step 6: start_task again → all 12 steps now satisfied
     prompt3 = call_start_task_text!(frame, req1, session_id)
-    assert prompt3 =~ "Project Setup (13/13)"
+    assert prompt3 =~ "Project Setup (12/12)"
     refute prompt3 =~ "- [ ] "
 
     # Step 7: stop hook → evaluates task → passes → allows stop (not in continuous mode)
@@ -77,12 +78,13 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     completed_task = Enum.find(session2.tasks, &(&1.id == task_id))
     assert completed_task.status == :completed
 
-    # Step 8: get_next_requirement → project_setup satisfied from filesystem,
-    # technical_strategy now unblocked. Requirements are computed, so the
-    # seeded files alone satisfy project_setup — no DB mutation needed.
+    # Step 8: get_next_requirement → project_setup satisfied from filesystem.
+    # The next gate is `stories_exist`; technical_strategy now waits on it.
+    # Requirements are computed, so the seeded files alone satisfy
+    # project_setup — no DB mutation needed.
     next_text2 = call_get_next_text!(frame)
-    assert next_text2 =~ "### TechnicalStrategy"
-    assert next_text2 =~ "requirement `technical_strategy`"
+    assert next_text2 =~ "### StoryInterview"
+    assert next_text2 =~ "requirement_name `stories_exist`"
   end
 
   # ---------------------------------------------------------------------------
