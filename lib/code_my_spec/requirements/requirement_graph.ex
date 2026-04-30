@@ -145,44 +145,101 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Topology.transitive_reduction()
   end
 
-  # Cross-entity: story ↔ surface component only.
-  # The story's terminal requirement depends on the surface's terminal
-  # requirement; context dependencies reach the story transitively
-  # through the surface via cross_context_dependency_edges. This is
-  # rule 3 of story 562: the chain flows through the surface, not as
-  # direct prerequisites of the story.
+  # Cross-entity: story ↔ surface tree.
+  #
+  # Kickoff edges (`bdd_specs_exist → component.first_req`) span the
+  # surface AND every component in its transitive cross-context
+  # dependency closure. Transitive reduction collapses these to the
+  # deepest dep(s) — the story's outgoing edge ends up at whatever
+  # has to be done first in the dep chain.
+  #
+  # The exit edge stays at the surface's terminal — the story's done
+  # when the surface is done; deps reach the exit transitively.
   defp component_tree_edges(ctx, config) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
-    |> Enum.flat_map(&edges_for_story_surface(&1, ctx, config))
+    |> Enum.flat_map(&story_chain_edges(&1, ctx, config))
   end
 
-  defp edges_for_story_surface(story, ctx, config) do
+  defp story_chain_edges(story, ctx, config) do
     case Enum.find(ctx.components, &(&1.id == story.component_id)) do
-      nil -> []
-      surface -> edges_for_component(surface, story, config)
+      nil ->
+        []
+
+      surface ->
+        kickoff_components = transitive_dep_closure(surface, ctx)
+        kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config))
+        kickoff_edges ++ surface_exit_edge(surface, story, config)
     end
   end
 
-  defp edges_for_component(comp, story, config) do
-    defs =
-      ComponentRegistry.get_requirements_for_type(comp.type)
-      |> filter_definitions_by_config(config)
+  defp kickoff_edge(comp, story, config) do
+    case first_filtered_def(comp.type, config) do
+      nil ->
+        []
 
-    first = List.first(defs)
-    terminal = List.last(defs)
+      first ->
+        [
+          %{
+            from: {"story", story.id, "bdd_specs_exist"},
+            to: {"component", comp.id, first.name}
+          }
+        ]
+    end
+  end
 
-    entry =
-      if first,
-        do: [%{from: {"story", story.id, "bdd_specs_exist"}, to: {"component", comp.id, first.name}}],
-        else: []
+  defp surface_exit_edge(surface, story, config) do
+    case last_filtered_def(surface.type, config) do
+      nil ->
+        []
 
-    exit =
-      if terminal,
-        do: [%{from: {"component", comp.id, terminal.name}, to: {"story", story.id, "bdd_specs_passing"}}],
-        else: []
+      terminal ->
+        [
+          %{
+            from: {"component", surface.id, terminal.name},
+            to: {"story", story.id, "bdd_specs_passing"}
+          }
+        ]
+    end
+  end
 
-    entry ++ exit
+  defp first_filtered_def(type, config) do
+    type
+    |> ComponentRegistry.get_requirements_for_type()
+    |> filter_definitions_by_config(config)
+    |> List.first()
+  end
+
+  defp last_filtered_def(type, config) do
+    type
+    |> ComponentRegistry.get_requirements_for_type()
+    |> filter_definitions_by_config(config)
+    |> List.last()
+  end
+
+  defp transitive_dep_closure(start_component, ctx) do
+    [start_component.id]
+    |> bfs_dep_ids(MapSet.new(), ctx)
+    |> Enum.map(fn id -> Enum.find(ctx.components, &(&1.id == id)) end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp bfs_dep_ids([], visited, _ctx), do: visited
+
+  defp bfs_dep_ids([id | rest], visited, ctx) do
+    if MapSet.member?(visited, id) do
+      bfs_dep_ids(rest, visited, ctx)
+    else
+      visited = MapSet.put(visited, id)
+
+      new_dep_ids =
+        case Enum.find(ctx.components, &(&1.id == id)) do
+          nil -> []
+          comp -> comp |> component_deps() |> Enum.map(& &1.id)
+        end
+
+      bfs_dep_ids(rest ++ new_dep_ids, visited, ctx)
+    end
   end
 
   defp find_def(definitions, name) do
