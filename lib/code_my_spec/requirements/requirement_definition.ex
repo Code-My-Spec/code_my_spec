@@ -24,7 +24,15 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
   @type validation_type :: :automatic | :manual
   @type execution_type :: :main_agent | :sub_agent
 
-  @type check_type :: :file_exists | :file_valid | :path_exists | :field_present | :no_problems | :tests_passing | :spex_passing | :delegate
+  @type check_type ::
+          :file_exists
+          | :file_valid
+          | :path_exists
+          | :field_present
+          | :no_problems
+          | :tests_passing
+          | :spex_passing
+          | :delegate
 
   @type node_scope :: :parent | :child | :self
 
@@ -42,7 +50,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           scope: scope(),
           validation_type: validation_type(),
           execution_type: execution_type(),
-          orchestrated_by: atom() | nil
+          orchestrated_by: atom() | nil,
+          render_command_always?: boolean()
         }
 
   @artifact_types [
@@ -83,6 +92,14 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     field :orchestrated_by, Ecto.Enum,
       values: [:develop_context, :develop_live_context, :develop_controller],
       default: nil
+
+    # When true, the requirement view should always render the
+    # `satisfied_by` command, regardless of whether the requirement
+    # is satisfied. Used for multi-step status reports (project_setup)
+    # where the user wants to see in-progress detail at any time.
+    # Defaults to false — most requirements show their command only
+    # while unsatisfied (the prompt for the next agent step).
+    field :render_command_always?, :boolean, default: false
   end
 
   @doc """
@@ -142,7 +159,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :scope,
       :validation_type,
       :execution_type,
-      :orchestrated_by
+      :orchestrated_by,
+      :render_command_always?
     ])
     |> validate_required([
       :name,

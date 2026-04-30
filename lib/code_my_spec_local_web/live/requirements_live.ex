@@ -284,23 +284,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end
   end
 
-  # --- Events ---
-
-  @impl true
-  def handle_event("node_clicked", %{"name" => name, "entity_type" => "project"}, socket) do
-    slug = project_slug(socket.assigns.project)
-    {:noreply, push_navigate(socket, to: "/projects/#{slug}/requirements/#{name}")}
-  end
-
-  def handle_event("node_clicked", %{"entity_type" => "story", "entity_id" => id}, socket) do
-    slug = project_slug(socket.assigns.project)
-    {:noreply, push_navigate(socket, to: "/projects/#{slug}/stories/#{id}")}
-  end
-
-  def handle_event("node_clicked", _params, socket) do
-    {:noreply, socket}
-  end
-
   # --- Render ---
 
   @impl true
@@ -378,8 +361,9 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     "# #{node.name}\n\n#{node.description}\n\n**#{status}**\n"
   end
 
-  defp build_show_body(%{name: "project_setup"}, scope, _slug) do
-    case ProjectSetup.command(scope, %{}) do
+  defp build_show_body(%{render_command_always?: true, satisfied_by: satisfied_by}, scope, _slug)
+       when not is_nil(satisfied_by) do
+    case satisfied_by.command(scope, %{}) do
       {:ok, text} -> {:ok, "\n\n" <> text}
       {:error, reason} -> {:error, reason}
     end

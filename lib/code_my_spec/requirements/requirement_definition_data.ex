@@ -750,7 +750,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.ProjectSetup,
         artifact_type: :specification,
         description: "Project bootstrap setup is complete",
-        prerequisites: []
+        prerequisites: [],
+        # Multi-step status report — always show the per-step
+        # checklist, not just when the overall requirement is unsatisfied.
+        render_command_always?: true
       }),
       new!(%{
         id: 2,

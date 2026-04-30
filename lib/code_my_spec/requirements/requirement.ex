@@ -23,6 +23,7 @@ defmodule CodeMySpec.Requirements.Requirement do
           orchestrated_by: atom() | nil,
           parent_entity_id: Ecto.UUID.t() | nil,
           parent_entity_name: String.t() | nil,
+          render_command_always?: boolean(),
           details: map()
         }
 
@@ -41,6 +42,7 @@ defmodule CodeMySpec.Requirements.Requirement do
     orchestrated_by: nil,
     parent_entity_id: nil,
     parent_entity_name: nil,
+    render_command_always?: false,
     prerequisites: [],
     details: %{}
   ]

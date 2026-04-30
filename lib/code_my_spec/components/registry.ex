@@ -14,8 +14,16 @@ defmodule CodeMySpec.Components.Registry do
           description: String.t(),
           document_type: String.t(),
           icon: String.t() | nil,
-          color: String.t() | nil
+          color: String.t() | nil,
+          dependency_order: non_neg_integer()
         }
+
+  # `dependency_order` is the default sibling stack order when no
+  # explicit cross-component dependency dictates one. Lower values
+  # render first (closer to data), higher values render later
+  # (closer to the user). Types without an explicit value default
+  # to `@default_dependency_order` (rendered after the primitives).
+  @default_dependency_order 5
 
   @type_definitions %{
     "genserver" => %{
@@ -48,7 +56,8 @@ defmodule CodeMySpec.Components.Registry do
       display_name: "Schema",
       description: "Data structure definition with validation rules",
       icon: "table-cells",
-      color: "blue"
+      color: "blue",
+      dependency_order: 0
     },
     "repository" => %{
       graph: :default_graph,
@@ -56,7 +65,17 @@ defmodule CodeMySpec.Components.Registry do
       display_name: "Repository",
       description: "Data access layer abstracting database operations",
       icon: "archive-box",
-      color: "indigo"
+      color: "indigo",
+      dependency_order: 2
+    },
+    "service" => %{
+      graph: :default_graph,
+      document_type: "spec",
+      display_name: "Service",
+      description: "Stateless service grouping related operations",
+      icon: "wrench-screwdriver",
+      color: "cyan",
+      dependency_order: 3
     },
     "task" => %{
       graph: :default_graph,
@@ -80,7 +99,8 @@ defmodule CodeMySpec.Components.Registry do
       display_name: "Behaviour",
       description: "Behaviour that defines callbacks for other modules",
       icon: "book-open",
-      color: "teal"
+      color: "teal",
+      dependency_order: 1
     },
     "controller" => %{
       graph: :default_graph,
@@ -96,7 +116,8 @@ defmodule CodeMySpec.Components.Registry do
       display_name: "JSON View",
       description: "Phoenix JSON view rendering structured responses for a controller",
       icon: "code-bracket",
-      color: "cyan"
+      color: "cyan",
+      dependency_order: 4
     },
     "live_context" => %{
       graph: :live_context_graph,
@@ -112,7 +133,8 @@ defmodule CodeMySpec.Components.Registry do
       display_name: "LiveView",
       description: "Phoenix LiveView page with real-time UI interactions",
       icon: "window",
-      color: "emerald"
+      color: "emerald",
+      dependency_order: 4
     },
     "liveview_component" => %{
       graph: :liveview_graph,
@@ -120,7 +142,8 @@ defmodule CodeMySpec.Components.Registry do
       display_name: "LiveView Component",
       description: "Reusable Phoenix LiveView component",
       icon: "puzzle-piece",
-      color: "teal"
+      color: "teal",
+      dependency_order: 4
     },
     "other" => %{
       graph: :default_graph,
@@ -168,5 +191,36 @@ defmodule CodeMySpec.Components.Registry do
     # Return all definitions from the graph template.
     # The graph instantiation code handles parent/child scoping.
     RequirementDefinitionData.graph_for_type(component_type)
+  end
+
+  @doc """
+  True iff `component_type`'s graph template defines child-scoped
+  requirements — i.e., this type can have child components nested
+  under it.
+
+  Derived structurally from the template rather than hardcoded so
+  the answer stays correct as templates evolve.
+  """
+  @spec has_children?(String.t()) :: boolean()
+  def has_children?(component_type) do
+    component_type
+    |> get_graph_template()
+    |> Enum.any?(&(&1.node_scope == :child))
+  end
+
+  @doc """
+  Default sibling stack order for a component type. Used by the
+  graph projector when no explicit cross-component dependency
+  dictates ordering. Lower values render first (closer to data),
+  higher values render later (closer to the user).
+
+  Types without an explicit ordering fall back to a neutral default
+  that places them after the primitives.
+  """
+  @spec dependency_order(String.t()) :: non_neg_integer()
+  def dependency_order(component_type) do
+    component_type
+    |> get_type()
+    |> Map.get(:dependency_order, @default_dependency_order)
   end
 end

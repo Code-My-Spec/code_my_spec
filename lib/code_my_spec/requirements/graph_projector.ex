@@ -2,18 +2,34 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @moduledoc """
   Projects the computed requirement graph into a JSON structure for sigma.js.
 
-  Layout is horizontal layers:
-  1. Project chain (vertical, centered)
-  2. Stories as columns: component_linked + bdd_specs_exist
-  3. Component zone: full requirement chains per context/component
-  4. Stories resume: bdd_specs_passing + qa_complete
-  5. Late project chain
+  Layout is derived purely from `Topology` facts — entity-type
+  partitions, cross-entity edges, fan-in/fan-out points, and
+  topological depth. The projector reads no requirement names
+  and no template data: every layout decision asks the graph
+  itself "is this node a fan-in?", "does it bridge entity types?",
+  "what's its depth?". Domain meaning lives on each node's FK
+  fields (`entity_type`, `entity_id`, `parent_entity_id`).
+
+  Horizontal bands, top-to-bottom:
+
+  1. Project nodes upstream of any cross-entity edge (early chain).
+  2. Story bridge nodes upstream of any component
+     (cross-entity sources/sinks not downstream of components).
+  3. Component zone — one tree per top-level component, sized
+     dynamically by child count and phase break depth.
+  4. Story bridge nodes downstream of components.
+  5. Project nodes downstream of stories (late chain).
+
+  Phase breaks within a context tree are detected via
+  `Topology.fans_out_to_children?/3` — wherever a parent-scope
+  node has same-`entity_type` outgoing edges to nodes with a
+  different `entity_id`.
   """
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
   @colors %{
@@ -27,28 +43,13 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @story_row_gap 350
   # @comp_gap and @comp_zone_height removed — component zone is now dynamic
 
-  @context_types MapSet.new(["context", "live_context", "controller"])
-  @pre_component_reqs ["component_linked", "bdd_specs_exist"]
-  @post_component_reqs ["bdd_specs_passing", "qa_complete"]
-
-  # Type priority for dependency ordering: lower = rendered first (no deps)
-  @type_priority %{
-    "schema" => 0,
-    "behaviour" => 1,
-    "repository" => 2,
-    "service" => 3,
-    "liveview" => 4,
-    "liveview_component" => 4,
-    "json" => 4
-  }
-
   @spec project_graph(Scope.t()) :: map()
   def project_graph(%Scope{} = scope) do
     %{nodes: nodes, edges: edges} = Requirements.project_graph(scope)
     actionable = Requirements.next_actionable_project(scope)
 
     actionable_set =
-      MapSet.new(actionable, fn n -> {n.entity_type, n.entity_id, n.name} end)
+      MapSet.new(actionable, &node_key/1)
 
     components = Components.list_components_with_dependencies(scope)
 
@@ -58,14 +59,25 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     project_nodes = Enum.filter(nodes, &(&1.entity_type == "project"))
     story_nodes = Enum.filter(nodes, &(&1.entity_type == "story"))
 
-    proj_order = definition_order()
-    sorted_project = Enum.sort_by(project_nodes, fn n -> Map.get(proj_order, n.name, 999) end)
+    # Topology facts (no name lookups, no template reads).
+    topo = build_topo(nodes, edges)
+    cross_sinks = Topology.cross_entity_sinks(nodes, edges) |> MapSet.new(&node_key/1)
+    cross_sources = Topology.cross_entity_sources(nodes, edges) |> MapSet.new(&node_key/1)
+    bridge_keys = MapSet.union(cross_sinks, cross_sources)
+    component_descendants = Topology.descendants_of(comp_nodes, edges)
 
-    fan_in_idx = Enum.find_index(sorted_project, &(&1.name == "qa_preflight")) || 0
+    sorted_project = sort_by_depth(project_nodes, topo)
+
+    # Project chain splits where cross-entity edges first land on a
+    # project node — that's the structural fan-in seam, no need to
+    # name the requirement.
+    fan_in_idx =
+      Enum.find_index(sorted_project, fn n -> MapSet.member?(cross_sinks, node_key(n)) end) || 0
+
     {early_project, late_project} = Enum.split(sorted_project, fan_in_idx)
 
-    story_order = story_definition_order()
     stories_by_id = Enum.group_by(story_nodes, & &1.entity_id)
+
     sorted_stories =
       stories_by_id
       |> Enum.sort_by(fn {_id, [first | _]} -> first.entity_name end)
@@ -85,11 +97,21 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     # --- Layer 2: Pre-component story reqs (all stories, same Y band) ---
     story_start_y = -(length(early_project) * @row_gap)
 
+    # Story bridges are story nodes that participate in cross-entity
+    # edges. Pre-bridges sit upstream of any component (not in
+    # `component_descendants`); post-bridges sit downstream. Purely
+    # internal story nodes (no cross-entity edges) don't render in
+    # this view at all.
     pre_sigma =
       Enum.flat_map(sorted_stories, fn {{_id, reqs}, col_idx} ->
-        sorted_reqs = Enum.sort_by(reqs, fn r -> Map.get(story_order, r.name, 999) end)
+        sorted_reqs = sort_by_depth(reqs, topo)
         x = (col_idx - (story_count - 1) / 2) * @story_col_gap
-        pre = Enum.filter(sorted_reqs, &(&1.name in @pre_component_reqs))
+
+        pre =
+          Enum.filter(sorted_reqs, fn r ->
+            MapSet.member?(bridge_keys, node_key(r)) and
+              not MapSet.member?(component_descendants, node_key(r))
+          end)
 
         pre
         |> Enum.with_index()
@@ -101,7 +123,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       end)
 
     # --- Layer 3: Expanded component zone (layered by dependency depth) ---
-    comp_zone_y = story_start_y - (length(@pre_component_reqs) * @story_row_gap) - @row_gap
+    pre_height = pre_sigma |> Enum.map(& &1.attributes.y) |> Enum.min(fn -> story_start_y end)
+    comp_zone_y = pre_height - @story_row_gap - @row_gap
 
     # Identify top-level groups: parent components (with children) and standalones
     parent_ids = components |> Enum.map(& &1.parent_component_id) |> MapSet.new() |> MapSet.delete(nil)
@@ -128,7 +151,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         tree_layouts =
           Enum.map(
             tier_components,
-            &tree_layout_for_top_level(&1, parent_ids, components, comp_reqs_by_id, actionable_set)
+            &tree_layout_for_top_level(&1, parent_ids, components, comp_reqs_by_id, actionable_set, topo)
           )
 
         {tier_nodes, tier_height} = place_component_trees(tree_layouts, tier_y)
@@ -141,9 +164,14 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     post_sigma =
       Enum.flat_map(sorted_stories, fn {{_id, reqs}, col_idx} ->
-        sorted_reqs = Enum.sort_by(reqs, fn r -> Map.get(story_order, r.name, 999) end)
+        sorted_reqs = sort_by_depth(reqs, topo)
         x = (col_idx - (story_count - 1) / 2) * @story_col_gap
-        post = Enum.filter(sorted_reqs, &(&1.name in @post_component_reqs))
+
+        post =
+          Enum.filter(sorted_reqs, fn r ->
+            MapSet.member?(bridge_keys, node_key(r)) and
+              MapSet.member?(component_descendants, node_key(r))
+          end)
 
         post
         |> Enum.with_index()
@@ -155,7 +183,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       end)
 
     # --- Layer 5: Late project chain ---
-    late_start_y = post_zone_y - (length(@post_component_reqs) * @story_row_gap) - @row_gap
+    post_lowest_y = post_sigma |> Enum.map(& &1.attributes.y) |> Enum.min(fn -> post_zone_y end)
+    late_start_y = post_lowest_y - @story_row_gap - @row_gap
 
     late_sigma =
       late_project
@@ -209,8 +238,10 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   @doc """
-  Single context graph: context requirements as a vertical chain in the center,
-  children fanning out between the phase gate nodes (spec_valid, review_valid).
+  Single context graph: the context's requirements as a vertical
+  chain in the centre, with children fanning out at each parent
+  fan-out point (the structural phase break — see
+  `Topology.fans_out_to_children?/3`).
   """
   @spec component_graph(Scope.t(), String.t()) :: map()
   def component_graph(%Scope{} = scope, component_id) do
@@ -224,14 +255,14 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     comp_reqs_by_id = Enum.group_by(tree_nodes, & &1.entity_id)
 
     layout = %{req_gap: 400, child_col_gap: 500, child_req_gap: 300}
+    topo = build_topo(nodes, edges)
 
-    context_type = component_type(components, component_id)
-    sorted_ctx_reqs = sort_context_reqs(comp_reqs_by_id, component_id, context_type)
+    sorted_ctx_reqs = sort_context_reqs(comp_reqs_by_id, component_id, topo)
     sorted_children = sort_children_by_dependency(children, components)
-    children_with_reqs = partition_children_reqs(sorted_children, comp_reqs_by_id, context_type)
+    children_with_reqs = partition_children_reqs(sorted_children, comp_reqs_by_id, component_id, topo)
 
     {context_sigma, specs_y, impl_y} =
-      build_context_column(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, 14)
+      build_context_column(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, 14, topo)
 
     spec_child_sigma =
       build_phase_child_sigma(children_with_reqs, :spec_reqs, specs_y, layout, actionable_set, 10)
@@ -245,6 +276,15 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     %{nodes: all_sigma, edges: sigma_edges}
   end
 
+  defp build_topo(nodes, edges) do
+    %{
+      nodes: nodes,
+      edges: edges,
+      depth: Topology.depth_map(nodes, edges),
+      fan_out_keys: Topology.fan_out_keys(nodes, edges)
+    }
+  end
+
   @doc """
   Components-only graph: one summary node per bounded context with
   dependency edges between them.
@@ -255,7 +295,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     actionable = Requirements.next_actionable_project(scope)
 
     actionable_set =
-      MapSet.new(actionable, fn n -> {n.entity_type, n.entity_id, n.name} end)
+      MapSet.new(actionable, &node_key/1)
 
     comp_nodes = Enum.filter(nodes, &(&1.entity_type == "component"))
     comp_reqs_by_id = Enum.group_by(comp_nodes, & &1.entity_id)
@@ -264,7 +304,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     context_ids =
       components
-      |> Enum.filter(fn c -> c.type in @context_types end)
+      |> Enum.filter(fn c -> ComponentRegistry.has_children?(c.type) end)
       |> MapSet.new(& &1.id)
 
     child_to_context =
@@ -325,23 +365,22 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @child_col_gap 350
   @child_req_gap 200
   @tree_gap 300
-  @spec_phase_names MapSet.new(["spec_file", "spec_valid"])
 
   # Layout a context and its children as a tree. Returns {nodes, width, height}
   # with positions relative to (0, 0) origin.
-  defp layout_context_tree_nodes(context, components, comp_reqs_by_id, actionable_set) do
+  defp layout_context_tree_nodes(context, components, comp_reqs_by_id, actionable_set, topo) do
     children =
       components
       |> Enum.filter(&(&1.parent_component_id == context.id))
       |> sort_children_by_dependency(components)
 
-    sorted_ctx = sort_context_reqs(comp_reqs_by_id, context.id, context.type)
-    children_with_reqs = partition_children_reqs(children, comp_reqs_by_id, context.type)
+    sorted_ctx = sort_context_reqs(comp_reqs_by_id, context.id, topo)
+    children_with_reqs = partition_children_reqs(children, comp_reqs_by_id, context.id, topo)
 
     layout = %{req_gap: @ctx_req_gap, child_col_gap: @child_col_gap, child_req_gap: @child_req_gap}
 
     {ctx_nodes, y_cursor, specs_y, impl_y} =
-      build_context_column_with_cursor(sorted_ctx, children_with_reqs, layout, actionable_set, 8, &comp_label/1)
+      build_context_column_with_cursor(sorted_ctx, children_with_reqs, layout, actionable_set, 8, &comp_label/1, topo)
 
     spec_child_nodes =
       build_phase_child_sigma_with_label(
@@ -358,14 +397,9 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   # Layout a standalone component (not a context, not a child) as a simple vertical chain.
-  defp layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set) do
+  defp layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set, topo) do
     reqs = Map.get(comp_reqs_by_id, comp.id, [])
-    def_order =
-      ComponentRegistry.get_requirements_for_type(comp.type)
-      |> Enum.with_index()
-      |> Map.new(fn {d, i} -> {d.name, i} end)
-
-    sorted = Enum.sort_by(reqs, fn r -> Map.get(def_order, r.name, 999) end)
+    sorted = sort_by_depth(reqs, topo)
 
     nodes =
       sorted
@@ -467,7 +501,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     depths = resolve_depths(initial, sibling_deps)
 
     Enum.sort_by(children, fn c ->
-      {Map.get(depths, c.id, 0), Map.get(@type_priority, c.type, 5), c.module_name}
+      {Map.get(depths, c.id, 0), ComponentRegistry.dependency_order(c.type), c.module_name}
     end)
   end
 
@@ -486,17 +520,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     deps |> Enum.map(& &1.id) |> Enum.filter(&MapSet.member?(allowed_ids, &1))
   end
 
-  # Build a definition order map for :child nodes from the context template.
-  # This ensures all children use the same phase→index mapping regardless of
-  # their own component type, so Y levels are consistent across columns.
-  defp context_child_definition_order(context_type) do
-    RequirementDefinitionData.graph_for_type(context_type)
-    |> Enum.filter(fn d -> d.node_scope == :child end)
-    |> Enum.uniq_by(& &1.name)
-    |> Enum.with_index()
-    |> Map.new(fn {d, i} -> {d.name, i} end)
-  end
-
   # -- Node builders --
 
   defp mk_node(key, label, x, y, size, status, extra) do
@@ -512,7 +535,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   defp summary_key(comp_id), do: "ctx_#{sanitize_id(comp_id)}"
 
-  defp nkey(n), do: key_to_string({n.entity_type, n.entity_id, n.name})
+  defp node_key(n), do: Topology.node_key(n)
+  defp nkey(n), do: key_to_string(node_key(n))
   defp key_to_string({type, id, name}), do: "#{type}_#{sanitize_id(id)}_#{name}"
   defp sanitize_id(id) when is_integer(id), do: "#{id}"
   defp sanitize_id(id) when is_binary(id), do: String.replace(id, "-", "")
@@ -553,8 +577,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   defp cls(%{satisfied: true}, _), do: :satisfied
   defp cls(n, actionable_set) do
-    key = {n.entity_type, n.entity_id, n.name}
-    if MapSet.member?(actionable_set, key), do: :actionable, else: :blocked
+    if MapSet.member?(actionable_set, node_key(n)), do: :actionable, else: :blocked
   end
 
   defp summary_status(reqs, actionable_set) do
@@ -562,7 +585,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     total = length(reqs)
     cond do
       sat == total and total > 0 -> :satisfied
-      Enum.any?(reqs, fn r -> MapSet.member?(actionable_set, {r.entity_type, r.entity_id, r.name}) end) -> :actionable
+      Enum.any?(reqs, fn r -> MapSet.member?(actionable_set, node_key(r)) end) -> :actionable
       true -> :blocked
     end
   end
@@ -575,23 +598,11 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   defp edge_color(%{from: {ft, _, _}, to: {tt, _, _}}) when ft != tt, do: "#818cf8"
   defp edge_color(_), do: "#64748b"
 
-  defp definition_order do
-    RequirementDefinitionData.project_requirements()
-    |> Enum.with_index()
-    |> Map.new(fn {d, i} -> {d.name, i} end)
-  end
-
-  defp story_definition_order do
-    RequirementDefinitionData.story_requirements()
-    |> Enum.with_index()
-    |> Map.new(fn {d, i} -> {d.name, i} end)
-  end
-
   # -- Shared layout helpers --
 
   defp build_actionable_set(scope) do
     Requirements.next_actionable_project(scope)
-    |> MapSet.new(fn n -> {n.entity_type, n.entity_id, n.name} end)
+    |> MapSet.new(&node_key/1)
   end
 
   defp filter_tree_nodes(nodes, tree_ids) do
@@ -600,55 +611,93 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     end)
   end
 
-  defp component_type(components, component_id) do
-    (Enum.find(components, &(&1.id == component_id)) || %{type: "context"}).type
+  defp sort_context_reqs(comp_reqs_by_id, component_id, topo) do
+    comp_reqs_by_id
+    |> Map.get(component_id, [])
+    |> sort_by_depth(topo)
   end
 
-  defp definition_index(component_type) do
-    ComponentRegistry.get_requirements_for_type(component_type)
-    |> Enum.with_index()
-    |> Map.new(fn {d, i} -> {d.name, i} end)
+  defp sort_by_depth(reqs, topo) do
+    Enum.sort_by(reqs, &Map.get(topo.depth, node_key(&1), 0))
   end
 
-  defp sort_context_reqs(comp_reqs_by_id, component_id, context_type) do
-    reqs = Map.get(comp_reqs_by_id, component_id, [])
-    ctx_def_order = definition_index(context_type)
-    Enum.sort_by(reqs, fn r -> Map.get(ctx_def_order, r.name, 999) end)
-  end
-
-  defp partition_children_reqs(sorted_children, comp_reqs_by_id, context_type) do
-    child_def_order = context_child_definition_order(context_type)
+  # Cluster a child's reqs into spec-phase vs impl-phase by which
+  # parent fan-out point feeds them. Spec-phase = reachable from the
+  # FIRST fan-out point (in depth order); impl-phase = reachable
+  # from the SECOND fan-out point. Anything else (a child req with
+  # no fan-out ancestor) falls into impl_reqs as a safe default —
+  # nothing in the current templates produces such a req.
+  defp partition_children_reqs(sorted_children, comp_reqs_by_id, parent_id, topo) do
+    fan_outs_by_depth = fan_out_nodes_by_depth(parent_id, topo)
+    {first_fo_descendants, second_fo_descendants} = phase_descendant_sets(fan_outs_by_depth, topo)
 
     Enum.map(sorted_children, fn child ->
       child_reqs = Map.get(comp_reqs_by_id, child.id, [])
-      sorted = Enum.sort_by(child_reqs, fn r -> Map.get(child_def_order, r.name, 999) end)
+      sorted = sort_by_depth(child_reqs, topo)
 
-      %{
-        child: child,
-        spec_reqs: Enum.filter(sorted, &(&1.name in @spec_phase_names)),
-        impl_reqs: Enum.reject(sorted, &(&1.name in @spec_phase_names))
-      }
+      {spec_reqs, rest} = Enum.split_with(sorted, &MapSet.member?(first_fo_descendants, node_key(&1)))
+      impl_reqs = Enum.filter(rest, &MapSet.member?(second_fo_descendants, node_key(&1)))
+
+      %{child: child, spec_reqs: spec_reqs, impl_reqs: impl_reqs}
     end)
+  end
+
+  defp fan_out_nodes_by_depth(parent_id, topo) do
+    topo.nodes
+    |> Enum.filter(fn n ->
+      n.entity_id == parent_id and MapSet.member?(topo.fan_out_keys, node_key(n))
+    end)
+    |> sort_by_depth(topo)
+  end
+
+  # Current layout supports exactly two fan-out points per context
+  # (spec phase + impl phase bands). If a template grows a third
+  # fan-out the layout has nowhere to put it, so fail loud rather
+  # than silently truncate.
+  defp phase_descendant_sets([], _topo), do: {MapSet.new(), MapSet.new()}
+
+  defp phase_descendant_sets([first], topo) do
+    {Topology.descendants_of([first], topo.edges), MapSet.new()}
+  end
+
+  defp phase_descendant_sets([first, second], topo) do
+    first_set = Topology.descendants_of([first], topo.edges)
+    second_set = Topology.descendants_of([second], topo.edges)
+    {MapSet.difference(first_set, second_set), second_set}
+  end
+
+  defp phase_descendant_sets(fan_outs, _topo) do
+    raise ArgumentError,
+          "graph projector layout supports at most 2 fan-out points per context, got #{length(fan_outs)}"
   end
 
   defp max_phase_rows(children_with_reqs, key) do
     children_with_reqs |> Enum.map(&length(Map.fetch!(&1, key))) |> Enum.max(fn -> 0 end)
   end
 
-  defp build_context_column(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size) do
+  defp build_context_column(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size, topo) do
     {nodes, _y_cursor, specs_y, impl_y} =
       build_context_column_with_cursor(
-        sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size, &short_req_label/1)
+        sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size, &short_req_label/1, topo)
 
     {nodes, specs_y, impl_y}
   end
 
-  defp build_context_column_with_cursor(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size, label_fn) do
+  defp build_context_column_with_cursor(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, size, label_fn, topo) do
     child_count = length(children_with_reqs)
     max_spec = max_phase_rows(children_with_reqs, :spec_reqs)
     max_impl = max_phase_rows(children_with_reqs, :impl_reqs)
-    specs_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "spec_valid"))
-    impl_idx = Enum.find_index(sorted_ctx_reqs, &(&1.name == "review_valid"))
+
+    # Phase-break indices come from structural fan-out: the parent
+    # nodes that feed children-side branches. The FIRST fan-out is
+    # the spec-phase break, the SECOND is the impl-phase break.
+    fan_out_idxs =
+      sorted_ctx_reqs
+      |> Enum.with_index()
+      |> Enum.filter(fn {req, _idx} -> MapSet.member?(topo.fan_out_keys, node_key(req)) end)
+      |> Enum.map(fn {_req, idx} -> idx end)
+
+    [specs_idx, impl_idx] = Enum.take(fan_out_idxs ++ [nil, nil], 2)
 
     state = %{
       layout: layout,
@@ -733,7 +782,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   defp component_graph_edges(edges, tree_nodes, all_sigma) do
-    tree_node_keys = MapSet.new(tree_nodes, fn n -> {n.entity_type, n.entity_id, n.name} end)
+    tree_node_keys = MapSet.new(tree_nodes, &node_key/1)
     all_keys = MapSet.new(all_sigma, & &1.key)
 
     edges
@@ -754,11 +803,11 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     end)
   end
 
-  defp tree_layout_for_top_level(comp, parent_ids, components, comp_reqs_by_id, actionable_set) do
+  defp tree_layout_for_top_level(comp, parent_ids, components, comp_reqs_by_id, actionable_set, topo) do
     if MapSet.member?(parent_ids, comp.id) do
-      layout_context_tree_nodes(comp, components, comp_reqs_by_id, actionable_set)
+      layout_context_tree_nodes(comp, components, comp_reqs_by_id, actionable_set, topo)
     else
-      layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set)
+      layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set, topo)
     end
   end
 
