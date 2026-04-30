@@ -219,6 +219,40 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
   end
 
   @doc """
+  Generate the canonical `infrastructure_paths` config seed.
+
+  Returns YAML for `.code_my_spec/config.yml` populated with the standard
+  Phoenix-generated paths. ComponentSync reads this list and tags matching
+  components with `type: "infrastructure"` — they get an empty requirement
+  graph (no spec/test/impl work driven) but still appear as first-class
+  components in the architecture view. Projects can edit the file to add
+  their own framework/integration modules.
+  """
+  @spec infrastructure_paths_yaml(String.t()) :: String.t()
+  def infrastructure_paths_yaml(app_name) when is_binary(app_name) do
+    app = Macro.underscore(app_name)
+
+    """
+    infrastructure_paths:
+      - lib/#{app}.ex
+      - lib/#{app}_web.ex
+      - lib/#{app}/application.ex
+      - lib/#{app}/repo.ex
+      - lib/#{app}/mailer.ex
+      - lib/#{app}/release.ex
+      - lib/#{app}_web/application.ex
+      - lib/#{app}_web/endpoint.ex
+      - lib/#{app}_web/router.ex
+      - lib/#{app}_web/telemetry.ex
+      - lib/#{app}_web/gettext.ex
+      - lib/#{app}_web/components/core_components.ex
+      - lib/#{app}_web/components/layouts.ex
+      - lib/#{app}_web/controllers/error_*
+      - lib/#{app}_web/controllers/page_*
+    """
+  end
+
+  @doc """
   Extract app name from a mix.exs file path.
   """
   def extract_app_name(mix_exs_path) do
