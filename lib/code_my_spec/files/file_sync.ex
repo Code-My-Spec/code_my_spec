@@ -384,7 +384,7 @@ defmodule CodeMySpec.Files.FileSync do
     Map.new(map, fn {k, v} -> {to_string(k), v} end)
   end
 
-  @required_mix_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary]
+  @required_mix_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary, :code_my_spec_generators]
 
   defp validate_mix_exs(content) do
     {app_name_value, app_name_error} = extract_app_name_result(content)

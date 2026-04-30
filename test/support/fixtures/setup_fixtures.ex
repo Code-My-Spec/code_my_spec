@@ -190,6 +190,7 @@ defmodule CodeMySpec.SetupFixtures do
     # {:sobelow, "~> 0.0"},
     # {:sexy_spex, "~> 0.0"},
     # {:boundary, "~> 0.0"},
+    # {:code_my_spec_generators, "~> 0.0", only: :dev},
     """)
   end
 

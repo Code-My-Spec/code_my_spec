@@ -102,7 +102,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
 
       def cli, do: [preferred_envs: [spex: :test]]
 
-      # Required deps per setup: :credo, :client_utils, :sobelow, :sexy_spex, :boundary.
+      # Required deps per setup: :credo, :client_utils, :sobelow, :sexy_spex, :boundary, :code_my_spec_generators.
       # Listed for the validator; not actually fetched in this fixture.
       def deps do
         [
@@ -110,7 +110,8 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
           {:client_utils, "~> 0.1"},
           {:sobelow, "~> 0.1"},
           {:sexy_spex, "~> 0.1"},
-          {:boundary, "~> 0.1"}
+          {:boundary, "~> 0.1"},
+          {:code_my_spec_generators, "~> 0.1", only: :dev}
         ]
       end
     end

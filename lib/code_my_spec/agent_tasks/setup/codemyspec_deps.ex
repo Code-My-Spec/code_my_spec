@@ -30,6 +30,7 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
     - `:sobelow` — security-focused static analysis
     - `:sexy_spex` — BDD specification testing
     - `:boundary` — module dependency enforcement
+    - `:code_my_spec_generators` — `mix cms_gen.*` scaffolding tasks (use `only: :dev`)
 
     Then: `mix deps.get`
     """}
