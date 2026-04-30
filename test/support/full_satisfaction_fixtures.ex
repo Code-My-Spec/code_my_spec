@@ -24,7 +24,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
 
   Story-level requirements:
   - `component_linked` — `set_story_component` MCP
-  - `acceptance_criteria_exist` — story created with criteria
   - `three_amigos_complete` — persona linked + rule + criterion (via MCP)
   - `bdd_specs_exist`, `bdd_specs_passing` — bdd spec file + zero spex problems
   - `qa_complete` — `.code_my_spec/qa/<story_id>/{brief,result}.md`

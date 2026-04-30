@@ -62,8 +62,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     # Topology facts (no name lookups, no template reads).
     topo = build_topo(nodes, edges)
     cross_sinks = Topology.cross_entity_sinks(nodes, edges) |> MapSet.new(&node_key/1)
-    cross_sources = Topology.cross_entity_sources(nodes, edges) |> MapSet.new(&node_key/1)
-    bridge_keys = MapSet.union(cross_sinks, cross_sources)
     component_descendants = Topology.descendants_of(comp_nodes, edges)
 
     sorted_project = sort_by_depth(project_nodes, topo)
@@ -97,20 +95,22 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     # --- Layer 2: Pre-component story reqs (all stories, same Y band) ---
     story_start_y = -(length(early_project) * @row_gap)
 
-    # Story bridges are story nodes that participate in cross-entity
-    # edges. Pre-bridges sit upstream of any component (not in
-    # `component_descendants`); post-bridges sit downstream. Purely
-    # internal story nodes (no cross-entity edges) don't render in
-    # this view at all.
+    # Pre-component story nodes: every story node that is NOT
+    # downstream of any component. This includes purely-internal
+    # story nodes (e.g., three_amigos_complete) as well as the
+    # bridge sources/sinks that connect to project / component.
+    # Hiding non-bridge nodes used to be the rule; with the
+    # restructured story chain (component_linked → three_amigos_complete
+    # → bdd_specs_exist) those internal hops are load-bearing and
+    # belong on the canvas.
     pre_sigma =
       Enum.flat_map(sorted_stories, fn {{_id, reqs}, col_idx} ->
         sorted_reqs = sort_by_depth(reqs, topo)
         x = (col_idx - (story_count - 1) / 2) * @story_col_gap
 
         pre =
-          Enum.filter(sorted_reqs, fn r ->
-            MapSet.member?(bridge_keys, node_key(r)) and
-              not MapSet.member?(component_descendants, node_key(r))
+          Enum.reject(sorted_reqs, fn r ->
+            MapSet.member?(component_descendants, node_key(r))
           end)
 
         pre
@@ -169,8 +169,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
         post =
           Enum.filter(sorted_reqs, fn r ->
-            MapSet.member?(bridge_keys, node_key(r)) and
-              MapSet.member?(component_descendants, node_key(r))
+            MapSet.member?(component_descendants, node_key(r))
           end)
 
         post

@@ -329,8 +329,40 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     persona_id = extract_persona_id(create_response)
 
+    # Three Amigos requires the story to be linked to a surface
+    # component (component_linked → three_amigos_complete in the
+    # story chain), so set up a synced surface and link the story
+    # to it. Use a leaf-typed liveview so we don't spin up a
+    # context's orchestrated requirement chain (which would
+    # eclipse three_amigos_complete in the actionable list).
+    surface_module = "ExampleSurfaceLive"
+    surface_spec_path = ".code_my_spec/spec/example_surface_live.spec.md"
+    surface_impl_path = "lib/example_surface_live.ex"
+
+    :ok =
+      Environments.write_file(
+        context.environment,
+        surface_spec_path,
+        CodeMySpecSpex.GraphContentFixtures.liveview_spec(surface_module, dependencies: [])
+      )
+
+    :ok =
+      Environments.write_file(
+        context.environment,
+        surface_impl_path,
+        CodeMySpecSpex.GraphContentFixtures.impl_file(surface_module)
+      )
+
+    {:ok, sync_live, _html} =
+      live(context.conn, "/projects/#{context.project.name}/sync")
+
+    sync_live |> element("button[phx-click='sync']") |> render_click()
+
+    component =
+      CodeMySpecSpex.Fixtures.get_component_by_module_name(context.scope, surface_module)
+
     story =
-      StoryHelpers.create_story(context.scope,
+      StoryHelpers.create_and_link(context.scope, surface_module,
         title: "Persona-linked story",
         description: "Story used to link the persona onto the active project.",
         acceptance_criteria: ["Persona is linked to a story on the active project"]
@@ -346,6 +378,7 @@ defmodule CodeMySpecSpex.SharedGivens do
      Map.merge(context, %{
        persona_slug: persona_slug,
        persona_id: persona_id,
+       component: component,
        story: story
      })}
   end

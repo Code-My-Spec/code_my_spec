@@ -34,22 +34,57 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
+  import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
+  alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
+
+  @endpoint CodeMySpecLocalWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "Three Amigos creates lightweight persona; personas_complete surfaces next" do
     scenario "agent adds persona inline, finishes Three Amigos, graph advances to personas_complete" do
-      given_ "a story exists with no AC and no personas linked", context do
+      given_ "the project's upstream chain is satisfied", context do
+        # three_amigos_complete is gated on component_linked, which is
+        # gated on project.qa_setup via the project_to_story edge.
+        # Without project chain satisfaction, the clamp cascade leaves
+        # three_amigos_complete unsatisfied even after task evaluation.
+        # Apply the full project-chain fixture so the clamp doesn't
+        # fire, then layer the test's own story + persona on top.
+        {:ok, CodeMySpecSpex.FullSatisfactionFixtures.apply(context)}
+      end
+
+      given_ "a separate story exists linked to its own leaf surface with no extra personas linked",
+             context do
+        surface_module = "ThreeAmigosSurfaceLive"
+        spec_path = ".code_my_spec/spec/three_amigos_surface_live.spec.md"
+        impl_path = "lib/three_amigos_surface_live.ex"
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            spec_path,
+            Content.liveview_spec(surface_module, dependencies: [])
+          )
+
+        :ok =
+          Environments.write_file(context.environment, impl_path, Content.impl_file(surface_module))
+
+        {:ok, sync_live, _html} =
+          live(context.conn, "/projects/#{context.project.name}/sync")
+
+        sync_live |> element("button[phx-click='sync']") |> render_click()
+
         story =
-          StoryHelpers.create_story(context.scope,
+          StoryHelpers.create_and_link(context.scope, surface_module,
             title: "Story driving lightweight persona creation",
             description: "Drives Three Amigos with no pre-existing persona in the account library.",
             acceptance_criteria: ["Three Amigos drives lightweight persona creation"]

@@ -681,24 +681,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description:
           "Three Amigos session complete — persona linked, rules and scenarios populated",
-        prerequisites: [],
+        prerequisites: [1],
         # Manual so the stop hook doesn't short-circuit the multi-turn
         # PM/agent intake conversation. Same rationale as personas_complete.
         validation_type: :manual
-      }),
-      new!(%{
-        id: 6,
-        name: "acceptance_criteria_exist",
-        node_scope: :self,
-        check_type: :delegate,
-        config: %{
-          module: CodeMySpec.Requirements.AcceptanceCriteriaChecker,
-          function: :complete?
-        },
-        satisfied_by: AgentTasks.StoryInterview,
-        artifact_type: :specification,
-        description: "Story has at least one acceptance criterion",
-        prerequisites: [1]
       }),
       new!(%{
         id: 2,
@@ -709,7 +695,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.WriteBddSpecs,
         artifact_type: :tests,
         description: "BDD spec files exist for story",
-        prerequisites: [6]
+        prerequisites: [5]
       }),
       new!(%{
         id: 3,

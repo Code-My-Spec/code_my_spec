@@ -26,32 +26,36 @@ defmodule CodeMySpecSpex.Story559.Criterion5159Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "graph surfaces three_amigos_complete on a story without AC" do
-    scenario "next requirement names three_amigos_complete scoped to the story" do
+    scenario "list_requirements names three_amigos_complete scoped to the story as unsatisfied" do
       given_ :persona_exists
 
-      when_ "the agent calls get_next_requirement", context do
+      # Use list_requirements (not get_next_requirement) — get_next
+      # resyncs from disk and would wipe the in-memory test fixtures
+      # before computing the actionable set.
+      when_ "the agent calls list_requirements", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        {:reply, response, _frame} = ListRequirements.execute(%{}, frame)
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the response surfaces three_amigos_complete for the story", context do
+      then_ "the rendered list surfaces three_amigos_complete for the story as unsatisfied",
+            context do
         body = response_text(context.response)
 
-        assert body =~ ~r/requirement|next/i,
+        assert body =~ ~r/requirement/i,
                "expected a real discovery response, got #{inspect(context.response)}"
 
-        assert body =~ "three_amigos_complete",
-               "expected response to name three_amigos_complete, got #{inspect(context.response)}"
+        assert body =~ ~r/\[ \]\s+\*\*three_amigos_complete\*\*/,
+               "expected three_amigos_complete to render as unsatisfied for the story, got #{inspect(context.response)}"
 
-        assert body =~ to_string(context.story.id),
-               "expected response to reference story #{context.story.id}, got #{inspect(context.response)}"
+        assert body =~ context.story.title,
+               "expected response to reference the story by title #{inspect(context.story.title)}, got #{inspect(context.response)}"
 
         {:ok, context}
       end
