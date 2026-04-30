@@ -169,7 +169,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       surface ->
         kickoff_components = transitive_dep_closure(surface, ctx)
         kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config))
-        kickoff_edges ++ surface_exit_edge(surface, story, config)
+        kickoff_edges ++ surface_exit_edge(surface, story, ctx, config)
     end
   end
 
@@ -188,7 +188,23 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp surface_exit_edge(surface, story, config) do
+  # bdd_specs_passing is gated on the LEAVES of the surface's
+  # orchestration tree:
+  # - leaf surface (template has no :child defs): the surface's own
+  #   last :self def feeds bdd_specs_passing.
+  # - container surface (template has :child defs): each direct
+  #   child's terminal feeds bdd_specs_passing. Sibling children
+  #   with cross-context deps collapse via transitive reduction —
+  #   only the deepest leaf survives.
+  defp surface_exit_edge(surface, story, ctx, config) do
+    if ComponentRegistry.has_children?(surface.type) do
+      container_exit_edges(surface, story, ctx, config)
+    else
+      leaf_exit_edge(surface, story, config)
+    end
+  end
+
+  defp leaf_exit_edge(surface, story, config) do
     case last_filtered_def(surface.type, config) do
       nil ->
         []
@@ -200,6 +216,46 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             to: {"story", story.id, "bdd_specs_passing"}
           }
         ]
+    end
+  end
+
+  defp container_exit_edges(surface, story, ctx, config) do
+    surface
+    |> direct_children(ctx)
+    |> Enum.flat_map(fn child ->
+      case child_terminal_name(surface.type, child.type, config) do
+        nil ->
+          []
+
+        name ->
+          [
+            %{
+              from: {"component", child.id, name},
+              to: {"story", story.id, "bdd_specs_passing"}
+            }
+          ]
+      end
+    end)
+  end
+
+  defp direct_children(parent, ctx) do
+    Enum.filter(ctx.components, &(&1.parent_component_id == parent.id))
+  end
+
+  defp child_terminal_name(parent_type, child_type, config) do
+    child_own_names =
+      child_type
+      |> ComponentRegistry.get_requirements_for_type()
+      |> MapSet.new(& &1.name)
+
+    parent_type
+    |> ComponentRegistry.get_requirements_for_type()
+    |> filter_definitions_by_config(config)
+    |> Enum.filter(&(&1.node_scope == :child and &1.name in child_own_names))
+    |> List.last()
+    |> case do
+      nil -> nil
+      def -> def.name
     end
   end
 
