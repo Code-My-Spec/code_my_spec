@@ -3,9 +3,9 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
   Story 559 — Three Amigos
   Criterion 5162 — When Three Amigos runs on a story with no suitable
   persona in the library, the agent calls `add_persona` to create a
-  lightweight record, completes the readiness gate, and the next
-  `get_next_requirement` surfaces `personas_complete` naming the
-  new persona as missing research artifacts.
+  lightweight record, completes the readiness work, and the graph
+  surfaces `personas_complete` as the new research gap that blocks
+  forward progress.
 
   End-to-end coverage of the persona-creation → research-deferral
   flow. Proves Three Amigos does NOT run persona research inline
@@ -13,6 +13,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
   required") — the lightweight persona record is created during the
   Three Amigos task, and full research surfaces as a separate
   `personas_complete` requirement on the next graph pass.
+
+  Surface signal for the readiness check: `three_amigos_complete` is
+  `validation_type: :manual`, so the stop hook skips its checker. The
+  agent calls `evaluate_task` explicitly; a "Passed" response is the
+  proof that `BddRulesChecker.complete?` accepted rule + happy/failure
+  scenarios + persona link. The graph node itself reports as `[ ]`
+  via `ListRequirements` because the unsatisfied `personas_complete`
+  clamps the entire downstream chain.
 
   DRAFT. Depends on:
     - Everything criterion 5161 depends on (`AgentTasks.ThreeAmigos`,
@@ -34,6 +42,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
@@ -42,6 +51,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
+  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
 
@@ -53,12 +63,8 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
   spex "Three Amigos creates lightweight persona; personas_complete surfaces next" do
     scenario "agent adds persona inline, finishes Three Amigos, graph advances to personas_complete" do
       given_ "the project's upstream chain is satisfied", context do
-        # three_amigos_complete is gated on component_linked, which is
-        # gated on project.qa_setup via the project_to_story edge.
-        # Without project chain satisfaction, the clamp cascade leaves
-        # three_amigos_complete unsatisfied even after task evaluation.
-        # Apply the full project-chain fixture so the clamp doesn't
-        # fire, then layer the test's own story + persona on top.
+        # Without this, qa_setup → component_linked → three_amigos_complete
+        # would all clamp regardless of the readiness work.
         {:ok, CodeMySpecSpex.FullSatisfactionFixtures.apply(context)}
       end
 
@@ -172,51 +178,41 @@ defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
         {:ok, context}
       end
 
-      when_ "the agent fires the stop hook for the Three Amigos task", context do
-        response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/hooks/stop", %{"session_id" => context.session_id})
-          |> Phoenix.ConnTest.json_response(200)
+      when_ "the agent calls evaluate_task for the Three Amigos task", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:ok, Map.put(context, :stop_response, response)}
+        {:reply, response, _frame} =
+          EvaluateTask.execute(
+            %{task_id: context.task_id, session_id: context.session_id},
+            frame
+          )
+
+        {:ok, Map.put(context, :evaluate_response, response)}
       end
 
-      then_ "three_amigos_complete is satisfied for the story and personas_complete is now unsatisfied",
+      then_ "evaluate_task accepts the readiness gate and personas_complete clamps the chain",
             context do
-        # GetNextRequirement is gated on project_setup which isn't satisfied
-        # in the test environment, so it would just return project_setup.
-        # ListRequirements walks the full graph and renders satisfaction as
-        # `[x]` / `[ ]` checkboxes — that lets us confirm both ends of the
-        # state shift in one call: Three Amigos cleared for THIS story, and
-        # personas_complete is now the active research gap (unsatisfied
-        # because the lightweight ops_lead record has no summary.md /
-        # sources.md yet — exactly the deferred-research model).
+        eval_body = response_text(context.evaluate_response)
+
+        assert eval_body =~ ~r/^# .+: Passed/m,
+               "expected evaluate_task to mark Three Amigos passed, got #{inspect(context.evaluate_response)}"
+
+        refute eval_body =~ ~r/Needs work/,
+               "expected no needs-work feedback, got #{inspect(context.evaluate_response)}"
+
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListRequirements.execute(%{}, frame)
+        {:reply, list_response, _frame} = ListRequirements.execute(%{}, frame)
+        list_body = response_text(list_response)
 
-        body = response_text(response)
+        assert list_body =~ ~r/\[ \]\s+\*\*personas_complete\*\*/,
+               "expected personas_complete to be unsatisfied at the project level, got #{inspect(list_response)}"
 
-        assert body =~ ~r/\[x\]\s+\*\*three_amigos_complete\*\*/,
-               "expected three_amigos_complete to be satisfied for the story, got #{inspect(response)}"
-
-        assert body =~ ~r/\[ \]\s+\*\*personas_complete\*\*/,
-               "expected personas_complete to be unsatisfied at the project level, got #{inspect(response)}"
+        assert list_body =~ ~r/\[ \]\s+\*\*three_amigos_complete\*\*/,
+               "expected three_amigos_complete to be clamped to unsatisfied via personas_complete cascade, got #{inspect(list_response)}"
 
         {:ok, context}
       end
     end
   end
 
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: text} -> text
-      %{"text" => text} -> text
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

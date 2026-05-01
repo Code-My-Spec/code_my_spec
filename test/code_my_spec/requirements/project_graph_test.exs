@@ -164,16 +164,20 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       refute MapSet.member?(actionable_keys, {"story", "bdd_specs_passing"})
     end
 
-    test "stories_exist surfaces when project_setup is satisfied and no stories exist" do
+    test "personas_complete surfaces when project_setup is satisfied and no personas exist" do
       {scope, _tmp_dir} = setup_project_with_setup_only()
 
       actionable = Requirements.next_actionable_project(scope)
       names = MapSet.new(actionable, & &1.name)
 
-      assert MapSet.member?(names, "stories_exist"),
-             "stories_exist should surface as actionable on a project with setup but no stories — got #{inspect(MapSet.to_list(names))}"
+      assert MapSet.member?(names, "personas_complete"),
+             "personas_complete should surface as actionable on a project with setup but no personas — got #{inspect(MapSet.to_list(names))}"
 
-      # And architecture is still gated until at least one story exists.
+      # stories_exist is gated behind personas_complete, so it must NOT be actionable yet.
+      refute MapSet.member?(names, "stories_exist"),
+             "stories_exist should be blocked until personas_complete is satisfied"
+
+      # And architecture is still gated further down the chain.
       refute MapSet.member?(names, "architecture_designed"),
              "architecture_designed should remain blocked until stories_exist is satisfied"
     end

@@ -79,12 +79,11 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     assert completed_task.status == :completed
 
     # Step 8: get_next_requirement → project_setup satisfied from filesystem.
-    # The next gate is `stories_exist`; technical_strategy now waits on it.
-    # Requirements are computed, so the seeded files alone satisfy
-    # project_setup — no DB mutation needed.
+    # The next gate is `personas_complete`; stories_exist now waits on it,
+    # and technical_strategy waits on stories_exist.
     next_text2 = call_get_next_text!(frame)
-    assert next_text2 =~ "### StoryInterview"
-    assert next_text2 =~ "requirement_name `stories_exist`"
+    assert next_text2 =~ "### PersonaResearch"
+    assert next_text2 =~ "requirement_name `personas_complete`"
   end
 
   # ---------------------------------------------------------------------------

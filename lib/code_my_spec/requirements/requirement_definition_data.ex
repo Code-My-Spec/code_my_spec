@@ -761,7 +761,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.PersonaResearch,
         artifact_type: :specification,
         description:
-          "At least one persona researched — DB record + summary.md + sources.md, linked to a story",
+          "At least one persona researched — DB record + summary.md + sources.md (story linkage happens later via Three Amigos)",
         prerequisites: [1],
         # Manual so the stop hook doesn't short-circuit the multi-turn
         # intake conversation. The PM and agent need room to exchange
@@ -779,7 +779,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description:
           "At least one story exists for the project (acceptance criteria come later via Three Amigos)",
-        prerequisites: [1],
+        prerequisites: [13],
         # Multi-turn PM intake conversation — same rationale as
         # personas_complete and three_amigos_complete.
         validation_type: :manual
