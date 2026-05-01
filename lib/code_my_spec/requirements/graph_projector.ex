@@ -126,9 +126,19 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     pre_height = pre_sigma |> Enum.map(& &1.attributes.y) |> Enum.min(fn -> story_start_y end)
     comp_zone_y = pre_height - @story_row_gap - @row_gap
 
-    # Identify top-level groups: parent components (with children) and standalones
-    parent_ids = components |> Enum.map(& &1.parent_component_id) |> MapSet.new() |> MapSet.delete(nil)
-    child_ids = components |> Enum.filter(&(&1.parent_component_id && MapSet.member?(parent_ids, &1.parent_component_id))) |> MapSet.new(& &1.id)
+    # Identify top-level groups: container components (context-shaped types
+    # with :child scope defs) and standalones. A `parent_component_id` only
+    # rolls a component into its parent's tree when the parent is a real
+    # container — otherwise the parent is just a namespace umbrella
+    # (e.g. an `infrastructure`-typed `MarketMySpec`) and the child is
+    # itself top-level.
+    container_ids =
+      components
+      |> Enum.filter(&ComponentRegistry.has_children?(&1.type))
+      |> MapSet.new(& &1.id)
+
+    parent_ids = container_ids
+    child_ids = components |> Enum.filter(&(&1.parent_component_id && MapSet.member?(container_ids, &1.parent_component_id))) |> MapSet.new(& &1.id)
 
     # Top-level = parents + standalones (not children)
     top_level =
@@ -634,11 +644,27 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       child_reqs = Map.get(comp_reqs_by_id, child.id, [])
       sorted = sort_by_depth(child_reqs, topo)
 
-      {spec_reqs, rest} = Enum.split_with(sorted, &MapSet.member?(first_fo_descendants, node_key(&1)))
-      impl_reqs = Enum.filter(rest, &MapSet.member?(second_fo_descendants, node_key(&1)))
+      {spec_reqs, impl_reqs} = split_child_reqs(sorted, fan_outs_by_depth, first_fo_descendants, second_fo_descendants)
 
       %{child: child, spec_reqs: spec_reqs, impl_reqs: impl_reqs}
     end)
+  end
+
+  # When the parent's surviving chain has no fan-out points (e.g. a
+  # configuration that disables every artifact type that would
+  # otherwise fan out), the descendant sets are empty and every child
+  # req would be dropped from both bands. Treat those children as
+  # impl-phase so they still land on the canvas — the impl band is the
+  # default anchor and `build_phase_child_sigma` happily places them
+  # at `phase_y(nodes, nil) == 0`.
+  defp split_child_reqs(sorted, [], _first, _second), do: {[], sorted}
+
+  defp split_child_reqs(sorted, _fan_outs, first_fo_descendants, second_fo_descendants) do
+    {spec_reqs, rest} =
+      Enum.split_with(sorted, &MapSet.member?(first_fo_descendants, node_key(&1)))
+
+    impl_reqs = Enum.filter(rest, &MapSet.member?(second_fo_descendants, node_key(&1)))
+    {spec_reqs, impl_reqs}
   end
 
   defp fan_out_nodes_by_depth(parent_id, topo) do

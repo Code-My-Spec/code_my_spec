@@ -122,6 +122,34 @@ defmodule CodeMySpecSpex.GraphGivens do
      })}
   end
 
+  # -- Topology: one context, two `module`-typed children --
+  #
+  # Mirrors the real-world shape seen in MarketMySpec.Skills, where the
+  # context's children are spec'd with `## Type\n\nmodule` (not a
+  # registered primitive type). Used to pin that `module` children
+  # still receive their parent-context-driven `:child`-scoped
+  # requirement nodes in the projected graph.
+  register_given :context_with_module_typed_children, context do
+    write_specs(context.environment, [
+      {"Skills", :context, []},
+      {"Skills.MarketingStrategy", :module, []},
+      {"Skills.Overview", :module, []}
+    ])
+
+    sync_project(context)
+
+    parent = Fixtures.get_component_by_module_name(context.scope, "Skills")
+    strategy = Fixtures.get_component_by_module_name(context.scope, "Skills.MarketingStrategy")
+    overview = Fixtures.get_component_by_module_name(context.scope, "Skills.Overview")
+
+    {:ok,
+     Map.merge(context, %{
+       parent_context: parent,
+       child_strategy: strategy,
+       child_overview: overview
+     })}
+  end
+
   # -- Topology: two independent siblings --
 
   register_given :two_independent_sibling_schemas, context do

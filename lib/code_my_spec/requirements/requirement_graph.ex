@@ -147,14 +147,26 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # Cross-entity: story ↔ surface tree.
   #
-  # Kickoff edges (`bdd_specs_exist → component.first_req`) span the
+  # Kickoff edges (`bdd_specs_exist → first work item`) span the
   # surface AND every component in its transitive cross-context
   # dependency closure. Transitive reduction collapses these to the
   # deepest dep(s) — the story's outgoing edge ends up at whatever
   # has to be done first in the dep chain.
   #
+  # Kickoff target dispatch follows the node_scope of the first
+  # surviving def for the kickoff component's type:
+  # - `:parent` / `:self` → land on the kickoff component's own node
+  #   (the natural starting point — e.g. parent.spec_file under the
+  #   default config for a context surface)
+  # - `:child` → fan out to every direct child whose own type
+  #   template includes that def's name (the symmetric counterpart
+  #   of `container_exit_edges`; required when the parent's chain
+  #   has been filtered down to nothing but child-scoped work, as
+  #   happens when require_specs/reviews/tests are all disabled)
+  #
   # The exit edge stays at the surface's terminal — the story's done
-  # when the surface is done; deps reach the exit transitively.
+  # when the surface is done; deps reach the exit transitively. For
+  # container surfaces it fans in from each child's terminal.
   defp component_tree_edges(ctx, config) do
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
@@ -168,24 +180,41 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       surface ->
         kickoff_components = transitive_dep_closure(surface, ctx)
-        kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config))
+        kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
         kickoff_edges ++ surface_exit_edge(surface, story, ctx, config)
     end
   end
 
-  defp kickoff_edge(comp, story, config) do
+  defp kickoff_edge(comp, story, config, ctx) do
     case first_filtered_def(comp.type, config) do
       nil ->
         []
 
-      first ->
+      %{node_scope: :child, name: name} ->
+        comp
+        |> direct_children(ctx)
+        |> Enum.filter(&child_supports_def_name?(&1, name))
+        |> Enum.map(fn child ->
+          %{
+            from: {"story", story.id, "bdd_specs_exist"},
+            to: {"component", child.id, name}
+          }
+        end)
+
+      %{name: name} ->
         [
           %{
             from: {"story", story.id, "bdd_specs_exist"},
-            to: {"component", comp.id, first.name}
+            to: {"component", comp.id, name}
           }
         ]
     end
+  end
+
+  defp child_supports_def_name?(child, name) do
+    child.type
+    |> ComponentRegistry.get_requirements_for_type()
+    |> Enum.any?(&(&1.name == name))
   end
 
   # bdd_specs_passing is gated on the LEAVES of the surface's
@@ -428,14 +457,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The template is filtered by the project configuration up front so disabled
   # artifact types (specs, reviews, tests) are stripped from both nodes and edges.
   defp instantiate_component_graphs(scope, ctx, config) do
-    # Build parent→children map
+    # Only context-shaped types (templates with :child scope defs) own
+    # their nested components for template purposes. A component nested
+    # under a non-context parent (e.g. a context whose namespace happens
+    # to live under an `infrastructure` umbrella like `MarketMySpec`) is
+    # still top-level and must run its own template — otherwise every
+    # component below the umbrella gets dropped from the requirement
+    # graph and the project shows 0/0 everywhere.
+    container_ids =
+      ctx.components
+      |> Enum.filter(&ComponentRegistry.has_children?(&1.type))
+      |> MapSet.new(& &1.id)
+
     children_by_parent =
       ctx.components
-      |> Enum.filter(& &1.parent_component_id)
+      |> Enum.filter(fn c ->
+        c.parent_component_id && MapSet.member?(container_ids, c.parent_component_id)
+      end)
       |> Enum.group_by(& &1.parent_component_id)
 
-    # Components that ARE children (handled by their parent's template)
-    child_ids = ctx.components |> Enum.filter(& &1.parent_component_id) |> MapSet.new(& &1.id)
+    child_ids =
+      ctx.components
+      |> Enum.filter(fn c ->
+        c.parent_component_id && MapSet.member?(container_ids, c.parent_component_id)
+      end)
+      |> MapSet.new(& &1.id)
 
     ctx.components
     |> Enum.reject(fn c -> MapSet.member?(child_ids, c.id) end)
