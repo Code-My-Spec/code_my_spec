@@ -308,37 +308,8 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
 
   # ─── Layout helpers ──────────────────────────────────────────────────
 
-  defp rule_position(index) do
-    col_x = [70, 490, 910]
-    row_y = [60, 620, 1180, 1740]
-    col = rem(index, 3)
-    row = div(index, 3)
-    %{x: Enum.at(col_x, col), y: Enum.at(row_y, row, row * 560 + 60)}
-  end
-
-  defp scenario_position(rule_index, scenario_index) do
-    rule_pos = rule_position(rule_index)
-    %{x: rule_pos.x + 20, y: rule_pos.y + 200 + scenario_index * 110}
-  end
-
-  defp wall_height(rules) do
-    rows = div(length(rules) - 1, 3) + 1
-    max(rows * 560 + 200, 780)
-  end
-
   defp scenarios_for_rule(scenarios, rule_id) do
     Enum.filter(scenarios, &(&1.rule_id == rule_id))
-  end
-
-  defp positioned_scenarios(rules, scenarios) do
-    Enum.flat_map(Enum.with_index(rules), fn {rule, rule_idx} ->
-      scenarios
-      |> scenarios_for_rule(rule.id)
-      |> Enum.with_index()
-      |> Enum.map(fn {scenario, scenario_idx} ->
-        %{rule_index: rule_idx, scenario: scenario, scenario_index: scenario_idx}
-      end)
-    end)
   end
 
   # ─── Render ──────────────────────────────────────────────────────────
@@ -361,28 +332,27 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
           session_state={@session_state}
         />
 
-        <div style="flex: 1; display: flex; overflow: hidden;">
+        <div class="wv4-body">
           <div class={"wv4-wall #{if @session_state == :listening, do: "empty", else: ""}"}>
             <div :if={@session_state == :sealed} class="wv4-sealed-stamp">
               Three Amigos sealed
             </div>
 
-            <div class="wv4-canvas" style={"width: 1280px; height: #{wall_height(@rules)}px;"}>
-              <.rule_card
-                :for={{rule, idx} <- Enum.with_index(@rules)}
-                rule={rule}
-                index={idx}
-                menu_open={@menu_open}
-                editing={@editing}
-              />
-              <.scenario_card
-                :for={positioned <- positioned_scenarios(@rules, @scenarios)}
-                rule_index={positioned.rule_index}
-                scenario={positioned.scenario}
-                scenario_index={positioned.scenario_index}
-                menu_open={@menu_open}
-                editing={@editing}
-              />
+            <div class="wv4-canvas">
+              <div :for={{rule, idx} <- Enum.with_index(@rules)} class="wv4-rule-column">
+                <.rule_card
+                  rule={rule}
+                  index={idx}
+                  menu_open={@menu_open}
+                  editing={@editing}
+                />
+                <.scenario_card
+                  :for={scenario <- scenarios_for_rule(@scenarios, rule.id)}
+                  scenario={scenario}
+                  menu_open={@menu_open}
+                  editing={@editing}
+                />
+              </div>
             </div>
 
             <div :if={@session_state == :listening} class="wv4-listening">
@@ -492,13 +462,12 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   attr :editing, :map, default: nil
 
   defp rule_card(assigns) do
-    pos = rule_position(assigns.index)
     is_editing? = match?(%{type: :rule, id: id} when id == assigns.rule.id, assigns.editing)
     is_menu? = match?(%{type: :rule, id: id} when id == assigns.rule.id, assigns.menu_open)
-    assigns = assign(assigns, pos: pos, is_editing?: is_editing?, is_menu?: is_menu?)
+    assigns = assign(assigns, is_editing?: is_editing?, is_menu?: is_menu?)
 
     ~H"""
-    <div class="wv4-card wv4-rule" style={"left: #{@pos.x}px; top: #{@pos.y}px;"}>
+    <div class="wv4-card wv4-rule">
       <button
         type="button"
         class="wv4-card-menu"
@@ -535,27 +504,20 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     """
   end
 
-  attr :rule_index, :integer, required: true
   attr :scenario, :map, required: true
-  attr :scenario_index, :integer, required: true
   attr :menu_open, :map, default: nil
   attr :editing, :map, default: nil
 
   defp scenario_card(assigns) do
-    pos = scenario_position(assigns.rule_index, assigns.scenario_index)
     sid = to_string(assigns.scenario.id)
 
     is_editing? = match?(%{type: :scenario, id: id} when id == sid, assigns.editing)
     is_menu? = match?(%{type: :scenario, id: id} when id == sid, assigns.menu_open)
 
-    assigns =
-      assign(assigns, pos: pos, is_editing?: is_editing?, is_menu?: is_menu?, sid: sid)
+    assigns = assign(assigns, is_editing?: is_editing?, is_menu?: is_menu?, sid: sid)
 
     ~H"""
-    <div
-      class={"wv4-card wv4-example wv4-example-#{@scenario.kind}"}
-      style={"left: #{@pos.x}px; top: #{@pos.y}px;"}
-    >
+    <div class={"wv4-card wv4-example wv4-example-#{@scenario.kind}"}>
       <button
         type="button"
         class="wv4-card-menu"
@@ -799,16 +761,18 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       }
       .wv4-root.sealed { filter: saturate(0.5) brightness(0.82); }
       .wv4-root *, .wv4-root *::before, .wv4-root *::after { box-sizing: border-box; }
-      .wv4-wall { flex: 1; position: relative; overflow: auto; background-color: var(--wall-bg);
+      .wv4-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+      .wv4-wall { flex: 1; min-width: 0; position: relative; overflow: auto; background-color: var(--wall-bg);
         background-image: radial-gradient(circle at 18% 25%, oklch(25% 0.08 45 / 0.35) 0, transparent 45%), radial-gradient(circle at 82% 72%, oklch(22% 0.09 300 / 0.3) 0, transparent 45%); }
       .wv4-wall.empty { background-image: radial-gradient(circle at 18% 25%, oklch(25% 0.08 45 / 0.35) 0, transparent 45%), radial-gradient(circle at 82% 72%, oklch(22% 0.09 300 / 0.3) 0, transparent 45%), radial-gradient(circle at 1px 1px, oklch(25% 0.012 256) 1px, transparent 0); background-size: auto, auto, 24px 24px; }
-      .wv4-canvas { position: relative; }
-      .wv4-card { position: absolute; background: var(--wall-card); border: 1.5px solid var(--wall-line); border-radius: 0.5rem; box-shadow: 0 1px 2px oklch(0% 0 0 / 0.4), 0 6px 16px oklch(0% 0 0 / 0.35); transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; }
+      .wv4-canvas { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; padding: 1.5rem; align-content: start; }
+      .wv4-rule-column { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+      .wv4-card { position: relative; background: var(--wall-card); border: 1.5px solid var(--wall-line); border-radius: 0.5rem; box-shadow: 0 1px 2px oklch(0% 0 0 / 0.4), 0 6px 16px oklch(0% 0 0 / 0.35); transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; min-width: 0; }
       .wv4-card:hover { border-color: var(--wall-line-hi); background: var(--wall-card-hi); box-shadow: 0 2px 4px oklch(0% 0 0 / 0.5), 0 10px 28px oklch(0% 0 0 / 0.45); transform: translateY(-1px); }
-      .wv4-rule { padding: 16px 18px 14px; width: 320px; }
+      .wv4-rule { padding: 16px 18px 14px; }
       .wv4-rule-id { font-family: var(--wall-mono); font-size: 10px; color: var(--wall-aqua); letter-spacing: 0.08em; text-transform: uppercase; }
       .wv4-rule-title { font-family: var(--wall-serif); font-size: 17px; line-height: 1.25; font-weight: 600; margin: 6px 0 8px; letter-spacing: -0.01em; color: var(--wall-ink); }
-      .wv4-example { padding: 10px 12px; width: 240px; border-left: 2px solid var(--wall-accent); }
+      .wv4-example { padding: 10px 12px; margin-left: 1.25rem; border-left: 2px solid var(--wall-accent); }
       .wv4-example.wv4-example-failure_path { border-left-color: var(--wall-secondary); }
       .wv4-example-id { font-family: var(--wall-mono); font-size: 9.5px; color: var(--wall-accent); letter-spacing: 0.1em; text-transform: uppercase; }
       .wv4-example-failure_path .wv4-example-id { color: var(--wall-secondary); }
@@ -888,6 +852,14 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       }
       .wv4-modal-actions {
         display: flex; gap: 8px; justify-content: flex-end;
+      }
+
+      @media (max-width: 768px) {
+        .wv4-body { flex-direction: column; }
+        .wv4-rail { width: 100%; max-height: 40vh; border-left: 0; border-top: 1.5px solid var(--wall-line); }
+        .wv4-canvas { padding: 1rem; gap: 1rem; }
+        .wv4-header { flex-wrap: wrap; gap: 8px 14px; padding: 12px 16px; }
+        .wv4-counts { flex-wrap: wrap; }
       }
     </style>
     """
