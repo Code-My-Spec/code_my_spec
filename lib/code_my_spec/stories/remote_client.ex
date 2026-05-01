@@ -382,6 +382,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
       %Criterion{
         id: criterion_data["id"],
         description: criterion_data["description"],
+        body: criterion_data["body"],
+        kind: deserialize_kind(criterion_data["kind"]),
+        rule_id: criterion_data["rule_id"],
         verified: criterion_data["verified"],
         verified_at: parse_datetime(criterion_data["verified_at"]),
         story_id: criterion_data["story_id"],
@@ -391,6 +394,12 @@ defmodule CodeMySpec.Stories.RemoteClient do
       }
     end)
   end
+
+  @criterion_kinds %{"happy_path" => :happy_path, "failure_path" => :failure_path}
+
+  defp deserialize_kind(nil), do: nil
+  defp deserialize_kind(k) when is_atom(k), do: k
+  defp deserialize_kind(k) when is_binary(k), do: Map.get(@criterion_kinds, k)
 
   defp parse_datetime(nil), do: nil
 
@@ -456,6 +465,9 @@ defmodule CodeMySpec.Stories.RemoteClient do
     Enum.reduce_while(criteria, :ok, fn %Criterion{} = criterion, _acc ->
       attrs = %{
         description: criterion.description,
+        body: criterion.body,
+        kind: criterion.kind,
+        rule_id: criterion.rule_id,
         verified: criterion.verified,
         verified_at: criterion.verified_at,
         story_id: criterion.story_id,

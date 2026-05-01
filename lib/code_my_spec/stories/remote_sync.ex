@@ -90,6 +90,9 @@ defmodule CodeMySpec.Stories.RemoteSync do
     Enum.each(criteria, fn %Criterion{} = criterion ->
       attrs = %{
         description: criterion.description,
+        body: criterion.body,
+        kind: criterion.kind,
+        rule_id: criterion.rule_id,
         verified: criterion.verified,
         verified_at: criterion.verified_at,
         story_id: criterion.story_id,

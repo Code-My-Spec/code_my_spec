@@ -163,10 +163,11 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
        rule statement in business terms.
 
     3. **Scenarios (green cards).** For each rule, generate at least
-       one happy-path scenario and one failure-path scenario. Call
-       `add_scenario` with story_id, the rule, a title, kind
-       (`happy_path` or `failure_path`), and the Given/When/Then
-       body in plain Gherkin.
+       one scenario. Use `kind: happy_path` for the normal flow. Add
+       `kind: failure_path` only when a genuine failure surface exists
+       for that rule — do not fabricate failure-path examples to fill a
+       coverage template. Call `add_scenario` with story_id, the rule,
+       a title, kind, and the Given/When/Then body in plain Gherkin.
 
     4. **Questions (red cards).** Park unresolved questions with
        `add_question`. Don't let them derail the conversation.
@@ -177,11 +178,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
 
     - ≥1 persona is linked to the story
     - ≥1 Rule exists on the story
-    - ≥1 Criterion (scenario) exists on the story
-
-    (The full readiness gate — rules < 10, scenarios > questions,
-    every rule has happy + failure — is enforced in a richer pass
-    once the Questions context and Criterion `kind` enrichment land.)
+    - Every Rule has ≥1 scenario (any kind)
+    - `rules < 10`
+    - `scenarios > open questions` (if any questions exist)
 
     ## This is a manual-validation task
 

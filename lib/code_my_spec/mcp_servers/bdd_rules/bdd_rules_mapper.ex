@@ -13,8 +13,7 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
     Rule added: "#{rule.statement}" (id: `#{rule.id}`, story_id: `#{rule.story_id}`)
 
     Next steps:
-    - Add at least one happy-path scenario via `add_scenario` with kind `happy_path`.
-    - Add at least one failure-path scenario via `add_scenario` with kind `failure_path`.
+    - Add at least one scenario via `add_scenario` (kind: `happy_path` for the normal flow; `failure_path` only when a genuine failure surface exists for this rule).
     """
 
     Response.tool()

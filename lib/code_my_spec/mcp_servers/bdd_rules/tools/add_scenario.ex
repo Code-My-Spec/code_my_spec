@@ -9,8 +9,8 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddScenario do
   body later" split.
 
   The scenario's `kind` distinguishes happy-path from failure-path
-  coverage; the readiness gate enforces that every rule has at least
-  one of each.
+  coverage. `kind` is metadata for UI grouping and Gherkin rendering;
+  the readiness gate only requires ≥1 scenario per rule of any kind.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddScenario do
 
     field :kind, :string,
       required: true,
-      doc: "`happy_path` or `failure_path`. Coverage gate enforces both per rule."
+      doc: "`happy_path` or `failure_path`. Use `happy_path` for the normal flow; add `failure_path` only when a genuine failure surface exists for this rule."
 
     field :body, :string,
       required: true,

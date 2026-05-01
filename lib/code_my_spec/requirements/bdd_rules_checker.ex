@@ -9,8 +9,9 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
     * ≥1 Rule (blue card) on the story
     * `rules < 10` — Example Mapping ceiling: too many rules means the
       story is too big to spec coherently in one session
-    * Every Rule has at least one happy-path scenario AND at least one
-      failure-path scenario — the BDD coverage discipline
+    * Every Rule has at least one scenario of any kind — agents must not
+      fabricate failure-path examples to satisfy a coverage gate when
+      the failure surface lives at a different layer
 
   Returns `{boolean(), map()}` per the checker contract (see
   `IssuesChecker`, `PersonasChecker`). Failure reasons are formatted as
@@ -52,7 +53,7 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
       |> maybe_add_persona_gap(personas)
       |> maybe_add_rules_gap(rules)
       |> maybe_add_rules_ceiling_gap(rules)
-      |> maybe_add_per_rule_coverage_gaps(rules, scenarios)
+      |> maybe_add_uncovered_rules_gap(rules, scenarios)
       |> maybe_add_questions_gap(scenarios, questions)
 
     case gaps do
@@ -91,29 +92,22 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
 
   defp maybe_add_rules_ceiling_gap(gaps, _rules), do: gaps
 
-  defp maybe_add_per_rule_coverage_gaps(gaps, [], _scenarios), do: gaps
+  defp maybe_add_uncovered_rules_gap(gaps, [], _scenarios), do: gaps
 
-  defp maybe_add_per_rule_coverage_gaps(gaps, rules, scenarios) do
+  defp maybe_add_uncovered_rules_gap(gaps, rules, scenarios) do
     by_rule = Enum.group_by(scenarios, & &1.rule_id)
 
-    coverage_gaps =
-      rules
-      |> Enum.flat_map(fn rule ->
-        scenarios = Map.get(by_rule, rule.id, [])
-        kinds = scenarios |> Enum.map(& &1.kind) |> MapSet.new()
-
-        missing_kinds =
-          [:happy_path, :failure_path]
-          |> Enum.reject(&MapSet.member?(kinds, &1))
-
-        Enum.map(missing_kinds, fn kind ->
-          kind_label = kind |> Atom.to_string() |> String.replace("_", "-")
-
-          "Rule \"#{rule.statement}\" is missing a #{kind_label} scenario — call `add_scenario` with `kind: #{kind}` for this rule."
-        end)
+    uncovered =
+      Enum.filter(rules, fn rule ->
+        Map.get(by_rule, rule.id, []) == []
       end)
 
-    coverage_gaps ++ gaps
+    rule_gaps =
+      Enum.map(uncovered, fn rule ->
+        "Rule \"#{rule.statement}\" has no scenarios — call `add_scenario` for this rule."
+      end)
+
+    rule_gaps ++ gaps
   end
 
   defp maybe_add_questions_gap(gaps, scenarios, questions) do

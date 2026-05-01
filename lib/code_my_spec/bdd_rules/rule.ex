@@ -4,9 +4,8 @@ defmodule CodeMySpec.BddRules.Rule do
 
   A Rule belongs to a Story and groups one or more scenarios (Criteria) that
   illustrate it. Rules are first-class persisted records — not strings on a
-  Criterion — so the readiness gate ("every rule has happy + failure
-  scenarios") can be enforced with joins, and ordering / addressability are
-  explicit.
+  Criterion — so the readiness gate (every rule has ≥1 scenario) can be
+  enforced with joins, and ordering / addressability are explicit.
 
   Lives under the `BddRules` namespace to avoid colliding with the existing
   `CodeMySpec.Rules` module (which serves coding-convention markdown rules
