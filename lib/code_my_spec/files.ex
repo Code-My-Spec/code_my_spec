@@ -157,10 +157,16 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
-  List files updated since a given timestamp.
+  List files whose on-disk content changed since a given timestamp.
 
   Useful for finding what changed during a task: pass `task.started_at`.
   Optionally filter by component_id or story_id.
+
+  Compares against the file's `mtime` (captured at sync from the
+  filesystem), not the DB row's `updated_at` — the validation pipeline
+  itself writes to rows (e.g. `validation_errors`) which would otherwise
+  make every previously-touched file look freshly "changed" on every
+  subsequent stop turn.
   """
   @spec changed_since(Scope.t(), DateTime.t(), keyword()) :: [File.t()]
   def changed_since(%Scope{active_project_id: project_id}, since, opts \\ []) do
@@ -168,7 +174,7 @@ defmodule CodeMySpec.Files do
     story_id = Keyword.get(opts, :story_id)
 
     File
-    |> where([f], f.project_id == ^project_id and f.updated_at >= ^since)
+    |> where([f], f.project_id == ^project_id and f.mtime >= ^since)
     |> then(fn q ->
       if component_id, do: where(q, [f], f.component_id == ^component_id), else: q
     end)
