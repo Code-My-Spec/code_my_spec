@@ -99,10 +99,10 @@ defmodule CodeMySpec.Issues.RemoteClientTest do
                )
     end
 
-    test "returns {:error, body} on 422", %{scope: scope} do
+    test "returns {:error, {:validation, body}} on 422", %{scope: scope} do
       plug = stub_response(422, %{"errors" => %{"status" => ["is invalid"]}})
 
-      assert {:error, %{"errors" => _}} =
+      assert {:error, {:validation, %{"errors" => _}}} =
                RemoteClient.update_issue(
                  scope,
                  "any-id",

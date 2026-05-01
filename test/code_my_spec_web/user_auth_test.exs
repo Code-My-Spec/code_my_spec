@@ -1,10 +1,10 @@
 defmodule CodeMySpecWeb.UserAuthTest do
   use CodeMySpecTest.ConnCase, async: true
 
-  alias Phoenix.LiveView
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
+  alias Phoenix.LiveView
 
   import CodeMySpec.UsersFixtures
 
@@ -330,10 +330,10 @@ defmodule CodeMySpecWeb.UserAuthTest do
       assert returned_socket.assigns.current_scope.active_account_id == account.id
     end
 
-    test "creates a personal account and continues for users with no accounts", %{user: user} do
+    test "auto-selects the first account and continues when none is active", %{user: user} do
+      account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user)
       scope = Scope.for_user(user)
       assert is_nil(scope.active_account)
-      assert CodeMySpec.Accounts.list_accounts(scope) == []
 
       socket = %LiveView.Socket{
         endpoint: CodeMySpecWeb.Endpoint,
@@ -343,23 +343,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
       assert {:cont, returned_socket} =
                UserAuth.on_mount(:require_active_account, %{}, %{}, socket)
 
-      assert returned_socket.assigns.current_scope.active_account
-      assert returned_socket.assigns.current_scope.active_account.type == :personal
-      refute is_nil(returned_socket.assigns.current_scope.active_account_id)
-    end
-
-    test "redirects to picker when user has accounts but none selected", %{user: user} do
-      _ = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user)
-      scope = Scope.for_user(user)
-      assert is_nil(scope.active_account)
-
-      socket = %LiveView.Socket{
-        endpoint: CodeMySpecWeb.Endpoint,
-        assigns: %{__changed__: %{}, flash: %{}, current_scope: scope}
-      }
-
-      assert {:halt, _socket} =
-               UserAuth.on_mount(:require_active_account, %{}, %{}, socket)
+      assert returned_socket.assigns.current_scope.active_account_id == account.id
     end
   end
 

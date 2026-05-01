@@ -1,15 +1,16 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySessionTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Stories.Tools.StartStorySession
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Stories.Tools.StartStorySession
+  alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   defp get_text(response) do
@@ -30,7 +31,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySessionTest do
 
       text = get_text(response)
       assert text =~ "Product Manager"
-      assert text =~ "refine and flesh out user stories"
+      assert text =~ "produce a set of bare user stories"
       assert text =~ "Test Story"
     end
 
@@ -46,7 +47,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySessionTest do
 
       text = get_text(response)
       assert text =~ "Product Manager"
-      assert text =~ "comprehensive story review"
+      assert text =~ "story-level review"
       assert text =~ "Review Story"
     end
 

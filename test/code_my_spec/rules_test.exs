@@ -1,6 +1,7 @@
 defmodule CodeMySpec.RulesTest do
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Rules
 
   @moduletag :tmp_dir
@@ -32,7 +33,7 @@ defmodule CodeMySpec.RulesTest do
         content: "Context design rule"
       )
 
-      rules = Rules.find_matching_rules("context", "design", tmp_dir)
+      rules = Rules.find_matching_rules("context", "design", Environment.new(:local, tmp_dir))
 
       assert length(rules) == 1
       assert hd(rules).name == "test_rule"
@@ -50,7 +51,7 @@ defmodule CodeMySpec.RulesTest do
         session_type: "design"
       )
 
-      rules = Rules.find_matching_rules("context", "design", tmp_dir)
+      rules = Rules.find_matching_rules("context", "design", Environment.new(:local, tmp_dir))
       assert length(rules) == 1
       assert hd(rules).name == "context_rule"
     end
@@ -66,7 +67,7 @@ defmodule CodeMySpec.RulesTest do
         session_type: "test"
       )
 
-      rules = Rules.find_matching_rules("context", "test", tmp_dir)
+      rules = Rules.find_matching_rules("context", "test", Environment.new(:local, tmp_dir))
       assert length(rules) == 1
       assert hd(rules).name == "test_rule"
     end
@@ -77,7 +78,7 @@ defmodule CodeMySpec.RulesTest do
         session_type: "design"
       )
 
-      rules = Rules.find_matching_rules("anything", "design", tmp_dir)
+      rules = Rules.find_matching_rules("anything", "design", Environment.new(:local, tmp_dir))
       assert length(rules) == 1
     end
 
@@ -87,12 +88,12 @@ defmodule CodeMySpec.RulesTest do
         session_type: "*"
       )
 
-      rules = Rules.find_matching_rules("context", "code", tmp_dir)
+      rules = Rules.find_matching_rules("context", "code", Environment.new(:local, tmp_dir))
       assert length(rules) == 1
     end
 
     test "returns empty list when rules directory does not exist", %{tmp_dir: tmp_dir} do
-      rules = Rules.find_matching_rules("context", "design", tmp_dir)
+      rules = Rules.find_matching_rules("context", "design", Environment.new(:local, tmp_dir))
       assert rules == []
     end
 
@@ -102,7 +103,7 @@ defmodule CodeMySpec.RulesTest do
         session_type: "test"
       )
 
-      rules = Rules.find_matching_rules("context", "design", tmp_dir)
+      rules = Rules.find_matching_rules("context", "design", Environment.new(:local, tmp_dir))
       assert rules == []
     end
   end

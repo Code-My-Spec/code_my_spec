@@ -8,30 +8,35 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
     test "renders the outcome-focused headline", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Get free access to the harness that built MetricFlow"
+      assert html =~ "Run your business"
+      assert html =~ "one terminal"
       assert html =~ "Log in"
     end
 
     test "renders the free / no-credit-card reassurance", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "Free, no credit card required"
+      assert html =~ "FREE"
+      assert html =~ "NO CREDIT CARD"
     end
 
-    test "promotes the tagline directly under the headline", %{conn: conn} do
+    test "promotes the platform tagline directly under the headline", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "Specs, code, tests, verification - end to end, Elixir-first."
+      assert html =~ "A Claude Code plugin platform"
+      assert html =~ "One harness per domain"
     end
 
     test "renders the BYO differentiator line", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "Open source. BYO agent. BYO model. No token markup."
+      assert html =~ "Bring your own Claude"
+      assert html =~ "Bring your own keys"
+      assert html =~ "don&#39;t markup tokens"
     end
 
-    test "renders the MetricFlow case-study trust line linking to the case study", %{conn: conn} do
+    test "renders the MetricFlow proof line linking to the case study", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Built MetricFlow with this harness in 13 days"
-      assert html =~ "see the case study"
+      assert html =~ "John shipped MetricFlow using these harnesses"
+      assert html =~ "Read the case study"
       assert html =~ ~s|href="/case-studies/metric-flow"|
     end
 
@@ -70,7 +75,7 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
         |> element("#registration_form")
         |> render_change(user: %{"email" => "with spaces"})
 
-      assert result =~ "Get free access to the harness that built MetricFlow"
+      assert result =~ "Run your business"
       assert result =~ "must have the @ sign and no spaces"
     end
   end
