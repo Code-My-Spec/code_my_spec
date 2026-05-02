@@ -103,6 +103,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> apply_code_generation()
     |> apply_qa_integration_plan()
     |> apply_architecture()
+    |> apply_spex_boundary_ready()
     |> apply_component_subgraph()
     |> apply_qa_artifacts()
     |> apply_persona()
@@ -111,6 +112,16 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> apply_bdd_spec_file()
     |> apply_qa_story_artifacts()
     |> apply_journey_artifacts()
+  end
+
+  # 5b. Spex boundary readiness gate (id 16) — writes the framework
+  # Credo checks, fixtures bridge, and project BDD plan into the env
+  # via the same helper used by Story 677's spex.
+  defp apply_spex_boundary_ready(context) do
+    :ok =
+      CodeMySpecSpex.SpexBoundaryArtifactHelpers.write_baseline_artifacts(context.environment)
+
+    context
   end
 
   # 1. Project setup steps (project_setup requirement)

@@ -702,6 +702,47 @@ defmodule CodeMySpecSpex.SharedGivens do
      })}
   end
 
+  # The agent has signalled SessionStart and called start_task for the
+  # `spex_boundary_ready` requirement on the active project. start_task
+  # runs `SpexBoundaryReady.command/2`, which returns the orchestration
+  # prompt (no side effects on disk). Manual-validation task: stays open
+  # for evaluate_task to drive in `when_` steps.
+  register_given :spex_boundary_ready_task_started, context do
+    session_id = "spex-#{System.unique_integer([:positive])}"
+
+    post(
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      "/api/hooks/session-start",
+      %{"session_id" => session_id}
+    )
+    |> Phoenix.ConnTest.json_response(200)
+
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "spex_boundary_ready",
+          entity_type: "project",
+          entity_id: to_string(context.project.id),
+          session_id: session_id
+        },
+        frame
+      )
+
+    prompt = flatten_tool_response(response)
+
+    {:ok,
+     Map.merge(context, %{
+       session_id: session_id,
+       task_id: extract_task_id(response),
+       prompt: prompt,
+       start_response: response
+     })}
+  end
+
   # The visitor has registered through the public registration LiveView and
   # a magic-link email is sitting in the test mailbox. Drives the real
   # /users/register form submit (CodeMySpecWeb endpoint, not local), captures

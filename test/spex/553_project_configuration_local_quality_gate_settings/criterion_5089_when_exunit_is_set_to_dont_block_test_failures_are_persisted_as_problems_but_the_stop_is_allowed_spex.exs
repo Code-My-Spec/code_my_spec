@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5089Spex do
 
   ## Recording this cassette
 
-  See `.code_my_spec/knowledge/spex/recording_cassettes.md` for the full
+  See `.code_my_spec/framework/bdd/spex/recording_cassettes.md` for the full
   recipe. Summary:
 
   1. In `../code_my_spec_test_repo/`, write a failing test file at

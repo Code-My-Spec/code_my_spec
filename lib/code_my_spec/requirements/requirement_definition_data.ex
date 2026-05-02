@@ -819,6 +819,18 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [4]
       }),
       new!(%{
+        id: 16,
+        name: "spex_boundary_ready",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.SpexBoundaryChecker, function: :complete?},
+        satisfied_by: AgentTasks.SpexBoundaryReady,
+        artifact_type: :specification,
+        description:
+          "BDD spec boundary protections installed — framework Credo checks + fixtures bridge + project BDD spec plan",
+        prerequisites: [5]
+      }),
+      new!(%{
         id: 6,
         name: "issues_triaged",
         node_scope: :self,
@@ -827,7 +839,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.TriageIssues,
         artifact_type: :review,
         description: "All incoming QA issues have been triaged",
-        prerequisites: [5]
+        prerequisites: [16]
       }),
       new!(%{
         id: 7,
