@@ -12,6 +12,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.ArchitectureChecker
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -40,6 +41,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc """
   Returns the next actionable requirements — unsatisfied nodes where
   every incoming edge is satisfied.
+
+  Requirement nodes whose owning entity is an orphan context (per
+  `ArchitectureChecker.orphans/1`) are filtered out. Their
+  resolution belongs to the architecture task, not to component
+  implementation. Non-context components (schemas, modules,
+  liveviews, etc.) are never in the orphans list and are unaffected.
   """
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
@@ -57,14 +64,23 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
       end)
 
+    orphan_ids = scope |> ArchitectureChecker.orphans() |> MapSet.new(& &1.id)
+
     nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
+        not orphan_context_node?(n, orphan_ids) and
         incoming_prereqs_satisfied?(n, incoming, satisfaction_map)
     end)
     |> sort_by_story_priority(ctx)
   end
+
+  defp orphan_context_node?(%{entity_type: "component", entity_id: id}, orphan_ids) do
+    MapSet.member?(orphan_ids, id)
+  end
+
+  defp orphan_context_node?(_node, _orphan_ids), do: false
 
   @doc """
   Compute all requirement nodes across the project.

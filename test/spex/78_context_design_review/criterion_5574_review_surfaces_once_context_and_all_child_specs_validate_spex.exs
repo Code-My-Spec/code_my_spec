@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story78.Criterion5574Spex do
 
   spex "Context Design Review" do
     scenario "Review surfaces once context and all child specs validate" do
-      given_ :synced_context_component
+      given_ :synced_context_in_satisfied_project
 
       given_ "a child Component exists with a valid spec on disk", context do
         child =

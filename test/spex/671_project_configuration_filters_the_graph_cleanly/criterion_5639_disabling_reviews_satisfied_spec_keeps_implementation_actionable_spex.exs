@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5639Spex do
 
   spex "Reviews disabled + spec_valid satisfied → impl_file actionable" do
     scenario "impl_file is rendered actionable; no review blocker remains" do
-      given_ :synced_context_component
+      given_ :synced_context_in_satisfied_project
 
       and_ "the implementation file is removed (in-progress state)",
            context do

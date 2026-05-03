@@ -113,10 +113,13 @@ defmodule CodeMySpecSpex.SharedGivens do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
+  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.StoryHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
@@ -147,6 +150,120 @@ defmodule CodeMySpecSpex.SharedGivens do
       Fixtures.get_component_by_module_name(scope, @component_module_name)
 
     {:ok, Map.put(context, :component, component)}
+  end
+
+  # Like :synced_context_component, but layered on top of a fully-satisfied
+  # project chain (`FullSatisfactionFixtures.apply/1`) and with a story
+  # linked to ExampleContext so it isn't an orphan context. The kickoff
+  # edge for the new story is also cleared (three_amigos + bdd_specs_exist
+  # satisfied) so ExampleContext's chain isn't clamped.
+  #
+  # Use this when a spec needs to exercise the agent surface
+  # (`get_next_requirement`) past the architecture_designed gate while
+  # still having ExampleContext's downstream nodes (review_file,
+  # implementation_file, tests, etc.) be the actionable frontier.
+  #
+  # Produces: `context.component`, `context.example_story`, plus all keys
+  # from `:fully_satisfied_project` (scope, environment, project, story
+  # for Reservations, persona_slug, persona_id).
+  register_given :synced_context_in_satisfied_project, context do
+    context = FullSatisfactionFixtures.apply(context)
+
+    env = context.environment
+    scope = context.scope
+
+    :ok = Environments.write_file(env, @spec_path, spec_file_content())
+    :ok = Environments.write_file(env, @impl_path, impl_file_content())
+
+    {:ok, sync_live, _html} =
+      live(context.conn, "/projects/#{context.project.name}/sync")
+
+    sync_live |> element("button[phx-click='sync']") |> render_click()
+
+    %_{} =
+      component =
+      Fixtures.get_component_by_module_name(scope, @component_module_name)
+
+    story =
+      StoryHelpers.create_and_link(scope, @component_module_name,
+        title: "Example context story",
+        description: "Manage the example context",
+        acceptance_criteria: ["Example works"],
+        priority: 1
+      )
+
+    frame = %Frame{assigns: %{current_scope: scope}}
+
+    {:reply, _response, _frame} =
+      LinkPersonaToStory.execute(
+        %{persona_id: context.persona_id, story_id: story.id},
+        frame
+      )
+
+    rule_statement = "Example context behaves as expected"
+
+    {:reply, _response, _frame} =
+      AddRule.execute(%{story_id: story.id, statement: rule_statement}, frame)
+
+    {:reply, _response, _frame} =
+      AddScenario.execute(
+        %{
+          story_id: story.id,
+          rule_statement: rule_statement,
+          kind: "happy_path",
+          title: "Happy path",
+          body:
+            "Given the user opens the page\nWhen they click the button\nThen the action succeeds"
+        },
+        frame
+      )
+
+    {:reply, _response, _frame} =
+      AddScenario.execute(
+        %{
+          story_id: story.id,
+          rule_statement: rule_statement,
+          kind: "failure_path",
+          title: "Failure path",
+          body:
+            "Given the user is logged out\nWhen they click the button\nThen they are redirected to login"
+        },
+        frame
+      )
+
+    story = StoryHelpers.fetch(scope, story.id)
+    [criterion | _] = story.criteria
+
+    bdd_path = Fixtures.spec_file_path(story, criterion)
+
+    bdd_content = """
+    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
+      @moduledoc \"\"\"
+      Story #{story.id} — #{story.title}
+      Criterion #{criterion.id} — #{criterion.description}
+      \"\"\"
+
+      use CodeMySpecSpex.Case
+
+      spex "#{story.title}" do
+        scenario "the criterion holds" do
+          then_ "the placeholder assertion passes" do
+            assert true
+            :ok
+          end
+        end
+      end
+    end
+    """
+
+    :ok = Environments.write_file(env, bdd_path, bdd_content)
+
+    {:ok, sync_live, _html} =
+      live(context.conn, "/projects/#{context.project.name}/sync")
+
+    sync_live |> element("button[phx-click='sync']") |> render_click()
+
+    {:ok, Map.merge(context, %{component: component, example_story: story})}
   end
 
   # Creates a story and links it to the component via the same MCP tools the

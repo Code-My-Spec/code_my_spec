@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story78.Criterion5581Spex do
 
   spex "Context Design Review" do
     scenario "Pending review keeps implementation off the actionable queue" do
-      given_ :synced_context_component
+      given_ :synced_context_in_satisfied_project
 
       given_ "a child Component exists with a valid spec on disk", context do
         child =

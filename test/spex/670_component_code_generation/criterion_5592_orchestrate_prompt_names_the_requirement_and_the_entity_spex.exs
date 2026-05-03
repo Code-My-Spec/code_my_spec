@@ -16,26 +16,29 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.SharedGivens
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
-  @module_name "ExampleNoImpl"
-  @spec_path ".code_my_spec/spec/example_no_impl.spec.md"
-  @review_path ".code_my_spec/spec/example_no_impl/design_review.md"
+  @module_name "ExampleContext"
+  @impl_path "lib/example_context.ex"
+  @review_path ".code_my_spec/spec/example_context/design_review.md"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "Component Code Generation" do
     scenario "Orchestrate prompt names the requirement and the entity" do
-      given_ "a context Component is synced with spec + design review on disk but no impl",
-             context do
+      given_ :synced_context_in_satisfied_project
+
+      and_ "the implementation file is removed and a design review is written",
+           context do
         env = context.environment
 
-        :ok = Environments.write_file(env, @spec_path, spec_file_content())
+        :ok = Environments.delete_file(env, @impl_path)
         :ok = Environments.write_file(env, @review_path, review_file_content())
 
         {:ok, sync_live, _html} =
@@ -45,11 +48,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
         |> element("button[phx-click='sync']")
         |> render_click()
 
-        %_{} =
-          component =
-          Fixtures.get_component_by_module_name(context.scope, @module_name)
-
-        {:ok, Map.put(context, :component, component)}
+        {:ok, context}
       end
 
       when_ "the agent calls get_next_requirement", context do
