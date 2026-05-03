@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
 
   spex "Deleting a completed artifact re-surfaces its requirement" do
     scenario "the parent spec_file reappears as actionable after deletion" do
-      given_ :context_with_three_children
+      given_ :context_with_three_children_in_satisfied_project
 
       and_ "the engineer deletes the parent context's spec file from disk",
            context do

@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5619Spex do
 
   spex "Blocked nodes are excluded until prereqs are satisfied" do
     scenario "child review work is not advertised while parent spec is missing" do
-      given_ :context_with_three_children
+      given_ :context_with_three_children_in_satisfied_project
 
       and_ "the parent context's spec file is removed", context do
         :ok =

@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5626Spex do
 
   spex "Blocked-by-prereq nodes do not surface in actionable" do
     scenario "with parent spec missing, downstream parent requirements stay out of actionable" do
-      given_ :context_with_three_children
+      given_ :context_with_three_children_in_satisfied_project
 
       and_ "the parent context's spec file is removed and re-synced", context do
         :ok =

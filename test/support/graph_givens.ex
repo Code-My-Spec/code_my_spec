@@ -88,9 +88,14 @@ defmodule CodeMySpecSpex.GraphGivens do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
+  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
+  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
 
@@ -112,6 +117,36 @@ defmodule CodeMySpecSpex.GraphGivens do
     schema = Fixtures.get_component_by_module_name(context.scope, "Reservations.Booking")
     repo = Fixtures.get_component_by_module_name(context.scope, "Reservations.BookingRepo")
     service = Fixtures.get_component_by_module_name(context.scope, "Reservations.PricingService")
+
+    {:ok,
+     Map.merge(context, %{
+       parent_context: parent,
+       child_schema: schema,
+       child_repository: repo,
+       child_service: service
+     })}
+  end
+
+  # -- Topology: one context, three children, in a satisfied project --
+
+  register_given :context_with_three_children_in_satisfied_project, context do
+    context = FullSatisfactionFixtures.apply(context)
+
+    write_specs(context.environment, [
+      {"Reservations", :context, []},
+      {"Reservations.Booking", :schema, []},
+      {"Reservations.BookingRepo", :repository, []},
+      {"Reservations.PricingService", :service, []}
+    ])
+
+    sync_project(context)
+
+    parent = Fixtures.get_component_by_module_name(context.scope, "Reservations")
+    schema = Fixtures.get_component_by_module_name(context.scope, "Reservations.Booking")
+    repo = Fixtures.get_component_by_module_name(context.scope, "Reservations.BookingRepo")
+    service = Fixtures.get_component_by_module_name(context.scope, "Reservations.PricingService")
+
+    cover_component_with_story(context, "Reservations")
 
     {:ok,
      Map.merge(context, %{
@@ -332,6 +367,88 @@ defmodule CodeMySpecSpex.GraphGivens do
       live(context.conn, "/projects/#{context.project.name}/sync")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
+    :ok
+  end
+
+  defp cover_component_with_story(context, module_name) do
+    scope = context.scope
+    env = context.environment
+
+    story =
+      StoryHelpers.create_and_link(scope, module_name,
+        title: "#{module_name} story",
+        description: "Drive #{module_name}.",
+        acceptance_criteria: ["#{module_name} works"],
+        priority: 1
+      )
+
+    frame = %Frame{assigns: %{current_scope: scope}}
+
+    {:reply, _r, _f} =
+      LinkPersonaToStory.execute(
+        %{persona_id: context.persona_id, story_id: story.id},
+        frame
+      )
+
+    rule_statement = "#{module_name} behaves correctly"
+
+    {:reply, _r, _f} =
+      AddRule.execute(%{story_id: story.id, statement: rule_statement}, frame)
+
+    {:reply, _r, _f} =
+      AddScenario.execute(
+        %{
+          story_id: story.id,
+          rule_statement: rule_statement,
+          kind: "happy_path",
+          title: "Happy path",
+          body:
+            "Given the user opens the page\nWhen they take an action\nThen the action succeeds"
+        },
+        frame
+      )
+
+    {:reply, _r, _f} =
+      AddScenario.execute(
+        %{
+          story_id: story.id,
+          rule_statement: rule_statement,
+          kind: "failure_path",
+          title: "Failure path",
+          body:
+            "Given the user is logged out\nWhen they take an action\nThen they are redirected to login"
+        },
+        frame
+      )
+
+    story = StoryHelpers.fetch(scope, story.id)
+    [criterion | _] = story.criteria
+
+    bdd_path = Fixtures.spec_file_path(story, criterion)
+
+    bdd_content = """
+    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
+      @moduledoc \"\"\"
+      Story #{story.id} — #{story.title}
+      Criterion #{criterion.id} — #{criterion.description}
+      \"\"\"
+
+      use CodeMySpecSpex.Case
+
+      spex "#{story.title}" do
+        scenario "the criterion holds" do
+          then_ "the placeholder assertion passes" do
+            assert true
+            :ok
+          end
+        end
+      end
+    end
+    """
+
+    :ok = Environments.write_file(env, bdd_path, bdd_content)
+
+    sync_project(context)
     :ok
   end
 end

@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
 
   spex "Unblocking a prereq promotes its dependents into actionable" do
     scenario "downstream items appear after the prereq is satisfied" do
-      given_ :context_with_three_children
+      given_ :context_with_three_children_in_satisfied_project
 
       and_ "the parent context's spec file is removed and re-synced", context do
         :ok =

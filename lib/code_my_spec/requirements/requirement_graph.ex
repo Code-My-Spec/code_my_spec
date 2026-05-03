@@ -42,11 +42,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   Returns the next actionable requirements — unsatisfied nodes where
   every incoming edge is satisfied.
 
-  Requirement nodes whose owning entity is an orphan context (per
-  `ArchitectureChecker.orphans/1`) are filtered out. Their
-  resolution belongs to the architecture task, not to component
-  implementation. Non-context components (schemas, modules,
-  liveviews, etc.) are never in the orphans list and are unaffected.
+  Component requirements without inherited priority (no direct story
+  link, no inheritance via surface deps, no inheritance via parent
+  chain) are filtered out. Without a business driver, surfacing them
+  asks the agent to implement components that may be deleted,
+  relinked, or merged by the architecture task. Story-driven
+  components and their priority-inheriting descendants stay
+  surfaced.
   """
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
@@ -64,23 +66,23 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
       end)
 
-    orphan_ids = scope |> ArchitectureChecker.orphans() |> MapSet.new(& &1.id)
+    component_priority = build_component_priority_map(ctx)
 
     nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
-        not orphan_context_node?(n, orphan_ids) and
+        not untethered_component?(n, component_priority) and
         incoming_prereqs_satisfied?(n, incoming, satisfaction_map)
     end)
     |> sort_by_story_priority(ctx)
   end
 
-  defp orphan_context_node?(%{entity_type: "component", entity_id: id}, orphan_ids) do
-    MapSet.member?(orphan_ids, id)
+  defp untethered_component?(%{entity_type: "component", entity_id: id}, component_priority) do
+    not Map.has_key?(component_priority, id)
   end
 
-  defp orphan_context_node?(_node, _orphan_ids), do: false
+  defp untethered_component?(_node, _component_priority), do: false
 
   @doc """
   Compute all requirement nodes across the project.
