@@ -15,10 +15,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories
-  alias CodeMySpec.Tags
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
+  alias CodeMySpec.Tags
 
   schema do
     field :story_ids, {:list, :string}, required: true, doc: "List of story IDs to tag"
@@ -27,7 +27,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
 
   @impl true
   def execute(params, frame) do
-    case Validators.validate_scope(frame) do
+    case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
         results = Enum.map(params.story_ids, &tag_one(scope, &1, params.tag))
 

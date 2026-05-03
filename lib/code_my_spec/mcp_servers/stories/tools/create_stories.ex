@@ -6,9 +6,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStories do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
     field :stories, {:list, :map}, required: true
@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStories do
 
   @impl true
   def execute(params, frame) do
-    case Validators.validate_scope(frame) do
+    case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
         create_batch(scope, params, frame)
 

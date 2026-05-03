@@ -7,9 +7,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStory do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
     field :story_id, :string, required: true, doc: "Story ID (use list_story_titles to find IDs)"
@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetStory do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          story when not is_nil(story) <- Stories.get_story(scope, params.story_id) do
       {:reply, StoriesMapper.story_get_response(story), frame}
     else

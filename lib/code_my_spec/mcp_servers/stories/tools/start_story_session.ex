@@ -23,7 +23,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStorySession do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, _mode} <- validate_mode(params.mode) do
       task = %{session_type: session_type(params.mode)}
 

@@ -7,9 +7,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
     field :story_id, :string, required: true, doc: "Story ID to unlink from component"
@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
          {:ok, updated_story} <- Stories.clear_story_component(scope, story) do
       {:reply, StoriesMapper.story_component_cleared_response(updated_story), frame}

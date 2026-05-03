@@ -34,7 +34,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          story_params <- transform_params(params),
          {:ok, story} <- Stories.create_story(scope, story_params) do
       {:reply, StoriesMapper.story_response(story), frame}

@@ -21,11 +21,22 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks)
   component(CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd)
 
-  # Stories — delegates to remote server API
+  # Stories — full CRUD scoped to the local working dir
+  component(CodeMySpec.McpServers.Stories.Tools.CreateStory)
+  component(CodeMySpec.McpServers.Stories.Tools.UpdateStory)
+  component(CodeMySpec.McpServers.Stories.Tools.DeleteStory)
+  component(CodeMySpec.McpServers.Stories.Tools.GetStory)
   component(CodeMySpec.McpServers.Stories.Tools.ListStories)
   component(CodeMySpec.McpServers.Stories.Tools.ListStoryTitles)
   component(CodeMySpec.McpServers.Stories.Tools.SetStoryComponent)
   component(CodeMySpec.McpServers.Stories.Tools.AnalyzeStoryLinkage)
+  component(CodeMySpec.McpServers.Stories.Tools.AddCriterion)
+  component(CodeMySpec.McpServers.Stories.Tools.UpdateCriterion)
+  component(CodeMySpec.McpServers.Stories.Tools.DeleteCriterion)
+  component(CodeMySpec.McpServers.Stories.Tools.ListProjectTags)
+  component(CodeMySpec.McpServers.Stories.Tools.TagStories)
+  component(CodeMySpec.McpServers.Stories.Tools.StartStorySession)
+  component(CodeMySpec.McpServers.Stories.Tools.TriageIssues)
 
   # Architecture
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)

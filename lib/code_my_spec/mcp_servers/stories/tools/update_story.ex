@@ -42,7 +42,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
          update_params <- transform_params(params, story),
          {:ok, story} <- Stories.update_story(scope, story, update_params),

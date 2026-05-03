@@ -22,7 +22,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateCriterion do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          criterion when not is_nil(criterion) <-
            AcceptanceCriteria.get_criterion(scope, params.criterion_id),
          :ok <- check_not_verified(criterion),

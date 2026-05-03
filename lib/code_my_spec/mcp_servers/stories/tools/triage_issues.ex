@@ -23,7 +23,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, min_severity} <- parse_severity(params[:min_severity] || "medium") do
       incoming = list_incoming_at_severity(scope, min_severity)
       stories = Stories.list_stories(scope)

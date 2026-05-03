@@ -8,16 +8,16 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListProjectTags do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Tags
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Tags
 
   schema do
   end
 
   @impl true
   def execute(_params, frame) do
-    case Validators.validate_scope(frame) do
+    case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
         tags = Tags.list_project_tags(scope)
         {:reply, StoriesMapper.project_tags_response(tags), frame}

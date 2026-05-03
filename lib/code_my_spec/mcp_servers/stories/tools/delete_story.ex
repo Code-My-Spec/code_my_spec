@@ -7,9 +7,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStory do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
     field :story_id, :string,
@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.DeleteStory do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
          {:ok, story} <- Stories.delete_story(scope, story) do
       {:reply, StoriesMapper.story_deleted_response(story), frame}

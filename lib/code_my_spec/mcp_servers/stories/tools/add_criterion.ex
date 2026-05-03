@@ -8,9 +8,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AddCriterion do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.AcceptanceCriteria
-  alias CodeMySpec.Stories
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Stories
 
   schema do
     field :story_id, :string, required: true, doc: "Story ID to add criterion to"
@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AddCriterion do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          story when not is_nil(story) <- Stories.get_story(scope, params.story_id),
          {:ok, criterion} <-
            AcceptanceCriteria.create_criterion(scope, story, %{description: params.description}) do
