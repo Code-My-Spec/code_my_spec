@@ -61,6 +61,7 @@ defmodule CodeMySpecWeb.Endpoint do
   plug(Plug.Head)
 
   plug(CodeMySpecWeb.Plugs.TrailingSlashRedirect)
+  plug(CodeMySpecWeb.Plugs.LegacyRedirects)
   plug(Plug.Session, @session_options)
   plug(CodeMySpecWeb.Router)
 end
