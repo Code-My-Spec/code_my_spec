@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5814Spex do
 
   spex "Children sharing parent_entity_id fan out as one wave" do
     scenario "all three children's spec_file tasks appear together when their files are missing" do
-      given_ :context_with_three_children
+      given_ :context_with_three_children_in_satisfied_project
 
       and_ "every child's spec file is removed and re-synced", context do
         env = context.environment

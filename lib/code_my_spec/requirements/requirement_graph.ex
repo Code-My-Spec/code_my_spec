@@ -42,11 +42,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   Returns the next actionable requirements — unsatisfied nodes where
   every incoming edge is satisfied.
 
-  Requirement nodes whose owning entity is an orphan context (per
-  `ArchitectureChecker.orphans/1`) are filtered out. Their
+  Requirement nodes whose owning entity is in an orphan-context
+  subtree (an orphan context per `ArchitectureChecker.orphans/1` or
+  any descendant via `parent_component_id`) are filtered out. Their
   resolution belongs to the architecture task, not to component
-  implementation. Non-context components (schemas, modules,
-  liveviews, etc.) are never in the orphans list and are unaffected.
+  implementation. The subtree expansion catches non-context children
+  (schemas, modules, liveviews) parented to an orphan — without it,
+  those children's first-step requirements have no incoming gate
+  and surface as actionable on their own.
   """
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
@@ -64,23 +67,47 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
       end)
 
-    orphan_ids = scope |> ArchitectureChecker.orphans() |> MapSet.new(& &1.id)
+    orphan_subtree_ids = compute_orphan_subtree_ids(scope, ctx)
 
     nodes
     |> Enum.filter(fn n ->
       not n.satisfied and
         not is_nil(n.satisfied_by) and
-        not orphan_context_node?(n, orphan_ids) and
+        not in_orphan_subtree?(n, orphan_subtree_ids) and
         incoming_prereqs_satisfied?(n, incoming, satisfaction_map)
     end)
     |> sort_by_story_priority(ctx)
   end
 
-  defp orphan_context_node?(%{entity_type: "component", entity_id: id}, orphan_ids) do
-    MapSet.member?(orphan_ids, id)
+  defp compute_orphan_subtree_ids(scope, ctx) do
+    seed_ids = scope |> ArchitectureChecker.orphans() |> MapSet.new(& &1.id)
+
+    children_by_parent =
+      ctx.components
+      |> Enum.filter(& &1.parent_component_id)
+      |> Enum.group_by(& &1.parent_component_id)
+
+    expand_subtree(MapSet.to_list(seed_ids), seed_ids, children_by_parent)
   end
 
-  defp orphan_context_node?(_node, _orphan_ids), do: false
+  defp expand_subtree([], visited, _children_by_parent), do: visited
+
+  defp expand_subtree([id | rest], visited, children_by_parent) do
+    new_descendant_ids =
+      children_by_parent
+      |> Map.get(id, [])
+      |> Enum.map(& &1.id)
+      |> Enum.reject(&MapSet.member?(visited, &1))
+
+    visited = Enum.reduce(new_descendant_ids, visited, &MapSet.put(&2, &1))
+    expand_subtree(rest ++ new_descendant_ids, visited, children_by_parent)
+  end
+
+  defp in_orphan_subtree?(%{entity_type: "component", entity_id: id}, subtree_ids) do
+    MapSet.member?(subtree_ids, id)
+  end
+
+  defp in_orphan_subtree?(_node, _subtree_ids), do: false
 
   @doc """
   Compute all requirement nodes across the project.
