@@ -286,6 +286,7 @@ defmodule CodeMySpecWeb.Layouts do
               <ul class="space-y-2 text-sm text-base-content/70">
                 <li><a href="/pages/privacy-policy" class="hover:text-primary transition-colors">Privacy Policy</a></li>
                 <li><a href="/pages/terms-of-service" class="hover:text-primary transition-colors">Terms of Service</a></li>
+                <li><a href="/pages/end-user-license-agreement" class="hover:text-primary transition-colors">EULA</a></li>
               </ul>
             </div>
             <div>
