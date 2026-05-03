@@ -126,48 +126,30 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
 
   # 1. Project setup steps (project_setup requirement)
   # Setup.ApplicationInWeb writes `lib/my_app_web/application.ex` —
-  # sync picks that up as a `MyAppWeb.Application` component, so we
-  # must also write its canonical spec/impl/review companion files
-  # to keep the post-sync graph fully green.
+  # sync picks that up as a `MyAppWeb.Application` component. Seed
+  # `.code_my_spec/config.yml` with the canonical infrastructure_paths
+  # list so ComponentSync tags the application module (and other
+  # framework-generated boilerplate) as `type: "infrastructure"`,
+  # collapsing its requirement template to empty and exempting it
+  # from the `architecture_designed` orphan check.
+  #
+  # Written to the real fs (not the in-memory env) because
+  # `Scope.read_local_config/1` reads via `YamlElixir.read_from_file/1`,
+  # which only sees the actual cwd.
   defp apply_project_setup(context) do
     Fixtures.satisfy_setup_steps(context.environment, @all_setup_steps)
 
-    # Setup.ApplicationInWeb writes the impl file → sync registers a
-    # MyAppWeb.Application component (default_graph). Write its spec
-    # and test files so the full chain (spec_file → spec_valid →
-    # test_file → test_spec_alignment → implementation_file →
-    # tests_passing) lands satisfied.
-    write_companion_files(context.environment, "MyAppWeb.Application", "genserver")
+    config_path =
+      Path.join([context.scope.cwd, ".code_my_spec", "config.yml"])
+
+    File.mkdir_p!(Path.dirname(config_path))
+
+    File.write!(
+      config_path,
+      CodeMySpec.McpServers.Bootstrap.Content.infrastructure_paths_yaml("MyApp")
+    )
 
     context
-  end
-
-  defp write_companion_files(env, module_name, type) do
-    module_path = module_name |> String.split(".") |> Enum.map_join("/", &Macro.underscore/1)
-
-    :ok =
-      Environments.write_file(
-        env,
-        Content.spec_path(module_name),
-        Content.child_spec(module_name, type: type, dependencies: [])
-      )
-
-    :ok =
-      Environments.write_file(
-        env,
-        "test/#{module_path}_test.exs",
-        """
-        defmodule #{module_name}Test do
-          use ExUnit.Case, async: true
-
-          test "placeholder" do
-            assert true
-          end
-        end
-        """
-      )
-
-    :ok
   end
 
   # 2. Technical strategy ADRs index

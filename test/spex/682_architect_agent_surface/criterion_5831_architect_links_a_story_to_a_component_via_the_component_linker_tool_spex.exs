@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story70.Criterion5554Spex do
+defmodule CodeMySpecSpex.Story682.Criterion5831Spex do
   @moduledoc """
-  Story 70 — Architecture Design
-  Criterion 5554 — Architect links a story to a component via the component
+  Story 682 — Architect Agent Surface
+  Criterion 5831 — Architect links a story to a component via the component
   linker tool.
 
   In patch mode the architect can link a single unlinked story to an existing

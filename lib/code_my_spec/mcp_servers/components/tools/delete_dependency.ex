@@ -13,7 +13,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.DeleteDependency do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          dependency <- Components.get_dependency!(scope, params.id),
          {:ok, dependency} <- Components.delete_dependency(scope, dependency) do
       {:reply, dependency_response(dependency), frame}

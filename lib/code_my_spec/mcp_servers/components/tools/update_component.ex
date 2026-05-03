@@ -27,7 +27,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponent do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, component} <- find_component(scope, params.id),
          {:ok, component} <-
            Components.update_component(scope, component, Map.drop(params, [:id])) do

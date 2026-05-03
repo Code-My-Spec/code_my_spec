@@ -811,11 +811,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         id: 5,
         name: "architecture_designed",
         node_scope: :self,
-        check_type: :path_exists,
-        config: %{path: ".code_my_spec/architecture/proposal.md"},
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.ArchitectureChecker, function: :complete?},
         satisfied_by: AgentTasks.ArchitectureDesign,
         artifact_type: :specification,
-        description: "Architecture proposal executed",
+        description:
+          "Architecture proposal executed and every component is covered (story-linked, transitively depended on, or infrastructure)",
         prerequisites: [4]
       }),
       new!(%{

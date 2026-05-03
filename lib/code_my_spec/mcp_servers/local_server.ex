@@ -41,6 +41,16 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Architecture
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
+  component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
+
+  # Components — incremental architecture mutations (patch mode).
+  # Deletion is intentionally not a tool: the architect deletes the
+  # spec/impl/test files and ComponentSync removes the component on
+  # the next sync.
+  component(CodeMySpec.McpServers.Components.Tools.CreateComponent)
+  component(CodeMySpec.McpServers.Components.Tools.UpdateComponent)
+  component(CodeMySpec.McpServers.Components.Tools.CreateDependency)
+  component(CodeMySpec.McpServers.Components.Tools.DeleteDependency)
 
   # Requirements — discovery and sync
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)

@@ -24,7 +24,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
 
   @impl true
   def execute(_params, frame) do
-    case Validators.validate_scope(frame) do
+    case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
         handle_evaluate(ArchitectureDesign.execute_proposal(scope), frame)
 

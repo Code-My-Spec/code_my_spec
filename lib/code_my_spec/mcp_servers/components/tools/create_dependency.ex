@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateDependency do
 
   @impl true
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_scope(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, dependency} <- Components.create_dependency(scope, params),
          :ok <- Components.validate_dependency_graph(scope) do
       dependency = Components.get_dependency!(scope, dependency.id)

@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story70.Criterion5552Spex do
+defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
   @moduledoc """
-  Story 70 — Architecture Design
-  Criterion 5552 — Architect patches existing architecture without
+  Story 682 — Architect Agent Surface
+  Criterion 5829 — Architect patches existing architecture without
   redesigning it.
 
   When the architect enters a session that already has a populated

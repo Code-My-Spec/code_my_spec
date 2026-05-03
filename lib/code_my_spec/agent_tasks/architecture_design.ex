@@ -15,6 +15,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Requirements.ArchitectureChecker
 
   @proposal_path Paths.proposal_path()
   @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
@@ -39,6 +40,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     working_dir = scope.environment && scope.environment.cwd
 
     stories = Stories.list_unsatisfied_stories(scope)
+    orphans = ArchitectureChecker.orphans(scope)
     component_count = Components.count_components(scope)
 
     env = scope.environment || Environment.new(:cli, working_dir || File.cwd!())
@@ -52,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         Paths.architecture_dir()
       end
 
-    prompt = build_prompt(project, stories, component_count, output_dir)
+    prompt = build_prompt(project, stories, orphans, component_count, output_dir)
 
     {:ok, prompt}
   end
@@ -227,8 +229,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   # Private functions
 
-  defp build_prompt(project, stories, component_count, output_dir) do
-    stories_section = format_stories(stories)
+  defp build_prompt(project, stories, orphans, component_count, output_dir) do
+    stories_section = format_stories(stories, orphans)
+    orphans_section = format_orphans_section(orphans)
     app_name = derive_app_name(project.name)
     document_spec = DocumentSpecProjector.project_spec("architecture_proposal")
 
@@ -263,16 +266,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     **App Module:** #{app_name}
     **Description:** #{project.description || "No description provided"}
 
-    #{architecture_section}## User Stories
+    #{architecture_section}#{orphans_section}## User Stories
 
     #{stories_section}
-
-    ## CRITICAL RULE: Dual Story Mapping
-
-    **Each story MUST be mapped to BOTH a surface component AND a context/child.**
-
-    - CORRECT: Story 1 appears on BOTH `#{app_name}Web.DashboardLive` AND `#{app_name}.Verification.Transaction`
-    - WRONG: Story 1 only on surface OR only on context ← VALIDATION WILL REJECT THIS
 
     ## Your Task
 
@@ -320,11 +316,15 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     |> Macro.camelize()
   end
 
-  defp format_stories([]) do
+  defp format_stories([], []) do
     "All user stories are currently satisfied by the architecture."
   end
 
-  defp format_stories(stories) do
+  defp format_stories([], _orphans) do
+    "Every user story is linked to a component, but the architecture is not done — see **Architectural Issues** above."
+  end
+
+  defp format_stories(stories, _orphans) do
     stories
     |> Enum.map_join("\n\n", fn story ->
       acceptance_criteria =
@@ -345,6 +345,30 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       """
       |> String.trim()
     end)
+  end
+
+  defp format_orphans_section([]), do: ""
+
+  defp format_orphans_section(orphans) do
+    bullets =
+      Enum.map_join(orphans, "\n", fn c ->
+        "- `#{c.module_name}` (type: `#{c.type || "module"}`)"
+      end)
+
+    """
+    ## Architectural Issues
+
+    The project DB has #{length(orphans)} orphan context(s) — contexts that are not linked to a story, not transitively depended on by a story-linked context, and not classified as infrastructure. The architecture is not done until each one is resolved:
+
+    #{bullets}
+
+    For each orphan context, choose one resolution:
+    - Link a story directly to the context using `set_story_component`
+    - Add a dependency edge from a story-linked context using `create_dependency`
+    - Classify the context as framework boilerplate by adding its file path to `infrastructure_paths` in `.code_my_spec/config.yml`
+    - Delete the context's spec, implementation, and test files; ComponentSync will remove the component on the next sync
+
+    """
   end
 
   defp criteria_descriptions(story) do

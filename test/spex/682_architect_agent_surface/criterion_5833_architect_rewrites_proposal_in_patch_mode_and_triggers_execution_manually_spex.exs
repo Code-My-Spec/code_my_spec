@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story70.Criterion5558Spex do
+defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
   @moduledoc """
-  Story 70 — Architecture Design
-  Criterion 5558 — Architect rewrites proposal in patch mode and triggers
+  Story 682 — Architect Agent Surface
+  Criterion 5833 — Architect rewrites proposal in patch mode and triggers
   execution manually.
 
   When the change set warrants a full proposal rewrite (lots of new stories,
