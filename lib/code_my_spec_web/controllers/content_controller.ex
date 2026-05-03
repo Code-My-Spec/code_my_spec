@@ -135,32 +135,35 @@ defmodule CodeMySpecWeb.ContentController do
     case load_and_verify_content(scope, slug, content_type, is_protected) do
       {:ok, content} ->
         template = get_in(content.metadata || %{}, ["metadata", "template"]) || "default"
-        base_url = CodeMySpecWeb.Endpoint.url()
-        canonical = build_canonical_url(content, is_protected)
-        is_article = content.content_type == :blog
-        series_info = build_series_info(content)
-
-        render(conn, template_action(template),
-          content: content,
-          tags: [],
-          template: template,
-          series_info: series_info,
-          page_title: content.meta_title || content.title || content.slug,
-          meta_description: content.meta_description,
-          og_title: content.og_title,
-          og_description: content.og_description,
-          og_image: content.og_image || blog_og_image(content, base_url),
-          og_type: if(is_article, do: "article", else: "website"),
-          article_published_time: if(is_article, do: format_iso8601(content.publish_at)),
-          canonical_url: base_url <> canonical,
-          json_ld: build_json_ld(content, is_protected)
-        )
+        render(conn, template_action(template), build_show_assigns(content, template, is_protected))
 
       {:error, _reason} ->
         conn
         |> put_flash(:error, "Content not found")
         |> redirect(to: ~p"/")
     end
+  end
+
+  defp build_show_assigns(content, template, is_protected) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = build_canonical_url(content, is_protected)
+    is_article = content.content_type == :blog
+
+    [
+      content: content,
+      tags: [],
+      template: template,
+      series_info: build_series_info(content),
+      page_title: content.meta_title || content.title || content.slug,
+      meta_description: content.meta_description,
+      og_title: content.og_title,
+      og_description: content.og_description,
+      og_image: content.og_image || blog_og_image(content, base_url),
+      og_type: if(is_article, do: "article", else: "website"),
+      article_published_time: if(is_article, do: format_iso8601(content.publish_at)),
+      canonical_url: base_url <> canonical,
+      json_ld: build_json_ld(content, is_protected)
+    ]
   end
 
   # Route all content actions through show/2
@@ -214,7 +217,7 @@ defmodule CodeMySpecWeb.ContentController do
   end
 
   defp blog_og_image(%{content_type: :blog, slug: slug}, base_url) do
-    "#{base_url}/images/og-blog-#{slug}.png"
+    CodeMySpecWeb.ImageUrl.image_url("og-blog-#{slug}.png", base_url)
   end
 
   defp blog_og_image(_, _), do: nil
@@ -264,16 +267,135 @@ defmodule CodeMySpecWeb.ContentController do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = build_canonical_url(content, is_protected)
     url = base_url <> canonical
-    og_image = content.og_image || blog_og_image(content, base_url) || "#{base_url}/images/og-default.png"
+    og_image = content.og_image || blog_og_image(content, base_url) || CodeMySpecWeb.ImageUrl.image_url("og-default.png", base_url)
 
-    author = %{
+    ctx = %{
+      content: content,
+      url: url,
+      image: schema_image(og_image),
+      author: schema_author(base_url),
+      publisher: schema_publisher(base_url)
+    }
+
+    schemas =
+      content.content_type
+      |> schemas_for_type(ctx)
+      |> Enum.map(&maybe_put(&1, "description", content.meta_description))
+
+    breadcrumb = build_breadcrumb(content, base_url)
+
+    Jason.encode!(schemas ++ [breadcrumb])
+  end
+
+  defp schemas_for_type(:blog, ctx), do: [blog_posting_schema(ctx)]
+  defp schemas_for_type(:documentation, ctx), do: [tech_article_schema(ctx)]
+  defp schemas_for_type(:page, ctx), do: [page_schema(ctx)]
+  defp schemas_for_type(_, ctx), do: [minimal_webpage_schema(ctx)]
+
+  defp blog_posting_schema(%{content: content, url: url, image: image, author: author, publisher: publisher}) do
+    tag_names = Enum.map(content.tags || [], & &1.name)
+    keywords = if tag_names == [], do: nil, else: Enum.join(tag_names, ", ")
+    category = get_in(content.metadata || %{}, ["metadata", "category"])
+
+    %{
+      "@context" => "https://schema.org",
+      "@type" => "BlogPosting",
+      "@id" => url,
+      "headline" => content.title || content.slug,
+      "url" => url,
+      "image" => image,
+      "datePublished" => format_iso8601(content.publish_at),
+      "dateModified" => format_iso8601(content.updated_at),
+      "author" => author,
+      "publisher" => publisher,
+      "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
+      "inLanguage" => "en-US",
+      "wordCount" => word_count(content.processed_content)
+    }
+    |> maybe_put("keywords", keywords)
+    |> maybe_put("articleSection", category)
+  end
+
+  defp tech_article_schema(%{content: content, url: url, image: image, author: author, publisher: publisher}) do
+    %{
+      "@context" => "https://schema.org",
+      "@type" => "TechArticle",
+      "@id" => url,
+      "headline" => content.title || content.slug,
+      "url" => url,
+      "image" => image,
+      "datePublished" => format_iso8601(content.publish_at),
+      "dateModified" => format_iso8601(content.updated_at),
+      "author" => author,
+      "publisher" => publisher,
+      "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
+      "proficiencyLevel" => "Beginner",
+      "articleSection" => "Documentation"
+    }
+  end
+
+  defp page_schema(%{content: content} = ctx) do
+    if String.contains?(content.slug || "", "review") do
+      review_schema(ctx)
+    else
+      webpage_schema(ctx)
+    end
+  end
+
+  defp review_schema(%{content: content, url: url, author: author, publisher: publisher}) do
+    %{
+      "@context" => "https://schema.org",
+      "@type" => "Review",
+      "@id" => url,
+      "name" => content.title || content.slug,
+      "url" => url,
+      "datePublished" => format_iso8601(content.publish_at),
+      "dateModified" => format_iso8601(content.updated_at),
+      "author" => author,
+      "publisher" => publisher,
+      "itemReviewed" => %{
+        "@type" => "SoftwareApplication",
+        "name" => extract_tool_name(content.title),
+        "applicationCategory" => "DeveloperApplication"
+      }
+    }
+  end
+
+  defp webpage_schema(%{content: content, url: url, author: author, publisher: publisher}) do
+    %{
+      "@context" => "https://schema.org",
+      "@type" => "WebPage",
+      "@id" => url,
+      "name" => content.title || content.slug,
+      "url" => url,
+      "datePublished" => format_iso8601(content.publish_at),
+      "dateModified" => format_iso8601(content.updated_at),
+      "author" => author,
+      "publisher" => publisher
+    }
+  end
+
+  defp minimal_webpage_schema(%{content: content, url: url}) do
+    %{
+      "@context" => "https://schema.org",
+      "@type" => "WebPage",
+      "@id" => url,
+      "name" => content.title || content.slug,
+      "url" => url
+    }
+  end
+
+  defp schema_author(base_url) do
+    %{
       "@type" => "Person",
       "@id" => "#{base_url}/author/john-davenport",
       "name" => "John Davenport",
       "url" => "#{base_url}/author/john-davenport"
     }
+  end
 
-    publisher = %{
+  defp schema_publisher(base_url) do
+    %{
       "@type" => "Organization",
       "@id" => "#{base_url}/#organization",
       "name" => "CodeMySpec",
@@ -284,126 +406,19 @@ defmodule CodeMySpecWeb.ContentController do
         "height" => 300
       }
     }
+  end
 
-    image = %{
+  defp schema_image(og_image) do
+    %{
       "@type" => "ImageObject",
       "url" => og_image,
       "width" => 1200,
       "height" => 630
     }
-
-    schemas =
-      case content.content_type do
-        :blog ->
-          tag_names = Enum.map(content.tags || [], & &1.name)
-          word_count = word_count(content.processed_content)
-          category = get_in(content.metadata || %{}, ["metadata", "category"])
-
-          blog_posting =
-            %{
-              "@context" => "https://schema.org",
-              "@type" => "BlogPosting",
-              "@id" => url,
-              "headline" => content.title || content.slug,
-              "url" => url,
-              "image" => image,
-              "datePublished" => format_iso8601(content.publish_at),
-              "dateModified" => format_iso8601(content.updated_at),
-              "author" => author,
-              "publisher" => publisher,
-              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
-              "inLanguage" => "en-US",
-              "wordCount" => word_count
-            }
-            |> then(fn schema ->
-              if tag_names != [], do: Map.put(schema, "keywords", Enum.join(tag_names, ", ")), else: schema
-            end)
-            |> then(fn schema ->
-              if category, do: Map.put(schema, "articleSection", category), else: schema
-            end)
-
-          [blog_posting]
-
-        :documentation ->
-          [
-            %{
-              "@context" => "https://schema.org",
-              "@type" => "TechArticle",
-              "@id" => url,
-              "headline" => content.title || content.slug,
-              "url" => url,
-              "image" => image,
-              "datePublished" => format_iso8601(content.publish_at),
-              "dateModified" => format_iso8601(content.updated_at),
-              "author" => author,
-              "publisher" => publisher,
-              "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
-              "proficiencyLevel" => "Beginner",
-              "articleSection" => "Documentation"
-            }
-          ]
-
-        :page ->
-          if String.contains?(content.slug || "", "review") do
-            tool_name = extract_tool_name(content.title)
-
-            [
-              %{
-                "@context" => "https://schema.org",
-                "@type" => "Review",
-                "@id" => url,
-                "name" => content.title || content.slug,
-                "url" => url,
-                "datePublished" => format_iso8601(content.publish_at),
-                "dateModified" => format_iso8601(content.updated_at),
-                "author" => author,
-                "publisher" => publisher,
-                "itemReviewed" => %{
-                  "@type" => "SoftwareApplication",
-                  "name" => tool_name,
-                  "applicationCategory" => "DeveloperApplication"
-                }
-              }
-            ]
-          else
-            [
-              %{
-                "@context" => "https://schema.org",
-                "@type" => "WebPage",
-                "@id" => url,
-                "name" => content.title || content.slug,
-                "url" => url,
-                "datePublished" => format_iso8601(content.publish_at),
-                "dateModified" => format_iso8601(content.updated_at),
-                "author" => author,
-                "publisher" => publisher
-              }
-            ]
-          end
-
-        _ ->
-          [
-            %{
-              "@context" => "https://schema.org",
-              "@type" => "WebPage",
-              "@id" => url,
-              "name" => content.title || content.slug,
-              "url" => url
-            }
-          ]
-      end
-
-    schemas =
-      Enum.map(schemas, fn schema ->
-        if content.meta_description,
-          do: Map.put(schema, "description", content.meta_description),
-          else: schema
-      end)
-
-    breadcrumb = build_breadcrumb(content, base_url)
-
-    Jason.encode!(schemas ++ [breadcrumb])
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp build_series_info(content) do
     series_name = get_in(content.metadata || %{}, ["metadata", "series"])
@@ -413,7 +428,10 @@ defmodule CodeMySpecWeb.ContentController do
         nil
 
       name ->
-        posts = ContentRepository.list_series_posts(name)
+        posts =
+          name
+          |> ContentRepository.list_series_posts()
+          |> Enum.map(&series_post/1)
 
         if length(posts) > 1 do
           current_idx = Enum.find_index(posts, &(&1.slug == content.slug))
@@ -429,6 +447,17 @@ defmodule CodeMySpecWeb.ContentController do
           nil
         end
     end
+  end
+
+  defp series_post(post) do
+    type_path = Map.fetch!(@content_type_paths, post.content_type)
+
+    %{
+      slug: post.slug,
+      title: post.title,
+      metadata: post.metadata,
+      path: "/#{type_path}/#{post.slug}"
+    }
   end
 
   defp build_breadcrumb(content, base_url) do

@@ -71,6 +71,10 @@ if config_env() not in [:dev_cli, :prod_cli] do
   # S3 uploads (issue screenshots)
   config :code_my_spec, s3_bucket: env!("S3_BUCKET", :string, "codemyspec-uploads")
 
+  # Static images host (e.g. "https://images.codemyspec.com" for R2). Empty
+  # falls back to app-served /images/... so local dev keeps working.
+  config :code_my_spec, images_host: env!("IMAGES_HOST", :string, "")
+
   config :ex_aws,
     access_key_id: env!("AWS_ACCESS_KEY_ID", :string, ""),
     secret_access_key: env!("AWS_SECRET_ACCESS_KEY", :string, ""),

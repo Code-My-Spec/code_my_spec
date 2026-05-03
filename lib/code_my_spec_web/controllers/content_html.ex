@@ -16,19 +16,7 @@ defmodule CodeMySpecWeb.ContentHTML do
   end
 
   def blog_hero_image(%{content_type: :blog, slug: slug}) do
-    webp_path = "images/hero-#{slug}.webp"
-    png_path = "images/hero-#{slug}.png"
-
-    cond do
-      File.exists?(Application.app_dir(:code_my_spec, "priv/static/#{webp_path}")) ->
-        "/#{webp_path}"
-
-      File.exists?(Application.app_dir(:code_my_spec, "priv/static/#{png_path}")) ->
-        "/#{png_path}"
-
-      true ->
-        nil
-    end
+    CodeMySpecWeb.ImageUrl.image_url("hero-#{slug}.webp")
   end
 
   def blog_hero_image(_), do: nil

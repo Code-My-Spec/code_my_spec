@@ -22,6 +22,8 @@ Extracted from official documentation — each file lists source URLs at the top
 | Cloudflare DNS, tunnels, SSL       | `devops/cloudflare-dns-tunnels.md`        |
 | Hetzner server, Docker, Caddy      | `devops/hetzner-docker-deploy.md`         |
 | Deployment scripts, secrets, envs  | `devops/hetzner-docker-deploy.md`         |
+| Static images via S3 + Cloudflare CDN | `devops/s3-cloudflare-image-host.md`   |
+| URL migrations / 301 redirects (Phoenix plug) | `devops/url-migration-redirects.md`  |
 | HTTP client for an API integration | `req/clients.md`                          |
 | Recording HTTP calls in tests      | `req/cassettes.md`                        |
 | Env vars, secrets, .env files      | `dotenvy.md`                              |
@@ -71,5 +73,7 @@ knowledge/
 └── devops/
     ├── aws-s3-iam.md          # S3 buckets, IAM users/policies, ExAws config, CLI commands
     ├── cloudflare-dns-tunnels.md # DNS records, tunnels, SSL/TLS, multi-env routing, Caddy integration
-    └── hetzner-docker-deploy.md # Hetzner provisioning, Docker Compose, Caddy, db backups, secrets, hardening
+    ├── hetzner-docker-deploy.md # Hetzner provisioning, Docker Compose, Caddy, db backups, secrets, hardening
+    ├── s3-cloudflare-image-host.md # Decoupled image CDN: S3 (bucket=host) + Cloudflare proxy + IMAGES_HOST env
+    └── url-migration-redirects.md  # 301-redirect plug for URL migrations, query-string preservation, scaling
 ```

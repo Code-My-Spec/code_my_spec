@@ -8,7 +8,7 @@
           <nav class="flex flex-col gap-1">
             <a
               :for={post <- @series_info.posts}
-              href={"/blog/#{post.slug}"}
+              href={post.path}
               class={"block text-sm px-3 py-2 rounded-lg transition-colors #{if post.slug == @series_info.current_slug, do: "bg-primary/10 text-primary font-medium", else: "hover:bg-base-200 text-base-content/70"}"}
             >
               <span :if={get_in(post.metadata || %{}, ["metadata", "series_part"])} class="font-mono text-xs opacity-60 mr-1">
@@ -26,6 +26,18 @@
           <.icon name="hero-document-text" class="w-4 h-4" />
           <span>Part of the <strong class="text-base-content/80">{@series_info.name}</strong> series</span>
         </div>
+
+        <%= if hero_image = blog_hero_image(@content) do %>
+          <img
+            src={hero_image}
+            alt={@content.title || @content.slug}
+            class="w-full rounded-lg mb-8"
+            width="1024"
+            height="576"
+            loading="eager"
+            fetchpriority="high"
+          />
+        <% end %>
 
         <header class="mb-8">
           <h1 class="text-4xl font-bold mb-4">{@content.title || @content.slug}</h1>
@@ -59,7 +71,7 @@
             <div>
               <a
                 :if={@series_info.prev_post}
-                href={"/blog/#{@series_info.prev_post.slug}"}
+                href={@series_info.prev_post.path}
                 class="block card bg-base-100 border border-base-300 hover:shadow-lg transition-shadow h-full"
               >
                 <div class="card-body py-4 px-5">
@@ -71,7 +83,7 @@
             <div class="text-right">
               <a
                 :if={@series_info.next_post}
-                href={"/blog/#{@series_info.next_post.slug}"}
+                href={@series_info.next_post.path}
                 class="block card bg-base-100 border border-base-300 hover:shadow-lg transition-shadow h-full"
               >
                 <div class="card-body py-4 px-5 items-end">

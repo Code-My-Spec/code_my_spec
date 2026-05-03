@@ -16,6 +16,10 @@ Reference docs for infrastructure, deployment, and environment management.
 | Run prod + UAT on same host | `hetzner-docker-deploy.md` |
 | Back up or restore Postgres | `hetzner-docker-deploy.md` |
 | Manage secrets on server | `hetzner-docker-deploy.md` |
+| Serve static images from a CDN | `s3-cloudflare-image-host.md` |
+| Decouple image updates from app deploys | `s3-cloudflare-image-host.md` |
+| Migrate URLs without losing SEO link equity | `url-migration-redirects.md` |
+| Phoenix endpoint plug for legacy 301s | `url-migration-redirects.md` |
 
 ## Typical infrastructure layout
 

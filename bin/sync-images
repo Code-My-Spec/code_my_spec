@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Sync priv/static/images/ to the CDN bucket.
+# Pass-through args go to `aws s3 sync` (e.g. --dryrun, --exclude, --include).
+#
+# Usage:
+#   bin/sync-images                          # full sync
+#   bin/sync-images --dryrun                 # preview only
+#   bin/sync-images --exclude "*" --include "hero-*"  # heros only
+set -euo pipefail
+
+BUCKET="${IMAGES_BUCKET:-images.codemyspec.com}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SRC="$REPO_ROOT/priv/static/images/"
+
+if [ ! -d "$SRC" ]; then
+  echo "error: $SRC does not exist" >&2
+  exit 1
+fi
+
+echo "syncing $SRC -> s3://$BUCKET/"
+aws s3 sync "$SRC" "s3://$BUCKET/" "$@"

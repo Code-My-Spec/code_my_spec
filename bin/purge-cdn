@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Purge URLs from the Cloudflare cache.
+#
+# Accepts full URLs OR relative paths (which get prefixed with $IMAGES_HOST).
+# Reads CLOUDFLARE_TOKEN from envs/dev.env if not already in the environment.
+#
+# Usage:
+#   bin/purge-cdn https://images.codemyspec.com/hero-foo.webp
+#   bin/purge-cdn hero-foo.webp og-blog-foo.png        # relative
+#   bin/purge-cdn --everything                          # nuke entire zone cache
+set -euo pipefail
+
+ZONE="${CLOUDFLARE_ZONE_ID:-ba45c3c2010cb275de73f91f4f05edab}"  # codemyspec.com
+IMAGES_HOST="${IMAGES_HOST:-https://images.codemyspec.com}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$REPO_ROOT/envs/dev.env"
+
+if [ -z "${CLOUDFLARE_TOKEN:-}" ]; then
+  if [ -f "$ENV_FILE" ]; then
+    CLOUDFLARE_TOKEN="$(grep '^CLOUDFLARE_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
+  fi
+fi
+
+if [ -z "${CLOUDFLARE_TOKEN:-}" ]; then
+  echo "error: CLOUDFLARE_TOKEN not set and not found in $ENV_FILE" >&2
+  exit 1
+fi
+
+if [ $# -eq 0 ]; then
+  echo "usage: bin/purge-cdn <url-or-relative-path>... | --everything" >&2
+  exit 1
+fi
+
+# Special case: full zone purge
+if [ "$1" = "--everything" ]; then
+  echo "purging ENTIRE Cloudflare cache for zone $ZONE..."
+  read -r -p "are you sure? [y/N] " ack
+  [ "$ack" = "y" ] || { echo "aborted"; exit 1; }
+  curl -s -X POST -H "Authorization: Bearer $CLOUDFLARE_TOKEN" -H "Content-Type: application/json" \
+    "https://api.cloudflare.com/client/v4/zones/$ZONE/purge_cache" \
+    -d '{"purge_everything":true}' \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print('success:',d.get('success')); print('errors:',d.get('errors'))"
+  exit 0
+fi
+
+# Build URL list — prefix relative paths with $IMAGES_HOST
+declare -a URLS
+for arg in "$@"; do
+  if [[ "$arg" == http://* || "$arg" == https://* ]]; then
+    URLS+=("\"$arg\"")
+  else
+    URLS+=("\"$IMAGES_HOST/$arg\"")
+  fi
+done
+
+JSON_FILES=$(IFS=,; echo "${URLS[*]}")
+echo "purging ${#URLS[@]} URL(s) from zone $ZONE..."
+
+curl -s -X POST -H "Authorization: Bearer $CLOUDFLARE_TOKEN" -H "Content-Type: application/json" \
+  "https://api.cloudflare.com/client/v4/zones/$ZONE/purge_cache" \
+  -d "{\"files\":[$JSON_FILES]}" \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print('success:',d.get('success')); print('errors:',d.get('errors'))"
