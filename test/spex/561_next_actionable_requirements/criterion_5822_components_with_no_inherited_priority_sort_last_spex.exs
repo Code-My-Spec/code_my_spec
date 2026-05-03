@@ -1,0 +1,111 @@
+defmodule CodeMySpecSpex.Story561.Criterion5822Spex do
+  @moduledoc """
+  Story 561 — Next Actionable Requirements
+  Criterion 5822 — A component with no story link, no dependency-of
+  relationship, and no parent-chain priority sorts last among
+  parallel-eligible nodes — it does not lead the wave when
+  priority-bearing components are also actionable.
+
+  Surface: get_next_requirement MCP tool. A linked component and an
+  orphan component are both actionable; the response leads with the
+  linked component, not the orphan.
+  """
+
+  use CodeMySpecSpex.Case
+
+  import Phoenix.LiveViewTest
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.ComponentHelpers
+  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.GraphContentFixtures, as: Content
+  alias CodeMySpecSpex.StoryHelpers
+  alias CodeMySpecSpex.TaskResponseHelpers
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  spex "Components with no inherited priority sort last" do
+    scenario "the linked priority-1 context leads, the orphan does not appear in the wave" do
+      given_ "a priority-1 linked context and an orphan with no priority", context do
+        env = context.environment
+
+        :ok =
+          Environments.write_file(
+            env,
+            Content.spec_path("LinkedContext"),
+            Content.context_spec("LinkedContext", type: "context", dependencies: [])
+          )
+
+        :ok =
+          Environments.write_file(
+            env,
+            Content.impl_path("LinkedContext"),
+            Content.impl_file("LinkedContext")
+          )
+
+        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/sync")
+        sync_live |> element("button[phx-click='sync']") |> render_click()
+
+        linked = Fixtures.get_component_by_module_name(context.scope, "LinkedContext")
+
+        StoryHelpers.create_and_link(context.scope, "LinkedContext",
+          title: "Linked story",
+          description: "As a user, I want the linked component to lead.",
+          acceptance_criteria: ["Linked ships"],
+          priority: 1
+        )
+
+        orphan =
+          ComponentHelpers.create(context.scope,
+            type: "context",
+            module_name: "OrphanContext",
+            name: "Orphan Context",
+            description: "An orphan with no story linkage."
+          )
+
+        {:ok, Map.merge(context, %{linked: linked, orphan: orphan})}
+      end
+
+      when_ "the agent calls get_next_requirement", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
+      end
+
+      then_ "the linked context leads — orphan is not the head", context do
+        text = context.response_text
+        linked_pos = position_of(text, "entity_id=`#{context.linked.id}`")
+        orphan_pos = position_of(text, "entity_id=`#{context.orphan.id}`")
+
+        cond do
+          linked_pos != nil and orphan_pos == nil ->
+            :ok
+
+          linked_pos == nil and orphan_pos != nil ->
+            flunk(
+              "orphan led the wave while the priority-1 linked component did not surface. Response: #{text}"
+            )
+
+          linked_pos != nil and orphan_pos != nil ->
+            assert linked_pos < orphan_pos,
+                   "expected linked (priority 1) to precede orphan (no priority). Response: #{text}"
+
+          true ->
+            flunk("neither component appeared. Response: #{text}")
+        end
+
+        {:ok, context}
+      end
+    end
+  end
+
+  defp position_of(text, substring) do
+    case :binary.match(text, substring) do
+      {pos, _len} -> pos
+      :nomatch -> nil
+    end
+  end
+end
