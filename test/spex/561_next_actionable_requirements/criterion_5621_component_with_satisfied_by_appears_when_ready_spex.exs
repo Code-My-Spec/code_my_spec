@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5621Spex do
 
   spex "Component requirement with satisfied_by appears when actionable" do
     scenario "the schema child's spec_file becomes actionable after its file is removed" do
-      given_ :context_with_three_children_in_satisfied_project
+      given_ :context_with_three_children
 
       and_ "the schema child's spec file is removed and re-synced", context do
         :ok =

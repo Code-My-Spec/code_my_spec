@@ -88,16 +88,10 @@ defmodule CodeMySpecSpex.GraphGivens do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
-  alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.StoryHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
@@ -118,51 +112,6 @@ defmodule CodeMySpecSpex.GraphGivens do
     schema = Fixtures.get_component_by_module_name(context.scope, "Reservations.Booking")
     repo = Fixtures.get_component_by_module_name(context.scope, "Reservations.BookingRepo")
     service = Fixtures.get_component_by_module_name(context.scope, "Reservations.PricingService")
-
-    {:ok,
-     Map.merge(context, %{
-       parent_context: parent,
-       child_schema: schema,
-       child_repository: repo,
-       child_service: service
-     })}
-  end
-
-  # -- Topology: one context, three children, in a satisfied project --
-  #
-  # Same shape as :context_with_three_children, but layered on
-  # FullSatisfactionFixtures and with a story linked to Reservations
-  # so the parent context is covered (not orphan) and its subtree
-  # is exempt from the orphan-context filter in next_actionable.
-  # The new story's chain is satisfied through bdd_specs_exist so
-  # the kickoff edge clears and component requirements aren't
-  # clamped by upstream project-chain unsatisfaction.
-  #
-  # Use this in specs that drive the agent surface
-  # (`get_next_requirement`) and need component requirements (parent
-  # or child) to surface as actionable. Tests that only render the
-  # graph (compute_graph / requirements/graph LiveView) can keep
-  # using `:context_with_three_children` — they're not subject to
-  # the actionable filter.
-
-  register_given :context_with_three_children_in_satisfied_project, context do
-    context = FullSatisfactionFixtures.apply(context)
-
-    write_specs(context.environment, [
-      {"Reservations", :context, []},
-      {"Reservations.Booking", :schema, []},
-      {"Reservations.BookingRepo", :repository, []},
-      {"Reservations.PricingService", :service, []}
-    ])
-
-    sync_project(context)
-
-    parent = Fixtures.get_component_by_module_name(context.scope, "Reservations")
-    schema = Fixtures.get_component_by_module_name(context.scope, "Reservations.Booking")
-    repo = Fixtures.get_component_by_module_name(context.scope, "Reservations.BookingRepo")
-    service = Fixtures.get_component_by_module_name(context.scope, "Reservations.PricingService")
-
-    cover_component_with_story(context, "Reservations")
 
     {:ok,
      Map.merge(context, %{
@@ -383,99 +332,6 @@ defmodule CodeMySpecSpex.GraphGivens do
       live(context.conn, "/projects/#{context.project.name}/sync")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
-    :ok
-  end
-
-  # Story-link a component and satisfy the new story's chain through
-  # bdd_specs_exist (three_amigos artifacts + bdd spec file) so:
-  #  1. The component is covered (not orphan), exempting it and its
-  #     subtree from `next_actionable`'s orphan filter.
-  #  2. The kickoff edge from the new story's bdd_specs_exist clears,
-  #     so the component's chain isn't clamped to unsatisfied.
-  #
-  # Assumes `FullSatisfactionFixtures.apply/1` has run (provides
-  # `context.persona_id` and a satisfied project chain through
-  # qa_setup). Re-syncs at the end so the bdd_spec file lands
-  # in the DB.
-  defp cover_component_with_story(context, module_name) do
-    scope = context.scope
-    env = context.environment
-
-    story =
-      StoryHelpers.create_and_link(scope, module_name,
-        title: "#{module_name} story",
-        description: "Drive #{module_name}.",
-        acceptance_criteria: ["#{module_name} works"],
-        priority: 1
-      )
-
-    frame = %Frame{assigns: %{current_scope: scope}}
-
-    {:reply, _r, _f} =
-      LinkPersonaToStory.execute(
-        %{persona_id: context.persona_id, story_id: story.id},
-        frame
-      )
-
-    rule_statement = "#{module_name} behaves correctly"
-
-    {:reply, _r, _f} =
-      AddRule.execute(%{story_id: story.id, statement: rule_statement}, frame)
-
-    {:reply, _r, _f} =
-      AddScenario.execute(
-        %{
-          story_id: story.id,
-          rule_statement: rule_statement,
-          kind: "happy_path",
-          title: "Happy path",
-          body:
-            "Given the user opens the page\nWhen they take an action\nThen the action succeeds"
-        },
-        frame
-      )
-
-    {:reply, _r, _f} =
-      AddScenario.execute(
-        %{
-          story_id: story.id,
-          rule_statement: rule_statement,
-          kind: "failure_path",
-          title: "Failure path",
-          body:
-            "Given the user is logged out\nWhen they take an action\nThen they are redirected to login"
-        },
-        frame
-      )
-
-    story = StoryHelpers.fetch(scope, story.id)
-    [criterion | _] = story.criteria
-
-    bdd_path = Fixtures.spec_file_path(story, criterion)
-
-    bdd_content = """
-    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
-      @moduledoc \"\"\"
-      Story #{story.id} — #{story.title}
-      Criterion #{criterion.id} — #{criterion.description}
-      \"\"\"
-
-      use CodeMySpecSpex.Case
-
-      spex "#{story.title}" do
-        scenario "the criterion holds" do
-          then_ "the placeholder assertion passes" do
-            assert true
-            :ok
-          end
-        end
-      end
-    end
-    """
-
-    :ok = Environments.write_file(env, bdd_path, bdd_content)
-
-    sync_project(context)
     :ok
   end
 end

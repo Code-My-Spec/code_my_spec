@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5628Spex do
 
   spex "sub_agent items signal dispatch through their orchestrator" do
     scenario "the response carries a parent-scoped orchestration header for sub_agent work" do
-      given_ :context_with_three_children_in_satisfied_project
+      given_ :context_with_three_children
 
       and_ "all child spec files are removed and the project re-synced",
            context do

@@ -23,10 +23,10 @@ defmodule CodeMySpecSpex.Story671.Criterion5640Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.GraphGivens
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
 
@@ -37,7 +37,48 @@ defmodule CodeMySpecSpex.Story671.Criterion5640Spex do
 
   spex "Reviews disabled + child spec_valid unsatisfied → impl_file NOT actionable" do
     scenario "impl_file rendered blocked even though review_file is filtered" do
-      given_ :context_with_three_children_in_satisfied_project
+      given_ "a parent context with one schema child synced via /sync",
+             context do
+        env = context.environment
+
+        :ok =
+          Environments.write_file(
+            env,
+            Content.spec_path("Reservations"),
+            Content.context_spec("Reservations", type: "context", dependencies: [])
+          )
+
+        :ok =
+          Environments.write_file(
+            env,
+            Content.impl_path("Reservations"),
+            Content.impl_file("Reservations")
+          )
+
+        :ok =
+          Environments.write_file(
+            env,
+            Content.spec_path("Reservations.Booking"),
+            Content.child_spec("Reservations.Booking", type: "schema", dependencies: [])
+          )
+
+        :ok =
+          Environments.write_file(
+            env,
+            Content.impl_path("Reservations.Booking"),
+            Content.impl_file("Reservations.Booking")
+          )
+
+        {:ok, sync_live, _html} =
+          live(context.conn, "/projects/#{context.project.name}/sync")
+
+        sync_live |> element("button[phx-click='sync']") |> render_click()
+
+        parent = Fixtures.get_component_by_module_name(context.scope, "Reservations")
+        child = Fixtures.get_component_by_module_name(context.scope, "Reservations.Booking")
+
+        {:ok, Map.merge(context, %{parent_context: parent, child_schema: child})}
+      end
 
       and_ "the child schema's spec is overwritten with content missing required sections, and the parent impl is removed",
            context do

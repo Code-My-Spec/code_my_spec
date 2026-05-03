@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story78.Criterion5575Spex do
 
   spex "Context Design Review" do
     scenario "Review is blocked while any child spec is missing" do
-      given_ :synced_context_in_satisfied_project
+      given_ :synced_context_component
 
       given_ "a child Component is on disk only as an impl (no spec)", context do
         :ok = Environments.write_file(context.environment, @child_impl_path, child_impl_content())
