@@ -58,7 +58,18 @@ defmodule CodeMySpecLocalWeb do
   Converts markdown to HTML via MDEx (comrak) with full GFM support.
   """
   def markdown_to_html(markdown) do
-    {:ok, html} = MDEx.to_html(markdown, extension: [tasklist: true, table: true, strikethrough: true, autolink: true])
+    {:ok, html} =
+      MDEx.to_html(markdown,
+        extension: [
+          tasklist: true,
+          table: true,
+          strikethrough: true,
+          autolink: true,
+          footnotes: true,
+          header_ids: ""
+        ]
+      )
+
     html
   end
 

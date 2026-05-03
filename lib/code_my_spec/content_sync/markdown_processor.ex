@@ -36,7 +36,14 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessor do
   @spec process(raw_markdown :: String.t()) :: {:ok, ProcessorResult.t()}
   def process(raw_markdown) when is_binary(raw_markdown) do
     opts = [
-      extension: [table: true, tasklist: true, strikethrough: true, autolink: true],
+      extension: [
+        table: true,
+        tasklist: true,
+        strikethrough: true,
+        autolink: true,
+        footnotes: true,
+        header_ids: ""
+      ],
       plugins: [MDExMermaid]
     ]
 
