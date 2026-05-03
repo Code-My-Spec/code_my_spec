@@ -12,7 +12,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
-  alias CodeMySpec.Requirements.ArchitectureChecker
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
