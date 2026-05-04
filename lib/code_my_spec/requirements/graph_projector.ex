@@ -45,13 +45,35 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   @spec project_graph(Scope.t()) :: map()
   def project_graph(%Scope{} = scope) do
-    %{nodes: nodes, edges: edges} = Requirements.project_graph(scope)
-    actionable = Requirements.next_actionable_project(scope)
+    {graph, _metrics} = project_graph_with_metrics(scope)
+    graph
+  end
 
+  @doc """
+  Same as `project_graph/1` plus per-phase timings (compute + layout +
+  components query, in milliseconds).
+  """
+  @spec project_graph_with_metrics(Scope.t()) :: {map(), %{atom() => integer()}}
+  def project_graph_with_metrics(%Scope{} = scope) do
+    {graph_data, metrics} = Requirements.project_graph_with_actionable_metrics(scope)
+
+    {us_components, components} =
+      :timer.tc(fn -> Components.list_components_with_dependencies(scope) end)
+
+    {us_layout, sigma_data} =
+      :timer.tc(fn -> project_layout(graph_data, components) end)
+
+    metrics =
+      metrics
+      |> Map.put(:components_query_ms, div(us_components, 1000))
+      |> Map.put(:layout_ms, div(us_layout, 1000))
+
+    {sigma_data, metrics}
+  end
+
+  defp project_layout(%{nodes: nodes, edges: edges, actionable: actionable}, components) do
     actionable_set =
       MapSet.new(actionable, &node_key/1)
-
-    components = Components.list_components_with_dependencies(scope)
 
     comp_nodes = Enum.filter(nodes, &(&1.entity_type == "component"))
     comp_reqs_by_id = Enum.group_by(comp_nodes, & &1.entity_id)
@@ -254,8 +276,10 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   """
   @spec component_graph(Scope.t(), String.t()) :: map()
   def component_graph(%Scope{} = scope, component_id) do
-    %{nodes: nodes, edges: edges} = Requirements.project_graph(scope)
-    actionable_set = build_actionable_set(scope)
+    %{nodes: nodes, edges: edges, actionable: actionable} =
+      Requirements.project_graph_with_actionable(scope)
+
+    actionable_set = MapSet.new(actionable, &node_key/1)
 
     components = Components.list_components(scope)
     children = Enum.filter(components, &(&1.parent_component_id == component_id))
@@ -300,8 +324,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   """
   @spec components_graph(Scope.t()) :: map()
   def components_graph(%Scope{} = scope) do
-    %{nodes: nodes} = Requirements.project_graph(scope)
-    actionable = Requirements.next_actionable_project(scope)
+    %{nodes: nodes, actionable: actionable} =
+      Requirements.project_graph_with_actionable(scope)
 
     actionable_set =
       MapSet.new(actionable, &node_key/1)
@@ -608,11 +632,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   defp edge_color(_), do: "#64748b"
 
   # -- Shared layout helpers --
-
-  defp build_actionable_set(scope) do
-    Requirements.next_actionable_project(scope)
-    |> MapSet.new(&node_key/1)
-  end
 
   defp filter_tree_nodes(nodes, tree_ids) do
     Enum.filter(nodes, fn n ->

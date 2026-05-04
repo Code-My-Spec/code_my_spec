@@ -66,22 +66,81 @@ function remapColor(hex, t) {
 let Hooks = {}
 
 Hooks.SigmaGraph = {
-  mounted() { this.renderGraph() },
+  mounted() { this.loadAndRender() },
   updated() {
     if (this.sigma) { this.sigma.kill(); this.sigma = null }
-    this.renderGraph()
+    this.loadAndRender()
   },
   destroyed() {
     if (this.sigma) { this.sigma.kill(); this.sigma = null }
+    this.clearLoader()
     const panel = document.getElementById("graph-debug")
     if (panel) panel.remove()
   },
-  renderGraph() {
+  loadAndRender() {
     const raw = this.el.dataset.graph
-    if (!raw) return
+    if (raw) {
+      this.renderGraph(JSON.parse(raw))
+      return
+    }
 
+    this.showLoader("Computing requirements graph…")
+    this.handleEvent("graph:ready", ({ data, metrics }) => {
+      this.lastMetrics = metrics
+      this.updateLoaderText(`Rendering ${data.nodes.length} nodes…`)
+      requestAnimationFrame(() => {
+        this.clearLoader()
+        this.renderGraph(data)
+      })
+    })
+    this.handleEvent("graph:error", ({ message }) => {
+      this.showError({ message })
+    })
+  },
+  showLoader(message) {
     const t = themeColors()
-    const data = JSON.parse(raw)
+    this.el.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:${t.baseContent}">
+        <div style="width:40px;height:40px;border:3px solid ${t.base300};border-top-color:${t.primary};border-radius:50%;animation:sigma-spin 0.8s linear infinite"></div>
+        <div data-loader-message style="font-size:1rem;font-weight:600">${message}</div>
+        <div data-loader-elapsed style="font-size:0.85rem;opacity:0.7;font-family:ui-monospace,monospace">0.0s</div>
+        <div style="font-size:0.75rem;opacity:0.5">Large projects can take a while</div>
+      </div>
+      <style>@keyframes sigma-spin { to { transform: rotate(360deg) } }</style>
+    `
+    this.loaderStart = performance.now()
+    this.loaderInterval = setInterval(() => {
+      const el = this.el.querySelector("[data-loader-elapsed]")
+      if (el) {
+        const elapsed = ((performance.now() - this.loaderStart) / 1000).toFixed(1)
+        el.textContent = `${elapsed}s`
+      }
+    }, 100)
+  },
+  updateLoaderText(message) {
+    const el = this.el.querySelector("[data-loader-message]")
+    if (el) el.textContent = message
+  },
+  clearLoader() {
+    if (this.loaderInterval) {
+      clearInterval(this.loaderInterval)
+      this.loaderInterval = null
+    }
+    this.el.innerHTML = ""
+  },
+  showError(err) {
+    this.clearLoader()
+    console.error("[SigmaGraph] failed to fetch graph data:", err)
+    const t = themeColors()
+    this.el.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:${t.baseContent};padding:24px;text-align:center">
+        <div style="font-weight:600;color:${t.error}">Failed to load graph</div>
+        <div style="font-size:0.85rem;opacity:0.7">${err.message || err}</div>
+      </div>
+    `
+  },
+  renderGraph(data) {
+    const t = themeColors()
     const graph = new window.graphology.Graph()
 
     // Add nodes with theme-remapped colors
@@ -133,11 +192,9 @@ Hooks.SigmaGraph = {
       defaultEdgeType: "arrow",
       defaultEdgeColor: t.neutral,
       stagePadding: 80,
-      labelRenderedSizeThreshold: 0,
+      labelRenderedSizeThreshold: 8,
       labelDensity: 0.5,
       labelGridCellSize: 200,
-      zoomToSizeRatioFunction: () => 1,
-      itemSizesReference: "positions",
       defaultNodeColor: t.neutral,
       enableEdgeClickEvents: true,
       enableEdgeHoverEvents: true
@@ -155,8 +212,19 @@ Hooks.SigmaGraph = {
       debugPanel.id = "graph-debug"
       debugPanel.className = "bg-base-200 text-base-content border-t border-base-300"
       debugPanel.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;padding:8px 16px;font-family:ui-monospace,monospace;font-size:11px;z-index:9999"
-      debugPanel.innerHTML = `<summary style="cursor:pointer;opacity:0.7;margin-bottom:8px">Graph Debug (${data.nodes.length} nodes, ${data.edges.length} edges)</summary><pre id="graph-debug-content" style="margin:0"></pre>`
+      debugPanel.innerHTML = `<summary style="cursor:pointer;opacity:0.7;margin-bottom:8px">Graph Debug (${data.nodes.length} nodes, ${data.edges.length} edges)</summary><div id="graph-debug-metrics" style="margin-bottom:8px"></div><pre id="graph-debug-content" style="margin:0"></pre>`
       document.body.appendChild(debugPanel)
+    }
+    const metricsEl = document.getElementById("graph-debug-metrics")
+    if (metricsEl && this.lastMetrics) {
+      const m = this.lastMetrics
+      const total = Object.entries(m)
+        .filter(([k]) => k.endsWith("_ms"))
+        .reduce((a, [, v]) => a + v, 0)
+      const rows = Object.entries(m)
+        .map(([k, v]) => `  ${k.padEnd(22)} ${v}${k.endsWith("_ms") ? "ms" : ""}`)
+        .join("\n")
+      metricsEl.innerHTML = `<pre style="margin:0;color:inherit">METRICS (total ${total}ms):\n${rows}</pre>`
     }
     const debugContent = document.getElementById("graph-debug-content")
     const edgeList = data.edges.map(e => `${e.source}  →  ${e.target}`).join("\n")

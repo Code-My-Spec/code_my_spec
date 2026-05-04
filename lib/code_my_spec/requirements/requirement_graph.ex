@@ -56,7 +56,52 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
     edges = compute_edges(nodes, ctx, config)
     nodes = clamp_satisfaction(nodes, edges)
+    actionable_from(nodes, edges, ctx)
+  end
 
+  @doc """
+  Compute nodes, edges, and actionable nodes in a single pass.
+
+  Equivalent to calling `compute_graph/1` and `next_actionable/1`
+  separately, but shares preload + graph compute work.
+  """
+  @spec compute_graph_with_actionable(Scope.t()) ::
+          {[Requirement.t()], [edge()], [Requirement.t()]}
+  def compute_graph_with_actionable(%Scope{} = scope) do
+    {result, _metrics} = compute_graph_with_actionable_metrics(scope)
+    result
+  end
+
+  @doc """
+  Same as `compute_graph_with_actionable/1` but also returns per-phase
+  timings (in milliseconds) so callers can surface them for debugging
+  or progress reporting.
+  """
+  @spec compute_graph_with_actionable_metrics(Scope.t()) ::
+          {{[Requirement.t()], [edge()], [Requirement.t()]}, %{atom() => integer()}}
+  def compute_graph_with_actionable_metrics(%Scope{} = scope) do
+    {us_preload, ctx} = :timer.tc(fn -> Preloader.load(scope) end)
+    {us_config, config} = :timer.tc(fn -> CodeMySpec.Configurations.get_or_create(scope) end)
+    {us_nodes, {nodes, ctx}} = :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
+    {us_edges, edges} = :timer.tc(fn -> compute_edges(nodes, ctx, config) end)
+    {us_clamp, nodes} = :timer.tc(fn -> clamp_satisfaction(nodes, edges) end)
+    {us_actionable, actionable} = :timer.tc(fn -> actionable_from(nodes, edges, ctx) end)
+
+    metrics = %{
+      preload_ms: div(us_preload, 1000),
+      config_ms: div(us_config, 1000),
+      compute_nodes_ms: div(us_nodes, 1000),
+      compute_edges_ms: div(us_edges, 1000),
+      clamp_ms: div(us_clamp, 1000),
+      actionable_ms: div(us_actionable, 1000),
+      node_count: length(nodes),
+      edge_count: length(edges)
+    }
+
+    {{nodes, edges, actionable}, metrics}
+  end
+
+  defp actionable_from(nodes, edges, ctx) do
     satisfaction_map =
       Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
 
@@ -508,12 +553,29 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       original_template = RequirementDefinitionData.graph_for_type(component.type)
       filtered_template = filter_definitions_by_config(original_template, config)
 
-      {nodes, edges} =
-        instantiate_template(scope, ctx, filtered_template, original_template, component, children)
+      {us, {nodes, edges}} =
+        :timer.tc(fn ->
+          instantiate_template(scope, ctx, filtered_template, original_template, component, children)
+        end)
+
+      log_slow_component(component, children, nodes, us)
 
       {nodes, all_edges ++ edges}
     end)
   end
+
+  @slow_component_threshold_us 50_000
+
+  defp log_slow_component(component, children, nodes, us) when us >= @slow_component_threshold_us do
+    require Logger
+
+    Logger.info(
+      "[RequirementGraph] slow component: #{component.module_name} (#{component.type}) " <>
+        "took #{div(us, 1000)}ms — #{length(children)} children, #{length(nodes)} nodes"
+    )
+  end
+
+  defp log_slow_component(_component, _children, _nodes, _us), do: :ok
 
   # Instantiate a single graph template for a component + its children.
   # `filtered_template` is the template with config-disabled artifact types

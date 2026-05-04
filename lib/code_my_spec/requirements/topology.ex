@@ -201,25 +201,38 @@ defmodule CodeMySpec.Requirements.Topology do
   @spec transitive_reduction([edge()]) :: [edge()]
   def transitive_reduction(edges) do
     outgoing = group_edges(edges, & &1.from, & &1.to)
+    reachable_from = build_reachable_cache(edges, outgoing)
 
     Enum.reject(edges, fn %{from: a, to: b} ->
       outgoing
       |> Map.get(a, [])
-      |> Enum.any?(fn s -> s != b and reachable?(s, b, outgoing, MapSet.new()) end)
+      |> Enum.any?(fn s ->
+        s != b and MapSet.member?(Map.get(reachable_from, s, MapSet.new()), b)
+      end)
     end)
   end
 
-  defp reachable?(from, to, _outgoing, _visited) when from == to, do: true
+  # For each node that appears as a direct successor of some edge source,
+  # compute the set of nodes reachable from it once (via DFS) and cache.
+  # Replaces the per-edge fresh-DFS in the original implementation, which
+  # was O(V²·E) on dense graphs.
+  defp build_reachable_cache(edges, outgoing) do
+    edges
+    |> Enum.flat_map(fn %{from: f} -> Map.get(outgoing, f, []) end)
+    |> Enum.uniq()
+    |> Enum.reduce(%{}, fn s, acc ->
+      Map.put(acc, s, dfs([s], MapSet.new(), outgoing))
+    end)
+  end
 
-  defp reachable?(from, to, outgoing, visited) do
-    if MapSet.member?(visited, from) do
-      false
+  defp dfs([], visited, _outgoing), do: visited
+
+  defp dfs([u | rest], visited, outgoing) do
+    if MapSet.member?(visited, u) do
+      dfs(rest, visited, outgoing)
     else
-      visited = MapSet.put(visited, from)
-
-      outgoing
-      |> Map.get(from, [])
-      |> Enum.any?(&reachable?(&1, to, outgoing, visited))
+      successors = Map.get(outgoing, u, [])
+      dfs(successors ++ rest, MapSet.put(visited, u), outgoing)
     end
   end
 

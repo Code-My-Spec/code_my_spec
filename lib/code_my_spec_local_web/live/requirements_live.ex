@@ -8,6 +8,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  require Logger
+
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Components
   alias CodeMySpec.Projects
@@ -251,16 +253,18 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :graph}} = socket) do
     case load_project_and_scope(name) do
       {:ok, project, scope} ->
-        graph_data = GraphProjector.project_graph(scope)
+        socket =
+          socket
+          |> assign(
+            project: project,
+            scope: scope,
+            markdown: nil,
+            graph_data: :loading,
+            error: nil
+          )
+          |> maybe_start_graph_compute(scope)
 
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           markdown: nil,
-           graph_data: graph_data,
-           error: nil
-         )}
+        {:noreply, socket}
 
       {:error, msg} ->
         {:noreply, assign(socket, error: msg)}
@@ -281,6 +285,39 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
       {:error, msg} ->
         {:noreply, assign(socket, error: msg)}
+    end
+  end
+
+  # --- Async work ---
+
+  @impl true
+  def handle_async(:compute_graph, {:ok, {graph_data, metrics}}, socket) do
+    Logger.info("[RequirementsLive] graph computed: #{inspect(metrics)}")
+
+    socket =
+      socket
+      |> assign(graph_data: :ready)
+      |> push_event("graph:ready", %{data: graph_data, metrics: metrics})
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:compute_graph, {:exit, reason}, socket) do
+    Logger.error("[RequirementsLive] graph compute crashed: #{inspect(reason)}")
+
+    {:noreply,
+     socket
+     |> assign(graph_data: :error)
+     |> push_event("graph:error", %{message: "Graph computation failed: #{inspect(reason)}"})}
+  end
+
+  defp maybe_start_graph_compute(socket, scope) do
+    if connected?(socket) do
+      start_async(socket, :compute_graph, fn ->
+        GraphProjector.project_graph_with_metrics(scope)
+      end)
+    else
+      socket
     end
   end
 
@@ -318,7 +355,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         <div
           id="sigma-graph"
           phx-hook="SigmaGraph"
-          data-graph={Jason.encode!(@graph_data)}
+          data-graph={if is_map(@graph_data), do: Jason.encode!(@graph_data)}
           phx-update="ignore"
           class="rounded-box border border-base-300 bg-base-200"
           style="width: 100%; height: 80vh;"

@@ -6,6 +6,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
   """
   use CodeMySpecLocalWeb, :controller
 
+  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpecLocalWeb.RequirementsMarkdown
 
@@ -64,7 +65,7 @@ defmodule CodeMySpecLocalWeb.RequirementsController do
 
   def child(conn, %{"name" => _name, "child_id" => child_id}) do
     scope = conn.assigns.current_scope
-    mod = CodeMySpec.AgentTasks.ProjectSetup.find_step(child_id)
+    mod = ProjectSetup.find_step(child_id)
 
     if mod do
       case mod.command(scope, %{}) do

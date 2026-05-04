@@ -39,6 +39,34 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
+  Returns the full computed requirements graph plus the next actionable
+  requirements, computed in a single pass.
+
+  Use this when you need both views — saves a duplicate preload + graph
+  compute compared to calling `project_graph/1` and
+  `next_actionable_project/1` separately.
+  """
+  @spec project_graph_with_actionable(Scope.t()) ::
+          %{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}
+  def project_graph_with_actionable(%Scope{} = scope) do
+    {nodes, edges, actionable} = RequirementGraph.compute_graph_with_actionable(scope)
+    %{nodes: nodes, edges: edges, actionable: actionable}
+  end
+
+  @doc """
+  Same as `project_graph_with_actionable/1` plus per-phase timings.
+  """
+  @spec project_graph_with_actionable_metrics(Scope.t()) ::
+          {%{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]},
+           %{atom() => integer()}}
+  def project_graph_with_actionable_metrics(%Scope{} = scope) do
+    {{nodes, edges, actionable}, metrics} =
+      RequirementGraph.compute_graph_with_actionable_metrics(scope)
+
+    {%{nodes: nodes, edges: edges, actionable: actionable}, metrics}
+  end
+
+  @doc """
   Compute all requirement nodes across the project.
   """
   @spec compute_all(Scope.t()) :: [Requirement.t()]
