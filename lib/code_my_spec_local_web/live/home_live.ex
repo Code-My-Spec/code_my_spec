@@ -48,7 +48,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <.dash_card title="Next Task" href={~p"/projects/#{@slug}/next-task"} desc="Pick up the next actionable requirement." />
-          <.dash_card title="Sync" href={~p"/projects/#{@slug}/sync"} desc="Recalculate requirements and component status." />
+          <.dash_card title="Files & Sync" href={~p"/projects/#{@slug}/files"} desc="Inspect tracked files and re-sync the projection." />
           <.dash_card title="Configuration" href={~p"/projects/#{@slug}/configuration"} desc="Quality gate and analyzer settings." />
 
           <.dash_card title="Requirements" href={~p"/projects/#{@slug}/requirements"} desc="Project-level requirement graph." />

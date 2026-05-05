@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
           Environments.write_file(context.environment, impl_path, Content.impl_file(surface_module))
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/sync")
+          live(context.conn, "/projects/#{context.project.name}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 

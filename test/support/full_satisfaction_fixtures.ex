@@ -222,7 +222,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
       )
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -335,7 +335,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
 
     # Re-sync so the file is registered with role :bdd_spec
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
     context

@@ -226,7 +226,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
     ])
 
     {:ok, sync_live, _html} =
-      live(ctx.conn, "/projects/#{ctx.project.name}/sync")
+      live(ctx.conn, "/projects/#{ctx.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
     :ok

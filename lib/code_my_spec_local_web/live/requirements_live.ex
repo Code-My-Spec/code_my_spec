@@ -454,9 +454,26 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     actionable = Enum.filter(comp_nodes, fn n -> !n.satisfied and n.satisfied_by end)
     actionable_names = MapSet.new(actionable, & &1.name)
 
+    {:ok, scope} = Scope.for_local_project(project)
+    stories = Stories.list_component_stories(scope, component.id)
+
     back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
     header = "# #{component.module_name} — Requirements (#{satisfied}/#{total})\n\n"
     type_info = "Type: **#{component.type}**\n\n"
+
+    stories_section =
+      case stories do
+        [] ->
+          ""
+
+        _ ->
+          rows =
+            Enum.map_join(stories, "\n", fn s ->
+              "- [#{s.title}](/projects/#{slug}/stories/#{s.id})"
+            end)
+
+          "## Stories\n\n" <> rows <> "\n\n"
+      end
 
     lines =
       Enum.map_join(comp_nodes, "\n", fn n ->
@@ -465,7 +482,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         "- #{check} [**#{n.name}**](/projects/#{slug}/components/#{component.id}/requirements/#{n.name}) — #{n.description}#{tag}"
       end)
 
-    back <> header <> type_info <> lines <> "\n"
+    back <> header <> type_info <> stories_section <> "## Requirements\n\n" <> lines <> "\n"
   end
 
   defp build_story_show_markdown(story, project, nodes) do

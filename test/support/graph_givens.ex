@@ -364,7 +364,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # Trigger sync via the real /sync LiveView surface.
   defp sync_project(context) do
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
     :ok

@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5640Spex do
         :ok = Environments.delete_file(context.environment, Content.impl_path("Reservations"))
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/sync")
+          live(context.conn, "/projects/#{context.project.name}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
         {:ok, context}

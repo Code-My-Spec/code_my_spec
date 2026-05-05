@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
           )
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/sync")
+          live(context.conn, "/projects/#{context.project.name}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 

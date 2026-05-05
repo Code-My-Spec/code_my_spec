@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5906Spex do
             )
         end)
 
-        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/sync")
+        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         linked = Fixtures.get_component_by_module_name(context.scope, "LinkedContext")

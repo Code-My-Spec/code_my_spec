@@ -139,7 +139,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live
     |> element("button[phx-click='sync']")
@@ -176,7 +176,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -259,7 +259,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, bdd_path, bdd_content)
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -329,7 +329,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       """)
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -471,7 +471,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       )
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/sync")
+      live(context.conn, "/projects/#{context.project.name}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 

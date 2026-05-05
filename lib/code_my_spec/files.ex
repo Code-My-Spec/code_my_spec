@@ -17,6 +17,65 @@ defmodule CodeMySpec.Files do
     |> Repo.all()
   end
 
+  @doc """
+  List files for the project with the owning component preloaded, ordered by
+  path, with optional pagination and validity filtering.
+
+  Options:
+  - `:page` — 1-based page number (default `1`)
+  - `:per_page` — page size (default `25`)
+  - `:filter` — `:all` (default) or `:invalid` to restrict to `valid: false`
+  """
+  @spec list_files_paginated(Scope.t(), keyword()) :: %{
+          files: [File.t()],
+          page: pos_integer(),
+          per_page: pos_integer(),
+          total_count: non_neg_integer(),
+          unfiltered_count: non_neg_integer(),
+          invalid_count: non_neg_integer(),
+          total_pages: pos_integer(),
+          filter: :all | :invalid
+        }
+  def list_files_paginated(%Scope{active_project_id: project_id}, opts \\ []) do
+    page = max(Keyword.get(opts, :page, 1), 1)
+    per_page = max(Keyword.get(opts, :per_page, 25), 1)
+    filter = Keyword.get(opts, :filter, :all)
+
+    project_scope = where(File, [f], f.project_id == ^project_id)
+    unfiltered_count = Repo.aggregate(project_scope, :count, :id)
+
+    invalid_count =
+      project_scope
+      |> where([f], f.valid == false)
+      |> Repo.aggregate(:count, :id)
+
+    base = apply_filter(project_scope, filter)
+    total_count = Repo.aggregate(base, :count, :id)
+    total_pages = max(div(total_count + per_page - 1, per_page), 1)
+
+    files =
+      base
+      |> order_by([f], asc: f.path)
+      |> limit(^per_page)
+      |> offset(^((page - 1) * per_page))
+      |> preload(:component)
+      |> Repo.all()
+
+    %{
+      files: files,
+      page: page,
+      per_page: per_page,
+      total_count: total_count,
+      unfiltered_count: unfiltered_count,
+      invalid_count: invalid_count,
+      total_pages: total_pages,
+      filter: filter
+    }
+  end
+
+  defp apply_filter(query, :invalid), do: where(query, [f], f.valid == false)
+  defp apply_filter(query, _), do: query
+
   @doc "List files for a specific component."
   @spec list_component_files(Scope.t(), Ecto.UUID.t()) :: [File.t()]
   def list_component_files(%Scope{active_project_id: project_id}, component_id) do
