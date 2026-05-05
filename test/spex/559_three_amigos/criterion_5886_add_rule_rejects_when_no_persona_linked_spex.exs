@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5160Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5886Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5160 — When the agent calls `add_rule` on a story that has
+  Criterion 5886 — When the agent calls `add_rule` on a story that has
   no personas linked, the MCP tool returns a validation error and the
   rule does not appear in the subsequent `list_rules` call for that
   story.

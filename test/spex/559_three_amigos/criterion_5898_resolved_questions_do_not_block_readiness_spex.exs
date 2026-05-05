@@ -1,19 +1,19 @@
-defmodule CodeMySpecSpex.Story559.Criterion5172Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5172 — When a story has more open questions (red cards)
-  than scenarios (green cards), the readiness gate fails on the
-  `scenarios > questions` clause and the failure detail tells the PM
-  the story isn't ready.
+  Criterion 5898 — Resolved questions do not count against the
+  `scenarios > questions` readiness clause. The PM can resolve a
+  question via `resolve_question`, and the readiness gate passes
+  even though the question record still exists in the audit trail.
 
-  Enforces Wynne's Example Mapping signal: if there are more red
-  cards than green cards, the story is not yet ready for development
-  — the PM needs to find answers before the spec can be locked in.
+  Covers the lifecycle of a question (`:open` → `:resolved`) and
+  the asymmetry: only OPEN questions block readiness; resolved
+  ones are historical.
 
   Depends on:
-    - `BddRulesChecker` upgraded with the scenarios-vs-questions clause
-    - `Questions` context (new)
-    - `AddQuestion` MCP tool (new)
+    - `BddRulesChecker` scenarios-vs-questions clause
+    - `ResolveQuestion` MCP tool (new)
+    - `Question.status` enum (new)
   """
 
   use CodeMySpecSpex.Case
@@ -24,13 +24,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5172Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
+  alias CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "evaluate fails when open questions outnumber scenarios" do
-    scenario "evaluate_task names the scenarios-vs-questions readiness failure" do
+  spex "resolved questions do not block readiness" do
+    scenario "evaluate passes when more questions exist but enough are resolved" do
       given_ :persona_exists
 
       given_ "one rule with happy + failure scenarios exists", context do
@@ -70,25 +71,26 @@ defmodule CodeMySpecSpex.Story559.Criterion5172Spex do
         {:ok, context}
       end
 
-      given_ "three open questions exist on the story (more than the two scenarios)",
-             context do
+      given_ "three questions are added and two are resolved", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        for n <- 1..3 do
-          {:reply, response, _frame} =
-            AddQuestion.execute(
-              %{
-                story_id: context.story.id,
-                text: "Open question number #{n} that nobody can answer right now"
-              },
-              frame
-            )
+        question_ids =
+          for n <- 1..3 do
+            {:reply, response, _frame} =
+              AddQuestion.execute(
+                %{
+                  story_id: context.story.id,
+                  text: "Open question #{n}"
+                },
+                frame
+              )
 
-          # Loudly fail if question creation didn't succeed —
-          # silent failures here would let the readiness assertion lie.
-          if response.isError == true do
-            raise "AddQuestion #{n} failed: #{inspect(response)}"
+            extract_question_id(response)
           end
+
+        for qid <- Enum.take(question_ids, 2) do
+          {:reply, _resolve_response, _frame} =
+            ResolveQuestion.execute(%{question_id: qid}, frame)
         end
 
         {:ok, context}
@@ -108,15 +110,24 @@ defmodule CodeMySpecSpex.Story559.Criterion5172Spex do
         {:ok, Map.put(context, :evaluate_response, response)}
       end
 
-      then_ "the response surfaces the scenarios-vs-questions readiness failure",
-            context do
+      then_ "the response indicates the Three Amigos task passed", context do
         body = response_text(context.evaluate_response)
 
-        assert body =~ ~r/scenarios?\s*>\s*questions?|too many open questions|story.*not.*ready/i,
-               "expected response to name the scenarios>questions failure, got #{inspect(context.evaluate_response)}"
+        assert body =~ ~r/passed|complete/i,
+               "expected response to indicate the task passed (resolved questions don't block), got #{inspect(context.evaluate_response)}"
 
         {:ok, context}
       end
+    end
+  end
+
+  # Tools return text responses with embedded ids — extract the question id.
+  defp extract_question_id(response) do
+    body = response_text(response)
+
+    case Regex.run(~r/id:\s*`?([0-9a-f-]{36})`?/, body) do
+      [_, id] -> id
+      _ -> raise "Could not extract question id from response: #{inspect(response)}"
     end
   end
 

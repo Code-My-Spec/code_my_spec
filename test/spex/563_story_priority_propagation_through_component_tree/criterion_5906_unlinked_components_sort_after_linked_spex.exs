@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion5624Spex do
+defmodule CodeMySpecSpex.Story563.Criterion5906Spex do
   @moduledoc """
-  Story 561 — Next Actionable Requirements
-  Criterion 5624 — A component linked to no story sorts after all
+  Story 563 — Story Priority Propagation Through Component Tree
+  Criterion 5906 — A component linked to no story sorts after all
   story-linked components.
 
   Surface: get_next_requirement MCP tool. Two contexts are written

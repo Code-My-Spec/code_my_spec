@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5169Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5169 — When `add_scenario` is called with a `rule_statement`
+  Criterion 5894 — When `add_scenario` is called with a `rule_statement`
   that doesn't match any existing Rule on the story, the MCP tool
   returns an error response naming "rule" so the agent can correct
   course (e.g., add the rule first or fix the statement typo).

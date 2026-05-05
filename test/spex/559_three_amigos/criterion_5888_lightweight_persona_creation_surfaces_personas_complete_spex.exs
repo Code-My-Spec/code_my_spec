@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5162Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5162 — When Three Amigos runs on a story with no suitable
+  Criterion 5888 — When Three Amigos runs on a story with no suitable
   persona in the library, the agent calls `add_persona` to create a
   lightweight record, completes the readiness work, and the graph
   surfaces `personas_complete` as the new research gap that blocks

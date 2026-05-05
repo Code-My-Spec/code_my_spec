@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5159Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5885Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5159 — When upstream gates are satisfied and a story has
+  Criterion 5885 — When upstream gates are satisfied and a story has
   zero acceptance criteria, the requirement graph surfaces
   `three_amigos_complete` scoped to that story as the next actionable
   requirement.

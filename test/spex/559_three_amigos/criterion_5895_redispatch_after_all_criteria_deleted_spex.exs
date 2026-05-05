@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5170Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5170 — After Three Amigos has been completed for a story
+  Criterion 5895 — After Three Amigos has been completed for a story
   and the PM deletes all of its acceptance criteria, the readiness
   gate flips back to unsatisfied — the graph re-dispatches Three
   Amigos for that story on the next pass.

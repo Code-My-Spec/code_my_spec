@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5168Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5893Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5168 — When the agent calls `start_task` for
+  Criterion 5893 — When the agent calls `start_task` for
   `three_amigos_complete`, the returned prompt enumerates the
   available MCP tools (`add_rule`, `add_scenario`, `add_question`,
   `add_persona`, `link_persona_to_story`) and points the agent at

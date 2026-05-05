@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5164Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5890Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5164 — When the agent calls `evaluate_task` on a Three
+  Criterion 5890 — When the agent calls `evaluate_task` on a Three
   Amigos task whose story has zero personas linked, the evaluation
   returns a needs-work response naming "No personas" as the failing
   readiness condition.

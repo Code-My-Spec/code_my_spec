@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5171Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5896Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5171 — `add_question` creates a Question (red card)
+  Criterion 5896 — `add_question` creates a Question (red card)
   attached to the story; the question is observable through
   `list_questions`.
 

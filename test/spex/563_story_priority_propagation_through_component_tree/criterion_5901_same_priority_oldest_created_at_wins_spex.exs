@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion5819Spex do
+defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
   @moduledoc """
-  Story 561 — Next Actionable Requirements
-  Criterion 5819 — When two stories share the same priority and
+  Story 563 — Story Priority Propagation Through Component Tree
+  Criterion 5901 — When two stories share the same priority and
   their actionable subgraphs are not edge-ordered against each
   other, the older story (earlier created_at) wins the tiebreak.
 

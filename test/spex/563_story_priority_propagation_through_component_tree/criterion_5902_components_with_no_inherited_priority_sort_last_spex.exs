@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion5822Spex do
+defmodule CodeMySpecSpex.Story563.Criterion5902Spex do
   @moduledoc """
-  Story 561 — Next Actionable Requirements
-  Criterion 5822 — A component with no story link, no dependency-of
+  Story 563 — Story Priority Propagation Through Component Tree
+  Criterion 5902 — A component with no story link, no dependency-of
   relationship, and no parent-chain priority sorts last among
   parallel-eligible nodes — it does not lead the wave when
   priority-bearing components are also actionable.

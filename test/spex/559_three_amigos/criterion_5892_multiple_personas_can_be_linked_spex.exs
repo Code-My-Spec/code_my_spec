@@ -1,19 +1,18 @@
-defmodule CodeMySpecSpex.Story559.Criterion5173Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5173 — Resolved questions do not count against the
-  `scenarios > questions` readiness clause. The PM can resolve a
-  question via `resolve_question`, and the readiness gate passes
-  even though the question record still exists in the audit trail.
+  Criterion 5892 — A story can have multiple personas linked, and the
+  readiness gate counts them all as satisfying the persona-linkage
+  requirement (no upper bound on personas — only rules have a ceiling).
 
-  Covers the lifecycle of a question (`:open` → `:resolved`) and
-  the asymmetry: only OPEN questions block readiness; resolved
-  ones are historical.
+  Covers Rule 3's multi-persona scenario from `examples.md`:
+  "Agent links two personas to the story when scenarios cover distinct
+  user roles."
 
   Depends on:
-    - `BddRulesChecker` scenarios-vs-questions clause
-    - `ResolveQuestion` MCP tool (new)
-    - `Question.status` enum (new)
+    - `BddRulesChecker.complete?/2` ✓
+    - `Personas.link_persona_to_story` ✓
+    - `:three_amigos_task_started` shared given ✓
   """
 
   use CodeMySpecSpex.Case
@@ -21,20 +20,40 @@ defmodule CodeMySpecSpex.Story559.Criterion5173Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion
+  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "resolved questions do not block readiness" do
-    scenario "evaluate passes when more questions exist but enough are resolved" do
+  spex "story can have multiple personas linked and still satisfy readiness" do
+    scenario "evaluate passes when two personas are linked plus a rule with happy + failure scenarios" do
       given_ :persona_exists
 
-      given_ "one rule with happy + failure scenarios exists", context do
+      given_ "a second persona is created and linked to the story", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, _response, _frame} =
+          CreatePersona.execute(
+            %{
+              slug: "driver",
+              name: "Driver",
+              headline: "Fleet driver attempting card transactions"
+            },
+            frame
+          )
+
+        driver = CodeMySpec.Personas.get_persona_by_slug(context.scope, "driver")
+
+        {:ok, _link} =
+          CodeMySpec.Personas.link_persona_to_story(context.scope, driver.id, context.story.id)
+
+        {:ok, context}
+      end
+
+      given_ "one rule exists with happy + failure scenarios", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
@@ -51,7 +70,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5173Spex do
               rule_statement: rule_statement,
               title: "Driver attempts purchase with suspended card",
               kind: "happy_path",
-              body: "Given...\nWhen...\nThen happy outcome"
+              body: "Given context\nWhen action\nThen happy outcome"
             },
             frame
           )
@@ -63,35 +82,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5173Spex do
               rule_statement: rule_statement,
               title: "Suspension status fails to load",
               kind: "failure_path",
-              body: "Given...\nWhen...\nThen failure outcome"
+              body: "Given context\nWhen action\nThen failure outcome"
             },
             frame
           )
-
-        {:ok, context}
-      end
-
-      given_ "three questions are added and two are resolved", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        question_ids =
-          for n <- 1..3 do
-            {:reply, response, _frame} =
-              AddQuestion.execute(
-                %{
-                  story_id: context.story.id,
-                  text: "Open question #{n}"
-                },
-                frame
-              )
-
-            extract_question_id(response)
-          end
-
-        for qid <- Enum.take(question_ids, 2) do
-          {:reply, _resolve_response, _frame} =
-            ResolveQuestion.execute(%{question_id: qid}, frame)
-        end
 
         {:ok, context}
       end
@@ -114,20 +108,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5173Spex do
         body = response_text(context.evaluate_response)
 
         assert body =~ ~r/passed|complete/i,
-               "expected response to indicate the task passed (resolved questions don't block), got #{inspect(context.evaluate_response)}"
+               "expected response to indicate the task passed, got #{inspect(context.evaluate_response)}"
 
         {:ok, context}
       end
-    end
-  end
-
-  # Tools return text responses with embedded ids — extract the question id.
-  defp extract_question_id(response) do
-    body = response_text(response)
-
-    case Regex.run(~r/id:\s*`?([0-9a-f-]{36})`?/, body) do
-      [_, id] -> id
-      _ -> raise "Could not extract question id from response: #{inspect(response)}"
     end
   end
 

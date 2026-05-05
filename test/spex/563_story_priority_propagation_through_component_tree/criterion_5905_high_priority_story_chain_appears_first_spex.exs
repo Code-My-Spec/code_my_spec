@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion5623Spex do
+defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
   @moduledoc """
-  Story 561 — Next Actionable Requirements
-  Criterion 5623 — High-priority story's component chain appears in
+  Story 563 — Story Priority Propagation Through Component Tree
+  Criterion 5905 — High-priority story's component chain appears in
   the actionable list before low-priority story's.
 
   Surface: get_next_requirement MCP tool. With two contexts synced —

@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5166Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5166 — When a story has 10 or more rules, the readiness
+  Criterion 5891 — When a story has 10 or more rules, the readiness
   gate fails on the `rules < 10` clause and the failure detail
   instructs the PM to slice the story.
 

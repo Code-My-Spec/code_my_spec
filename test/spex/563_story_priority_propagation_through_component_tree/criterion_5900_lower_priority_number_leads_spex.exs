@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion5818Spex do
+defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
   @moduledoc """
-  Story 561 — Next Actionable Requirements
-  Criterion 5818 — Among parallel-eligible nodes that the graph does
+  Story 563 — Story Priority Propagation Through Component Tree
+  Criterion 5900 — Among parallel-eligible nodes that the graph does
   not order via edges, the wave is taken from the story with the
   lower priority number first; higher-priority numbers are queued
   behind.

@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion5820Spex do
+defmodule CodeMySpecSpex.Story563.Criterion5903Spex do
   @moduledoc """
-  Story 561 — Next Actionable Requirements
-  Criterion 5820 — A component that is a surface dependency of a
+  Story 563 — Story Priority Propagation Through Component Tree
+  Criterion 5903 — A component that is a surface dependency of a
   story-linked component inherits that story's priority via the
   projector's dependency-spread propagation. Both the dependency and
   the dependent should surface ahead of unrelated low-priority

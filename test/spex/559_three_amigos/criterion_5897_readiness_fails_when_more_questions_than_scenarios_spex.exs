@@ -1,18 +1,19 @@
-defmodule CodeMySpecSpex.Story559.Criterion5167Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5167 — A story can have multiple personas linked, and the
-  readiness gate counts them all as satisfying the persona-linkage
-  requirement (no upper bound on personas — only rules have a ceiling).
+  Criterion 5897 — When a story has more open questions (red cards)
+  than scenarios (green cards), the readiness gate fails on the
+  `scenarios > questions` clause and the failure detail tells the PM
+  the story isn't ready.
 
-  Covers Rule 3's multi-persona scenario from `examples.md`:
-  "Agent links two personas to the story when scenarios cover distinct
-  user roles."
+  Enforces Wynne's Example Mapping signal: if there are more red
+  cards than green cards, the story is not yet ready for development
+  — the PM needs to find answers before the spec can be locked in.
 
   Depends on:
-    - `BddRulesChecker.complete?/2` ✓
-    - `Personas.link_persona_to_story` ✓
-    - `:three_amigos_task_started` shared given ✓
+    - `BddRulesChecker` upgraded with the scenarios-vs-questions clause
+    - `Questions` context (new)
+    - `AddQuestion` MCP tool (new)
   """
 
   use CodeMySpecSpex.Case
@@ -20,40 +21,19 @@ defmodule CodeMySpecSpex.Story559.Criterion5167Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "story can have multiple personas linked and still satisfy readiness" do
-    scenario "evaluate passes when two personas are linked plus a rule with happy + failure scenarios" do
+  spex "evaluate fails when open questions outnumber scenarios" do
+    scenario "evaluate_task names the scenarios-vs-questions readiness failure" do
       given_ :persona_exists
 
-      given_ "a second persona is created and linked to the story", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, _response, _frame} =
-          CreatePersona.execute(
-            %{
-              slug: "driver",
-              name: "Driver",
-              headline: "Fleet driver attempting card transactions"
-            },
-            frame
-          )
-
-        driver = CodeMySpec.Personas.get_persona_by_slug(context.scope, "driver")
-
-        {:ok, _link} =
-          CodeMySpec.Personas.link_persona_to_story(context.scope, driver.id, context.story.id)
-
-        {:ok, context}
-      end
-
-      given_ "one rule exists with happy + failure scenarios", context do
+      given_ "one rule with happy + failure scenarios exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
@@ -70,7 +50,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5167Spex do
               rule_statement: rule_statement,
               title: "Driver attempts purchase with suspended card",
               kind: "happy_path",
-              body: "Given context\nWhen action\nThen happy outcome"
+              body: "Given...\nWhen...\nThen happy outcome"
             },
             frame
           )
@@ -82,10 +62,34 @@ defmodule CodeMySpecSpex.Story559.Criterion5167Spex do
               rule_statement: rule_statement,
               title: "Suspension status fails to load",
               kind: "failure_path",
-              body: "Given context\nWhen action\nThen failure outcome"
+              body: "Given...\nWhen...\nThen failure outcome"
             },
             frame
           )
+
+        {:ok, context}
+      end
+
+      given_ "three open questions exist on the story (more than the two scenarios)",
+             context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        for n <- 1..3 do
+          {:reply, response, _frame} =
+            AddQuestion.execute(
+              %{
+                story_id: context.story.id,
+                text: "Open question number #{n} that nobody can answer right now"
+              },
+              frame
+            )
+
+          # Loudly fail if question creation didn't succeed —
+          # silent failures here would let the readiness assertion lie.
+          if response.isError == true do
+            raise "AddQuestion #{n} failed: #{inspect(response)}"
+          end
+        end
 
         {:ok, context}
       end
@@ -104,11 +108,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5167Spex do
         {:ok, Map.put(context, :evaluate_response, response)}
       end
 
-      then_ "the response indicates the Three Amigos task passed", context do
+      then_ "the response surfaces the scenarios-vs-questions readiness failure",
+            context do
         body = response_text(context.evaluate_response)
 
-        assert body =~ ~r/passed|complete/i,
-               "expected response to indicate the task passed, got #{inspect(context.evaluate_response)}"
+        assert body =~ ~r/scenarios?\s*>\s*questions?|too many open questions|story.*not.*ready/i,
+               "expected response to name the scenarios>questions failure, got #{inspect(context.evaluate_response)}"
 
         {:ok, context}
       end

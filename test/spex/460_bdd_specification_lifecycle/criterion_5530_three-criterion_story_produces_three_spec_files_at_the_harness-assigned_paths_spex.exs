@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story460.Criterion5530Spex do
   acceptance criteria, the prompt the agent receives names exactly
   three distinct spec file paths — one per criterion, all under
   `test/spex/<story_id>_<story_slug>/`. Mirrors the prompt-content
-  pattern in `559_three_amigos/criterion_5168_*`.
+  pattern in `559_three_amigos/criterion_5893_*`.
 
   Setup goes through the surface: `:synced_context_component` writes a
   spec + impl into the env and clicks the sync button; `StoryHelpers`

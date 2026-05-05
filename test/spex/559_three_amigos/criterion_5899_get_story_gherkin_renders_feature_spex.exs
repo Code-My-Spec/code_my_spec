@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story559.Criterion5174Spex do
+defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
   @moduledoc """
   Story 559 — Three Amigos
-  Criterion 5174 — `get_story_gherkin` renders a populated story as a
+  Criterion 5899 — `get_story_gherkin` renders a populated story as a
   plain-text Gherkin feature: Feature header, Rule blocks, Scenario
   titles, and Given/When/Then bodies, in the order rules and
   scenarios were created (`inserted_at`).
