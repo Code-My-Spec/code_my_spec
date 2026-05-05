@@ -25,7 +25,7 @@ defmodule CodeMySpec.Stories do
 
   """
   def subscribe_stories(%Scope{} = scope) do
-    key = scope.active_account.id
+    key = scope.active_account_id
 
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{key}:stories")
   end
@@ -132,7 +132,7 @@ defmodule CodeMySpec.Stories do
 
   """
   def update_story(%Scope{} = scope, %Story{} = story, attrs) do
-    true = story.account_id == scope.active_account.id
+    true = story.account_id == scope.active_account_id
 
     with {:ok, story = %Story{}} <- impl().update_story(scope, story, attrs) do
       broadcast(scope, {:updated, story})
@@ -153,7 +153,7 @@ defmodule CodeMySpec.Stories do
 
   """
   def delete_story(%Scope{} = scope, %Story{} = story) do
-    true = story.account_id == scope.active_account.id
+    true = story.account_id == scope.active_account_id
 
     with {:ok, story = %Story{}} <- impl().delete_story(scope, story) do
       broadcast(scope, {:deleted, story})
@@ -171,7 +171,7 @@ defmodule CodeMySpec.Stories do
 
   """
   def change_story(%Scope{} = scope, %Story{} = story, attrs \\ %{}) do
-    true = story.account_id == scope.active_account.id
+    true = story.account_id == scope.active_account_id
 
     Story.changeset(story, attrs)
   end
