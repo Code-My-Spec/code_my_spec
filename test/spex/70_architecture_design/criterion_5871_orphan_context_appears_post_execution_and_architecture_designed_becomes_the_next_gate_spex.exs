@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5871Spex do
 
       when_ "the engineer renders the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/graph")
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end

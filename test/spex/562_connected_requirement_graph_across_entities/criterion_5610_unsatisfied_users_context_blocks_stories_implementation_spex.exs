@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5610Spex do
 
       when_ "the engineer opens the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/graph")
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end

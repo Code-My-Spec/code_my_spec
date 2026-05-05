@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5641Spex do
 
       and_ "the engineer captures the baseline graph (defaults)", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/graph")
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
 
         baseline = GraphAssertions.extract_graph!(html)
         {:ok, Map.put(context, :baseline, baseline)}
@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5641Spex do
 
       and_ "the engineer re-renders the graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/graph")
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :after_toggle, GraphAssertions.extract_graph!(html))}
       end

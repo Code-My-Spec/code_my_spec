@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5085Spex do
 
       then_ "the graph contains test_file and tests_passing again", context do
         {:ok, _graph_live, html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/requirements/graph")
+          live(context.conn, ~p"/projects/#{context.project.name}/requirements/graph?preload=true")
 
         assert html =~ "implementation_file"
 

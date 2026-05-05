@@ -250,19 +250,21 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end
   end
 
-  def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :graph}} = socket) do
+  def handle_params(%{"project_name" => name} = params, _uri, %{assigns: %{live_action: :graph}} = socket) do
     case load_project_and_scope(name) do
       {:ok, project, scope} ->
+        base =
+          assign(socket, project: project, scope: scope, markdown: nil, error: nil)
+
         socket =
-          socket
-          |> assign(
-            project: project,
-            scope: scope,
-            markdown: nil,
-            graph_data: :loading,
-            error: nil
-          )
-          |> maybe_start_graph_compute(scope)
+          if params["preload"] == "true" do
+            {graph_data, metrics} = GraphProjector.project_graph_with_metrics(scope)
+            apply_graph_result(base, graph_data, metrics)
+          else
+            base
+            |> assign(graph_data: :loading)
+            |> maybe_start_graph_compute(scope)
+          end
 
         {:noreply, socket}
 
@@ -292,14 +294,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   @impl true
   def handle_async(:compute_graph, {:ok, {graph_data, metrics}}, socket) do
-    Logger.info("[RequirementsLive] graph computed: #{inspect(metrics)}")
-
-    socket =
-      socket
-      |> assign(graph_data: :ready)
-      |> push_event("graph:ready", %{data: graph_data, metrics: metrics})
-
-    {:noreply, socket}
+    {:noreply, apply_graph_result(socket, graph_data, metrics)}
   end
 
   def handle_async(:compute_graph, {:exit, reason}, socket) do
@@ -319,6 +314,14 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     else
       socket
     end
+  end
+
+  defp apply_graph_result(socket, graph_data, metrics) do
+    Logger.info("[RequirementsLive] graph computed: #{inspect(metrics)}")
+
+    socket
+    |> assign(graph_data: graph_data)
+    |> push_event("graph:ready", %{data: graph_data, metrics: metrics})
   end
 
   # --- Render ---

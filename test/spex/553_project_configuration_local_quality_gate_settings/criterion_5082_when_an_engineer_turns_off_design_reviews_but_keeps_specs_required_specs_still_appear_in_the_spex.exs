@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5082Spex do
       then_ "the requirements graph still has specs but no longer has reviews",
             context do
         {:ok, _graph_live, html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/requirements/graph")
+          live(context.conn, ~p"/projects/#{context.project.name}/requirements/graph?preload=true")
 
         # Anchor: spec_file is the thing we kept enabled — its presence proves
         # the graph has real content and specs are still flowing through.
