@@ -839,102 +839,89 @@ defmodule CodeMySpec.Architecture.Proposal do
     end)
   end
 
+  # Order is preserved (ordered: true default) so surface components, which
+  # come last in `to_components/1`, are still processed after contexts in
+  # `sync_and_link_components/2`. That ordering is what makes surface links
+  # win when a story is claimed by both a context and a surface component.
   defp write_all_spec_files(env, components) do
     components
-    |> Enum.reduce_while({:ok, []}, &write_one_spec(env, &1, &2))
-    |> finalize_spec_writes()
+    |> Task.async_stream(fn comp -> {comp, write_one_spec(env, comp)} end,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce_while({:ok, []}, fn
+      {:ok, {comp, :ok}}, {:ok, acc} ->
+        {:cont, {:ok, [comp | acc]}}
+
+      {:ok, {_comp, {:error, _} = err}}, _ ->
+        {:halt, err}
+
+      {:exit, reason}, _ ->
+        {:halt, {:error, reason}}
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      err -> err
+    end
   end
 
   # Infrastructure components are framework-generated modules (OTP application,
   # web endpoint, mailer, etc.). They get a Component row in the DB but no spec
   # stub — their requirement graph template is empty, so no agent work is
   # driven for them.
-  defp write_one_spec(_env, %{type: "infrastructure"} = comp_attrs, {:ok, created}) do
-    {:cont, {:ok, [comp_attrs | created]}}
-  end
+  defp write_one_spec(_env, %{type: "infrastructure"}), do: :ok
+  defp write_one_spec(env, comp_attrs), do: write_spec_file(env, comp_attrs)
 
-  defp write_one_spec(env, comp_attrs, {:ok, created}) do
-    case write_spec_file(env, comp_attrs) do
-      :ok -> {:cont, {:ok, [comp_attrs | created]}}
-      {:error, reason} -> {:halt, {:error, reason}}
-    end
-  end
-
-  defp finalize_spec_writes({:ok, created}), do: {:ok, Enum.reverse(created)}
-  defp finalize_spec_writes(err), do: err
-
+  # Two stages:
+  #   1. Upsert every component locally and build the (story_id, component_id)
+  #      link list in input order. Surface components come last in the input,
+  #      so duplicate story claims (context + surface) end up with the surface
+  #      link last — that's what gives surface its "wins on overwrite" property
+  #      once the bulk call applies them in order.
+  #   2. One `Stories.bulk_set_story_component/2` call. On the CLI this is a
+  #      single HTTP POST + a single local-cache write-through transaction,
+  #      replacing 2N round-trips.
   defp sync_and_link_components(scope, components) do
-    # Sync all components to database and collect surface components with their story mappings
     Logger.debug("[Proposal] sync_and_link_components: #{length(components)} components")
 
-    components
-    |> Enum.reduce(0, fn comp_attrs, linked_count ->
-      Logger.debug(
-        "[Proposal] Processing component: #{comp_attrs.module_name}, type: #{comp_attrs.type}"
-      )
+    links =
+      Enum.flat_map(components, fn comp_attrs ->
+        case sync_component_to_db(scope, comp_attrs) do
+          %{id: component_id} ->
+            comp_attrs
+            |> Map.get(:story_ids, [])
+            |> Enum.map(&%{story_id: &1, component_id: component_id})
 
-      case sync_component_to_db(scope, comp_attrs) do
-        %{id: component_id} = component ->
-          Logger.debug(
-            "[Proposal] Component synced: #{component.module_name} -> id=#{component_id}"
-          )
+          {:error, reason} ->
+            Logger.error(
+              "[Proposal] Failed to sync component #{comp_attrs.module_name}: #{inspect(reason)}"
+            )
 
-          maybe_link_stories(scope, comp_attrs, component_id, linked_count)
+            []
 
-        {:error, reason} ->
-          Logger.error(
-            "[Proposal] Failed to sync component #{comp_attrs.module_name}: #{inspect(reason)}"
-          )
+          other ->
+            Logger.error(
+              "[Proposal] Unexpected return from sync_component_to_db: #{inspect(other)}"
+            )
 
-          linked_count
+            []
+        end
+      end)
 
-        other ->
-          Logger.error(
-            "[Proposal] Unexpected return from sync_component_to_db: #{inspect(other)}"
-          )
-
-          linked_count
-      end
-    end)
+    apply_story_links(scope, links)
   end
 
-  # Link stories to any component that declares story_ids. Surface components
-  # are preferred (Rule 2) but non-surface links are accepted with a warning
-  # collected separately via collect_warnings/1.
-  defp maybe_link_stories(scope, comp_attrs, component_id, linked_count) do
-    story_ids = Map.get(comp_attrs, :story_ids, [])
+  defp apply_story_links(_scope, []), do: 0
 
-    if story_ids == [] do
-      linked_count
-    else
-      Logger.info(
-        "[Proposal] Linking #{length(story_ids)} stories to #{comp_attrs.module_name}: #{inspect(story_ids)}"
-      )
+  defp apply_story_links(scope, links) do
+    Logger.info("[Proposal] Bulk-linking #{length(links)} story→component pairs")
 
-      link_stories_to_component(scope, story_ids, component_id)
-      linked_count + length(story_ids)
-    end
-  end
-
-  defp link_stories_to_component(scope, story_ids, component_id) do
-    Enum.each(story_ids, fn story_id ->
-      case Stories.get_story(scope, story_id) do
-        nil ->
-          Logger.warning("[Proposal] Story #{story_id} not found, skipping link")
-
-        story ->
-          set_story_component(scope, story, component_id)
-      end
-    end)
-  end
-
-  defp set_story_component(scope, story, component_id) do
-    case Stories.set_story_component(scope, story, component_id) do
-      {:ok, _story} ->
-        Logger.debug("[Proposal] Linked story #{story.id} to component #{component_id}")
+    case Stories.bulk_set_story_component(scope, links) do
+      {:ok, _stories} ->
+        length(links)
 
       {:error, reason} ->
-        Logger.warning("[Proposal] Failed to link story #{story.id}: #{inspect(reason)}")
+        Logger.warning("[Proposal] Bulk story link failed: #{inspect(reason)}")
+        0
     end
   end
 

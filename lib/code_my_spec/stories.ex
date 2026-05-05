@@ -206,6 +206,21 @@ defmodule CodeMySpec.Stories do
   end
 
   @doc """
+  Bulk-assigns components to stories in one round-trip.
+
+  Accepts a list of `%{story_id: id, component_id: id}` maps. All-or-nothing:
+  any not_found / unauthorized / invalid changeset rolls back the whole batch.
+  Authorization is enforced inside the implementation since stories must be
+  loaded server-side anyway.
+  """
+  def bulk_set_story_component(%Scope{} = scope, links) when is_list(links) do
+    with {:ok, stories} <- impl().bulk_set_story_component(scope, links) do
+      Enum.each(stories, &broadcast(scope, {:updated, &1}))
+      {:ok, stories}
+    end
+  end
+
+  @doc """
   Clears the component assignment from a story.
 
   ## Examples

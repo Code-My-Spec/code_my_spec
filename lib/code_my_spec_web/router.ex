@@ -139,6 +139,8 @@ defmodule CodeMySpecWeb.Router do
 
     post "/uploads/presign", UploadController, :create
 
+    post "/stories/bulk-set-component", StoriesController, :bulk_set_component
+
     resources "/stories", StoriesController, except: [:new, :edit] do
       post "/set-component", StoriesController, :set_component
       post "/clear-component", StoriesController, :clear_component

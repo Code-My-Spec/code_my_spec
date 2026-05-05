@@ -136,6 +136,43 @@ defmodule CodeMySpecWeb.StoriesController do
     end
   end
 
+  def bulk_set_component(conn, %{"links" => links}) when is_list(links) do
+    scope = conn.assigns.current_scope
+    parsed = Enum.map(links, &parse_bulk_link/1)
+
+    case Stories.bulk_set_story_component(scope, parsed) do
+      {:ok, stories} ->
+        render(conn, :index, stories: stories)
+
+      {:error, {:not_found, story_id}} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{status: "not_found", error: "Story not found", story_id: story_id})
+
+      {:error, {:unauthorized, story_id}} ->
+        conn
+        |> put_status(:forbidden)
+        |> json(%{status: "forbidden", error: "Unauthorized", story_id: story_id})
+
+      {:error, {:invalid, story_id, %Ecto.Changeset{} = changeset}} ->
+        errors = Ecto.Changeset.traverse_errors(changeset, &translate_changeset_error/1)
+
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{status: "unprocessable_entity", story_id: story_id, errors: errors})
+    end
+  end
+
+  defp translate_changeset_error({msg, opts}) do
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", fn _ -> to_string(value) end)
+    end)
+  end
+
+  defp parse_bulk_link(%{"story_id" => story_id, "component_id" => component_id}) do
+    %{story_id: story_id, component_id: component_id}
+  end
+
   def clear_component(conn, %{"stories_id" => id}) do
     scope = conn.assigns.current_scope
 

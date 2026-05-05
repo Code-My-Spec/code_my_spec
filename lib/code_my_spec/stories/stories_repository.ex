@@ -315,6 +315,46 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
+  # All-or-nothing: any not_found / unauthorized / invalid changeset rolls back
+  # the whole batch. Callers (notably proposal execution) treat the proposal as
+  # one atomic design — partial application is worse than failing loudly,
+  # because it leaves the DB straddling two designs.
+  def bulk_set_story_component(%Scope{} = scope, links) when is_list(links) do
+    story_ids = Enum.map(links, & &1.story_id)
+    account_id = scope_account_id(scope)
+
+    Repo.transaction(fn ->
+      stories = load_stories_by_id(story_ids)
+      Enum.map(links, &apply_link(&1, stories, account_id, scope))
+    end)
+  end
+
+  defp load_stories_by_id(story_ids) do
+    Story
+    |> where([s], s.id in ^story_ids)
+    |> Repo.all()
+    |> Map.new(&{&1.id, &1})
+  end
+
+  defp apply_link(%{story_id: story_id, component_id: component_id}, stories, account_id, scope) do
+    story = Map.get(stories, story_id) || Repo.rollback({:not_found, story_id})
+
+    if account_id && story.account_id && story.account_id != account_id do
+      Repo.rollback({:unauthorized, story_id})
+    end
+
+    story
+    |> Story.changeset(%{component_id: component_id})
+    |> PaperTrail.update(originator: scope.user)
+    |> case do
+      {:ok, %{model: updated}} -> updated
+      {:error, changeset} -> Repo.rollback({:invalid, story_id, changeset})
+    end
+  end
+
+  defp scope_account_id(%Scope{active_account: %{id: id}}), do: id
+  defp scope_account_id(%Scope{active_account_id: id}), do: id
+
   def clear_story_component(%Scope{} = scope, %Story{} = story) do
     story
     |> Story.changeset(%{component_id: nil})

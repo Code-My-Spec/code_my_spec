@@ -186,6 +186,61 @@ defmodule CodeMySpecWeb.StoriesControllerTest do
     end
   end
 
+  describe "bulk_set_component/2" do
+    test "links many stories in one call", %{conn: conn, scope: scope} do
+      story1 = story_fixture(scope)
+      story2 = story_fixture(scope)
+      component_a = component_fixture(scope)
+      component_b = component_fixture(scope)
+
+      links = [
+        %{"story_id" => story1.id, "component_id" => component_a.id},
+        %{"story_id" => story2.id, "component_id" => component_b.id}
+      ]
+
+      conn = post(conn, ~p"/api/stories/bulk-set-component", links: links)
+
+      assert %{"data" => stories} = json_response(conn, 200)
+      assert length(stories) == 2
+      by_id = Map.new(stories, fn s -> {s["id"], s["component_id"]} end)
+      assert by_id[story1.id] == component_a.id
+      assert by_id[story2.id] == component_b.id
+    end
+
+    test "later link wins when a story appears twice (surface-overwrites-context)",
+         %{conn: conn, scope: scope} do
+      story = story_fixture(scope)
+      context = component_fixture(scope)
+      surface = component_fixture(scope)
+
+      links = [
+        %{"story_id" => story.id, "component_id" => context.id},
+        %{"story_id" => story.id, "component_id" => surface.id}
+      ]
+
+      conn = post(conn, ~p"/api/stories/bulk-set-component", links: links)
+
+      assert %{"data" => _} = json_response(conn, 200)
+      assert CodeMySpec.Stories.get_story(scope, story.id).component_id == surface.id
+    end
+
+    test "rolls back the entire batch when any story is missing",
+         %{conn: conn, scope: scope} do
+      story = story_fixture(scope, %{component_id: nil})
+      component = component_fixture(scope)
+
+      links = [
+        %{"story_id" => story.id, "component_id" => component.id},
+        %{"story_id" => 99_999, "component_id" => component.id}
+      ]
+
+      conn = post(conn, ~p"/api/stories/bulk-set-component", links: links)
+
+      assert %{"story_id" => 99_999} = json_response(conn, 404)
+      assert CodeMySpec.Stories.get_story(scope, story.id).component_id == nil
+    end
+  end
+
   describe "clear_component/2" do
     test "clears component from story", %{conn: conn, scope: scope} do
       component = component_fixture(scope)

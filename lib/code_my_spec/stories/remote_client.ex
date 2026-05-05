@@ -245,6 +245,44 @@ defmodule CodeMySpec.Stories.RemoteClient do
     end
   end
 
+  def bulk_set_story_component(%Scope{} = scope, links, opts \\ []) when is_list(links) do
+    client = new(scope, opts)
+    payload = Enum.map(links, fn %{story_id: sid, component_id: cid} ->
+      %{story_id: sid, component_id: cid}
+    end)
+
+    client
+    |> Req.post(url: "/api/stories/bulk-set-component", json: %{links: payload})
+    |> handle_bulk_response()
+  end
+
+  defp handle_bulk_response({:ok, %{status: 200, body: body}}) do
+    stories = Enum.map(body["data"], &deserialize_story/1)
+
+    # One transaction wrapping every write-through collapses N fsyncs
+    # into 1 on the local SQLite cache.
+    case Repo.transaction(fn -> Enum.each(stories, &upsert_or_rollback/1) end) do
+      {:ok, _} -> {:ok, stories}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp handle_bulk_response({:ok, %{status: 404, body: body}}),
+    do: {:error, {:not_found, body["story_id"]}}
+
+  defp handle_bulk_response({:ok, %{status: 403, body: body}}),
+    do: {:error, {:unauthorized, body["story_id"]}}
+
+  defp handle_bulk_response({:ok, %{status: 422, body: body}}),
+    do: {:error, {:invalid, body["story_id"], body["errors"]}}
+
+  defp upsert_or_rollback(story) do
+    case upsert_story_locally(story) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
   def clear_story_component(%Scope{} = scope, %Story{} = story, opts \\ []) do
     client = new(scope, opts)
 
