@@ -64,6 +64,7 @@ defmodule CodeMySpec.Files.File do
           role: role(),
           mtime: DateTime.t() | nil,
           size: integer() | nil,
+          fingerprint: String.t() | nil,
           valid: boolean() | nil,
           validation_errors: map() | nil,
           component_id: Ecto.UUID.t() | nil,
@@ -83,6 +84,7 @@ defmodule CodeMySpec.Files.File do
     field :role, Ecto.Enum, values: @roles
     field :mtime, :utc_datetime_usec
     field :size, :integer
+    field :fingerprint, :string
     field :valid, :boolean
     field :validation_errors, :map
 
@@ -95,7 +97,7 @@ defmodule CodeMySpec.Files.File do
 
   def changeset(file, attrs) do
     file
-    |> cast(attrs, [:path, :role, :mtime, :size, :valid, :validation_errors, :component_id, :story_id, :project_id])
+    |> cast(attrs, [:path, :role, :mtime, :size, :fingerprint, :valid, :validation_errors, :component_id, :story_id, :project_id])
     |> validate_required([:path, :role, :project_id])
     |> unique_constraint([:project_id, :path])
   end

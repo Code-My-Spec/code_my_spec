@@ -128,7 +128,7 @@ defmodule CodeMySpec.Files do
 
     Repo.insert_all(File, entries,
       on_conflict:
-        {:replace, [:role, :mtime, :size, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
+        {:replace, [:role, :mtime, :size, :fingerprint, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
       conflict_target: [:project_id, :path],
       returning: true
     )
@@ -154,7 +154,7 @@ defmodule CodeMySpec.Files do
     {1, [file]} =
       Repo.insert_all(File, [entry],
         on_conflict:
-          {:replace, [:role, :size, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
+          {:replace, [:role, :size, :fingerprint, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
         conflict_target: [:project_id, :path],
         returning: true
       )

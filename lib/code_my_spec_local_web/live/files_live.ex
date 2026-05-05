@@ -289,6 +289,7 @@ defmodule CodeMySpecLocalWeb.FilesLive do
                 <th>Component</th>
                 <th>Size</th>
                 <th>mtime</th>
+                <th>Fingerprint</th>
               </tr>
             </thead>
             <tbody>
@@ -307,9 +308,17 @@ defmodule CodeMySpecLocalWeb.FilesLive do
                 </td>
                 <td class="font-mono text-xs">{file.size}</td>
                 <td class="font-mono text-xs" data-test="file-mtime">{format_mtime(file.mtime)}</td>
+                <td
+                  class="font-mono text-xs"
+                  data-test="file-fingerprint"
+                  data-fingerprint={file.fingerprint}
+                  title={file.fingerprint}
+                >
+                  {format_fingerprint(file.fingerprint)}
+                </td>
               </tr>
               <tr :if={@result.files == []}>
-                <td colspan="6" class="text-center opacity-60 py-8">
+                <td colspan="7" class="text-center opacity-60 py-8">
                   No files match the current filter.
                 </td>
               </tr>
@@ -395,6 +404,10 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   end
 
   defp format_mtime(other), do: inspect(other)
+
+  defp format_fingerprint(nil), do: "—"
+  defp format_fingerprint(fp) when is_binary(fp), do: String.slice(fp, 0, 12)
+  defp format_fingerprint(_), do: ""
 
   defp parse_page(nil), do: 1
 

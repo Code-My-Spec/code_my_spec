@@ -53,12 +53,13 @@ defmodule CodeMySpec.Files.FileSync do
 
         _ ->
           entries_with_owners = resolve_owners(scope, file_entries)
+          entries_with_fingerprints = fingerprint_entries(env, entries_with_owners)
 
           components = Components.list_components(scope)
           component_by_id = Map.new(components, &{&1.id, &1})
 
           validated_entries =
-            Enum.map(entries_with_owners, &validate_entry(&1, env, component_by_id))
+            Enum.map(entries_with_fingerprints, &validate_entry(&1, env, component_by_id))
 
           {count, _} = Files.upsert_files(scope, validated_entries)
           count
@@ -135,12 +136,13 @@ defmodule CodeMySpec.Files.FileSync do
 
         _ ->
           entries_with_owners = resolve_owners(scope, changed_entries)
+          entries_with_fingerprints = fingerprint_entries(env, entries_with_owners)
 
           components = Components.list_components(scope)
           component_by_id = Map.new(components, &{&1.id, &1})
 
           validated_entries =
-            Enum.map(entries_with_owners, &validate_entry(&1, env, component_by_id))
+            Enum.map(entries_with_fingerprints, &validate_entry(&1, env, component_by_id))
 
           {count, _} = Files.upsert_files(scope, validated_entries)
           count
@@ -209,15 +211,40 @@ defmodule CodeMySpec.Files.FileSync do
         {:ok, %{changed_path: path}}
 
       entry ->
-        # Upsert metadata (role, owners, valid) but NOT mtime — leaves mtime
-        # stale so sync_changed still picks it up during the stop hook pass.
+        # Upsert metadata (role, owners, valid, fingerprint) but NOT mtime —
+        # leaves mtime stale so sync_changed still picks the file up during
+        # the stop hook pass. Fingerprint updates eagerly per Rule 8 so
+        # out-of-band consumers can react to content change in real time.
         [entry] = resolve_owners(scope, [entry])
+        [entry] = fingerprint_entries(env, [entry])
         components = Components.list_components(scope)
         component_by_id = Map.new(components, &{&1.id, &1})
         validated = validate_entry(entry, env, component_by_id)
         Files.upsert_file_metadata(scope, validated)
         {:ok, %{changed_path: path}}
     end
+  end
+
+  # Reads each entry's content and stamps a SHA-256 fingerprint on the
+  # File row. Per Story 127 Rule 8: the fingerprint is content's truth as
+  # of the read; out-of-band consumers (analyzers, embedders) compare
+  # File.fingerprint to their own last-seen state. mtime is the cheap
+  # pre-filter that tells sync to look at a file; fingerprint is what
+  # consumers gate work on.
+  @doc false
+  def fingerprint_entries(env, entries) do
+    Enum.map(entries, &add_fingerprint(env, &1))
+  end
+
+  defp add_fingerprint(env, entry) do
+    case Environments.read_file(env, entry.path) do
+      {:ok, content} -> Map.put(entry, :fingerprint, fingerprint(content))
+      {:error, _} -> Map.put(entry, :fingerprint, nil)
+    end
+  end
+
+  defp fingerprint(content) when is_binary(content) do
+    :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
   end
 
   @doc """
