@@ -35,7 +35,9 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Stories.Tools.DeleteCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.ListProjectTags)
   component(CodeMySpec.McpServers.Stories.Tools.TagStories)
-  component(CodeMySpec.McpServers.Stories.Tools.StartStorySession)
+  component(CodeMySpec.McpServers.Stories.Tools.StartStoryInterview)
+  component(CodeMySpec.McpServers.Stories.Tools.StartStoryReview)
+  component(CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession)
   component(CodeMySpec.McpServers.Stories.Tools.TriageIssues)
 
   # Architecture

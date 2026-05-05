@@ -268,7 +268,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           server. It interviews you and writes structured user stories.
         </p>
         <div class="mockup-code text-sm mb-3">
-          <pre><code>Server URL: <%= CodeMySpecWeb.Endpoint.url() <> "/mcp/stories" %></code></pre>
+          <pre><code>Server URL: <%= CodeMySpecWeb.Endpoint.url() <> "/mcp/product-manager" %></code></pre>
         </div>
         <.link href={~p"/documentation/stories-mcp-setup"} class="link link-primary text-sm">
           Setup instructions &rarr;

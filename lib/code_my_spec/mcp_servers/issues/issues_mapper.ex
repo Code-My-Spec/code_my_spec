@@ -4,8 +4,8 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   human-readable summary + JSON data for programmatic access.
   """
 
-  alias CodeMySpec.McpServers.Formatters
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Formatters
 
   def issue_created_response(issue) do
     summary = "Issue created: \"#{issue.title}\" [#{issue.severity}] (ID: #{issue.id})"
@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     summary = """
     ## #{issue.title} (ID: #{issue.id})
 
-    **Severity:** #{issue.severity} | **Scope:** #{issue.scope} | **Status:** #{issue.status}
+    **Severity:** #{issue.severity} | **Scope:** #{issue.scope} | **Status:** #{issue.status}#{category_segment(issue)}#{story_segment(issue)}
 
     #{issue.description || "No description"}
     """
@@ -32,7 +32,10 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   end
 
   def issue_updated_response(issue, action) do
-    summary = "Issue #{action}: \"#{issue.title}\" (ID: #{issue.id})"
+    summary =
+      "Issue #{action}: \"#{issue.title}\" (ID: #{issue.id})" <>
+        category_suffix(issue) <> story_suffix(issue)
+
     hybrid_response(summary, issue_data(issue))
   end
 
@@ -91,6 +94,18 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     Response.tool()
     |> Response.text(summary)
   end
+
+  defp category_segment(%{category: nil}), do: ""
+  defp category_segment(%{category: category}), do: " | **Category:** #{category}"
+
+  defp story_segment(%{story_id: nil}), do: ""
+  defp story_segment(%{story_id: story_id}), do: " | **Story:** #{story_id}"
+
+  defp category_suffix(%{category: nil}), do: ""
+  defp category_suffix(%{category: category}), do: " [#{category}]"
+
+  defp story_suffix(%{story_id: nil}), do: ""
+  defp story_suffix(%{story_id: story_id}), do: " → Story #{story_id}"
 
   defp issue_data(issue) do
     %{

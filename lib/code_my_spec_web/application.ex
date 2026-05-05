@@ -18,7 +18,7 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         CodeMySpecWeb.Presence,
-        {CodeMySpec.McpServers.StoriesServer, transport: :streamable_http},
+        {CodeMySpec.McpServers.ProductManagerServer, transport: :streamable_http},
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
         {CodeMySpec.McpServers.AnalyticsAdminServer, transport: :streamable_http},
         {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},

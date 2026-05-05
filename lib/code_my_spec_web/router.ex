@@ -115,8 +115,8 @@ defmodule CodeMySpecWeb.Router do
   scope "/mcp" do
     pipe_through :mcp_protected
 
-    forward "/stories", Anubis.Server.Transport.StreamableHTTP.Plug,
-      server: CodeMySpec.McpServers.StoriesServer
+    forward "/product-manager", Anubis.Server.Transport.StreamableHTTP.Plug,
+      server: CodeMySpec.McpServers.ProductManagerServer
 
     forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer

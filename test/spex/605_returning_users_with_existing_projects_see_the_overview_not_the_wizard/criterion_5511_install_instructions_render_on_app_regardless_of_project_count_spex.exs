@@ -39,9 +39,9 @@ defmodule CodeMySpecSpex.Story605.Criterion5511Spex do
         {:ok, context}
       end
 
-      then_ "the Stories MCP card is rendered on the same page", context do
-        assert context.html =~ "/mcp/stories",
-               "expected the Stories MCP card alongside the project-name form " <>
+      then_ "the Product Manager MCP card is rendered on the same page", context do
+        assert context.html =~ "/mcp/product-manager",
+               "expected the Product Manager MCP card alongside the project-name form " <>
                  "for a first-time user"
 
         {:ok, context}
@@ -87,11 +87,11 @@ defmodule CodeMySpecSpex.Story605.Criterion5511Spex do
         {:ok, context}
       end
 
-      then_ "the Stories MCP card is visible", context do
+      then_ "the Product Manager MCP card is visible", context do
         rendered = render(context.view)
 
-        assert rendered =~ "/mcp/stories",
-               "expected the Stories MCP server URL on /app for a returning user"
+        assert rendered =~ "/mcp/product-manager",
+               "expected the Product Manager MCP server URL on /app for a returning user"
 
         assert rendered =~ "Just want to draft stories?",
                "expected the 'Just want to draft stories?' card to be visible"
