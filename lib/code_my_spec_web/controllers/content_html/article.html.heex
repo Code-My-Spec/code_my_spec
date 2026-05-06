@@ -20,7 +20,7 @@
         </div>
       </aside>
 
-      <article class={"order-1 lg:order-2 #{if @series_info, do: "lg:col-span-3", else: "lg:col-span-4 max-w-4xl mx-auto"}"}>
+      <article class={"order-1 lg:order-2 w-full min-w-0 #{if @series_info, do: "lg:col-span-3", else: "lg:col-span-4 max-w-4xl mx-auto"}"}>
         <!-- Series banner -->
         <div :if={@series_info} class="mb-6 flex items-center gap-2 text-sm text-base-content/60">
           <.icon name="hero-document-text" class="w-4 h-4" />

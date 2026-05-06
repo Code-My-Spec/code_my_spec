@@ -92,7 +92,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
           "url" => "#{base_url}/methodology",
           "image" => %{
             "@type" => "ImageObject",
-            "url" => "#{base_url}/images/og-methodology.png",
+            "url" => CodeMySpecWeb.ImageUrl.image_url("og-methodology.png", base_url),
             "width" => 1200,
             "height" => 630
           },
@@ -157,7 +157,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
      |> assign(:copy, @copy)
      |> assign(@copy.metadata)
      |> assign(:canonical_url, "#{base_url}/methodology")
-     |> assign(:og_image, "#{base_url}/images/og-methodology.png")
+     |> assign(:og_image, CodeMySpecWeb.ImageUrl.image_url("og-methodology.png", base_url))
      |> assign(:og_type, "article")
      |> assign(:article_published_time, "2026-03-01T00:00:00Z")
      |> assign(:json_ld, json_ld)}

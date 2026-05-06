@@ -1,8 +1,8 @@
 defmodule CodeMySpecWeb.AuthorLive do
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpecWeb.Layouts
   alias CodeMySpec.Content.ContentRepository
+  alias CodeMySpecWeb.Layouts
 
   @author_url "https://codemyspec.com/author/john-davenport"
 
@@ -142,7 +142,7 @@ defmodule CodeMySpecWeb.AuthorLive do
             "Full-stack engineer with 20 years of experience. Founder of CodeMySpec. Background in hardware engineering (GE), manufacturing IT, enterprise insurance systems (Elixir/Phoenix), and AI-assisted development tooling.",
           "image" => %{
             "@type" => "ImageObject",
-            "url" => "#{base_url}/images/john-davenport.jpg",
+            "url" => CodeMySpecWeb.ImageUrl.image_url("john-davenport.jpg", base_url),
             "width" => 400,
             "height" => 400
           },
@@ -205,7 +205,7 @@ defmodule CodeMySpecWeb.AuthorLive do
      )
      |> assign(:og_title, "John Davenport — Founder, CodeMySpec")
      |> assign(:og_description, "20 years of experience from hardware design to AI-assisted development. Building tools that help developers ship production software with AI.")
-     |> assign(:og_image, "#{base_url}/images/john-davenport.jpg")
+     |> assign(:og_image, CodeMySpecWeb.ImageUrl.image_url("john-davenport.jpg", base_url))
      |> assign(:canonical_url, @author_url)
      |> assign(:json_ld, json_ld)}
   end

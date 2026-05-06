@@ -79,7 +79,7 @@ defmodule CodeMySpecWeb.PageController do
       meta_description: meta.meta_description,
       og_title: meta.og_title,
       og_description: meta.og_description,
-      og_image: "#{CodeMySpecWeb.Endpoint.url()}/images/og-home.png",
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-home.png", CodeMySpecWeb.Endpoint.url()),
       canonical_url: meta.canonical_url,
       json_ld_list: json_ld_list
     )
@@ -191,7 +191,7 @@ defmodule CodeMySpecWeb.PageController do
       meta_description: meta.meta_description,
       og_title: meta.og_title,
       og_description: meta.og_description,
-      og_image: "#{base_url}/images/og-code-my-spec.png",
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-code-my-spec.png", base_url),
       canonical_url: meta.canonical_url,
       json_ld_list: json_ld_list
     )
@@ -312,7 +312,7 @@ defmodule CodeMySpecWeb.PageController do
       meta_description: meta.meta_description,
       og_title: meta.og_title,
       og_description: meta.og_description,
-      og_image: "#{base_url}/images/og-market-my-spec.png",
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-market-my-spec.png", base_url),
       canonical_url: meta.canonical_url,
       json_ld_list: json_ld_list
     )

@@ -113,7 +113,7 @@ defmodule CodeMySpecWeb.ContentController do
       meta_description: config.description,
       og_title: config.page_title,
       og_description: config.description,
-      og_image: "#{base_url}/images/og-#{config.og_image_suffix}.png",
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-#{config.og_image_suffix}.png", base_url),
       canonical_url: "#{base_url}#{config.item_path_prefix}",
       json_ld: Jason.encode!(schemas)
     )

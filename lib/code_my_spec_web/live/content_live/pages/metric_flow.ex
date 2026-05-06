@@ -58,7 +58,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
           "url" => "#{base_url}/case-studies/metric-flow",
           "image" => %{
             "@type" => "ImageObject",
-            "url" => "#{base_url}/images/og-metricflow.png",
+            "url" => CodeMySpecWeb.ImageUrl.image_url("og-metricflow.png", base_url),
             "width" => 1200,
             "height" => 630
           },
@@ -106,7 +106,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
      |> assign(:show_stories_modal, false)
      |> assign(:active_tab, "good")
      |> assign(:canonical_url, "#{base_url}/case-studies/metric-flow")
-     |> assign(:og_image, "#{base_url}/images/og-metricflow.png")
+     |> assign(:og_image, CodeMySpecWeb.ImageUrl.image_url("og-metricflow.png", base_url))
      |> assign(:og_type, "article")
      |> assign(:article_published_time, "2026-03-20T00:00:00Z")
      |> assign(:json_ld, json_ld)}

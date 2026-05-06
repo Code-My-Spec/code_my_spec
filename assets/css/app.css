@@ -628,4 +628,13 @@ html {
     display: contents
 }
 
+/* Prose tables: scroll horizontally on narrow viewports instead of forcing
+   the page wider than the viewport. display:block drops table layout but
+   preserves cell rendering, and the overflow lives on the table itself. */
+.prose table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+}
+
 /* This file is for your main application CSS */

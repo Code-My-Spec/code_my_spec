@@ -26,7 +26,7 @@
       property="og:description"
       content={assigns[:og_description] || assigns[:meta_description] || "AI-assisted Phoenix development that actually ships"}
     />
-    <meta property="og:image" content={assigns[:og_image] || "#{CodeMySpecWeb.Endpoint.url()}/images/og-default.png"} />
+    <meta property="og:image" content={assigns[:og_image] || CodeMySpecWeb.ImageUrl.image_url("og-default.png", CodeMySpecWeb.Endpoint.url())} />
     <meta property="og:type" content={assigns[:og_type] || "website"} />
     <meta property="og:url" content={assigns[:canonical_url] || CodeMySpecWeb.Endpoint.url()} />
     <meta property="og:site_name" content="CodeMySpec" />
@@ -40,7 +40,7 @@
     <meta name="twitter:site" content="@johns10d" />
     <meta name="twitter:title" content={assigns[:og_title] || assigns[:page_title] || "CodeMySpec"} />
     <meta name="twitter:description" content={assigns[:og_description] || assigns[:meta_description] || "AI-assisted Phoenix development that actually ships"} />
-    <meta name="twitter:image" content={assigns[:og_image] || "#{CodeMySpecWeb.Endpoint.url()}/images/og-default.png"} />
+    <meta name="twitter:image" content={assigns[:og_image] || CodeMySpecWeb.ImageUrl.image_url("og-default.png", CodeMySpecWeb.Endpoint.url())} />
     <%= if assigns[:json_ld_list] do %>
       <%= for item <- assigns[:json_ld_list] do %>
         <script type="application/ld+json"><%= raw(item) %></script>

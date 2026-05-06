@@ -77,7 +77,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
   def mount(_params, _session, socket) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = "#{base_url}/blog/agentic-marketing-with-mcp"
-    og_image = "#{base_url}/images/og-blog-agentic-marketing-with-mcp.png"
+    og_image = CodeMySpecWeb.ImageUrl.image_url("og-blog-agentic-marketing-with-mcp.png", base_url)
 
     json_ld =
       Jason.encode!([
