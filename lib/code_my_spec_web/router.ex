@@ -52,7 +52,9 @@ defmodule CodeMySpecWeb.Router do
     live_session :public_content,
       on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
       live "/methodology", ContentLive.Pages.Methodology, :methodology
+      live "/case-studies", ContentLive.Pages.CaseStudiesIndex, :case_studies
       live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
+      live "/case-studies/market-my-spec", ContentLive.Pages.MarketMySpec, :market_my_spec
       live "/blog/agentic-marketing-with-mcp",
            ContentLive.Pages.AgenticMarketingWithMcp,
            :agentic_marketing_with_mcp

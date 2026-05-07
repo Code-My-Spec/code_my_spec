@@ -267,7 +267,7 @@ defmodule CodeMySpecWeb.Layouts do
               <h4 class="font-bold text-sm mb-3 text-base-content">Product</h4>
               <ul class="space-y-2 text-sm text-base-content/70">
                 <li><a href="/methodology" class="hover:text-primary transition-colors">Methodology</a></li>
-                <li><a href="/case-studies/metric-flow" class="hover:text-primary transition-colors">Case Study</a></li>
+                <li><a href="/case-studies" class="hover:text-primary transition-colors">Case Studies</a></li>
                 <li><a href="/users/register" class="hover:text-primary transition-colors">Get Started</a></li>
               </ul>
             </div>

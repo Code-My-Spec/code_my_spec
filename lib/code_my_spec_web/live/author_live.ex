@@ -23,7 +23,7 @@ defmodule CodeMySpecWeb.AuthorLive do
             </p>
 
             <p>
-              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built two production applications with it — <a href="/case-studies/metric-flow">MetricFlow</a> (40 commits, 13 days, zero human-written code) and Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration) — to prove the methodology works before asking anyone else to use it.
+              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built three production applications with it — <a href="/case-studies/metric-flow">MetricFlow</a> (40 commits, 13 days, zero human-written code), Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration), and <a href="/case-studies/market-my-spec">Market My Spec</a> (a marketing-strategy product shipped with zero prompts and zero lines of code) — to prove the methodology works before asking anyone else to use it.
             </p>
 
             <h2>Career Path</h2>
@@ -45,6 +45,7 @@ defmodule CodeMySpecWeb.AuthorLive do
               <li><strong>CodeMySpec</strong> — AI development harness for Phoenix. 368 modules, 46 bounded contexts, compile-time dependency enforcement. MCP servers for product management and architecture, BDD spec generation, session orchestration, and automated QA. Ships as a Claude Code extension.</li>
               <li><strong>Fuellytics</strong> — Fleet fuel card fraud detection platform. 5-validator pipeline, Claude Vision OCR, Stripe Issuing/Treasury/Connect, Twilio SMS. Built with CodeMySpec in 55 commits, zero human-written code.</li>
               <li><strong>MetricFlow</strong> — Cross-platform ad analytics correlating Google Ads, Facebook Ads, and GA4 with QuickBooks revenue. Pearson correlation engine, Claude-powered insights. <a href="/case-studies/metric-flow">40 commits, 13 days, honest assessment</a>.</li>
+              <li><strong>Market My Spec</strong> — Marketing-strategy product distributed as a Claude Code plugin. Persona research agents, competitive alternatives, positioning, channel selection, daily plan picker. <a href="/case-studies/market-my-spec">~10 days, zero prompts, zero lines of code</a>.</li>
               <li><strong>IC Insure</strong> — Insurance marketplace for independent contractors. Elixir/Phoenix, CQRS/Event Sourcing, 11 bounded contexts, 20+ supervised processes. One of two engineers.</li>
               <li><strong>UserDocs</strong> — Browser automation for documentation. Phoenix LiveView, Chrome DevTools Protocol, multi-tenant architecture. Three major rewrites.</li>
               <li><strong>Discussit</strong> — Conversation intelligence platform with Zoom/OpenPhone ingestion, transcription, and LLM-powered topic clustering.</li>

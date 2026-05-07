@@ -8,7 +8,9 @@ defmodule CodeMySpecWeb.LlmsTxtController do
   @static_pages [
     %{title: "Homepage", url: "/", description: "Product overview and registration"},
     %{title: "Methodology", url: "/methodology", description: "The six-phase CodeMySpec development method"},
-    %{title: "MetricFlow Case Study", url: "/case-studies/metric-flow", description: "Full-stack Phoenix app built with zero human-written code"},
+    %{title: "Case Studies", url: "/case-studies", description: "Index of end-to-end teardowns of products built with CodeMySpec"},
+    %{title: "MetricFlow Case Study", url: "/case-studies/metric-flow", description: "Full-stack Phoenix analytics app built with zero human-written code"},
+    %{title: "Market My Spec Case Study", url: "/case-studies/market-my-spec", description: "Marketing-strategy product built with zero prompts and zero human-written code; configurable workflow, Three Amigos, and BDD-spec boundary protection"},
     %{title: "About", url: "/author/john-davenport", description: "About the founder and the project"}
   ]
 
