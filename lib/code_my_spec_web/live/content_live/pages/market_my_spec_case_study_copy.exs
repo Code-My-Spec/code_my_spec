@@ -1,11 +1,11 @@
 %{
   metadata: %{
-    meta_title: "Market My Spec Case Study: Zero Prompts, Zero Code, One Honest Teardown",
+    meta_title: "Market My Spec Case Study: 4 Days, 13 Stories, Zero Prompts From Me",
     meta_description:
-      "How CodeMySpec built Market My Spec, the second product the harness shipped. Configurable per-component workflow, Three Amigos as an agent task, BDD-spec boundary protection. Here's what worked and what didn't.",
+      "How CodeMySpec built Market My Spec across one weekend (May 3-6). Configurable per-component workflow, Three Amigos as an agent task, BDD-spec boundary protection. Here's what worked and what didn't.",
     og_title: "Market My Spec Case Study — The Harness Built This Too",
     og_description:
-      "A Phoenix marketing-strategy product built by CodeMySpec in roughly 10 working days. Zero prompts. Zero lines of code. The honest teardown of the experiments that made that possible.",
+      "A small MCP server built by CodeMySpec across four days. 17 commits, 13 stories, ~130 spex files. Zero prompts. Zero lines of code from me. The honest teardown of the experiments that made that possible.",
     og_image: nil,
     author: "John Davenport",
     tags: [
@@ -24,14 +24,14 @@
   },
   hero: %{
     title: "Market My Spec",
-    tagline: "Zero prompts. Zero lines of code. The harness shipped a second product.",
+    tagline: "Zero prompts. Zero lines of code. Four days. Same harness.",
     description:
-      "A Phoenix marketing-strategy product built by CodeMySpec in roughly ten working days. The same harness that shipped MetricFlow shipped this one, but this time without a single human-authored prompt or line of code. Three new experiments made that possible. Here's what they are, what worked, and what's still open.",
+      "A small MCP server built by CodeMySpec across one weekend (May 3 through May 6, 2026). Seventeen commits. Thirteen stories with criterion-level spex coverage. Zero prompts written by me, zero lines of code. The same harness that shipped MetricFlow shipped this one, this time without me typing into the chat. Three new experiments made that possible. Here's what they are, what worked, and what's still open.",
     stats: [
-      %{label: "Working Days", value: "~10"},
+      %{label: "Build Days", value: "4"},
+      %{label: "Stories", value: "13"},
       %{label: "Prompts by John", value: "0"},
-      %{label: "Lines of Code by John", value: "0"},
-      %{label: "Harness Spex", value: "~200"}
+      %{label: "Lines of Code by John", value: "0"}
     ]
   },
   overview: %{
@@ -80,7 +80,7 @@
     title: "The Dev Story",
     subtitle: "The Good, The Bad, and The Ugly",
     description:
-      "An honest assessment of the second product the harness shipped. The window covered is April 19 through May 5, 2026, the seventeen days between the prior r/elixir post and this one. About 200 commits across the harness, the marketing surface, and the product itself. Three named experiments landed inside that window, every one of them with criterion-level Spex covering its evaluator rules.",
+      "An honest assessment of the second product the harness shipped. The MMS build itself is small: seventeen commits across four days (May 3-6). The harness changes that made the build possible were larger and longer — about 200 commits across the seventeen days between the prior r/elixir post and this one. Three named experiments landed in that window, every one of them with criterion-level Spex covering its evaluator rules.",
     sections: [
       %{
         id: "good",
@@ -198,6 +198,6 @@
       }
     ],
     closing:
-      "Roughly ten working days. Zero prompts. Zero lines of code. The harness shipped Market My Spec the same way it shipped MetricFlow, but this time without me typing into the chat. The fix wasn't more automation. It was knobs on the layers, a real gate before the specs, and a sealed boundary around them. Configurable workflow, Three Amigos, and boundary protection. Three changes, one product, one open question about orchestration. That's the loop that ships."
+      "Four days. Seventeen commits. Thirteen stories. Zero prompts. Zero lines of code from me. The harness shipped Market My Spec the same way it shipped MetricFlow, but this time without me typing into the chat. The fix wasn't more automation. It was knobs on the layers, a real gate before the specs, and a sealed boundary around them. Configurable workflow, Three Amigos, and boundary protection. Three changes, one MVP, one open question about orchestration. That's the loop that ships."
   }
 }

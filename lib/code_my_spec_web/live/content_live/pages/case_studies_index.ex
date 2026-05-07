@@ -15,14 +15,14 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
     %{
       slug: "market-my-spec",
       title: "Market My Spec",
-      tagline: "Zero prompts. Zero lines of code. The harness shipped a second product.",
+      tagline: "Zero prompts. Zero lines of code. Four days. Same harness.",
       summary:
-        "A Phoenix marketing-strategy product built by CodeMySpec in roughly ten working days. Configurable per-component workflow, Three Amigos as a real agent task, BDD-spec boundary protection. The honest teardown of the experiments that made zero-prompts possible.",
+        "A small MCP server built by CodeMySpec across one weekend (May 3-6, 2026). Configurable per-component workflow, Three Amigos as a real agent task, BDD-spec boundary protection. The honest teardown of the experiments that made zero-prompts possible.",
       og_image: "og-marketmyspec.png",
       stats: [
-        %{label: "Working Days", value: "~10"},
-        %{label: "Prompts by John", value: "0"},
-        %{label: "Lines of Code by John", value: "0"}
+        %{label: "Build Days", value: "4"},
+        %{label: "Stories", value: "13"},
+        %{label: "Prompts by John", value: "0"}
       ],
       published_at: "2026-05-07"
     },
