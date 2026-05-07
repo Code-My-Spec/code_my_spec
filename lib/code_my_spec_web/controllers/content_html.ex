@@ -15,8 +15,12 @@ defmodule CodeMySpecWeb.ContentHTML do
     "Published on #{Calendar.strftime(datetime, "%B %d, %Y")}"
   end
 
-  def blog_hero_image(%{content_type: :blog, slug: slug}) do
-    CodeMySpecWeb.ImageUrl.image_url("hero-#{slug}.webp")
+  def blog_hero_image(%{content_type: :blog, slug: slug} = content) do
+    if get_in(content.metadata || %{}, ["metadata", "hero_disabled"]) do
+      nil
+    else
+      CodeMySpecWeb.ImageUrl.image_url("hero-#{slug}.webp")
+    end
   end
 
   def blog_hero_image(_), do: nil
