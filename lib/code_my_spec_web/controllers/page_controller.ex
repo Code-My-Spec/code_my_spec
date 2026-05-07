@@ -2,8 +2,15 @@ defmodule CodeMySpecWeb.PageController do
   use CodeMySpecWeb, :controller
 
   def home(conn, _params) do
-    copy = CodeMySpecWeb.PageHTML.home_copy()
-    meta = copy.meta
+    meta = %{
+      page_title: "CodeMySpec — AI Development for Engineers Who Care About the Codebase",
+      meta_description:
+        "Phoenix-native AI development harness for technical founders and Elixir agencies. Specs, code, tests, verification — end to end. BYO model, BYO keys, no token markup.",
+      og_title: "CodeMySpec — AI Development for Engineers Who Care About the Codebase",
+      og_description:
+        "Built by a solo founder, for technical founders shipping their own products and Elixir agencies shipping client work. The full Phoenix lifecycle — specs, code, tests, verification — without LLM-generated slop. Bring your own agent, your own model, your own keys.",
+      canonical_url: "https://codemyspec.com"
+    }
 
     json_ld_list =
       Enum.map(
@@ -74,7 +81,6 @@ defmodule CodeMySpecWeb.PageController do
       )
 
     render(conn, :home,
-      copy: copy,
       page_title: meta.page_title,
       meta_description: meta.meta_description,
       og_title: meta.og_title,
