@@ -91,7 +91,7 @@
           %{
             title: "The Configurable Workflow Shipped Working",
             description:
-              "Story 671 covers the requirement-graph projector with seventeen criterion-level specs. A ProjectConfiguration row carries require_specs, require_reviews, require_tests, spec_validation, and qa_validation per project. Toggle require_specs off and the spec nodes drop out cleanly. Toggle require_reviews off and implementation splices onto the spec-valid edge directly. Toggle them on and off and the graph round-trips. The configurable per-component workflow stopped being a slogan the moment seventeen tests landed against it."
+              "Story 671 covers the requirement-graph projector with seventeen criterion-level specs. A ProjectConfiguration row carries require_specs, require_reviews, require_tests, spec_validation, and qa_validation per project. The knobs gate module specs, spec reviews, and unit tests — BDD specs are not configurable; they are the spine of the default loop. Toggle require_specs off and the module-spec nodes drop out of the graph cleanly. Toggle require_reviews off and implementation splices onto the spec-valid edge directly. Toggle them on and off and the graph round-trips. The configurable per-component workflow stopped being a slogan the moment seventeen tests landed against it."
           },
           %{
             title: "Three Amigos Caught Real Ambiguity",
@@ -122,11 +122,6 @@
         color: "warning",
         items: [
           %{
-            title: "Spec Review Came Back On Earlier Than Hoped",
-            description:
-              "Story 609 (magic-link sign-up) shipped BDD-first on May 1 with no spec review and no unit tests. Two days later I flipped spec review back on for the project because a less-careful model had written sloppy specs and the surface was now important enough to read the contract first. The knob worked exactly as designed, but the \"how do you know when to flip it\" answer is still operator judgment, not a machine signal."
-          },
-          %{
             title: "Orchestration Was Still Required",
             description:
               "Interventions during the build clustered at orchestration boundaries. \"Use this subagent here, don't use one there. Retry that. Pause and let me check.\" The dominant intervention shape was switching the agent's execution mode rather than fixing its code. The 0/0 number is real, but the post is honest: I orchestrated, the agent built, and orchestration mostly meant routing."
@@ -150,9 +145,9 @@
         color: "error",
         items: [
           %{
-            title: "The Specs Got Sloppy When The Knob Was Off",
+            title: "The BDD Specs Got Sloppy On A Less-Careful Model",
             description:
-              "Story 609 (magic-link sign-up) shipped on May 1 via the BDD-only path: Three Amigos, six BDD criterion specs, twelve implementation files, no spec_review and no module specs in the requirement graph. Two days later I spun up a fresh session with the brief \"You are reviewing every BDD spec file in this project. The specs were written by a less-careful model and need a thorough audit.\" The six spec files needed the full sweep. That's the configurable-workflow argument with its consequences in the open: turn the layer off, ship faster, occasionally pay for the layer being off in cleanup. The fix is the same knob in the other direction."
+              "Story 609 (magic-link sign-up) shipped on May 1 via the BDD-only path: Three Amigos, six BDD criterion specs, twelve implementation files, no module specs and no unit tests. The model writing the specs that day was not Opus. Two days later, when Opus was available again, I spun up a fresh session with the brief \"You are reviewing every BDD spec file in this project. The specs were written by a less-careful model and need a thorough audit.\" All six spec files needed the sweep. The cleanup wasn't gated by a config flip — BDD specs are not currently configurable in the workflow. The lever was the model itself: getting Opus back was what made the audit possible. The honest version of \"knob, not deletion\" is that the workflow knobs cover module specs and spec reviews and unit tests, not BDD specs, and model selection is a separate axis nobody has automated yet."
           },
           %{
             title: "Boundary Protection Has No Live-Catch Transcript Yet",
