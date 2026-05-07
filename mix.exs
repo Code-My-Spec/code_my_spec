@@ -87,7 +87,7 @@ defmodule CodeMySpec.MixProject do
 
       # Added by codemyspec
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
-      {:sexy_spex, path: "../spex", only: [:dev, :test]},
+      {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :test]},
       {:client_utils, "~> 0.1.15"},
       {:credo, "~> 1.7.13"},
       {:sobelow, "~> 0.14.1"},
@@ -103,6 +103,7 @@ defmodule CodeMySpec.MixProject do
       {:anubis_mcp, github: "zoedsoupe/anubis-mcp"},
       {:oban, "~> 2.19.4"},
       {:briefly, "~> 0.5.1"},
+      {:nimble_csv, "~> 1.2"},
       {:ex_oauth2_provider, "~> 0.5.7"},
       {:earmark, "~> 1.4"},
       {:mdex, "~> 0.5"},
