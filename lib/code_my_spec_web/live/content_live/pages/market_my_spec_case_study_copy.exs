@@ -37,42 +37,31 @@
   overview: %{
     title: "What is Market My Spec?",
     description:
-      "Market My Spec is a Claude Code plugin that walks you through building a real marketing strategy. It interviews you about your product, dispatches research agents for customer personas and competitive alternatives, and synthesizes positioning, messaging, channels, and a 90-day plan. After the strategy lands, it picks one to three activities a day from the plan and points you at the skills that execute them across Reddit, Twitter, blog content, and SEO.",
+      "Market My Spec is a small MCP server that exposes a marketing-strategy skill to Claude Code. One install command connects a user's existing agent to the server, and the agent walks the user through an eight-step strategy flow covering ICP, positioning, channels, and content. The MVP ships the connection plumbing: magic-link auth, multi-tenant accounts with an agency tier, OAuth provider scaffolding, two MCP servers, and the skill-content surface the agent reads. The strategy intelligence runs in the user's own Claude Code subscription — no token markup, no inference resale.",
     integrations: [
       %{
-        name: "Reddit",
-        description: "Scan venues, mine threads for opportunities, draft replies",
-        icon: "hero-chat-bubble-left-right"
-      },
-      %{
-        name: "Twitter / X",
-        description: "Search relevant conversations and draft replies in voice",
-        icon: "hero-megaphone"
-      },
-      %{
-        name: "Google Analytics",
-        description: "Pull traffic and conversion signal into the daily plan",
-        icon: "hero-chart-bar"
-      },
-      %{
-        name: "Search Console",
-        description: "Track keyword and indexation signal for SEO activities",
-        icon: "hero-magnifying-glass"
-      },
-      %{
         name: "Claude Code",
-        description: "Distributed as a plugin; runs alongside the user's existing tooling",
+        description: "Primary client. Connects with one `claude mcp add` install command",
         icon: "hero-command-line"
+      },
+      %{
+        name: "Magic-link Email",
+        description: "Passwordless sign-up and sign-in via Resend",
+        icon: "hero-envelope"
+      },
+      %{
+        name: "OAuth (GitHub, Google)",
+        description: "Provider scaffolding for connect-account flows",
+        icon: "hero-key"
       }
     ],
     key_features: [
-      "Eight-step guided marketing strategy flow with research agent dispatch",
-      "Customer persona research and competitive alternatives synthesis",
-      "Positioning, messaging, channel selection, and 90-day plan generation",
-      "Daily plan picker that selects one to three activities and routes to the right skill",
-      "Reddit and Twitter scanning skills for venue discovery and reply drafting",
-      "Touchpoint drafting workflow with voice-matched comment and reply templates",
-      "MCP-backed strategy artifacts persisted alongside the build, not in flat files"
+      "Marketing-strategy skill delivered to Claude Code over MCP",
+      "Eight-step strategy walkthrough: ICP, positioning, channels, content",
+      "Multi-tenant accounts with admin-provisioned agency tier",
+      "Magic-link sign-up and sign-in (no passwords)",
+      "OAuth provider scaffolding for GitHub and Google",
+      "BYO-Claude — no token markup, no inference resale"
     ]
   },
   repository: %{
