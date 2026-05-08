@@ -15,14 +15,13 @@ defmodule CodeMySpec.McpServers.Components.Tools.UpdateComponent do
     field :id, :string, required: true
     field :name, :string
 
-    field :type, :enum,
-      enum: ["context", "coordination_context"],
+    field :type, {:enum, ["context", "coordination_context"]},
       description:
         "Must be one of: context (domain contexts that own entities), :coordination_context (orchestrate workflows across domain context)"
 
     field :module_name, :string
     field :description, :string
-    field :parent_component_id, :integer
+    field :parent_component_id, :string
   end
 
   @impl true

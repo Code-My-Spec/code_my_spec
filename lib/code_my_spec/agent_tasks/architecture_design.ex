@@ -44,7 +44,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     component_count = Components.count_components(scope)
 
     env = scope.environment || Environment.new(:cli, working_dir || File.cwd!())
-    record_session_start_state(env)
+    proposal_exists? = Environments.file_exists?(env, @proposal_path)
+    record_session_start_state(env, proposal_exists?)
 
     # Generate fresh architecture views
     output_dir =
@@ -54,18 +55,17 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         Paths.architecture_dir()
       end
 
-    prompt = build_prompt(project, stories, orphans, component_count, output_dir)
+    prompt =
+      build_prompt(project, stories, orphans, component_count, output_dir, proposal_exists?)
 
     {:ok, prompt}
   end
 
-  defp record_session_start_state(env) do
-    if Environments.file_exists?(env, @proposal_path) do
-      Environments.write_file(env, @patch_mode_marker, "1")
-    else
-      Environments.delete_file(env, @patch_mode_marker)
-    end
-  end
+  defp record_session_start_state(env, true),
+    do: Environments.write_file(env, @patch_mode_marker, "1")
+
+  defp record_session_start_state(env, false),
+    do: Environments.delete_file(env, @patch_mode_marker)
 
   defp patch_mode?(env), do: Environments.file_exists?(env, @patch_mode_marker)
 
@@ -229,11 +229,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   # Private functions
 
-  defp build_prompt(project, stories, orphans, component_count, output_dir) do
+  defp build_prompt(project, stories, orphans, component_count, output_dir, proposal_exists?) do
     stories_section = format_stories(stories, orphans)
     orphans_section = format_orphans_section(orphans)
     app_name = derive_app_name(project.name)
-    document_spec = DocumentSpecProjector.project_spec("architecture_proposal")
 
     architecture_section =
       if component_count > 0 do
@@ -255,6 +254,13 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
         ""
       end
 
+    task_section =
+      if proposal_exists? do
+        revision_task_section(app_name)
+      else
+        initial_task_section(app_name)
+      end
+
     """
     # Architecture Design Session
 
@@ -270,6 +276,14 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     #{stories_section}
 
+    #{task_section}
+    """
+  end
+
+  defp initial_task_section(app_name) do
+    document_spec = DocumentSpecProjector.project_spec("architecture_proposal")
+
+    """
     ## Your Task
 
     ### Step 1: Analyze Stories
@@ -307,6 +321,45 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     1. Optionally use `analyze_stories` to identify patterns
     2. Write your proposal to `#{@proposal_path}`
     3. Stop - the system will validate and execute your proposal
+    """
+  end
+
+  defp revision_task_section(app_name) do
+    """
+    ## Your Task
+
+    The architecture has already been designed (`#{@proposal_path}` exists). Apply
+    targeted edits to satisfy the unsatisfied stories and resolve any architectural
+    issues above. **Do not rewrite the proposal end-to-end** unless the changes are
+    too sweeping for incremental edits.
+
+    ### Prefer Incremental Tools
+
+    - `set_story_component` — link an unsatisfied story to an existing component
+    - `create_component` — add a new context, child, or surface when no existing component fits
+    - `create_dependency` — wire an orphan context into the graph from a story-linked context
+    - `validate_dependency_graph` — check for cycles after edits
+
+    For orphan contexts, the resolution options are listed under **Architectural
+    Issues** above.
+
+    **Naming Rules** (when creating new components):
+    - Contexts: `#{app_name}.{ContextName}` (e.g., `#{app_name}.Accounts`)
+    - Children: `#{app_name}.{Context}.{Child}` (e.g., `#{app_name}.Accounts.User`)
+    - Surface: `#{app_name}Web.{Name}Live` or `#{app_name}Web.{Name}Controller`
+
+    ### Fallback: Full Rewrite
+
+    Only if the design needs a fresh pass: rewrite `#{@proposal_path}` to the
+    `architecture_proposal` document format and call `execute_proposal` to apply
+    it. The system will not auto-execute the proposal in revision mode — it will
+    only verify that every story is linked.
+
+    ### Submit for Validation
+
+    Stop when your edits are complete. The system will verify that every story
+    is linked to a component. If any are still unlinked, you'll receive feedback
+    listing them.
     """
   end
 

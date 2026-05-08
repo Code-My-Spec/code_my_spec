@@ -21,26 +21,27 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateComponent do
   schema do
     field :name, :string, required: true
 
-    field :type, :string,
-      required: true,
-      enum: [
-        "context",
-        "coordination_context",
-        "live_context",
-        "schema",
-        "behaviour",
-        "json",
-        "liveview",
-        "liveview_component",
-        "controller",
-        "module"
-      ],
-      description:
-        "Component type: context, coordination_context, live_context, schema, behaviour, json, liveview, liveview_component, controller, or module."
+    field :type,
+          {:enum,
+           [
+             "context",
+             "coordination_context",
+             "live_context",
+             "schema",
+             "behaviour",
+             "json",
+             "liveview",
+             "liveview_component",
+             "controller",
+             "module"
+           ]},
+          required: true,
+          description:
+            "Component type: context, coordination_context, live_context, schema, behaviour, json, liveview, liveview_component, controller, or module."
 
     field :module_name, :string, required: true
     field :description, :string, required: false
-    field :parent_component_id, :integer, required: false
+    field :parent_component_id, :string, required: false
   end
 
   @impl true
