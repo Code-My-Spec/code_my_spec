@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "1.4.27",
+      version: "1.4.28",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
@@ -47,6 +47,12 @@ defmodule CodeMySpec.MixProject do
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
   defp compilers(:test),
     do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+
+  # Boundary off for *_cli envs — lib_cli/ modules aren't boundaried yet, and
+  # the release build runs with --warnings-as-errors. Re-enable once lib_cli
+  # has boundary declarations.
+  defp compilers(env) when env in [:dev_cli, :prod_cli],
+    do: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
 
   defp compilers(_), do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
 
