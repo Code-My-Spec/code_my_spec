@@ -52,9 +52,11 @@ defmodule CodeMySpec.BddSpecs.Spex do
     spex_args = build_args(args, temp_file, quiet)
     command = "mix " <> Enum.join(spex_args, " ")
 
+    env = [{"MIX_ENV", "test"}]
+
     Logger.info("[Spex] Running: #{command}")
 
-    case System.cmd("mix", spex_args, cd: project_root, stderr_to_stdout: true) do
+    case System.cmd("mix", spex_args, cd: project_root, stderr_to_stdout: true, env: env) do
       {_raw_output, exit_code} ->
         result = parse_and_return_failures(temp_file, exit_code)
         unless caller_provided_file, do: cleanup_temp_file(temp_file)

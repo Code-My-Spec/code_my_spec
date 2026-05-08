@@ -26,10 +26,10 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   alias CodeMySpec.Users.Scope
 
   @role_analyzers %{
-    implementation: [:credo, :exunit_stale],
+    implementation: [:credo, :exunit_stale, :spex_stale],
     test: [:credo],
     spec: [:validate_spec],
-    bdd_spec: [:validate_bdd],
+    bdd_spec: [:validate_bdd, :spex_stale],
     qa_brief: [:validate_qa],
     qa_result: [:validate_qa],
     architecture: [],
