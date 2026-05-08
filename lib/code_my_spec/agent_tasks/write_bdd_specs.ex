@@ -112,6 +112,26 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     **Description**: #{story.description || "No description"}
     **Component**: `#{component.module_name}` (#{component_type})
 
+    ## Required Reading — BDD Rules & Conventions
+
+    Before writing specs, pull in both the framework rules and this
+    project's local conventions via the knowledge MCP tools:
+
+    - **Framework rules** (Spex philosophy, environment, shared givens,
+      boundaries, recording cassettes, writing-a-spex):
+      `read_knowledge` with `library: "knowledge"` and
+      `path: "bdd/spex/<file>.md"`. Use `list_knowledge` with
+      `library: "knowledge"` and `path: "bdd/spex"` to see what's
+      available, or `semantic_search` with `source: "knowledge"` to
+      query across them.
+    - **Project rules** at `.code_my_spec/knowledge/bdd/spex`:
+      `read_knowledge` with `library: "project_knowledge"` and
+      `path: "bdd/spex/<file>.md"`. List with `list_knowledge`
+      (`library: "project_knowledge"`, `path: "bdd/spex"`) or query
+      with `semantic_search` (`source: "project_knowledge"`).
+
+    Project rules override framework rules where they conflict.
+
     ## Component Under Test
 
     #{component_context_section(component)}
@@ -180,6 +200,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     - Case template: `test/support/#{app_name}_spex_case.ex` — defines `#{spex_module}.Case`
     - Boundary definition: `#{@spex_dir}/#{app_name}_spex.ex`
     - Shared givens: `test/support/shared_givens.ex`
+    - Framework BDD rules: `read_knowledge` `library: "knowledge"`, `path: "bdd/spex/<file>.md"`
+    - Project BDD rules (`.code_my_spec/knowledge/bdd/spex`): `read_knowledge` `library: "project_knowledge"`, `path: "bdd/spex/<file>.md"`
     """
   end
 
