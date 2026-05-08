@@ -1,7 +1,10 @@
 {
   "commands": [
     {
-      "args": ["compile", "--return-errors"],
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
       "command": "mix",
       "exit_code": 1,
       "opts": {
@@ -11,7 +14,12 @@
       "recorded_at": "2026-05-08T08:00:00.000000Z"
     },
     {
-      "args": ["test", "--formatter", "ClientUtils.TestFormatter", "--stale"],
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
       "command": "mix",
       "exit_code": 1,
       "opts": {
@@ -21,7 +29,11 @@
       "recorded_at": "2026-05-08T08:00:00.100000Z"
     },
     {
-      "args": ["spex", "--stale", "--jsonl=/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_clean_credo/spex.jsonl"],
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_clean_credo/spex.jsonl"
+      ],
       "command": "mix",
       "exit_code": 1,
       "opts": {
@@ -31,13 +43,22 @@
       "recorded_at": "2026-05-08T08:00:00.200000Z"
     },
     {
-      "args": ["credo", "suggest", "--format", "json", "--all", "--all-priorities", "--no-color", "lib/example_context.ex"],
+      "args": [
+        "credo",
+        "suggest",
+        "--format",
+        "json",
+        "--all",
+        "--all-priorities",
+        "--no-color",
+        "lib/example_context.ex"
+      ],
       "command": "mix",
-      "exit_code": 14,
+      "exit_code": 4,
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "{\n  \"issues\": [\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.FunctionNames\",\n      \"column\": 7,\n      \"column_end\": 18,\n      \"filename\": \"lib/example_context.ex\",\n      \"line_no\": 4,\n      \"message\": \"Function/macro/guard names should be written in snake_case.\",\n      \"priority\": 12,\n      \"scope\": \"ExampleContext.doSomething\",\n      \"trigger\": \"doSomething\"\n    },\n    {\n      \"category\": \"refactor\",\n      \"check\": \"Credo.Check.Refactor.NestedIf\",\n      \"column\": 5,\n      \"column_end\": 11,\n      \"filename\": \"lib/example_context.ex\",\n      \"line_no\": 6,\n      \"message\": \"Nested if statements should be avoided.\",\n      \"priority\": 5,\n      \"scope\": \"ExampleContext.doSomething\",\n      \"trigger\": \"if\"\n    }\n  ]\n}\n",
+      "output": "{\n  \"issues\": [\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.FunctionNames\",\n      \"column\": 7,\n      \"column_end\": 18,\n      \"filename\": \"lib/example_context.ex\",\n      \"line_no\": 4,\n      \"message\": \"Function/macro/guard names should be written in snake_case.\",\n      \"priority\": 12,\n      \"scope\": \"ExampleContext.doSomething\",\n      \"trigger\": \"doSomething\"\n    }\n  ]\n}\n",
       "recorded_at": "2026-05-08T08:00:00.300000Z"
     }
   ],

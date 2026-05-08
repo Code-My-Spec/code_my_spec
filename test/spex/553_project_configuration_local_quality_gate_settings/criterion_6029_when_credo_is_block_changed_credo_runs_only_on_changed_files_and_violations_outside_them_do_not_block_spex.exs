@@ -1,28 +1,31 @@
-defmodule CodeMySpecSpex.Story553.Criterion5091Spex do
+defmodule CodeMySpecSpex.Story553.Criterion6029Spex do
   @moduledoc """
   Story 553 — Project Configuration: Local quality gate settings
-  Criterion 5091 — When credo is set to block_all, the stop hook invokes
-  `mix credo` against the whole project (no file path arguments) and any
-  violation blocks the stop, even when the violation lives in a file the
-  agent did not touch this turn.
+  Criterion 6029 — When credo is set to block_changed, the stop hook
+  invokes `mix credo` only on the files the agent touched this turn (file
+  paths passed as arguments). Violations in files outside the changed set
+  are not surfaced and do not block the stop.
+
+  This is the contrast case for criterion 5091. block_changed keeps the
+  scoped-scan; block_all is the only mode that goes project-wide.
 
   ## Test setup
 
   Two turns:
 
   1. credo `:off` while the agent seeds `lib/legacy_module.ex` (with a
-     credo violation) and `lib/clean_module.ex` (no violations). The
-     pipeline runs without credo, so no credo problems are persisted.
-  2. credo flipped to `:block_all`. The agent edits `lib/clean_module.ex`
-     only. The pipeline invokes `mix credo` project-wide; the cassette
-     returns the violation in `lib/legacy_module.ex` (an untouched file)
-     and the stop is blocked.
+     credo violation) and `lib/clean_module.ex` (no violations). No
+     credo problems persist.
+  2. credo flipped to `:block_changed`. The agent edits
+     `lib/clean_module.ex` only. The pipeline invokes `mix credo
+     ... lib/clean_module.ex`; the cassette returns an empty `issues`
+     list, no problems persist, and the stop is allowed.
 
   ## Recording the cassette
 
-  See `priv/knowledge/bdd/spex/recording_cassettes.md`. The block_all
-  turn must record `mix credo suggest --format json --all
-  --all-priorities --no-color` with NO trailing file paths.
+  The block_changed turn must record `mix credo suggest --format json
+  --all --all-priorities --no-color lib/clean_module.ex` with the file
+  path argument present, returning `{"issues":[]}`.
   """
 
   use CodeMySpecSpex.Case
@@ -39,8 +42,8 @@ defmodule CodeMySpecSpex.Story553.Criterion5091Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Engineer sets credo to block_all" do
-    scenario "credo scans the whole project and an untouched-file violation blocks the stop" do
+  spex "Engineer sets credo to block_changed" do
+    scenario "credo runs only on the changed file and violations elsewhere do not block" do
       given_ :synced_context_component
       given_ :credo_available
       given_ :on_configuration_page
@@ -74,9 +77,9 @@ defmodule CodeMySpecSpex.Story553.Criterion5091Spex do
         {:ok, context}
       end
 
-      given_ "credo is flipped to block_all", context do
+      given_ "credo is flipped to block_changed", context do
         context.config_live
-        |> form("[data-test='configuration-form']", configuration: %{credo: "block_all"})
+        |> form("[data-test='configuration-form']", configuration: %{credo: "block_changed"})
         |> render_submit()
 
         {:ok, context}
@@ -89,7 +92,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5091Spex do
 
       when_ "the stop hook fires", context do
         response =
-          use_cmd_cassette "credo_block_all_project_scan", record: :none do
+          use_cmd_cassette "credo_block_changed_scoped_scan", record: :none do
             Phoenix.ConnTest.build_conn()
             |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
             |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -106,28 +109,21 @@ defmodule CodeMySpecSpex.Story553.Criterion5091Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the stop is blocked with the legacy_module.ex violation", context do
-        assert context.response["decision"] == "block",
-               "credo :block_all must block on project-wide violations, got: #{inspect(context.response)}"
-
-        assert context.response["reason"] =~ ~r/credo/i,
-               "block reason must mention credo, got: #{inspect(context.response["reason"])}"
-
-        assert context.response["reason"] =~ @legacy_path,
-               "block reason must reference the untouched legacy file, got: #{inspect(context.response["reason"])}"
+      then_ "the stop is allowed because the changed file has no violations", context do
+        assert context.response == %{},
+               "credo :block_changed must allow when the changed file is clean, got: #{inspect(context.response)}"
 
         {:ok, context}
       end
 
-      then_ "the Problems page surfaces the persisted credo violation", context do
+      then_ "the Problems page does not list any credo problem", context do
         {:ok, _problems_live, html} =
           live(context.conn, ~p"/projects/#{context.project.name}/problems?filter=credo")
 
-        assert html =~ "Problems",
-               "Problems page must render"
+        assert html =~ "Problems"
 
-        assert html =~ @legacy_path,
-               "Problems page must list the persisted legacy_module.ex violation, got HTML missing path"
+        refute html =~ @legacy_path,
+               "Problems page must NOT list the untouched legacy_module.ex violation under block_changed"
 
         {:ok, context}
       end

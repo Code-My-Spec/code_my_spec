@@ -1,7 +1,10 @@
 {
   "commands": [
     {
-      "args": ["compile", "--return-errors"],
+      "args": [
+        "compile",
+        "--return-errors"
+      ],
       "command": "mix",
       "exit_code": 1,
       "opts": {
@@ -11,7 +14,12 @@
       "recorded_at": "2026-05-08T08:00:00.000000Z"
     },
     {
-      "args": ["test", "--formatter", "ClientUtils.TestFormatter", "--stale"],
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter",
+        "--stale"
+      ],
       "command": "mix",
       "exit_code": 1,
       "opts": {
@@ -21,7 +29,11 @@
       "recorded_at": "2026-05-08T08:00:00.100000Z"
     },
     {
-      "args": ["spex", "--stale", "--jsonl=/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_clean_credo/spex.jsonl"],
+      "args": [
+        "spex",
+        "--stale",
+        "--jsonl=/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_clean_credo/spex.jsonl"
+      ],
       "command": "mix",
       "exit_code": 1,
       "opts": {
@@ -31,7 +43,16 @@
       "recorded_at": "2026-05-08T08:00:00.200000Z"
     },
     {
-      "args": ["credo", "suggest", "--format", "json", "--all", "--all-priorities", "--no-color", "lib/clean_module.ex"],
+      "args": [
+        "credo",
+        "suggest",
+        "--format",
+        "json",
+        "--all",
+        "--all-priorities",
+        "--no-color",
+        "lib/clean_module.ex"
+      ],
       "command": "mix",
       "exit_code": 0,
       "opts": {

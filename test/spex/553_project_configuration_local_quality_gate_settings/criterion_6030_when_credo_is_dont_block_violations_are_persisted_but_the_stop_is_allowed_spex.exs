@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story553.Criterion5093Spex do
+defmodule CodeMySpecSpex.Story553.Criterion6030Spex do
   @moduledoc """
   Story 553 — Project Configuration: Local quality gate settings
-  Criterion 5093 — When credo is set to dont_block, the stop hook still
+  Criterion 6030 — When credo is set to dont_block, the stop hook still
   runs credo against the changed files and persists any violations as
   problems, but the stop is allowed regardless. The engineer can confirm
   what was found by visiting the Problems page.
