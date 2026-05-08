@@ -65,13 +65,13 @@
     ]
   },
   repository: %{
-    title: "Source",
+    title: "Open Source Repository",
     description:
-      "A snapshot of the Market My Spec build is available for inspection on GitHub. The harness's own source remains in the CodeMySpec repository. The MMS snapshot is offered for verification of the case study's claims; it will not stay open source forever.",
+      "Market My Spec is open source under Apache 2.0. The harness's own source remains in the CodeMySpec repository, but the product the harness shipped is fully open for inspection, contribution, and self-hosting. Issues and PRs welcome.",
     url: "https://github.com/johns10/market_my_spec",
     stats: [
       %{label: "Language", value: "Elixir / Phoenix"},
-      %{label: "Distribution", value: "Claude Code plugin"},
+      %{label: "License", value: "Apache 2.0"},
       %{label: "Strategy Storage", value: "MCP-backed records"},
       %{label: "Auth", value: "OAuth2 + magic link"}
     ]
