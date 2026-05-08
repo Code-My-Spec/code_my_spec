@@ -10,6 +10,7 @@ defmodule CodeMySpec.Problems do
 
   # Repository functions
   defdelegate list_project_problems(scope, opts \\ []), to: ProblemRepository
+  defdelegate list_problems_paginated(scope, opts \\ []), to: ProblemRepository
   defdelegate create_problems(scope, problems), to: ProblemRepository
   defdelegate replace_project_problems(scope, problems), to: ProblemRepository
   defdelegate replace_problems_for_files(scope, file_paths, problems), to: ProblemRepository

@@ -203,32 +203,38 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   Expects only static analyzers and validators — runner analyzers like
   `:exunit_stale` / `:spex_stale` must be split out by the caller, since
   they execute as subprocesses rather than through `Runner`.
-  """
-  @spec run_analyzers(Scope.t(), [atom()], [map()]) :: :ok
-  def run_analyzers(_scope, [], _changed_files), do: :ok
 
-  def run_analyzers(scope, analyzers, changed_files) do
-    run_analyzer_set(scope, analyzers, changed_files)
+  Per-analyzer file scope is config-driven: credo in `:block_all` runs
+  project-wide (no file path args, all credo problems cleared before
+  re-insert); other modes and other analyzers stay scoped to the
+  changed files of this turn.
+  """
+  @spec run_analyzers(Scope.t(), [atom()], [map()], map()) :: :ok
+  def run_analyzers(scope, analyzers, changed_files, config \\ %{})
+  def run_analyzers(_scope, [], _changed_files, _config), do: :ok
+
+  def run_analyzers(scope, analyzers, changed_files, config) do
+    run_analyzer_set(scope, analyzers, changed_files, config)
     :ok
   end
 
   # -- Internal analyzer execution --
 
-  defp run_analyzer_set(_scope, [], _files), do: []
+  defp run_analyzer_set(_scope, [], _files, _config), do: []
 
-  defp run_analyzer_set(scope, analyzers, files) do
+  defp run_analyzer_set(scope, analyzers, files, config) do
     component_map = build_component_map(files)
     file_paths = Enum.map(files, & &1.path)
 
     {static_analyzers, validators} = split_analyzers(analyzers)
 
     all_problems =
-      (run_static_analyzers(scope, static_analyzers, file_paths) ++
+      (run_static_analyzers(scope, static_analyzers, file_paths, config) ++
          run_validators(scope, validators, files))
       |> Enum.map(&stamp_component_id(&1, component_map))
 
-    ran_sources = sources_for_analyzers(static_analyzers, validators)
-    persist_problems(scope, all_problems, file_paths, ran_sources)
+    source_scopes = source_scopes_for(static_analyzers, validators, file_paths, config)
+    persist_problems(scope, all_problems, source_scopes)
 
     log_persisted(all_problems)
     all_problems
@@ -252,19 +258,23 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     Logger.info("[Pipeline] Persisted #{length(problems)} problem(s) — #{by_source}")
   end
 
-  defp run_static_analyzers(_scope, [], _file_paths), do: []
+  defp run_static_analyzers(_scope, [], _file_paths, _config), do: []
 
-  defp run_static_analyzers(scope, analyzer_atoms, file_paths) do
+  defp run_static_analyzers(scope, analyzer_atoms, file_paths, config) do
     Enum.flat_map(analyzer_atoms, fn atom ->
+      analyzer_files = files_for_analyzer(atom, file_paths, config)
       start = System.monotonic_time(:millisecond)
 
-      result = Runner.run(scope, atom, files: file_paths)
+      result = Runner.run(scope, atom, files: analyzer_files)
       ms = System.monotonic_time(:millisecond) - start
 
       case result do
         {:ok, problems} ->
+          file_count =
+            if is_nil(analyzer_files), do: "all", else: Integer.to_string(length(analyzer_files))
+
           Logger.info(
-            "[Pipeline] #{atom}: #{length(problems)} problem(s) on #{length(file_paths)} file(s) (#{ms}ms)"
+            "[Pipeline] #{atom}: #{length(problems)} problem(s) on #{file_count} file(s) (#{ms}ms)"
           )
 
           problems
@@ -275,6 +285,13 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
       end
     end)
   end
+
+  # Project-wide credo when its mode is :block_all — `nil` tells the
+  # credo analyzer to omit file-path args so `mix credo` scans every
+  # file under the configured paths. All other static analyzers stay
+  # scoped to changed files.
+  defp files_for_analyzer(:credo, _file_paths, %{credo: :block_all}), do: nil
+  defp files_for_analyzer(_atom, file_paths, _config), do: file_paths
 
   defp run_validators(_scope, [], _files), do: []
 
@@ -406,19 +423,37 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     validate_qa: "qa_validation"
   }
 
-  defp sources_for_analyzers(static_analyzers, validators) do
-    (static_analyzers ++ validators)
-    |> Enum.map(&Map.get(@analyzer_source_map, &1, Atom.to_string(&1)))
-    |> Enum.uniq()
+  # Each entry pairs a problem `source` (the string written into the DB)
+  # with the file scope to clear before re-inserting. credo in
+  # `:block_all` clears project-wide (`:all`); everything else clears
+  # only the changed files of this turn.
+  defp source_scopes_for(static_analyzers, validators, file_paths, config) do
+    static_pairs =
+      Enum.map(static_analyzers, fn atom ->
+        source = Map.get(@analyzer_source_map, atom, Atom.to_string(atom))
+        {source, scope_for_source(atom, file_paths, config)}
+      end)
+
+    validator_pairs =
+      Enum.map(validators, fn validator ->
+        source = Map.get(@analyzer_source_map, validator, Atom.to_string(validator))
+        {source, file_paths}
+      end)
+
+    (static_pairs ++ validator_pairs)
+    |> Enum.uniq_by(&elem(&1, 0))
   end
+
+  defp scope_for_source(:credo, _file_paths, %{credo: :block_all}), do: :all
+  defp scope_for_source(_atom, file_paths, _config), do: file_paths
 
   # -- Problem persistence --
 
   # Clear per-source even when an analyzer ran clean — otherwise stale
   # problems from the previous turn linger.
-  defp persist_problems(scope, problems, file_paths, analyzer_sources) do
-    Enum.each(analyzer_sources, fn source ->
-      Problems.clear_problems_for_source(scope, [source: source], file_paths)
+  defp persist_problems(scope, problems, source_scopes) do
+    Enum.each(source_scopes, fn {source, file_scope} ->
+      Problems.clear_problems_for_source(scope, [source: source], file_scope)
     end)
 
     Problems.create_problems(scope, problems)

@@ -50,6 +50,80 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   end
 
   @doc """
+  Paginated list of problems for the active project, with severity ordering and
+  source-based counts for filter chips.
+
+  Options:
+  - `:page` — 1-based page number (default `1`)
+  - `:per_page` — page size (default `25`)
+  - `:filter` — `:all` (default) or one of the source strings
+    (`"credo"`, `"compiler"`, `"exunit"`, `"spex"`,
+    `"spec_validation"`, `"qa_validation"`).
+  """
+  @spec list_problems_paginated(Scope.t(), keyword()) :: %{
+          problems: [Problem.t()],
+          page: pos_integer(),
+          per_page: pos_integer(),
+          total_count: non_neg_integer(),
+          unfiltered_count: non_neg_integer(),
+          counts_by_source: %{optional(String.t()) => non_neg_integer()},
+          total_pages: pos_integer(),
+          filter: :all | String.t()
+        }
+  def list_problems_paginated(%Scope{active_project_id: project_id}, opts \\ []) do
+    page = max(Keyword.get(opts, :page, 1), 1)
+    per_page = max(Keyword.get(opts, :per_page, 25), 1)
+    filter = Keyword.get(opts, :filter, :all)
+
+    project_scope = where(Problem, [p], p.project_id == ^project_id)
+    unfiltered_count = Repo.aggregate(project_scope, :count, :id)
+
+    counts_by_source =
+      project_scope
+      |> group_by([p], p.source)
+      |> select([p], {p.source, count(p.id)})
+      |> Repo.all()
+      |> Map.new()
+
+    base = apply_problem_filter(project_scope, filter)
+    total_count = Repo.aggregate(base, :count, :id)
+    total_pages = max(div(total_count + per_page - 1, per_page), 1)
+
+    problems =
+      base
+      |> order_by([p], [
+        fragment(
+          "CASE ? WHEN 'error' THEN 1 WHEN 'warning' THEN 2 WHEN 'info' THEN 3 END",
+          p.severity
+        ),
+        asc: p.source,
+        asc: p.file_path,
+        asc: p.line
+      ])
+      |> limit(^per_page)
+      |> offset(^((page - 1) * per_page))
+      |> preload(:component)
+      |> Repo.all()
+
+    %{
+      problems: problems,
+      page: page,
+      per_page: per_page,
+      total_count: total_count,
+      unfiltered_count: unfiltered_count,
+      counts_by_source: counts_by_source,
+      total_pages: total_pages,
+      filter: filter
+    }
+  end
+
+  defp apply_problem_filter(query, :all), do: query
+
+  defp apply_problem_filter(query, source) when is_binary(source) do
+    where(query, [p], p.source == ^source)
+  end
+
+  @doc """
   Stores a list of problems for the active project without clearing existing problems.
 
   Problems are inserted in a transaction. If any problem fails validation, the entire

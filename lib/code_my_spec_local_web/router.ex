@@ -25,6 +25,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/init/:step", InitLive, :show
       live "/projects/:project_name/configuration", ConfigurationLive
       live "/projects/:project_name/files", FilesLive
+      live "/projects/:project_name/problems", ProblemsLive
       live "/projects/:project_name/next-task", Tasks.NextTaskLive
       live "/projects/:project_name/requirements", RequirementsLive, :index
       live "/projects/:project_name/requirements/graph", RequirementsLive, :graph

@@ -103,7 +103,7 @@ defmodule CodeMySpec.Validation do
     with :ok <- StaticAnalysis.compile(scope, opts) do
       analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
       {runners, static} = Enum.split_with(analyzers, &(&1 in @runner_analyzers))
-      StaticAnalysis.run_analyzers(scope, static, changed_files)
+      StaticAnalysis.run_analyzers(scope, static, changed_files, config)
       run_runner_analyzers(scope, runners, opts)
       :ok
     end

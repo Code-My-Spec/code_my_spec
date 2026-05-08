@@ -119,6 +119,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <li class="menu-title pt-1">Workflow</li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/next-task"} active={@section == :next_task}>Next Task</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/files"} active={@section == :files}>Files & Sync</.nav_link></li>
+      <li><.nav_link to={~p"/projects/#{project_slug(@project)}/problems"} active={@section == :problems}>Problems</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/configuration"} active={@section == :configuration}>Configuration</.nav_link></li>
 
       <li class="menu-title pt-3">Data</li>
@@ -193,6 +194,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
 
   defp section_label(:overview), do: "Overview"
   defp section_label(:files), do: "Files & Sync"
+  defp section_label(:problems), do: "Problems"
   defp section_label(:configuration), do: "Configuration"
   defp section_label(:next_task), do: "Next Task"
   defp section_label(:requirements), do: "Requirements"

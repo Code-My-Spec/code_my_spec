@@ -1,0 +1,45 @@
+{
+  "commands": [
+    {
+      "args": ["compile", "--return-errors"],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "** (Mix) Could not find a Mix.Project, please ensure you are running Mix in a directory with a mix.exs file\n",
+      "recorded_at": "2026-05-08T08:00:00.000000Z"
+    },
+    {
+      "args": ["test", "--formatter", "ClientUtils.TestFormatter", "--stale"],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "** (Mix) Could not find a Mix.Project, please ensure you are running Mix in a directory with a mix.exs file\n",
+      "recorded_at": "2026-05-08T08:00:00.100000Z"
+    },
+    {
+      "args": ["spex", "--stale", "--jsonl=/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_clean_credo/spex.jsonl"],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "** (Mix) The task \"spex\" could not be found\n",
+      "recorded_at": "2026-05-08T08:00:00.200000Z"
+    },
+    {
+      "args": ["credo", "suggest", "--format", "json", "--all", "--all-priorities", "--no-color"],
+      "command": "mix",
+      "exit_code": 14,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "{\n  \"issues\": [\n    {\n      \"category\": \"readability\",\n      \"check\": \"Credo.Check.Readability.FunctionNames\",\n      \"column\": 7,\n      \"column_end\": 18,\n      \"filename\": \"lib/legacy_module.ex\",\n      \"line_no\": 4,\n      \"message\": \"Function/macro/guard names should be written in snake_case.\",\n      \"priority\": 12,\n      \"scope\": \"LegacyModule.doSomething\",\n      \"trigger\": \"doSomething\"\n    }\n  ]\n}\n",
+      "recorded_at": "2026-05-08T08:00:00.300000Z"
+    }
+  ],
+  "ports": []
+}
