@@ -13,7 +13,7 @@ defmodule CodeMySpec.Environments do
   real filesystem.
   """
 
-  use Boundary, deps: [CodeMySpec], exports: :all
+  use Boundary, top_level?: true, deps: [], exports: :all
 
   alias CodeMySpec.Environments.Environment
 

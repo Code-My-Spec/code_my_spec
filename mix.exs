@@ -48,12 +48,6 @@ defmodule CodeMySpec.MixProject do
   defp compilers(:test),
     do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app]
 
-  # Boundary off for *_cli envs — lib_cli/ modules aren't boundaried yet, and
-  # the release build runs with --warnings-as-errors. Re-enable once lib_cli
-  # has boundary declarations.
-  defp compilers(env) when env in [:dev_cli, :prod_cli],
-    do: [:diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
-
   defp compilers(_), do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
 
   # Specifies your project dependencies.

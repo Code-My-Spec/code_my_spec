@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Repo do
-  use Boundary, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: [], exports: :all
 
   use Ecto.Repo,
     otp_app: :code_my_spec,
