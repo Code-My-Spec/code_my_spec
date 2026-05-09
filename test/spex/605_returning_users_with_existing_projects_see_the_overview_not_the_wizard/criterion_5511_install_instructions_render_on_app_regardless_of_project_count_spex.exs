@@ -2,15 +2,19 @@ defmodule CodeMySpecSpex.Story605.Criterion5511Spex do
   @moduledoc """
   Story 605 — Returning users with existing projects see the Overview,
   not the wizard.
-  Criterion 5511 — Rule: Install instructions (Claude Code extension,
-  Stories MCP) render on /app regardless of project count.
+  Criterion 5511 — Rule: Install instructions for the Claude Code
+  plugin render on /app regardless of project count.
 
   Two spex blocks (one ExUnit test each, fresh DB sandbox per spex):
 
-  1. First-time user (zero projects) — install cards render alongside
+  1. First-time user (zero projects) — install panel renders alongside
      the project-name form.
-  2. Returning user (with a project) — install cards render alongside
+  2. Returning user (with a project) — install panel renders alongside
      the Overview view.
+
+  Note: the alternative remote-MCP "draft stories" card was removed
+  when stories moved to the local CLI (story 698). This spec only
+  asserts the Claude Code install path.
   """
 
   use CodeMySpecSpex.Case
@@ -39,13 +43,6 @@ defmodule CodeMySpecSpex.Story605.Criterion5511Spex do
         {:ok, context}
       end
 
-      then_ "the Product Manager MCP card is rendered on the same page", context do
-        assert context.html =~ "/mcp/product-manager",
-               "expected the Product Manager MCP card alongside the project-name form " <>
-                 "for a first-time user"
-
-        {:ok, context}
-      end
     end
   end
 
@@ -87,17 +84,6 @@ defmodule CodeMySpecSpex.Story605.Criterion5511Spex do
         {:ok, context}
       end
 
-      then_ "the Product Manager MCP card is visible", context do
-        rendered = render(context.view)
-
-        assert rendered =~ "/mcp/product-manager",
-               "expected the Product Manager MCP server URL on /app for a returning user"
-
-        assert rendered =~ "Just want to draft stories?",
-               "expected the 'Just want to draft stories?' card to be visible"
-
-        {:ok, context}
-      end
     end
   end
 end

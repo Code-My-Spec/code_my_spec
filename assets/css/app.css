@@ -659,6 +659,14 @@ html {
         box-shadow: 0 0 10px var(--color-cms-red);
     }
 
+    /* JS-driven toggle: data-state on the card root controls visibility
+       of the expanded body and which toggle glyph shows. The header
+       (eyebrow + pill + toggle) is always rendered. No server roundtrip
+       on click. */
+    .cms-onboarding[data-state="minimized"] .cms-onboarding-exp-body { display: none; }
+    .cms-onboarding[data-state="minimized"] [data-toggle-glyph="expanded"] { display: none; }
+    .cms-onboarding[data-state="expanded"] [data-toggle-glyph="minimized"] { display: none; }
+
     .cms-onboarding-eyebrow {
         font-family: var(--font-mono);
         font-size: 10px;

@@ -6,7 +6,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   alias CodeMySpec.Analytics
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Stories
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
@@ -86,14 +85,11 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       project_done?: project_done?,
       project_count: length(projects),
       project_name: scope.active_project && scope.active_project.name,
-      stories_count: stories_count(scope),
+      stories_count: 0,
       cli_ever_connected?: cli_ever_connected?,
       active_step: active_step(account_done?, project_done?, cli_ever_connected?)
     }
   end
-
-  defp stories_count(%{active_project: nil}), do: 0
-  defp stories_count(scope), do: length(Stories.list_stories(scope))
 
   defp active_step(false, _, _), do: :account
   defp active_step(true, false, _), do: :project
@@ -155,6 +151,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     end
   end
 
+  # JS handles the actual flip client-side via JS.toggle_attribute, so
+  # the click is instant. We still keep the assign in sync so the next
+  # server-driven re-render emits the same data-state the user expects.
   def handle_event("toggle_onboarding", _params, socket) do
     {:noreply, assign(socket, onboarding_expanded: !socket.assigns.onboarding_expanded)}
   end
@@ -316,8 +315,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             count={@stories_count}
             active?={@active_step == :stories}
           />
-
-          <.alternative_mcp_card />
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
@@ -406,46 +403,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     """
   end
 
-  defp plugin_rung(%{active?: true} = assigns) do
-    ~H"""
-    <.onboarding_card {assigns} />
-    """
-  end
-
-  defp plugin_rung(%{cli_ever_connected?: true} = assigns) do
-    pill_state = pill_state(assigns.cli_session_count, true)
-    assigns = assign(assigns, pill_state: pill_state)
-
-    ~H"""
-    <div
-      data-test="onboarding-card"
-      data-state="minimized"
-      class="cms-onboarding"
-    >
-      <div class="flex items-center gap-4 px-6 py-5">
-        <span class="cms-onboarding-eyebrow flex items-center gap-2">
-          <span style="color: var(--color-cms-red); font-size: 13px;">▸</span>
-          Plugin
-        </span>
-        <span class="flex-1"></span>
-        <.status_pill count={@cli_session_count} ever_connected?={true} state={@pill_state} />
-        <button
-          type="button"
-          data-test="onboarding-toggle"
-          phx-click="toggle_onboarding"
-          class="cms-onboarding-toggle"
-          aria-label="Expand install steps"
-        >
-          ▾
-        </button>
-      </div>
-    </div>
-    """
-  end
-
   defp plugin_rung(assigns) do
     ~H"""
-    <.metric_tile eyebrow="// step 03 · plugin" label="Plugin" value="—" dim />
+    <.onboarding_card {assigns} />
     """
   end
 
@@ -464,9 +424,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           0
         </span>
         <span class="flex-1"></span>
-        <.link navigate={~p"/app/stories/new"} class="cms-onboarding-cta">
-          <span>▸</span> Create your first story
-        </.link>
+        <span class="cms-onboarding-cta">
+          <span>▸</span> Create your first story (use the local CLI)
+        </span>
       </div>
     </div>
     """
@@ -510,11 +470,12 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
     ~H"""
     <div
+      id="cms-onboarding-card"
       data-test="onboarding-card"
       data-state={if @onboarding_expanded, do: "expanded", else: "minimized"}
       class="cms-onboarding"
     >
-      <div :if={not @onboarding_expanded} class="flex items-center gap-4 px-6 py-5">
+      <div class="cms-onboarding-header flex items-center gap-4 px-6 py-5">
         <span class="cms-onboarding-eyebrow flex items-center gap-2">
           <span style="color: var(--color-cms-red); font-size: 13px;">▸</span>
           CodeMySpec plugin
@@ -524,34 +485,24 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <button
           type="button"
           data-test="onboarding-toggle"
-          phx-click="toggle_onboarding"
+          phx-click={
+            JS.toggle_attribute({"data-state", "expanded", "minimized"},
+              to: "#cms-onboarding-card"
+            )
+            |> JS.push("toggle_onboarding")
+          }
           class="cms-onboarding-toggle"
-          aria-label="Expand install steps"
+          aria-label="Toggle install panel"
         >
-          ▾
+          <span data-toggle-glyph="expanded">▴</span>
+          <span data-toggle-glyph="minimized">▾</span>
         </button>
       </div>
 
-      <div :if={@onboarding_expanded} class="px-7 py-7">
-        <div class="flex items-start gap-4">
-          <div class="flex-1 min-w-0">
-            <div class="cms-onboarding-eyebrow mb-2.5">// step 03 · plugin</div>
-            <h2 class="cms-onboarding-heading">{onboarding_heading(@show_celebrate, @pill_state)}</h2>
-            <p class="cms-onboarding-sub">{onboarding_sub(@show_celebrate, @pill_state)}</p>
-          </div>
-          <div class="flex items-center gap-2.5 pt-1 shrink-0">
-            <.status_pill count={@cli_session_count} ever_connected?={@ever_connected?} state={@pill_state} />
-            <button
-              type="button"
-              data-test="onboarding-toggle"
-              phx-click="toggle_onboarding"
-              class="cms-onboarding-toggle"
-              aria-label="Minimize install panel"
-            >
-              ▴
-            </button>
-          </div>
-        </div>
+      <div class="cms-onboarding-exp-body px-7 pb-7">
+        <div class="cms-onboarding-eyebrow mb-2.5">// step 03 · plugin</div>
+        <h2 class="cms-onboarding-heading">{onboarding_heading(@show_celebrate, @pill_state)}</h2>
+        <p class="cms-onboarding-sub">{onboarding_sub(@show_celebrate, @pill_state)}</p>
 
         <ol class="mt-6 flex flex-col gap-3.5 list-none p-0">
           <.install_step :for={step <- @install_steps} step={step} done={@show_celebrate} />
@@ -610,9 +561,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       <p class="cms-onboarding-sub" style="margin-bottom: 16px;">
         Use Claude Code to start your first story — paste the prompt below or open the plugin and ask it to create your first story.
       </p>
-      <.link navigate={~p"/app/stories/new"} class="cms-onboarding-cta">
-        <span>▸</span> Open story creator
-      </.link>
+      <span class="cms-onboarding-cta">
+        <span>▸</span> Open story creator (use the local CLI)
+      </span>
     </div>
     """
   end
@@ -652,28 +603,4 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   defp onboarding_sub(false, _),
     do:
       "These three commands install the CodeMySpec plugin in Claude Code and connect it to your account."
-
-  defp alternative_mcp_card(assigns) do
-    ~H"""
-    <div class="cms-onboarding">
-      <div class="px-7 py-7">
-        <div class="cms-onboarding-eyebrow mb-2.5">// alt · remote mcp</div>
-        <h3 class="cms-onboarding-heading" style="font-size: 22px;">
-          Just want to draft stories?
-        </h3>
-        <p class="cms-onboarding-sub mb-5">
-          Not on Claude Code? Point any MCP client at the remote Product Manager
-          server. It interviews you and writes structured user stories.
-        </p>
-        <div class="cms-onboarding-cmd mb-4">
-          <span class="cms-onboarding-cmd-prompt">▸</span>
-          <code>Server URL: {CodeMySpecWeb.Endpoint.url() <> "/mcp/product-manager"}</code>
-        </div>
-        <.link href={~p"/documentation/stories-mcp-setup"} class="cms-onboarding-cta">
-          <span>▸</span> Setup instructions
-        </.link>
-      </div>
-    </div>
-    """
-  end
 end
