@@ -68,7 +68,7 @@
     title: "Open Source Repository",
     description:
       "Market My Spec is open source under Apache 2.0. The harness's own source remains in the CodeMySpec repository, but the product the harness shipped is fully open for inspection, contribution, and self-hosting. Issues and PRs welcome.",
-    url: "https://github.com/johns10/market_my_spec",
+    url: "https://github.com/Code-My-Spec/market_my_spec",
     stats: [
       %{label: "Language", value: "Elixir / Phoenix"},
       %{label: "License", value: "Apache 2.0"},
