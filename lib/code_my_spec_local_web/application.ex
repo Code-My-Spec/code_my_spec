@@ -21,6 +21,7 @@ defmodule CodeMySpecLocalWeb.Application do
     handle_cli_args(cli_argv())
 
     ensure_directories()
+    maybe_install_file_logger()
 
     children = [
       CodeMySpec.Vault,
@@ -153,6 +154,12 @@ defmodule CodeMySpecLocalWeb.Application do
   # sobelow_skip ["Traversal.FileModule"]
   defp ensure_directories do
     File.mkdir_p!(Path.expand("~/.codemyspec"))
+  end
+
+  defp maybe_install_file_logger do
+    if Application.get_env(:code_my_spec, :install_file_logger, false) do
+      CodeMySpec.Logging.install_file_handler!(source: "server")
+    end
   end
 
   defp daemon_call(fun, args \\ []), do: call_optional(@daemon, fun, args)

@@ -30,3 +30,47 @@ so you always know what to work on next and in what order.
 - **One requirement at a time.** The graph handles ordering. Don't skip ahead.
 - Specs live in `.code_my_spec/spec/`, rules in `.code_my_spec/rules/`, architecture in `.code_my_spec/architecture/`.
 <!-- code_my_spec:end -->
+
+## Logs
+
+The `cms` server and `cms` CLI both write structured logs to disk. They use a
+shared logfmt formatter (`CodeMySpec.Logging.LogfmtFormatter`) so a single
+parser handles both sources.
+
+### Files
+
+- `~/.codemyspec/server.log` — application logs from the `cms server` binary.
+  Rotated at 10 MB × 3 by `:logger_std_h`.
+- `~/.codemyspec/server.boot.log` — raw stdout/stderr from the daemonized cms
+  binary (BEAM startup messages, `IO.puts`). Not rotated. Useful when the
+  server fails before the logger handler installs.
+- `~/.codemyspec/cli.log` — application logs from the `cms` CLI binary.
+  Rotated at 10 MB × 3.
+
+`cms logs` / `cms logs -f` print and follow `server.log` from any shell.
+
+### Format
+
+One logfmt event per line:
+
+    ts=2026-05-09T14:23:01.123Z level=info src=server req=abc123 mfa=Foo.Bar.baz/2 msg="..."
+
+Keys are stable: `ts`, `level`, `src` (`server`|`cli`), `mfa`, `msg`, plus any
+metadata the call site attached (`request_id` shows up as `request_id=`).
+Values containing spaces, `=`, `"`, or newlines are double-quoted with
+backslash escaping. Each metadata value is truncated at 500 bytes so a single
+giant payload cannot blow the reader's context window.
+
+### Correlating across one CLI invocation
+
+`CodeMySpecCli.CliRunner` stamps a fresh `request_id` for every command
+invocation. Grep `request_id=<id>` against `cli.log` to see all log lines from
+one `cms` run.
+
+Server-side, Phoenix's `Plug.RequestId` stamps `request_id` per HTTP request,
+so all logs inside one MCP tool call (or LiveView mount, or REST handler)
+share an id automatically — visible as `request_id=` in `server.log`.
+
+CLI ↔ server correlation across the wire is **not** wired up; CLI commands
+mostly act locally and don't push per-command events to the server, so a
+shared id wouldn't have anything to tie together today.

@@ -28,9 +28,10 @@ config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   code_reloader: false,
   check_origin: false
 
-# Default handler writes to stderr. `cms server` is always daemonized via
-# `nohup cms server >>~/.codemyspec/server.log 2>&1`, so stderr lands in
-# server.log and `cms logs` can show it. Previously we disabled the handler
-# to keep the TUI clean — but the TUI is moot once daemonized, and without
-# any handler every error in the prod binary was invisible.
+# Logger handler is installed at runtime by CodeMySpec.Logging — :default_handler
+# is swapped for a :logger_std_h writing logfmt to ~/.codemyspec/server.log with
+# rotation (10 MB × 3). Daemon shell-redirects stdout/stderr to a separate
+# ~/.codemyspec/server.boot.log so BEAM startup junk doesn't interleave with
+# the rotated structured log.
 config :logger, level: :info
+config :code_my_spec, install_file_logger: true

@@ -91,8 +91,11 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
-# Configures Elixir's Logger
-config :logger, :console,
+# Default metadata kept across all environments. The prod_cli binary uses
+# CodeMySpec.Logging.LogfmtFormatter (installed at runtime by
+# CodeMySpec.Logging) and emits *all* metadata, so this list only governs
+# the dev/test console formatter.
+config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [
     :request_id,

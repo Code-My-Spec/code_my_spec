@@ -16,6 +16,9 @@ defmodule CodeMySpecCli.Daemon do
   def cms_home, do: Path.expand("~/.codemyspec")
   def pid_file, do: Path.join(cms_home(), "cms.pid")
   def log_file, do: Path.join(cms_home(), "server.log")
+  # Raw stdout/stderr from the daemonized cms binary (BEAM startup, IO.puts).
+  # Application logs go through :logger to log_file/0 with rotation.
+  def boot_log_file, do: Path.join(cms_home(), "server.boot.log")
 
   # --- status ---------------------------------------------------------------
 
@@ -95,12 +98,15 @@ defmodule CodeMySpecCli.Daemon do
 
   defp spawn_detached(cms_bin) do
     # nohup + stdin redirect + disown so the child survives our exit.
-    # Output goes to server.log for later inspection via `cms logs`.
+    # Stdout/stderr go to boot_log_file/0 (small, captures BEAM startup and
+    # any IO.puts). Application :logger writes structured logfmt directly to
+    # log_file/0 with size-based rotation — keeping them on separate FDs is
+    # what lets rotation actually work.
     System.cmd(
       "sh",
       [
         "-c",
-        "nohup #{shell_quote(cms_bin)} server >>#{shell_quote(log_file())} 2>&1 </dev/null & disown"
+        "nohup #{shell_quote(cms_bin)} server >>#{shell_quote(boot_log_file())} 2>&1 </dev/null & disown"
       ]
     )
   end

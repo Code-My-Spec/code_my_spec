@@ -27,7 +27,10 @@ defmodule CodeMySpecLocalWeb.Endpoint do
   end
 
   plug Plug.RequestId
-  plug Plug.Telemetry, event_prefix: [:phoenix, :local_endpoint]
+  # log: :debug demotes "GET /foo" + "Sent 200 in Xms" to debug — dev still
+  # shows them, prod_cli (:info) drops them. Keeps the structured log focused
+  # on app events, not request boilerplate.
+  plug Plug.Telemetry, event_prefix: [:phoenix, :local_endpoint], log: :debug
 
   plug Plug.Parsers,
     parsers: [:urlencoded, :json],
