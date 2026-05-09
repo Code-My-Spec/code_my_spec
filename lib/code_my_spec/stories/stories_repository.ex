@@ -161,17 +161,13 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Repo.preload([:criteria, :tags])
   end
 
-  def create_story(
-        %Scope{active_project: %Project{id: project_id}, active_account: %Account{id: account_id}} =
-          scope,
-        attrs
-      ) do
+  def create_story(%Scope{active_project: %Project{id: project_id}} = scope, attrs) do
     attrs_with_ownership = inject_criteria_ownership(attrs, project_id)
 
     %Story{}
     |> Story.changeset(attrs_with_ownership)
     |> Ecto.Changeset.put_change(:project_id, project_id)
-    |> Ecto.Changeset.put_change(:account_id, account_id)
+    |> put_account_id(scope)
     |> PaperTrail.insert(originator: scope.user)
     |> case do
       {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags])}
@@ -179,15 +175,13 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
-  def create_story(%Scope{} = scope, attrs) do
-    %Story{}
-    |> Story.changeset(attrs)
-    |> PaperTrail.insert(originator: scope.user)
-    |> case do
-      {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags])}
-      {:error, changeset} -> {:error, changeset}
-    end
-  end
+  defp put_account_id(changeset, %Scope{active_account: %Account{id: id}}),
+    do: Ecto.Changeset.put_change(changeset, :account_id, id)
+
+  defp put_account_id(changeset, %Scope{active_account_id: id}) when not is_nil(id),
+    do: Ecto.Changeset.put_change(changeset, :account_id, id)
+
+  defp put_account_id(changeset, _), do: changeset
 
   def update_story(%Scope{} = scope, %Story{} = story, attrs) do
     attrs_with_ownership = inject_criteria_ownership(attrs, story.project_id)

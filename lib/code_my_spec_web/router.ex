@@ -117,17 +117,11 @@ defmodule CodeMySpecWeb.Router do
   scope "/mcp" do
     pipe_through :mcp_protected
 
-    forward "/product-manager", Anubis.Server.Transport.StreamableHTTP.Plug,
-      server: CodeMySpec.McpServers.ProductManagerServer
-
     forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer
 
     forward "/analytics-admin", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.AnalyticsAdminServer
-
-    forward "/personas", Anubis.Server.Transport.StreamableHTTP.Plug,
-      server: CodeMySpec.McpServers.PersonasServer
   end
 
   # API routes
@@ -140,50 +134,6 @@ defmodule CodeMySpecWeb.Router do
     resources "/issues", IssuesController, only: [:index, :show, :create, :update]
 
     post "/uploads/presign", UploadController, :create
-
-    post "/stories/bulk-set-component", StoriesController, :bulk_set_component
-
-    resources "/stories", StoriesController, except: [:new, :edit] do
-      post "/set-component", StoriesController, :set_component
-      post "/clear-component", StoriesController, :clear_component
-    end
-
-    get "/stories-list/project", StoriesController, :list_project_stories
-    get "/stories-list/paginated", StoriesController, :list_project_stories_paginated
-    get "/stories-list/titles", StoriesController, :list_story_titles
-
-    get "/stories-list/by-priority",
-        StoriesController,
-        :list_project_stories_by_priority
-
-    get "/stories-list/unsatisfied", StoriesController, :list_unsatisfied_stories
-    get "/stories-list/component/:component_id", StoriesController, :list_component_stories
-
-    resources "/personas", PersonasController, only: [:index, :show, :create, :update, :delete] do
-      post "/link-story", PersonasController, :link_story
-      post "/unlink-story", PersonasController, :unlink_story
-    end
-
-    get "/personas-by-slug/:slug", PersonasController, :show_by_slug
-    get "/personas-list/story/:story_id", PersonasController, :list_for_story
-    get "/personas-list/project/:project_id", PersonasController, :list_for_project
-
-    get "/personas-list/project/:project_id/links",
-        PersonasController,
-        :list_project_link_edges
-
-    # BDD Rules — Three Amigos blue cards
-    resources "/bdd-rules", BddRulesController, only: [:show, :create, :update, :delete]
-    get "/bdd-rules-list/story/:story_id", BddRulesController, :list_for_story
-    get "/bdd-rules-list/project/:project_id", BddRulesController, :list_for_project
-
-    # Acceptance Criteria — Three Amigos green cards
-    resources "/criteria", CriteriaController, only: [:show, :create, :update, :delete]
-    get "/criteria-list/story/:story_id", CriteriaController, :list_for_story
-
-    # Questions — Three Amigos red cards
-    resources "/questions", QuestionsController, only: [:show, :create, :update, :delete]
-    get "/questions-list/story/:story_id", QuestionsController, :list_for_story
 
     post "/notifications/push", NotificationController, :push
 
@@ -266,12 +216,6 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/new", ProjectLive.Form, :new
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
-
-      live "/personas", PersonasLive.Index, :index
-      live "/personas/new", PersonasLive.Index, :new
-      live "/personas/:slug", PersonasLive.Show, :show
-      live "/personas/:slug/edit", PersonasLive.Show, :edit
-      live "/personas/:slug/link", PersonasLive.Show, :link
     end
 
     live_session :require_active_project,
@@ -283,15 +227,6 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
         {CodeMySpecWeb.UserAuth, :require_active_project}
       ] do
-      live "/stories", StoryLive.Index, :index
-      live "/stories/scheduler", StoryLive.Scheduler, :index
-      live "/stories/new", StoryLive.Form, :new
-      live "/stories/import", StoryLive.Import, :import
-      live "/stories/:id", StoryLive.Show, :show
-      live "/stories/:id/edit", StoryLive.Form, :edit
-      live "/stories/:id/three-amigos", StoryLive.ThreeAmigos
-      live "/stories/:id/gherkin", StoryLive.Gherkin
-
       live "/content_admin", ContentAdminLive.Index, :index
       live "/content_admin/:id", ContentAdminLive.Show, :show
 

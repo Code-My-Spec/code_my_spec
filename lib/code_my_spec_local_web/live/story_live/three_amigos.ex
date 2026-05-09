@@ -1,67 +1,79 @@
-defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
+defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
   @moduledoc """
-  Three Amigos cluster wall — V4 design (server tier).
+  Three Amigos cluster wall — local CLI surface.
 
-  Mounted at `/app/stories/:id/three-amigos` for authenticated PMs in
-  the SaaS UI. The agent (running in Claude Code on a developer's
-  machine) calls MCP tools that hit the server API via the
-  `BddRules.RemoteClient` / `Questions.RemoteClient` write-through path
-  — those mutations broadcast on server PubSub, so this LiveView sees
-  cards land in real time as the session unfolds.
+  Mounted at `/projects/:project_name/stories/:id/three-amigos` for the
+  developer running `cms server`. The agent (running in Claude Code on
+  the same machine) calls MCP tools that mutate stories / rules /
+  scenarios / questions through context modules — those mutations
+  broadcast on PubSub, so this LiveView sees cards land in real time as
+  the session unfolds.
 
   Three states: `:listening` (no artifacts), `:active` (populated), and
   `:sealed` (readiness gate cleared).
   """
 
-  use CodeMySpecWeb, :live_view
+  use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Personas
+  alias CodeMySpec.Projects
   alias CodeMySpec.Questions
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Stories
+  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
-    # Subscribe in mount on the websocket-connect cycle. mount runs twice
-    # for stateful LiveViews (HTTP render with connected? = false, then
-    # WebSocket connect with connected? = true). Subscribing here, on the
-    # second call, binds the LiveView's pid to the PubSub topics BEFORE
-    # any handle_params side effects — which means broadcasts triggered by
-    # MCP / RemoteClient writes that happen between mount and the user's
-    # next interaction land in this pid's mailbox.
-    if connected?(socket) do
-      scope = socket.assigns.current_scope
-      BddRules.subscribe(scope)
-      Questions.subscribe(scope)
-      AcceptanceCriteria.subscribe_criteria(scope)
-    end
+    projects = Projects.list_local_projects()
 
     {:ok,
      assign(socket,
+       projects: projects,
+       project: nil,
+       scope: nil,
        story: nil,
        error: nil,
        menu_open: nil,
        editing: nil,
-       confirming_delete: nil
+       confirming_delete: nil,
+       subscribed?: false
      )}
   end
 
   @impl true
-  def handle_params(%{"id" => story_id}, _uri, socket) do
-    scope = socket.assigns.current_scope
-
-    with {:ok, story_id_int} <- parse_story_id(story_id),
+  def handle_params(%{"project_name" => project_name, "id" => story_id}, _uri, socket) do
+    with {:ok, project, scope} <- load_project_and_scope(project_name),
+         {:ok, story_id_int} <- parse_story_id(story_id),
          {:story, %Stories.Story{} = story} <-
            {:story, Stories.get_story(scope, story_id_int)} do
-      {:noreply, assign_session_state(socket, scope, story)}
+      socket =
+        socket
+        |> assign(project: project, scope: scope)
+        |> maybe_subscribe(scope)
+        |> assign_session_state(scope, story)
+
+      {:noreply, socket}
     else
       {:error, msg} ->
         {:noreply, assign(socket, error: "#{msg}")}
 
       {:story, nil} ->
-        {:noreply, assign(socket, error: "Story not found in this account.")}
+        {:noreply, assign(socket, error: "Story not found in this project.")}
+    end
+  end
+
+  defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
+
+  defp maybe_subscribe(socket, scope) do
+    if connected?(socket) do
+      BddRules.subscribe(scope)
+      Questions.subscribe(scope)
+      AcceptanceCriteria.subscribe_criteria(scope)
+      assign(socket, subscribed?: true)
+    else
+      socket
     end
   end
 
@@ -100,10 +112,6 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     {:noreply, assign(socket, editing: nil)}
   end
 
-  # Two-step delete: first click sets `confirming_delete` and renders a
-  # modal; the modal's Confirm button fires the actual `delete_*` event.
-  # Replaces the prior `data-confirm` attribute, which the headless QA
-  # agent could not click through.
   def handle_event("confirm_delete", %{"type" => type, "id" => id}, socket) do
     {:noreply,
      assign(socket,
@@ -117,10 +125,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("save_rule", %{"id" => id, "rule" => %{"statement" => statement}}, socket) do
-    rule = BddRules.get_rule(socket.assigns.current_scope, id)
+    rule = BddRules.get_rule(socket.assigns.scope, id)
 
     if rule do
-      case BddRules.update_rule(socket.assigns.current_scope, rule, %{statement: statement}) do
+      case BddRules.update_rule(socket.assigns.scope, rule, %{statement: statement}) do
         {:ok, _updated} ->
           {:noreply, socket |> assign(editing: nil) |> put_flash(:info, "Rule updated")}
 
@@ -133,10 +141,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("delete_rule", %{"id" => id}, socket) do
-    rule = BddRules.get_rule(socket.assigns.current_scope, id)
+    rule = BddRules.get_rule(socket.assigns.scope, id)
 
     if rule do
-      case BddRules.delete_rule(socket.assigns.current_scope, rule) do
+      case BddRules.delete_rule(socket.assigns.scope, rule) do
         {:ok, _deleted} ->
           {:noreply,
            socket
@@ -159,10 +167,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
         %{"id" => id, "scenario" => %{"description" => description, "body" => body}},
         socket
       ) do
-    criterion = AcceptanceCriteria.get_criterion(socket.assigns.current_scope, id)
+    criterion = AcceptanceCriteria.get_criterion(socket.assigns.scope, id)
 
     if criterion do
-      case AcceptanceCriteria.update_criterion(socket.assigns.current_scope, criterion, %{
+      case AcceptanceCriteria.update_criterion(socket.assigns.scope, criterion, %{
              description: description,
              body: body
            }) do
@@ -178,10 +186,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("delete_scenario", %{"id" => id}, socket) do
-    criterion = AcceptanceCriteria.get_criterion(socket.assigns.current_scope, id)
+    criterion = AcceptanceCriteria.get_criterion(socket.assigns.scope, id)
 
     if criterion do
-      case AcceptanceCriteria.delete_criterion(socket.assigns.current_scope, criterion) do
+      case AcceptanceCriteria.delete_criterion(socket.assigns.scope, criterion) do
         {:ok, _deleted} ->
           {:noreply,
            socket
@@ -200,10 +208,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("save_question", %{"id" => id, "question" => %{"text" => text}}, socket) do
-    question = Questions.get_question(socket.assigns.current_scope, id)
+    question = Questions.get_question(socket.assigns.scope, id)
 
     if question do
-      case Questions.update_question(socket.assigns.current_scope, question, %{text: text}) do
+      case Questions.update_question(socket.assigns.scope, question, %{text: text}) do
         {:ok, _updated} ->
           {:noreply, socket |> assign(editing: nil) |> put_flash(:info, "Question updated")}
 
@@ -216,10 +224,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("delete_question", %{"id" => id}, socket) do
-    question = Questions.get_question(socket.assigns.current_scope, id)
+    question = Questions.get_question(socket.assigns.scope, id)
 
     if question do
-      case Questions.delete_question(socket.assigns.current_scope, question) do
+      case Questions.delete_question(socket.assigns.scope, question) do
         {:ok, _deleted} ->
           {:noreply,
            socket
@@ -238,13 +246,13 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("toggle_question_status", %{"id" => id}, socket) do
-    question = Questions.get_question(socket.assigns.current_scope, id)
+    question = Questions.get_question(socket.assigns.scope, id)
 
     if question do
       result =
         case question.status do
-          :open -> Questions.resolve_question(socket.assigns.current_scope, question)
-          _ -> Questions.reopen_question(socket.assigns.current_scope, question)
+          :open -> Questions.resolve_question(socket.assigns.scope, question)
+          _ -> Questions.reopen_question(socket.assigns.scope, question)
         end
 
       case result do
@@ -259,7 +267,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     end
   end
 
-  defp refresh(%{assigns: %{current_scope: scope, story: story}} = socket) do
+  defp refresh(%{assigns: %{scope: scope, story: story}} = socket) when not is_nil(scope) and not is_nil(story) do
     assign_session_state(socket, scope, story)
   end
 
@@ -306,7 +314,12 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     end
   end
 
-  # ─── Layout helpers ──────────────────────────────────────────────────
+  defp load_project_and_scope(name) do
+    with {:ok, project} <- Projects.get_project_by_name(name),
+         {:ok, scope} <- Scope.for_local_project(project) do
+      {:ok, project, scope}
+    end
+  end
 
   defp scenarios_for_rule(scenarios, rule_id) do
     Enum.filter(scenarios, &(&1.rule_id == rule_id))
@@ -317,7 +330,13 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app
+      flash={@flash}
+      projects={@projects}
+      project={@project}
+      section={:stories}
+      page_title={Map.get(assigns, :page_title, "Three Amigos")}
+    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -418,8 +437,6 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     </div>
     """
   end
-
-  # ─── Component partials ───────────────────────────────────────────
 
   attr :story, :map, required: true
   attr :rules, :list, required: true
@@ -831,7 +848,6 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       .wv4-btn-danger { background: oklch(50% 0.18 25); border-color: oklch(50% 0.18 25); color: var(--wall-ink); font-weight: 600; }
       .wv4-btn-danger:hover { background: oklch(60% 0.20 25); border-color: oklch(60% 0.20 25); }
 
-      /* Confirm-delete modal — replaces data-confirm so QA agent can click through */
       .wv4-modal-backdrop {
         position: fixed; inset: 0; background: oklch(0% 0 0 / 0.6);
         display: flex; align-items: center; justify-content: center;

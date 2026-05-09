@@ -104,9 +104,6 @@ defmodule CodeMySpecWeb.Layouts do
           <ul class="menu p-4 w-64 min-h-full text-base-content">
             <li><a href={~p"/app"}>Overview</a></li>
             <li><a href={~p"/app/projects"}>Projects</a></li>
-            <li><a href={~p"/app/stories"}>Stories</a></li>
-            <li><a href={~p"/app/stories/scheduler"}>Scheduler</a></li>
-            <li><a href={~p"/app/personas"}>Personas</a></li>
             <li><a href={~p"/app/issues"}>Issues</a></li>
             <li><a href={~p"/app/content_admin"}>Content</a></li>
             <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>

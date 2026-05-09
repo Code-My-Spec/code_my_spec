@@ -2,8 +2,9 @@ defmodule CodeMySpec.Stories do
   @moduledoc """
   The Stories context.
 
-  Delegates to either StoriesRepository (direct DB) or RemoteClient (HTTP API)
-  depending on the `:stories_implementation` config key.
+  Direct-DB implementation via `StoriesRepository`. The
+  `:stories_implementation` config key is kept as a swap point for test
+  doubles.
   """
 
   alias CodeMySpec.Stories.StoriesRepository

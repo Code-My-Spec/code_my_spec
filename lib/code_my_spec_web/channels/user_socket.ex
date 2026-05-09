@@ -15,12 +15,7 @@ defmodule CodeMySpecWeb.UserSocket do
   channel "vscode:*", CodeMySpecWeb.VSCodeChannel
   channel "session:*", CodeMySpecWeb.SessionChannel
   channel "permission:*", CodeMySpecWeb.PermissionChannel
-  channel "stories:*", CodeMySpecWeb.StoriesChannel
   channel "issues:*", CodeMySpecWeb.IssuesChannel
-  channel "bdd_rules:*", CodeMySpecWeb.BddRulesChannel
-  channel "criteria:*", CodeMySpecWeb.AcceptanceCriteriaChannel
-  channel "questions:*", CodeMySpecWeb.QuestionsChannel
-  channel "personas:*", CodeMySpecWeb.PersonasChannel
   channel "cli:user:*", CodeMySpecWeb.CliChannel
 
   # Socket params are passed from the client and can

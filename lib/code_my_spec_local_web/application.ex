@@ -35,7 +35,7 @@ defmodule CodeMySpecLocalWeb.Application do
       CodeMySpecLocalWeb.Endpoint,
       CodeMySpec.ProjectSync.FileWatcherServer,
       CodeMySpecLocalWeb.SocketSupervisor,
-      CodeMySpec.Stories.BootSync,
+      CodeMySpec.Issues.BootSync,
       CodeMySpecCli.PresenceClient
     ]
 

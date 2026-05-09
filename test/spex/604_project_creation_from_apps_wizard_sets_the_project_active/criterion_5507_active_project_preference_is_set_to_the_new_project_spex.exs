@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5507Spex do
   new project as the user's active project.
 
   Observed via the public surface — after submitting, the user can
-  reach a `:require_active_project` route (`/app/stories`) without
+  reach a `:require_active_project` route (`/app/issues`) without
   being bounced to the project picker. That gate only opens when
   scope.active_project is non-nil and points at a project the user
   can access.
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5507Spex do
       end
 
       then_ "an active-project-gated route loads without a picker redirect", context do
-        conn = get(context.conn, "/app/stories")
+        conn = get(context.conn, "/app/issues")
 
         case conn.status do
           200 ->
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5507Spex do
             {:ok, context}
 
           status ->
-            flunk("unexpected status #{status} reaching /app/stories")
+            flunk("unexpected status #{status} reaching /app/issues")
         end
       end
     end

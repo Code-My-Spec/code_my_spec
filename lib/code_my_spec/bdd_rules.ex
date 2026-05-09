@@ -13,11 +13,9 @@ defmodule CodeMySpec.BddRules do
   consumed by agent task prompts. The domain artifact is still just
   "rule" — the namespacing prefix is purely a module-name disambiguator.
 
-  Mirrors the Personas / Stories context split: delegates to either
-  `BddRulesRepository` (direct DB — server mode) or, in the future, a
-  `RemoteClient` (HTTP API — CLI mode) via the `:bdd_rules_implementation`
-  config key. RemoteClient + write-through stack are not yet built;
-  defaults to the Repository for now.
+  Direct-DB implementation via `BddRulesRepository`. The
+  `:bdd_rules_implementation` config key is kept as a swap point for test
+  doubles.
   """
 
   alias CodeMySpec.BddRules.BddRulesRepository
@@ -68,10 +66,7 @@ defmodule CodeMySpec.BddRules do
   def list_rules_for_story(scope, story_id),
     do: impl().list_rules_for_story(scope, story_id)
 
-  @doc """
-  Lists every Rule in the given project. Used by `BddRules.RemoteSync` to
-  pull the server's authoritative rule set down to the local SQLite cache.
-  """
+  @doc "Lists every Rule in the given project."
   def list_rules_for_project(scope, project_id),
     do: impl().list_rules_for_project(scope, project_id)
 

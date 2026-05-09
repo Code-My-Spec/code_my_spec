@@ -2,10 +2,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   @moduledoc """
   Sync project files and components.
 
-  Pulls remote stories / issues / personas into the local DB, scans the
-  filesystem, classifies and validates files, creates/updates components, and
-  backfills file ownership. After sync, the computed requirement graph is up
-  to date.
+  Pulls remote issues into the local DB, scans the filesystem, classifies
+  and validates files, creates/updates components, and backfills file
+  ownership. After sync, the computed requirement graph is up to date.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -14,13 +13,10 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Auth.OAuthClient
-  alias CodeMySpec.BddRules.RemoteSync, as: BddRulesRemoteSync
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Personas.RemoteSync, as: PersonasRemoteSync
-  alias CodeMySpec.Stories.RemoteSync, as: StoriesRemoteSync
 
   schema do
   end
@@ -64,13 +60,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
   defp run_remote_syncs(scope) do
     if OAuthClient.authenticated?() do
-      [
-        safe_sync("Stories", fn -> StoriesRemoteSync.sync(scope) end),
-        safe_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end),
-        safe_sync("Personas", fn -> PersonasRemoteSync.sync(scope) end),
-        safe_sync("BddRules", fn -> BddRulesRemoteSync.sync(scope) end)
-      ]
-      |> Enum.join("\n")
+      safe_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end)
     else
       "- Remote sync: skipped (not authenticated)"
     end

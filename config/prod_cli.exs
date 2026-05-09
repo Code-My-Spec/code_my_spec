@@ -1,13 +1,19 @@
 import Config
 
 config :code_my_spec, env: :prod_cli
-config :code_my_spec, stories_implementation: CodeMySpec.Stories.RemoteClient
-config :code_my_spec, personas_implementation: CodeMySpec.Personas.RemoteClient
-config :code_my_spec, bdd_rules_implementation: CodeMySpec.BddRules.RemoteClient
-config :code_my_spec, questions_implementation: CodeMySpec.Questions.RemoteClient
+
+# PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
+# Disable on the local CLI deployment; versions are still recorded but
+# `first_version_id` / `current_version_id` columns stay nil.
+config :paper_trail, strict_mode: false
+
+config :code_my_spec, stories_implementation: CodeMySpec.Stories.StoriesRepository
+config :code_my_spec, personas_implementation: CodeMySpec.Personas.PersonasRepository
+config :code_my_spec, bdd_rules_implementation: CodeMySpec.BddRules.BddRulesRepository
+config :code_my_spec, questions_implementation: CodeMySpec.Questions.QuestionsRepository
 
 config :code_my_spec,
-  acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.RemoteClient
+  acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
 
 # SQLite adapter for CLI mode
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3

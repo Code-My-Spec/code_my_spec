@@ -2,9 +2,9 @@ defmodule CodeMySpec.Personas do
   @moduledoc """
   The Personas context.
 
-  Delegates to either `PersonasRepository` (direct DB — server mode) or
-  `RemoteClient` (HTTP API — CLI mode) depending on the
-  `:personas_implementation` config key. Mirrors the Stories split.
+  Direct-DB implementation via `PersonasRepository`. The
+  `:personas_implementation` config key is kept as a swap point for test
+  doubles.
   """
 
   alias CodeMySpec.Personas.Persona

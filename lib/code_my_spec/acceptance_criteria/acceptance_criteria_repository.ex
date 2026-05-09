@@ -1,10 +1,6 @@
 defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
   @moduledoc """
   Direct-DB implementation of the AcceptanceCriteria interface.
-
-  Used on the server (canonical store, Postgres). The CLI swaps in
-  `AcceptanceCriteria.RemoteClient` via the `:acceptance_criteria_implementation`
-  config key.
   """
 
   import Ecto.Query, warn: false

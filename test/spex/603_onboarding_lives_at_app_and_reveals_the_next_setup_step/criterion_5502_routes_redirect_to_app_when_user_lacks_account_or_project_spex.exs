@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5502Spex do
   - Zero-account user visiting an account-required route (/app/projects)
     → 302 to /app
   - Account but zero projects, visiting a project-required route
-    (/app/stories) → 302 to /app
+    (/app/issues) → 302 to /app
 
   The rendering of the wizard at /app is covered separately by criteria
   5499 / 5500. This spec just confirms the redirect contract.
@@ -57,14 +57,14 @@ defmodule CodeMySpecSpex.Story603.Criterion5502Spex do
         {:ok, Map.merge(context, context)}
       end
 
-      when_ "the user visits /app/stories", context do
-        result = live(context.conn, "/app/stories")
+      when_ "the user visits /app/issues", context do
+        result = live(context.conn, "/app/issues")
         {:ok, Map.put(context, :result, result)}
       end
 
       then_ "the response is a redirect to /app", context do
         assert {:error, {kind, %{to: target}}} = context.result,
-               "expected a redirect from /app/stories, got: #{inspect(context.result)}"
+               "expected a redirect from /app/issues, got: #{inspect(context.result)}"
 
         assert kind in [:redirect, :live_redirect],
                "expected redirect-style navigation, got: #{inspect(kind)}"

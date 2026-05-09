@@ -4,7 +4,7 @@ defmodule CodeMySpec.Issues.IssuesSocket do
   issues channel and upserts issues into the local database when events arrive.
 
   Started from `CodeMySpecLocalWeb.SocketSupervisor` per local account, in
-  parallel with the initial bulk pull from `Stories.BootSync`. Reconnects
+  parallel with the initial bulk pull from `Issues.BootSync`. Reconnects
   automatically with a fresh OAuth token on disconnect.
   """
 

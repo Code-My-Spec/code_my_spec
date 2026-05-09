@@ -179,8 +179,7 @@ defmodule CodeMySpec.Personas.PersonasRepository do
 
   @doc """
   Returns {persona_id, story_id} pairs for every persona_stories row whose
-  story belongs to the given project in the active account. Used by
-  `Personas.RemoteSync` to replay link edges into the local DB.
+  story belongs to the given project in the active account.
   """
   @spec list_project_persona_story_links(Scope.t(), integer() | binary()) ::
           [{Ecto.UUID.t(), integer()}]

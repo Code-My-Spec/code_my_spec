@@ -8,11 +8,9 @@ defmodule CodeMySpec.Questions do
   count against the readiness gate (`scenarios > questions`); resolved
   and deferred are historical.
 
-  Mirrors the BddRules / Personas / Stories context split: delegates to
-  either `QuestionsRepository` (direct DB — server mode) or, in the
-  future, a `RemoteClient` (HTTP API — CLI mode) via the
-  `:questions_implementation` config key. RemoteClient + write-through
-  stack are not yet built; defaults to the Repository for now.
+  Direct-DB implementation via `QuestionsRepository`. The
+  `:questions_implementation` config key is kept as a swap point for test
+  doubles.
   """
 
   alias CodeMySpec.Questions.Question

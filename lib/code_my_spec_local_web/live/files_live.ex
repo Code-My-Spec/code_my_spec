@@ -10,16 +10,13 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.Auth.OAuthClient
-  alias CodeMySpec.BddRules.RemoteSync, as: BddRulesRemoteSync
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
-  alias CodeMySpec.Personas.RemoteSync, as: PersonasRemoteSync
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Stories.RemoteSync
   alias CodeMySpec.Users.Scope
 
   require Logger
@@ -139,17 +136,11 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   defp run_remote_syncs(scope) do
     if OAuthClient.authenticated?() do
       [
-        safe_remote_sync("Stories", fn -> RemoteSync.sync(scope) end),
-        safe_remote_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end),
-        safe_remote_sync("Personas", fn -> PersonasRemoteSync.sync(scope) end),
-        safe_remote_sync("BddRules", fn -> BddRulesRemoteSync.sync(scope) end)
+        safe_remote_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end)
       ]
     else
       [
-        {"Stories", "skipped — not authenticated"},
-        {"Issues", "skipped — not authenticated"},
-        {"Personas", "skipped — not authenticated"},
-        {"BddRules", "skipped — not authenticated"}
+        {"Issues", "skipped — not authenticated"}
       ]
     end
   end

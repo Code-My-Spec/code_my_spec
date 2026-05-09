@@ -1,6 +1,6 @@
-defmodule CodeMySpec.Stories.BootSync do
+defmodule CodeMySpec.Issues.BootSync do
   @moduledoc """
-  Syncs stories from the remote API on application boot.
+  Syncs issues from the remote API on application boot.
 
   Runs as a Task under the supervision tree — non-blocking,
   fire-and-forget. If the remote API is unavailable, logs a
@@ -13,12 +13,9 @@ defmodule CodeMySpec.Stories.BootSync do
 
   import Ecto.Query
 
-  alias CodeMySpec.BddRules.RemoteSync, as: BddRulesRemoteSync
   alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
-  alias CodeMySpec.Personas.RemoteSync, as: PersonasRemoteSync
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.Stories.RemoteSync
   alias CodeMySpec.Users.Scope
 
   def start_link(_opts) do
@@ -42,13 +39,7 @@ defmodule CodeMySpec.Stories.BootSync do
   end
 
   defp sync_with_scope(project, scope) do
-    Logger.info("[BootSync] Syncing stories for #{project.name}")
-    RemoteSync.sync(scope)
-    Logger.info("[BootSync] Stories synced for #{project.name}")
-
     log_sync_result("Issues", project.name, IssuesRemoteSync.sync(scope))
-    log_sync_result("Personas", project.name, PersonasRemoteSync.sync(scope))
-    log_sync_result("BddRules", project.name, BddRulesRemoteSync.sync(scope))
   end
 
   defp log_sync_result(label, project_name, :ok) do

@@ -5,10 +5,9 @@ defmodule CodeMySpec.AcceptanceCriteria do
   Acceptance criteria belong to stories and represent testable conditions
   that define when a story is complete.
 
-  Mirrors the Stories / BddRules / Personas pattern: delegates to either
-  `AcceptanceCriteriaRepository` (direct DB — server mode) or
-  `AcceptanceCriteria.RemoteClient` (HTTP API + write-through — CLI mode)
-  via the `:acceptance_criteria_implementation` config key.
+  Direct-DB implementation via `AcceptanceCriteriaRepository`. The
+  `:acceptance_criteria_implementation` config key is kept as a swap point
+  for test doubles.
   """
 
   alias CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository

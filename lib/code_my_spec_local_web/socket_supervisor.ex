@@ -14,7 +14,6 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.ProjectsSocket
   alias CodeMySpec.Repo
-  alias CodeMySpec.Stories.StoriesSocket
   alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL
 
@@ -60,7 +59,6 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
       {:ok, scope} ->
         [
           Supervisor.child_spec({ProjectsSocket, scope: scope}, id: {ProjectsSocket, account_id}),
-          Supervisor.child_spec({StoriesSocket, scope: scope}, id: {StoriesSocket, account_id}),
           Supervisor.child_spec({IssuesSocket, scope: scope}, id: {IssuesSocket, account_id})
         ]
 
