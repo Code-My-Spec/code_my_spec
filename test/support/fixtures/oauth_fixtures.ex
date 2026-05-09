@@ -30,4 +30,23 @@ defmodule CodeMySpec.OauthFixtures do
 
     struct(CodeMySpec.Oauth.Application, app)
   end
+
+  @doc """
+  Seeds the trusted `codemyspec-cli` OAuth application used by the
+  CLI's `/codemyspec:authenticate` flow. Trusted clients receive
+  silent approval — see `CodeMySpecWeb.OAuthController`.
+  """
+  def cli_oauth_application_fixture(attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Enum.into(%{
+        name: "CodeMySpec CLI",
+        uid: "codemyspec-cli",
+        secret: "",
+        redirect_uri: "http://localhost:9876/oauth/callback",
+        scopes: ""
+      })
+
+    oauth_application_fixture(attrs)
+  end
 end

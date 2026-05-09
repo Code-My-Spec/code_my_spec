@@ -1,0 +1,149 @@
+defmodule CodeMySpec.Analytics.GoogleAnalytics do
+  @moduledoc """
+  Server-side delivery of activation events to Google Analytics via
+  the Measurement Protocol (GA4).
+
+  Subscribed to `CodeMySpec.Analytics`'s telemetry event in
+  `application.ex`. Each dispatched event becomes a Measurement
+  Protocol payload posted to the configured endpoint.
+
+  Delivery is fire-and-forget per product direction — failures are
+  logged and dropped. No retry queue, no DLQ.
+
+  ## Configuration
+
+      config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics,
+        measurement_id: "G-XXXXXXX",
+        api_secret: System.fetch_env!("GA4_MP_API_SECRET"),
+        endpoint: "https://www.google-analytics.com/mp/collect",
+        http_adapter: CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter
+
+  In test, set `http_adapter` to a module that captures the payload
+  to a registered sink — see `attach_test_subscriber/1`.
+  """
+
+  require Logger
+
+  @telemetry_event CodeMySpec.Analytics.telemetry_event()
+
+  @doc """
+  Attaches the GA handler to the analytics telemetry stream. Called
+  from `application.ex`; safe to call multiple times.
+  """
+  def attach do
+    :telemetry.attach(
+      handler_id(),
+      @telemetry_event,
+      &__MODULE__.handle_event/4,
+      nil
+    )
+  end
+
+  @doc false
+  def handle_event(@telemetry_event, _measurements, metadata, _config) do
+    case Map.get(metadata, :origin, :server) do
+      :browser ->
+        # Browser-originated events are forwarded to GA by gtag on the
+        # client. Skipping MP delivery here avoids double-counting.
+        :ok
+
+      :server ->
+        payload = build_payload(metadata.event, metadata.payload)
+        deliver(payload)
+    end
+  end
+
+  @doc """
+  Registers `pid` to receive a copy of every Measurement Protocol
+  payload as `{:ga_measurement_protocol, payload}`. Used by spex
+  tests via the Fixtures bridge.
+  """
+  def attach_test_subscriber(pid) when is_pid(pid) do
+    :persistent_term.put({__MODULE__, :test_subscriber}, pid)
+    :ok
+  end
+
+  @doc "Removes the registered test subscriber, if any."
+  def detach_test_subscriber(_pid) do
+    :persistent_term.erase({__MODULE__, :test_subscriber})
+    :ok
+  end
+
+  defp build_payload(event_name, payload) do
+    user_id =
+      payload[:user_id] || payload["user_id"]
+
+    %{
+      client_id: client_id(user_id),
+      user_id: to_string_or_nil(user_id),
+      events: [
+        %{
+          name: to_string(event_name),
+          params: stringify_params(payload)
+        }
+      ]
+    }
+  end
+
+  defp client_id(nil), do: "anonymous"
+  defp client_id(user_id), do: "cms-" <> to_string(user_id)
+
+  defp to_string_or_nil(nil), do: nil
+  defp to_string_or_nil(value), do: to_string(value)
+
+  defp stringify_params(payload) do
+    payload
+    |> Map.delete(:user_id)
+    |> Map.delete("user_id")
+    |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  defp deliver(payload) do
+    case test_subscriber() do
+      nil -> deliver_via_http(payload)
+      pid -> send(pid, {:ga_measurement_protocol, payload})
+    end
+  end
+
+  defp test_subscriber do
+    case :persistent_term.get({__MODULE__, :test_subscriber}, nil) do
+      nil -> nil
+      pid -> if Process.alive?(pid), do: pid
+    end
+  end
+
+  defp deliver_via_http(payload) do
+    config = Application.get_env(:code_my_spec, __MODULE__, [])
+
+    measurement_id = Keyword.get(config, :measurement_id)
+    api_secret = Keyword.get(config, :api_secret)
+
+    if is_nil(measurement_id) or is_nil(api_secret) do
+      Logger.debug("GA Measurement Protocol skipped: missing measurement_id or api_secret")
+      :ok
+    else
+      endpoint =
+        Keyword.get(config, :endpoint, "https://www.google-analytics.com/mp/collect")
+
+      adapter = Keyword.get(config, :http_adapter, __MODULE__.HTTPAdapter)
+
+      url =
+        endpoint <>
+          "?" <>
+          URI.encode_query(%{"measurement_id" => measurement_id, "api_secret" => api_secret})
+
+      try do
+        adapter.post(url, payload)
+      rescue
+        err -> Logger.warning("GA Measurement Protocol delivery raised: #{inspect(err)}")
+      catch
+        kind, reason ->
+          Logger.warning("GA Measurement Protocol delivery threw: #{inspect({kind, reason})}")
+      end
+
+      :ok
+    end
+  end
+
+  defp handler_id, do: {__MODULE__, :ga_measurement_protocol}
+end

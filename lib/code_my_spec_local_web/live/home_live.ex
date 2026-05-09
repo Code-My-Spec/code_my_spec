@@ -52,8 +52,6 @@ defmodule CodeMySpecLocalWeb.HomeLive do
           <.dash_card title="Configuration" href={~p"/projects/#{@slug}/configuration"} desc="Quality gate and analyzer settings." />
 
           <.dash_card title="Requirements" href={~p"/projects/#{@slug}/requirements"} desc="Project-level requirement graph." />
-          <.dash_card title="Components" href={~p"/projects/#{@slug}/components"} desc="Component inventory and dependencies." />
-          <.dash_card title="Architecture" href={~p"/projects/#{@slug}/architecture"} desc="Dependency graph and namespace hierarchy." />
           <.dash_card title="Stories" href={~p"/projects/#{@slug}/stories"} desc="User stories and acceptance criteria." />
 
           <.dash_card title="Issues" href={~p"/projects/#{@slug}/issues"} desc="Open problems and incoming triage." />

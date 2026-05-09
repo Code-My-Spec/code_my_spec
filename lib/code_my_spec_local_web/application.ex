@@ -34,7 +34,8 @@ defmodule CodeMySpecLocalWeb.Application do
       CodeMySpecLocalWeb.Endpoint,
       CodeMySpec.ProjectSync.FileWatcherServer,
       CodeMySpecLocalWeb.SocketSupervisor,
-      CodeMySpec.Stories.BootSync
+      CodeMySpec.Stories.BootSync,
+      CodeMySpecCli.PresenceClient
     ]
 
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]

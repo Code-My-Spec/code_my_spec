@@ -6,8 +6,8 @@ defmodule CodeMySpec.Tags do
   """
 
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Tags.Tag
   alias CodeMySpec.Tags.StoryTag
+  alias CodeMySpec.Tags.Tag
   alias CodeMySpec.Tags.TagRepository
   alias CodeMySpec.Users.Scope
 

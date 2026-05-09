@@ -43,9 +43,6 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/stories/:story_id", RequirementsLive, :story_show
       live "/projects/:project_name/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
 
-      live "/projects/:project_name/architecture", ArchitectureLive, :dependency_graph
-      live "/projects/:project_name/architecture/overview", ArchitectureLive, :overview
-      live "/projects/:project_name/architecture/namespaces", ArchitectureLive, :namespaces
       live "/projects/:project_name/issues", IssuesLive.Index, :index
       live "/projects/:project_name/issues/:id", IssuesLive.Show, :show
       live "/projects/:project_name/sessions", SessionsLive, :index

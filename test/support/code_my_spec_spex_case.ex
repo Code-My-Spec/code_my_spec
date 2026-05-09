@@ -15,8 +15,8 @@ defmodule CodeMySpecSpex.Case do
   """
   use ExUnit.CaseTemplate
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
 
   using do
     quote do
@@ -119,5 +119,25 @@ defmodule CodeMySpecSpex.Case do
     conn
     |> Phoenix.ConnTest.init_test_session(%{})
     |> Plug.Conn.put_session(:user_token, token)
+  end
+
+  @doc """
+  Synchronously drains the channel's mailbox so callbacks like
+  `:after_join` have run before the next observation.
+
+  Phoenix channels send `:after_join` to themselves and process it
+  asynchronously. Without this barrier, a test that joins a channel
+  and then immediately observes the LiveView can see stale state —
+  the channel hasn't yet called `Presence.track`, so no diff has
+  been broadcast.
+
+  Use after `subscribe_and_join/3`:
+
+      {:ok, _reply, channel_socket} = subscribe_and_join(...)
+      wait_for_channel(channel_socket)
+  """
+  def wait_for_channel(%Phoenix.Socket{channel_pid: pid} = socket) do
+    :sys.get_state(pid)
+    socket
   end
 end

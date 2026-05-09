@@ -7,13 +7,20 @@ defmodule CodeMySpecWeb.OAuthController do
 
   use CodeMySpecWeb, :controller
 
-  alias ExOauth2Provider.{Authorization, Token}
   alias CodeMySpec.Oauth
+  alias ExOauth2Provider.{Authorization, Token}
 
   @doc """
   GET /oauth/authorize
   Shows the authorization page to the user
   """
+  # First-party clients that skip the consent screen for already-authenticated
+  # users. The CLI's `/codemyspec:authenticate` flow opens the user's browser
+  # against /oauth/authorize from the same machine they're already signed
+  # into; rendering a consent page there would be friction for no security
+  # gain — they're already on a session bound to the same account.
+  @trusted_clients ~w(codemyspec-cli)
+
   def authorize(conn, params) do
     case conn.assigns[:current_scope] do
       nil ->
@@ -26,28 +33,59 @@ defmodule CodeMySpecWeb.OAuthController do
         |> redirect(to: ~p"/users/log-in")
 
       scope ->
-        case Authorization.preauthorize(scope.user, params, otp_app: :code_my_spec) do
-          {:ok, client, scopes} ->
-            render(conn, :authorize, client: client, scopes: scopes, params: params)
+        scope.user
+        |> Authorization.preauthorize(params, otp_app: :code_my_spec)
+        |> handle_preauthorize(conn, scope, params)
+    end
+  end
 
-          {:redirect, redirect_uri} ->
-            redirect(conn, external: redirect_uri)
+  defp handle_preauthorize({:ok, %{uid: uid} = _client, _scopes}, conn, scope, params)
+       when uid in @trusted_clients do
+    authorize_trusted_client(conn, scope, params)
+  end
 
-          {:native_redirect, payload} ->
-            json(conn, payload)
+  defp handle_preauthorize({:ok, client, scopes}, conn, _scope, params) do
+    render(conn, :authorize, client: client, scopes: scopes, params: params)
+  end
 
-          {:error, error, http_status} ->
-            require Logger
+  defp handle_preauthorize({:redirect, redirect_uri}, conn, _scope, _params) do
+    redirect(conn, external: redirect_uri)
+  end
 
-            Logger.error(
-              "OAuth preauthorize failed: #{inspect(error)}, params: #{inspect(params)}"
-            )
+  defp handle_preauthorize({:native_redirect, payload}, conn, _scope, _params) do
+    json(conn, payload)
+  end
 
-            conn
-            |> put_status(http_status)
-            |> put_flash(:error, "OAuth authorization error: #{inspect(error)}")
-            |> redirect(to: ~p"/")
-        end
+  defp handle_preauthorize({:error, error, http_status}, conn, _scope, params) do
+    require Logger
+
+    Logger.error("OAuth preauthorize failed: #{inspect(error)}, params: #{inspect(params)}")
+
+    conn
+    |> put_status(http_status)
+    |> put_flash(:error, "OAuth authorization error: #{inspect(error)}")
+    |> redirect(to: ~p"/")
+  end
+
+  defp authorize_trusted_client(conn, scope, params) do
+    case Authorization.authorize(scope.user, params, otp_app: :code_my_spec) do
+      {:redirect, redirect_uri} ->
+        redirect(conn, external: redirect_uri)
+
+      {:native_redirect, payload} ->
+        json(conn, payload)
+
+      {:error, error, http_status} ->
+        require Logger
+
+        Logger.error(
+          "Trusted-client OAuth authorize failed: #{inspect(error)}, params: #{inspect(params)}"
+        )
+
+        conn
+        |> put_status(http_status)
+        |> put_flash(:error, "OAuth authorization error: #{inspect(error)}")
+        |> redirect(to: ~p"/")
     end
   end
 

@@ -81,8 +81,8 @@ defmodule CodeMySpecSpex.Story605.Criterion5511Spex do
         assert rendered =~ "plugin marketplace add",
                "expected the Claude Code install instructions on /app for a returning user"
 
-        assert rendered =~ "Install the Claude Code extension",
-               "expected the 'Install the Claude Code extension' card heading"
+        assert rendered =~ "Install CodeMySpec",
+               "expected the 'Install CodeMySpec' onboarding card heading"
 
         {:ok, context}
       end

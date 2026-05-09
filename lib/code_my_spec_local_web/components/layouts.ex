@@ -126,8 +126,6 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}"} active={@section == :overview}>Overview</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/requirements"} active={@section == :requirements}>Requirements</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/requirements/graph"} active={@section == :requirements_graph}>Requirements Graph</.nav_link></li>
-      <li><.nav_link to={~p"/projects/#{project_slug(@project)}/components"} active={@section == :components}>Components</.nav_link></li>
-      <li><.nav_link to={~p"/projects/#{project_slug(@project)}/architecture"} active={@section == :architecture}>Architecture</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/stories"} active={@section == :stories}>Stories</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/issues"} active={@section == :issues}>Issues</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/sessions"} active={@section == :sessions}>Sessions</.nav_link></li>
@@ -199,8 +197,6 @@ defmodule CodeMySpecLocalWeb.Layouts do
   defp section_label(:next_task), do: "Next Task"
   defp section_label(:requirements), do: "Requirements"
   defp section_label(:requirements_graph), do: "Requirements Graph"
-  defp section_label(:components), do: "Components"
-  defp section_label(:architecture), do: "Architecture"
   defp section_label(:stories), do: "Stories"
   defp section_label(:issues), do: "Issues"
   defp section_label(:sessions), do: "Sessions"

@@ -6,7 +6,7 @@ defmodule CodeMySpec.Users do
   import Ecto.Query, warn: false
   alias CodeMySpec.Repo
 
-  alias CodeMySpec.Users.{User, UserToken, UserNotifier}
+  alias CodeMySpec.Users.{User, UserNotifier, UserToken}
 
   ## Database getters
 
@@ -59,6 +59,28 @@ defmodule CodeMySpec.Users do
 
   """
   def get_user!(id), do: Repo.get!(User, id)
+
+  @doc """
+  Returns true if the user's CLI has ever joined Presence at least
+  once (i.e. `cli_first_connected_at` is set).
+  """
+  def cli_ever_connected?(%User{cli_first_connected_at: nil}), do: false
+  def cli_ever_connected?(%User{}), do: true
+
+  @doc """
+  Stamps `cli_first_connected_at` on the user if it isn't already set.
+  Idempotent: a no-op for users who have already connected.
+  Returns the (possibly updated) user struct.
+  """
+  def mark_cli_first_connect(%User{cli_first_connected_at: %DateTime{}} = user), do: {:ok, user}
+
+  def mark_cli_first_connect(%User{} = user) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    user
+    |> Ecto.Changeset.change(%{cli_first_connected_at: now})
+    |> Repo.update()
+  end
 
   ## User registration
 

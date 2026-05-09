@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Fixtures do
     Components,
     EnvironmentFixtures,
     Environments,
+    OauthFixtures,
     ProblemsFixtures,
     ProjectsFixtures,
     QaIntegrationPlanFixtures,
@@ -121,4 +122,24 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Problems --
   defdelegate problem_fixture(scope, attrs \\ %{}), to: ProblemsFixtures
+
+  # -- OAuth (CLI client for Story 698) --
+  defdelegate cli_oauth_application_fixture(attrs \\ %{}), to: OauthFixtures
+
+  # -- Analytics (Story 698) --
+  defdelegate attach_analytics_test_subscriber(pid),
+    to: CodeMySpec.Analytics,
+    as: :attach_test_subscriber
+
+  defdelegate detach_analytics_test_subscriber(pid),
+    to: CodeMySpec.Analytics,
+    as: :detach_test_subscriber
+
+  defdelegate attach_ga_test_subscriber(pid),
+    to: CodeMySpec.Analytics.GoogleAnalytics,
+    as: :attach_test_subscriber
+
+  defdelegate detach_ga_test_subscriber(pid),
+    to: CodeMySpec.Analytics.GoogleAnalytics,
+    as: :detach_test_subscriber
 end

@@ -5,6 +5,8 @@ defmodule CodeMySpecWeb.Application do
 
   use Application
 
+  alias CodeMySpec.Analytics.GoogleAnalytics
+
   @impl true
   def start(_type, _args) do
     env = Application.get_env(:code_my_spec, :env, :prod)
@@ -30,7 +32,15 @@ defmodule CodeMySpecWeb.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    case Supervisor.start_link(children, opts) do
+      {:ok, _pid} = ok ->
+        GoogleAnalytics.attach()
+        ok
+
+      other ->
+        other
+    end
   end
 
   def children(children, :dev) do

@@ -292,17 +292,11 @@ defmodule CodeMySpecWeb.Router do
       live "/stories/:id/three-amigos", StoryLive.ThreeAmigos
       live "/stories/:id/gherkin", StoryLive.Gherkin
 
-      live "/components", ComponentLive.Index, :index
-      live "/components/new", ComponentLive.Form, :new
-      live "/components/:id/edit", ComponentLive.Form, :edit
-
       live "/content_admin", ContentAdminLive.Index, :index
       live "/content_admin/:id", ContentAdminLive.Show, :show
 
       live "/issues", IssuesLive.Index, :index
       live "/issues/:id", IssuesLive.Show, :show
-
-      live "/architecture", ArchitectureLive.Index, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password

@@ -1,5 +1,6 @@
 defmodule CodeMySpecWeb.UserSocket do
   use Phoenix.Socket
+  require Logger
 
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
@@ -20,6 +21,7 @@ defmodule CodeMySpecWeb.UserSocket do
   channel "criteria:*", CodeMySpecWeb.AcceptanceCriteriaChannel
   channel "questions:*", CodeMySpecWeb.QuestionsChannel
   channel "personas:*", CodeMySpecWeb.PersonasChannel
+  channel "cli:user:*", CodeMySpecWeb.CliChannel
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
@@ -43,20 +45,28 @@ defmodule CodeMySpecWeb.UserSocket do
           user = Users.get_user!(user_id)
           scope = Scope.for_user(user)
 
+          Logger.info("[UserSocket] connect ok user_id=#{user.id}")
+
           {:ok,
            socket
            |> assign(:user_id, user.id)
            |> assign(:scope, scope)}
         else
+          Logger.warning("[UserSocket] connect refused — token expired/revoked")
           :error
         end
 
       nil ->
+        Logger.warning("[UserSocket] connect refused — token not found")
         :error
     end
   end
 
-  def connect(_params, _socket, _connect_info) do
+  def connect(params, _socket, _connect_info) do
+    Logger.warning(
+      "[UserSocket] connect refused — missing token (params keys: #{inspect(Map.keys(params))})"
+    )
+
     :error
   end
 
