@@ -136,11 +136,9 @@ defmodule CodeMySpec.Logging.LogfmtFormatter do
   end
 
   defp format_msg({fmt, args}, max_len) when (is_list(fmt) or is_binary(fmt)) and is_list(args) do
-    try do
-      fmt |> :io_lib.format(args) |> IO.iodata_to_binary() |> truncate(max_len)
-    rescue
-      _ -> {fmt, args} |> inspect() |> truncate(max_len)
-    end
+    fmt |> :io_lib.format(args) |> IO.iodata_to_binary() |> truncate(max_len)
+  rescue
+    _ -> {fmt, args} |> inspect() |> truncate(max_len)
   end
 
   defp format_msg(other, max_len), do: other |> inspect() |> truncate(max_len)

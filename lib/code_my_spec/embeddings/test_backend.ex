@@ -76,9 +76,8 @@ defmodule CodeMySpec.Embeddings.TestBackend do
 
     results =
       :ets.tab2list(@table)
-      |> Enum.filter(fn {{pid, _src, _path, _idx}, _content} -> pid == project_id end)
-      |> Enum.filter(fn {{_pid, src, _path, _idx}, _content} ->
-        source_match?(src, source, source_prefix)
+      |> Enum.filter(fn {{pid, src, _path, _idx}, _content} ->
+        pid == project_id and source_match?(src, source, source_prefix)
       end)
       |> Enum.map(fn {{_pid, src, path, idx}, content} ->
         score = -overlap_score(query_tokens, content)

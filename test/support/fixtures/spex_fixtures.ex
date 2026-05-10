@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Fixtures do
     BddSpecs,
     CodeGenerationFixtures,
     Components,
+    EmbeddingsFixtures,
     EnvironmentFixtures,
     Environments,
     OauthFixtures,
@@ -89,6 +90,9 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate integration_spec_exists?(env, name), to: QaIntegrationPlanFixtures
   defdelegate integration_index_exists?(env), to: QaIntegrationPlanFixtures
   defdelegate verify_script_exists?(env, name), to: QaIntegrationPlanFixtures
+
+  # -- Embeddings --
+  defdelegate write_framework_knowledge_file(dir, filename, content), to: EmbeddingsFixtures
 
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures

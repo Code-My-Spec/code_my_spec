@@ -83,20 +83,20 @@ defmodule CodeMySpec.Embeddings do
 
   defp do_sync_framework_knowledge(scope, knowledge_dir) do
     if File.dir?(knowledge_dir) do
-      files = walk_markdown_files(knowledge_dir)
+      knowledge_dir
+      |> walk_markdown_files()
+      |> Enum.each(&embed_knowledge_file(scope, knowledge_dir, &1))
+    end
 
-      Enum.each(files, fn abs_path ->
-        rel = Path.relative_to(abs_path, knowledge_dir)
+    :ok
+  end
 
-        case File.read(abs_path) do
-          {:ok, content} -> embed_file(scope, "knowledge", rel, content)
-          {:error, _} -> :ok
-        end
-      end)
+  defp embed_knowledge_file(scope, knowledge_dir, abs_path) do
+    rel = Path.relative_to(abs_path, knowledge_dir)
 
-      :ok
-    else
-      :ok
+    case File.read(abs_path) do
+      {:ok, content} -> embed_file(scope, "knowledge", rel, content)
+      {:error, _} -> :ok
     end
   end
 

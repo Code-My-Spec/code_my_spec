@@ -22,7 +22,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   require Logger
 
-
   alias CodeMySpec.{BddSpecs, Components, Environments, Issues, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector

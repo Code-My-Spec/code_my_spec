@@ -130,23 +130,28 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
     if Map.has_key?(state.watchers, project_root) do
       {:noreply, state}
     else
-      case start_watcher(project_root) do
-        {:ok, watcher_pid} ->
-          entry = %{watcher_pid: watcher_pid, scope: scope}
-          watchers = Map.put(state.watchers, project_root, entry)
+      do_watch(project_root, scope, state)
+    end
+  end
 
-          lock_mtimes =
-            case lock_mtime(project_root) do
-              nil -> state.lock_mtimes
-              mtime -> Map.put(state.lock_mtimes, project_root, mtime)
-            end
+  defp do_watch(project_root, scope, state) do
+    case start_watcher(project_root) do
+      {:ok, watcher_pid} ->
+        entry = %{watcher_pid: watcher_pid, scope: scope}
+        watchers = Map.put(state.watchers, project_root, entry)
+        lock_mtimes = put_lock_mtime(state.lock_mtimes, project_root)
+        {:noreply, %{state | watchers: watchers, lock_mtimes: lock_mtimes}}
 
-          {:noreply, %{state | watchers: watchers, lock_mtimes: lock_mtimes}}
+      {:error, reason} ->
+        Logger.warning("[FileWatcher] Could not watch #{project_root}: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
 
-        {:error, reason} ->
-          Logger.warning("[FileWatcher] Could not watch #{project_root}: #{inspect(reason)}")
-          {:noreply, state}
-      end
+  defp put_lock_mtime(lock_mtimes, project_root) do
+    case lock_mtime(project_root) do
+      nil -> lock_mtimes
+      mtime -> Map.put(lock_mtimes, project_root, mtime)
     end
   end
 
@@ -217,23 +222,32 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
   defp poll_locks(state) do
     Enum.reduce(state.watchers, state, fn {project_root, _entry}, acc ->
-      case lock_mtime(project_root) do
-        nil ->
-          acc
-
-        mtime ->
-          previous = Map.get(acc.lock_mtimes, project_root)
-
-          if previous && previous != mtime do
-            Logger.info("[FileWatcher] mix.lock changed for #{project_root}, scheduling hex sync")
-            schedule_hex_sync(acc, project_root)
-          else
-            acc
-          end
-          |> put_in([Access.key!(:lock_mtimes), project_root], mtime)
-      end
+      poll_lock(acc, project_root)
     end)
   end
+
+  defp poll_lock(state, project_root) do
+    case lock_mtime(project_root) do
+      nil -> state
+      mtime -> apply_lock_mtime(state, project_root, mtime)
+    end
+  end
+
+  defp apply_lock_mtime(state, project_root, mtime) do
+    previous = Map.get(state.lock_mtimes, project_root)
+
+    state
+    |> maybe_schedule_hex_sync(project_root, previous, mtime)
+    |> put_in([Access.key!(:lock_mtimes), project_root], mtime)
+  end
+
+  defp maybe_schedule_hex_sync(state, project_root, previous, mtime)
+       when not is_nil(previous) and previous != mtime do
+    Logger.info("[FileWatcher] mix.lock changed for #{project_root}, scheduling hex sync")
+    schedule_hex_sync(state, project_root)
+  end
+
+  defp maybe_schedule_hex_sync(state, _project_root, _previous, _mtime), do: state
 
   defp schedule_hex_sync(state, project_root) do
     if existing = Map.get(state.hex_sync_timers, project_root) do

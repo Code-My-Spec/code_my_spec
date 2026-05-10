@@ -57,20 +57,18 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   def project_package(%Scope{} = scope, package, opts \\ []) when is_binary(package) do
     cwd = scope.cwd || scope.environment.cwd
 
-    cond do
-      not hex_dep?(cwd, package) ->
-        :ok
+    if hex_dep?(cwd, package) do
+      build_rel = Keyword.get(opts, :build_dir, "_build/dev/lib")
+      ebin_dir = Path.join([cwd, build_rel, package, "ebin"])
 
-      true ->
-        build_rel = Keyword.get(opts, :build_dir, "_build/dev/lib")
-        ebin_dir = Path.join([cwd, build_rel, package, "ebin"])
-
-        if File.dir?(ebin_dir) do
-          project_package_from_ebin(scope, package, ebin_dir)
-        else
-          # Package was uninstalled — drop every projected module.
-          drop_orphan_modules(scope, package, MapSet.new())
-        end
+      if File.dir?(ebin_dir) do
+        project_package_from_ebin(scope, package, ebin_dir)
+      else
+        # Package was uninstalled — drop every projected module.
+        drop_orphan_modules(scope, package, MapSet.new())
+      end
+    else
+      :ok
 
         :ok
     end
@@ -145,25 +143,29 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   defp strip_elixir_prefix(other), do: other
 
   defp write_module_files(scope, pkg, docs) do
-    Enum.each(docs, fn {mod_name, markdown} ->
-      target = Path.join([Paths.hex_docs_dir(), pkg, mod_name <> ".md"])
+    Enum.each(docs, &write_module_file(scope, pkg, &1))
+  end
 
-      # Skip writes when the on-disk content already matches. Avoids
-      # bumping mtime (and firing a downstream watcher event) for
-      # idempotent re-projection — e.g., when the safety-net stop
-      # hook re-runs the projector after every sync.
-      if needs_write?(scope, target, markdown) do
-        case Environments.write_file(scope.environment, target, markdown) do
-          :ok ->
-            :ok
+  # Skip writes when the on-disk content already matches. Avoids bumping
+  # mtime (and firing a downstream watcher event) for idempotent
+  # re-projection — e.g., the safety-net stop hook re-running the
+  # projector after every sync.
+  defp write_module_file(scope, pkg, {mod_name, markdown}) do
+    target = Path.join([Paths.hex_docs_dir(), pkg, mod_name <> ".md"])
 
-          {:error, reason} ->
-            Logger.warning(
-              "[HexDocProjector] write_file failed for #{target}: #{inspect(reason)}"
-            )
-        end
-      end
-    end)
+    if needs_write?(scope, target, markdown) do
+      do_write_module_file(scope, target, markdown)
+    end
+  end
+
+  defp do_write_module_file(scope, target, markdown) do
+    case Environments.write_file(scope.environment, target, markdown) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[HexDocProjector] write_file failed for #{target}: #{inspect(reason)}")
+    end
   end
 
   defp needs_write?(scope, target, markdown) do
@@ -180,17 +182,20 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
 
     scope.environment
     |> Environments.glob(pattern)
-    |> Enum.each(fn path ->
-      case package_from_projected_path(path) do
-        nil ->
-          :ok
+    |> Enum.each(&maybe_drop_orphan_path(scope, installed_packages, &1))
+  end
 
-        pkg ->
-          unless MapSet.member?(installed_packages, pkg) do
-            Environments.delete_file(scope.environment, path)
-          end
-      end
-    end)
+  defp maybe_drop_orphan_path(scope, installed_packages, path) do
+    case package_from_projected_path(path) do
+      nil -> :ok
+      pkg -> drop_if_orphan(scope, installed_packages, pkg, path)
+    end
+  end
+
+  defp drop_if_orphan(scope, installed_packages, pkg, path) do
+    unless MapSet.member?(installed_packages, pkg) do
+      Environments.delete_file(scope.environment, path)
+    end
   end
 
   # Pulls the package segment out of a projected file path, regardless

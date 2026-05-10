@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5975Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @bundled_filename "liveview.md"
@@ -57,7 +58,11 @@ defmodule CodeMySpecSpex.Story688.Criterion5975Spex do
   spex "Agent sees updated framework knowledge after a CodeMySpec upgrade" do
     scenario "bundled knowledge file content changes after upgrade and sync" do
       given_ "the framework's bundled knowledge corpus has been embedded for v1", context do
-        File.write!(Path.join(context.framework_knowledge_dir, @bundled_filename), @v1_content)
+        Fixtures.write_framework_knowledge_file(
+          context.framework_knowledge_dir,
+          @bundled_filename,
+          @v1_content
+        )
 
         {:ok, files_live, _html} =
           live(context.conn, "/projects/#{context.project.name}/files")
@@ -70,7 +75,11 @@ defmodule CodeMySpecSpex.Story688.Criterion5975Spex do
       end
 
       when_ "the user upgrades and the bundled file ships v2 content, then re-syncs", context do
-        File.write!(Path.join(context.framework_knowledge_dir, @bundled_filename), @v2_content)
+        Fixtures.write_framework_knowledge_file(
+          context.framework_knowledge_dir,
+          @bundled_filename,
+          @v2_content
+        )
 
         {:ok, files_live, _html} =
           live(context.conn, "/projects/#{context.project.name}/files")
