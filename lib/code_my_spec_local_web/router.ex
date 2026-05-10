@@ -29,6 +29,9 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/next-task", Tasks.NextTaskLive
       live "/projects/:project_name/requirements", RequirementsLive, :index
       live "/projects/:project_name/requirements/graph", RequirementsLive, :graph
+      # Requirements view of stories (graph projection — distinct from admin).
+      # Must come before the `:name` catch-all below.
+      live "/projects/:project_name/requirements/stories", RequirementsLive, :stories
       live "/projects/:project_name/requirements/:name", RequirementsLive, :show
       live "/projects/:project_name/requirements/:name/:child_id", RequirementsLive, :child
 
@@ -39,10 +42,23 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
       live "/projects/:project_name/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
 
-      live "/projects/:project_name/stories", RequirementsLive, :stories
-      live "/projects/:project_name/stories/:story_id", RequirementsLive, :story_show
-      live "/projects/:project_name/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+      # Stories admin — static segments first so they win over `:id`
+      live "/projects/:project_name/stories", StoryLive.Index, :index
+      live "/projects/:project_name/stories/scheduler", StoryLive.Scheduler, :index
+      live "/projects/:project_name/stories/new", StoryLive.Form, :new
+      live "/projects/:project_name/stories/import", StoryLive.Import, :import
+      live "/projects/:project_name/stories/:id", StoryLive.Show, :show
+      live "/projects/:project_name/stories/:id/edit", StoryLive.Form, :edit
       live "/projects/:project_name/stories/:id/three-amigos", StoryLive.ThreeAmigos
+      live "/projects/:project_name/stories/:id/gherkin", StoryLive.Gherkin
+      # Requirements view of a story (graph projection — distinct from admin Show)
+      live "/projects/:project_name/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+
+      live "/projects/:project_name/personas", PersonasLive.Index, :index
+      live "/projects/:project_name/personas/new", PersonasLive.Index, :new
+      live "/projects/:project_name/personas/:slug", PersonasLive.Show, :show
+      live "/projects/:project_name/personas/:slug/edit", PersonasLive.Show, :edit
+      live "/projects/:project_name/personas/:slug/link", PersonasLive.Show, :link
 
       live "/projects/:project_name/issues", IssuesLive.Index, :index
       live "/projects/:project_name/issues/:id", IssuesLive.Show, :show

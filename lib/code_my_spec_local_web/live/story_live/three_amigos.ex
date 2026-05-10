@@ -744,27 +744,29 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
   defp wall_styles(assigns) do
     ~H"""
     <style>
+      /* All colors come from the active daisyUI theme (cyberpunk, light, dark, …)
+       * via its --color-* tokens, so the wall blends with whatever theme is set. */
       .wv4-root {
-        --wall-bg: #050308;
-        --wall-bg-2: #0b0f18;
-        --wall-ink: oklch(85% 0.005 256);
-        --wall-ink-mid: oklch(68% 0.006 256);
-        --wall-ink-dim: oklch(52% 0.008 256);
-        --wall-line: oklch(22% 0.01 256);
-        --wall-line-hi: oklch(30% 0.012 256);
-        --wall-card: #0b0f18;
-        --wall-card-hi: #111827;
-        --wall-accent: #f97316;
-        --wall-accent-soft: oklch(40% 0.14 45 / 0.18);
-        --wall-secondary: #7e22ce;
-        --wall-aqua: #22d3ee;
-        --wall-sand: #fbbf77;
-        --wall-q: #fbbf77;
-        --wall-q-soft: oklch(30% 0.08 70 / 0.18);
-        --wall-ok: oklch(60% 0.118 184.704);
-        --wall-serif: "Space Grotesk", system-ui, sans-serif;
-        --wall-sans: "Inter", system-ui, sans-serif;
-        --wall-mono: "JetBrains Mono", ui-monospace, monospace;
+        --wall-bg: var(--color-base-100);
+        --wall-bg-2: var(--color-base-200);
+        --wall-ink: var(--color-base-content);
+        --wall-ink-mid: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        --wall-ink-dim: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+        --wall-line: var(--color-base-300);
+        --wall-line-hi: color-mix(in oklch, var(--color-base-content) 25%, transparent);
+        --wall-card: var(--color-base-100);
+        --wall-card-hi: var(--color-base-200);
+        --wall-accent: var(--color-primary);
+        --wall-accent-soft: color-mix(in oklch, var(--color-primary) 18%, transparent);
+        --wall-secondary: var(--color-secondary);
+        --wall-aqua: var(--color-info);
+        --wall-sand: var(--color-warning);
+        --wall-q: var(--color-warning);
+        --wall-q-soft: color-mix(in oklch, var(--color-warning) 18%, transparent);
+        --wall-ok: var(--color-success);
+        --wall-serif: var(--font-sans, system-ui, sans-serif);
+        --wall-sans: var(--font-sans, system-ui, sans-serif);
+        --wall-mono: var(--font-mono, ui-monospace, monospace);
         font-family: var(--wall-sans);
         color: var(--wall-ink);
         background: var(--wall-bg);
@@ -774,18 +776,20 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        margin: -1rem;
+        margin: -1.5rem -2rem;
       }
-      .wv4-root.sealed { filter: saturate(0.5) brightness(0.82); }
+      .wv4-root.sealed { filter: saturate(0.5) brightness(0.92); }
       .wv4-root *, .wv4-root *::before, .wv4-root *::after { box-sizing: border-box; }
       .wv4-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
-      .wv4-wall { flex: 1; min-width: 0; position: relative; overflow: auto; background-color: var(--wall-bg);
-        background-image: radial-gradient(circle at 18% 25%, oklch(25% 0.08 45 / 0.35) 0, transparent 45%), radial-gradient(circle at 82% 72%, oklch(22% 0.09 300 / 0.3) 0, transparent 45%); }
-      .wv4-wall.empty { background-image: radial-gradient(circle at 18% 25%, oklch(25% 0.08 45 / 0.35) 0, transparent 45%), radial-gradient(circle at 82% 72%, oklch(22% 0.09 300 / 0.3) 0, transparent 45%), radial-gradient(circle at 1px 1px, oklch(25% 0.012 256) 1px, transparent 0); background-size: auto, auto, 24px 24px; }
+      .wv4-wall { flex: 1; min-width: 0; position: relative; overflow: auto; background-color: var(--wall-bg); }
+      .wv4-wall.empty {
+        background-image: radial-gradient(circle at 1px 1px, var(--wall-line) 1px, transparent 0);
+        background-size: 24px 24px;
+      }
       .wv4-canvas { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; padding: 1.5rem; align-content: start; }
       .wv4-rule-column { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-      .wv4-card { position: relative; background: var(--wall-card); border: 1.5px solid var(--wall-line); border-radius: 0.5rem; box-shadow: 0 1px 2px oklch(0% 0 0 / 0.4), 0 6px 16px oklch(0% 0 0 / 0.35); transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; min-width: 0; }
-      .wv4-card:hover { border-color: var(--wall-line-hi); background: var(--wall-card-hi); box-shadow: 0 2px 4px oklch(0% 0 0 / 0.5), 0 10px 28px oklch(0% 0 0 / 0.45); transform: translateY(-1px); }
+      .wv4-card { position: relative; background: var(--wall-card); border: 1.5px solid var(--wall-line); border-radius: 0.5rem; box-shadow: 0 1px 2px color-mix(in oklch, var(--color-base-content) 8%, transparent); transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; min-width: 0; }
+      .wv4-card:hover { border-color: var(--wall-line-hi); background: var(--wall-card-hi); box-shadow: 0 4px 14px color-mix(in oklch, var(--color-base-content) 15%, transparent); transform: translateY(-1px); }
       .wv4-rule { padding: 16px 18px 14px; }
       .wv4-rule-id { font-family: var(--wall-mono); font-size: 10px; color: var(--wall-aqua); letter-spacing: 0.08em; text-transform: uppercase; }
       .wv4-rule-title { font-family: var(--wall-serif); font-size: 17px; line-height: 1.25; font-weight: 600; margin: 6px 0 8px; letter-spacing: -0.01em; color: var(--wall-ink); }
@@ -829,24 +833,25 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
       .wv4-ribbon-target { font-family: var(--wall-mono); color: var(--wall-accent); }
       .wv4-ribbon-detail { color: var(--wall-ink-dim); font-style: italic; }
       .wv4-ribbon-chev { margin-left: auto; font-family: var(--wall-mono); font-size: 10px; color: var(--wall-ink-dim); }
-      .wv4-sealed-stamp { position: absolute; top: 20px; right: 20px; border: 2px solid var(--wall-ok); color: var(--wall-ok); padding: 7px 14px; font-family: var(--wall-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; transform: rotate(-4deg); background: oklch(20% 0.04 184 / 0.5); border-radius: 0.25rem; z-index: 5; font-weight: 600; box-shadow: 0 4px 20px oklch(60% 0.12 184 / 0.15); }
+      .wv4-sealed-stamp { position: absolute; top: 20px; right: 20px; border: 2px solid var(--wall-ok); color: var(--wall-ok); padding: 7px 14px; font-family: var(--wall-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; transform: rotate(-4deg); background: color-mix(in oklch, var(--color-success) 18%, transparent); border-radius: 0.25rem; z-index: 5; font-weight: 600; }
       .wv4-listening { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; pointer-events: none; }
       .wv4-listening-text { font-family: var(--wall-serif); font-style: italic; font-size: 16px; color: var(--wall-ink-dim); letter-spacing: 0.01em; }
       .wv4-listening-sub { font-family: var(--wall-mono); font-size: 10.5px; color: var(--wall-ink-dim); letter-spacing: 0.12em; text-transform: uppercase; }
-      .wv4-menu { position: absolute; top: 28px; right: 6px; background: var(--wall-card-hi); border: 1.5px solid var(--wall-line-hi); border-radius: 0.25rem; box-shadow: 0 4px 18px oklch(0% 0 0 / 0.5); z-index: 10; padding: 4px; display: flex; flex-direction: column; min-width: 110px; }
+      .wv4-menu { position: absolute; top: 28px; right: 6px; background: var(--wall-card-hi); border: 1.5px solid var(--wall-line-hi); border-radius: 0.25rem; box-shadow: 0 4px 18px color-mix(in oklch, var(--color-base-content) 20%, transparent); z-index: 10; padding: 4px; display: flex; flex-direction: column; min-width: 110px; }
       .wv4-menu-item { background: transparent; border: 0; color: var(--wall-ink-mid); font-family: var(--wall-sans); font-size: 12px; padding: 6px 10px; text-align: left; cursor: pointer; border-radius: 0.2rem; transition: background-color .12s, color .12s; }
       .wv4-menu-item:hover { background: var(--wall-line); color: var(--wall-ink); }
-      .wv4-menu-danger { color: oklch(72% 0.18 25); }
-      .wv4-menu-danger:hover { background: oklch(28% 0.12 25 / 0.5); color: oklch(85% 0.18 25); }
+      .wv4-menu-danger { color: var(--color-error); }
+      .wv4-menu-danger:hover { background: color-mix(in oklch, var(--color-error) 25%, transparent); color: var(--color-error-content, var(--color-error)); }
       .wv4-edit-input, .wv4-edit-textarea { width: 100%; background: var(--wall-bg); border: 1.5px solid var(--wall-line-hi); border-radius: 0.25rem; color: var(--wall-ink); font-family: var(--wall-sans); font-size: 13px; line-height: 1.4; padding: 6px 8px; margin-top: 6px; resize: vertical; }
       .wv4-edit-input:focus, .wv4-edit-textarea:focus { outline: none; border-color: var(--wall-accent); }
       .wv4-edit-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
       .wv4-btn { font-family: var(--wall-sans); font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 0.25rem; border: 1.5px solid var(--wall-line-hi); background: transparent; color: var(--wall-ink-mid); cursor: pointer; transition: background-color .12s, color .12s, border-color .12s; }
       .wv4-btn:hover { border-color: var(--wall-ink-mid); color: var(--wall-ink); }
-      .wv4-btn-primary { background: var(--wall-accent); border-color: var(--wall-accent); color: var(--wall-bg); font-weight: 600; }
-      .wv4-btn-primary:hover { background: oklch(75% 0.17 45); border-color: oklch(75% 0.17 45); color: var(--wall-bg); }
-      .wv4-btn-danger { background: oklch(50% 0.18 25); border-color: oklch(50% 0.18 25); color: var(--wall-ink); font-weight: 600; }
-      .wv4-btn-danger:hover { background: oklch(60% 0.20 25); border-color: oklch(60% 0.20 25); }
+      .wv4-btn-primary { background: var(--wall-accent); border-color: var(--wall-accent); color: var(--color-primary-content); font-weight: 600; }
+      .wv4-btn-primary:hover { filter: brightness(1.1); }
+      .wv4-btn-danger { background: var(--color-error); border-color: var(--color-error); color: var(--color-error-content, var(--color-base-100)); font-weight: 600; }
+      .wv4-btn-danger:hover { filter: brightness(1.1); }
+      .wv4-btn-ghost { background: transparent; }
 
       .wv4-modal-backdrop {
         position: fixed; inset: 0; background: oklch(0% 0 0 / 0.6);

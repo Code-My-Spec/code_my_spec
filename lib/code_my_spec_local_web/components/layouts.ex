@@ -124,9 +124,21 @@ defmodule CodeMySpecLocalWeb.Layouts do
 
       <li class="menu-title pt-3">Data</li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}"} active={@section == :overview}>Overview</.nav_link></li>
-      <li><.nav_link to={~p"/projects/#{project_slug(@project)}/requirements"} active={@section == :requirements}>Requirements</.nav_link></li>
-      <li><.nav_link to={~p"/projects/#{project_slug(@project)}/requirements/graph"} active={@section == :requirements_graph}>Requirements Graph</.nav_link></li>
+      <li>
+        <details open={@section in [:requirements, :requirements_stories, :requirements_graph]}>
+          <summary class={if @section in [:requirements, :requirements_stories, :requirements_graph], do: "menu-active", else: ""}>
+            Requirements
+          </summary>
+          <ul>
+            <li><.nav_link to={~p"/projects/#{project_slug(@project)}/requirements"} active={@section == :requirements}>Project</.nav_link></li>
+            <li><.nav_link to={~p"/projects/#{project_slug(@project)}/requirements/stories"} active={@section == :requirements_stories}>Stories</.nav_link></li>
+            <li><.nav_link to={~p"/projects/#{project_slug(@project)}/requirements/graph"} active={@section == :requirements_graph}>Graph</.nav_link></li>
+          </ul>
+        </details>
+      </li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/stories"} active={@section == :stories}>Stories</.nav_link></li>
+      <li><.nav_link to={~p"/projects/#{project_slug(@project)}/stories/scheduler"} active={@section == :scheduler}>Scheduler</.nav_link></li>
+      <li><.nav_link to={~p"/projects/#{project_slug(@project)}/personas"} active={@section == :personas}>Personas</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/issues"} active={@section == :issues}>Issues</.nav_link></li>
       <li><.nav_link to={~p"/projects/#{project_slug(@project)}/sessions"} active={@section == :sessions}>Sessions</.nav_link></li>
 
@@ -196,8 +208,11 @@ defmodule CodeMySpecLocalWeb.Layouts do
   defp section_label(:configuration), do: "Configuration"
   defp section_label(:next_task), do: "Next Task"
   defp section_label(:requirements), do: "Requirements"
+  defp section_label(:requirements_stories), do: "Requirements / Stories"
   defp section_label(:requirements_graph), do: "Requirements Graph"
   defp section_label(:stories), do: "Stories"
+  defp section_label(:scheduler), do: "Scheduler"
+  defp section_label(:personas), do: "Personas"
   defp section_label(:issues), do: "Issues"
   defp section_label(:sessions), do: "Sessions"
   defp section_label(:knowledge), do: "Knowledge Base"

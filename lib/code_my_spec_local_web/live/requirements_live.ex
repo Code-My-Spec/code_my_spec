@@ -378,7 +378,9 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
                        :component_req_show, :component_req_prompt],
        do: :components
 
-  defp section_for(action) when action in [:stories, :story_show, :story_req_show], do: :stories
+  defp section_for(action) when action in [:stories, :story_show, :story_req_show],
+    do: :requirements_stories
+
   defp section_for(:graph), do: :requirements_graph
   defp section_for(_), do: :requirements
 

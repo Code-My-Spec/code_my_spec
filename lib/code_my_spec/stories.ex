@@ -172,7 +172,15 @@ defmodule CodeMySpec.Stories do
 
   """
   def change_story(%Scope{} = scope, %Story{} = story, attrs \\ %{}) do
-    true = story.account_id == scope.active_account_id
+    active_account_id = scope.active_account_id
+
+    # Local stories pre-dating the account_id backfill have nil account_id;
+    # treat that as "unowned" rather than a foreign-account leak.
+    case story.account_id do
+      nil -> :ok
+      ^active_account_id -> :ok
+      _ -> raise "story #{story.id} does not belong to the active account"
+    end
 
     Story.changeset(story, attrs)
   end
