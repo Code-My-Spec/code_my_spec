@@ -306,6 +306,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             show_celebrate={@show_celebrate}
             install_steps={@install_steps}
           />
+
+          <.application_rung :if={@account_done?} cli_ever_connected?={@cli_ever_connected?} />
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
@@ -400,6 +402,30 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     """
   end
 
+  # Fourth rung: links the user out to the local app. The OAuth flow at
+  # the local app is silently approved for the trusted CLI client (see
+  # OAuthController.@trusted_clients), so the navigation is seamless.
+  defp application_rung(assigns) do
+    ~H"""
+    <a
+      href="http://localhost:4003"
+      target="_blank"
+      rel="noopener noreferrer"
+      data-test="application-rung"
+      data-state={if @cli_ever_connected?, do: "ready", else: "pending"}
+      class="cms-onboarding cms-onboarding-link block"
+    >
+      <div class="flex items-center gap-4 px-6 py-5">
+        <span class="cms-onboarding-eyebrow">// step 04 · application</span>
+        <span class="flex-1"></span>
+        <span class="cms-onboarding-cta">
+          <span>▸</span> Open the local workspace
+        </span>
+      </div>
+    </a>
+    """
+  end
+
   defp metric_tile(assigns) do
     assigns = assign_new(assigns, :dim, fn -> false end)
 
@@ -438,10 +464,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       class="cms-onboarding"
     >
       <div class="cms-onboarding-header flex items-center gap-4 px-6 py-5">
-        <span class="cms-onboarding-eyebrow flex items-center gap-2">
-          <span style="color: var(--color-cms-red); font-size: 13px;">▸</span>
-          CodeMySpec plugin
-        </span>
+        <span class="cms-onboarding-eyebrow">// step 03 · plugin</span>
         <span class="flex-1"></span>
         <.status_pill count={@cli_session_count} ever_connected?={@ever_connected?} state={@pill_state} />
         <button
@@ -462,7 +485,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       </div>
 
       <div class="cms-onboarding-exp-body px-7 pb-7">
-        <div class="cms-onboarding-eyebrow mb-2.5">// step 03 · plugin</div>
         <h2 class="cms-onboarding-heading">{onboarding_heading(@show_celebrate, @pill_state)}</h2>
         <p class="cms-onboarding-sub">{onboarding_sub(@show_celebrate, @pill_state)}</p>
 
