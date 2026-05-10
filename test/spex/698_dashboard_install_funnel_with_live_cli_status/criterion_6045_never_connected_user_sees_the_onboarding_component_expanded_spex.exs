@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6045Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "Never-connected user sees the onboarding component expanded" do
     scenario "Never-connected user sees the onboarding component expanded" do

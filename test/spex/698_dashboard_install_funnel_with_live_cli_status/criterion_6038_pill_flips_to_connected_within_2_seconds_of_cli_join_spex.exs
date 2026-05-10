@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6038Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "Connection status reflects live CLI presence within 2 seconds of a join" do
     scenario "Pill flips to connected within 2 seconds of CLI join" do

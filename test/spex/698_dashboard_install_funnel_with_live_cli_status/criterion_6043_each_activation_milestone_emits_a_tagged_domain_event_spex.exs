@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6043Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   setup do
     :ok = Fixtures.attach_analytics_test_subscriber(self())

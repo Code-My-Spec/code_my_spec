@@ -90,11 +90,28 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     }
   end
 
-  # The dashboard's job ends once the plugin is installed and connected;
-  # the local app takes the user from there.
+  # The active step is always the first incomplete one in the fixed
+  # order. Once everything before it is done, the application rung is
+  # active — that's the dashboard's last hand-off to the local app.
   defp active_step(false, _, _), do: :account
   defp active_step(true, false, _), do: :project
-  defp active_step(true, true, _), do: :plugin
+  defp active_step(true, true, false), do: :plugin
+  defp active_step(true, true, true), do: :application
+
+  # A rung is "done" if its prerequisite has been fulfilled, "active"
+  # if it's the current first-incomplete step, otherwise "pending".
+  # The application step has no "done" state — it stays active once
+  # available and there's nothing to track on the dashboard side after
+  # the user clicks through to the local workspace.
+  defp rung_state(step, active_step, account_done?, project_done?, cli_ever_connected?) do
+    cond do
+      step == active_step -> "active"
+      step == :account and account_done? -> "done"
+      step == :project and project_done? -> "done"
+      step == :plugin and cli_ever_connected? -> "done"
+      true -> "pending"
+    end
+  end
 
   defp assign_account_form(socket) do
     if socket.assigns.account_done? do
@@ -281,24 +298,21 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       >
         <div class="mx-auto max-w-2xl flex flex-col gap-4">
           <.account_rung
-            done?={@account_done?}
+            state={rung_state(:account, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
             count={@account_count}
             name={@account_name}
-            active?={@active_step == :account}
             account_form={@account_form}
           />
 
           <.project_rung
-            :if={@account_done?}
-            done?={@project_done?}
+            state={rung_state(:project, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
             count={@project_count}
             name={@project_name}
-            active?={@active_step == :project}
             project_form={@project_form}
           />
 
           <.plugin_rung
-            :if={@account_done?}
+            state={rung_state(:plugin, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
             cli_ever_connected?={@cli_ever_connected?}
             cli_first_connected_at={@cli_first_connected_at}
             cli_session_count={@cli_session_count}
@@ -307,7 +321,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             install_steps={@install_steps}
           />
 
-          <.application_rung :if={@account_done?} cli_ever_connected?={@cli_ever_connected?} />
+          <.application_rung
+            state={rung_state(:application, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
+          />
         </div>
       </div>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
@@ -330,15 +346,21 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   # ── Step rungs ──────────────────────────────────────────────────────
 
-  defp account_rung(%{done?: true} = assigns) do
+  defp account_rung(%{state: "done"} = assigns) do
     ~H"""
-    <.metric_tile eyebrow="// step 01 ✓ account" label="Accounts" value={@name || @count} />
+    <.metric_tile
+      data_test="account-rung"
+      state="done"
+      eyebrow="// step 01 · account"
+      label="Accounts"
+      value={@name || @count}
+    />
     """
   end
 
-  defp account_rung(%{active?: true} = assigns) do
+  defp account_rung(%{state: "active"} = assigns) do
     ~H"""
-    <div class="cms-onboarding">
+    <div data-test="account-rung" data-state="active" class="cms-onboarding">
       <div class="px-7 py-7">
         <div class="cms-onboarding-eyebrow mb-2.5">// step 01 · account</div>
         <h2 class="cms-onboarding-heading">Name your account.</h2>
@@ -363,15 +385,34 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     """
   end
 
-  defp project_rung(%{done?: true} = assigns) do
+  defp account_rung(assigns) do
     ~H"""
-    <.metric_tile eyebrow="// step 02 ✓ project" label="Projects" value={@name || @count} />
+    <.metric_tile
+      data_test="account-rung"
+      state="pending"
+      eyebrow="// step 01 · account"
+      label="Accounts"
+      value="—"
+      dim
+    />
     """
   end
 
-  defp project_rung(%{active?: true} = assigns) do
+  defp project_rung(%{state: "done"} = assigns) do
     ~H"""
-    <div class="cms-onboarding">
+    <.metric_tile
+      data_test="project-rung"
+      state="done"
+      eyebrow="// step 02 · project"
+      label="Projects"
+      value={@name || @count}
+    />
+    """
+  end
+
+  defp project_rung(%{state: "active"} = assigns) do
+    ~H"""
+    <div data-test="project-rung" data-state="active" class="cms-onboarding">
       <div class="px-7 py-7">
         <div class="cms-onboarding-eyebrow mb-2.5">// step 02 · project</div>
         <h2 class="cms-onboarding-heading">Name your first project.</h2>
@@ -396,23 +437,51 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     """
   end
 
+  defp project_rung(assigns) do
+    ~H"""
+    <.metric_tile
+      data_test="project-rung"
+      state="pending"
+      eyebrow="// step 02 · project"
+      label="Projects"
+      value="—"
+      dim
+    />
+    """
+  end
+
+  defp plugin_rung(%{state: "pending"} = assigns) do
+    ~H"""
+    <.metric_tile
+      data_test="plugin-rung"
+      state="pending"
+      eyebrow="// step 03 · plugin"
+      label="Plugin"
+      value="—"
+      dim
+    />
+    """
+  end
+
   defp plugin_rung(assigns) do
     ~H"""
-    <.onboarding_card {assigns} />
+    <div data-test="plugin-rung" data-state={@state} class="contents">
+      <.onboarding_card {assigns} />
+    </div>
     """
   end
 
   # Fourth rung: links the user out to the local app. The OAuth flow at
   # the local app is silently approved for the trusted CLI client (see
   # OAuthController.@trusted_clients), so the navigation is seamless.
-  defp application_rung(assigns) do
+  defp application_rung(%{state: "active"} = assigns) do
     ~H"""
     <a
       href="http://localhost:4003"
       target="_blank"
       rel="noopener noreferrer"
       data-test="application-rung"
-      data-state={if @cli_ever_connected?, do: "ready", else: "pending"}
+      data-state="active"
       class="cms-onboarding cms-onboarding-link block"
     >
       <div class="flex items-center gap-4 px-6 py-5">
@@ -426,12 +495,36 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     """
   end
 
+  defp application_rung(assigns) do
+    ~H"""
+    <div
+      data-test="application-rung"
+      data-state="pending"
+      class="cms-onboarding"
+      style="opacity: 0.55;"
+      aria-disabled="true"
+    >
+      <div class="flex items-center gap-4 px-6 py-5">
+        <span class="cms-onboarding-eyebrow">// step 04 · application</span>
+        <span class="flex-1"></span>
+        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">Pending</span>
+      </div>
+    </div>
+    """
+  end
+
   defp metric_tile(assigns) do
-    assigns = assign_new(assigns, :dim, fn -> false end)
+    assigns =
+      assigns
+      |> assign_new(:dim, fn -> false end)
+      |> assign_new(:data_test, fn -> nil end)
+      |> assign_new(:state, fn -> nil end)
 
     ~H"""
     <div
       class="cms-onboarding"
+      data-test={@data_test}
+      data-state={@state}
       style={if @dim, do: "opacity: 0.55;", else: ""}
     >
       <div class="flex items-center gap-4 px-6 py-5">

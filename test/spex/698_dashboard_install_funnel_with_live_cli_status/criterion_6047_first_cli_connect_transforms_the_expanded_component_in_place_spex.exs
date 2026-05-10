@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6047Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "First CLI connect transforms the expanded component in place" do
     scenario "First CLI connect transforms the expanded component in place" do

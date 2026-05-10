@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6037Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "Each install step is one-click copyable" do
     scenario "Copy button puts the install command on the clipboard" do

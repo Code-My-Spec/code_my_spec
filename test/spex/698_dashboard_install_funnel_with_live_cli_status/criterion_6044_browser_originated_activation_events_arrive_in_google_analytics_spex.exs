@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6044Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "Browser-originated activation events are pushed to the client for GA forwarding" do
     scenario "Browser-originated activation events arrive in Google Analytics" do

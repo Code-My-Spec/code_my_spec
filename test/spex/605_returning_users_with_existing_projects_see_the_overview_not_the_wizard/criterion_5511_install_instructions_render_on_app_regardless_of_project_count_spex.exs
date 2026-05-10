@@ -35,10 +35,16 @@ defmodule CodeMySpecSpex.Story605.Criterion5511Spex do
         {:ok, context}
       end
 
-      then_ "the Claude Code install card is rendered on the same page", context do
-        assert context.html =~ "plugin marketplace add",
-               "expected the Claude Code install instructions alongside the " <>
-                 "project-name form for a first-time user"
+      then_ "the plugin rung is present on the same page as a pending tile", context do
+        # Under story 700's ladder, the plugin step is always rendered on
+        # /app — as a pending tile until the user finishes the project
+        # step. The install commands themselves are content of the
+        # plugin's active state, not the pending tile.
+        assert has_element?(
+                 context.view,
+                 "[data-test='plugin-rung'][data-state='pending']"
+               ),
+               "expected plugin-rung in 'pending' state alongside the project form for a first-time user"
 
         {:ok, context}
       end
