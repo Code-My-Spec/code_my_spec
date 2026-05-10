@@ -116,7 +116,47 @@ defmodule CodeMySpec.Projects do
   @spec get_project_by_id(String.t()) :: Project.t() | nil
   def get_project_by_id(id) when is_binary(id) do
     Repo.get(Project, id)
+  rescue
+    Ecto.Query.CastError -> nil
   end
+
+  @doc """
+  Stamps `init_completed_at` on the project. Idempotent — a no-op if
+  already stamped.
+  """
+  @spec mark_init_complete(Project.t()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
+  def mark_init_complete(%Project{init_completed_at: %DateTime{}} = project), do: {:ok, project}
+
+  def mark_init_complete(%Project{} = project) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    project
+    |> Ecto.Changeset.change(%{init_completed_at: now})
+    |> Repo.update()
+  end
+
+  @doc """
+  Stamps `setup_completed_at` on the project. Idempotent.
+  """
+  @spec mark_setup_complete(Project.t()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
+  def mark_setup_complete(%Project{setup_completed_at: %DateTime{}} = project),
+    do: {:ok, project}
+
+  def mark_setup_complete(%Project{} = project) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    project
+    |> Ecto.Changeset.change(%{setup_completed_at: now})
+    |> Repo.update()
+  end
+
+  @doc "True iff the project's init phase has been marked complete."
+  def init_complete?(%Project{init_completed_at: nil}), do: false
+  def init_complete?(%Project{}), do: true
+
+  @doc "True iff the project's setup phase has been marked complete."
+  def setup_complete?(%Project{setup_completed_at: nil}), do: false
+  def setup_complete?(%Project{}), do: true
 
   @doc """
   Returns the distinct `account_id` for every project that has a

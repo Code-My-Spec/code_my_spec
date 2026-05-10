@@ -37,8 +37,15 @@ defmodule CodeMySpecSpex.Story701.Criterion6067Spex do
 
         assert kind in [:redirect, :live_redirect]
 
-        assert target =~ "/projects/#{context.project.name}",
-               "expected redirect to /projects/#{context.project.name}; got: #{target}"
+        # The local app routes by slug, not raw project name.
+        slug =
+          (context.project.name || "project")
+          |> String.downcase()
+          |> String.replace(~r/[^a-z0-9]+/, "-")
+          |> String.trim("-")
+
+        assert target == "/projects/#{slug}",
+               "expected redirect to /projects/#{slug}; got: #{target}"
 
         {:ok, context}
       end

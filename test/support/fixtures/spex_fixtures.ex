@@ -146,4 +146,47 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate detach_ga_test_subscriber(pid),
     to: CodeMySpec.Analytics.GoogleAnalytics,
     as: :detach_test_subscriber
+
+  # -- Local app onboarding (Story 701) --
+
+  @doc """
+  Seeds a `client_users` row with a non-expired OAuth token for the
+  test user. The local app's auth rung evaluates "done" against the
+  presence of this row (same predicate `OAuthClient.authenticated?/0`
+  returns).
+  """
+  def client_user_fixture(user, opts \\ []) do
+    expires_in = Keyword.get(opts, :expires_in, 3600)
+    suffix = System.unique_integer([:positive])
+
+    token_data = %{
+      "access_token" => "test-access-#{suffix}",
+      "refresh_token" => "test-refresh-#{suffix}",
+      "expires_in" => expires_in
+    }
+
+    {:ok, client_user} =
+      CodeMySpec.Auth.OAuthClient.save_client_user(user.id, user.email, token_data)
+
+    client_user
+  end
+
+  @doc """
+  Stamps `init_completed_at` on the active project so the per-project
+  ladder's init rung evaluates as "done." For tests where the
+  scenario's intent is "init has been run."
+  """
+  def satisfy_init(%{active_project: project}) when not is_nil(project) do
+    {:ok, _} = CodeMySpec.Projects.mark_init_complete(project)
+    :ok
+  end
+
+  @doc """
+  Stamps `setup_completed_at` on the active project so the per-project
+  ladder's setup rung evaluates as "done."
+  """
+  def satisfy_project_setup(%{active_project: project}) when not is_nil(project) do
+    {:ok, _} = CodeMySpec.Projects.mark_setup_complete(project)
+    :ok
+  end
 end

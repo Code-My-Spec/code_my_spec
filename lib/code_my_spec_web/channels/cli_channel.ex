@@ -51,6 +51,49 @@ defmodule CodeMySpecWeb.CliChannel do
     {:error, %{reason: "invalid topic"}}
   end
 
+  # Local app pushes activation milestones over the channel — we relay
+  # each into Analytics with origin :server so the GA Measurement
+  # Protocol path picks them up. Whitelisted to keep arbitrary atoms
+  # out of the system.
+  @activation_events ~w(
+    local_signed_in
+    local_project_linked
+    local_init_complete
+    local_project_setup_complete
+    first_local_story_created
+  )
+
+  @impl true
+  def handle_in("activation_event", %{"name" => name, "payload" => payload}, socket)
+      when name in @activation_events do
+    user_id = socket.assigns[:cli_user_id]
+
+    payload = normalize_activation_payload(payload, user_id)
+
+    Logger.info("[CliChannel] activation_event #{name} user_id=#{user_id}")
+
+    Analytics.dispatch(String.to_atom(name), payload, :server)
+
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("activation_event", payload, socket) do
+    Logger.warning("[CliChannel] activation_event rejected — bad shape: #{inspect(payload)}")
+    {:reply, {:error, %{reason: "invalid activation_event"}}, socket}
+  end
+
+  defp normalize_activation_payload(payload, user_id) when is_map(payload) do
+    payload
+    |> Enum.into(%{}, fn
+      {"user_id", v} -> {:user_id, v}
+      {k, v} when is_binary(k) -> {String.to_atom(k), v}
+      {k, v} -> {k, v}
+    end)
+    |> Map.put_new(:user_id, user_id)
+  end
+
+  defp normalize_activation_payload(_payload, user_id), do: %{user_id: user_id}
+
   @impl true
   def handle_info(:after_join, socket) do
     user_id = socket.assigns.cli_user_id

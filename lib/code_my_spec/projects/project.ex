@@ -18,6 +18,8 @@ defmodule CodeMySpec.Projects.Project do
           google_analytics_property_id: String.t() | nil,
           setup_error: String.t() | nil,
           local_path: String.t() | nil,
+          init_completed_at: DateTime.t() | nil,
+          setup_completed_at: DateTime.t() | nil,
           account_id: Ecto.UUID.t() | nil,
           status:
             :created
@@ -45,6 +47,8 @@ defmodule CodeMySpec.Projects.Project do
     field :google_analytics_property_id, :string
     field :setup_error, :string
     field :local_path, :string
+    field :init_completed_at, :utc_datetime
+    field :setup_completed_at, :utc_datetime
     field :account_id, :binary_id
 
     belongs_to :oauth_application, CodeMySpec.Oauth.Application, type: :id
