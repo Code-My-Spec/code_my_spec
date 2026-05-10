@@ -21,13 +21,12 @@ defmodule CodeMySpecSpex.Story701.Criterion6063Spex do
   setup :setup_active_project
 
   setup context do
-    # Drive the StoryHelpers/MCP surface to land at least one story for
-    # this project. Any story counts; the ladder's done-check is
-    # length(Stories.list_stories(scope)) > 0.
+    # Drive the CreateStory MCP tool surface to land at least one
+    # story for this project. Any story counts; the ladder's
+    # done-check is length(Stories.list_stories(scope)) > 0. No
+    # component link — the ladder doesn't care.
     _story =
-      CodeMySpecSpex.StoryHelpers.create_and_link(
-        context.scope,
-        nil,
+      CodeMySpecSpex.StoryHelpers.create_story(context.scope,
         title: "First story",
         description: "Any story counts as 'done' for the per-project ladder.",
         acceptance_criteria: ["The story exists."]
