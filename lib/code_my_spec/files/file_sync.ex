@@ -236,13 +236,17 @@ defmodule CodeMySpec.Files.FileSync do
   def sync_changed(%Scope{environment: env} = scope, _opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
-    # Same pre-passes as `sync/2`: sync framework knowledge from
-    # priv/knowledge directly into the embedding store, then project
-    # hex docs. Both are content-aware idempotent, so a no-op stop
-    # hook stays cheap.
-    Embeddings.sync_framework_knowledge(scope)
-    HexDocProjector.project(scope)
-
+    # Note: framework_knowledge sync and hex doc projection are NOT
+    # pre-passes here. Both walk every file/BEAM and would re-embed
+    # (or re-render markdown) on every stop hook even when nothing
+    # changed — the chunk-hash dedup downstream prevents inference
+    # but the surrounding DB queries and `Code.fetch_docs` work still
+    # runs. Stop hooks fire often; we don't want that overhead each
+    # time. Triggers that actually need them:
+    #   * Manual full sync — `FileSync.sync/2` (e.g. /files page button)
+    #   * App boot — `FileWatcherServer.handle_continue/2`
+    #   * Dep change — `FileWatcherServer` mix.lock-poll handler runs
+    #     `HexDocProjector.project/1` after a debounce settle window
     file_entries =
       env
       |> stream_files()

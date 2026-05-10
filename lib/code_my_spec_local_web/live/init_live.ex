@@ -102,6 +102,18 @@ defmodule CodeMySpecLocalWeb.InitLive do
           <p class="text-sm opacity-60 font-mono mt-1">{@scope.cwd}</p>
         </div>
 
+        <div :if={phoenix_project_failed?(@steps)} role="alert" class="alert alert-warning mb-6">
+          <div>
+            <h3 class="font-bold">This directory isn't a Phoenix project</h3>
+            <p class="text-sm mt-1">
+              CodeMySpec attaches to whatever directory Claude Code is running in.
+              The most common fix: <strong>quit Claude Code, <code>cd</code> into your
+              Phoenix project root</strong> (the folder with <code>mix.exs</code>),
+              and re-launch from there. Click the step below for full instructions.
+            </p>
+          </div>
+        </div>
+
         <ul class="menu bg-base-200 border border-base-300 rounded-box w-full">
           <li :for={step <- @steps}>
             <div class="flex items-center gap-3">
@@ -177,6 +189,12 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
   defp step_detail({:not_done, detail}), do: detail
   defp step_detail(:done), do: nil
+
+  defp phoenix_project_failed?(steps) do
+    Enum.any?(steps, fn step ->
+      step.id == "phoenix_project" and not step.done
+    end)
+  end
 
   defp step_prompt(mod, scope, {:not_done, _}) do
     case mod.command(scope, %{}) do

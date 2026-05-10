@@ -24,6 +24,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   use GenServer
   require Logger
 
+  alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
@@ -107,6 +108,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
       repo_ready?() ->
         watchers = watch_all_linked_projects(state)
         lock_mtimes = snapshot_lock_mtimes(watchers)
+        run_boot_embed_pass(watchers)
         {:noreply, %{state | watchers: watchers, lock_mtimes: lock_mtimes}}
 
       attempts >= 10 ->
@@ -117,6 +119,22 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
         Process.sleep(500)
         {:noreply, state, {:continue, {:scan_projects, attempts + 1}}}
     end
+  end
+
+  # One-shot at boot: re-embed bundled framework knowledge and project
+  # hex docs for every watched project. After this point, ongoing dep
+  # changes are caught by `mix.lock` polling; framework knowledge
+  # changes only when the cms binary itself is replaced (which restarts
+  # this GenServer and re-triggers this pass). Runs in a Task so a slow
+  # projector doesn't hold up watcher startup.
+  defp run_boot_embed_pass(watchers) do
+    Enum.each(watchers, fn {root, %{scope: scope}} ->
+      Task.start(fn ->
+        Embeddings.sync_framework_knowledge(scope)
+        HexDocProjector.project(scope)
+        Logger.info("[FileWatcher] Boot embed pass complete for #{root}")
+      end)
+    end)
   end
 
   defp repo_ready? do

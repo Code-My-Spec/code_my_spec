@@ -581,6 +581,15 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <h2 class="cms-onboarding-heading">{onboarding_heading(@show_celebrate, @pill_state)}</h2>
         <p class="cms-onboarding-sub">{onboarding_sub(@show_celebrate, @pill_state)}</p>
 
+        <div :if={!@show_celebrate} class="cms-onboarding-prereq mt-5">
+          <span class="cms-onboarding-eyebrow" style="color: var(--color-cms-amber, #ffb84a);">// prereq</span>
+          <p class="cms-onboarding-sub mt-1">
+            Open Claude Code <strong>from inside your Phoenix project's root directory</strong>
+            (the folder with <code>mix.exs</code>). CodeMySpec attaches to that directory —
+            running these commands from anywhere else will fail at the init step.
+          </p>
+        </div>
+
         <ol class="mt-6 flex flex-col gap-3.5 list-none p-0">
           <.install_step :for={step <- @install_steps} step={step} done={@show_celebrate} />
         </ol>

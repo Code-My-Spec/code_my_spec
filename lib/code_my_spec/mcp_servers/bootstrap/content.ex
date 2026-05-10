@@ -23,6 +23,14 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     This project is managed by **CodeMySpec**, a requirements-driven development harness.
     Read `#{base}/AGENTS.md` for the full workflow guide.
 
+    ### Prerequisite: Phoenix project root
+
+    CodeMySpec is attached to this directory because it contains `mix.exs` with
+    `:phoenix` in its deps. The harness reads `mix.exs`, walks `lib/`, and writes
+    specs and rules relative to here. If a future session ever attaches to a
+    non-Phoenix directory, the init checklist will fail loudly — the user fix is
+    always to relaunch Claude Code from the project root.
+
     ### How It Works
 
     CodeMySpec tracks every artifact your project needs — specs, tests, implementations,
@@ -65,6 +73,15 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     CodeMySpec is a requirements-driven development harness. It models your project as a
     graph of **stories**, **components**, and **requirements**, then guides you through
     building each piece in the right order: specs → tests → implementations → reviews → QA.
+
+    ## Prerequisite: Phoenix project root
+
+    CodeMySpec is attached to a **Phoenix project root** — the folder containing
+    `mix.exs` with `:phoenix` in its deps. The harness reads `mix.exs`, walks
+    `lib/`, and writes specs, rules, and BDD files relative to that directory.
+    If a future session ever attaches to the wrong directory, the init checklist
+    surfaces it loudly; the user-side fix is to relaunch Claude Code from the
+    project root.
 
     ## Core Loop
 
