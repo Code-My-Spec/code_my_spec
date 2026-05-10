@@ -28,6 +28,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Users.Scope
+  alias Ecto.Adapters.SQL
 
   # Watched subtrees under each project root. Anything outside these
   # is invisible to the watcher. Doc dirs are here so embedding hooks
@@ -119,10 +120,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   end
 
   defp repo_ready? do
-    match?(
-      {:ok, _},
-      Ecto.Adapters.SQL.query(CodeMySpec.Repo, "SELECT 1", [], timeout: 5_000)
-    )
+    match?({:ok, _}, SQL.query(CodeMySpec.Repo, "SELECT 1", [], timeout: 5_000))
   end
 
   @impl true
