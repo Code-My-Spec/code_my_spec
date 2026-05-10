@@ -72,7 +72,20 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
         <div :if={@step.prompt} class="card bg-base-200 border border-base-300">
           <div class="card-body">
-            <h2 class="card-title text-lg">Instructions</h2>
+            <div class="flex items-start justify-between gap-3">
+              <h2 class="card-title text-lg">Instructions</h2>
+              <button
+                type="button"
+                class="copy-btn btn btn-primary btn-sm"
+                data-copy={@step.prompt}
+                aria-label="Copy this step's prompt to the clipboard"
+              >
+                Copy prompt
+              </button>
+            </div>
+            <p class="text-xs opacity-60 mt-1 mb-2">
+              Copy this prompt and paste it into Claude Code so the agent can run this step.
+            </p>
             <pre class="whitespace-pre-wrap text-sm">{@step.prompt}</pre>
           </div>
         </div>

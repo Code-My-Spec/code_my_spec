@@ -338,3 +338,31 @@ let liveSocket = new LiveSocket("/local-live", Socket, {
 
 liveSocket.connect()
 window.liveSocket = liveSocket
+
+// --- Local app: delegated copy-button handler ---
+// Any element with `.copy-btn[data-copy]` becomes a clipboard button.
+// Used by the InitLive step pages so users can one-click the prompt
+// into their clipboard for pasting into Claude Code.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".copy-btn[data-copy]")
+  if (!btn) return
+  const text = btn.getAttribute("data-copy")
+  const original = btn.textContent
+  const restore = () => { btn.textContent = original }
+  const done = () => { btn.textContent = "✓ Copied"; setTimeout(restore, 1800) }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => copyFallback(text, done))
+  } else {
+    copyFallback(text, done)
+  }
+})
+
+function copyFallback(text, done) {
+  const ta = document.createElement("textarea")
+  ta.value = text
+  document.body.appendChild(ta)
+  ta.select()
+  try { document.execCommand("copy") } catch (_) {}
+  document.body.removeChild(ta)
+  done()
+}
