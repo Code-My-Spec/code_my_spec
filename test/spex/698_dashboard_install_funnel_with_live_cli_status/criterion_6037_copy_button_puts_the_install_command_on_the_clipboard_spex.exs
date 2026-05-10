@@ -13,7 +13,10 @@ defmodule CodeMySpecSpex.Story698.Criterion6037Spex do
     * [data-test="copy-step-1|2|3"][data-clipboard-text="..."]
     * step 1: "/plugin marketplace add Code-My-Spec/plugins"
     * step 2: "/plugin install codemyspec@codemyspec"
-    * step 3: "/codemyspec:authenticate"
+    * step 3: "/plugin-reload"
+
+  Note: authentication is no longer a numbered step on the dashboard;
+  the local app handles auth once the user navigates there.
   """
 
   use CodeMySpecSpex.Case
@@ -47,11 +50,11 @@ defmodule CodeMySpecSpex.Story698.Criterion6037Spex do
         {:ok, context}
       end
 
-      then_ "step 3 carries the authenticate command on its copy button", context do
+      then_ "step 3 carries the plugin-reload command on its copy button", context do
         html = element(context.view, "[data-test='copy-step-3']") |> render()
 
-        assert html =~ "/codemyspec:authenticate",
-               "expected copy-step-3 to carry the authenticate command, got: #{html}"
+        assert html =~ "/plugin-reload",
+               "expected copy-step-3 to carry the plugin-reload command, got: #{html}"
 
         {:ok, context}
       end

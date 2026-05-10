@@ -15,7 +15,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   @install_steps [
     %{n: 1, command: "/plugin marketplace add Code-My-Spec/plugins"},
     %{n: 2, command: "/plugin install codemyspec@codemyspec"},
-    %{n: 3, command: "/codemyspec:authenticate"}
+    %{n: 3, command: "/plugin-reload"}
   ]
 
   def mount(_params, _session, socket) do
@@ -85,16 +85,16 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       project_done?: project_done?,
       project_count: length(projects),
       project_name: scope.active_project && scope.active_project.name,
-      stories_count: 0,
       cli_ever_connected?: cli_ever_connected?,
       active_step: active_step(account_done?, project_done?, cli_ever_connected?)
     }
   end
 
+  # The dashboard's job ends once the plugin is installed and connected;
+  # the local app takes the user from there.
   defp active_step(false, _, _), do: :account
   defp active_step(true, false, _), do: :project
-  defp active_step(true, true, false), do: :plugin
-  defp active_step(true, true, true), do: :stories
+  defp active_step(true, true, _), do: :plugin
 
   defp assign_account_form(socket) do
     if socket.assigns.account_done? do
@@ -299,21 +299,12 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
           <.plugin_rung
             :if={@account_done?}
-            active?={
-              not @cli_ever_connected? or @onboarding_expanded or @show_celebrate
-            }
             cli_ever_connected?={@cli_ever_connected?}
             cli_first_connected_at={@cli_first_connected_at}
             cli_session_count={@cli_session_count}
             onboarding_expanded={@onboarding_expanded}
             show_celebrate={@show_celebrate}
             install_steps={@install_steps}
-          />
-
-          <.stories_rung
-            :if={@project_done?}
-            count={@stories_count}
-            active?={@active_step == :stories}
           />
         </div>
       </div>
@@ -406,35 +397,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   defp plugin_rung(assigns) do
     ~H"""
     <.onboarding_card {assigns} />
-    """
-  end
-
-  defp stories_rung(%{count: 0, active?: true} = assigns) do
-    ~H"""
-    <div class="cms-onboarding">
-      <div class="flex items-center gap-4 px-6 py-5">
-        <span class="cms-onboarding-eyebrow flex items-center gap-2">
-          <span style="color: var(--color-cms-red); font-size: 13px;">▸</span>
-          Stories
-        </span>
-        <span
-          class="cms-onboarding-heading"
-          style="font-size: 22px; line-height: 1; color: var(--color-cms-text);"
-        >
-          0
-        </span>
-        <span class="flex-1"></span>
-        <span class="cms-onboarding-cta">
-          <span>▸</span> Create your first story (use the local CLI)
-        </span>
-      </div>
-    </div>
-    """
-  end
-
-  defp stories_rung(assigns) do
-    ~H"""
-    <.metric_tile eyebrow="// step 04 · stories" label="Stories" value={@count} />
     """
   end
 
@@ -556,14 +518,14 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <span class="flex-1 h-px max-w-[120px]" style="background: linear-gradient(90deg, var(--color-cms-red), transparent);"></span>
       </div>
       <h3 class="cms-onboarding-heading" style="font-size: 24px;">
-        Create your first user story.
+        Open the local workspace.
       </h3>
       <p class="cms-onboarding-sub" style="margin-bottom: 16px;">
-        Use Claude Code to start your first story — paste the prompt below or open the plugin and ask it to create your first story.
+        The plugin is connected. Your first story and everything after happens in the local app.
       </p>
-      <span class="cms-onboarding-cta">
-        <span>▸</span> Open story creator (use the local CLI)
-      </span>
+      <a href="http://localhost:4003" class="cms-onboarding-cta">
+        <span>▸</span> http://localhost:4003
+      </a>
     </div>
     """
   end

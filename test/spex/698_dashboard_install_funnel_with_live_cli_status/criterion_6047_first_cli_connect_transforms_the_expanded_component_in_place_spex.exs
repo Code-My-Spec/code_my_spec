@@ -64,14 +64,17 @@ defmodule CodeMySpecSpex.Story698.Criterion6047Spex do
         {:ok, context}
       end
 
-      then_ "the create-your-first-story callout appears within the component", context do
+      then_ "the local-workspace callout appears within the component", context do
         assert has_element?(context.view, "[data-test='next-create-story']"),
-               "expected the next-create-story callout in the transformed component"
+               "expected the celebrate callout (data-test='next-create-story') in the transformed component"
 
         callout = element(context.view, "[data-test='next-create-story']") |> render()
 
-        assert String.downcase(callout) =~ "create your first",
-               "expected the celebrate callout to mention creating the first story; got: #{callout}"
+        assert String.downcase(callout) =~ "local workspace",
+               "expected the celebrate callout to point the user at the local workspace; got: #{callout}"
+
+        assert callout =~ "http://localhost:4003",
+               "expected the celebrate callout to link to the local app at localhost:4003"
 
         {:ok, context}
       end
