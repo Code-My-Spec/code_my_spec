@@ -329,7 +329,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         Tools Registry, Seed Strategy), skip to Phase 2.
 
         Otherwise:
-        1. Read `#{Paths.framework_dir()}/qa-tooling.md` for testing tool patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
+        1. Read `qa-tooling.md` (call `read_knowledge` MCP tool with `path: "qa-tooling.md"`) for testing tool patterns and `qa-tooling/` (call `list_knowledge` MCP tool with `path: "qa-tooling"`) for tool-specific cheat sheets
         2. Read `#{router_path}` and analyze routes, auth pipelines, and live sessions
         3. Write a standard seed script to `priv/repo/qa_seeds.exs` (`.exs` files run via `mix run`)
         4. Write additional seed scripts if other scenarios warrant it
@@ -347,7 +347,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
         **Available tools:** MCP browser tools (browser automation for UI/LiveView pages), `curl` (API
         endpoint testing with API key auth), and shell scripts in `#{scripts_dir}/`.
-        See `#{Paths.framework_dir()}/qa-tooling.md` for when to use each tool.
+        See `qa-tooling.md` (call `read_knowledge` MCP tool with `path: "qa-tooling.md"`) for when to use each tool.
 
         1. Read `#{Paths.qa_plan()}` for app overview, tools, auth, and seed strategy
         2. Run seed scripts to verify setup works for this story
@@ -385,7 +385,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
         1. Read the brief at `#{brief_path(story_id)}` for the complete testing plan
         2. Read `#{Paths.qa_plan()}` for auth strategy, seed commands, and login steps
-        3. Read `#{Paths.framework_dir()}/qa-tooling.md` for tool usage patterns and `#{Paths.framework_dir()}/qa-tooling/` for tool-specific cheat sheets
+        3. Read `qa-tooling.md` (call `read_knowledge` MCP tool with `path: "qa-tooling.md"`) for tool usage patterns and `qa-tooling/` (call `list_knowledge` MCP tool with `path: "qa-tooling"`) for tool-specific cheat sheets
         4. Run seed scripts to set up test data before testing
         5. If a linked component is listed above, read its source to understand the feature's implementation
         6. Execute each test scenario from the brief

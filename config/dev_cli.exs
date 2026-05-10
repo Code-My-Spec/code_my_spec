@@ -18,6 +18,9 @@ config :code_my_spec,
 # SQLite adapter for CLI mode
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 
+# Embedding pipeline lives in CLI builds (Ortex + sqlite_vec).
+config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.SqliteVecBackend
+
 # `database` is set in runtime.exs so `~` expands on the user's machine.
 config :code_my_spec, CodeMySpec.Repo,
   pool_size: 1,

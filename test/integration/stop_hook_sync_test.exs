@@ -35,20 +35,23 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # ============================================================================
 
   describe "full sync" do
-    test "FileSync processes all files on every sync" do
+    test "FileSync reports only fingerprint-changed paths on each sync" do
       {scope, tmp_dir} = setup_component_scenario()
 
       write_spec_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
       write_impl_file(tmp_dir, "my_app/accounts", "MyApp.Accounts")
 
-      # First sync
+      # First sync sees both files as new — both must appear as changed.
       {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
       assert result1.total_files >= 2
       assert length(result1.changed_paths) >= 2
 
-      # Second sync — still reports all paths (no mtime filtering)
+      # Second sync with no on-disk edits returns an empty diff — Story
+      # 688's checksum-skip rule. Re-running sync is cheap and doesn't
+      # re-trigger downstream consumers (validators, embedding) for
+      # files whose content didn't actually change.
       {:ok, result2} = FileSync.sync(scope, base_dir: tmp_dir)
-      assert ".code_my_spec/spec/my_app/accounts.spec.md" in result2.changed_paths
+      assert result2.changed_paths == []
     end
   end
 

@@ -65,13 +65,9 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
 
-  # Hexdocs — embed hex dependency docs (search is unified via SemanticSearch)
-  component(CodeMySpec.McpServers.Hexdocs.Tools.EmbedHexdocs)
-
-  # Knowledge — browse, read, embed project docs + unified semantic search
-  # across every embedded source (knowledge, project_knowledge, spec, rules,
-  # hexdocs:*).
-  component(CodeMySpec.McpServers.Knowledge.Tools.EmbedDocs)
+  # Knowledge — browse, read, and unified semantic search across every
+  # embedded source (knowledge, project_knowledge, spec, rules, hexdocs:*).
+  # Embedding is implicit in file sync — there's no manual embed_docs tool.
   component(CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge)
   component(CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge)
   component(CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch)

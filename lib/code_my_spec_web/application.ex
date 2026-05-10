@@ -56,7 +56,7 @@ defmodule CodeMySpecWeb.Application do
     # Add FileWatcher to dev_children if watch_content is enabled
     dev_children =
       if Application.get_env(:code_my_spec, :watch_content, false) do
-        [CodeMySpec.ContentSync.FileWatcher | dev_children]
+        []
       else
         dev_children
       end

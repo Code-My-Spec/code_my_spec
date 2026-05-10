@@ -113,6 +113,13 @@ defmodule CodeMySpec.Files do
 
   Returns `{inserted_count, updated_files}`.
   """
+  # SQLite's compile-time `SQLITE_MAX_VARIABLE_NUMBER` is 32766. With 13
+  # bound columns per File row, anything above ~2500 rows in a single
+  # `insert_all` raises `Exqlite.Error: variable number must be between
+  # ?1 and ?32766`. Chunk well under that for headroom — projects with
+  # large hex doc corpora can easily run thousands of tracked files.
+  @upsert_chunk_size 500
+
   @spec upsert_files(Scope.t(), [map()]) :: {integer(), [File.t()] | nil}
   def upsert_files(%Scope{active_project_id: project_id}, file_attrs_list)
       when is_list(file_attrs_list) do
@@ -126,12 +133,33 @@ defmodule CodeMySpec.Files do
         |> Map.put(:updated_at, now)
       end)
 
-    Repo.insert_all(File, entries,
-      on_conflict:
-        {:replace, [:role, :mtime, :size, :fingerprint, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
-      conflict_target: [:project_id, :path],
-      returning: true
-    )
+    {total_count, files} =
+      entries
+      |> Enum.chunk_every(@upsert_chunk_size)
+      |> Enum.reduce({0, []}, fn chunk, {acc_count, acc_files} ->
+        {count, batch} =
+          Repo.insert_all(File, chunk,
+            on_conflict:
+              {:replace,
+               [
+                 :role,
+                 :mtime,
+                 :size,
+                 :fingerprint,
+                 :component_id,
+                 :story_id,
+                 :valid,
+                 :validation_errors,
+                 :updated_at
+               ]},
+            conflict_target: [:project_id, :path],
+            returning: true
+          )
+
+        {acc_count + count, acc_files ++ (batch || [])}
+      end)
+
+    {total_count, files}
   end
 
   @doc """

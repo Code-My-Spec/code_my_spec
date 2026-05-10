@@ -11,12 +11,42 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
+  alias CodeMySpec.Embeddings
+  alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Paths
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
   alias CodeMySpec.Users.Scope
+
+  # Files whose role makes them part of the project doc embedding corpus.
+  # Updates and deletions for these flow into the Embeddings backend on
+  # every sync so semantic_search stays current with disk.
+  #
+  # Most roles map 1:1 to a fixed source string. `:hex_doc` is the
+  # exception — its source is `"hexdocs:<package>"`, derived from the
+  # path segment under `Paths.hex_docs_dir/0`. Resolution happens in
+  # `embeddable_source/2`.
+  #
+  # Framework knowledge (the `"knowledge"` source) does NOT live in
+  # the working tree; `Embeddings.sync_framework_knowledge/1` reads
+  # it directly from `priv/knowledge/`. So no role here points at
+  # `"knowledge"` — that's a corpus the file walker never touches.
+  @fixed_role_sources %{
+    spec: "spec",
+    rule: "rules",
+    project_knowledge: "project_knowledge"
+  }
+
+  defp embeddable_source(:hex_doc, path) do
+    case String.replace_prefix(path, Paths.hex_docs_dir() <> "/", "") do
+      ^path -> nil
+      rest -> "hexdocs:" <> (rest |> String.split("/") |> hd())
+    end
+  end
+
+  defp embeddable_source(role, _path), do: Map.get(@fixed_role_sources, role)
 
   # Whitelist of roots walked on sync. Anything outside these trees is invisible
   # to FileSync — `deps/`, `_build/`, `node_modules/`, `priv/`, `assets/`, `.git/`
@@ -34,6 +64,19 @@ defmodule CodeMySpec.Files.FileSync do
   def sync(%Scope{environment: env} = scope, _opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
+    # Sync the bundled framework knowledge corpus directly from
+    # `priv/knowledge/` into the embedding store. No working-tree
+    # copy — the embedding backend's content-hash dedup keeps no-op
+    # syncs cheap.
+    Embeddings.sync_framework_knowledge(scope)
+
+    # Project hex docs from compiled BEAMs into the working tree before
+    # walking files. Newly-installed/updated/removed packages produce
+    # markdown changes the walker then catches via fingerprint diff,
+    # routing them through the same embedding hook every other doc
+    # role uses.
+    HexDocProjector.project(scope)
+
     # `infrastructure_paths` is no longer a sync-time filter — it's a classifier
     # consulted by `ComponentSync`. Framework files now sync into the DB and
     # get tagged with `type: "infrastructure"` downstream, giving them an empty
@@ -45,11 +88,16 @@ defmodule CodeMySpec.Files.FileSync do
 
     scan_ms = System.monotonic_time(:millisecond) - start
 
-    # Resolve owners, validate, and upsert all files
-    upserted =
+    # Snapshot existing rows up front so we can compute fingerprint diffs
+    # (real "changed paths") and capture the role of files that are about
+    # to be removed (so embedding cleanup knows the source/path tuple).
+    existing_records = Files.list_files(scope)
+    existing_by_path = Map.new(existing_records, &{&1.path, &1})
+
+    {upserted, changed_entries} =
       case file_entries do
         [] ->
-          0
+          {0, []}
 
         _ ->
           entries_with_owners = resolve_owners(scope, file_entries)
@@ -61,8 +109,10 @@ defmodule CodeMySpec.Files.FileSync do
           validated_entries =
             Enum.map(entries_with_fingerprints, &validate_entry(&1, env, component_by_id))
 
+          changed = changed_entries(validated_entries, existing_by_path)
+
           {count, _} = Files.upsert_files(scope, validated_entries)
-          count
+          {count, changed}
       end
 
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
@@ -70,6 +120,11 @@ defmodule CodeMySpec.Files.FileSync do
     # Remove files no longer on disk + their orphaned problems (otherwise
     # stale failures from deleted files keep blocking stop hooks).
     current_paths = Enum.map(file_entries, & &1.path)
+    current_path_set = MapSet.new(current_paths)
+
+    removed_records =
+      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
+
     {removed, _} = Files.delete_removed(scope, current_paths)
     {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
 
@@ -77,21 +132,96 @@ defmodule CodeMySpec.Files.FileSync do
       Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
     end
 
+    sync_embeddings(scope, env, changed_entries, removed_records)
+
     total_ms = System.monotonic_time(:millisecond) - start
+
+    changed_paths = Enum.map(changed_entries, & &1.path)
 
     Logger.info(
       "[FileSync] #{length(file_entries)} files scanned in #{scan_ms}ms, " <>
         "validated in #{validate_ms}ms, " <>
-        "#{upserted} upserted, #{removed} removed, total #{total_ms}ms"
+        "#{upserted} upserted, #{length(changed_paths)} changed, " <>
+        "#{removed} removed, total #{total_ms}ms"
     )
 
     {:ok,
      %{
        upserted: upserted,
        removed: removed,
-       changed_paths: current_paths,
+       changed_paths: changed_paths,
        total_files: length(file_entries)
      }}
+  end
+
+  # Entries whose fingerprint differs from the existing DB row (or that
+  # have no row yet) — i.e., files whose content actually changed since
+  # the last sync. Used to drive embedding work and to populate the
+  # user-visible "Changed files" count on the /files page.
+  defp changed_entries(entries, existing_by_path) do
+    Enum.filter(entries, fn entry ->
+      case Map.get(existing_by_path, entry.path) do
+        nil -> true
+        record -> Map.get(entry, :fingerprint) != record.fingerprint
+      end
+    end)
+  end
+
+  # Push doc-corpus changes (spec / rule / knowledge / project_knowledge)
+  # into the configured Embeddings backend. New and modified files are
+  # re-embedded; removed files have their embeddings dropped. No-ops
+  # gracefully when the backend is unavailable (Phoenix dev server).
+  defp sync_embeddings(_scope, _env, [], []), do: :ok
+
+  defp sync_embeddings(scope, env, changed_entries, removed_records) do
+    if Embeddings.available?() do
+      Enum.each(changed_entries, &embed_entry(scope, env, &1))
+      Enum.each(removed_records, &delete_embeddings_for(scope, &1))
+    end
+
+    :ok
+  end
+
+  defp embed_entry(scope, env, entry) do
+    case embeddable_source(entry.role, entry.path) do
+      nil -> :ok
+      source -> embed_changed_entry(scope, env, source, entry.path)
+    end
+  end
+
+  defp delete_embeddings_for(scope, record) do
+    case embeddable_source(record.role, record.path) do
+      nil -> :ok
+      source -> do_delete_embeddings(scope, source, record.path)
+    end
+  end
+
+  defp do_delete_embeddings(scope, source, path) do
+    case Embeddings.delete_path(scope, source, path) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[FileSync] delete_path failed for #{source}/#{path}: #{inspect(reason)}")
+    end
+  end
+
+  defp embed_changed_entry(scope, env, source, path) do
+    case Environments.read_file(env, path) do
+      {:ok, content} ->
+        case Embeddings.embed_file(scope, source, path, content) do
+          {:ok, _} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "[FileSync] embed_file failed for #{source}/#{path}: #{inspect(reason)}"
+            )
+        end
+
+      {:error, reason} ->
+        Logger.warning("[FileSync] read_file failed for #{path}: #{inspect(reason)}")
+    end
   end
 
   @doc """
@@ -106,6 +236,13 @@ defmodule CodeMySpec.Files.FileSync do
   def sync_changed(%Scope{environment: env} = scope, _opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
+    # Same pre-passes as `sync/2`: sync framework knowledge from
+    # priv/knowledge directly into the embedding store, then project
+    # hex docs. Both are content-aware idempotent, so a no-op stop
+    # hook stays cheap.
+    Embeddings.sync_framework_knowledge(scope)
+    HexDocProjector.project(scope)
+
     file_entries =
       env
       |> stream_files()
@@ -113,29 +250,30 @@ defmodule CodeMySpec.Files.FileSync do
 
     scan_ms = System.monotonic_time(:millisecond) - start
 
-    # Build path→mtime map from current DB state for change detection
-    existing_files = Files.list_files(scope)
-    existing_map = Map.new(existing_files, &{&1.path, &1.mtime})
+    # Snapshot existing rows up front so the embedding hook can compute
+    # fingerprint diffs and capture roles for files about to be removed.
+    existing_records = Files.list_files(scope)
+    existing_by_path = Map.new(existing_records, &{&1.path, &1})
+    existing_mtime_map = Map.new(existing_records, &{&1.path, &1.mtime})
 
-    # Only process files that are new or have a newer mtime
-    changed_entries =
+    # mtime is the cheap pre-filter: only process files that are new or
+    # have a newer mtime. Fingerprint diff still gates embedding work,
+    # so an mtime bump without a content change is a no-op downstream.
+    mtime_changed_entries =
       Enum.filter(file_entries, fn entry ->
-        case Map.get(existing_map, entry.path) do
+        case Map.get(existing_mtime_map, entry.path) do
           nil -> true
           db_mtime -> DateTime.compare(entry.mtime, db_mtime) == :gt
         end
       end)
 
-    changed_paths = Enum.map(changed_entries, & &1.path)
-
-    # Resolve owners, validate, and upsert only changed files
-    upserted =
-      case changed_entries do
+    {upserted, embedding_changed_entries} =
+      case mtime_changed_entries do
         [] ->
-          0
+          {0, []}
 
         _ ->
-          entries_with_owners = resolve_owners(scope, changed_entries)
+          entries_with_owners = resolve_owners(scope, mtime_changed_entries)
           entries_with_fingerprints = fingerprint_entries(env, entries_with_owners)
 
           components = Components.list_components(scope)
@@ -144,21 +282,38 @@ defmodule CodeMySpec.Files.FileSync do
           validated_entries =
             Enum.map(entries_with_fingerprints, &validate_entry(&1, env, component_by_id))
 
+          embedding_changed = changed_entries(validated_entries, existing_by_path)
+
           {count, _} = Files.upsert_files(scope, validated_entries)
-          count
+          {count, embedding_changed}
       end
+
+    # `changed_paths` reflects files the agent touched this turn (mtime-bumped).
+    # Validation drives analyzer selection and `:block_changed` scope from this
+    # set — a rewrite of byte-identical impl content still needs the runner
+    # analyzers to pick up the corresponding test failures. Fingerprint diff
+    # gates embedding work only; that's why `embedding_changed_entries` stays
+    # internal to `sync_embeddings/4` below.
+    changed_paths = Enum.map(mtime_changed_entries, & &1.path)
 
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 
     # Remove files no longer on disk + their orphaned problems (otherwise
     # stale failures from deleted files keep blocking stop hooks).
     current_paths = Enum.map(file_entries, & &1.path)
+    current_path_set = MapSet.new(current_paths)
+
+    removed_records =
+      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
+
     {removed, _} = Files.delete_removed(scope, current_paths)
     {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
 
     if orphaned > 0 do
       Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
     end
+
+    sync_embeddings(scope, env, embedding_changed_entries, removed_records)
 
     total_ms = System.monotonic_time(:millisecond) - start
 
@@ -205,9 +360,13 @@ defmodule CodeMySpec.Files.FileSync do
   end
 
   defp sync_classified_path(scope, env, path, role) do
+    existing = Files.get_by_path(scope, path)
+
     case stat_file(env, path, role) do
       nil ->
         Files.delete_by_paths(scope, [path])
+        removed_records = if existing, do: [existing], else: []
+        sync_embeddings(scope, env, [], removed_records)
         {:ok, %{changed_path: path}}
 
       entry ->
@@ -215,14 +374,48 @@ defmodule CodeMySpec.Files.FileSync do
         # leaves mtime stale so sync_changed still picks the file up during
         # the stop hook pass. Fingerprint updates eagerly per Rule 8 so
         # out-of-band consumers can react to content change in real time.
-        [entry] = resolve_owners(scope, [entry])
-        [entry] = fingerprint_entries(env, [entry])
-        components = Components.list_components(scope)
-        component_by_id = Map.new(components, &{&1.id, &1})
-        validated = validate_entry(entry, env, component_by_id)
-        Files.upsert_file_metadata(scope, validated)
+        #
+        # Owner resolution and component-aware validation only run for
+        # roles that actually have component/story owners. Hex doc and
+        # other doc-corpus files would otherwise trigger expensive
+        # `list_components` + `parent_component_id IN (?,?,...)` queries
+        # for every individual write — that's catastrophic when the
+        # projector lands hundreds of markdown files.
+        entry =
+          if owner_bearing_role?(role) do
+            [entry] = resolve_owners(scope, [entry])
+            [entry] = fingerprint_entries(env, [entry])
+            components = Components.list_components(scope)
+            component_by_id = Map.new(components, &{&1.id, &1})
+            validate_entry(entry, env, component_by_id)
+          else
+            [entry] = fingerprint_entries(env, [entry])
+            entry |> Map.put(:component_id, nil) |> Map.put(:story_id, nil) |> Map.put(:valid, true) |> Map.put(:validation_errors, nil)
+          end
+
+        embedding_changed_entries =
+          if fingerprint_changed?(entry, existing), do: [entry], else: []
+
+        Files.upsert_file_metadata(scope, entry)
+        sync_embeddings(scope, env, embedding_changed_entries, [])
         {:ok, %{changed_path: path}}
     end
+  end
+
+  # Roles that have a meaningful component or story owner. Other
+  # roles (hex_doc, project_knowledge, rule, architecture, etc.) are
+  # standalone documents — there's no owner to resolve, no component
+  # to look up, and no spec-alignment validation that needs running.
+  defp owner_bearing_role?(role)
+       when role in [:implementation, :test, :spec, :bdd_spec, :qa_brief, :qa_result, :review],
+       do: true
+
+  defp owner_bearing_role?(_), do: false
+
+  defp fingerprint_changed?(_entry, nil), do: true
+
+  defp fingerprint_changed?(entry, %{fingerprint: existing_fingerprint}) do
+    Map.get(entry, :fingerprint) != existing_fingerprint
   end
 
   # Reads each entry's content and stamps a SHA-256 fingerprint on the
@@ -339,7 +532,9 @@ defmodule CodeMySpec.Files.FileSync do
     :review,
     :architecture,
     :integration,
-    :agents_md
+    :agents_md,
+    :project_knowledge,
+    :hex_doc
   ]
 
   def validate_entry(%{role: role} = entry, _env, _component_by_id)
@@ -688,20 +883,31 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
+  # Each tuple is `{dir_fn, role}` — a path under that directory ending
+  # in `.md` classifies as that role. Order doesn't matter; the dirs
+  # don't overlap.
+  #
+  # Framework knowledge (the `"knowledge"` source) is intentionally
+  # absent — it lives in `priv/knowledge/` and is embedded directly
+  # by `Embeddings.sync_framework_knowledge/1`. Nothing under the
+  # project tree resolves to that role.
+  defp doc_dir_roles do
+    [
+      {&Paths.rules_dir/0, :rule},
+      {&Paths.architecture_dir/0, :architecture},
+      {&Paths.integrations_dir/0, :integration},
+      {&Paths.knowledge_dir/0, :project_knowledge},
+      {&Paths.hex_docs_dir/0, :hex_doc}
+    ]
+  end
+
   defp classify_docs(path) do
-    cond do
-      String.starts_with?(path, Paths.rules_dir() <> "/") and String.ends_with?(path, ".md") ->
-        {path, :rule}
+    if String.ends_with?(path, ".md"),
+      do: Enum.find_value(doc_dir_roles(), &match_doc_dir(path, &1))
+  end
 
-      String.starts_with?(path, Paths.architecture_dir() <> "/") and String.ends_with?(path, ".md") ->
-        {path, :architecture}
-
-      String.starts_with?(path, Paths.integrations_dir() <> "/") and String.ends_with?(path, ".md") ->
-        {path, :integration}
-
-      true ->
-        nil
-    end
+  defp match_doc_dir(path, {dir_fn, role}) do
+    if String.starts_with?(path, dir_fn.() <> "/"), do: {path, role}
   end
 
   defp classify_qa(path) do

@@ -15,7 +15,11 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     File.mkdir_p!(Path.join(tmp_dir, "lib"))
     File.mkdir_p!(Path.join(tmp_dir, "test"))
 
-    scope = %{scope | cwd: tmp_dir}
+    scope = %{
+      scope
+      | cwd: tmp_dir,
+        environment: CodeMySpec.Environments.Environment.new(:local, tmp_dir)
+    }
 
     on_exit(fn -> File.rm_rf!(tmp_dir) end)
 
@@ -109,6 +113,199 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     end
   end
 
+  describe "mix.lock polling" do
+    setup [:start_server]
+
+    test "schedules a hex sync when mix.lock mtime changes", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
+      lock_path = Path.join(tmp_dir, "mix.lock")
+      File.write!(lock_path, ~s|%{"a": {:hex, :a, "1.0.0"}}|)
+
+      ensure_watching_sync(scope, name)
+
+      # Server now snapshots the current mtime as its baseline.
+      initial = :sys.get_state(name).lock_mtimes[tmp_dir]
+      assert is_integer(initial)
+
+      # Bump mtime so the next poll observes a change.
+      File.touch!(lock_path, initial + 5)
+
+      send(pid, :poll_locks)
+      _ = FileWatcherServer.watched_dirs(name)
+
+      state = :sys.get_state(name)
+      assert state.lock_mtimes[tmp_dir] == initial + 5
+      assert is_reference(state.hex_sync_timers[tmp_dir]),
+             "expected a debounce timer to be scheduled after mix.lock change"
+    end
+
+    test "no timer is scheduled when mix.lock mtime is unchanged", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
+      File.write!(Path.join(tmp_dir, "mix.lock"), ~s|%{}|)
+      ensure_watching_sync(scope, name)
+
+      send(pid, :poll_locks)
+      _ = FileWatcherServer.watched_dirs(name)
+
+      assert :sys.get_state(name).hex_sync_timers == %{}
+    end
+
+    test "no timer is scheduled when mix.lock is absent", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
+      ensure_watching_sync(scope, name)
+
+      send(pid, :poll_locks)
+      _ = FileWatcherServer.watched_dirs(name)
+
+      refute Map.has_key?(:sys.get_state(name).hex_sync_timers, tmp_dir)
+    end
+
+    test "back-to-back lock changes coalesce into a single fresh timer", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
+      lock_path = Path.join(tmp_dir, "mix.lock")
+      File.write!(lock_path, "%{}")
+      ensure_watching_sync(scope, name)
+
+      initial_mtime = :sys.get_state(name).lock_mtimes[tmp_dir]
+
+      File.touch!(lock_path, initial_mtime + 1)
+      send(pid, :poll_locks)
+      _ = FileWatcherServer.watched_dirs(name)
+      first_ref = :sys.get_state(name).hex_sync_timers[tmp_dir]
+      assert is_reference(first_ref)
+
+      File.touch!(lock_path, initial_mtime + 2)
+      send(pid, :poll_locks)
+      _ = FileWatcherServer.watched_dirs(name)
+      second_ref = :sys.get_state(name).hex_sync_timers[tmp_dir]
+      assert is_reference(second_ref)
+
+      # The first timer was cancelled and replaced — `Process.cancel_timer`
+      # on a cancelled ref returns `false` (no time remaining), while the
+      # active second_ref returns an integer (ms remaining).
+      assert Process.cancel_timer(first_ref) == false,
+             "expected the first debounce timer to have been cancelled"
+
+      assert is_integer(Process.cancel_timer(second_ref)),
+             "expected the second debounce timer to still be active"
+    end
+  end
+
+  describe "{:run_hex_sync, project_root} dispatch" do
+    setup [:start_server]
+
+    test "runs HexDocProjector and lands markdown for installed packages", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
+      install_fixture_beam(tmp_dir, "phoenix", "Phoenix",
+        "Phoenix is a productive web framework.")
+
+      ensure_watching_sync(scope, name)
+      send(pid, {:run_hex_sync, tmp_dir})
+
+      target = Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"])
+      assert wait_until(200, fn -> File.exists?(target) end),
+             "expected projector to land Phoenix.md after {:run_hex_sync} dispatch"
+
+      assert File.read!(target) =~ "productive web framework"
+    end
+
+    test "clears the pending timer ref from state after dispatch", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
+      ensure_watching_sync(scope, name)
+      # Plant a fake timer ref so we can observe it being cleared.
+      ref = make_ref()
+      :sys.replace_state(name, fn state ->
+        %{state | hex_sync_timers: Map.put(state.hex_sync_timers, tmp_dir, ref)}
+      end)
+
+      send(pid, {:run_hex_sync, tmp_dir})
+      _ = FileWatcherServer.watched_dirs(name)
+
+      refute Map.has_key?(:sys.get_state(name).hex_sync_timers, tmp_dir)
+    end
+  end
+
+  describe "boot snapshot" do
+    test "snapshots mix.lock mtime for ensure_watching projects" do
+      tmp_dir = Path.join(System.tmp_dir!(), "fw_boot_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(tmp_dir, "lib"))
+      lock_path = Path.join(tmp_dir, "mix.lock")
+      File.write!(lock_path, "%{}")
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
+      scope = full_scope_fixture(%{module_name: "CodeMySpec"})
+      scope = %{scope | cwd: tmp_dir}
+
+      Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+      name = :"file_watcher_boot_#{System.unique_integer([:positive])}"
+      {:ok, _pid} = FileWatcherServer.start_link(name: name)
+
+      ensure_watching_sync(scope, name)
+
+      mtime = :sys.get_state(name).lock_mtimes[tmp_dir]
+      {:ok, %File.Stat{mtime: actual}} = File.stat(lock_path, time: :posix)
+
+      assert mtime == actual,
+             "expected boot-time snapshot to match mix.lock's actual mtime"
+    end
+  end
+
+  describe "mailbox under flood" do
+    setup [:start_server]
+
+    test "drains 5000 synthetic file events without backing up", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
+      ensure_watching_sync(scope, name)
+      watcher_pid = get_watcher_pid(name, tmp_dir)
+
+      # Use an unrecognized path so dispatch is a no-op (classify
+      # returns nil → sync_path returns {:ok, %{changed_path: nil}})
+      # and no DB queries fire. This isolates the watcher's mailbox
+      # behavior from downstream work.
+      noisy_path = Path.join(tmp_dir, "deps/noisy/file.txt")
+
+      for _ <- 1..5000 do
+        send(pid, {:file_event, watcher_pid, {noisy_path, [:modified]}})
+      end
+
+      assert wait_until(2_000, fn ->
+               {:message_queue_len, len} = Process.info(pid, :message_queue_len)
+               len == 0
+             end),
+             "expected the watcher's mailbox to drain within 2 seconds under a 5000-event flood"
+
+      assert Process.alive?(pid)
+    end
+  end
+
   # Ensure the cast has been processed by making a synchronous call after it
   defp ensure_watching_sync(scope, name) do
     result = FileWatcherServer.ensure_watching(scope, name)
@@ -120,5 +317,57 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
   # Get the FileSystem watcher PID for a given project root from the server state
   defp get_watcher_pid(name, project_root) do
     :sys.get_state(name).watchers[project_root].watcher_pid
+  end
+
+  # Poll `check_fn` until it returns true or `timeout_ms` elapses.
+  # Returns true on success, false on timeout. Used for asserting
+  # async side effects (Task.start in the GenServer's handler).
+  defp wait_until(timeout_ms, check_fn) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_until(deadline, check_fn)
+  end
+
+  defp do_wait_until(deadline, check_fn) do
+    cond do
+      check_fn.() -> true
+      System.monotonic_time(:millisecond) >= deadline -> false
+      true ->
+        Process.sleep(20)
+        do_wait_until(deadline, check_fn)
+    end
+  end
+
+  # Compile a tiny fixture module with EEP-48 docs and write its BEAM
+  # under `<tmp_dir>/_build/dev/lib/<package>/ebin/Elixir.<module>.beam`.
+  # Mirrors the helper in `hex_doc_projector_test.exs`. mix test strips
+  # the docs chunk by default, so we force `:docs` on for the duration
+  # of the compile.
+  defp install_fixture_beam(tmp_dir, package, module_filename, docstring) do
+    beam_path =
+      Path.join([tmp_dir, "_build/dev/lib", package, "ebin", "Elixir.#{module_filename}.beam"])
+
+    File.mkdir_p!(Path.dirname(beam_path))
+
+    # Mark as a real hex dep so the projector doesn't skip it.
+    File.mkdir_p!(Path.join([tmp_dir, "deps", package]))
+
+    source = """
+    defmodule TestFixtureFwBeam#{System.unique_integer([:positive])} do
+      @moduledoc #{inspect(docstring)}
+    end
+    """
+
+    prior = Code.get_compiler_option(:docs)
+    Code.put_compiler_option(:docs, true)
+
+    [{_mod, binary}] =
+      try do
+        Code.compile_string(source)
+      after
+        Code.put_compiler_option(:docs, prior)
+      end
+
+    File.write!(beam_path, binary)
+    beam_path
   end
 end

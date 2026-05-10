@@ -35,8 +35,8 @@ defmodule CodeMySpec.Paths do
   @doc "Knowledge directory for project-specific research (`.code_my_spec/knowledge`)."
   def knowledge_dir, do: Path.join(@base_dir, "knowledge")
 
-  @doc "Framework knowledge directory (`.code_my_spec/framework`). Copied from app's priv/knowledge/ on CLI startup."
-  def framework_dir, do: Path.join(@base_dir, "framework")
+  @doc "Hex doc projection directory (`.code_my_spec/hex_docs`). Populated by the projector that reads EEP-48 docs from compiled BEAMs in `_build/<env>/lib/<package>/ebin`."
+  def hex_docs_dir, do: Path.join(@base_dir, "hex_docs")
 
   @doc "Tools directory (`.code_my_spec/tools`). Copied from app's priv/tools/ on CLI startup."
   def tools_dir, do: Path.join(@base_dir, "tools")

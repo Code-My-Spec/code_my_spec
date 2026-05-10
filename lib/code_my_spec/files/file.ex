@@ -34,7 +34,10 @@ defmodule CodeMySpec.Files.File do
     :claude_md,
     :setup_config,
     :test_support,
-    :agents_md
+    :agents_md,
+    :knowledge,
+    :project_knowledge,
+    :hex_doc
   ]
 
   @type role ::
@@ -57,6 +60,9 @@ defmodule CodeMySpec.Files.File do
           | :setup_config
           | :test_support
           | :agents_md
+          | :knowledge
+          | :project_knowledge
+          | :hex_doc
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
@@ -95,9 +101,22 @@ defmodule CodeMySpec.Files.File do
     timestamps()
   end
 
+  @cast_fields [
+    :path,
+    :role,
+    :mtime,
+    :size,
+    :fingerprint,
+    :valid,
+    :validation_errors,
+    :component_id,
+    :story_id,
+    :project_id
+  ]
+
   def changeset(file, attrs) do
     file
-    |> cast(attrs, [:path, :role, :mtime, :size, :fingerprint, :valid, :validation_errors, :component_id, :story_id, :project_id])
+    |> cast(attrs, @cast_fields)
     |> validate_required([:path, :role, :project_id])
     |> unique_constraint([:project_id, :path])
   end

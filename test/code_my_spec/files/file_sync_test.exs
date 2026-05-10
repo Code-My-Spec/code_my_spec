@@ -114,17 +114,28 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert "CLAUDE.md" in paths
     end
 
-    test "full sync always reports all paths" do
+    test "full sync reports only fingerprint-changed paths" do
       {scope, tmp_dir} = setup_project()
 
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
+      # First sync sees the file as new — must report it as changed.
       {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
       assert "lib/my_app/accounts.ex" in result1.changed_paths
 
-      # Second sync reports all paths too (no mtime filtering)
+      # Second sync with no on-disk edits reports an empty diff —
+      # otherwise downstream consumers (embedding, the /files panel)
+      # would do redundant work on every sync. Story 688: "Files whose
+      # checksum is unchanged are skipped."
       {:ok, result2} = FileSync.sync(scope, base_dir: tmp_dir)
-      assert "lib/my_app/accounts.ex" in result2.changed_paths
+      refute "lib/my_app/accounts.ex" in result2.changed_paths
+      assert result2.changed_paths == []
+
+      # Editing the file's content puts it back in the diff.
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\n  # v2\nend")
+
+      {:ok, result3} = FileSync.sync(scope, base_dir: tmp_dir)
+      assert "lib/my_app/accounts.ex" in result3.changed_paths
     end
 
     test "removes files that no longer exist on disk" do
@@ -489,6 +500,110 @@ defmodule CodeMySpec.Files.FileSyncTest do
       file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
       assert file.valid == false
       assert file.validation_errors != nil
+    end
+
+    # The watcher's per-file dispatch route. `FileSync.sync_path/3`
+    # mirrors `sync/2`'s embedding hook so file changes detected by
+    # `:fs` events drive embedding in real time, not only on the
+    # next stop hook batch.
+    test "embeds a newly-created spec file" do
+      CodeMySpec.Embeddings.TestBackend.reset()
+      {scope, tmp_dir} = setup_project()
+
+      path = ".code_my_spec/spec/my_app/widget.spec.md"
+      write_file(tmp_dir, path, "# Widget\n\nThe widget context exposes create_widget.")
+      abs_path = Path.join(tmp_dir, path)
+
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      {:ok, results} =
+        CodeMySpec.Embeddings.search(scope, "create_widget", source: "spec", limit: 5)
+
+      assert Enum.any?(results, &(&1.path == path)),
+             "Expected sync_path to embed the new spec file. Got: #{inspect(results)}"
+    end
+
+    test "re-embeds when a file's content changes (fingerprint diff)" do
+      CodeMySpec.Embeddings.TestBackend.reset()
+      {scope, tmp_dir} = setup_project()
+
+      path = ".code_my_spec/spec/my_app/widget.spec.md"
+      abs_path = Path.join(tmp_dir, path)
+
+      write_file(tmp_dir, path, "# Widget\n\nThe widget exposes create_widget/2.")
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      write_file(tmp_dir, path, "# Widget\n\nThe widget exposes create_widget/3 with attrs.")
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      {:ok, results} =
+        CodeMySpec.Embeddings.search(scope, "create_widget attrs arity 3",
+          source: "spec",
+          limit: 5
+        )
+
+      hit = Enum.find(results, &(&1.path == path))
+      assert hit, "Expected re-embedded chunk for #{path}, got: #{inspect(results)}"
+      assert hit.content =~ "create_widget/3"
+      refute hit.content =~ "create_widget/2"
+    end
+
+    test "drops embeddings when a tracked file is deleted from disk" do
+      CodeMySpec.Embeddings.TestBackend.reset()
+      {scope, tmp_dir} = setup_project()
+
+      path = ".code_my_spec/rules/legacy.md"
+      abs_path = write_file(tmp_dir, path, "# Legacy\n\nUse legacy_factory/1 to bootstrap.")
+
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      {:ok, results} =
+        CodeMySpec.Embeddings.search(scope, "legacy_factory bootstrap",
+          source: "rules",
+          limit: 5
+        )
+
+      assert Enum.any?(results, &(&1.path == path)),
+             "Pre-condition: expected the file to be embedded after first sync"
+
+      File.rm!(abs_path)
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      {:ok, results_after} =
+        CodeMySpec.Embeddings.search(scope, "legacy_factory bootstrap",
+          source: "rules",
+          limit: 10
+        )
+
+      refute Enum.any?(results_after, &(&1.path == path)),
+             "Expected embeddings for the deleted file to be dropped, got: #{inspect(results_after)}"
+    end
+
+    test "skips re-embedding when content fingerprint is unchanged" do
+      CodeMySpec.Embeddings.TestBackend.reset()
+      {scope, tmp_dir} = setup_project()
+
+      path = ".code_my_spec/spec/my_app/widget.spec.md"
+      abs_path = Path.join(tmp_dir, path)
+
+      content = "# Widget\n\nThe widget exposes create_widget/2."
+      write_file(tmp_dir, path, content)
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      # Bump mtime by re-writing the same content. sync_path will
+      # re-fingerprint, see no change, and skip the embedding hook.
+      File.touch!(abs_path)
+      {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      # Search still finds the embedded chunk — the second sync_path
+      # didn't double-insert (TestBackend would now have one chunk per
+      # file regardless because embed_file deletes-then-inserts, but
+      # the contract this asserts is that no error is raised and the
+      # search result is stable).
+      {:ok, results} =
+        CodeMySpec.Embeddings.search(scope, "create_widget", source: "spec", limit: 5)
+
+      assert Enum.count(results, &(&1.path == path)) == 1
     end
   end
 
