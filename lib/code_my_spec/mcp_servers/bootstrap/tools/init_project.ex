@@ -80,6 +80,12 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
   end
 
   defp upsert_local_project(server_data, working_dir) do
+    client_user_id =
+      case OAuthClient.get_active_client_user() do
+        {:ok, %{id: id}} -> id
+        _ -> nil
+      end
+
     attrs = %{
       id: server_data["id"],
       name: server_data["name"],
@@ -90,6 +96,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
       client_api_url: server_data["client_api_url"],
       account_id: server_data["account_id"],
       local_path: working_dir,
+      client_user_id: client_user_id,
       status: :created
     }
 
@@ -98,7 +105,16 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
     |> Repo.insert(
       on_conflict:
         {:replace,
-         [:name, :description, :module_name, :code_repo, :docs_repo, :client_api_url, :local_path]},
+         [
+           :name,
+           :description,
+           :module_name,
+           :code_repo,
+           :docs_repo,
+           :client_api_url,
+           :local_path,
+           :client_user_id
+         ]},
       conflict_target: :id,
       returning: true
     )

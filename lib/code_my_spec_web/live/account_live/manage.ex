@@ -127,7 +127,6 @@ defmodule CodeMySpecWeb.AccountLive.Manage do
   end
 
   defp can_delete_account?(current_scope, account) do
-    account.type == :team &&
-      Authorization.authorize(:delete_account, current_scope, account.id)
+    Authorization.authorize(:delete_account, current_scope, account.id)
   end
 end

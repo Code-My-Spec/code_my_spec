@@ -902,19 +902,20 @@ defmodule CodeMySpecSpex.SharedGivens do
   end
 
   # The visitor has registered through the public registration LiveView,
-  # clicked their magic link (so the user is now confirmed and the personal
-  # account / member / preference rows have all been provisioned), and is
-  # sitting on /app with a connected LiveView socket. Subsequent
-  # `when_` / `then_` steps interact with `context.view` (LiveView) or
-  # assert against `context.html` (initial render).
+  # clicked their magic link (so the user is now confirmed and logged in),
+  # named their personal account through the dashboard's create-account
+  # form, and is sitting on /app with a connected LiveView socket
+  # showing the project-name step. Subsequent `when_` / `then_` steps
+  # interact with `context.view` (LiveView) or assert against
+  # `context.html` (initial render).
   register_given :empty_state_user_on_onboarding, context do
     %{magic_link_url: magic_link_url} = context
 
     auth_path = URI.parse(magic_link_url).path
 
     # Magic-link confirm logs the user in. No account is provisioned
-    # by the auth flow anymore — story 606 made account creation an
-    # explicit first onboarding step.
+    # by the auth flow — account creation is an explicit first
+    # onboarding step.
     auth_conn =
       Phoenix.ConnTest.dispatch(
         Phoenix.ConnTest.build_conn(),

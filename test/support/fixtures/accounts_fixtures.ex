@@ -1,9 +1,4 @@
 defmodule CodeMySpec.AccountsFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `CodeMySpec.Accounts` context.
-  """
-
   alias CodeMySpec.Accounts.{Account, Member}
   alias CodeMySpec.Repo
 
@@ -12,28 +7,12 @@ defmodule CodeMySpec.AccountsFixtures do
 
     Enum.into(attrs, %{
       name: "Test Account #{unique_id}",
-      slug: "test-account-#{unique_id}",
-      type: :team
-    })
-  end
-
-  def valid_personal_account_attributes(attrs \\ %{}) do
-    unique_id = System.unique_integer([:positive])
-
-    Enum.into(attrs, %{
-      name: "Personal Account #{unique_id}",
-      slug: "personal-#{unique_id}",
-      type: :personal
+      slug: "test-account-#{unique_id}"
     })
   end
 
   def account_fixture(attrs \\ %{}) do
     Account.create_changeset(valid_account_attributes(attrs))
-    |> Repo.insert!()
-  end
-
-  def personal_account_fixture(attrs \\ %{}) do
-    Account.create_changeset(valid_personal_account_attributes(attrs))
     |> Repo.insert!()
   end
 
@@ -53,12 +32,6 @@ defmodule CodeMySpec.AccountsFixtures do
 
   def account_with_owner_fixture(user, attrs \\ %{}) do
     account = account_fixture(attrs)
-    _member = member_fixture(user, account, :owner)
-    account
-  end
-
-  def personal_account_with_owner_fixture(user, attrs \\ %{}) do
-    account = personal_account_fixture(attrs)
     _member = member_fixture(user, account, :owner)
     account
   end

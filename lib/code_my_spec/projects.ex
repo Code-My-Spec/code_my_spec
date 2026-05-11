@@ -47,10 +47,42 @@ defmodule CodeMySpec.Projects do
   @doc """
   Returns all projects that have a local_path set, ordered by name.
   Does not require a scope — intended for the local web project index.
+
+  When `client_user_id` is given, scopes to projects linked by that
+  client_user. Projects linked under a previous OAuth session
+  (different client_user_id, or unstamped from before the field
+  existed) intentionally do not appear — they belong to someone
+  else on this machine.
   """
-  def list_local_projects do
+  def list_local_projects(client_user_id \\ nil)
+
+  def list_local_projects(nil) do
     from(p in Project, where: not is_nil(p.local_path), order_by: [asc: p.name])
     |> Repo.all()
+  end
+
+  def list_local_projects(client_user_id) do
+    from(p in Project,
+      where: not is_nil(p.local_path) and p.client_user_id == ^client_user_id,
+      order_by: [asc: p.name]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns true iff some project has a local_path set AND was linked by
+  this client_user. Used by the local-install ladder to decide whether
+  to surface the linked-project rung as "done."
+  """
+  def any_linked_project_for_client_user?(nil), do: false
+
+  def any_linked_project_for_client_user?(client_user_id) do
+    query =
+      from p in Project,
+        where: not is_nil(p.local_path) and p.client_user_id == ^client_user_id,
+        limit: 1
+
+    Repo.exists?(query)
   end
 
   @doc """
@@ -119,44 +151,6 @@ defmodule CodeMySpec.Projects do
   rescue
     Ecto.Query.CastError -> nil
   end
-
-  @doc """
-  Stamps `init_completed_at` on the project. Idempotent — a no-op if
-  already stamped.
-  """
-  @spec mark_init_complete(Project.t()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
-  def mark_init_complete(%Project{init_completed_at: %DateTime{}} = project), do: {:ok, project}
-
-  def mark_init_complete(%Project{} = project) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    project
-    |> Ecto.Changeset.change(%{init_completed_at: now})
-    |> Repo.update()
-  end
-
-  @doc """
-  Stamps `setup_completed_at` on the project. Idempotent.
-  """
-  @spec mark_setup_complete(Project.t()) :: {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
-  def mark_setup_complete(%Project{setup_completed_at: %DateTime{}} = project),
-    do: {:ok, project}
-
-  def mark_setup_complete(%Project{} = project) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    project
-    |> Ecto.Changeset.change(%{setup_completed_at: now})
-    |> Repo.update()
-  end
-
-  @doc "True iff the project's init phase has been marked complete."
-  def init_complete?(%Project{init_completed_at: nil}), do: false
-  def init_complete?(%Project{}), do: true
-
-  @doc "True iff the project's setup phase has been marked complete."
-  def setup_complete?(%Project{setup_completed_at: nil}), do: false
-  def setup_complete?(%Project{}), do: true
 
   @doc """
   Returns the distinct `account_id` for every project that has a

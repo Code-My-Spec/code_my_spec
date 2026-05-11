@@ -28,11 +28,8 @@ defmodule CodeMySpecWeb.AccountLive.Picker do
               >
                 <div class="flex-1">
                   <div class="font-semibold">{account.name}</div>
-                  <div class="text-sm opacity-70">
-                    {if account.type == :personal, do: "Personal", else: "Team"}
-                    <span :if={account.type == :team && @user_roles[account.id]}>
-                      • {String.capitalize(to_string(@user_roles[account.id]))}
-                    </span>
+                  <div :if={@user_roles[account.id]} class="text-sm opacity-70">
+                    {String.capitalize(to_string(@user_roles[account.id]))}
                   </div>
                 </div>
                 <div :if={account.id == @current_account_id} class="badge badge-primary">
@@ -54,10 +51,10 @@ defmodule CodeMySpecWeb.AccountLive.Picker do
     current_account_id = current_scope.active_account_id
     return_to = params["return_to"] || "/"
 
-    # Build a map of account_id -> user_role for team accounts
+    # Build a map of account_id -> user_role so the picker can show
+    # the user's role on each account they belong to.
     user_roles =
       accounts
-      |> Enum.filter(&(&1.type == :team))
       |> Enum.into(%{}, fn account ->
         {account.id, get_user_role(account.id, current_scope.user.id)}
       end)

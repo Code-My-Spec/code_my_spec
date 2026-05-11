@@ -71,7 +71,7 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
       {:noreply, socket}
     else
       if user = Users.get_user_by_email(email) do
-        Users.deliver_login_instructions(user, &url(~p"/users/log-in/#{&1}"))
+        Users.deliver_login_instructions(user, &url(socket, ~p"/users/log-in/#{&1}"))
       end
 
       if connected?(socket), do: Process.send_after(self(), :tick, 1000)

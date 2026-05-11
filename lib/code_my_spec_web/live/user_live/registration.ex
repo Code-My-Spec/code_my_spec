@@ -210,10 +210,13 @@ defmodule CodeMySpecWeb.UserLive.Registration do
   def handle_event("save", %{"user" => user_params}, socket) do
     case Users.register_user(user_params) do
       {:ok, user} ->
+        # Pass the socket so the URL resolves against the request's
+        # actual host (e.g. http://localhost:4000 in dev) instead of
+        # the endpoint's configured production URL.
         {:ok, _} =
           Users.deliver_login_instructions(
             user,
-            &url(~p"/users/log-in/#{&1}")
+            &url(socket, ~p"/users/log-in/#{&1}")
           )
 
         {:noreply, push_navigate(socket, to: ~p"/users/check-email?email=#{user.email}")}

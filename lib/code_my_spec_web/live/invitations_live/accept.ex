@@ -202,7 +202,7 @@ defmodule CodeMySpecWeb.InvitationsLive.Accept do
         {:ok, _} =
           Users.deliver_login_instructions(
             user,
-            &url(~p"/users/log-in/#{&1}")
+            &url(socket, ~p"/users/log-in/#{&1}")
           )
 
         {:noreply,

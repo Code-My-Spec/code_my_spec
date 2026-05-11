@@ -67,7 +67,7 @@ defmodule CodeMySpec.AccountsTest do
   end
 
   describe "create_account/2" do
-    test "creates account with valid attributes" do
+    test "creates account with valid attributes and adds the user as owner" do
       user = user_fixture()
       scope = user_scope_fixture(user)
       attrs = valid_account_attributes()
@@ -75,7 +75,11 @@ defmodule CodeMySpec.AccountsTest do
       assert {:ok, account} = Accounts.create_account(scope, attrs)
       assert account.name == attrs.name
       assert account.slug == attrs.slug
-      assert account.type == attrs.type
+
+      members = Accounts.list_account_members(scope, account.id)
+      assert length(members) == 1
+      assert hd(members).user_id == user.id
+      assert hd(members).role == :owner
     end
 
     test "broadcasts account creation" do
@@ -95,48 +99,6 @@ defmodule CodeMySpec.AccountsTest do
       attrs = %{name: nil}
 
       assert {:error, _changeset} = Accounts.create_account(scope, attrs)
-    end
-  end
-
-  describe "create_personal_account/1" do
-    test "creates personal account for user" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-
-      assert {:ok, account} = Accounts.create_personal_account(scope)
-      assert account.type == :personal
-    end
-
-    test "broadcasts personal account creation" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-      Accounts.subscribe_account(scope)
-
-      {:ok, account} = Accounts.create_personal_account(scope)
-
-      assert_receive {:created, ^account}
-    end
-  end
-
-  describe "create_team_account/2" do
-    test "creates team account with user as owner" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-      attrs = valid_account_attributes()
-
-      assert {:ok, account} = Accounts.create_team_account(scope, attrs)
-      assert account.type == :team
-    end
-
-    test "broadcasts team account creation" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-      Accounts.subscribe_account(scope)
-
-      attrs = valid_account_attributes()
-      {:ok, account} = Accounts.create_team_account(scope, attrs)
-
-      assert_receive {:created, ^account}
     end
   end
 
@@ -215,48 +177,6 @@ defmodule CodeMySpec.AccountsTest do
       changeset = Accounts.change_account(scope, account, attrs)
 
       assert changeset.changes.name == "New Name"
-    end
-  end
-
-  describe "get_personal_account/1" do
-    test "returns personal account for user" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-      personal_account = personal_account_with_owner_fixture(user)
-
-      result = Accounts.get_personal_account(scope)
-
-      assert result.id == personal_account.id
-    end
-
-    test "returns nil when user has no personal account" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-
-      result = Accounts.get_personal_account(scope)
-
-      assert result == nil
-    end
-  end
-
-  describe "ensure_personal_account/1" do
-    test "returns existing personal account" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-      personal_account = personal_account_with_owner_fixture(user)
-
-      result = Accounts.ensure_personal_account(scope)
-
-      assert result.id == personal_account.id
-    end
-
-    test "creates personal account when none exists" do
-      user = user_fixture()
-      scope = user_scope_fixture(user)
-
-      result = Accounts.ensure_personal_account(scope)
-
-      assert result.type == :personal
     end
   end
 

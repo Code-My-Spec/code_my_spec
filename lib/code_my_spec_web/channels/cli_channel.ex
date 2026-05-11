@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.CliChannel do
   require Logger
 
   alias CodeMySpec.Analytics
+  alias CodeMySpec.Events
   alias CodeMySpec.Users
   alias CodeMySpecWeb.Presence
 
@@ -72,7 +73,21 @@ defmodule CodeMySpecWeb.CliChannel do
 
     Logger.info("[CliChannel] activation_event #{name} user_id=#{user_id}")
 
+    # Fan out to telemetry (GA Measurement Protocol picks it up server-side).
     Analytics.dispatch(String.to_atom(name), payload, :server)
+
+    # Persist so the dashboard / per-project ladder can show "done"
+    # states across page mounts. The events table is generic — the
+    # payload becomes the JSON `data` blob.
+    Events.record(name, payload)
+
+    # Notify subscribed LiveViews so the user's open dashboard re-reads
+    # rung state without waiting for a presence diff.
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      status_topic(user_id),
+      {:activation_event, name, payload}
+    )
 
     {:reply, :ok, socket}
   end

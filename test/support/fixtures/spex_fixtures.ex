@@ -172,21 +172,25 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Stamps `init_completed_at` on the active project so the per-project
-  ladder's init rung evaluates as "done." For tests where the
-  scenario's intent is "init has been run."
+  Records a `local_init_complete` event for the active project so the
+  per-project ladder's init rung evaluates as "done." For tests where
+  the scenario's intent is "init has been run."
   """
   def satisfy_init(%{active_project: project}) when not is_nil(project) do
-    {:ok, _} = CodeMySpec.Projects.mark_init_complete(project)
+    {:ok, _event} =
+      CodeMySpec.Events.record("local_init_complete", %{project_id: project.id})
+
     :ok
   end
 
   @doc """
-  Stamps `setup_completed_at` on the active project so the per-project
-  ladder's setup rung evaluates as "done."
+  Records a `local_project_setup_complete` event for the active project
+  so the per-project ladder's setup rung evaluates as "done."
   """
   def satisfy_project_setup(%{active_project: project}) when not is_nil(project) do
-    {:ok, _} = CodeMySpec.Projects.mark_setup_complete(project)
+    {:ok, _event} =
+      CodeMySpec.Events.record("local_project_setup_complete", %{project_id: project.id})
+
     :ok
   end
 end

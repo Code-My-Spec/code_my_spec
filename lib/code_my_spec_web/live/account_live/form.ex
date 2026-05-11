@@ -46,7 +46,7 @@ defmodule CodeMySpecWeb.AccountLive.Form do
   end
 
   defp apply_action(socket, :new, _params) do
-    account = %Account{type: :team}
+    account = %Account{}
 
     socket
     |> assign(:page_title, "New Account")
@@ -96,7 +96,7 @@ defmodule CodeMySpecWeb.AccountLive.Form do
   end
 
   defp save_account(socket, :new, account_params) do
-    case Accounts.create_team_account(socket.assigns.current_scope, account_params) do
+    case Accounts.create_account(socket.assigns.current_scope, account_params) do
       {:ok, account} ->
         {:noreply,
          socket

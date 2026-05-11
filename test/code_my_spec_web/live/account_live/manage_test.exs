@@ -116,14 +116,6 @@ defmodule CodeMySpecWeb.AccountLive.ManageTest do
       assert has_element?(manage_live, "button", "Delete Account")
     end
 
-    test "does not show delete button for personal accounts", %{conn: conn, user: user} do
-      account = personal_account_with_owner_fixture(user)
-
-      {:ok, manage_live, _html} = live(conn, ~p"/app/accounts/#{account.id}/manage")
-
-      assert has_element?(manage_live, "button[disabled]", "Delete Account")
-    end
-
     test "deletes account successfully", %{conn: conn, user: user} do
       account = account_with_owner_fixture(user)
 

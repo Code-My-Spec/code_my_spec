@@ -10,6 +10,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Events
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -42,8 +43,8 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   end
 
   defp assign_ladder_state(socket, project, scope) do
-    init_done? = Projects.init_complete?(project)
-    setup_done? = Projects.setup_complete?(project)
+    init_done? = Events.exists?("local_init_complete", project_id: project.id)
+    setup_done? = Events.exists?("local_project_setup_complete", project_id: project.id)
     stories_count = safe_count_stories(scope)
     has_stories? = stories_count > 0
 
@@ -113,6 +114,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
         rung={:init}
         eyebrow="// step 01 · init"
         label="Init"
+        slug={@slug}
         state={rung_state(:init, @active, @init_done?, @setup_done?, @has_stories?)}
       />
 
@@ -120,6 +122,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
         rung={:project_setup}
         eyebrow="// step 02 · project setup"
         label="Project setup"
+        slug={@slug}
         state={rung_state(:project_setup, @active, @init_done?, @setup_done?, @has_stories?)}
       />
 
@@ -127,6 +130,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
         rung={:first_story}
         eyebrow="// step 03 · first story"
         label="First story"
+        slug={@slug}
         state={rung_state(:first_story, @active, @init_done?, @setup_done?, @has_stories?)}
       />
     </div>
@@ -148,6 +152,75 @@ defmodule CodeMySpecLocalWeb.HomeLive do
         <span class="cms-onboarding-eyebrow">{@eyebrow}</span>
         <span class="flex-1"></span>
         <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">{@label}</span>
+      </div>
+
+      <.rung_cta :if={@state == "active"} rung={@rung} slug={@slug} />
+    </div>
+    """
+  end
+
+  defp rung_cta(%{rung: :init} = assigns) do
+    ~H"""
+    <div class="px-6 pb-5 -mt-2 flex items-center gap-3 flex-wrap">
+      <.link
+        navigate={~p"/projects/#{@slug}/init"}
+        class="cms-onboarding-cta"
+        data-test="init-rung-cta"
+      >
+        <span>▸</span> Open init checklist
+      </.link>
+      <span class="text-xs opacity-60">
+        Step prompts ready to paste into Claude Code.
+      </span>
+    </div>
+    """
+  end
+
+  defp rung_cta(%{rung: :project_setup} = assigns) do
+    ~H"""
+    <div class="px-6 pb-5 -mt-2 flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <code class="kbd kbd-sm" data-test="project-setup-rung-cmd">/codemyspec:next</code>
+        <button
+          type="button"
+          class="copy-btn btn btn-xs btn-primary"
+          data-copy="/codemyspec:next"
+          data-test="project-setup-rung-copy"
+          aria-label="Copy /codemyspec:next to clipboard"
+        >
+          Copy
+        </button>
+      </div>
+      <span class="text-xs opacity-60">
+        Paste in Claude Code — the agent runs project setup automatically.
+      </span>
+    </div>
+    """
+  end
+
+  defp rung_cta(%{rung: :first_story} = assigns) do
+    ~H"""
+    <div class="px-6 pb-5 -mt-2 flex flex-col gap-2">
+      <div class="flex items-center gap-3 flex-wrap">
+        <.link
+          navigate={~p"/projects/#{@slug}/stories/new"}
+          class="cms-onboarding-cta"
+          data-test="first-story-rung-cta"
+        >
+          <span>▸</span> Write your first story
+        </.link>
+        <span class="text-xs opacity-60">— or let the agent guide you:</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <code class="kbd kbd-sm">/codemyspec:product interview</code>
+        <button
+          type="button"
+          class="copy-btn btn btn-xs btn-ghost"
+          data-copy="/codemyspec:product interview"
+          aria-label="Copy /codemyspec:product interview to clipboard"
+        >
+          Copy
+        </button>
       </div>
     </div>
     """

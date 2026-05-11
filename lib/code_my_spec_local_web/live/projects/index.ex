@@ -20,7 +20,8 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
+    client_user_id = active_client_user_id()
+    projects = Projects.list_local_projects(client_user_id)
 
     {:ok,
      assign(socket,
@@ -28,8 +29,15 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
        project: nil,
        page_title: "Projects",
        authed?: OAuthClient.authenticated?(),
-       linked_project?: any_linked_project?(projects)
+       linked_project?: Projects.any_linked_project_for_client_user?(client_user_id)
      )}
+  end
+
+  defp active_client_user_id do
+    case OAuthClient.get_active_client_user() do
+      {:ok, %{id: id}} -> id
+      _ -> nil
+    end
   end
 
   @impl true
@@ -48,12 +56,6 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
-
-  defp any_linked_project?(projects) do
-    Enum.any?(projects, fn project ->
-      is_binary(project.local_path) and project.local_path != ""
-    end)
-  end
 
   defp local_install_done?(authed?, linked_project?) do
     authed? and linked_project?
@@ -86,8 +88,14 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
         <p class="text-base-content/60 mt-1">Projects linked to a local working directory.</p>
       </div>
 
-      <div :if={@projects == []} role="alert" class="alert">
-        <span>No local projects found. Use the MCP <code class="kbd kbd-sm">init_project</code> tool to link a project.</span>
+      <div :if={@projects == []} role="alert" class="alert flex flex-col items-start gap-2">
+        <span class="font-semibold">No projects linked to this machine yet.</span>
+        <span class="text-sm opacity-80">
+          From Claude Code inside a Phoenix project's root directory, run
+          <code class="kbd kbd-sm">/codemyspec:init</code>
+          to link it. The plugin attaches to whichever directory Claude Code is
+          running in — there's no project picker beyond <code class="kbd kbd-sm">cd</code>.
+        </span>
       </div>
 
       <div :if={@projects != []} class="grid gap-4 sm:grid-cols-2">

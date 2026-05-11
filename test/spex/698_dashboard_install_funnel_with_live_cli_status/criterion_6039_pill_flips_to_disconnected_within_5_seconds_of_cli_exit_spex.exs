@@ -51,11 +51,19 @@ defmodule CodeMySpecSpex.Story698.Criterion6039Spex do
         {:ok, context}
       end
 
-      then_ "the pill displays Disconnected", context do
+      then_ "the pill displays a disconnected state", context do
         pill = element(context.view, "[data-test='cli-status-pill']") |> render()
 
-        assert pill =~ "Disconnected",
-               "expected the pill to read Disconnected after the only CLI exited, got: #{pill}"
+        # Audit C9 reframe: pill text now blames the user environment
+        # ("Claude Code not running") rather than the product ("Disconnected"),
+        # since the only thing that takes Presence offline is the CLI
+        # leaving. Anchor on the data-state attribute (stable contract)
+        # plus the new copy.
+        assert pill =~ ~s|data-state="disconnected"|,
+               "expected the pill to render in the disconnected state after the only CLI exited, got: #{pill}"
+
+        assert pill =~ "Claude Code not running",
+               "expected the pill text to surface the disconnected cause, got: #{pill}"
 
         {:ok, context}
       end

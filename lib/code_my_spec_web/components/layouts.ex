@@ -103,13 +103,22 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
           <ul class="menu p-4 w-64 min-h-full text-base-content">
             <li><a href={~p"/app"}>Overview</a></li>
-            <li><a href={~p"/app/projects"}>Projects</a></li>
-            <li><a href={~p"/app/issues"}>Issues</a></li>
-            <li><a href={~p"/app/content_admin"}>Content</a></li>
-            <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
-            <li><a href={~p"/app/users/settings"}>Settings</a></li>
+            <%!--
+              Audit S2: during the onboarding ladder (no project linked OR CLI
+              has never connected), every deep nav link is a derailment surface
+              — Projects/Issues/Content/Accounts/Settings either show empty
+              states or unrelated screens that pull the user out of setup.
+              Hide them until the user has actually activated.
+            --%>
+            <%= if onboarding_complete?(@current_scope) do %>
+              <li><a href={~p"/app/projects"}>Projects</a></li>
+              <li><a href={~p"/app/issues"}>Issues</a></li>
+              <li><a href={~p"/app/content_admin"}>Content</a></li>
+              <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
+              <li><a href={~p"/app/users/settings"}>Settings</a></li>
+            <% end %>
             <%= if @current_scope do %>
-              <li class="border-t border-base-300 mt-2 pt-2">
+              <li class={if onboarding_complete?(@current_scope), do: "border-t border-base-300 mt-2 pt-2", else: "mt-auto border-t border-base-300 pt-2"}>
                 <div class="text-xs opacity-60 px-2 truncate" title={@current_scope.user.email}>
                   {@current_scope.user.email}
                 </div>
@@ -127,6 +136,20 @@ defmodule CodeMySpecWeb.Layouts do
     </div>
     """
   end
+
+  # True once the user has finished the onboarding ladder enough that
+  # the full sidebar is useful — they have a project linked AND a CLI
+  # has connected at least once. Until both are true, deep nav links
+  # are dead ends and we hide them (audit S2).
+  defp onboarding_complete?(nil), do: false
+
+  defp onboarding_complete?(%{
+         user: %{cli_first_connected_at: %DateTime{}},
+         active_project: %{__struct__: _}
+       }),
+       do: true
+
+  defp onboarding_complete?(_), do: false
 
   @doc """
   Shows the flash group with standard titles and content.

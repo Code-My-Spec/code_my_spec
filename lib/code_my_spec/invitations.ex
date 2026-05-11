@@ -7,12 +7,13 @@ defmodule CodeMySpec.Invitations do
   """
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Accounts.Member
+  alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Authorization
+  alias CodeMySpec.Invitations.{Invitation, InvitationNotifier, InvitationRepository}
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
-  alias CodeMySpec.Accounts.Member
-  alias CodeMySpec.Invitations.{Invitation, InvitationRepository, InvitationNotifier}
 
   @type account_role :: :owner | :admin | :member
 
@@ -62,19 +63,22 @@ defmodule CodeMySpec.Invitations do
              | :not_authorized
              | :no_active_account
              | :email_delivery_failed}
-  def invite_user(scope, account_id, email, role)
-      when is_binary(email) and role in [:owner, :admin, :member] and not is_nil(account_id) do
+  def invite_user(scope, account_id, email, role, url_fun \\ nil)
+
+  def invite_user(scope, account_id, email, role, url_fun)
+      when is_binary(email) and role in [:owner, :admin, :member] and not is_nil(account_id) and
+             (is_function(url_fun, 1) or is_nil(url_fun)) do
     with :ok <- validate_manage_members_permission(scope, account_id),
          :ok <- validate_user_not_already_member(email, account_id),
          :ok <- validate_user_limit(account_id),
          {:ok, invitation} <- create_invitation(scope, account_id, email, role),
-         :ok <- send_invitation_email(invitation) do
+         :ok <- send_invitation_email(invitation, url_fun) do
       broadcast_invitation(scope, {:created, invitation})
       {:ok, invitation}
     end
   end
 
-  def invite_user(%Scope{active_account_id: nil}, _account_id, _email, _role) do
+  def invite_user(%Scope{active_account_id: nil}, _account_id, _email, _role, _url_fun) do
     {:error, :no_active_account}
   end
 
@@ -231,9 +235,12 @@ defmodule CodeMySpec.Invitations do
     end
   end
 
+  # User-limit validation is a no-op for now — billing isn't wired up,
+  # so `MembersRepository.can_add_user_to_account?/1` always returns
+  # true. Kept as a hook so a future billing context plugs in here
+  # without changing call sites.
   defp validate_user_limit(account_id) do
-    # TODO: Add user limit validation when billing context is implemented
-    case CodeMySpec.Accounts.MembersRepository.can_add_user_to_account?(account_id) do
+    case MembersRepository.can_add_user_to_account?(account_id) do
       true -> :ok
     end
   end
@@ -249,9 +256,18 @@ defmodule CodeMySpec.Invitations do
     InvitationRepository.create_invitation(scope, attrs)
   end
 
-  defp send_invitation_email(invitation) do
-    # In a real implementation, you would generate the proper URL
-    url = "#{CodeMySpec.PublicUrl.base()}/invitations/accept/#{invitation.token}"
+  # `url_fun` is supplied by the web layer (LV/controller) so the URL
+  # in the email resolves against the request's actual host, not a
+  # config-pinned endpoint URL. Falls back to `PublicUrl.base()` only
+  # for non-web callers (e.g. background jobs that don't have a
+  # request context).
+  defp send_invitation_email(invitation, url_fun) do
+    url =
+      if is_function(url_fun, 1) do
+        url_fun.(invitation.token)
+      else
+        "#{CodeMySpec.PublicUrl.base()}/invitations/accept/#{invitation.token}"
+      end
 
     case InvitationNotifier.deliver_invitation_email(invitation, url) do
       {:ok, _} -> :ok

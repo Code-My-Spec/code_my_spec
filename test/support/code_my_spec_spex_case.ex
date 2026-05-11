@@ -82,7 +82,11 @@ defmodule CodeMySpecSpex.Case do
     env = Fixtures.memory_environment_fixture(working_dir: stub_dir)
 
     project =
-      Fixtures.project_fixture(scope, account_id: account.id, local_path: stub_dir)
+      Fixtures.project_fixture(scope,
+        account_id: account.id,
+        local_path: stub_dir,
+        client_user_id: user.id
+      )
 
     # Register the env so Scope.for_local_project (called by LiveViews that
     # rebuild scope from project) returns THIS env instead of a default

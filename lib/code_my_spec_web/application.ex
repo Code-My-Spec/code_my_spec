@@ -51,17 +51,7 @@ defmodule CodeMySpecWeb.Application do
         origin_url: tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}"
       )
 
-    dev_children = [{ClientUtils.CloudflareTunnel, tunnel_opts}]
-
-    # Add FileWatcher to dev_children if watch_content is enabled
-    dev_children =
-      if Application.get_env(:code_my_spec, :watch_content, false) do
-        []
-      else
-        dev_children
-      end
-
-    children ++ dev_children
+    children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}]
   end
 
   def children(children, :test) do

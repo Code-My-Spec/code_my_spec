@@ -6,8 +6,8 @@ defmodule CodeMySpecWeb.AccountLive.Invitations do
   alias CodeMySpec.Invitations
   alias CodeMySpec.Invitations.Invitation
   alias CodeMySpecWeb.AccountLive.Components.Navigation
-  alias CodeMySpecWeb.InvitationsLive.Form, as: InviteForm
   alias CodeMySpecWeb.InvitationsLive.Components.PendingInvitations
+  alias CodeMySpecWeb.InvitationsLive.Form, as: InviteForm
 
   @impl true
   def render(assigns) do
@@ -95,7 +95,8 @@ defmodule CodeMySpecWeb.AccountLive.Invitations do
            socket.assigns.current_scope,
            socket.assigns.account.id,
            invitation_params["email"],
-           String.to_existing_atom(invitation_params["role"])
+           String.to_existing_atom(invitation_params["role"]),
+           &url(socket, ~p"/invitations/accept/#{&1}")
          ) do
       {:ok, _invitation} ->
         pending_invitations =

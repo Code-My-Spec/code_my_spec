@@ -10,29 +10,14 @@ defmodule CodeMySpecWeb.AccountLive.Index do
     <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path}>
       <.header>
         Your Accounts
-        <:subtitle>Manage your personal and team accounts</:subtitle>
+        <:subtitle>Manage your accounts</:subtitle>
       </.header>
 
       <div class="mt-8 space-y-6">
-        <div class="card bg-primary text-primary-content">
-          <div class="card-body">
-            <h2 class="card-title">
-              <.icon name="hero-user" class="size-5" /> Personal Account
-            </h2>
-            <p class="text-sm opacity-75">Your personal workspace</p>
-            <div class="card-actions justify-end">
-              <.button navigate={~p"/app/accounts/#{@personal_account}"} class="btn-sm">
-                Manage
-              </.button>
-            </div>
-          </div>
-        </div>
-
-        <div :if={!Enum.empty?(team_accounts(@accounts))} class="space-y-4">
-          <h3 class="text-lg font-semibold">Team Accounts</h3>
+        <div :if={!Enum.empty?(@accounts)} class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div
-              :for={account <- team_accounts(@accounts)}
+              :for={account <- @accounts}
               class="card bg-base-100 border border-base-300"
             >
               <div class="card-body">
@@ -56,18 +41,18 @@ defmodule CodeMySpecWeb.AccountLive.Index do
         <div class="card bg-base-100 border border-base-300">
           <div class="card-body">
             <div :if={!@show_create_form} class="text-center">
-              <h3 class="text-lg font-semibold mb-2">Create Team Account</h3>
+              <h3 class="text-lg font-semibold mb-2">Create Account</h3>
               <p class="text-sm text-base-content/70 mb-4">
-                Collaborate with your team on projects
+                A separate workspace for projects and collaborators.
               </p>
               <.button phx-click="show-create-form">
-                <.icon name="hero-plus" class="size-4 mr-2" /> Create Team Account
+                <.icon name="hero-plus" class="size-4 mr-2" /> Create Account
               </.button>
             </div>
 
             <div :if={@show_create_form} class="space-y-4">
               <div class="flex items-center justify-between">
-                <h3 class="text-lg font-semibold">Create Team Account</h3>
+                <h3 class="text-lg font-semibold">Create Account</h3>
                 <button phx-click="show-create-form" class="btn btn-sm btn-ghost">
                   <.icon name="hero-x-mark" class="size-4" />
                 </button>
@@ -75,18 +60,18 @@ defmodule CodeMySpecWeb.AccountLive.Index do
 
               <.form
                 for={@form}
-                id="create-team-form"
+                id="create-account-form"
                 phx-change="validate"
-                phx-submit="create-team-account"
+                phx-submit="create-account"
               >
                 <div class="space-y-4">
                   <.input
                     field={@form[:name]}
                     type="text"
-                    label="Team Name"
-                    placeholder="Enter team name"
+                    label="Account name"
+                    placeholder="Enter account name"
                   />
-                  <.input field={@form[:slug]} type="text" label="Team Slug" placeholder="team-slug" />
+                  <.input field={@form[:slug]} type="text" label="Slug" placeholder="account-slug" />
 
                   <div class="flex justify-end space-x-2">
                     <.button type="button" phx-click="show-create-form" class="btn-ghost">
@@ -110,15 +95,12 @@ defmodule CodeMySpecWeb.AccountLive.Index do
   def mount(_params, _session, socket) do
     current_scope = socket.assigns.current_scope
     accounts = Accounts.list_accounts(current_scope)
-    personal_account = Accounts.get_personal_account(current_scope)
 
-    # Subscribe to account updates
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "accounts:#{current_scope.user.id}")
 
     {:ok,
      socket
      |> assign(:accounts, accounts)
-     |> assign(:personal_account, personal_account)
      |> assign(:show_create_form, false)
      |> assign(:form, to_form(Account.create_changeset(%{})))}
   end
@@ -128,16 +110,14 @@ defmodule CodeMySpecWeb.AccountLive.Index do
     {:noreply, assign(socket, :show_create_form, !socket.assigns.show_create_form)}
   end
 
-  def handle_event("create-team-account", %{"account" => account_params}, socket) do
-    team_params = Map.put(account_params, "type", "team")
-
-    case Accounts.create_team_account(socket.assigns.current_scope, team_params) do
+  def handle_event("create-account", %{"account" => account_params}, socket) do
+    case Accounts.create_account(socket.assigns.current_scope, account_params) do
       {:ok, _account} ->
         accounts = Accounts.list_accounts(socket.assigns.current_scope)
 
         {:noreply,
          socket
-         |> put_flash(:info, "Team account created successfully")
+         |> put_flash(:info, "Account created successfully")
          |> assign(:accounts, accounts)
          |> assign(:show_create_form, false)
          |> assign(:form, to_form(Account.create_changeset(%{})))}
@@ -148,8 +128,7 @@ defmodule CodeMySpecWeb.AccountLive.Index do
   end
 
   def handle_event("validate", %{"account" => account_params}, socket) do
-    team_params = Map.put(account_params, "type", "team")
-    changeset = Account.create_changeset(team_params)
+    changeset = Account.create_changeset(account_params)
     {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
   end
 
@@ -162,9 +141,5 @@ defmodule CodeMySpecWeb.AccountLive.Index do
   def handle_info({:account_created, _account}, socket) do
     accounts = Accounts.list_accounts(socket.assigns.current_scope)
     {:noreply, assign(socket, :accounts, accounts)}
-  end
-
-  defp team_accounts(accounts) do
-    Enum.filter(accounts, &(&1.type == :team))
   end
 end

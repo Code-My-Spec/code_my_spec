@@ -205,7 +205,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         Users.deliver_user_update_email_instructions(
           Ecto.Changeset.apply_action!(changeset, :insert),
           user.email,
-          &url(~p"/app/users/settings/confirm-email/#{&1}")
+          &url(socket, ~p"/app/users/settings/confirm-email/#{&1}")
         )
 
         info = "A link to confirm your email change has been sent to the new address."

@@ -137,7 +137,7 @@ defmodule CodeMySpecWeb.UserLive.Login do
     if user = Users.get_user_by_email(email) do
       Users.deliver_login_instructions(
         user,
-        &url(~p"/users/log-in/#{&1}")
+        &url(socket, ~p"/users/log-in/#{&1}")
       )
     end
 

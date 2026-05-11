@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story605.Criterion5510Spex do
         |> render_click()
 
         accounts_view
-        |> form("#create-team-form", account: %{name: team_name})
+        |> form("#create-account-form", account: %{name: team_name})
         |> render_submit()
 
         {:ok, Map.merge(context, %{accounts_view: accounts_view, team_name: team_name})}

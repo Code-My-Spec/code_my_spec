@@ -103,42 +103,15 @@ defmodule CodeMySpec.Accounts do
 
   @doc """
   Creates an account.
-  """
-  def create_account(%Scope{} = scope, attrs) do
-    with {:ok, account} <- AccountsRepository.create_account(attrs) do
-      broadcast_account(scope, {:created, account})
-      {:ok, account}
-    end
-  end
 
-  @doc """
-  Creates a personal account for the user. Name defaults to the local
-  part of the user's email.
+  Accounts are created explicitly during onboarding by the inline
+  create-account form on `/app`. The caller (the LiveView) supplies
+  the name — there is no auto-provisioned default. The account row
+  is created together with an owning member row in one transaction.
   """
-  def create_personal_account(%Scope{} = scope) do
-    with {:ok, account} <- AccountsRepository.create_personal_account(scope.user.id) do
-      broadcast_account(scope, {:created, account})
-      {:ok, account}
-    end
-  end
-
-  @doc """
-  Creates a personal account for the user with caller-supplied attrs.
-  Used by the inline create-account form on /app so the user can name
-  their first account intentionally.
-  """
-  def create_personal_account(%Scope{} = scope, attrs) when is_map(attrs) do
-    with {:ok, account} <- AccountsRepository.create_personal_account(scope.user.id, attrs) do
-      broadcast_account(scope, {:created, account})
-      {:ok, account}
-    end
-  end
-
-  @doc """
-  Creates a team account with the user as owner.
-  """
-  def create_team_account(%Scope{} = scope, attrs) do
-    with {:ok, account} <- AccountsRepository.create_team_account(attrs, scope.user.id) do
+  def create_account(%Scope{} = scope, attrs) when is_map(attrs) do
+    with {:ok, account} <-
+           AccountsRepository.create_account_with_owner(scope.user.id, attrs) do
       broadcast_account(scope, {:created, account})
       {:ok, account}
     end
@@ -175,20 +148,6 @@ defmodule CodeMySpec.Accounts do
     Authorization.authorize!(:manage_account, scope, account.id)
 
     Account.changeset(account, attrs)
-  end
-
-  @doc """
-  Gets the user's personal account.
-  """
-  def get_personal_account(%Scope{} = scope) do
-    AccountsRepository.get_personal_account(scope.user.id)
-  end
-
-  @doc """
-  Ensures the user has a personal account, creating one if needed.
-  """
-  def ensure_personal_account(%Scope{} = scope) do
-    AccountsRepository.ensure_personal_account(scope.user.id)
   end
 
   @doc """

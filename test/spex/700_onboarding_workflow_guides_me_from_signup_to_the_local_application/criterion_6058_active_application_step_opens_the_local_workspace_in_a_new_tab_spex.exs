@@ -41,9 +41,12 @@ defmodule CodeMySpecSpex.Story700.Criterion6058Spex do
       end
 
       then_ "the application rung is rendered as an anchor to the local workspace", context do
+        # Href may optionally carry a `?project=<id>` handoff suffix
+        # (story 701 / S3 — lands the user on the per-project ladder
+        # instead of the picker). Anchor on the prefix, not the exact URL.
         assert has_element?(
                  context.view,
-                 "a[data-test='application-rung'][href='http://localhost:4003']"
+                 "a[data-test='application-rung'][href^='http://localhost:4003']"
                ),
                "expected application-rung to be an anchor pointing at http://localhost:4003"
 

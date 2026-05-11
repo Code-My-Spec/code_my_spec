@@ -4,6 +4,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Analytics
+  alias CodeMySpec.Events
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
@@ -77,6 +78,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     projects = if account_done?, do: Projects.list_projects(scope), else: []
     project_done? = projects != []
     cli_ever_connected? = Users.cli_ever_connected?(scope.user)
+    application_done? = Events.exists?("local_signed_in", user_id: scope.user.id)
+    active_project = scope.active_project || List.first(projects)
 
     %{
       account_done?: account_done?,
@@ -84,41 +87,44 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       account_name: account_done? && scope.active_account.name,
       project_done?: project_done?,
       project_count: length(projects),
-      project_name: scope.active_project && scope.active_project.name,
+      project_name: active_project && active_project.name,
+      active_project_id: active_project && active_project.id,
       cli_ever_connected?: cli_ever_connected?,
-      active_step: active_step(account_done?, project_done?, cli_ever_connected?)
+      application_done?: application_done?,
+      active_step:
+        active_step(account_done?, project_done?, cli_ever_connected?, application_done?)
     }
   end
 
   # The active step is always the first incomplete one in the fixed
-  # order. Once everything before it is done, the application rung is
-  # active — that's the dashboard's last hand-off to the local app.
-  defp active_step(false, _, _), do: :account
-  defp active_step(true, false, _), do: :project
-  defp active_step(true, true, false), do: :plugin
-  defp active_step(true, true, true), do: :application
+  # order. Once everything is done (including the user signing in to
+  # the local app), there is no active step — every rung renders
+  # "done" and the ladder is fully resolved.
+  defp active_step(false, _, _, _), do: :account
+  defp active_step(true, false, _, _), do: :project
+  defp active_step(true, true, false, _), do: :plugin
+  defp active_step(true, true, true, false), do: :application
+  defp active_step(true, true, true, true), do: nil
 
   # A rung is "done" if its prerequisite has been fulfilled, "active"
   # if it's the current first-incomplete step, otherwise "pending".
-  # The application step has no "done" state — it stays active once
-  # available and there's nothing to track on the dashboard side after
-  # the user clicks through to the local workspace.
-  defp rung_state(step, active_step, account_done?, project_done?, cli_ever_connected?) do
-    cond do
-      step == active_step -> "active"
-      step == :account and account_done? -> "done"
-      step == :project and project_done? -> "done"
-      step == :plugin and cli_ever_connected? -> "done"
-      true -> "pending"
-    end
-  end
+  # The application rung flips to "done" once the local app has
+  # recorded a `local_signed_in` activation event for this user.
+  # Multi-clause dispatch keeps cyclomatic complexity flat — each
+  # rung's done-condition matches a single arg position.
+  defp rung_state(step, step, _, _, _, _), do: "active"
+  defp rung_state(:account, _, true, _, _, _), do: "done"
+  defp rung_state(:project, _, _, true, _, _), do: "done"
+  defp rung_state(:plugin, _, _, _, true, _), do: "done"
+  defp rung_state(:application, _, _, _, _, true), do: "done"
+  defp rung_state(_, _, _, _, _, _), do: "pending"
 
   defp assign_account_form(socket) do
     if socket.assigns.account_done? do
       assign(socket, :account_form, nil)
     else
       form =
-        %{"type" => "personal"}
+        %{}
         |> Account.create_changeset()
         |> to_form(as: "account")
 
@@ -128,29 +134,36 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp assign_project_form(socket, scope) do
     if socket.assigns.project_done? do
-      assign(socket, :project_form, nil)
+      assign(socket, project_form: nil, project_module_preview: "")
     else
       form =
         %Project{}
         |> Project.changeset(%{}, scope)
         |> to_form(as: "project")
 
-      assign(socket, :project_form, form)
+      assign(socket, project_form: form, project_module_preview: "")
     end
   end
 
   def handle_event("create_account", %{"account" => params}, socket) do
     scope = socket.assigns.current_scope
 
-    case Accounts.create_personal_account(scope, params) do
+    case Accounts.create_account(scope, params) do
       {:ok, account} ->
         {:ok, _} = UserPreferences.select_active_account(scope, account.id)
         {:noreply, push_navigate(socket, to: ~p"/app")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply,
-         assign(socket, account_form: to_form(changeset, as: "account", action: :insert))}
+         assign(socket,
+           account_form:
+             changeset |> surface_slug_errors_on_name() |> to_form(as: "account", action: :insert)
+         )}
     end
+  end
+
+  def handle_event("validate_project", %{"project" => %{"name" => name}}, socket) do
+    {:noreply, assign(socket, :project_module_preview, derive_module_name(name || ""))}
   end
 
   def handle_event("save_project", %{"project" => params}, socket) do
@@ -202,7 +215,24 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     {:noreply, refresh_presence(socket)}
   end
 
+  # An activation milestone landed for this user — re-derive ladder
+  # state so the rung that just unlocked flips in-place.
+  def handle_info({:activation_event, _name, _payload}, socket) do
+    state = build_step_state(socket.assigns.current_scope)
+    {:noreply, assign(socket, state)}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp surface_slug_errors_on_name(changeset) do
+    Enum.reduce(changeset.errors, changeset, fn
+      {:slug, {_msg, opts}}, cs ->
+        Ecto.Changeset.add_error(cs, :name, "is already taken", opts)
+
+      _, cs ->
+        cs
+    end)
+  end
 
   defp refresh_presence(socket) do
     user = socket.assigns.current_scope.user
@@ -297,22 +327,32 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         data-just-confirmed={to_string(@just_confirmed)}
       >
         <div class="mx-auto max-w-2xl flex flex-col gap-4">
+          <.welcome_banner :if={!@account_done?} just_confirmed={@just_confirmed} />
+
+          <.ladder_progress
+            account_done?={@account_done?}
+            project_done?={@project_done?}
+            cli_ever_connected?={@cli_ever_connected?}
+            application_done?={@application_done?}
+          />
+
           <.account_rung
-            state={rung_state(:account, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
+            state={rung_state(:account, @active_step, @account_done?, @project_done?, @cli_ever_connected?, @application_done?)}
             count={@account_count}
             name={@account_name}
             account_form={@account_form}
           />
 
           <.project_rung
-            state={rung_state(:project, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
+            state={rung_state(:project, @active_step, @account_done?, @project_done?, @cli_ever_connected?, @application_done?)}
             count={@project_count}
             name={@project_name}
             project_form={@project_form}
+            project_module_preview={@project_module_preview}
           />
 
           <.plugin_rung
-            state={rung_state(:plugin, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
+            state={rung_state(:plugin, @active_step, @account_done?, @project_done?, @cli_ever_connected?, @application_done?)}
             cli_ever_connected?={@cli_ever_connected?}
             cli_first_connected_at={@cli_first_connected_at}
             cli_session_count={@cli_session_count}
@@ -322,7 +362,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           />
 
           <.application_rung
-            state={rung_state(:application, @active_step, @account_done?, @project_done?, @cli_ever_connected?)}
+            state={rung_state(:application, @active_step, @account_done?, @project_done?, @cli_ever_connected?, @application_done?)}
+            project_id={@active_project_id}
           />
         </div>
       </div>
@@ -345,6 +386,65 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   end
 
   # ── Step rungs ──────────────────────────────────────────────────────
+
+  # Audit C3: first thing a brand-new user reads after confirming their
+  # email is an account-naming form. Frame it: tell them what they're
+  # about to do, give the ladder context. Only renders pre-activation
+  # (no account yet). After confirmation the heading is more direct.
+  defp welcome_banner(assigns) do
+    ~H"""
+    <div
+      data-test="welcome-banner"
+      class="cms-onboarding"
+      style="border-left: 2px solid var(--color-cms-red, #ff3838); padding: 18px 22px;"
+    >
+      <div class="cms-onboarding-eyebrow mb-2" style="color: var(--color-cms-red, #ff3838);">
+        {if @just_confirmed, do: "// welcome", else: "// get started"}
+      </div>
+      <h2 class="cms-onboarding-heading" style="font-size: 20px; margin-bottom: 6px;">
+        {if @just_confirmed,
+          do: "You're in. Let's set up your workspace.",
+          else: "Set up your workspace."}
+      </h2>
+      <p class="cms-onboarding-sub" style="margin-bottom: 0;">
+        Four steps: name your account, link a Phoenix project, install the
+        Claude Code plugin, then open the local workspace where you'll
+        write your first story.
+      </p>
+    </div>
+    """
+  end
+
+  # Audit C6: numeric summary above the ladder so the user can always see
+  # where they are in the four-step sequence without counting eyebrows.
+  defp ladder_progress(assigns) do
+    done =
+      [
+        assigns.account_done?,
+        assigns.project_done?,
+        assigns.cli_ever_connected?,
+        assigns.application_done?
+      ]
+      |> Enum.count(& &1)
+
+    assigns = assign(assigns, done: done)
+
+    ~H"""
+    <div
+      data-test="ladder-progress"
+      class="flex items-center gap-3 text-xs font-mono uppercase tracking-[0.18em] text-base-content/60 px-1"
+    >
+      <span>// onboarding</span>
+      <span class="h-px flex-1 max-w-[120px] bg-base-content/15"></span>
+      <span data-test="ladder-progress-count">
+        <span class={if @done == 4, do: "text-primary font-bold", else: "text-base-content"}>
+          {@done}
+        </span>
+        / 4
+      </span>
+    </div>
+    """
+  end
 
   defp account_rung(%{state: "done"} = assigns) do
     ~H"""
@@ -393,6 +493,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       eyebrow="// step 01 · account"
       label="Accounts"
       value="—"
+      hint="Name your workspace."
       dim
     />
     """
@@ -419,7 +520,13 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <p class="cms-onboarding-sub mb-6">
           The plugin uses this to link your local repo to the right project. You can rename it later.
         </p>
-        <.form for={@project_form} id="project_form" phx-submit="save_project" class="flex flex-col gap-4">
+        <.form
+          for={@project_form}
+          id="project_form"
+          phx-change="validate_project"
+          phx-submit="save_project"
+          class="flex flex-col gap-4"
+        >
           <.input
             field={@project_form[:name]}
             type="text"
@@ -428,6 +535,18 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             autocomplete="off"
             phx-mounted={JS.focus()}
           />
+          <%!--
+            Audit S5: live preview of the derived module name so the user sees
+            the silent name → CamelCase translation before submitting. Same
+            derivation `save_project` uses on the server.
+          --%>
+          <div
+            :if={@project_module_preview != ""}
+            data-test="project-module-preview"
+            class="text-xs opacity-70 font-mono -mt-2"
+          >
+            Will be used as module: <span class="text-primary">{@project_module_preview}</span>
+          </div>
           <button type="submit" class="cms-onboarding-cta self-start" phx-disable-with="Creating…">
             <span>▸</span> Create project
           </button>
@@ -445,6 +564,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       eyebrow="// step 02 · project"
       label="Projects"
       value="—"
+      hint="Name your first Phoenix project."
       dim
     />
     """
@@ -458,6 +578,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       eyebrow="// step 03 · plugin"
       label="Plugin"
       value="—"
+      hint="Install the CodeMySpec plugin in Claude Code."
       dim
     />
     """
@@ -475,9 +596,11 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   # the local app is silently approved for the trusted CLI client (see
   # OAuthController.@trusted_clients), so the navigation is seamless.
   defp application_rung(%{state: "active"} = assigns) do
+    assigns = assign_new(assigns, :project_id, fn -> nil end)
+
     ~H"""
     <a
-      href="http://localhost:4003"
+      href={application_href(@project_id)}
       target="_blank"
       rel="noopener noreferrer"
       data-test="application-rung"
@@ -488,7 +611,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <span class="cms-onboarding-eyebrow">// step 04 · application</span>
         <span class="flex-1"></span>
         <span class="cms-onboarding-cta">
-          <span>▸</span> Open the local workspace
+          <span>▸</span> Open the local workspace · localhost:4003
         </span>
       </div>
     </a>
@@ -507,11 +630,17 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       <div class="flex items-center gap-4 px-6 py-5">
         <span class="cms-onboarding-eyebrow">// step 04 · application</span>
         <span class="flex-1"></span>
-        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">Pending</span>
+        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">Application</span>
+      </div>
+      <div class="px-6 pb-4 -mt-2 text-xs opacity-60 font-mono">
+        Open the local workspace and write your first story.
       </div>
     </div>
     """
   end
+
+  defp application_href(nil), do: "http://localhost:4003"
+  defp application_href(project_id), do: "http://localhost:4003?project=#{project_id}"
 
   defp metric_tile(assigns) do
     assigns =
@@ -519,6 +648,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       |> assign_new(:dim, fn -> false end)
       |> assign_new(:data_test, fn -> nil end)
       |> assign_new(:state, fn -> nil end)
+      |> assign_new(:hint, fn -> nil end)
 
     ~H"""
     <div
@@ -537,6 +667,14 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         >
           {@value}
         </span>
+      </div>
+      <%!--
+        Audit C4: pending rungs get a one-line preview so the user knows
+        what each step will involve before they reach it. Skip on done
+        rungs — the value already speaks for itself.
+      --%>
+      <div :if={@hint} class="px-6 pb-4 -mt-2 text-xs opacity-60 font-mono">
+        {@hint}
       </div>
     </div>
     """
@@ -582,12 +720,23 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <p class="cms-onboarding-sub">{onboarding_sub(@show_celebrate, @pill_state)}</p>
 
         <div :if={!@show_celebrate} class="cms-onboarding-prereq mt-5">
-          <span class="cms-onboarding-eyebrow" style="color: var(--color-cms-amber, #ffb84a);">// prereq</span>
+          <span class="cms-onboarding-eyebrow" style="color: var(--color-cms-amber, #ffb84a);">// before you start</span>
           <p class="cms-onboarding-sub mt-1">
-            Open Claude Code <strong>from inside your Phoenix project's root directory</strong>
-            (the folder with <code>mix.exs</code>). CodeMySpec attaches to that directory —
-            running these commands from anywhere else will fail at the init step.
+            These three commands are <strong>Claude Code slash commands</strong> — paste them
+            into the Claude Code prompt, not your terminal. Launch Claude Code
+            <strong>from inside your Phoenix project's root directory</strong>
+            (the folder with <code>mix.exs</code>); CodeMySpec attaches to that directory.
           </p>
+          <ul class="cms-onboarding-sub mt-2 list-none p-0" style="font-size: 13px;">
+            <li>
+              New to Claude Code? Install it from
+              <a href="https://claude.com/code" target="_blank" rel="noopener noreferrer" class="underline">claude.com/code</a>.
+            </li>
+            <li>
+              No Phoenix project yet?
+              <code>mix phx.new myapp &amp;&amp; cd myapp &amp;&amp; claude</code>
+            </li>
+          </ul>
         </div>
 
         <ol class="mt-6 flex flex-col gap-3.5 list-none p-0">
@@ -621,10 +770,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       <button
         type="button"
         data-test={"copy-step-#{@step.n}"}
-        data-clipboard-text={@step.command}
+        data-copy={@step.command}
         phx-click="copy_step"
         phx-value-step={@step.n}
-        class="cms-onboarding-copy"
+        class="copy-btn cms-onboarding-copy"
         title={@step.command}
         aria-label={"Copy command: #{@step.command}"}
       >
@@ -667,14 +816,14 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   defp pill_state(0, false), do: "idle"
   defp pill_state(_n, _), do: "connected"
 
-  defp pill_text(0, true), do: "Disconnected"
+  defp pill_text(0, true), do: "Claude Code not running"
   defp pill_text(0, false), do: "Not connected"
   defp pill_text(1, _), do: "Connected · 1 session"
   defp pill_text(n, _) when n > 1, do: "Connected · #{n} sessions"
 
   defp onboarding_heading(true, _), do: "You're connected."
   defp onboarding_heading(false, "connected"), do: "CodeMySpec is online."
-  defp onboarding_heading(false, "disconnected"), do: "CodeMySpec is offline."
+  defp onboarding_heading(false, "disconnected"), do: "Claude Code isn't running."
   defp onboarding_heading(false, _), do: "Install CodeMySpec"
 
   defp onboarding_sub(true, _),
@@ -683,8 +832,15 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   defp onboarding_sub(false, "connected"),
     do: "Plugin installed and authenticated. Re-run any of these to reinstall on another machine."
 
+  # The pill flips to disconnected when no CLI session is in Presence,
+  # which almost always means Claude Code has been quit. Re-running
+  # `/plugin marketplace add` or `/plugin install` from a non-running
+  # client does nothing — only restarting Claude Code (or `/plugin-reload`
+  # inside an already-running session) re-establishes the channel.
   defp onboarding_sub(false, "disconnected"),
-    do: "Restart Claude Code, or re-run any of these to reconnect:"
+    do:
+      "Reopen Claude Code in your project directory. Inside a running session, " <>
+        "you can also use /plugin-reload to reconnect."
 
   defp onboarding_sub(false, _),
     do:
