@@ -1,6 +1,6 @@
-defmodule CodeMySpecSpex.Story70.Criterion5830Spex do
+defmodule CodeMySpecSpex.Story682.Criterion5830Spex do
   @moduledoc """
-  Story 70 — Architecture Design
+  Story 682 — Architect Agent Surface
   Criterion 5830 — Architect reuses an existing component to satisfy a new
   story.
 

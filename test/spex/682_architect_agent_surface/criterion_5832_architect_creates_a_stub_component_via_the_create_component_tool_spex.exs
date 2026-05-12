@@ -1,6 +1,6 @@
-defmodule CodeMySpecSpex.Story70.Criterion5832Spex do
+defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
   @moduledoc """
-  Story 70 — Architecture Design
+  Story 682 — Architect Agent Surface
   Criterion 5832 — Architect creates a stub component via the create_component tool.
 
   When the architect calls `create_component` with a module name, type, and
