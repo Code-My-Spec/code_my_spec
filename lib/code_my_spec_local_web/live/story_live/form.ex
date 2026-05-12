@@ -23,12 +23,36 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
       <div :if={!@error && @form}>
         <.header>
           {@page_title}
-          <:subtitle>Use this form to manage story records in your local database.</:subtitle>
+          <:subtitle :if={@live_action == :new}>
+            Write the behaviour you want the harness to deliver. The agent
+            turns this into a spec, scenarios, tests, and code in that order.
+          </:subtitle>
+          <:subtitle :if={@live_action == :edit}>
+            Update the story. Existing scenarios and tests stay linked.
+          </:subtitle>
         </.header>
 
+        <div :if={@live_action == :new} data-test="interview-path-callout" class="alert alert-info mb-4">
+          <div class="text-sm">
+            <span class="font-semibold">Prefer to be interviewed?</span>
+            Paste <code class="kbd kbd-sm">/codemyspec:product interview</code>
+            into Claude Code — the agent will ask questions and draft the story for you.
+          </div>
+        </div>
+
         <.form for={@form} id="story-form" phx-change="validate" phx-submit="save">
-          <.input field={@form[:title]} type="text" label="Title" />
-          <.input field={@form[:description]} type="textarea" label="Description" />
+          <.input
+            field={@form[:title]}
+            type="text"
+            label="Title"
+            placeholder="As a <user> I want <behavior>"
+          />
+          <.input
+            field={@form[:description]}
+            type="textarea"
+            label="Description"
+            placeholder="Why this matters — what does it unlock for the user?"
+          />
           <div class="fieldset mb-2">
             <span class="label mb-1">Acceptance Criteria</span>
             <div class="space-y-2">
@@ -40,7 +64,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
                     name={criterion_form[:description].name}
                     id={criterion_form[:description].id}
                     value={criterion_form[:description].value}
-                    placeholder="Enter criterion..."
+                    placeholder="Given <state>, when <action>, then <observable outcome>"
                     class="flex-1 input"
                   />
                   <label class="flex items-center gap-1 cursor-pointer">

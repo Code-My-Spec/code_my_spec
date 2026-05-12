@@ -52,10 +52,18 @@ defmodule CodeMySpec.Accounts.AccountsRepository do
   Creates an account and the owning member row in one transaction.
   The single entry point for account creation — every account has
   exactly one owner at birth.
+
+  When the slug is auto-derived from the name (no explicit `:slug`
+  in attrs) and that derived slug collides with an existing account,
+  the slug is silently suffixed (`acme`, `acme-2`, `acme-3`, …) and
+  the insert retried. The user-supplied name is preserved as typed;
+  the slug is private addressing and shouldn't burden activation.
   """
   @spec create_account_with_owner(user_id :: integer(), attrs :: map()) ::
           {:ok, Account.t()} | {:error, Ecto.Changeset.t() | term()}
   def create_account_with_owner(user_id, attrs) when is_map(attrs) do
+    attrs = ensure_available_slug(attrs)
+
     Repo.transaction(fn ->
       with {:ok, account} <- attrs |> Account.create_changeset() |> Repo.insert(),
            {:ok, _member} <-
@@ -65,6 +73,76 @@ defmodule CodeMySpec.Accounts.AccountsRepository do
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  @slug_retry_limit 50
+
+  # If the caller didn't supply a slug, derive one from the name and pick
+  # the next available variant (`acme`, `acme-2`, `acme-3`, …). A unique
+  # constraint on the column is the safety net — a TOCTOU race here just
+  # surfaces as a normal changeset error.
+  defp ensure_available_slug(attrs) do
+    if user_provided_slug?(attrs) do
+      attrs
+    else
+      case derive_base_slug(attrs) do
+        nil -> attrs
+        base -> put_attr(attrs, :slug, find_available_slug(base, 0))
+      end
+    end
+  end
+
+  defp user_provided_slug?(%{slug: slug}) when is_binary(slug) and byte_size(slug) > 0, do: true
+  defp user_provided_slug?(%{"slug" => slug}) when is_binary(slug) and byte_size(slug) > 0, do: true
+  defp user_provided_slug?(_), do: false
+
+  defp derive_base_slug(attrs) do
+    case fetch_attr(attrs, :name) do
+      name when is_binary(name) and byte_size(name) > 0 ->
+        name
+        |> String.downcase()
+        |> String.replace(~r/[^a-z0-9]/, "-")
+        |> String.replace(~r/-+/, "-")
+        |> String.trim("-")
+
+      _ ->
+        nil
+    end
+  end
+
+  defp find_available_slug(base, attempt) when attempt >= @slug_retry_limit, do: base
+
+  defp find_available_slug(base, attempt) do
+    candidate = if attempt == 0, do: base, else: "#{base}-#{attempt + 1}"
+
+    if Repo.exists?(from a in Account, where: a.slug == ^candidate) do
+      find_available_slug(base, attempt + 1)
+    else
+      candidate
+    end
+  end
+
+  defp fetch_attr(attrs, key) do
+    case attrs do
+      %{^key => value} -> value
+      _ -> Map.get(attrs, to_string(key))
+    end
+  end
+
+  # Match the key style of the input map so Ecto.Changeset.cast doesn't
+  # see mixed atom/string keys. Form params come in as `%{"name" => ...}`;
+  # fixture/programmatic calls use `%{name: ...}`.
+  defp put_attr(attrs, key, value) do
+    cond do
+      Map.has_key?(attrs, to_string(key)) -> Map.put(attrs, to_string(key), value)
+      Map.has_key?(attrs, key) -> Map.put(attrs, key, value)
+      string_keyed?(attrs) -> Map.put(attrs, to_string(key), value)
+      true -> Map.put(attrs, key, value)
+    end
+  end
+
+  defp string_keyed?(attrs) do
+    Enum.any?(Map.keys(attrs), &is_binary/1)
   end
 
   ## Query Builders

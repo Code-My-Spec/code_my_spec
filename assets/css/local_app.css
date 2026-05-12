@@ -1,3 +1,9 @@
+/* CodeMySpec Local app — shares the codemyspec dark theme with the cloud
+   bundle so visual continuity holds across the cloud → local handoff.
+   The theme/token/utility definitions below mirror app.css; if you change
+   one, change the other. Marketing-zone classes (diff-card, skill-card,
+   etc.) and the light theme stay cloud-only. */
+
 @import "tailwindcss" source(none);
 @source "../css";
 @source "../js";
@@ -7,13 +13,469 @@
 @plugin "../vendor/heroicons";
 
 @plugin "../vendor/daisyui" {
-  themes: cyberpunk --default;
+    themes: false;
 }
 
+/* daisyUI theme plugin — CodeMySpec codemyspec (brand_system v0.9).
+   Same definition as app.css so colors track. */
+@plugin "../vendor/daisyui-theme" {
+    name: "codemyspec";
+    default: true;
+    prefersdark: true;
+    color-scheme: "dark";
+    --color-primary: #ff3838;
+    --color-primary-content: #000000;
+    --color-secondary: #2a0808;
+    --color-secondary-content: #f5f5f7;
+    --color-accent: #22d3ee;
+    --color-accent-content: #000000;
+    --color-neutral: #0a0a0c;
+    --color-neutral-content: #d4d4d8;
+    --color-base-100: #000000;
+    --color-base-200: #0a0a0c;
+    --color-base-300: #121215;
+    --color-base-content: #d4d4d8;
+    --color-info: oklch(58% 0.158 241.966);
+    --color-info-content: oklch(97% 0.013 236.62);
+    --color-success: #f5f5f7;
+    --color-success-content: #000000;
+    --color-warning: #fde047;
+    --color-warning-content: #000000;
+    --color-error: #ff3838;
+    --color-error-content: #000000;
+    --radius-selector: 0;
+    --radius-field: 0;
+    --radius-box: 0;
+    --size-selector: 0.21875rem;
+    --size-field: 0.21875rem;
+    --border: 1px;
+    --depth: 0;
+    --noise: 0;
+}
+
+/* Brand tokens — mirror app.css @theme block. */
+@theme {
+    --color-cms-black: #000000;
+    --color-cms-ink-1: #0a0a0c;
+    --color-cms-ink-2: #121215;
+    --color-cms-ink-3: #1a1a1f;
+    --color-cms-ink-4: #232329;
+
+    --color-cms-red: #ff3838;
+    --color-cms-red-dim: #8a1515;
+    --color-cms-red-deep: #2a0808;
+    --color-cms-white: #f5f5f7;
+    --color-cms-amber: #ffb84a;
+
+    --color-cms-text: #d4d4d8;
+    --color-cms-text-dim: #8a8a93;
+    --color-cms-text-mute: #53535a;
+    --color-cms-text-faint: #3a3a40;
+
+    --color-cms-hair: rgba(255, 56, 56, 0.10);
+    --color-cms-hair-r: rgba(255, 56, 56, 0.22);
+    --color-cms-hair-w: rgba(255, 255, 255, 0.06);
+
+    --font-display: "Space Mono", ui-monospace, monospace;
+    --font-heading: "Space Mono", ui-monospace, monospace;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    --font-body: "IBM Plex Sans", system-ui, sans-serif;
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* ─── Brand texture & geometry — mirror app.css ──────────────────────── */
+@layer utilities {
+    .chamfer-sm {
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+    }
+    .chamfer-md {
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+    .chamfer-lg {
+        clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+    }
+    .chamfer-xl {
+        clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+    }
+
+    .signal-top {
+        position: relative;
+    }
+    .signal-top::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 80px;
+        height: 2px;
+        background: var(--color-cms-red);
+        box-shadow: 0 0 12px var(--color-cms-red);
+        z-index: 3;
+    }
+
+    .scanlines {
+        position: relative;
+    }
+    .scanlines::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.018) 0 1px,
+            transparent 1px 3px
+        );
+        mix-blend-mode: overlay;
+        z-index: 1;
+    }
+
+    .hair-grid::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+            linear-gradient(rgba(255, 56, 56, 0.10) 1px, transparent 1px) 0 0 / 80px 80px,
+            linear-gradient(90deg, rgba(255, 56, 56, 0.10) 1px, transparent 1px) 0 0 / 80px 80px;
+        mask-image: radial-gradient(ellipse at center, black 0%, transparent 80%);
+        opacity: 0.5;
+        z-index: 1;
+    }
+
+    /* Local app surface: dark workspace, scanline-only texture (no hair-grid,
+       per components.jsx LocalShell). Cloud /app uses both. */
+    .local-zone {
+        background: var(--color-cms-black);
+        color: var(--color-cms-text);
+    }
+
+    .local-zone .font-heading {
+        font-family: var(--font-display);
+    }
+}
+
+/* ─── Local-app chrome ───────────────────────────────────────────────── */
+@layer components {
+    /* Top header: 60px red bar on the left edge of the navbar, hairline
+       white-alpha border below. Matches LocalHeader in components.jsx. */
+    .local-header {
+        position: relative;
+        border-bottom: 1px solid var(--color-cms-hair-w);
+        background: var(--color-cms-black);
+    }
+    .local-header::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 60px;
+        height: 2px;
+        background: var(--color-cms-red);
+        box-shadow: 0 0 12px var(--color-cms-red);
+        z-index: 3;
+    }
+
+    /* Optional terminal-prompt strip under the header (LocalHeader variant
+       'prompt' in components.jsx) — currently rendered when a project is
+       active. */
+    .local-prompt-strip {
+        padding: 8px 28px;
+        background: rgba(0, 0, 0, 0.4);
+        border-top: 1px dashed var(--color-cms-hair-w);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-cms-text-mute);
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .local-prompt-strip .arrow {
+        color: var(--color-cms-red);
+    }
+    .local-prompt-strip .sep {
+        color: var(--color-cms-text-faint);
+    }
+    .local-prompt-strip .path {
+        color: var(--color-cms-text-dim);
+    }
+
+    /* Logo lockup — chamfered red glyph + uppercase wordmark. */
+    .local-logo {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+        color: var(--color-cms-white);
+        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .local-logo::before {
+        content: "";
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        background: var(--color-cms-red);
+        clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%, 0 0);
+        box-shadow: 0 0 12px rgba(255, 56, 56, 0.5);
+    }
+
+    /* "● local" pill in the header. Red-tinted border per components.jsx. */
+    .local-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        padding: 4px 9px;
+        border: 1px solid rgba(255, 56, 56, 0.4);
+        color: var(--color-cms-red);
+        clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+    }
+    .local-pill::before {
+        content: "●";
+        font-size: 8px;
+    }
+
+    /* Breadcrumb path on the right of the header — mono caps. */
+    .local-breadcrumb {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-cms-text-mute);
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .local-breadcrumb .crumb {
+        color: var(--color-cms-text-mute);
+    }
+    .local-breadcrumb .crumb.is-last {
+        color: var(--color-cms-text);
+    }
+    .local-breadcrumb .sep {
+        color: var(--color-cms-text-faint);
+    }
+
+    /* Sidebar — workshop posture (always visible per UX direction).
+       Black ground, white-alpha hairline right border, eyebrowed sections. */
+    .local-sidebar {
+        width: 224px;
+        background: #040406;
+        border-right: 1px solid var(--color-cms-hair-w);
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        overflow-y: auto;
+        padding: 22px 0;
+    }
+    .local-sidebar-project {
+        padding: 0 18px 18px;
+        border-bottom: 1px solid var(--color-cms-hair-w);
+        margin-bottom: 18px;
+    }
+    .local-sidebar-project-label {
+        font-size: 9.5px;
+        color: var(--color-cms-text-mute);
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+    }
+    .local-sidebar-project-name {
+        color: var(--color-cms-white);
+        font-weight: 600;
+    }
+    .local-sidebar-project-slug {
+        font-size: 10.5px;
+        color: var(--color-cms-text-mute);
+        margin-top: 4px;
+    }
+    .local-sidebar-section {
+        padding: 0 18px;
+        margin-bottom: 22px;
+    }
+    .local-sidebar-eyebrow {
+        font-size: 9.5px;
+        color: var(--color-cms-red);
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+    .local-sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 0;
+        color: var(--color-cms-text-dim);
+        text-decoration: none;
+        transition: color 120ms ease;
+    }
+    .local-sidebar-item:hover {
+        color: var(--color-cms-text);
+    }
+    .local-sidebar-item.is-active {
+        color: var(--color-cms-white);
+    }
+    .local-sidebar-item.is-active::before {
+        content: "▸";
+        color: var(--color-cms-red);
+        flex-shrink: 0;
+    }
+    .local-sidebar-item .item-prefix {
+        display: inline-block;
+        width: 12px;
+    }
+    .local-sidebar-item.is-active .item-prefix {
+        display: none;
+    }
+}
+
+/* ─── Onboarding install panel — story 698. Mirror of app.css. ───────── */
+@layer components {
+    .cms-onboarding {
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+        position: relative;
+    }
+    .cms-onboarding::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 60px;
+        height: 2px;
+        background: var(--color-cms-red);
+        box-shadow: 0 0 10px var(--color-cms-red);
+    }
+
+    .cms-onboarding-link {
+        text-decoration: none;
+        transition: border-color 120ms ease;
+    }
+    .cms-onboarding-link:hover {
+        border-color: var(--color-cms-red);
+    }
+
+    .cms-onboarding-eyebrow {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--color-cms-red);
+    }
+
+    .cms-onboarding-heading {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 28px;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        text-transform: uppercase;
+        color: var(--color-cms-white);
+        margin: 0;
+    }
+
+    .cms-onboarding-sub {
+        margin: 10px 0 0;
+        color: var(--color-cms-text-dim);
+        font-size: 14px;
+        line-height: 1.55;
+        max-width: 62ch;
+    }
+
+    .cms-onboarding-cta {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        padding: 13px 20px;
+        background: var(--color-cms-red);
+        color: #000;
+        border: 1.5px solid var(--color-cms-red);
+        cursor: pointer;
+        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+        transition: background 180ms ease, border-color 180ms ease;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: center;
+        text-decoration: none;
+    }
+    .cms-onboarding-cta:hover {
+        background: var(--color-cms-white);
+        border-color: var(--color-cms-white);
+    }
+
+    .cms-onboarding-cmd {
+        background: #000;
+        border: 1px solid rgba(255, 56, 56, 0.22);
+        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+        padding: 11px 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        overflow-x: auto;
+    }
+    .cms-onboarding-cmd-prompt {
+        color: var(--color-cms-red);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        opacity: 0.7;
+        user-select: none;
+    }
+    .cms-onboarding-cmd code {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--color-cms-text);
+        background: transparent;
+        border: 0;
+        padding: 0;
+        white-space: nowrap;
+    }
+
+    .cms-onboarding-copy {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        padding: 9px 14px;
+        background: transparent;
+        color: var(--color-cms-red);
+        border: 1px solid var(--color-cms-red);
+        cursor: pointer;
+        clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+        transition: background 180ms ease, color 180ms ease;
+        white-space: nowrap;
+        min-width: 84px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+    .cms-onboarding-copy:hover {
+        background: rgba(255, 56, 56, 0.1);
+    }
+}
+
+/* Phoenix LiveView variants */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
 [data-phx-session] {
-  display: contents;
+    display: contents;
+}
+
+html {
+    font-size: 16px;
 }

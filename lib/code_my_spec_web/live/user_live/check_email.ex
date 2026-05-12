@@ -11,36 +11,58 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
       <div
         id="check-email-page"
         phx-hook=".RegistrationEmailSent"
-        class="mx-auto max-w-sm text-center space-y-6"
+        class="mx-auto max-w-xl py-12 flex flex-col gap-5"
       >
-        <.header>Check your email</.header>
+        <%!--
+          Audit P1 #3: previously a bare centered paragraph on black, this
+          screen now mirrors the /app rung aesthetic — same eyebrow, same
+          chamfered card, and a preview of the four ladder steps the user
+          will reach after clicking the magic link.
+        --%>
+        <div class="cms-onboarding">
+          <div class="px-7 py-7 flex flex-col gap-3">
+            <div class="cms-onboarding-eyebrow">// step 01 · confirm email</div>
+            <h1 class="cms-onboarding-heading">Check your email.</h1>
+            <p class="cms-onboarding-sub">
+              We sent a login link to <strong class="text-base-content">{@email}</strong>. Click it to confirm your account.
+            </p>
 
-        <p class="text-base-content/80">
-          We sent a login link to <strong>{@email}</strong>. Click it to confirm your account.
-        </p>
+            <div class="flex items-center gap-3 flex-wrap text-xs font-mono uppercase tracking-[0.14em] text-base-content/60 mt-2">
+              <span>Didn't get it?</span>
+              <button
+                type="button"
+                id="resend-button"
+                phx-click="resend"
+                disabled={@cooldown_remaining > 0}
+                class="cms-onboarding-copy disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <%= if @cooldown_remaining > 0 do %>
+                  Resend · {@cooldown_remaining}s
+                <% else %>
+                  Resend link
+                <% end %>
+              </button>
+              <.link navigate={~p"/users/register"} class="opacity-70 hover:opacity-100 underline">
+                Wrong email?
+              </.link>
+            </div>
+          </div>
+        </div>
 
-        <p class="text-sm text-base-content/60">
-          Didn't get it? Check your spam folder, or
-          <button
-            type="button"
-            id="resend-button"
-            phx-click="resend"
-            disabled={@cooldown_remaining > 0}
-            class="font-semibold text-brand hover:underline disabled:opacity-50 disabled:no-underline"
-          >
-            <%= if @cooldown_remaining > 0 do %>
-              Resend ({@cooldown_remaining}s)
-            <% else %>
-              resend the link
-            <% end %>
-          </button>
-        </p>
-
-        <p class="text-sm">
-          <.link navigate={~p"/users/register"} class="text-base-content/60 hover:underline">
-            Wrong email?
-          </.link>
-        </p>
+        <%!--
+          Preview of what's waiting after the click — collapses the latency
+          gap between "I clicked confirm" and "I see the workspace ladder".
+        --%>
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-3 text-xs font-mono uppercase tracking-[0.18em] text-base-content/60 px-1">
+            <span>// next · 4 steps</span>
+            <span class="h-px flex-1 max-w-[120px] bg-base-content/15"></span>
+          </div>
+          <.next_step n="02" label="Name your account" />
+          <.next_step n="03" label="Name your first Phoenix project" />
+          <.next_step n="04" label="Install the Claude Code plugin" />
+          <.next_step n="05" label="Open the local workspace" />
+        </div>
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".RegistrationEmailSent">
@@ -86,4 +108,19 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  attr :n, :string, required: true
+  attr :label, :string, required: true
+
+  defp next_step(assigns) do
+    ~H"""
+    <div class="cms-onboarding" style="opacity: 0.55;">
+      <div class="flex items-center gap-4 px-6 py-4">
+        <span class="cms-onboarding-eyebrow">// step {@n}</span>
+        <span class="flex-1"></span>
+        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">{@label}</span>
+      </div>
+    </div>
+    """
+  end
 end

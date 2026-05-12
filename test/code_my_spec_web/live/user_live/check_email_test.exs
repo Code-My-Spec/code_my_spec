@@ -77,7 +77,7 @@ defmodule CodeMySpecWeb.UserLive.CheckEmailTest do
       html = lv |> element("#resend-button") |> render_click()
 
       assert html =~ "disabled"
-      assert html =~ ~r/Resend \(\d+s\)/
+      assert html =~ ~r/Resend · \d+s/
     end
 
     test "a disabled-button click during cooldown does not send another email", %{conn: conn} do

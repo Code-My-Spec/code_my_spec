@@ -190,7 +190,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   def handle_event("copy_step", %{"step" => step_str}, socket) do
     case Integer.parse(step_str) do
-      {step, ""} when step in 1..3 ->
+      # step 0 == prereq (`mix phx.new`), steps 1..3 == plugin install commands.
+      {step, ""} when step in 0..3 ->
         user = socket.assigns.current_scope.user
         payload = %{user_id: user.id, step: step}
 
@@ -224,15 +225,32 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  # The user only enters a `name`; `slug` is auto-derived from it. So
+  # slug-level errors need to surface against the name field or they're
+  # invisible. Uniqueness collisions are handled by the repository's
+  # auto-suffix retry — by the time we see slug errors here they're
+  # reserved words, length, or format violations of the derived slug.
   defp surface_slug_errors_on_name(changeset) do
     Enum.reduce(changeset.errors, changeset, fn
-      {:slug, {_msg, opts}}, cs ->
-        Ecto.Changeset.add_error(cs, :name, "is already taken", opts)
+      {:slug, {msg, opts}}, cs ->
+        Ecto.Changeset.add_error(cs, :name, slug_error_to_name_msg(msg), opts)
 
       _, cs ->
         cs
     end)
   end
+
+  defp slug_error_to_name_msg("is reserved" <> _),
+    do: "uses a reserved word — try a different name"
+
+  defp slug_error_to_name_msg("should be at least " <> _),
+    do: "needs at least 3 letters or numbers"
+
+  defp slug_error_to_name_msg("must contain only" <> _),
+    do: "needs at least one letter or number"
+
+  defp slug_error_to_name_msg(_),
+    do: "isn't valid — try a different name"
 
   defp refresh_presence(socket) do
     user = socket.assigns.current_scope.user
@@ -407,9 +425,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           else: "Set up your workspace."}
       </h2>
       <p class="cms-onboarding-sub" style="margin-bottom: 0;">
-        Four steps: name your account, link a Phoenix project, install the
-        Claude Code plugin, then open the local workspace where you'll
-        write your first story.
+        Four steps below — each builds on the last.
       </p>
     </div>
     """
@@ -472,6 +488,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             field={@account_form[:name]}
             type="text"
             label="Account name"
+            placeholder="Acme"
             required
             autocomplete="off"
             phx-mounted={JS.focus()}
@@ -531,6 +548,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             field={@project_form[:name]}
             type="text"
             label="Project name"
+            placeholder="my-phoenix-app"
             required
             autocomplete="off"
             phx-mounted={JS.focus()}
@@ -732,9 +750,29 @@ defmodule CodeMySpecWeb.AppLive.Overview do
               New to Claude Code? Install it from
               <a href="https://claude.com/code" target="_blank" rel="noopener noreferrer" class="underline">claude.com/code</a>.
             </li>
-            <li>
+            <li class="mt-2">
               No Phoenix project yet?
-              <code>mix phx.new myapp &amp;&amp; cd myapp &amp;&amp; claude</code>
+              <div
+                class="grid items-center gap-3.5 mt-1"
+                style="grid-template-columns: 1fr auto;"
+                data-test="prereq-phx-new"
+              >
+                <div class="cms-onboarding-cmd">
+                  <span class="cms-onboarding-cmd-prompt">▸</span>
+                  <code>mix phx.new myapp &amp;&amp; cd myapp &amp;&amp; claude</code>
+                </div>
+                <button
+                  type="button"
+                  data-test="copy-step-0"
+                  data-copy="mix phx.new myapp && cd myapp && claude"
+                  phx-click="copy_step"
+                  phx-value-step="0"
+                  class="copy-btn cms-onboarding-copy"
+                  aria-label="Copy mix phx.new command"
+                >
+                  Copy
+                </button>
+              </div>
             </li>
           </ul>
         </div>

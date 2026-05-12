@@ -64,12 +64,21 @@ defmodule CodeMySpecWeb.Layouts do
             </label>
           </div>
           <div class="flex-1 min-w-0">
-            <div class="breadcrumbs text-sm px-2 lg:px-8 overflow-hidden">
+            <%!--
+              Audit P0 #3: during onboarding (no project linked, or CLI never
+              connected) the picker breadcrumbs invite the user to derail
+              into /app/accounts/picker or /app/projects/picker — both of
+              which break the four-rung ladder's focus. Hide the breadcrumbs
+              until onboarding is complete; the ladder is the only thing
+              they should see.
+            --%>
+            <div
+              :if={onboarding_complete?(@current_scope)}
+              class="breadcrumbs text-sm px-2 lg:px-8 overflow-hidden"
+            >
               <ul>
-                <%= if @current_scope do %>
-                  <li><.account_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
-                  <li><.project_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
-                <% end %>
+                <li><.account_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
+                <li><.project_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
               </ul>
             </div>
           </div>

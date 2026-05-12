@@ -140,6 +140,60 @@ defmodule CodeMySpec.Accounts.AccountsRepositoryTest do
       assert {:error, changeset} = AccountsRepository.create_account_with_owner(user.id, attrs)
       assert %{name: ["can't be blank"]} = errors_on(changeset)
     end
+
+    test "auto-suffixes derived slug on collision instead of failing" do
+      user_a = user_fixture()
+      user_b = user_fixture()
+
+      assert {:ok, first} =
+               AccountsRepository.create_account_with_owner(user_a.id, %{name: "Acme"})
+
+      assert first.slug == "acme"
+
+      assert {:ok, second} =
+               AccountsRepository.create_account_with_owner(user_b.id, %{name: "Acme"})
+
+      assert second.name == "Acme"
+      assert second.slug == "acme-2"
+    end
+
+    test "auto-suffix retries until an available slug is found" do
+      user_a = user_fixture()
+      user_b = user_fixture()
+      user_c = user_fixture()
+      user_d = user_fixture()
+
+      assert {:ok, %{slug: "acme"}} =
+               AccountsRepository.create_account_with_owner(user_a.id, %{name: "Acme"})
+
+      assert {:ok, %{slug: "acme-2"}} =
+               AccountsRepository.create_account_with_owner(user_b.id, %{name: "Acme"})
+
+      assert {:ok, %{slug: "acme-3"}} =
+               AccountsRepository.create_account_with_owner(user_c.id, %{name: "Acme"})
+
+      assert {:ok, %{slug: "acme-4"}} =
+               AccountsRepository.create_account_with_owner(user_d.id, %{name: "Acme"})
+    end
+
+    test "explicit slug is not auto-suffixed — collision returns an error" do
+      user_a = user_fixture()
+      user_b = user_fixture()
+
+      assert {:ok, _} =
+               AccountsRepository.create_account_with_owner(user_a.id, %{
+                 name: "Acme",
+                 slug: "my-explicit-slug"
+               })
+
+      assert {:error, changeset} =
+               AccountsRepository.create_account_with_owner(user_b.id, %{
+                 name: "Other",
+                 slug: "my-explicit-slug"
+               })
+
+      assert %{slug: ["has already been taken"]} = errors_on(changeset)
+    end
   end
 
   describe "by_slug/1" do

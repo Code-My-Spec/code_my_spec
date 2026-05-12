@@ -744,8 +744,8 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
   defp wall_styles(assigns) do
     ~H"""
     <style>
-      /* All colors come from the active daisyUI theme (cyberpunk, light, dark, …)
-       * via its --color-* tokens, so the wall blends with whatever theme is set. */
+      /* All colors come from the active daisyUI theme via its --color-* tokens,
+       * so the wall blends with whatever theme is set (currently codemyspec). */
       .wv4-root {
         --wall-bg: var(--color-base-100);
         --wall-bg-2: var(--color-base-200);
