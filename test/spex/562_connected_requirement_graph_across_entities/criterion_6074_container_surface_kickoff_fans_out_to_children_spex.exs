@@ -1,11 +1,9 @@
-defmodule CodeMySpecSpex.Story562.CriterionPendingContainerKickoffFansOutSpex do
+defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
   @moduledoc """
   Story 562 — Connected Requirement Graph Across Entities
-  Criterion (pending — needs MCP active project switched back to
-  CodeMySpec to register) — A container surface's `bdd_specs_exist`
-  fans out to every direct child whose type supports the first
-  surviving child-scoped def, instead of landing on the surface
-  itself.
+  Criterion 6074 — A container surface's `bdd_specs_exist` fans out
+  to every direct child whose type supports the first surviving
+  child-scoped def, instead of landing on the surface itself.
 
   Symmetric counterpart of criterion 5654 (container surface's
   `bdd_specs_passing` fans IN from every child's terminal).
