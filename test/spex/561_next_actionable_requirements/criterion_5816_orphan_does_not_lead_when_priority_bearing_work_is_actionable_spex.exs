@@ -1,10 +1,10 @@
 defmodule CodeMySpecSpex.Story561.Criterion5816Spex do
   @moduledoc """
   Story 561 — Next Actionable Requirements
-  Criterion 5816 — Blocked-style behavior: an orphan component with
-  no inherited priority does not lead the wave when a priority-1
-  component is also actionable. Orphans surface only after all
-  priority-bearing work is queued.
+  Criterion 5816 — An orphan component with no inherited priority
+  does not lead the wave when a priority-1 component is also
+  actionable. Orphans surface only after all priority-bearing work
+  is queued.
 
   Surface: get_next_requirement MCP tool. With one priority-1 linked
   context and one orphan component both eligible, the response leads
