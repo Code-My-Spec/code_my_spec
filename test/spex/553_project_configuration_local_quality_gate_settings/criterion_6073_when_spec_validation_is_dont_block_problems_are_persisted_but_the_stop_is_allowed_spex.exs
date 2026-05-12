@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story553.Criterion5107Spex do
+defmodule CodeMySpecSpex.Story553.Criterion6073Spex do
   @moduledoc """
   Story 553 — Project Configuration: Local quality gate settings
-  Criterion 5107 — When spec_validation is set to dont_block, spec
+  Criterion 6073 — When spec_validation is set to dont_block, spec
   validator problems are still persisted (so the engineer can see them
   in the UI) but the stop is always allowed.
 

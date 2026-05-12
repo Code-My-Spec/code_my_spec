@@ -1,20 +1,13 @@
-defmodule CodeMySpecSpex.Story553.Criterion5105Spex do
+defmodule CodeMySpecSpex.Story553.Criterion6072Spex do
   @moduledoc """
   Story 553 — Project Configuration: Local quality gate settings
-  Criterion 5105 — When spec_validation is block_changed (the default),
-  spec_validation problems persisted from prior turns do not block the
-  stop when the agent did not modify those spec files this turn.
+  Criterion 6072 — When spec_validation is set to block_all, persisted
+  spec_validation problems block the stop every turn until the spec file
+  is fixed — even turns that don't touch the file.
 
-  End-to-end: two turns of the stop hook.
-
-  Turn 1 writes a spec file missing required sections. The pipeline runs
-  the spec validator on the changed file and records a spec_validation
-  problem. Turn 2 fires the stop hook with no file changes — FileSync
-  reports nothing, the pipeline is skipped, and `check_blocking_problems`
-  consults the persisted problem with `block_changed` config and empty
-  `changed_file_paths`, demoting it to advisory.
-
-  We only assert on turn 2; turn 1 is setup.
+  This is the old always-blocking behavior, now opt-in via config. Two
+  turns: turn 1 seeds a broken spec, turn 2 fires with no changes and
+  still gets blocked.
   """
 
   use CodeMySpecSpex.Case
@@ -30,15 +23,15 @@ defmodule CodeMySpecSpex.Story553.Criterion5105Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Engineer leaves spec_validation at default block_changed" do
-    scenario "stub spec files in the DB don't block turns that didn't touch them" do
+  spex "Engineer sets spec_validation to block_all" do
+    scenario "stub spec files in the DB block every turn until fixed" do
       given_ :synced_context_component
       given_ :on_configuration_page
 
-      given_ "spec_validation is set to block_changed (default)", context do
+      given_ "spec_validation is set to block_all", context do
         context.config_live
         |> form("[data-test='configuration-form']",
-          configuration: %{spec_validation: "block_changed"}
+          configuration: %{spec_validation: "block_all"}
         )
         |> render_submit()
 
@@ -69,8 +62,6 @@ defmodule CodeMySpecSpex.Story553.Criterion5105Spex do
       end
 
       when_ "turn 2: the stop hook fires with no file changes", context do
-        # Second turn: no writes since turn 1, so FileSync reports no
-        # changes and the pipeline is skipped. No System.cmd is invoked.
         response =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
@@ -81,10 +72,16 @@ defmodule CodeMySpecSpex.Story553.Criterion5105Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the stop is allowed because the broken spec is outside task scope",
+      then_ "the stop is blocked with the persisted spec_validation problem",
             context do
-        assert context.response == %{},
-               "block_changed must treat untouched spec_validation problems as advisory, got: #{inspect(context.response)}"
+        assert context.response["decision"] == "block",
+               "block_all must block on persisted spec_validation problems, got: #{inspect(context.response)}"
+
+        assert context.response["reason"] =~ "spec_validation",
+               "reason must mention spec_validation, got: #{inspect(context.response["reason"])}"
+
+        assert context.response["reason"] =~ @broken_spec_path,
+               "reason must reference the broken spec file, got: #{inspect(context.response["reason"])}"
 
         {:ok, context}
       end
@@ -93,9 +90,6 @@ defmodule CodeMySpecSpex.Story553.Criterion5105Spex do
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 
-  # Missing required sections (fields / functions / components). The
-  # document schema rejects this content; the validator records a
-  # spec_validation problem against this file_path.
   defp broken_spec do
     """
     # Todo.Broken
