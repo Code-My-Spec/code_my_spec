@@ -15,6 +15,7 @@ defmodule CodeMySpec.Embeddings.DocEmbedding do
     field :chunk_index, :integer, default: 0
     field :content, :string
     field :content_hash, :string
+    field :file_hash, :string
     field :embedding, @embedding_type
 
     timestamps(type: :utc_datetime)

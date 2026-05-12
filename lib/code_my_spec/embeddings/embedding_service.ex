@@ -55,8 +55,36 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   @doc """
   Embed a single file's content. Chunks, deduplicates by hash, embeds new chunks.
+
+  File-level short-circuit: if any existing chunk for this
+  `(project_id, source, path)` already carries the same `file_hash` as
+  the incoming bytes, we know nothing changed and return immediately
+  — no chunking, no SELECT of existing chunk hashes, no DELETE of
+  stale rows. This is the hot path on every boot of
+  `sync_framework_knowledge`.
   """
   def embed_file(project_id, source, path, content) do
+    file_hash = content_hash(content)
+
+    if file_hash_matches?(project_id, source, path, file_hash) do
+      {:ok, %{embedded: 0, skipped: :unchanged}}
+    else
+      do_embed_file(project_id, source, path, content, file_hash)
+    end
+  end
+
+  defp file_hash_matches?(project_id, source, path, file_hash) do
+    from(e in DocEmbedding,
+      where:
+        e.project_id == ^project_id and e.source == ^source and e.path == ^path and
+          e.file_hash == ^file_hash,
+      limit: 1,
+      select: 1
+    )
+    |> Repo.one() == 1
+  end
+
+  defp do_embed_file(project_id, source, path, content, file_hash) do
     chunks = chunk_text(content)
 
     existing_hashes =
@@ -71,28 +99,33 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
       chunks
       |> Enum.with_index()
       |> Enum.reduce({0, 0}, fn {chunk, index}, acc ->
-        embed_chunk(project_id, source, path, index, chunk, existing_hashes, acc)
+        embed_chunk(project_id, source, path, index, chunk, file_hash, existing_hashes, acc)
       end)
 
     # Delete old chunks for this file that don't match current chunk hashes
     current_hashes = Enum.map(chunks, &content_hash/1)
     delete_old_chunks(project_id, source, path, current_hashes)
 
+    # Backfill file_hash on any chunks that were kept (existing rows) so the
+    # next call hits the fast path. New inserts already got file_hash via
+    # `generate_and_store`.
+    backfill_file_hash(project_id, source, path, file_hash)
+
     {:ok, %{embedded: embedded, skipped: skipped}}
   end
 
-  defp embed_chunk(project_id, source, path, index, chunk, existing_hashes, {emb, skip}) do
+  defp embed_chunk(project_id, source, path, index, chunk, file_hash, existing_hashes, {emb, skip}) do
     hash = content_hash(chunk)
 
     if MapSet.member?(existing_hashes, hash) do
       {emb, skip + 1}
     else
-      store_chunk(project_id, source, path, index, chunk, hash, {emb, skip})
+      store_chunk(project_id, source, path, index, chunk, hash, file_hash, {emb, skip})
     end
   end
 
-  defp store_chunk(project_id, source, path, index, chunk, hash, {emb, skip}) do
-    case generate_and_store(project_id, source, path, index, chunk, hash) do
+  defp store_chunk(project_id, source, path, index, chunk, hash, file_hash, {emb, skip}) do
+    case generate_and_store(project_id, source, path, index, chunk, hash, file_hash) do
       :ok ->
         {emb + 1, skip}
 
@@ -103,6 +136,15 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
         {emb, skip}
     end
+  end
+
+  defp backfill_file_hash(project_id, source, path, file_hash) do
+    from(e in DocEmbedding,
+      where:
+        e.project_id == ^project_id and e.source == ^source and e.path == ^path and
+          (is_nil(e.file_hash) or e.file_hash != ^file_hash)
+    )
+    |> Repo.update_all(set: [file_hash: file_hash])
   end
 
   @doc """
@@ -201,20 +243,20 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
 
   # -- Embedding generation --
 
-  defp generate_and_store(project_id, source, path, index, chunk, hash) do
+  defp generate_and_store(project_id, source, path, index, chunk, hash, file_hash) do
     case generate_embedding(chunk) do
       {:ok, embedding} ->
         vector_json = Jason.encode!(embedding)
         now = DateTime.utc_now() |> DateTime.to_iso8601()
 
         sql = """
-        INSERT INTO doc_embeddings (id, project_id, source, path, chunk_index, content, content_hash, embedding, inserted_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, vec_f32(?8), ?9, ?10)
+        INSERT INTO doc_embeddings (id, project_id, source, path, chunk_index, content, content_hash, file_hash, embedding, inserted_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, vec_f32(?9), ?10, ?11)
         ON CONFLICT DO NOTHING
         """
 
         params = [
-          UUID.uuid4(), project_id, source, path, index, chunk, hash, vector_json, now, now
+          UUID.uuid4(), project_id, source, path, index, chunk, hash, file_hash, vector_json, now, now
         ]
 
         case AdaptersSQL.query(Repo, sql, params) do
