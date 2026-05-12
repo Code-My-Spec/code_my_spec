@@ -1,6 +1,6 @@
-defmodule CodeMySpecSpex.Story682.Criterion5831Spex do
+defmodule CodeMySpecSpex.Story70.Criterion5831Spex do
   @moduledoc """
-  Story 682 — Architect Agent Surface
+  Story 70 — Architecture Design
   Criterion 5831 — Architect links a story to a component via the component
   linker tool.
 
