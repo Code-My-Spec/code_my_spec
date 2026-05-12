@@ -153,6 +153,34 @@
     .local-zone .font-heading {
         font-family: var(--font-display);
     }
+
+    /* Headings live in Space Mono caps across the local app — the cloud /app
+       ladder follows the same rule via `.cms-onboarding-heading`. This
+       baseline pulls every page-level h1/h2 and DaisyUI card-title into the
+       same system so individual templates don't need to remember to apply a
+       class. Specific contexts (forms, etc.) can still override. */
+    .local-zone h1,
+    .local-zone h2,
+    .local-zone .card-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        text-transform: uppercase;
+        color: var(--color-cms-white);
+    }
+    .local-zone h1 {
+        font-size: 28px;
+        line-height: 1.05;
+    }
+    .local-zone h2 {
+        font-size: 22px;
+        line-height: 1.15;
+    }
+    .local-zone .card-title {
+        font-size: 14px;
+        line-height: 1.2;
+        letter-spacing: 0.04em;
+    }
 }
 
 /* ─── Local-app chrome ───────────────────────────────────────────────── */
@@ -243,15 +271,22 @@
         font-size: 8px;
     }
 
-    /* Breadcrumb path on the right of the header — mono caps. */
+    /* Breadcrumb path on the right of the header — mono caps. Hidden below
+       sm width because the `● local` pill needs the room and the breadcrumb
+       was z-overlapping the pill on mobile. */
     .local-breadcrumb {
         font-family: var(--font-mono);
         font-size: 11px;
         color: var(--color-cms-text-mute);
         letter-spacing: 0.02em;
-        display: flex;
+        display: none;
         align-items: center;
         gap: 6px;
+    }
+    @media (min-width: 640px) {
+        .local-breadcrumb {
+            display: flex;
+        }
     }
     .local-breadcrumb .crumb {
         color: var(--color-cms-text-mute);
@@ -261,6 +296,13 @@
     }
     .local-breadcrumb .sep {
         color: var(--color-cms-text-faint);
+    }
+
+    /* Mobile drawer overlay — DaisyUI's default rgba(0,0,0,0.4) lets too
+       much of the header bleed through. Bump opacity so the drawer
+       genuinely foregrounds itself. */
+    .local-zone .drawer-overlay {
+        background-color: rgba(0, 0, 0, 0.85);
     }
 
     /* Sidebar — workshop posture (always visible per UX direction).

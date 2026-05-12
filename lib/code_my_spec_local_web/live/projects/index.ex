@@ -74,19 +74,18 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
       />
 
       <div class="mb-6">
-        <h1 class="text-3xl font-bold">Projects</h1>
-        <p class="text-base-content/60 mt-1">Projects linked to a local working directory.</p>
+        <h1>Projects</h1>
+        <p class="text-base-content/60 mt-1 font-mono text-sm">
+          Projects linked to a local working directory.
+        </p>
       </div>
 
-      <div :if={@projects == []} role="alert" class="alert flex flex-col items-start gap-2">
-        <span class="font-semibold">No projects linked to this machine yet.</span>
-        <span class="text-sm opacity-80">
-          From Claude Code inside a Phoenix project's root directory, run
-          <code class="kbd kbd-sm">/codemyspec:init</code>
-          to link it. The plugin attaches to whichever directory Claude Code is
-          running in — there's no project picker beyond <code class="kbd kbd-sm">cd</code>.
-        </span>
-      </div>
+      <%!--
+        Audit re-pass §2b: previously a DaisyUI alert repeated the rung
+        copy verbatim ("From Claude Code … run /codemyspec:init …"). The
+        themed ladder above already carries that message with a copy
+        button; the alert was redundant chrome.
+      --%>
 
       <div :if={@projects != []} class="grid gap-4 sm:grid-cols-2">
         <.link

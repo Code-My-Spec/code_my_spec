@@ -1,6 +1,7 @@
 defmodule CodeMySpecLocalWeb.StoryLive.Form do
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
@@ -20,27 +21,43 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
         <span>{@error}</span>
       </div>
 
-      <div :if={!@error && @form}>
-        <.header>
-          {@page_title}
-          <:subtitle :if={@live_action == :new}>
+      <div :if={!@error && @form} class="flex flex-col gap-6">
+        <div data-test="story-form-header">
+          <div class="cms-onboarding-eyebrow mb-2">
+            {if @live_action == :new, do: "// new story", else: "// edit story"}
+          </div>
+          <h1 class="cms-onboarding-heading">{@page_title}</h1>
+          <p :if={@live_action == :new} class="cms-onboarding-sub mt-2">
             Write the behaviour you want the harness to deliver. The agent
             turns this into a spec, scenarios, tests, and code in that order.
-          </:subtitle>
-          <:subtitle :if={@live_action == :edit}>
+          </p>
+          <p :if={@live_action == :edit} class="cms-onboarding-sub mt-2">
             Update the story. Existing scenarios and tests stay linked.
-          </:subtitle>
-        </.header>
-
-        <div :if={@live_action == :new} data-test="interview-path-callout" class="alert alert-info mb-4">
-          <div class="text-sm">
-            <span class="font-semibold">Prefer to be interviewed?</span>
-            Paste <code class="kbd kbd-sm">/codemyspec:product interview</code>
-            into Claude Code — the agent will ask questions and draft the story for you.
-          </div>
+          </p>
         </div>
 
-        <.form for={@form} id="story-form" phx-change="validate" phx-submit="save">
+        <%!--
+          Audit re-pass §2d: was an alert-info banner (blue chrome that
+          fought the brand). Now a quieter mono eyebrow + line, matching the
+          rest of the system. Re-themes the interview path as a peer, not
+          a sidebar.
+        --%>
+        <div
+          :if={@live_action == :new}
+          data-test="interview-path-callout"
+          class="flex flex-col gap-1 border-l-2 pl-4"
+          style="border-color: var(--color-cms-amber, #ffb84a);"
+        >
+          <div class="cms-onboarding-eyebrow" style="color: var(--color-cms-amber, #ffb84a);">
+            // or be interviewed
+          </div>
+          <p class="text-sm" style="color: var(--color-cms-text-dim);">
+            Paste <code class="kbd kbd-sm">/codemyspec:product interview</code>
+            into Claude Code — the agent will ask questions and draft the story for you.
+          </p>
+        </div>
+
+        <.form for={@form} id="story-form" phx-change="validate" phx-submit="save" class="flex flex-col gap-4">
           <.input
             field={@form[:title]}
             type="text"
@@ -107,12 +124,15 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
             field={@form[:status]}
             type="select"
             label="Status"
-            prompt="Choose a value"
             options={Ecto.Enum.values(CodeMySpec.Stories.Story, :status)}
           />
-          <footer>
-            <.button phx-disable-with="Saving...">Save Story</.button>
-            <.button navigate={return_path(@slug, @return_to, @story)}>Cancel</.button>
+          <footer class="flex items-center gap-3">
+            <.button phx-disable-with="Saving...">
+              <span>▸</span> Save Story
+            </.button>
+            <.button navigate={return_path(@slug, @return_to, @story)} class="btn-ghost">
+              Cancel
+            </.button>
           </footer>
         </.form>
       </div>
@@ -173,7 +193,14 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
   end
 
   defp apply_action(socket, :new, _params, scope) do
-    story = %Story{account_id: scope.active_account_id, criteria: []}
+    # Pre-render one empty criterion so the BDD shape (`Given … when … then …`)
+    # is visible as a placeholder, and set a sane default status so the user
+    # doesn't have to make a meaningless "Choose a value" decision.
+    story = %Story{
+      account_id: scope.active_account_id,
+      status: :in_progress,
+      criteria: [%Criterion{description: "", verified: false}]
+    }
 
     socket
     |> assign(:page_title, "New Story")

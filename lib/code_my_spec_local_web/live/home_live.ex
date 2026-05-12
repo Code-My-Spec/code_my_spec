@@ -92,7 +92,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
       <div :if={@project && !@error}>
         <div class="mb-8">
-          <h1 class="text-3xl font-bold">{@project.name}</h1>
+          <h1>{@project.name}</h1>
           <p :if={@project.local_path} class="text-sm opacity-60 font-mono mt-1">{@project.local_path}</p>
         </div>
 
@@ -113,7 +113,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       <.rung
         rung={:init}
         eyebrow="// step 01 · init"
-        label="Init"
+        hint="Run setup commands to prepare this directory."
         slug={@slug}
         state={rung_state(:init, @active, @init_done?, @setup_done?, @has_stories?)}
       />
@@ -121,7 +121,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       <.rung
         rung={:project_setup}
         eyebrow="// step 02 · project setup"
-        label="Project setup"
+        hint="Paste /codemyspec:next in Claude Code."
         slug={@slug}
         state={rung_state(:project_setup, @active, @init_done?, @setup_done?, @has_stories?)}
       />
@@ -129,7 +129,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       <.rung
         rung={:first_story}
         eyebrow="// step 03 · first story"
-        label="First story"
+        hint="Let the agent interview you — or write the story yourself."
         slug={@slug}
         state={rung_state(:first_story, @active, @init_done?, @setup_done?, @has_stories?)}
       />
@@ -137,6 +137,11 @@ defmodule CodeMySpecLocalWeb.HomeLive do
     """
   end
 
+  # Audit re-pass §2e: rungs previously rendered eyebrow on the left and the
+  # rung label *repeated* on the right (`// step 01 · init` … `Init`). Now:
+  #   - active rungs show only the eyebrow above the CTA (no doubled label)
+  #   - pending rungs show a one-line preview hint instead of the label
+  #   - done rungs show a `✓` indicator on the right
   defp rung(%{rung: rung} = assigns) do
     test_id = rung_test_id(rung)
     assigns = assign(assigns, :test_id, test_id)
@@ -151,7 +156,8 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       <div class="flex items-center gap-4 px-6 py-5">
         <span class="cms-onboarding-eyebrow">{@eyebrow}</span>
         <span class="flex-1"></span>
-        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">{@label}</span>
+        <span :if={@state == "done"} class="cms-onboarding-eyebrow" style="opacity: 0.7;">✓ Done</span>
+        <span :if={@state == "pending"} class="font-mono text-xs opacity-60 hidden sm:inline">{@hint}</span>
       </div>
 
       <.rung_cta :if={@state == "active"} rung={@rung} slug={@slug} />
@@ -198,29 +204,35 @@ defmodule CodeMySpecLocalWeb.HomeLive do
     """
   end
 
+  # Audit re-pass §2e + brief §5c: lead with the agent-interview path
+  # (Matt's drop-off was the form). Form path is now the muted secondary
+  # affordance for users who already know what they want to write.
   defp rung_cta(%{rung: :first_story} = assigns) do
     ~H"""
-    <div class="px-6 pb-5 -mt-2 flex flex-col gap-2">
-      <div class="flex items-center gap-3 flex-wrap">
-        <.link
-          navigate={~p"/projects/#{@slug}/stories/new"}
-          class="cms-onboarding-cta"
-          data-test="first-story-rung-cta"
-        >
-          <span>▸</span> Write your first story
-        </.link>
-        <span class="text-xs opacity-60">— or let the agent guide you:</span>
-      </div>
-      <div class="flex items-center gap-2">
+    <div class="px-6 pb-5 -mt-2 flex flex-col gap-3">
+      <div class="flex items-center gap-2 flex-wrap" data-test="first-story-rung-cta">
         <code class="kbd kbd-sm">/codemyspec:product interview</code>
         <button
           type="button"
-          class="copy-btn btn btn-xs btn-ghost"
+          class="copy-btn cms-onboarding-copy"
           data-copy="/codemyspec:product interview"
           aria-label="Copy /codemyspec:product interview to clipboard"
         >
           Copy
         </button>
+        <span class="text-xs opacity-60 font-mono">
+          Paste in Claude Code — the agent interviews you and drafts the story.
+        </span>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap text-xs font-mono opacity-70">
+        <span>— or write it yourself:</span>
+        <.link
+          navigate={~p"/projects/#{@slug}/stories/new"}
+          class="underline hover:opacity-100"
+          data-test="first-story-rung-form-link"
+        >
+          Write your first story →
+        </.link>
       </div>
     </div>
     """
@@ -230,6 +242,9 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   defp rung_test_id(:project_setup), do: "project-setup-rung"
   defp rung_test_id(:first_story), do: "first-story-rung"
 
+  # Audit re-pass §2i: workshop dash-cards must cover every section the
+  # sidebar exposes — Personas and Scheduler were in `// data` but missing
+  # from the grid. Now the two surfaces stay in sync.
   defp dash_cards(assigns) do
     ~H"""
     <div data-test="project-home-dashcards" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -239,11 +254,13 @@ defmodule CodeMySpecLocalWeb.HomeLive do
 
       <.dash_card title="Requirements" href={~p"/projects/#{@slug}/requirements"} desc="Project-level requirement graph." />
       <.dash_card title="Stories" href={~p"/projects/#{@slug}/stories"} desc="User stories and acceptance criteria." />
+      <.dash_card title="Scheduler" href={~p"/projects/#{@slug}/stories/scheduler"} desc="Order and prioritize the story backlog." />
 
+      <.dash_card title="Personas" href={~p"/projects/#{@slug}/personas"} desc="User personas linked to stories." />
       <.dash_card title="Issues" href={~p"/projects/#{@slug}/issues"} desc="Open problems and incoming triage." />
       <.dash_card title="Sessions" href={~p"/projects/#{@slug}/sessions"} desc="Agent session history." />
-      <.dash_card title="Project Init" href={~p"/projects/#{@slug}/init"} desc="Bootstrap checklist for this directory." />
 
+      <.dash_card title="Project Init" href={~p"/projects/#{@slug}/init"} desc="Bootstrap checklist for this directory." />
       <.dash_card title="Knowledge Base" href={~p"/projects/#{@slug}/knowledge"} desc="Shared methodology and rules." />
       <.dash_card title="Project Knowledge" href={~p"/projects/#{@slug}/project-knowledge"} desc="Project-specific docs and specs." />
     </div>

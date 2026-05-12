@@ -44,7 +44,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
           </div>
           <div :if={@project} class="local-prompt-strip">
             <span class="arrow">▸</span>
-            <span>~/code/{project_slug(@project)}</span>
+            <span>{prompt_cwd(@project)}</span>
             <span class="sep">::</span>
             <span class="path">{section_path(@section)}</span>
           </div>
@@ -58,8 +58,14 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <div class="drawer-side">
         <label for="drawer-toggle" class="drawer-overlay"></label>
         <aside class="local-sidebar min-h-full flex flex-col">
-          <.sidebar_project_block project={@project} projects={@projects} />
+          <%!--
+            Audit re-pass §2c: the `// project` block only makes sense when
+            a project is active. On the empty-state `/projects` page it
+            duplicated the `// workspace` section's "All projects" link, so
+            hide the block entirely when there's no active project.
+          --%>
           <%= if @project do %>
+            <.sidebar_project_block project={@project} projects={@projects} />
             <.sidebar_project_nav project={@project} section={@section} />
           <% else %>
             <.sidebar_global_nav section={@section} />
@@ -250,5 +256,38 @@ defmodule CodeMySpecLocalWeb.Layouts do
     |> String.downcase()
     |> String.replace(~r/[^a-z0-9]+/, "-")
     |> String.trim("-")
+  end
+
+  # The prompt strip is styled like a shell prompt, so users will read it
+  # as their working directory. Show the real `local_path` (abbreviated to
+  # `~/…` when it lives under $HOME) when we have one — falling back to a
+  # branded `~/code/<slug>` only if the project hasn't been linked yet
+  # (e.g. during the per-project ladder's init rung).
+  defp prompt_cwd(project) do
+    case project.local_path do
+      nil -> "~/code/#{project_slug(project)}"
+      "" -> "~/code/#{project_slug(project)}"
+      path -> abbreviate_home(path)
+    end
+  end
+
+  defp abbreviate_home(path) do
+    case safe_home() do
+      nil ->
+        path
+
+      home ->
+        if String.starts_with?(path, home) do
+          "~" <> String.replace_prefix(path, home, "")
+        else
+          path
+        end
+    end
+  end
+
+  defp safe_home do
+    System.user_home()
+  rescue
+    _ -> nil
   end
 end
