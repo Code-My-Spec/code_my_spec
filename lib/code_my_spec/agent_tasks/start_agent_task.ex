@@ -33,12 +33,10 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @session_type_map %{
     "component_spec" => AgentTasks.ComponentSpec,
     "context_spec" => AgentTasks.ContextSpec,
-    "context_component_specs" => AgentTasks.ContextComponentSpecs,
     "context_design_review" => AgentTasks.ContextDesignReview,
     "develop_context" => AgentTasks.DevelopContext,
     "fix_all_bdd_specs" => AgentTasks.FixAllBddSpecs,
     "fix_bdd_specs" => AgentTasks.FixBddSpecs,
-    "develop_controller" => AgentTasks.DevelopController,
     "develop_live_view" => AgentTasks.DevelopLiveView,
     "component_code" => AgentTasks.ComponentCode,
     "component_test" => AgentTasks.ComponentTest,
@@ -50,7 +48,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "story_review" => AgentTasks.StoryInterview,
     "design_ui" => AgentTasks.DesignUi,
     "liveview_spec" => AgentTasks.LiveViewSpec,
-    "develop_live_context" => AgentTasks.DevelopLiveContext,
     "live_context_spec" => AgentTasks.LiveContextSpec,
     "technical_strategy" => AgentTasks.TechnicalStrategy,
     "research_topic" => AgentTasks.ResearchTopic,
@@ -66,6 +63,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "three_amigos" => AgentTasks.ThreeAmigos,
     "triage_issues" => AgentTasks.TriageIssues,
     "fix_issues" => AgentTasks.FixIssues,
+    "spex_boundary_ready" => AgentTasks.SpexBoundaryReady,
+    "persona_research" => AgentTasks.PersonaResearch,
+    "controller_spec" => AgentTasks.ControllerSpec,
     "init" => AgentTasks.Init
   }
 
@@ -83,7 +83,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "architecture_design",
     "code_generation",
     "write_bdd_specs",
-    "manage_implementation",
     "design_ui",
     "fix_all_bdd_specs",
     "technical_strategy",
@@ -96,7 +95,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "qa_setup",
     "triage_issues",
     "fix_issues",
-    "sync"
+    "spex_boundary_ready",
+    "persona_research"
   ]
 
   # Tasks that take a topic name (passed as module_name arg) instead of a component lookup.
@@ -109,6 +109,10 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   def valid_types, do: @valid_types
   def componentless_tasks, do: @componentless_tasks
+  def session_type_map, do: @session_type_map
+  def bootstrap_tasks, do: @bootstrap_tasks
+  def project_tasks, do: @project_tasks
+  def topic_tasks, do: @topic_tasks
 
   @doc """
   Run the start agent task flow and return the prompt.
