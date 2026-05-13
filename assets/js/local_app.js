@@ -151,12 +151,13 @@ Hooks.SigmaGraph = {
       }
     })
 
-    // Add edges (deduplicate by key) with theme-remapped colors
+    // Add edges (deduplicate by key). Force edges to base-content so they're
+    // visible on dark themes — t.neutral/t.secondary land near-black here.
     const seenEdges = new Set()
     data.edges.forEach(e => {
       if (!seenEdges.has(e.key) && graph.hasNode(e.source) && graph.hasNode(e.target)) {
         seenEdges.add(e.key)
-        const attrs = { ...e.attributes, color: remapColor(e.attributes.color, t) }
+        const attrs = { ...e.attributes, color: t.baseContent }
         graph.addEdge(e.source, e.target, attrs)
       }
     })
@@ -190,7 +191,7 @@ Hooks.SigmaGraph = {
         context.fillText(label, data.x, data.y - size - boxHeight / 2 - 4)
       },
       defaultEdgeType: "arrow",
-      defaultEdgeColor: t.neutral,
+      defaultEdgeColor: t.baseContent,
       stagePadding: 80,
       labelRenderedSizeThreshold: 8,
       labelDensity: 0.5,
