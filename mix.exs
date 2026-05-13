@@ -11,6 +11,7 @@ defmodule CodeMySpec.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: compilers(Mix.env()),
+      spex: [pattern: "test/spex/**/*_spex.exs", boundary: CodeMySpecSpex],
       listeners: [Phoenix.CodeReloader],
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
@@ -92,6 +93,7 @@ defmodule CodeMySpec.MixProject do
       {:credo, "~> 1.7.13"},
       {:sobelow, "~> 0.14.1"},
       {:boundary, "~> 0.10.4"},
+      {:code_my_spec_generators, "~> 0.1.0", only: :dev},
 
       # Normal deps
       {:file_system, "~> 1.0"},

@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
   setup :register_log_in_setup_account
@@ -56,7 +57,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
+        {:reply, response, _frame} =
           StartTask.execute(
             %{
               requirement_name: "personas_complete",
@@ -67,20 +68,17 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
             frame
           )
 
-        session = CodeMySpec.Sessions.get_by_external_id(context.scope, session_id)
-        task = CodeMySpec.Sessions.Session.active_task(session)
-
         {:ok,
          context
          |> Map.put(:session_id, session_id)
-         |> Map.put(:task_id, task && task.id)}
+         |> Map.put(:task_id, extract_task_id(response))}
       end
 
       when_ "the agent calls evaluate_task", context do
-        frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+        frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          CodeMySpec.McpServers.Tasks.Tools.EvaluateTask.execute(
+          EvaluateTask.execute(
             %{task_id: context.task_id, session_id: context.session_id},
             frame
           )
@@ -120,6 +118,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
   end
 
   defp response_text(other), do: inspect(other)
+
+  defp extract_task_id(response) do
+    case Regex.run(~r/Task ID: `([^`]+)`/, response_text(response)) do
+      [_, task_id] -> task_id
+      _ -> raise "Could not extract task ID from response: #{inspect(response)}"
+    end
+  end
 
   defp minimal_persona_summary do
     """

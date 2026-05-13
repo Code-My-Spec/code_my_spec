@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Paths
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
 
       given_ "no spec file exists at the conventional path for Stories.RemoteSync", context do
         app = context.project.module_name || "MyApp"
-        spec_path = Paths.spec_file(Macro.underscore("#{app}.Stories.RemoteSync"))
+        spec_path = Fixtures.spec_file(Macro.underscore("#{app}.Stories.RemoteSync"))
 
         refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "pre-condition failed: expected no spec file at #{spec_path} before execution"
@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(context.environment, Paths.proposal_path(), proposal)
+          CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
 
         {:ok, context}
       end
@@ -137,7 +137,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
 
       then_ "execution writes a spec stub at the conventional path", context do
         app = context.project.module_name || "MyApp"
-        spec_path = Paths.spec_file(Macro.underscore("#{app}.Stories.RemoteSync"))
+        spec_path = Fixtures.spec_file(Macro.underscore("#{app}.Stories.RemoteSync"))
 
         assert CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected spec stub at #{spec_path} to be created by execution"
@@ -147,7 +147,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5310Spex do
 
       then_ "the spec stub has the expected module-level sections", context do
         app = context.project.module_name || "MyApp"
-        spec_path = Paths.spec_file(Macro.underscore("#{app}.Stories.RemoteSync"))
+        spec_path = Fixtures.spec_file(Macro.underscore("#{app}.Stories.RemoteSync"))
 
         {:ok, content} = CodeMySpec.Environments.read_file(context.environment, spec_path)
 

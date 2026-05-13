@@ -21,8 +21,9 @@ defmodule CodeMySpecSpex.Story608.Criterion5392Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,7 +34,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5392Spex do
              context do
         # Output state of a successful fix loop: every accepted issue
         # has been transitioned to :resolved with a resolution attached.
-        IssuesFixtures.issue_fixture(context.scope, %{
+        Fixtures.issue_fixture(context.scope, %{
           severity: :high,
           status: :resolved,
           resolution: "Fixed in lib/foo.ex; mix test passes.",

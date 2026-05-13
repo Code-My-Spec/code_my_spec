@@ -50,6 +50,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
+  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
@@ -104,7 +105,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
       when_ "the agent calls add_persona for ops_lead", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
+        {:reply, create_response, _frame} =
           CreatePersona.execute(
             %{
               slug: "ops_lead",
@@ -114,16 +115,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
             frame
           )
 
-        persona = CodeMySpec.Personas.get_persona_by_slug(context.scope, "ops_lead")
-        {:ok, Map.put(context, :persona, persona)}
+        {:ok, Map.put(context, :persona_id, extract_persona_id(create_response))}
       end
 
       when_ "the agent links ops_lead to the story", context do
-        {:ok, _link} =
-          CodeMySpec.Personas.link_persona_to_story(
-            context.scope,
-            context.persona.id,
-            context.story.id
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, _link_response, _frame} =
+          LinkPersonaToStory.execute(
+            %{persona_id: context.persona_id, story_id: context.story.id},
+            frame
           )
 
         {:ok, context}
@@ -215,4 +216,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
     end
   end
 
+  defp extract_persona_id(response) do
+    case Regex.run(~r/\bid: `([^`]+)`/, response_text(response)) do
+      [_, id] -> id
+      _ -> raise "Could not extract persona id from response: #{inspect(response)}"
+    end
+  end
 end

@@ -15,8 +15,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,7 +26,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
     scenario "Agent accepts an issue as a bug" do
       given_ "an incoming issue exists at severity :high", context do
         scope = context.scope
-        issue = IssuesFixtures.issue_fixture(scope, %{severity: :high, title: "Bug report issue"})
+        issue = Fixtures.issue_fixture(scope, %{severity: :high, title: "Bug report issue"})
         {:ok, Map.put(context, :issue, issue)}
       end
 

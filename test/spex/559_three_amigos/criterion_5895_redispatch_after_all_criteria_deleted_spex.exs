@@ -24,10 +24,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
+  alias CodeMySpec.McpServers.Stories.Tools.DeleteCriterion
+  alias CodeMySpec.McpServers.Stories.Tools.GetStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -74,10 +75,21 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
       end
 
       when_ "the PM deletes every acceptance criterion on the story", context do
-        criteria = AcceptanceCriteria.list_story_criteria(context.scope, context.story.id)
+        frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        for criterion <- criteria do
-          {:ok, _} = AcceptanceCriteria.delete_criterion(context.scope, criterion)
+        {:reply, get_response, _frame} =
+          GetStory.execute(%{story_id: to_string(context.story.id)}, frame)
+
+        criterion_ids =
+          Regex.scan(~r/\(criterion ([^)]+)\)/, response_text(get_response))
+          |> Enum.map(fn [_, id] -> id end)
+
+        assert criterion_ids != [],
+               "expected at least one acceptance criterion to delete, got none"
+
+        for id <- criterion_ids do
+          {:reply, _resp, _frame} =
+            DeleteCriterion.execute(%{criterion_id: id}, frame)
         end
 
         {:ok, context}

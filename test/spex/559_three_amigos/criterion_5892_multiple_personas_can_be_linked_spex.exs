@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
+  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
@@ -35,7 +36,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
       given_ "a second persona is created and linked to the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
+        {:reply, create_response, _frame} =
           CreatePersona.execute(
             %{
               slug: "driver",
@@ -45,10 +46,13 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
             frame
           )
 
-        driver = CodeMySpec.Personas.get_persona_by_slug(context.scope, "driver")
+        driver_id = extract_persona_id(create_response)
 
-        {:ok, _link} =
-          CodeMySpec.Personas.link_persona_to_story(context.scope, driver.id, context.story.id)
+        {:reply, _link_response, _frame} =
+          LinkPersonaToStory.execute(
+            %{persona_id: driver_id, story_id: context.story.id},
+            frame
+          )
 
         {:ok, context}
       end
@@ -125,4 +129,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
 
   defp response_text(%{text: text}), do: text
   defp response_text(other), do: inspect(other)
+
+  defp extract_persona_id(response) do
+    case Regex.run(~r/\bid: `([^`]+)`/, response_text(response)) do
+      [_, id] -> id
+      _ -> raise "Could not extract persona id from response: #{inspect(response)}"
+    end
+  end
 end

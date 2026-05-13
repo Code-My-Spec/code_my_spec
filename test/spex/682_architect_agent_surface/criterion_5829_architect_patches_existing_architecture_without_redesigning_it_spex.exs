@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Paths
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -155,7 +154,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
 
       then_ "the pre-existing proposal.md is unchanged on disk", context do
         {:ok, content} =
-          CodeMySpec.Environments.read_file(context.environment, Paths.proposal_path())
+          CodeMySpec.Environments.read_file(context.environment, Fixtures.proposal_path())
 
         refute content =~ "MyApp.NewFeature",
                "expected proposal.md to remain unchanged (no MyApp.NewFeature added), got: #{inspect(content)}"

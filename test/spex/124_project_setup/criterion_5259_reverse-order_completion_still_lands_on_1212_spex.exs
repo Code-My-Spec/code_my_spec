@@ -10,7 +10,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5259Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -24,7 +23,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5259Spex do
       end
 
       when_ "developer satisfies every step in reverse declaration order", context do
-        reversed = Enum.reverse(ProjectSetup.setup_steps())
+        reversed = Enum.reverse(Fixtures.setup_steps())
 
         for mod <- reversed do
           Fixtures.satisfy_setup_steps(context.scope, [mod])

@@ -13,11 +13,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5335Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,9 +28,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5335Spex do
       given_ "the project has 3 incoming issues at or above the threshold", context do
         scope = context.scope
 
-        issue_a = IssuesFixtures.issue_fixture(scope, %{severity: :high, title: "Triage issue A"})
-        issue_b = IssuesFixtures.issue_fixture(scope, %{severity: :medium, title: "Triage issue B"})
-        issue_c = IssuesFixtures.issue_fixture(scope, %{severity: :high, title: "Triage issue C"})
+        issue_a = Fixtures.issue_fixture(scope, %{severity: :high, title: "Triage issue A"})
+        issue_b = Fixtures.issue_fixture(scope, %{severity: :medium, title: "Triage issue B"})
+        issue_c = Fixtures.issue_fixture(scope, %{severity: :high, title: "Triage issue C"})
 
         {:ok, Map.merge(context, %{issue_a: issue_a, issue_b: issue_b, issue_c: issue_c})}
       end

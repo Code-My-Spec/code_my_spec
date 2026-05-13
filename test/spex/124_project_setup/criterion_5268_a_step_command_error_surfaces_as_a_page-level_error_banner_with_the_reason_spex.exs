@@ -12,7 +12,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5268Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -23,7 +22,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5268Spex do
       given_ "a stub erroring step is injected into the setup step list", context do
         Fixtures.reset_setup_env(context.environment)
         original = Application.get_env(:code_my_spec, :project_setup_steps)
-        Application.put_env(:code_my_spec, :project_setup_steps, [ErroringStep])
+        Application.put_env(:code_my_spec, :project_setup_steps, [Fixtures.erroring_setup_step()])
 
         on_exit(fn ->
           case original do

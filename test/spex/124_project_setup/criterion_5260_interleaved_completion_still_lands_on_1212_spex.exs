@@ -10,7 +10,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5260Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -24,7 +23,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5260Spex do
       end
 
       when_ "developer satisfies steps interleaved across two halves", context do
-        steps = ProjectSetup.setup_steps()
+        steps = Fixtures.setup_steps()
         half = div(length(steps), 2)
         {first_half, second_half} = Enum.split(steps, half)
 

@@ -10,8 +10,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5262Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.ProjectSetup
-  alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -24,7 +22,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5262Spex do
 
         Fixtures.satisfy_setup_steps(
           context.scope,
-          ProjectSetup.setup_steps() -- [Setup.Rules]
+          Fixtures.setup_steps() -- [Fixtures.find_setup_step("rules")]
         )
 
         {:ok, context}
@@ -44,12 +42,12 @@ defmodule CodeMySpecSpex.Story124.Criterion5262Spex do
 
       and_ "Rules is the only step whose inline prompt heading is rendered", context do
         html = render(context.view)
-        rules_heading = step_prompt_heading(Setup.Rules, context.scope)
+        rules_heading = step_prompt_heading(Fixtures.find_setup_step("rules"), context.scope)
 
         assert html =~ rules_heading,
                "expected Rules inline prompt heading #{inspect(rules_heading)} to be rendered"
 
-        for mod <- ProjectSetup.setup_steps() -- [Setup.Rules] do
+        for mod <- Fixtures.setup_steps() -- [Fixtures.find_setup_step("rules")] do
           heading = step_prompt_heading(mod, context.scope)
 
           refute html =~ heading,

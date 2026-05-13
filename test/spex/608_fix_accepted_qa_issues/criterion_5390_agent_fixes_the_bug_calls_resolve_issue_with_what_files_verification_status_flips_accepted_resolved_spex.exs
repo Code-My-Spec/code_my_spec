@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story608.Criterion5390Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.{ListIssues, ResolveIssue}
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,7 +26,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5390Spex do
       given_ "an accepted issue exists describing a 500 on /app/projects/new",
              context do
         issue =
-          IssuesFixtures.issue_fixture(context.scope, %{
+          Fixtures.issue_fixture(context.scope, %{
             severity: :high,
             status: :accepted,
             title: "500 on /app/projects/new",

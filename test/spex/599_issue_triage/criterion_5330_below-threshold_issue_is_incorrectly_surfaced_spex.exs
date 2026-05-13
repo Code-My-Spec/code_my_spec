@@ -12,8 +12,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -22,7 +23,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
     scenario "Below-threshold issue is incorrectly surfaced" do
       given_ "the project has only a low severity incoming issue", context do
         scope = context.scope
-        low_issue = IssuesFixtures.issue_fixture(scope, %{severity: :low, title: "Low severity issue"})
+        low_issue = Fixtures.issue_fixture(scope, %{severity: :low, title: "Low severity issue"})
         {:ok, Map.put(context, :low_issue, low_issue)}
       end
 

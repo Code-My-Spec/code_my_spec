@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Paths
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(context.environment, Paths.proposal_path(), proposal)
+          CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
 
         {:ok, context}
       end

@@ -12,10 +12,11 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,13 +27,13 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
         scope = context.scope
 
         canonical =
-          IssuesFixtures.issue_fixture(scope, %{
+          Fixtures.issue_fixture(scope, %{
             severity: :high,
             title: "Login fails on Safari — canonical"
           })
 
         duplicate =
-          IssuesFixtures.issue_fixture(scope, %{
+          Fixtures.issue_fixture(scope, %{
             severity: :medium,
             title: "Login fails on Safari — duplicate"
           })

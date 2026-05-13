@@ -27,21 +27,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
 
       given_ "a story exists in a different account", context do
         other_account = Fixtures.account_fixture(%{name: "Other account"})
-
-        other_scope = %CodeMySpec.Users.Scope{
-          user: context.scope.user,
-          user_id: context.scope.user.id,
-          active_account: other_account,
-          active_account_id: other_account.id
-        }
+        other_scope = Fixtures.user_scope_fixture(context.scope.user, other_account)
 
         foreign_project = Fixtures.project_fixture(other_scope, %{name: "Foreign Project"})
-
-        foreign_scope = %{
-          other_scope
-          | active_project: foreign_project,
-            active_project_id: foreign_project.id
-        }
+        foreign_scope = Fixtures.user_scope_fixture(context.scope.user, other_account, foreign_project)
 
         story =
           StoryHelpers.create_story(foreign_scope,

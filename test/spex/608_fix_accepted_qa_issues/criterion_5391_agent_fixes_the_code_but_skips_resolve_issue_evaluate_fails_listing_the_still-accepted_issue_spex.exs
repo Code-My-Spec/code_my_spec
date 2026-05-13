@@ -18,8 +18,9 @@ defmodule CodeMySpecSpex.Story608.Criterion5391Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,7 +29,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5391Spex do
     scenario "Agent fixes the code but skips resolve_issue, evaluate fails listing the still-accepted issue" do
       given_ "an accepted issue exists and was never resolved", context do
         issue =
-          IssuesFixtures.issue_fixture(context.scope, %{
+          Fixtures.issue_fixture(context.scope, %{
             severity: :high,
             status: :accepted,
             title: "Unresolved accepted issue"

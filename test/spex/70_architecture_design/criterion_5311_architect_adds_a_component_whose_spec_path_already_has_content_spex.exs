@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Paths
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
 
       given_ "a spec file with content already exists for Stories.RemoteClient", context do
         app = context.project.module_name || "MyApp"
-        spec_path = Paths.spec_file(Macro.underscore("#{app}.Stories.RemoteClient"))
+        spec_path = Fixtures.spec_file(Macro.underscore("#{app}.Stories.RemoteClient"))
 
         existing_content = """
         # #{app}.Stories.RemoteClient
@@ -122,7 +122,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5311Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(context.environment, Paths.proposal_path(), proposal)
+          CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
 
         {:ok, context}
       end

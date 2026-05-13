@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5387Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.IssuesFixtures
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5387Spex do
 
         issues =
           for severity <- [:critical, :high, :medium, :low, :info] do
-            IssuesFixtures.issue_fixture(scope, %{
+            Fixtures.issue_fixture(scope, %{
               severity: severity,
               status: :accepted,
               title: "Accepted #{severity} issue"

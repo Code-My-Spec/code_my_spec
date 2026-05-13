@@ -10,7 +10,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5267Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -20,7 +19,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5267Spex do
     scenario "happy path renders without error banner" do
       given_ "every setup step is satisfied", context do
         Fixtures.reset_setup_env(context.environment)
-        Fixtures.satisfy_setup_steps(context.scope, ProjectSetup.setup_steps())
+        Fixtures.satisfy_setup_steps(context.scope, Fixtures.setup_steps())
         {:ok, context}
       end
 

@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story553.Criterion5108Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Problems
 
   @broken_spec_path ".code_my_spec/spec/todo/broken.spec.md"
   @fixture_dir "test/fixtures/validation/pipeline_clean_run"
@@ -70,11 +69,20 @@ defmodule CodeMySpecSpex.Story553.Criterion5108Spex do
         {:ok, context}
       end
 
-      then_ "no spec_validation problems are persisted", context do
-        problems = Problems.list_project_problems(context.scope, source: "spec_validation")
+      then_ "no spec_validation problems appear on the problems page", context do
+        {:ok, problems_live, _html} =
+          live(
+            context.conn,
+            ~p"/projects/#{context.project.name}/problems?filter=spec_validation"
+          )
 
-        assert problems == [],
-               "spec_validation off must skip the validator and persist no problems, got: #{inspect(problems)}"
+        html = render(problems_live)
+
+        assert html =~ "data-test=\"problems-filters\"",
+               "expected the problems page to render its filters anchor"
+
+        refute html =~ "data-problem-source=\"spec_validation\"",
+               "expected zero spec_validation problem rows, got: #{html}"
 
         {:ok, context}
       end

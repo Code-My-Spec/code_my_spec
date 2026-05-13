@@ -11,8 +11,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5263Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.ProjectSetup
-  alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -20,14 +18,14 @@ defmodule CodeMySpecSpex.Story124.Criterion5263Spex do
 
   spex "Completion is gated by every step evaluating valid" do
     scenario "multiple incomplete steps each render with their prompts" do
-      incomplete = [Setup.Rules, Setup.CredoChecks, Setup.ClaudeMd]
+      incomplete = [Fixtures.find_setup_step("rules"), Fixtures.find_setup_step("credo_checks"), Fixtures.find_setup_step("claude_md")]
 
       given_ "Rules, CredoChecks, and ClaudeMd are unsatisfied; others are satisfied", context do
         Fixtures.reset_setup_env(context.environment)
 
         Fixtures.satisfy_setup_steps(
           context.scope,
-          ProjectSetup.setup_steps() -- incomplete
+          Fixtures.setup_steps() -- incomplete
         )
 
         {:ok, context}
@@ -61,7 +59,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5263Spex do
       and_ "completed steps do not render their prompt headings", context do
         html = render(context.view)
 
-        for mod <- ProjectSetup.setup_steps() -- incomplete do
+        for mod <- Fixtures.setup_steps() -- incomplete do
           heading = step_prompt_heading(mod, context.scope)
 
           refute html =~ heading,

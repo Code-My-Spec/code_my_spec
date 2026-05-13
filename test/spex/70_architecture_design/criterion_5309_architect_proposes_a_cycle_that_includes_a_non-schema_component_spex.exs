@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Paths
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(context.environment, Paths.proposal_path(), proposal)
+          CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
 
         {:ok, context}
       end
@@ -151,7 +151,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         app = context.project.module_name || "MyApp"
 
         # No spec stubs should be created when execution is blocked by validation
-        spec_path = Paths.spec_file(Macro.underscore("#{app}.Stories"))
+        spec_path = Fixtures.spec_file(Macro.underscore("#{app}.Stories"))
 
         refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected no spec stub at #{spec_path} when proposal was rejected"

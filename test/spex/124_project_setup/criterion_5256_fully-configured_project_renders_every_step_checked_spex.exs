@@ -11,7 +11,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -21,7 +20,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
     scenario "fully-configured project renders every step checked" do
       given_ "every setup step is satisfied", context do
         Fixtures.reset_setup_env(context.environment)
-        Fixtures.satisfy_setup_steps(context.scope, ProjectSetup.setup_steps())
+        Fixtures.satisfy_setup_steps(context.scope, Fixtures.setup_steps())
         {:ok, context}
       end
 
@@ -40,9 +39,9 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
       and_ "every step name is rendered", context do
         html = render(context.view)
 
-        for mod <- ProjectSetup.setup_steps() do
-          assert html =~ ProjectSetup.step_name(mod),
-                 "expected #{ProjectSetup.step_name(mod)} to appear in the rendered page"
+        for mod <- Fixtures.setup_steps() do
+          assert html =~ Fixtures.step_name(mod),
+                 "expected #{Fixtures.step_name(mod)} to appear in the rendered page"
         end
 
         {:ok, context}
@@ -51,7 +50,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
       and_ "no incomplete step's inline prompt is rendered", context do
         html = render(context.view)
 
-        for mod <- ProjectSetup.setup_steps() do
+        for mod <- Fixtures.setup_steps() do
           heading = step_prompt_heading(mod, context.scope)
 
           refute html =~ heading,

@@ -209,6 +209,47 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
     end
   end
 
+  # ============================================================================
+  # orchestrate/1 Tests — defensive contract for malformed graph nodes
+  # ============================================================================
+
+  describe "orchestrate/1" do
+    test "missing name yields {:error, :invalid_node}" do
+      node = %{name: nil, entity_type: "component", entity_id: "abc", entity_name: "Foo"}
+      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
+    end
+
+    test "missing entity_type yields {:error, :invalid_node}" do
+      node = %{name: "implementation_file", entity_type: nil, entity_id: "abc", entity_name: "Foo"}
+      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
+    end
+
+    test "missing entity_id yields {:error, :invalid_node}" do
+      node = %{name: "implementation_file", entity_type: "component", entity_id: nil, entity_name: "Foo"}
+      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
+    end
+
+    test "missing entity_name yields {:error, :invalid_node}" do
+      node = %{name: "implementation_file", entity_type: "component", entity_id: "abc", entity_name: nil}
+      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
+    end
+
+    test "fully-populated node yields {:ok, prompt} naming @code-writer" do
+      node = %{
+        name: "implementation_file",
+        entity_type: "component",
+        entity_id: "abc",
+        entity_name: "Foo"
+      }
+
+      assert {:ok, prompt} = ComponentCode.orchestrate(node)
+      assert prompt =~ "@code-writer"
+      assert prompt =~ "implementation_file"
+      assert prompt =~ "abc"
+      assert prompt =~ "Foo"
+    end
+  end
+
   defp satisfy_code_requirements(scope, component) do
     project = scope.active_project
     %{code_file: code_path, test_file: test_path} =

@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5393Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.IssuesFixtures
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5393Spex do
       given_ "an accepted issue exists so the fix prompt is non-empty",
              context do
         issue =
-          IssuesFixtures.issue_fixture(context.scope, %{
+          Fixtures.issue_fixture(context.scope, %{
             severity: :high,
             status: :accepted,
             title: "Some accepted bug"

@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Components.Tools.CreateComponent
   alias CodeMySpec.McpServers.Components.Tools.ListComponents
-  alias CodeMySpec.Paths
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
              context do
         app = context.project.module_name || "MyApp"
         module_name = "#{app}.Notifications"
-        spec_path = Paths.spec_file(Macro.underscore(module_name))
+        spec_path = Fixtures.spec_file(Macro.underscore(module_name))
 
         refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "pre-condition failed: expected no spec file at #{spec_path}"

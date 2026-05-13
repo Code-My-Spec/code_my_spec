@@ -11,8 +11,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.ProjectSetup
-  alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -25,7 +23,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
 
         Fixtures.satisfy_setup_steps(
           context.scope,
-          ProjectSetup.setup_steps() -- [Setup.CodemyspecDeps]
+          Fixtures.setup_steps() -- [Fixtures.find_setup_step("codemyspec_deps")]
         )
 
         {:ok, context}
@@ -37,13 +35,13 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
 
         html = render(view)
         assert html =~ "Project Setup (11/12)"
-        assert html =~ step_prompt_heading(Setup.CodemyspecDeps, context.scope)
+        assert html =~ step_prompt_heading(Fixtures.find_setup_step("codemyspec_deps"), context.scope)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "developer satisfies CodemyspecDeps and re-mounts the page", context do
-        Fixtures.satisfy_setup_steps(context.scope, [Setup.CodemyspecDeps])
+        Fixtures.satisfy_setup_steps(context.scope, [Fixtures.find_setup_step("codemyspec_deps")])
 
         {:ok, view, _html} =
           live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
@@ -57,7 +55,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
       end
 
       and_ "CodemyspecDeps no longer shows its inline prompt", context do
-        refute render(context.view) =~ step_prompt_heading(Setup.CodemyspecDeps, context.scope)
+        refute render(context.view) =~ step_prompt_heading(Fixtures.find_setup_step("codemyspec_deps"), context.scope)
         {:ok, context}
       end
     end

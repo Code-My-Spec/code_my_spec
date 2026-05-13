@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5394Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.IssuesFixtures
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5394Spex do
 
         app_issues =
           for n <- 1..3 do
-            IssuesFixtures.issue_fixture(scope, %{
+            Fixtures.issue_fixture(scope, %{
               severity: :high,
               status: :accepted,
               scope: :app,
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5394Spex do
           end
 
         qa_issue =
-          IssuesFixtures.issue_fixture(scope, %{
+          Fixtures.issue_fixture(scope, %{
             severity: :high,
             status: :accepted,
             scope: :qa,
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5394Spex do
           })
 
         docs_issue =
-          IssuesFixtures.issue_fixture(scope, %{
+          Fixtures.issue_fixture(scope, %{
             severity: :high,
             status: :accepted,
             scope: :docs,

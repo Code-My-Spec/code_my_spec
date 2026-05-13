@@ -31,6 +31,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
+  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -41,12 +43,12 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
       given_ :persona_exists
 
       given_ "a second persona 'agency_pm' exists and is linked to a story", context do
-        # Inline CreatePersona + link_persona_to_story rather than a dedicated
-        # shared given, per open question in the moduledoc. Revisit once
-        # :persona_exists takes attrs.
+        # Inline CreatePersona + LinkPersonaToStory MCP calls rather than a
+        # dedicated shared given, per open question in the moduledoc. Revisit
+        # once :persona_exists takes attrs.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
+        {:reply, create_response, _frame} =
           CreatePersona.execute(
             %{
               slug: "agency_pm",
@@ -56,8 +58,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
             frame
           )
 
-        second_persona =
-          CodeMySpec.Personas.get_persona_by_slug(context.scope, "agency_pm")
+        second_persona_id = extract_persona_id(create_response)
 
         second_story =
           StoryHelpers.create_story(context.scope,
@@ -66,11 +67,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
             acceptance_criteria: ["Second persona links to the project via its own story"]
           )
 
-        {:ok, _} =
-          CodeMySpec.Personas.link_persona_to_story(
-            context.scope,
-            second_persona.id,
-            second_story.id
+        {:reply, _link_response, _frame} =
+          LinkPersonaToStory.execute(
+            %{persona_id: second_persona_id, story_id: second_story.id},
+            frame
           )
 
         {:ok, Map.put(context, :second_slug, "agency_pm")}
@@ -101,10 +101,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
       given_ :persona_research_task_started
 
       when_ "the agent calls evaluate_task", context do
-        frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+        frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          CodeMySpec.McpServers.Tasks.Tools.EvaluateTask.execute(
+          EvaluateTask.execute(
             %{task_id: context.task_id, session_id: context.session_id},
             frame
           )
@@ -160,6 +160,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
   end
 
   defp response_text(other), do: inspect(other)
+
+  defp extract_persona_id(response) do
+    case Regex.run(~r/\bid: `([^`]+)`/, response_text(response)) do
+      [_, id] -> id
+      _ -> raise "Could not extract persona id from response: #{inspect(response)}"
+    end
+  end
 
   defp minimal_persona_summary do
     """

@@ -11,9 +11,10 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -22,7 +23,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
     scenario "Agent attempts dismiss without a resolution" do
       given_ "an incoming issue exists", context do
         scope = context.scope
-        issue = IssuesFixtures.issue_fixture(scope, %{severity: :medium, title: "Issue to dismiss"})
+        issue = Fixtures.issue_fixture(scope, %{severity: :medium, title: "Issue to dismiss"})
         {:ok, Map.put(context, :issue, issue)}
       end
 

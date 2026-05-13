@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -28,9 +27,9 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
         Fixtures.reset_setup_env(context.environment)
 
         Fixtures.satisfy_setup_steps(context.scope, [
-          Setup.ApplicationInWeb,
-          Setup.CodemyspecDeps,
-          Setup.Compilers
+          Fixtures.find_setup_step("application_in_web"),
+          Fixtures.find_setup_step("codemyspec_deps"),
+          Fixtures.find_setup_step("compilers")
         ])
 
         {:ok, context}

@@ -12,7 +12,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
-  alias CodeMySpec.Personas
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -25,15 +24,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
       given_ "a second persona exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _resp, _frame} =
+        {:reply, create_response, _frame} =
           CreatePersona.execute(
             %{slug: "agency_pm", name: "Agency PM", headline: "Agency PM"},
             frame
           )
 
-        second = Personas.get_persona_by_slug(context.scope, "agency_pm")
-
-        {:ok, Map.put(context, :second_persona_id, second.id)}
+        {:ok, Map.put(context, :second_persona_id, extract_persona_id(create_response))}
       end
 
       given_ "a target story exists", context do
@@ -96,4 +93,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
   end
 
   defp response_text(other), do: inspect(other)
+
+  defp extract_persona_id(response) do
+    case Regex.run(~r/\bid: `([^`]+)`/, response_text(response)) do
+      [_, id] -> id
+      _ -> raise "Could not extract persona id from response: #{inspect(response)}"
+    end
+  end
 end

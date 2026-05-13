@@ -17,10 +17,10 @@ defmodule CodeMySpecSpex.Story70.Criterion5657Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Paths
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
-  @config_path Path.join(Paths.base_dir(), "config.yml")
+  @config_path Path.join(Fixtures.base_dir(), "config.yml")
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -107,7 +107,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5657Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(context.environment, Paths.proposal_path(), proposal)
+          CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
 
         {:ok, context}
       end
@@ -151,7 +151,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5657Spex do
 
       then_ "no spec stub is created for the infrastructure-classified module", context do
         app = context.project.module_name || "MyApp"
-        spec_path = Paths.spec_file(Macro.underscore("#{app}Web.Application"))
+        spec_path = Fixtures.spec_file(Macro.underscore("#{app}Web.Application"))
 
         refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected no spec stub at #{spec_path} for infrastructure-classified component"

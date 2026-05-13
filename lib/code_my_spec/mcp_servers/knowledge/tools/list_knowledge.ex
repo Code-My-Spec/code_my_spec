@@ -12,6 +12,7 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Knowledge
   alias CodeMySpec.McpServers.Validators
 
@@ -29,9 +30,8 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
     with {:ok, library} <- library_atom(params),
          {:ok, scope} <- Validators.validate_local_scope(frame) do
       path_segments = parse_path(params)
-      project_name = scope.active_project.name
 
-      case Knowledge.resolve(library, path_segments, project_name) do
+      case Knowledge.resolve(scope, library, path_segments) do
         {:ok, content} ->
           {:reply, text_response(content), frame}
 
@@ -69,12 +69,12 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
   defp parse_path(_), do: []
 
   defp text_response(content) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.text(content)
+    Response.tool()
+    |> Response.text(content)
   end
 
   defp error_response(message) do
-    Anubis.Server.Response.tool()
-    |> Anubis.Server.Response.error(message)
+    Response.tool()
+    |> Response.error(message)
   end
 end

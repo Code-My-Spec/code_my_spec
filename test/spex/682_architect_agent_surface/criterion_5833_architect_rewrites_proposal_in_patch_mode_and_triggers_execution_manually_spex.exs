@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
   alias CodeMySpec.McpServers.Components.Tools.ListComponents
-  alias CodeMySpec.Paths
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -83,7 +82,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
         :ok =
           CodeMySpec.Environments.write_file(
             context.environment,
-            Paths.proposal_path(),
+            Fixtures.proposal_path(),
             proposal
           )
 
@@ -136,7 +135,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
         app = context.project.module_name || "MyApp"
 
         for module_name <- ["#{app}Web.FeatureLive", "#{app}.Feature"] do
-          spec_path = Paths.spec_file(Macro.underscore(module_name))
+          spec_path = Fixtures.spec_file(Macro.underscore(module_name))
 
           assert CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                  "expected stub spec at #{spec_path} to be created by execute_proposal"

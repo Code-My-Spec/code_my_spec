@@ -13,9 +13,11 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
   """
 
   use CodeMySpecSpex.Case
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.IssuesFixtures
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,16 +27,16 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
       given_ "the project has incoming issues at multiple severities", context do
         scope = context.scope
 
-        high_1 = IssuesFixtures.issue_fixture(scope, %{severity: :high, title: "High issue one"})
-        high_2 = IssuesFixtures.issue_fixture(scope, %{severity: :high, title: "High issue two"})
-        med_1 = IssuesFixtures.issue_fixture(scope, %{severity: :medium, title: "Medium issue one"})
-        med_2 = IssuesFixtures.issue_fixture(scope, %{severity: :medium, title: "Medium issue two"})
-        med_3 = IssuesFixtures.issue_fixture(scope, %{severity: :medium, title: "Medium issue three"})
-        low_1 = IssuesFixtures.issue_fixture(scope, %{severity: :low, title: "Low issue one"})
-        low_2 = IssuesFixtures.issue_fixture(scope, %{severity: :low, title: "Low issue two"})
-        low_3 = IssuesFixtures.issue_fixture(scope, %{severity: :low, title: "Low issue three"})
-        low_4 = IssuesFixtures.issue_fixture(scope, %{severity: :low, title: "Low issue four"})
-        info_1 = IssuesFixtures.issue_fixture(scope, %{severity: :info, title: "Info issue one"})
+        high_1 = Fixtures.issue_fixture(scope, %{severity: :high, title: "High issue one"})
+        high_2 = Fixtures.issue_fixture(scope, %{severity: :high, title: "High issue two"})
+        med_1 = Fixtures.issue_fixture(scope, %{severity: :medium, title: "Medium issue one"})
+        med_2 = Fixtures.issue_fixture(scope, %{severity: :medium, title: "Medium issue two"})
+        med_3 = Fixtures.issue_fixture(scope, %{severity: :medium, title: "Medium issue three"})
+        low_1 = Fixtures.issue_fixture(scope, %{severity: :low, title: "Low issue one"})
+        low_2 = Fixtures.issue_fixture(scope, %{severity: :low, title: "Low issue two"})
+        low_3 = Fixtures.issue_fixture(scope, %{severity: :low, title: "Low issue three"})
+        low_4 = Fixtures.issue_fixture(scope, %{severity: :low, title: "Low issue four"})
+        info_1 = Fixtures.issue_fixture(scope, %{severity: :info, title: "Info issue one"})
 
         {:ok,
          Map.merge(context, %{
