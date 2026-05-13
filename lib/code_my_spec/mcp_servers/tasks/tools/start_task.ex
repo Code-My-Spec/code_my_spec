@@ -197,7 +197,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       execution_type: requirement.execution_type || :main_agent,
       validation_type: requirement.validation_type || :automatic,
       status: :active,
-      started_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      # Microsecond resolution so started_at lands strictly past any
+      # file mtime synced earlier in the same request. Lets
+      # Validation.changed_since short-circuit deterministically
+      # without sleeping across a second boundary in tests.
+      started_at: DateTime.utc_now(),
       agent_id: agent_id
     }
   end

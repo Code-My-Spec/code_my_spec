@@ -19,8 +19,10 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
+  @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
 
@@ -64,6 +66,21 @@ defmodule CodeMySpecSpex.Story670.Criterion5595Spex do
           )
 
         {:ok, Map.put(context, :session_id, session_id)}
+      end
+
+      given_ "the agent edits the impl file during the task", context do
+        # With microsecond-precision started_at, only files modified
+        # post-start_task count as "changed during the task." Re-write
+        # the impl file so the pipeline picks it up under the
+        # block_changed scope.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @impl_path,
+            "defmodule ExampleContext do\n  @moduledoc false\nend\n"
+          )
+
+        {:ok, context}
       end
 
       when_ "the stop hook fires after the analyzer ran the test suite and a test failed",

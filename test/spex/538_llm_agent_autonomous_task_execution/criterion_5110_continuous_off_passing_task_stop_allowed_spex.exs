@@ -33,17 +33,6 @@ defmodule CodeMySpecSpex.Story538.Criterion5110Spex do
   spex "Continuous mode off, passing task, stop allowed" do
     scenario "the stop hook allows the stop without consulting the graph for continuation" do
       given_ :synced_context_component
-
-      given_ "enough clock time passes that the task's started_at lands past every file's updated_at",
-             context do
-        # Files.changed_since uses `updated_at >= since`; cross a
-        # second boundary so the active task's started_at is
-        # deterministically > every synced file's updated_at and the
-        # pipeline short-circuits.
-        Process.sleep(1_100)
-        {:ok, context}
-      end
-
       given_ :context_spec_task_started
 
       when_ "the stop hook fires with no additional file writes", context do

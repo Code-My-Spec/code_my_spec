@@ -64,6 +64,10 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
+  component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
+  component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
+  component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
+  component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
 
   # Knowledge — browse, read, and unified semantic search across every
   # embedded source (knowledge, project_knowledge, spec, rules, hexdocs:*).

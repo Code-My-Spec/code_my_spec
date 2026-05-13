@@ -13,6 +13,7 @@ defmodule CodeMySpec.Sessions.Session do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Sessions.SessionType
+  alias CodeMySpec.Sessions.Subagent
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.Users.User
 
@@ -25,6 +26,7 @@ defmodule CodeMySpec.Sessions.Session do
           state: map() | nil,
           continuous: boolean() | nil,
           tasks: [Task.t()],
+          subagents: [Subagent.t()],
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
           user_id: integer() | nil,
@@ -47,6 +49,7 @@ defmodule CodeMySpec.Sessions.Session do
     field :continuous, :boolean, default: false
 
     embeds_many :tasks, Task, on_replace: :delete
+    embeds_many :subagents, Subagent, on_replace: :delete
 
     belongs_to :project, Project, type: :binary_id
     belongs_to :account, Account, type: :binary_id
@@ -79,6 +82,7 @@ defmodule CodeMySpec.Sessions.Session do
       :session_id
     ])
     |> cast_embed(:tasks, with: &Task.changeset/2)
+    |> cast_embed(:subagents, with: &Subagent.changeset/2)
     |> validate_required([:status])
   end
 
@@ -147,5 +151,65 @@ defmodule CodeMySpec.Sessions.Session do
   @spec find_task_by_agent(t(), String.t()) :: Task.t() | nil
   def find_task_by_agent(%__MODULE__{tasks: tasks}, agent_id) do
     Enum.find(tasks || [], &(&1.agent_id == agent_id))
+  end
+
+  @doc """
+  Register (or refresh) a sub-agent on the session.
+
+  Matches by `agent_id`. If an entry with the same `agent_id` exists, its
+  `last_heartbeat_at` is advanced to the new value (the "re-register to
+  outlive TTL" path from Rule 2). Otherwise appends a fresh registration.
+  """
+  @spec register_subagent(t(), map()) :: Ecto.Changeset.t()
+  def register_subagent(%__MODULE__{} = session, attrs) do
+    agent_id = Map.get(attrs, :agent_id) || Map.get(attrs, "agent_id")
+    existing = session.subagents || []
+
+    updated =
+      case Enum.find_index(existing, &(&1.agent_id == agent_id)) do
+        nil ->
+          existing ++ [Map.put_new(attrs, :id, Ecto.UUID.generate())]
+
+        idx ->
+          List.update_at(existing, idx, fn current ->
+            current
+            |> Map.from_struct()
+            |> Map.merge(attrs)
+          end)
+      end
+
+    session
+    |> change()
+    |> put_embed(:subagents, updated)
+  end
+
+  @doc "Unregister a sub-agent by `agent_id`."
+  @spec unregister_subagent(t(), String.t()) :: Ecto.Changeset.t()
+  def unregister_subagent(%__MODULE__{} = session, agent_id) do
+    remaining = Enum.reject(session.subagents || [], &(&1.agent_id == agent_id))
+
+    session
+    |> change()
+    |> put_embed(:subagents, remaining)
+  end
+
+  @doc """
+  Returns the currently-active sub-agents — those whose `last_heartbeat_at`
+  is within `ttl_minutes` of the current time. TTL-expired entries are
+  filtered out (lazy prune; the DB row is not mutated).
+  """
+  @spec active_subagents(t(), pos_integer()) :: [Subagent.t()]
+  def active_subagents(%__MODULE__{subagents: subagents}, ttl_minutes)
+      when is_integer(ttl_minutes) and ttl_minutes > 0 do
+    cutoff = DateTime.add(DateTime.utc_now(), -ttl_minutes * 60, :second)
+
+    (subagents || [])
+    |> Enum.filter(&within_ttl?(&1, cutoff))
+  end
+
+  defp within_ttl?(%{last_heartbeat_at: nil}, _cutoff), do: false
+
+  defp within_ttl?(%{last_heartbeat_at: at}, cutoff) do
+    DateTime.compare(at, cutoff) != :lt
   end
 end

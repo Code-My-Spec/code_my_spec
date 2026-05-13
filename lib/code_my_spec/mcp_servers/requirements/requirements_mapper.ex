@@ -138,29 +138,42 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   defp orchestrate_node(node) do
-    mod = node.satisfied_by
+    body = resolve_body(node)
+    render_directive(node, body)
+  end
 
-    body =
-      if Code.ensure_loaded?(mod) and function_exported?(mod, :orchestrate, 1) do
-        case mod.orchestrate(node) do
-          {:ok, text} when is_binary(text) -> text
-          {:error, _reason} -> node.description || to_string(node.name)
-          text when is_binary(text) -> text
-        end
-      else
-        node.description || to_string(node.name)
-      end
+  defp resolve_body(%{satisfied_by: mod} = node) do
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :orchestrate, 1) do
+      unwrap_body(mod.orchestrate(node), node)
+    else
+      fallback_body(node)
+    end
+  end
 
-    # Always include the raw call signature so the agent never has to guess
-    # the requirement_name from a human label.
+  defp unwrap_body({:ok, text}, _node) when is_binary(text), do: text
+  defp unwrap_body({:error, _reason}, node), do: fallback_body(node)
+  defp unwrap_body(text, _node) when is_binary(text), do: text
+
+  defp fallback_body(node), do: node.description || to_string(node.name)
+
+  # Sub-agent tasks: include identifiers as parenthetical metadata so the
+  # main agent can pass them to the sub-agent verbatim — but never as an
+  # imperative "— call start_task" footer, which would mislead the main
+  # agent into calling start_task directly and bypassing the sub-agent.
+  defp render_directive(%{execution_type: :sub_agent} = node, body) do
+    "- #{body} (sub-agent start_task args: #{sig(node)})"
+  end
+
+  defp render_directive(node, body) do
     if String.contains?(body, "requirement_name") do
       "- #{body}"
     else
-      call_sig =
-        "`start_task` with requirement_name=`#{node.name}`, entity_type=`#{node.entity_type}`, entity_id=`#{node.entity_id}`"
-
-      "- #{body} — call #{call_sig}."
+      "- #{body} — call `start_task` with #{sig(node)}."
     end
+  end
+
+  defp sig(node) do
+    "requirement_name=`#{node.name}`, entity_type=`#{node.entity_type}`, entity_id=`#{node.entity_id}`"
   end
 
   # ---------------------------------------------------------------------------

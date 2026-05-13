@@ -35,6 +35,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           spex: analyzer_mode(),
           spec_validation: analyzer_mode(),
           qa_validation: analyzer_mode(),
+          subagent_ttl_minutes: pos_integer(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -55,6 +56,10 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     field :spec_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
     field :qa_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
 
+    # Story 704 — TTL for sub-agent registrations (Session.active_subagents/2
+    # filters out registrations whose last_heartbeat_at exceeds this).
+    field :subagent_ttl_minutes, :integer, default: 10
+
     timestamps(type: :utc_datetime)
   end
 
@@ -71,9 +76,11 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :exunit,
       :spex,
       :spec_validation,
-      :qa_validation
+      :qa_validation,
+      :subagent_ttl_minutes
     ])
     |> validate_required([:project_id])
+    |> validate_number(:subagent_ttl_minutes, greater_than: 0)
     |> unique_constraint(:project_id)
   end
 end

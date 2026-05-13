@@ -4,6 +4,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Projects
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
@@ -68,9 +69,13 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
         assign(socket, project: project, error: "Session not found: #{id}")
 
       session ->
+        ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
+        active_subagents = Session.active_subagents(session, ttl)
+
         assign(socket,
           project: project,
           session: session,
+          active_subagents: active_subagents,
           task: nil,
           page_title: "#{project.name} — Session",
           error: nil
@@ -217,6 +222,37 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
       </div>
     </div>
 
+    <h2 class="text-lg font-semibold mb-3" data-test="registered-subagents-heading">
+      Registered Sub-agents <span class="text-base-content/50 font-normal">({length(@active_subagents)})</span>
+    </h2>
+
+    <p :if={@active_subagents == []} class="text-base-content/50 mb-6">No registered sub-agents.</p>
+
+    <div :if={@active_subagents != []} class="overflow-x-auto rounded-box border border-base-300 mb-6">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="hidden md:table-cell">Agent ID</th>
+            <th class="hidden sm:table-cell">Registered</th>
+            <th>Assignment</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={sa <- @active_subagents} data-test="subagent-row" data-agent-id={sa.agent_id}>
+            <td class="font-medium">{sa.agent_name || "—"}</td>
+            <td class="hidden md:table-cell text-xs font-mono opacity-70">{sa.agent_id}</td>
+            <td class="hidden sm:table-cell text-xs opacity-50">
+              <span :if={sa.last_heartbeat_at}>{Calendar.strftime(sa.last_heartbeat_at, "%H:%M:%S")}</span>
+            </td>
+            <td class="text-sm">
+              {subagent_assignment(@session, sa.agent_id)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <h2 class="text-lg font-semibold mb-3">
       Tasks <span class="text-base-content/50 font-normal">({task_completed_count(@session)}/{task_count(@session)})</span>
     </h2>
@@ -329,6 +365,13 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
 
   defp has_expected_files?(%{expected_files: files}) when is_list(files) and files != [], do: true
   defp has_expected_files?(_), do: false
+
+  defp subagent_assignment(session, agent_id) do
+    case Session.find_task_by_agent(session, agent_id) do
+      nil -> "idle"
+      task -> "assigned: #{task.requirement_name || task.id}"
+    end
+  end
 
   defp slug(project) do
     (project.name || "project")

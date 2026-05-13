@@ -29,6 +29,10 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
 
   import CodeMySpecSpex.SharedGivens
 
+  alias CodeMySpec.Environments
+
+  @spec_path ".code_my_spec/spec/example_context.spec.md"
+  @impl_path "lib/example_context.ex"
   @fixture_dir "test/fixtures/validation/pipeline_credo_blocks"
 
   setup :register_log_in_setup_account
@@ -39,6 +43,29 @@ defmodule CodeMySpecSpex.Story555.Criterion5100Spex do
       given_ :synced_context_component
       given_ :credo_available
       given_ :context_spec_task_started
+
+      given_ "the agent edits the spec and impl files during the task", context do
+        # Re-write both files post-start_task so they land in the
+        # changed-during-task set under microsecond-precision timestamps.
+        # The cassette was recorded with both file paths in the credo
+        # invocation, so both have to appear in changed_files for the
+        # cassette match to succeed.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @spec_path,
+            "# ExampleContext\n\n## Type\n\ncontext\n\nA placeholder.\n\n## Functions\n\n### noop/0\n\nReturns ok.\n\n```elixir\n@spec noop() :: :ok\n```\n\n## Dependencies\n\n- None\n\n## Components\n\nNone.\n"
+          )
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @impl_path,
+            "defmodule ExampleContext do\n  def noop, do: :ok\nend\n"
+          )
+
+        {:ok, context}
+      end
 
       when_ "the stop hook fires", context do
         response =

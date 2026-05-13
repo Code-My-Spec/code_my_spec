@@ -28,17 +28,6 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
   spex "Active task with no file changes skips the pipeline" do
     scenario "task started after sync, no writes follow, stop allowed" do
       given_ :synced_context_component
-
-      given_ "enough clock time passes that the task's started_at will land past every file's updated_at",
-             context do
-        # Files.changed_since uses `updated_at >= since`. Sync just
-        # ran; a task started in the same second would match every
-        # synced file. Crossing a second boundary makes
-        # `started_at > updated_at` deterministic.
-        Process.sleep(1_100)
-        {:ok, context}
-      end
-
       given_ :context_spec_task_started
 
       when_ "the stop hook fires with no additional file writes", context do

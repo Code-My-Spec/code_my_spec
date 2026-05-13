@@ -51,8 +51,12 @@ defmodule CodeMySpec.Sessions.Task do
     field :project_id, :string
     field :agent_id, :string
     field :expected_files, {:array, :string}, default: []
-    field :started_at, :utc_datetime
-    field :completed_at, :utc_datetime
+    # Microsecond resolution so a task's started_at lands strictly past
+    # any file's mtime that was synced moments earlier in the same
+    # request. Eliminates the need for `Process.sleep(1_100)` in spex
+    # that want the pipeline to short-circuit on no-file-changes.
+    field :started_at, :utc_datetime_usec
+    field :completed_at, :utc_datetime_usec
   end
 
   @doc "Changeset for creating or updating a task."

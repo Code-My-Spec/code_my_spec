@@ -67,6 +67,34 @@ defmodule CodeMySpec.Sessions do
     |> Repo.update()
   end
 
+  @doc """
+  Register (or refresh) a sub-agent on a session.
+
+  Story 704 / Rule 1 + Rule 2. Idempotent on `agent_id`: calling twice
+  for the same id refreshes `last_heartbeat_at` rather than appending.
+  """
+  @spec register_subagent(Scope.t(), Session.t(), map()) ::
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def register_subagent(%Scope{} = _scope, %Session{} = session, attrs) do
+    session
+    |> Session.register_subagent(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Unregister a sub-agent by `agent_id`.
+
+  Story 704 / Rule 1. Removes the registration from the session's
+  embedded `subagents` list. No-op if the agent was not registered.
+  """
+  @spec unregister_subagent(Scope.t(), Session.t(), String.t()) ::
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def unregister_subagent(%Scope{} = _scope, %Session{} = session, agent_id) do
+    session
+    |> Session.unregister_subagent(agent_id)
+    |> Repo.update()
+  end
+
   @doc "Delete a session (by struct or by ID string)."
   def delete_session(%Scope{} = _scope, %Session{} = session) do
     Repo.delete(session)
@@ -121,7 +149,11 @@ defmodule CodeMySpec.Sessions do
   Returns `{:ok, updated_session}` or `{:error, changeset}`.
   """
   def activate_task(%Scope{} = _scope, %Session{} = session, task_id, agent_id \\ nil) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    # Microsecond precision so started_at lands strictly past any file
+    # mtime that was synced earlier in the same request — Validation's
+    # changed_since check can short-circuit deterministically without
+    # a sleep crossing a second boundary.
+    now = DateTime.utc_now()
 
     updates =
       %{status: :active, started_at: now}
@@ -139,7 +171,7 @@ defmodule CodeMySpec.Sessions do
   """
   def complete_task(%Scope{} = _scope, %Session{} = session, task_id, result \\ :completed)
       when result in [:completed, :failed, :cancelled] do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     session
     |> Session.update_task(task_id, %{status: result, completed_at: now})
@@ -150,6 +182,38 @@ defmodule CodeMySpec.Sessions do
   def assign_agent(%Scope{} = _scope, %Session{} = session, task_id, agent_id) do
     session
     |> Session.update_task(task_id, %{agent_id: agent_id})
+    |> Repo.update()
+  end
+
+  @doc """
+  Atomically reassign a sub-agent: clear `agent_id` from any task that
+  currently carries it (other than `target_task_id`) and set
+  `agent_id` on the target task — in a single `Repo.update`.
+
+  Story 704 / Rule 4. Used by `assign_subagent` so a partial-failure
+  scenario can't leave the sub-agent unassigned from their old task
+  while failing to land on the new one.
+  """
+  @spec reassign_agent(Scope.t(), Session.t(), String.t(), String.t()) ::
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def reassign_agent(%Scope{} = _scope, %Session{} = session, target_task_id, agent_id) do
+    new_tasks =
+      Enum.map(session.tasks || [], fn task ->
+        cond do
+          task.id == target_task_id ->
+            %{task | agent_id: agent_id}
+
+          task.agent_id == agent_id ->
+            %{task | agent_id: nil}
+
+          true ->
+            task
+        end
+      end)
+
+    session
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.put_embed(:tasks, new_tasks)
     |> Repo.update()
   end
 

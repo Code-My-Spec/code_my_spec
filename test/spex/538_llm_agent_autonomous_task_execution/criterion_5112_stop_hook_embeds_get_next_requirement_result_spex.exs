@@ -28,13 +28,6 @@ defmodule CodeMySpecSpex.Story538.Criterion5112Spex do
   spex "Stop hook embeds the next-requirement result so the agent can call start_task directly" do
     scenario "block reason contains a full start_task call signature with all three fields" do
       given_ :synced_context_component
-
-      given_ "enough clock time passes that the task's started_at lands past every file's updated_at",
-             context do
-        Process.sleep(1_100)
-        {:ok, context}
-      end
-
       given_ :context_spec_task_started
 
       given_ "the agent enabled continuous mode for this session", context do

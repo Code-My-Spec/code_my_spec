@@ -26,6 +26,10 @@ defmodule CodeMySpecLocalWeb.Hooks.SubagentStopController do
     session = session_id && Sessions.get_by_external_id(scope, session_id)
     task = session && Session.find_task_by_agent(session, agent_id)
 
+    # Story 704 / Rule 1: unregister the sub-agent on stop. Best-effort
+    # and idempotent — no-op if the agent_id isn't currently registered.
+    if session && agent_id, do: Sessions.unregister_subagent(scope, session, agent_id)
+
     # Run validation pipeline
     case Validation.validate_stop(scope, task) do
       {:error, reason} ->

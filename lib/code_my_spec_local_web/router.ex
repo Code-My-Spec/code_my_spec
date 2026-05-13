@@ -111,6 +111,7 @@ defmodule CodeMySpecLocalWeb.Router do
     post "/pre-tool-use", PreToolUseController, :handle
     post "/post-tool-use", PostToolUseController, :handle
     post "/stop", StopController, :handle
+    post "/subagent-start", SubagentStartController, :handle
     post "/subagent-stop", SubagentStopController, :handle
     post "/notification", NotificationHookController, :handle
   end

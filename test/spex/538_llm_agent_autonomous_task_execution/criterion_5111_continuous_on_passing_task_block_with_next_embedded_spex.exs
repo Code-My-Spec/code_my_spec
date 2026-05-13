@@ -32,13 +32,6 @@ defmodule CodeMySpecSpex.Story538.Criterion5111Spex do
   spex "Continuous mode on + passing task → block with next requirement embedded" do
     scenario "stop hook embeds the next-requirement directive in the block reason" do
       given_ :synced_context_component
-
-      given_ "enough clock time passes that the task's started_at lands past every file's updated_at",
-             context do
-        Process.sleep(1_100)
-        {:ok, context}
-      end
-
       given_ :context_spec_task_started
 
       given_ "the agent enabled continuous mode for this session", context do

@@ -159,6 +159,40 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  # -- Tap-out human response (Story 704 / Rule 5) --
+  @doc """
+  Simulate the human responding to a pending tap-out request.
+
+  Spex use this to drive the approval/rejection side without a real
+  production-server round-trip. Wraps `CodeMySpec.Permissions.TapOut.respond/4`.
+  """
+  @spec respond_to_tap_out(map(), String.t(), String.t(), :approve | :reject) ::
+          {:ok, CodeMySpec.Sessions.Session.t()} | {:error, term()}
+  def respond_to_tap_out(scope, session_external_id, request_id, decision)
+      when decision in [:approve, :reject] do
+    session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
+    CodeMySpec.Permissions.TapOut.respond(scope, session, request_id, decision)
+  end
+
+  # -- Sub-agent registration with custom heartbeat (Story 704) --
+  @doc """
+  Register a sub-agent on a session with a specific `last_heartbeat_at`.
+
+  Used by spex that need to seed a TTL-expired registration (heartbeat
+  in the past) without manipulating the system clock. Goes through the
+  same `Sessions.register_subagent/3` context function the production
+  hook uses; only the timestamp differs.
+
+  Returns `{:ok, session}` with the registration applied.
+  """
+  @spec register_subagent_with_heartbeat(map(), String.t(), map()) ::
+          {:ok, CodeMySpec.Sessions.Session.t()} | {:error, Ecto.Changeset.t()}
+  def register_subagent_with_heartbeat(scope, session_external_id, attrs)
+      when is_binary(session_external_id) and is_map(attrs) do
+    session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
+    CodeMySpec.Sessions.register_subagent(scope, session, attrs)
+  end
+
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures
   defdelegate user_scope_fixture(), to: UsersFixtures
