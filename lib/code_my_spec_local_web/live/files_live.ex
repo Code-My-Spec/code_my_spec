@@ -16,6 +16,7 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
   alias CodeMySpec.Projects
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
 
@@ -37,6 +38,8 @@ defmodule CodeMySpecLocalWeb.FilesLive do
        result: nil,
        sync_status: :idle,
        sync_result: nil,
+       watcher_event_count: 0,
+       watcher_last_event: nil,
        error: nil
      )}
   end
@@ -48,6 +51,10 @@ defmodule CodeMySpecLocalWeb.FilesLive do
         page = parse_page(params["page"])
         filter = parse_filter(params["filter"])
         result = Files.list_files_paginated(scope, page: page, per_page: @per_page, filter: filter)
+
+        if connected?(socket) and socket.assigns.project != project do
+          ProjectSync.subscribe(scope)
+        end
 
         {:noreply,
          assign(socket,
@@ -67,42 +74,31 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   end
 
   @impl true
-  def handle_event("sync", _params, socket) do
-    scope = socket.assigns.scope
-    socket = assign(socket, sync_status: :running, sync_result: nil)
+  def handle_info({:watcher_synced, %{path: path, at: at}}, socket) do
+    socket =
+      if socket.assigns.scope do
+        result =
+          Files.list_files_paginated(socket.assigns.scope,
+            page: socket.assigns.page,
+            per_page: @per_page,
+            filter: socket.assigns.filter
+          )
 
-    remote_lines = run_remote_syncs(scope)
+        assign(socket, result: result)
+      else
+        socket
+      end
 
-    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
-         {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
-      result =
-        Files.list_files_paginated(scope,
-          page: socket.assigns.page,
-          per_page: @per_page,
-          filter: socket.assigns.filter
-        )
-
-      {:noreply,
-       assign(socket,
-         result: result,
-         sync_status: :done,
-         sync_result:
-           remote_lines ++
-             [
-               {"Files", file_result.total_files},
-               {"Changed files", length(file_result.changed_paths)},
-               {"Components", length(comp_result.all_components)},
-               {"Changed components", length(comp_result.changed_component_ids)}
-             ]
-       )}
-    else
-      {:error, reason} ->
-        Logger.error("[FilesLive] Sync failed: #{inspect(reason)}")
-
-        {:noreply,
-         assign(socket, sync_status: :error, sync_result: %{error: inspect(reason)})}
-    end
+    {:noreply,
+     assign(socket,
+       watcher_event_count: socket.assigns.watcher_event_count + 1,
+       watcher_last_event: %{path: path, at: at}
+     )}
   end
+
+  @impl true
+  def handle_event("sync", _params, socket), do: do_sync(socket, embed: true)
+  def handle_event("quick_sync", _params, socket), do: do_sync(socket, embed: false)
 
   def handle_event("purge", _params, socket) do
     scope = socket.assigns.scope
@@ -131,6 +127,44 @@ defmodule CodeMySpecLocalWeb.FilesLive do
        sync_status: :done,
        sync_result: [{"Purged", "#{file_count} files + #{length(components)} components deleted"}]
      )}
+  end
+
+  defp do_sync(socket, opts) do
+    scope = socket.assigns.scope
+    embed? = Keyword.get(opts, :embed, true)
+    socket = assign(socket, sync_status: :running, sync_result: nil)
+
+    remote_lines = run_remote_syncs(scope)
+
+    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd, embed: embed?),
+         {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
+      result =
+        Files.list_files_paginated(scope,
+          page: socket.assigns.page,
+          per_page: @per_page,
+          filter: socket.assigns.filter
+        )
+
+      {:noreply,
+       assign(socket,
+         result: result,
+         sync_status: :done,
+         sync_result:
+           remote_lines ++
+             [
+               {"Files", file_result.total_files},
+               {"Changed files", length(file_result.changed_paths)},
+               {"Components", length(comp_result.all_components)},
+               {"Changed components", length(comp_result.changed_component_ids)}
+             ]
+       )}
+    else
+      {:error, reason} ->
+        Logger.error("[FilesLive] Sync failed: #{inspect(reason)}")
+
+        {:noreply,
+         assign(socket, sync_status: :error, sync_result: %{error: inspect(reason)})}
+    end
   end
 
   defp run_remote_syncs(scope) do
@@ -168,6 +202,13 @@ defmodule CodeMySpecLocalWeb.FilesLive do
       </div>
 
       <div :if={!@error && @project && @result}>
+        <div
+          data-test="watcher-activity"
+          data-event-count={@watcher_event_count}
+          data-last-path={@watcher_last_event && @watcher_last_event.path}
+          data-last-at={@watcher_last_event && DateTime.to_iso8601(@watcher_last_event.at)}
+          class="hidden"
+        ></div>
         <div class="mb-6 flex justify-between items-start">
           <div>
             <h1 class="text-3xl font-bold">Files</h1>
@@ -175,14 +216,33 @@ defmodule CodeMySpecLocalWeb.FilesLive do
               Every tracked file in this project, projected from disk into the DB.
               Use this view to spot drift between the filesystem and the projection.
             </p>
+            <div
+              :if={@watcher_last_event}
+              data-test="watcher-last-event"
+              class="text-xs text-base-content/50 mt-1 font-mono"
+            >
+              Watcher: last event {@watcher_last_event.path} ({@watcher_event_count} total)
+            </div>
           </div>
           <div class="flex flex-row gap-2 shrink-0">
+            <button
+              type="button"
+              phx-click="quick_sync"
+              data-test="sync-fast-button"
+              disabled={@sync_status == :running}
+              class="btn btn-secondary"
+              title="Sync without re-running embeddings"
+            >
+              <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
+              Quick sync
+            </button>
             <button
               type="button"
               phx-click="sync"
               data-test="sync-button"
               disabled={@sync_status == :running}
               class="btn btn-primary"
+              title="Full sync including embeddings (slow)"
             >
               <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
               {if @sync_status == :running, do: "Syncing…", else: "Sync"}
@@ -298,7 +358,11 @@ defmodule CodeMySpecLocalWeb.FilesLive do
                   <.component_cell file={file} slug={@slug} />
                 </td>
                 <td class="font-mono text-xs">{file.size}</td>
-                <td class="font-mono text-xs" data-test="file-mtime">{format_mtime(file.mtime)}</td>
+                <td
+                  class="font-mono text-xs"
+                  data-test="file-mtime"
+                  data-mtime={raw_mtime(file.mtime)}
+                >{format_mtime(file.mtime)}</td>
                 <td
                   class="font-mono text-xs"
                   data-test="file-fingerprint"
@@ -395,6 +459,9 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   end
 
   defp format_mtime(other), do: inspect(other)
+
+  defp raw_mtime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp raw_mtime(_), do: nil
 
   defp format_fingerprint(nil), do: "—"
   defp format_fingerprint(fp) when is_binary(fp), do: String.slice(fp, 0, 12)

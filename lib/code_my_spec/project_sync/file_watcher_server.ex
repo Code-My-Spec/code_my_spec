@@ -26,8 +26,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
-  alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
-  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.ProjectSync.Sync
   alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL
 
@@ -326,37 +325,8 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
       project_root ->
         %{scope: scope} = watchers[project_root]
-        rel_path = Path.relative_to(abs_path, project_root)
-
-        try do
-          sync_classified_path(scope, project_root, rel_path)
-        rescue
-          e ->
-            Logger.error("[FileWatcher] Error processing #{abs_path}: #{Exception.message(e)}")
-        end
+        Sync.sync_path(scope, abs_path)
     end
-  end
-
-  defp sync_classified_path(scope, project_root, rel_path) do
-    abs_path = Path.join(project_root, rel_path)
-    {:ok, result} = FileSync.sync_path(scope, abs_path, base_dir: project_root)
-
-    # Component sync is only meaningful for files whose role drives a
-    # component (spec, implementation, test, etc.). Doc-corpus files
-    # like hex docs or project_knowledge would otherwise trigger an
-    # empty-result query on every individual write.
-    if result.changed_path && component_relevant_path?(result.changed_path) do
-      FileComponentSync.sync_from_files(scope,
-        base_dir: project_root,
-        changed_paths: [result.changed_path]
-      )
-    end
-  end
-
-  defp component_relevant_path?(rel_path) do
-    String.starts_with?(rel_path, "lib/") or
-      String.starts_with?(rel_path, "test/") or
-      String.starts_with?(rel_path, ".code_my_spec/spec/")
   end
 
   defp find_root_by_watcher(watcher_pid, watchers) do

@@ -3,10 +3,9 @@ defmodule CodeMySpecSpex do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec,
       CodeMySpec.Environments,
       CodeMySpec.McpServers,
-      CodeMySpec.Repo,
+      CodeMySpecSpex.Fixtures,
       CodeMySpecWeb,
       CodeMySpecLocalWeb
     ]

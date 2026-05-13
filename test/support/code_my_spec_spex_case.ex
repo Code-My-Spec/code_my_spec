@@ -77,6 +77,12 @@ defmodule CodeMySpecSpex.Case do
     stub_dir = Path.join(System.tmp_dir!(), "spex-#{System.unique_integer([:positive])}")
     File.mkdir_p!(stub_dir)
     File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
+    # Real subdirs so FileWatcherServer.start_watcher/1 finds watchable
+    # roots and doesn't error with :no_watchable_dirs. The memfs still
+    # owns content; these are just empty directories on disk.
+    File.mkdir_p!(Path.join(stub_dir, "lib"))
+    File.mkdir_p!(Path.join(stub_dir, "test"))
+    File.mkdir_p!(Path.join(stub_dir, ".code_my_spec/spec"))
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(stub_dir) end)
 
     env = Fixtures.memory_environment_fixture(working_dir: stub_dir)

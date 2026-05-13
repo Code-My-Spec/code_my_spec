@@ -14,10 +14,11 @@ defmodule CodeMySpecSpex.Fixtures do
   (ProjectConfiguration, etc.) must be set up through the UI like
   any other user action.
   """
-  use Boundary, deps: [CodeMySpec]
+  use Boundary, top_level?: true, deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpecTest]
 
   alias CodeMySpec.{
     AccountsFixtures,
+    AgentTasks,
     ArchitectureFixtures,
     BddSpecs,
     CodeGenerationFixtures,
@@ -25,9 +26,12 @@ defmodule CodeMySpecSpex.Fixtures do
     EmbeddingsFixtures,
     EnvironmentFixtures,
     Environments,
+    IssuesFixtures,
     OauthFixtures,
+    Paths,
     ProblemsFixtures,
     ProjectsFixtures,
+    ProjectSync,
     QaIntegrationPlanFixtures,
     SetupFixtures,
     TechnicalStrategyFixtures,
@@ -35,6 +39,8 @@ defmodule CodeMySpecSpex.Fixtures do
     Users,
     UsersFixtures
   }
+
+  alias CodeMySpec.Users.Scope
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
   def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)
@@ -45,9 +51,34 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate register_environment(project_id, env), to: Environments, as: :register
   defdelegate unregister_environment(project_id), to: Environments, as: :unregister
 
+  # -- Paths (conventional project resource paths) --
+  defdelegate base_dir(), to: Paths
+  defdelegate proposal_path(), to: Paths
+  defdelegate spec_file(module_path), to: Paths
+
+  # -- Project Sync (file-change events) --
+  @doc """
+  Synthesizes the "a file changed" event the file watcher fires in
+  production. Takes a relative path inside the scope's project tree;
+  resolves to absolute via `scope.cwd`. Runs the same orchestration
+  the OS watcher would: classify + upsert/delete the File row, refresh
+  fingerprint, fan out to ComponentSync, broadcast on the watcher
+  PubSub topic.
+  """
+  @spec notify_file_changed(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def notify_file_changed(%Scope{} = scope, rel_path) when is_binary(rel_path) do
+    ProjectSync.Sync.sync_path(scope, Path.join(scope.cwd, rel_path))
+  end
+
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
   defdelegate reset_setup_env(env), to: SetupFixtures, as: :reset
+  defdelegate setup_steps(), to: AgentTasks.ProjectSetup
+  defdelegate step_name(mod), to: AgentTasks.ProjectSetup
+  defdelegate find_setup_step(id), to: AgentTasks.ProjectSetup, as: :find_step
+
+  @doc "Returns the stub setup-step module that always errors. Used by Story 124's error-path spex."
+  def erroring_setup_step, do: CodeMySpec.SetupFixtures.ErroringStep
 
   # -- Technical Strategy (Story 80) --
   defdelegate with_mix_exs(env), to: TechnicalStrategyFixtures
@@ -126,6 +157,9 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Problems --
   defdelegate problem_fixture(scope, attrs \\ %{}), to: ProblemsFixtures
+
+  # -- Issues (QA triage / fix scenarios) --
+  defdelegate issue_fixture(scope, attrs \\ %{}), to: IssuesFixtures
 
   # -- OAuth (CLI client for Story 698) --
   defdelegate cli_oauth_application_fixture(attrs \\ %{}), to: OauthFixtures
