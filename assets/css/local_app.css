@@ -375,6 +375,44 @@
     .local-sidebar-item.is-active .item-prefix {
         display: none;
     }
+
+    /* Collapsible sidebar group (e.g. Requirements → Project / Stories / Graph).
+       <details>/<summary> with the native marker hidden — open/closed state
+       is driven from server-side via `open` based on the active section. */
+    .local-sidebar-group {
+        display: flex;
+        flex-direction: column;
+    }
+    .local-sidebar-group > summary {
+        list-style: none;
+        cursor: pointer;
+    }
+    .local-sidebar-group > summary::-webkit-details-marker {
+        display: none;
+    }
+    .local-sidebar-group > summary::marker {
+        content: "";
+    }
+    .local-sidebar-group > summary .group-caret {
+        margin-left: auto;
+        color: var(--color-cms-text-mute);
+        font-size: 10px;
+        transition: transform 120ms ease;
+    }
+    .local-sidebar-group[open] > summary .group-caret {
+        transform: rotate(90deg);
+    }
+    .local-sidebar-sub {
+        display: flex;
+        flex-direction: column;
+        margin: 2px 0 4px 14px;
+        padding-left: 10px;
+        border-left: 1px solid var(--color-cms-hair-w);
+    }
+    .local-sidebar-sub .local-sidebar-item {
+        font-size: 11.5px;
+        padding: 4px 0;
+    }
 }
 
 /* ─── Onboarding install panel — story 698. Mirror of app.css. ───────── */

@@ -154,7 +154,14 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}"} active={@section == :overview}>Overview</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/stories"} active={@section == :stories}>Stories</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/stories/scheduler"} active={@section == :scheduler}>Scheduler</.sidebar_item>
-      <.sidebar_item to={~p"/projects/#{project_slug(@project)}/requirements"} active={@section in [:requirements, :requirements_stories, :requirements_graph]}>Requirements</.sidebar_item>
+      <.sidebar_group
+        label="Requirements"
+        active={@section in [:requirements, :requirements_stories, :requirements_graph]}
+      >
+        <.sidebar_item to={~p"/projects/#{project_slug(@project)}/requirements"} active={@section == :requirements}>Project</.sidebar_item>
+        <.sidebar_item to={~p"/projects/#{project_slug(@project)}/requirements/stories"} active={@section == :requirements_stories}>Stories</.sidebar_item>
+        <.sidebar_item to={~p"/projects/#{project_slug(@project)}/requirements/graph"} active={@section == :requirements_graph}>Graph</.sidebar_item>
+      </.sidebar_group>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/personas"} active={@section == :personas}>Personas</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/issues"} active={@section == :issues}>Issues</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/sessions"} active={@section == :sessions}>Sessions</.sidebar_item>
@@ -162,7 +169,6 @@ defmodule CodeMySpecLocalWeb.Layouts do
 
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// reference</div>
-      <.sidebar_item to={~p"/projects/#{project_slug(@project)}/requirements/graph"} active={@section == :requirements_graph}>Graph</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/knowledge"} active={@section == :knowledge}>Knowledge base</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/project-knowledge"} active={@section == :project_knowledge}>Project knowledge</.sidebar_item>
     </div>
@@ -190,6 +196,29 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <span :if={!@active} class="item-prefix"></span>
       {render_slot(@inner_block)}
     </.link>
+    """
+  end
+
+  # Collapsible sidebar group — <details>/<summary> driven by `active`
+  # (open when any child section is the current page). The summary
+  # styles like a top-level sidebar_item; child items render indented
+  # in the .local-sidebar-sub stripe.
+  attr :label, :string, required: true
+  attr :active, :boolean, default: false
+  slot :inner_block, required: true
+
+  defp sidebar_group(assigns) do
+    ~H"""
+    <details class="local-sidebar-group" open={@active}>
+      <summary class={"local-sidebar-item #{if @active, do: "is-active"}"}>
+        <span :if={!@active} class="item-prefix"></span>
+        {@label}
+        <span class="group-caret">▸</span>
+      </summary>
+      <div class="local-sidebar-sub">
+        {render_slot(@inner_block)}
+      </div>
+    </details>
     """
   end
 
