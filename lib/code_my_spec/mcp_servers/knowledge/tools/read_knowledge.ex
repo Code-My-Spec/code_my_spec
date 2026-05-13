@@ -30,9 +30,8 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge do
     with {:ok, library} <- library_atom(params),
          {:ok, scope} <- Validators.validate_local_scope(frame) do
       path_segments = String.split(path, "/", trim: true)
-      project_name = scope.active_project.name
 
-      case Knowledge.resolve(library, path_segments, project_name) do
+      case Knowledge.resolve(scope, library, path_segments) do
         {:ok, content} ->
           {:reply, text_response(content), frame}
 

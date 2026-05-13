@@ -9,12 +9,16 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserController do
   use CodeMySpecLocalWeb, :controller
 
   alias CodeMySpec.Knowledge
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Users.Scope
 
   def show(conn, %{"project_name" => project_name, "path" => path_segments}) do
     library = library_from_path(conn)
 
-    case Knowledge.resolve(library, path_segments, project_name) do
-      {:ok, content} -> text(conn, content)
+    with {:ok, scope} <- resolve_scope(project_name),
+         {:ok, content} <- Knowledge.resolve(scope, library, path_segments) do
+      text(conn, content)
+    else
       {:error, :not_found} -> conn |> put_status(404) |> text("Not found")
       {:error, :invalid_path} -> conn |> put_status(400) |> text("Invalid path")
       {:error, msg} -> conn |> put_status(400) |> text("#{msg}")
@@ -24,9 +28,17 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserController do
   def index(conn, %{"project_name" => project_name}) do
     library = library_from_path(conn)
 
-    case Knowledge.resolve(library, [], project_name) do
-      {:ok, content} -> text(conn, content)
+    with {:ok, scope} <- resolve_scope(project_name),
+         {:ok, content} <- Knowledge.resolve(scope, library, []) do
+      text(conn, content)
+    else
       {:error, msg} -> conn |> put_status(400) |> text("#{msg}")
+    end
+  end
+
+  defp resolve_scope(project_name) do
+    with {:ok, project} <- Projects.get_project_by_name(project_name) do
+      Scope.for_local_project(project)
     end
   end
 

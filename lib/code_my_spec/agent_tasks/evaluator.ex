@@ -62,8 +62,12 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
     module in custom_evaluate_modules()
   end
 
-  # Modules with genuinely custom evaluation logic
-  defp custom_evaluate_modules do
+  @doc """
+  Modules with genuinely custom evaluation logic — their `evaluate/2`
+  produces a done signal that can't be expressed as a `RequirementCalculator`
+  check.
+  """
+  def custom_evaluate_modules do
     [
       CodeMySpec.AgentTasks.StartImplementation,
       CodeMySpec.AgentTasks.ProjectSetup,
@@ -130,21 +134,15 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   defp resolve_entity(scope, task) do
     cond do
-      task.component_id ->
-        component = Components.get_component!(scope, task.component_id)
-        {:ok, {component, :component}}
-
-      task.story_id ->
-        story = StoriesRepository.get_story!(scope, task.story_id)
-        {:ok, {story, :story}}
-
-      task.project_id || scope.active_project ->
-        {:ok, {scope.active_project, :project}}
-
-      true ->
-        {:error, "Cannot resolve entity from task — no component_id, story_id, or project"}
+      task.component_id -> wrap_entity(Components.get_component(scope, task.component_id), :component)
+      task.story_id -> wrap_entity(StoriesRepository.get_story(scope, task.story_id), :story)
+      task.project_id || scope.active_project -> {:ok, {scope.active_project, :project}}
+      true -> {:error, "Cannot resolve entity from task — no component_id, story_id, or project"}
     end
   end
+
+  defp wrap_entity(nil, _type), do: {:error, :entity_missing}
+  defp wrap_entity(entity, type), do: {:ok, {entity, type}}
 
   defp find_definition(scope, :component, requirement_name, entity) do
     # First try the component's own type template
@@ -157,13 +155,14 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       {:error, _} ->
         # If not found and component has a parent, check parent template's :child nodes.
         # A schema child of a context gets :child requirements from the context template.
-        if entity.parent_component_id do
-          parent = Components.get_component!(scope, entity.parent_component_id)
-          parent_template = ComponentRegistry.get_graph_template(parent.type)
-          child_defs = Enum.filter(parent_template, &(&1.node_scope == :child))
-          find_by_name(child_defs, requirement_name)
-        else
-          {:error, "No requirement definition found with name: #{requirement_name}"}
+        case entity.parent_component_id && Components.get_component(scope, entity.parent_component_id) do
+          %_{} = parent ->
+            parent_template = ComponentRegistry.get_graph_template(parent.type)
+            child_defs = Enum.filter(parent_template, &(&1.node_scope == :child))
+            find_by_name(child_defs, requirement_name)
+
+          _ ->
+            {:error, "No requirement definition found with name: #{requirement_name}"}
         end
     end
   end

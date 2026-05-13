@@ -5,9 +5,13 @@ defmodule CodeMySpec.Knowledge do
   Two libraries:
 
   - `:knowledge` — curated framework reference under
-    `priv/knowledge/` (shipped with the app).
+    `priv/knowledge/` (shipped with the app, bundled at compile time).
+    Reads go directly against the real filesystem since the corpus
+    is static and lives outside the project working tree.
   - `:project_knowledge` — project-specific research under
     `<project>/.code_my_spec/knowledge/` (lives in the user's repo).
+    Reads route through `scope.environment` so the in-memory environment
+    used in BDD specs sees writes made through `Environments.write_file/3`.
 
   Same content is exposed through two surfaces:
 
@@ -19,7 +23,7 @@ defmodule CodeMySpec.Knowledge do
   live in one place.
   """
 
-  alias CodeMySpec.Projects
+  alias CodeMySpec.Environments
   alias CodeMySpec.Users.Scope
 
   @libraries %{
@@ -45,93 +49,172 @@ defmodule CodeMySpec.Knowledge do
   @doc """
   Resolves the configured filesystem root for a library.
 
-  - `{:priv, relative}` — `priv/<relative>` of `:code_my_spec`.
-  - `{:project, relative}` — `<project_root>/<relative>`, where the
-    project is looked up by name and its `local_path` is the root.
+  - `{:priv, relative}` — `priv/<relative>` of `:code_my_spec` (real
+    filesystem, always).
+  - `{:project, relative}` — `<scope.cwd>/<relative>` (read via
+    `scope.environment`).
   """
-  @spec resolve_root(term(), String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
-  def resolve_root({:priv, relative}, _project_name) do
+  @spec resolve_root(Scope.t(), term()) :: {:ok, root()} | {:error, String.t()}
+  def resolve_root(_scope, {:priv, relative}) do
     root = :code_my_spec |> :code.priv_dir() |> Path.join(relative)
 
     if File.dir?(root) do
-      {:ok, root}
+      {:ok, {:priv_path, root}}
     else
       {:error, "Directory not found: priv/#{relative}"}
     end
   end
 
-  def resolve_root({:project, relative}, project_name) do
-    with {:ok, project} <- Projects.get_project_by_name(project_name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      root = Path.join(scope.cwd, relative)
+  def resolve_root(%Scope{environment: env}, {:project, relative}) when not is_nil(env) do
+    root = Path.join(env.cwd, relative)
 
-      if File.dir?(root) do
-        {:ok, root}
-      else
-        {:error, "Directory not found: #{relative}"}
-      end
+    if Environments.file_exists?(env, root) do
+      {:ok, {:env, env, root}}
+    else
+      {:error, "Directory not found: #{relative}"}
     end
   end
 
+  def resolve_root(_scope, {:project, relative}),
+    do: {:error, "Directory not found: #{relative}"}
+
+  @typep root :: {:priv_path, String.t()} | {:env, Environments.Environment.t(), String.t()}
+
   @doc """
-  Resolve a library + path-segments + project-name into either a
-  rendered markdown listing (for a directory) or a markdown file's
-  contents (for a `.md` file).
+  Resolve a library + path-segments into either a rendered markdown
+  listing (for a directory) or a markdown file's contents (for a
+  `.md` file).
 
   Used by the MCP knowledge tools to drive the same content as the
-  LiveView from the agent surface.
+  LiveView from the agent surface. The scope's environment provides
+  the read path for `:project_knowledge` so in-memory environments
+  (used in BDD specs) work transparently.
   """
-  @spec resolve(atom(), [String.t()], String.t() | nil) ::
+  @spec resolve(Scope.t(), atom(), [String.t()]) ::
           {:ok, String.t()} | {:error, atom() | String.t()}
-  def resolve(library, path_segments, project_name) do
+  def resolve(%Scope{} = scope, library, path_segments) do
     with {:ok, config} <- Map.fetch(@libraries, library),
-         {:ok, root} <- resolve_root(config.root, project_name) do
+         {:ok, root} <- resolve_root(scope, config.root) do
       case path_segments do
         [] ->
           lines = root |> list_entries() |> format_entries()
           {:ok, "# #{config.title}\n\n#{lines}\n"}
 
         segments ->
-          full_path = Path.join([root | segments])
-
-          cond do
-            not safe_path?(root, full_path) ->
-              {:error, :invalid_path}
-
-            not File.exists?(full_path) ->
-              {:error, :not_found}
-
-            File.dir?(full_path) ->
-              lines = full_path |> list_entries() |> format_entries()
-              {:ok, "# #{Path.basename(full_path)}\n\n#{lines}\n"}
-
-            String.ends_with?(full_path, ".md") ->
-              {:ok, File.read!(full_path)}
-
-            true ->
-              {:error, :not_found}
-          end
+          full_path = Path.join([root_path(root) | segments])
+          located = locate(root, full_path)
+          resolve_located(located, root, full_path, config)
       end
     end
   end
 
+  defp resolve_located(:invalid_path, _root, _full_path, _config), do: {:error, :invalid_path}
+  defp resolve_located(:not_found, _root, _full_path, _config), do: {:error, :not_found}
+
+  defp resolve_located(:dir, root, full_path, _config) do
+    sub = with_path(root, full_path)
+    lines = sub |> list_entries() |> format_entries()
+    {:ok, "# #{Path.basename(full_path)}\n\n#{lines}\n"}
+  end
+
+  defp resolve_located(:file, root, full_path, _config) do
+    if String.ends_with?(full_path, ".md") do
+      read_file(root, full_path)
+    else
+      {:error, :not_found}
+    end
+  end
+
+  defp locate({:priv_path, root_path}, full_path) do
+    cond do
+      not safe_path?(root_path, full_path) -> :invalid_path
+      not File.exists?(full_path) -> :not_found
+      File.dir?(full_path) -> :dir
+      true -> :file
+    end
+  end
+
+  defp locate({:env, env, root_path}, full_path) do
+    cond do
+      not safe_path?(root_path, full_path) ->
+        :invalid_path
+
+      not Environments.file_exists?(env, full_path) ->
+        :not_found
+
+      # In the env backend a key that resolves through read_file is a
+      # file; if read_file fails with :enoent the path is treated as
+      # a directory (some files live under it). The InMemoryEnvironment
+      # encodes directories implicitly via prefix membership.
+      true ->
+        case Environments.read_file(env, full_path) do
+          {:ok, _} -> :file
+          {:error, _} -> :dir
+        end
+    end
+  end
+
+  defp read_file({:priv_path, _}, full_path), do: {:ok, File.read!(full_path)}
+
+  defp read_file({:env, env, _}, full_path) do
+    case Environments.read_file(env, full_path) do
+      {:ok, content} -> {:ok, content}
+      {:error, _} -> {:error, :not_found}
+    end
+  end
+
+  defp root_path({:priv_path, path}), do: path
+  defp root_path({:env, _env, path}), do: path
+
+  defp with_path({:priv_path, _}, full_path), do: {:priv_path, full_path}
+  defp with_path({:env, env, _}, full_path), do: {:env, env, full_path}
+
   @doc """
-  Lists `dir_path` as `[{name, :dir | :file}]`, hiding dotfiles and
+  Lists a directory as `[{name, :dir | :file}]`, hiding dotfiles and
   sorting directories first, then alphabetical with READMEs floated
   to the top of each tier.
+
+  Accepts either a raw filesystem path string (for priv content) or
+  a resolved root tuple (`{:priv_path, path}` / `{:env, env, path}`).
   """
-  @spec list_entries(String.t()) :: [{String.t(), :dir | :file}]
-  def list_entries(dir_path) do
+  @spec list_entries(String.t() | root()) :: [{String.t(), :dir | :file}]
+  def list_entries(dir_path) when is_binary(dir_path) do
+    list_entries({:priv_path, dir_path})
+  end
+
+  def list_entries({:priv_path, dir_path}) do
     dir_path
     |> File.ls!()
     |> Enum.reject(&String.starts_with?(&1, "."))
-    |> Enum.sort()
     |> Enum.map(fn name ->
       full = Path.join(dir_path, name)
       type = if File.dir?(full), do: :dir, else: :file
       {name, type}
     end)
-    |> Enum.sort_by(fn {name, type} ->
+    |> sort_entries()
+  end
+
+  def list_entries({:env, env, dir_path}) do
+    {:ok, names} = Environments.list_directory(env, dir_path)
+
+    names
+    |> Enum.reject(&String.starts_with?(&1, "."))
+    |> Enum.map(fn name ->
+      full = Path.join(dir_path, name)
+
+      type =
+        case Environments.read_file(env, full) do
+          {:ok, _} -> :file
+          {:error, _} -> :dir
+        end
+
+      {name, type}
+    end)
+    |> sort_entries()
+  end
+
+  defp sort_entries(entries) do
+    Enum.sort_by(entries, fn {name, type} ->
       {if(type == :dir, do: 0, else: 1), if(name =~ ~r/^readme/i, do: 0, else: 1), name}
     end)
   end

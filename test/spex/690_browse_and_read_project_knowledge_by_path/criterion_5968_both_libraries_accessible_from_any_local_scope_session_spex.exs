@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5968Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -21,27 +22,18 @@ defmodule CodeMySpecSpex.Story690.Criterion5968Spex do
 
   spex "Both knowledge libraries are reachable from a local-scope session" do
     scenario "Calling list_knowledge against both libraries succeeds" do
-      given_ "the project's local_path contains a .code_my_spec/knowledge directory",
-             context do
-        # project_knowledge resolves to <project.local_path>/.code_my_spec/knowledge
-        # — the file_exists check hits the real filesystem, so plant a real dir
-        # alongside the stub mix.exs that setup_active_project already wrote.
-        project_knowledge_root =
-          Path.join([context.scope.cwd, ".code_my_spec", "knowledge"])
+      given_ "the project_knowledge library has a README.md entry", context do
+        # project_knowledge resolves to <scope.cwd>/.code_my_spec/knowledge
+        # via scope.environment — write through the in-memory env so the
+        # directory check and listing both see the entry.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/knowledge/README.md",
+            "# Project Knowledge\n\nTest fixture for criterion 5968.\n"
+          )
 
-        File.mkdir_p!(project_knowledge_root)
-
-        # Plant one entry so the directory listing is non-empty.
-        File.write!(
-          Path.join(project_knowledge_root, "README.md"),
-          "# Project Knowledge\n\nTest fixture for criterion 5968.\n"
-        )
-
-        ExUnit.Callbacks.on_exit(fn ->
-          File.rm_rf(Path.join(context.scope.cwd, ".code_my_spec"))
-        end)
-
-        {:ok, Map.put(context, :project_knowledge_root, project_knowledge_root)}
+        {:ok, context}
       end
 
       when_ ~s(the agent calls list_knowledge with library "knowledge"), context do

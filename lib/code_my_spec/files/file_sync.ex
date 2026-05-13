@@ -59,23 +59,33 @@ defmodule CodeMySpec.Files.FileSync do
   Sync all trackable files from the filesystem into the DB.
 
   Returns `{:ok, %{upserted: count, removed: count, changed_paths: [path]}}`.
+
+  Options:
+
+    * `:embed` — when `false`, skips the embedding hooks (framework knowledge
+      sync, hex doc projection, and per-file embedding upserts). Use for
+      fast UI refreshes where staleness of semantic_search is acceptable.
+      Defaults to `true`.
   """
   @spec sync(Scope.t(), keyword()) :: {:ok, map()}
-  def sync(%Scope{environment: env} = scope, _opts \\ []) do
+  def sync(%Scope{environment: env} = scope, opts \\ []) do
+    embed? = Keyword.get(opts, :embed, true)
     start = System.monotonic_time(:millisecond)
 
-    # Sync the bundled framework knowledge corpus directly from
-    # `priv/knowledge/` into the embedding store. No working-tree
-    # copy — the embedding backend's content-hash dedup keeps no-op
-    # syncs cheap.
-    Embeddings.sync_framework_knowledge(scope)
+    if embed? do
+      # Sync the bundled framework knowledge corpus directly from
+      # `priv/knowledge/` into the embedding store. No working-tree
+      # copy — the embedding backend's content-hash dedup keeps no-op
+      # syncs cheap.
+      Embeddings.sync_framework_knowledge(scope)
 
-    # Project hex docs from compiled BEAMs into the working tree before
-    # walking files. Newly-installed/updated/removed packages produce
-    # markdown changes the walker then catches via fingerprint diff,
-    # routing them through the same embedding hook every other doc
-    # role uses.
-    HexDocProjector.project(scope)
+      # Project hex docs from compiled BEAMs into the working tree before
+      # walking files. Newly-installed/updated/removed packages produce
+      # markdown changes the walker then catches via fingerprint diff,
+      # routing them through the same embedding hook every other doc
+      # role uses.
+      HexDocProjector.project(scope)
+    end
 
     # `infrastructure_paths` is no longer a sync-time filter — it's a classifier
     # consulted by `ComponentSync`. Framework files now sync into the DB and
@@ -132,7 +142,7 @@ defmodule CodeMySpec.Files.FileSync do
       Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
     end
 
-    sync_embeddings(scope, env, changed_entries, removed_records)
+    if embed?, do: sync_embeddings(scope, env, changed_entries, removed_records)
 
     total_ms = System.monotonic_time(:millisecond) - start
 
@@ -165,6 +175,46 @@ defmodule CodeMySpec.Files.FileSync do
         record -> Map.get(entry, :fingerprint) != record.fingerprint
       end
     end)
+  end
+
+  @doc """
+  Run the embedding side of sync against the currently-tracked corpus,
+  without re-walking the filesystem or upserting File records.
+
+  Three steps:
+
+    * `Embeddings.sync_framework_knowledge/1` — push bundled `priv/knowledge/`
+      into the embedding store.
+    * `HexDocProjector.project/1` — project hex docs from compiled BEAMs
+      into the working tree.
+    * Embed every currently-tracked file whose role belongs to the doc corpus.
+
+  No-ops gracefully when the embedding backend is unavailable. The
+  backend's content-hash dedup keeps this cheap on repeat calls.
+  """
+  @spec embed_only(Scope.t()) :: {:ok, map()}
+  def embed_only(%Scope{environment: env} = scope) do
+    start = System.monotonic_time(:millisecond)
+
+    Embeddings.sync_framework_knowledge(scope)
+    HexDocProjector.project(scope)
+
+    embeddable_records =
+      scope
+      |> Files.list_files()
+      |> Enum.filter(&embeddable_source(&1.role, &1.path))
+
+    if Embeddings.available?() do
+      Enum.each(embeddable_records, &embed_entry(scope, env, &1))
+    end
+
+    elapsed = System.monotonic_time(:millisecond) - start
+
+    Logger.info(
+      "[FileSync] embed_only: #{length(embeddable_records)} files in #{elapsed}ms"
+    )
+
+    {:ok, %{embedded: length(embeddable_records), elapsed_ms: elapsed}}
   end
 
   # Push doc-corpus changes (spec / rule / knowledge / project_knowledge)

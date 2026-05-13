@@ -69,6 +69,17 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
         {:ok, :invalid, feedback} ->
           {:error, feedback}
 
+        {:error, :entity_missing} ->
+          # Component or story this task points at no longer exists (likely
+          # removed by ComponentSync or a manual purge). The task can't be
+          # evaluated, so cancel it and let the session pull a fresh one.
+          Logger.info(
+            "[TaskEvaluator] Cancelling orphaned task #{task.id} — entity missing"
+          )
+
+          Sessions.complete_task(scope, session, task.id, :cancelled)
+          {:ok, :valid}
+
         {:error, {:evaluator_crashed, detail}} ->
           # Distinguish crashes from requirement failures. The marker text at
           # the front lets agents (and humans) tell the difference from a

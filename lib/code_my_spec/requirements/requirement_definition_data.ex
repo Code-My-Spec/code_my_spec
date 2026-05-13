@@ -742,17 +742,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         render_command_always?: true
       }),
       new!(%{
-        id: 2,
-        name: "technical_strategy",
-        node_scope: :self,
-        check_type: :path_exists,
-        config: %{path: ".code_my_spec/architecture/decisions.md"},
-        satisfied_by: AgentTasks.TechnicalStrategy,
-        artifact_type: :specification,
-        description: "Technical strategy decisions file exists",
-        prerequisites: [15]
-      }),
-      new!(%{
         id: 13,
         name: "personas_complete",
         node_scope: :self,
@@ -783,6 +772,17 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # Multi-turn PM intake conversation — same rationale as
         # personas_complete and three_amigos_complete.
         validation_type: :manual
+      }),
+      new!(%{
+        id: 2,
+        name: "technical_strategy",
+        node_scope: :self,
+        check_type: :path_exists,
+        config: %{path: ".code_my_spec/architecture/decisions.md"},
+        satisfied_by: AgentTasks.TechnicalStrategy,
+        artifact_type: :specification,
+        description: "Technical strategy decisions file exists",
+        prerequisites: [15]
       }),
       new!(%{
         id: 3,
