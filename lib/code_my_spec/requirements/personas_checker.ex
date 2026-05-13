@@ -2,16 +2,15 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   @moduledoc """
   Delegate checker for the `personas_complete` requirement on `project_graph`.
 
-  Iterates over every persona in the active account and confirms each has:
+  Iterates over every persona in the active project and confirms each has:
 
     * A `personas` row (always true for anything list returns — proof by construction)
     * `.code_my_spec/personas/<slug>/summary.md` that validates as `persona_summary`
     * `.code_my_spec/personas/<slug>/sources.md` with at least one non-empty line
 
-  Personas are an account-level reusable library — story linkage happens later
-  via Three Amigos and is not required for `personas_complete`. Requiring a
-  link would create a cycle with `stories_exist`, which is gated on
-  `personas_complete` by the serial chain.
+  Personas are project-scoped. Story linkage is enforced by the Three Amigos
+  flow later, not here — `personas_complete` only certifies that the project
+  has at least one persona with research on disk.
 
   Returns `{boolean(), map()}` per the checker contract (see `IssuesChecker`).
   Failure reasons are markdown-formatted and list each failing persona with its
@@ -25,8 +24,8 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   alias CodeMySpec.Users.Scope
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
-  def complete?(%Scope{active_account_id: account_id, environment: env} = scope, _entity)
-      when not is_nil(account_id) do
+  def complete?(%Scope{active_project_id: project_id, environment: env} = scope, _entity)
+      when not is_nil(project_id) do
     personas = Personas.list_personas(scope)
 
     cond do
@@ -34,7 +33,7 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
         {false,
          %{
            reason:
-             "No personas in this account's library. Start a persona research session to add one."
+             "No personas on this project. Start a persona research session to add one."
          }}
 
       is_nil(env) ->
@@ -56,7 +55,7 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   end
 
   def complete?(%Scope{}, _entity) do
-    {false, %{reason: "No active account in scope — cannot check personas."}}
+    {false, %{reason: "No active project in scope — cannot check personas."}}
   end
 
   # Returns :ok or {slug, [gap_messages]}

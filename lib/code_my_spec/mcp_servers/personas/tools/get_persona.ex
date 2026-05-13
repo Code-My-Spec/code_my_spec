@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
   @moduledoc """
-  Fetches a single persona by slug or id from the active account.
+  Fetches a single persona by slug or id from the active project.
 
   Use this to pull a full persona record when you need its DB metadata
   (headline, persona_type, timestamps) during the intake conversation.

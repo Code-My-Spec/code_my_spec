@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     so the Credo analyzer's availability check passes. Pair with a
     cassette that replays `mix credo` output.
   - `:persona_exists` — drives the `CreatePersona` MCP tool against the
-    active scope to create an account-scoped persona. Produces
+    active scope to create a project-scoped persona. Produces
     `context.persona_slug` and `context.persona_id`.
   - `:persona_research_task_started` — drives session_start + start_task
     for the `personas_complete` requirement on the active project.
@@ -418,8 +418,8 @@ defmodule CodeMySpecSpex.SharedGivens do
      })}
   end
 
-  # The PM has created a persona through the account library surface and
-  # linked it to at least one story on the active project. Personas need
+  # The PM has created a persona on the active project and linked it to
+  # at least one story on that project. Personas need
   # a story link to count toward personas_complete, so this given bundles
   # both actions — if a spec needs an unlinked persona it should drive
   # CreatePersona directly inline.

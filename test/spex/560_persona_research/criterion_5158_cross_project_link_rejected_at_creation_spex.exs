@@ -1,9 +1,9 @@
 defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
   @moduledoc """
   Story 560 — Persona Research
-  Criterion 5158 — Cross-account link is rejected at link creation. Calling
+  Criterion 5158 — Cross-project link is rejected at link creation. Calling
   LinkPersonaToStory with a story_id that doesn't belong to the scope's
-  active account returns an error response without creating a join row.
+  active project returns an error response without creating a join row.
   """
 
   use CodeMySpecSpex.Case
@@ -17,25 +17,28 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "PM attempts to link persona to a story in another account" do
-    scenario "MCP response rejects with a cross-account error" do
+  spex "PM attempts to link persona to a story on another project" do
+    scenario "MCP response rejects with a cross-project error" do
       given_ :persona_exists
 
-      given_ "a story exists in a different account", context do
-        other_account = Fixtures.account_fixture(%{name: "Other account"})
-        other_scope = Fixtures.user_scope_fixture(context.scope.user, other_account)
-
+      given_ "a story exists on a different project", context do
         foreign_project =
-          Fixtures.project_fixture(other_scope, %{name: "Other Project"})
+          Fixtures.project_fixture(context.scope, %{
+            name: "Other Project",
+            module_name: "OtherProject"
+          })
 
-        scope_with_project =
-          Fixtures.user_scope_fixture(context.scope.user, other_account, foreign_project)
+        scope_with_foreign_project = %{
+          context.scope
+          | active_project: foreign_project,
+            active_project_id: foreign_project.id
+        }
 
         story =
-          StoryHelpers.create_story(scope_with_project,
+          StoryHelpers.create_story(scope_with_foreign_project,
             title: "Foreign story",
-            description: "This story belongs to a different account.",
-            acceptance_criteria: ["Cross-account links are rejected at creation"]
+            description: "This story belongs to a different project.",
+            acceptance_criteria: ["Cross-project links are rejected at creation"]
           )
 
         {:ok, Map.put(context, :foreign_story_id, story.id)}
@@ -53,11 +56,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the MCP response names the cross-account rejection", context do
+      then_ "the MCP response names the cross-project rejection", context do
         body = response_text(context.response)
 
-        assert body =~ ~r/cross-account|does not belong|account/i,
-               "expected MCP response to reject the cross-account link, got #{inspect(context.response)}"
+        assert body =~ ~r/cross-project|does not belong|project/i,
+               "expected MCP response to reject the cross-project link, got #{inspect(context.response)}"
 
         {:ok, context}
       end

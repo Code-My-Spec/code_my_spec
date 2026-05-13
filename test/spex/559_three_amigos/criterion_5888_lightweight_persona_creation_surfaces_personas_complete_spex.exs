@@ -93,7 +93,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         story =
           StoryHelpers.create_and_link(context.scope, surface_module,
             title: "Story driving lightweight persona creation",
-            description: "Drives Three Amigos with no pre-existing persona in the account library.",
+            description: "Drives Three Amigos with no pre-existing persona on the project.",
             acceptance_criteria: ["Three Amigos drives lightweight persona creation"]
           )
 

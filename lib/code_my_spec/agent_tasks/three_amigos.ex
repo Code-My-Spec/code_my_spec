@@ -118,8 +118,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     and edge cases) — while the PM holds product intent.
 
     Pass `story_id: #{story.id}` to every MCP tool call below
-    (`add_persona` is account-scoped and doesn't need it; everything
-    else does).
+    (`add_persona` is project-scoped and resolves the project from
+    your working directory's scope — it doesn't need a story_id;
+    everything else does).
 
     **Session URL** (share this with the PM so they can watch cards
     appear in real time): #{session_url}
@@ -151,9 +152,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     Persona linkage → Rules → Scenarios. Do not skip ahead.
 
     1. **Persona linkage.** Use `list_personas` to see what already
-       exists in the account library. If a suitable persona exists,
-       call `link_persona_to_story`. If not, call `add_persona` (alias
-       for `create_persona`) to add a lightweight record (identity +
+       exists on this project. If a suitable persona exists, call
+       `link_persona_to_story`. If not, call `add_persona` (alias for
+       `create_persona`) to add a lightweight record (identity +
        metadata only — no research artifacts), then link it. Full
        persona research happens later as a separate `personas_complete`
        requirement on the next graph pass.

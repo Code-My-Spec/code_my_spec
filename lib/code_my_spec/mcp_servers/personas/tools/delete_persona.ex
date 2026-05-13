@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.DeletePersona do
   @moduledoc """
-  Deletes an account-scoped persona, including every row in `persona_stories`
+  Deletes a project-scoped persona, including every row in `persona_stories`
   that links it to a story. Identifies the persona by id or slug. Files under
   `.code_my_spec/personas/<slug>/` are NOT removed — clean those up manually
   if needed.

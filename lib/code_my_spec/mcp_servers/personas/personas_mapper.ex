@@ -1,8 +1,8 @@
 defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
   @moduledoc """
-  Maps persona data to MCP responses. Returns text-only responses per project
-  convention and embeds identifiers in the summary text so agents can reference
-  them in follow-up tool calls.
+  Maps persona data to MCP responses. Returns text-only responses and embeds
+  identifiers in the summary text so agents can reference them in follow-up
+  tool calls. Personas are project-scoped; cross-project access is rejected.
   """
 
   alias Anubis.Server.Response
@@ -76,7 +76,7 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
   def personas_list_response([]) do
     Response.tool()
     |> Response.text(
-      "No personas in this account yet. Run a persona research session to create one — " <>
+      "No personas on this project yet. Run a persona research session to create one — " <>
         "see `start_task` with requirement `personas_complete`."
     )
   end
@@ -88,7 +88,7 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
         "- **#{p.name}** (slug: `#{p.slug}`, id: `#{p.id}`, type: `#{p.persona_type}`)#{headline}"
       end)
 
-    summary = "Personas in this account (#{length(personas)}):\n\n#{lines}"
+    summary = "Personas on this project (#{length(personas)}):\n\n#{lines}"
 
     Response.tool()
     |> Response.text(summary)
@@ -103,21 +103,21 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
 
   def error(:not_found) do
     Response.tool()
-    |> Response.error("Persona not found in the active account.")
+    |> Response.error("Persona not found on the active project.")
   end
 
-  def error(:cross_account) do
+  def error(:cross_project) do
     Response.tool()
     |> Response.error(
-      "Cross-account operation rejected. The persona or story does not belong to the active account."
+      "Cross-project operation rejected. The persona or story does not belong to the active project."
     )
   end
 
-  def error(:missing_active_account) do
+  def error(:missing_active_project) do
     Response.tool()
     |> Response.error(
-      "Active account is not set on the scope. The project record is missing `account_id`. " <>
-        "Run `init_project` to (re)link the project to your account, then retry."
+      "Active project is not set on the scope. " <>
+        "Run `init_project` to link your working directory to a project, then retry."
     )
   end
 

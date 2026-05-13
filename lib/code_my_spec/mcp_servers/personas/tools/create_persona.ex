@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.CreatePersona do
   @moduledoc """
-  Creates an account-scoped persona. Identity + metadata only — research text
+  Creates a project-scoped persona. Identity + metadata only — research text
   belongs on disk at `.code_my_spec/personas/<slug>/`.
   """
 
@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.CreatePersona do
     field :slug, :string,
       required: true,
       doc:
-        "URL-safe identifier, lowercase alphanumeric with hyphens or underscores (e.g., 'founder', 'agency_pm'). Unique per account."
+        "URL-safe identifier, lowercase alphanumeric with hyphens or underscores (e.g., 'founder', 'agency_pm'). Unique per project."
 
     field :name, :string, required: true, doc: "Display name (e.g., 'Founder', 'Agency PM')."
 

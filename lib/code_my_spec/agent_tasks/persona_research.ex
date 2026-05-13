@@ -44,23 +44,23 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
 
     ## Prereqs
 
-    Personas are **account-scoped**, not project-scoped. `create_persona` and
-    `link_persona_to_story` need the scope to carry an `active_account_id`, which the local MCP
-    resolves from the project record's `account_id` column. If `create_persona` returns
-    `missing_active_account`, the project is not linked to an account — re-run `init_project`
-    to (re)bind the project to your account, then retry.
+    Personas are **project-scoped**. `create_persona` and `link_persona_to_story` need the
+    scope to carry an `active_project_id`. If `create_persona` returns `missing_active_project`,
+    the working directory is not linked to a project — run `init_project` to bind it, then retry.
 
-    ## Existing personas in this account
+    ## Existing personas on this project
 
     Before creating a new persona, check whether one already covers the PM's target user:
 
-    - `list_personas` — lists every persona in the active account. Use it early in the
+    - `list_personas` — lists every persona on the active project. Use it early in the
       intake to see if a prior session already researched this role.
     - `get_persona` — fetch a full persona record by `slug` or `id`. Pair with
       `read_knowledge` on `.code_my_spec/personas/<slug>/summary.md` to see the research text.
 
     Reusing an existing persona (via `link_persona_to_story`) is often the right answer —
-    don't research a duplicate if a close match already exists in the account.
+    don't research a duplicate if a close match already exists on this project. Personas
+    from sibling projects are NOT visible here; the same role researched for a different
+    product is a separate record.
 
     ## Read the playbook first
 

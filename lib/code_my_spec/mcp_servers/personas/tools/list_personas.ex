@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.ListPersonas do
   @moduledoc """
-  Lists every persona in the active account.
+  Lists every persona on the active project.
 
   Use this during the intake conversation to check whether a persona has
   already been researched, or to surface related personas the PM might want

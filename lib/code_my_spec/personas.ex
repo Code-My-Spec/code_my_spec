@@ -29,13 +29,13 @@ defmodule CodeMySpec.Personas do
 
   """
   def subscribe(%Scope{} = scope) do
-    key = scope.active_account_id
-    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{key}:personas")
+    key = scope.active_project_id
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "project:#{key}:personas")
   end
 
   defp broadcast(%Scope{} = scope, message) do
-    key = scope.active_account_id
-    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{key}:personas", message)
+    key = scope.active_project_id
+    Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "project:#{key}:personas", message)
   end
 
   def create_persona(scope, attrs) do

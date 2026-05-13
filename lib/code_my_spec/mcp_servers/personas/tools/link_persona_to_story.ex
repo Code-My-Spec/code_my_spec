@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory do
   @moduledoc """
   Links an existing persona to a story via the persona_stories join table.
-  Rejects cross-account attempts.
+  Rejects cross-project attempts.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -11,7 +11,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory do
   alias CodeMySpec.Personas
 
   schema do
-    field :persona_id, :string, required: true, doc: "UUID of the persona in the active account."
+    field :persona_id, :string, required: true, doc: "UUID of the persona on the active project."
     field :story_id, :integer, required: true, doc: "ID of the story to link to."
   end
 

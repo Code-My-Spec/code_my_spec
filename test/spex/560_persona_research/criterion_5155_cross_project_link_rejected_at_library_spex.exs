@@ -1,13 +1,13 @@
 defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
   @moduledoc """
   Story 560 — Persona Research
-  Criterion 5155 — Cross-account link attempt is rejected at the library
+  Criterion 5155 — Cross-project link attempt is rejected at the library
   boundary.
 
-  Criterion 5158 already covers the contract-level rejection at the MCP tool
-  surface (`LinkPersonaToStory` returning cross-account error). This spec
-  covers the library-boundary angle: the MCP rejection message makes it
-  explicit that the account does not match, not just that the link failed.
+  Criterion 5158 covers the contract-level rejection at the MCP tool surface
+  (`LinkPersonaToStory` returning a cross-project error). This spec covers
+  the library-boundary angle: the MCP rejection message makes it explicit
+  that the project does not match, not just that the link failed.
   """
 
   use CodeMySpecSpex.Case
@@ -21,22 +21,24 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "cross-account link attempt" do
-    scenario "MCP response explicitly names the account boundary in its rejection" do
+  spex "cross-project link attempt" do
+    scenario "MCP response explicitly names the project boundary in its rejection" do
       given_ :persona_exists
 
-      given_ "a story exists in a different account", context do
-        other_account = Fixtures.account_fixture(%{name: "Other account"})
-        other_scope = Fixtures.user_scope_fixture(context.scope.user, other_account)
+      given_ "a story exists on a different project (same account)", context do
+        foreign_project =
+          Fixtures.project_fixture(context.scope, %{
+            name: "Sibling project",
+            module_name: "SiblingProject"
+          })
 
-        foreign_project = Fixtures.project_fixture(other_scope, %{name: "Foreign Project"})
-        foreign_scope = Fixtures.user_scope_fixture(context.scope.user, other_account, foreign_project)
+        foreign_scope = %{context.scope | active_project: foreign_project, active_project_id: foreign_project.id}
 
         story =
           StoryHelpers.create_story(foreign_scope,
             title: "Foreign story",
-            description: "Lives in a different account.",
-            acceptance_criteria: ["Cross-account links are rejected"]
+            description: "Lives on a different project.",
+            acceptance_criteria: ["Cross-project links are rejected"]
           )
 
         {:ok, Map.put(context, :foreign_story_id, story.id)}
@@ -54,13 +56,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the rejection message explicitly names the account boundary", context do
+      then_ "the rejection message explicitly names the project boundary", context do
         body = response_text(context.response)
 
-        assert body =~ ~r/account/i,
-               "expected rejection to cite the account boundary, got #{inspect(context.response)}"
+        assert body =~ ~r/project/i,
+               "expected rejection to cite the project boundary, got #{inspect(context.response)}"
 
-        assert body =~ ~r/reject|does not belong|cross-account/i,
+        assert body =~ ~r/reject|does not belong|cross-project/i,
                "expected an explicit rejection"
 
         {:ok, context}

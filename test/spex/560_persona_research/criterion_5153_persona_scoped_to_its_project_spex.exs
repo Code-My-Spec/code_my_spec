@@ -1,13 +1,14 @@
 defmodule CodeMySpecSpex.Story560.Criterion5153Spex do
   @moduledoc """
   Story 560 — Persona Research
-  Criterion 5153 — A persona created while working on one project is
-  visible from another project in the same account. Personas are
-  account-scoped, not project-scoped.
+  Criterion 5153 — A persona created on one project is NOT visible from a
+  sibling project in the same account. Personas are project-scoped — the
+  "shared library" framing was dropped in favor of per-project ownership
+  that matches the per-project disk layout.
 
   Surface: `create_persona` + `list_personas` MCP tools. The scope's
-  active_project is swapped between two projects in the same account;
-  list_personas returns the persona in both.
+  active_project is swapped to a sibling project in the same account;
+  list_personas does NOT return the persona on the second project.
   """
 
   use CodeMySpecSpex.Case
@@ -21,8 +22,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5153Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Persona is account-scoped, not project-scoped" do
-    scenario "Persona created in Project X appears in Project Y's library (same account)" do
+  spex "Persona is project-scoped, not account-scoped" do
+    scenario "Persona created on Project X does not appear in Project Y's library (same account)" do
       given_ "the agent creates a persona while the active project is the setup_active_project default",
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
@@ -65,14 +66,17 @@ defmodule CodeMySpecSpex.Story560.Criterion5153Spex do
         {:ok, Map.put(context, :list_response, response)}
       end
 
-      then_ "the persona appears in the second project's library", context do
+      then_ "the persona does NOT appear in the second project's library", context do
         refute context.list_response.isError == true,
                "expected list_personas to succeed, got: #{inspect(context.list_response)}"
 
         body = TaskResponseHelpers.response_text(context.list_response)
 
-        assert body =~ "Founder",
-               "expected the persona 'Founder' to appear in the list_personas response from the second project (same account). Response: #{inspect(body)}"
+        assert body =~ ~r/persona|Persona/i,
+               "anchor: expected list_personas to render its listing format. Response: #{inspect(body)}"
+
+        refute body =~ "Founder",
+               "expected the persona 'Founder' to NOT appear in the second project's library, since personas are project-scoped. Response: #{inspect(body)}"
 
         {:ok, context}
       end
