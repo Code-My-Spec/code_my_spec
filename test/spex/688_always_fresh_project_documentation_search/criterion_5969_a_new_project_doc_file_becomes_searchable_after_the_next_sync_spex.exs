@@ -5,9 +5,19 @@ defmodule CodeMySpecSpex.Story688.Criterion5969Spex do
 
   Covers Rule "Project documentation embeddings reflect the file sync
   pipeline's view of disk." A new spec/rule/knowledge file written to
-  the working tree is picked up by the existing /files sync flow and
-  becomes findable via the SemanticSearch MCP tool — without a
-  separate manual embed step.
+  the working tree is picked up by the file watcher's per-file sync
+  flow and becomes findable via the SemanticSearch MCP tool — without
+  a separate manual embed step.
+
+  ## Surface
+
+  `CodeMySpecSpex.Fixtures.notify_file_changed/2` drives
+  `ProjectSync.Sync.sync_path/2` — the same call the production file
+  watcher invokes from an OS event. `sync_path/2` upserts the File
+  row, refreshes the fingerprint, AND runs the embedding hook in one
+  shot. Bulk `/files` UI syncs do NOT embed (engineer-driven embed is
+  a separate `[data-test='embed-button']`); the watcher event is the
+  always-fresh-search surface this story is about.
 
   ## Test infrastructure assumed by this spex
 
@@ -24,9 +34,6 @@ defmodule CodeMySpecSpex.Story688.Criterion5969Spex do
      for the exact chunk content is the closest match.
 
   Without those, this spec will fail with `:embeddings_unavailable`.
-  Implementer note: prefer recording the embed calls (text → vector
-  fixture) over a pure mock, but a content-hash-derived vector is the
-  pragmatic shortcut acknowledged in the story conversation.
   """
 
   use CodeMySpecSpex.Case
@@ -34,6 +41,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5969Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @spec_path ".code_my_spec/spec/widget.spec.md"
@@ -48,33 +56,15 @@ defmodule CodeMySpecSpex.Story688.Criterion5969Spex do
   setup :setup_active_project
 
   spex "Agent sees newly added project doc files in semantic search after sync" do
-    scenario "a new spec file becomes searchable after sync" do
-      given_ "the project doc embedding store is up to date with disk", context do
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
-        {:ok, context}
-      end
-
+    scenario "a new spec file becomes searchable after the watcher syncs it" do
       given_ "no `widget.spec.md` exists in the project tree", context do
         refute Environments.file_exists?(context.environment, @spec_path)
         {:ok, context}
       end
 
-      when_ "the agent writes the new spec file and the engineer re-syncs", context do
+      when_ "the agent writes the new spec file and the watcher syncs it", context do
         :ok = Environments.write_file(context.environment, @spec_path, @spec_content)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @spec_path)
         {:ok, context}
       end
 
@@ -90,7 +80,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5969Spex do
         body = TaskResponseHelpers.response_text(response)
 
         assert body =~ "widget.spec.md",
-               "Expected SemanticSearch to cite widget.spec.md after sync, got:\n#{body}"
+               "Expected SemanticSearch to cite widget.spec.md after the watcher synced it, got:\n#{body}"
 
         # Anchor: response renders as a real search header, not an error.
         assert body =~ "Search:"

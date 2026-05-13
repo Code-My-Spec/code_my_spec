@@ -124,6 +124,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Embeddings --
   defdelegate write_framework_knowledge_file(dir, filename, content), to: EmbeddingsFixtures
+  defdelegate simulate_framework_knowledge_boot_embed(scope), to: EmbeddingsFixtures
 
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures

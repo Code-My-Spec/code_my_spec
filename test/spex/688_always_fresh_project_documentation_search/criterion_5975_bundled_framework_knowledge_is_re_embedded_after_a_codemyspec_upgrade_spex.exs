@@ -22,9 +22,17 @@ defmodule CodeMySpecSpex.Story688.Criterion5975Spex do
 
   Production reads `Application.app_dir(:code_my_spec, "priv/knowledge")`.
   In test we point `:framework_knowledge_dir` at a temp directory we
-  control, write v1 content, run the autonomous sync, then overwrite
-  with v2 and run sync again. Same code path; the only thing the test
-  swaps is which directory plays the role of "the binary's priv/knowledge."
+  control, write v1 content, simulate the boot embed pass, then
+  overwrite with v2 and simulate the boot pass again. Same code path;
+  the only things the test swaps are which directory plays the role
+  of "the binary's priv/knowledge" and a Fixtures helper standing in
+  for the watcher's boot embed pass.
+
+  The /files page's sync button no longer drives framework knowledge
+  re-embedding — that's `FileWatcherServer.run_boot_embed_pass/1`, the
+  always-fresh surface that fires when the cms binary itself restarts.
+  `Fixtures.simulate_framework_knowledge_boot_embed/1` is the spex
+  bridge to that surface.
   """
 
   use CodeMySpecSpex.Case
@@ -64,30 +72,19 @@ defmodule CodeMySpecSpex.Story688.Criterion5975Spex do
           @v1_content
         )
 
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        :ok = Fixtures.simulate_framework_knowledge_boot_embed(context.scope)
         {:ok, context}
       end
 
-      when_ "the user upgrades and the bundled file ships v2 content, then re-syncs", context do
+      when_ "the user upgrades, the bundled file ships v2 content, and the watcher's boot pass runs",
+            context do
         Fixtures.write_framework_knowledge_file(
           context.framework_knowledge_dir,
           @bundled_filename,
           @v2_content
         )
 
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        :ok = Fixtures.simulate_framework_knowledge_boot_embed(context.scope)
         {:ok, context}
       end
 

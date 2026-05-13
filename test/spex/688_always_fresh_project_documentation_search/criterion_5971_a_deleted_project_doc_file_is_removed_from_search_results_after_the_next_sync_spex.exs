@@ -5,8 +5,14 @@ defmodule CodeMySpecSpex.Story688.Criterion5971Spex do
   results after the next sync.
 
   Same rule as 5969/5970 (the embedding store mirrors disk),
-  exercised on the delete path: when a file is removed from disk,
-  the file sync pipeline drops its embeddings on the next run.
+  exercised on the delete path: when a file is removed from disk and
+  the watcher fires its per-file sync event, the embedding pipeline
+  drops the stale chunks.
+
+  Driven via `Fixtures.notify_file_changed/2` — the production
+  surface is the file watcher firing per-file `sync_path` events.
+  After delete, the same event fires; `sync_path` notices the path
+  is missing and clears the embeddings.
 
   See `criterion_5969_*_spex.exs` for the test-infrastructure
   assumptions about the configurable embedding serving.
@@ -17,6 +23,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5971Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @rule_path ".code_my_spec/rules/legacy.md"
@@ -32,16 +39,10 @@ defmodule CodeMySpecSpex.Story688.Criterion5971Spex do
   setup :setup_active_project
 
   spex "Agent does not see deleted project doc files in semantic search results" do
-    scenario "a deleted rule file disappears from search after re-sync" do
+    scenario "a deleted rule file disappears from search after the watcher syncs the delete" do
       given_ "rules/legacy.md is embedded in the project doc store", context do
         :ok = Environments.write_file(context.environment, @rule_path, @rule_content)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @rule_path)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
@@ -59,16 +60,9 @@ defmodule CodeMySpecSpex.Story688.Criterion5971Spex do
         {:ok, context}
       end
 
-      when_ "the agent deletes legacy.md and the engineer re-syncs", context do
+      when_ "the agent deletes legacy.md and the watcher syncs the deletion", context do
         :ok = Environments.delete_file(context.environment, @rule_path)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @rule_path)
         {:ok, context}
       end
 
@@ -88,7 +82,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5971Spex do
         assert body =~ "Search:"
 
         refute body =~ "legacy.md",
-               "Expected legacy.md to be absent from search after delete + re-sync, got:\n#{body}"
+               "Expected legacy.md to be absent from search after delete + watcher sync, got:\n#{body}"
         {:ok, context}
       end
     end

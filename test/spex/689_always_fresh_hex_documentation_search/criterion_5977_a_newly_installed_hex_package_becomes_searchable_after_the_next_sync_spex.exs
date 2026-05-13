@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5977Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @hex_doc_path ".code_my_spec/hex_docs/phoenix/phoenix.md"
@@ -53,16 +54,10 @@ defmodule CodeMySpecSpex.Story689.Criterion5977Spex do
         {:ok, context}
       end
 
-      when_ "phoenix's projected markdown lands and the engineer re-syncs", context do
+      when_ "phoenix's projected markdown lands and the watcher syncs the new file",
+            context do
         :ok = Environments.write_file(context.environment, @hex_doc_path, @hex_doc_content)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @hex_doc_path)
         {:ok, context}
       end
 

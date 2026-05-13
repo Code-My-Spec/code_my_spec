@@ -5,15 +5,12 @@ defmodule CodeMySpecSpex.Story605.Criterion5510Spex do
   Criterion 5510 — Rule: "Has projects" is scoped to the active account
   and evaluated at page-load time.
 
-  Two spex blocks (one ExUnit test each, so each gets a fresh DB sandbox):
+  Switching from a populated account to an empty one re-shows the
+  project-name form on the next /app mount — proving the check is
+  scoped to the *active* account, not the user's total projects.
 
-  1. Switching from a populated account to an empty one re-shows the
-     project-name form on the next /app mount — proving the check is
-     scoped to the *active* account, not the user's total projects.
-
-  2. A project added in another tab does NOT flip the form mid-render
-     in the original session — proving the check is evaluated once at
-     mount, not as a live assign.
+  The "evaluated at page-load time (not mid-session reactive)" half of
+  the rule is covered by 5384.
   """
 
   use CodeMySpecSpex.Case
@@ -101,43 +98,4 @@ defmodule CodeMySpecSpex.Story605.Criterion5510Spex do
     end
   end
 
-  spex "A project added in another tab does not flip the form mid-session" do
-    scenario "A project added in another tab does not flip the form mid-session" do
-      given_ :registered_user_with_magic_link
-      given_ :empty_state_user_on_onboarding
-
-      and_ "Tab A initially shows the project-name form", context do
-        assert has_element?(context.view, "input[name='project[name]']"),
-               "precondition: expected the project-name form on Tab A at mount"
-
-        {:ok, context}
-      end
-
-      when_ "Tab B creates a project for the same user account", context do
-        tab_b_conn =
-          Phoenix.ConnTest.dispatch(
-            Phoenix.ConnTest.recycle(context.conn),
-            CodeMySpecWeb.Endpoint,
-            :get,
-            "/app"
-          )
-
-        {:ok, tab_b_view, _html} = Phoenix.LiveViewTest.live(tab_b_conn)
-
-        tab_b_view
-        |> form("#project_form", project: %{name: "Tab B Project"})
-        |> render_submit()
-
-        {:ok, Map.put(context, :tab_b_view, tab_b_view)}
-      end
-
-      then_ "Tab A still shows the project-name input without a refresh", context do
-        assert has_element?(context.view, "input[name='project[name]']"),
-               "expected Tab A to still show the project-name form after a project " <>
-                 "was created in Tab B — the check must not flip mid-session"
-
-        {:ok, context}
-      end
-    end
-  end
 end

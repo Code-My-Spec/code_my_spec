@@ -8,6 +8,10 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
   the modify path: when content changes, search reflects the new
   content and the old content no longer surfaces.
 
+  Driven via `Fixtures.notify_file_changed/2` — the production
+  surface is the file watcher firing per-file `sync_path` events,
+  which upsert the File row and run the embedding hook in one shot.
+
   See `criterion_5969_*_spex.exs` for the test-infrastructure
   assumptions about the configurable embedding serving.
   """
@@ -17,6 +21,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @spec_path ".code_my_spec/spec/widget.spec.md"
@@ -42,27 +47,13 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
     scenario "a modified spec file's new content shows up in search and the old content does not" do
       given_ "widget.spec.md is embedded with the v1 (arity-2) content", context do
         :ok = Environments.write_file(context.environment, @spec_path, @v1_content)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @spec_path)
         {:ok, context}
       end
 
-      when_ "the agent rewrites the file as v2 (arity-3) and the engineer re-syncs", context do
+      when_ "the agent rewrites the file as v2 (arity-3) and the watcher syncs it", context do
         :ok = Environments.write_file(context.environment, @spec_path, @v2_content)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @spec_path)
         {:ok, context}
       end
 

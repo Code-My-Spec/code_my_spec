@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5978Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @hex_doc_path ".code_my_spec/hex_docs/phoenix/phoenix.md"
@@ -45,27 +46,14 @@ defmodule CodeMySpecSpex.Story689.Criterion5978Spex do
     scenario "phoenix's projected markdown is replaced and search reflects the new content" do
       given_ "phoenix is embedded with v1 wording", context do
         :ok = Environments.write_file(context.environment, @hex_doc_path, @v1_content)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @hex_doc_path)
         {:ok, context}
       end
 
-      when_ "the package is upgraded (v2 markdown lands) and the engineer re-syncs", context do
+      when_ "the package is upgraded (v2 markdown lands) and the watcher syncs it",
+            context do
         :ok = Environments.write_file(context.environment, @hex_doc_path, @v2_content)
-
-        {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
-
+        {:ok, _result} = Fixtures.notify_file_changed(context.scope, @hex_doc_path)
         {:ok, context}
       end
 

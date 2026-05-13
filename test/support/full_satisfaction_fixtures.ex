@@ -52,33 +52,14 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
+  alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
-  alias CodeMySpecSpex.TaskResponseHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
-
-  @all_setup_steps [
-    Setup.ApplicationInWeb,
-    Setup.CodemyspecDeps,
-    Setup.Compilers,
-    Setup.SpexConfig,
-    Setup.TestBoundaries,
-    Setup.TestSupportNamespace,
-    Setup.SpexCase,
-    Setup.ProjectStructure,
-    Setup.AgentsMd,
-    Setup.Rules,
-    Setup.CredoChecks,
-    Setup.ClaudeMd
-  ]
 
   @doc """
   Apply all satisfaction layers to the test context. Returns a
@@ -98,89 +79,24 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   @spec apply(map()) :: map()
   def apply(context) do
     context
-    |> apply_project_setup()
-    |> apply_technical_strategy()
-    |> apply_code_generation()
-    |> apply_qa_integration_plan()
-    |> apply_architecture()
-    |> apply_spex_boundary_ready()
+    # Project-level kickoff (extracted into ProjectStateFixtures for reuse).
+    # `apply_persona` is folded into kickoff there; the result still merges
+    # `:persona_slug` and `:persona_id` into context for the story-level
+    # steps below.
+    |> ProjectStateFixtures.apply_project_setup_steps()
+    |> ProjectStateFixtures.apply_technical_strategy()
+    |> ProjectStateFixtures.apply_code_generation()
+    |> ProjectStateFixtures.apply_qa_integration_plan()
+    |> ProjectStateFixtures.apply_architecture()
+    |> ProjectStateFixtures.apply_spex_boundary_ready()
     |> apply_component_subgraph()
-    |> apply_qa_artifacts()
-    |> apply_persona()
+    |> ProjectStateFixtures.apply_qa_setup_preflight()
+    |> ProjectStateFixtures.apply_persona()
     |> apply_story()
     |> apply_three_amigos_artifacts()
     |> apply_bdd_spec_file()
     |> apply_qa_story_artifacts()
-    |> apply_journey_artifacts()
-  end
-
-  # 5b. Spex boundary readiness gate (id 16) — writes the framework
-  # Credo checks, fixtures bridge, and project BDD plan into the env
-  # via the same helper used by Story 677's spex.
-  defp apply_spex_boundary_ready(context) do
-    :ok =
-      CodeMySpecSpex.SpexBoundaryArtifactHelpers.write_baseline_artifacts(context.environment)
-
-    context
-  end
-
-  # 1. Project setup steps (project_setup requirement)
-  # Setup.ApplicationInWeb writes `lib/my_app_web/application.ex` —
-  # sync picks that up as a `MyAppWeb.Application` component. Seed
-  # `.code_my_spec/config.yml` with the canonical infrastructure_paths
-  # list so ComponentSync tags the application module (and other
-  # framework-generated boilerplate) as `type: "infrastructure"`,
-  # collapsing its requirement template to empty and exempting it
-  # from the `architecture_designed` orphan check.
-  #
-  # Written to the real fs (not the in-memory env) because
-  # `Scope.read_local_config/1` reads via `YamlElixir.read_from_file/1`,
-  # which only sees the actual cwd.
-  defp apply_project_setup(context) do
-    Fixtures.satisfy_setup_steps(context.environment, @all_setup_steps)
-
-    config_path =
-      Path.join([context.scope.cwd, ".code_my_spec", "config.yml"])
-
-    File.mkdir_p!(Path.dirname(config_path))
-
-    File.write!(
-      config_path,
-      CodeMySpec.McpServers.Bootstrap.Content.infrastructure_paths_yaml("MyApp")
-    )
-
-    context
-  end
-
-  # 2. Technical strategy ADRs index
-  defp apply_technical_strategy(context) do
-    Fixtures.with_decisions_index(context.environment)
-    context
-  end
-
-  # 3. Code generation script
-  defp apply_code_generation(context) do
-    Fixtures.with_full_script(context.environment)
-    context
-  end
-
-  # 4. QA integration plan
-  defp apply_qa_integration_plan(context) do
-    Fixtures.with_verified_integration_spec(context.environment, "stripe")
-    context
-  end
-
-  # 5. Architecture proposal
-  defp apply_architecture(context) do
-    proposal_content =
-      Fixtures.proposal_with_context(
-        "MyApp",
-        "Reservations",
-        "Reservations bounded context for the fully-satisfied fixture."
-      )
-
-    Fixtures.with_proposal(context.environment, proposal_content)
-    context
+    |> ProjectStateFixtures.apply_journey_artifacts()
   end
 
   # 6. Component spec/impl topology
@@ -230,48 +146,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     Map.put(context, :component, component)
   end
 
-  # 7. QA plan + preflight artifacts (qa_setup, qa_preflight)
-  defp apply_qa_artifacts(context) do
-    env = context.environment
-    :ok = Environments.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
-    :ok = Environments.write_file(env, ".code_my_spec/qa/preflight.md", qa_preflight_content())
-    context
-  end
-
-  # 8. Persona via MCP + summary/sources files
-  defp apply_persona(context) do
-    frame = %Frame{assigns: %{current_scope: context.scope}}
-    slug = "founder"
-
-    {:reply, response, _frame} =
-      CreatePersona.execute(
-        %{slug: slug, name: "Founder", headline: "Solo founder shipping a product"},
-        frame
-      )
-
-    persona_id =
-      case Regex.run(~r/\bid: `([^`]+)`/, TaskResponseHelpers.response_text(response)) do
-        [_, id] -> id
-        _ -> nil
-      end
-
-    :ok =
-      Environments.write_file(
-        context.environment,
-        ".code_my_spec/personas/#{slug}/summary.md",
-        persona_summary_content()
-      )
-
-    :ok =
-      Environments.write_file(
-        context.environment,
-        ".code_my_spec/personas/#{slug}/sources.md",
-        persona_sources_content()
-      )
-
-    Map.merge(context, %{persona_slug: slug, persona_id: persona_id})
-  end
-
   # 9. Story linked to component, with criterion
   defp apply_story(context) do
     story =
@@ -286,33 +160,16 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   end
 
   # 10. Three Amigos artifacts: persona linked + rule + scenarios.
-  # The Three Amigos readiness gate (BddRulesChecker) requires
-  # kind-tagged scenarios — `acceptance_criteria` strings passed to
-  # CreateStory produce criteria with kind=nil which DON'T count.
-  # We add explicit kind-tagged scenarios via AddScenario MCP.
   defp apply_three_amigos_artifacts(context) do
-    frame = %Frame{assigns: %{current_scope: context.scope}}
-
-    {:reply, _response, _frame} =
-      LinkPersonaToStory.execute(
-        %{persona_id: context.persona_id, story_id: context.story.id},
-        frame
-      )
-
-    rule_statement = "Reservations are owned by the user creating them"
-    {:reply, _response, _frame} = add_rule_via_mcp(context.scope, context.story.id, rule_statement)
-
-    {:reply, _response, _frame} =
-      add_scenario_via_mcp(context.scope, context.story.id, rule_statement, "happy_path",
-        title: "User creates a reservation they own",
-        body:
-          "Given the user is logged in\nWhen the user submits the reservation form\nThen a reservation is created with the user as owner"
-      )
-
-    {:reply, _response, _frame} =
-      add_scenario_via_mcp(context.scope, context.story.id, rule_statement, "failure_path",
-        title: "Anonymous visitor cannot create a reservation",
-        body:
+    :ok =
+      ProjectStateFixtures.apply_three_amigos_for_story(context.scope, context.story,
+        persona_id: context.persona_id,
+        rule_statement: "Reservations are owned by the user creating them",
+        happy_title: "User creates a reservation they own",
+        happy_body:
+          "Given the user is logged in\nWhen the user submits the reservation form\nThen a reservation is created with the user as owner",
+        failure_title: "Anonymous visitor cannot create a reservation",
+        failure_body:
           "Given the visitor is not logged in\nWhen the visitor submits the reservation form\nThen the request is rejected with a redirect to login"
       )
 
@@ -321,63 +178,13 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
 
   # 11. BDD spec file for the story → bdd_specs_exist + bdd_specs_passing
   defp apply_bdd_spec_file(context) do
-    story = context.story
-    [criterion | _] = story.criteria
-
-    bdd_path = Fixtures.spec_file_path(story, criterion)
-
-    :ok =
-      Environments.write_file(
-        context.environment,
-        bdd_path,
-        bdd_spec_content(story, criterion)
-      )
-
-    # Re-sync so the file is registered with role :bdd_spec
-    {:ok, sync_live, _html} =
-      live(context.conn, "/projects/#{context.project.name}/files")
-
-    sync_live |> element("button[phx-click='sync']") |> render_click()
+    :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, context.story)
     context
   end
 
   # 12. QA story brief + result → qa_complete
   defp apply_qa_story_artifacts(context) do
-    env = context.environment
-    story_id = context.story.id
-
-    :ok =
-      Environments.write_file(
-        env,
-        ".code_my_spec/qa/#{story_id}/brief.md",
-        qa_brief_content()
-      )
-
-    :ok =
-      Environments.write_file(
-        env,
-        ".code_my_spec/qa/#{story_id}/result.md",
-        qa_result_content()
-      )
-
-    context
-  end
-
-  # 13. QA journey plan + result + wallaby → all three project journey reqs
-  defp apply_journey_artifacts(context) do
-    env = context.environment
-
-    :ok =
-      Environments.write_file(env, ".code_my_spec/qa/journey_plan.md", qa_journey_plan_content())
-
-    :ok =
-      Environments.write_file(
-        env,
-        ".code_my_spec/qa/journey_result.md",
-        qa_journey_result_content()
-      )
-
-    :ok = Environments.write_file(env, "test/e2e/sample_journey_test.exs", wallaby_content())
+    :ok = ProjectStateFixtures.apply_qa_complete_for_story(context, context.story)
     context
   end
 
@@ -419,217 +226,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
       end
     end
     """
-  end
-
-  defp qa_plan_content do
-    """
-    # QA Plan
-
-    ## App Overview
-
-    Phoenix LiveView application running on port 4003 with session-based auth.
-
-    ## Tools Registry
-
-    ### web tool
-
-    Use `web` for LiveView pages with `--profile qa`.
-
-    ### curl
-
-    Use `curl` for controller/JSON endpoints — see `.code_my_spec/qa/scripts/auth.sh`.
-
-    ## Seed Strategy
-
-    Run `mix run priv/repo/qa_seeds.exs` to seed the QA fixture project.
-    """
-  end
-
-  defp qa_preflight_content do
-    """
-    # QA Preflight
-
-    App-level integration verification complete. No outstanding system issues.
-    """
-  end
-
-  defp qa_journey_plan_content do
-    """
-    # QA Journey Plan
-
-    ## Journeys
-
-    ### Empty-state user reaches a working app
-
-    - **Role:** new user
-    - **Steps:** register → confirm → create account → create project
-    - **Expected outcome:** user lands on /app/projects with active project
-
-    ## Prerequisites
-
-    - Server running on port 4003
-    - Seed scripts run
-    """
-  end
-
-  defp qa_journey_result_content do
-    """
-    # QA Journey Result
-
-    ## Status
-
-    pass
-
-    ## Journey Results
-
-    ### Empty-state user reaches a working app
-
-    All steps executed successfully — user reached /app/projects with active project.
-    """
-  end
-
-  defp wallaby_content do
-    """
-    defmodule MyApp.E2E.SampleJourneyTest do
-      use ExUnit.Case
-      @moduletag :pending
-    end
-    """
-  end
-
-  defp persona_summary_content do
-    """
-    # Founder
-
-    ## Role
-
-    Solo technical founder shipping a SaaS product without a team.
-
-    ## Goals
-
-    - Ship features quickly without sacrificing quality
-    - Avoid the "fiddle tax" of repetitive scaffolding work
-    - Use AI as labor to amplify output
-
-    ## Pain Points
-
-    - Manual project setup eats hours per project
-    - Switching between strategy and implementation breaks flow
-    - Existing harnesses don't match how solo founders actually work
-
-    ## Context
-
-    Operates as a one-person product team — design, code, marketing, support all on one plate.
-
-    ## Decision Drivers
-
-    - Time-to-shipping
-    - Predictability of the build loop
-    - Trust in AI-generated artifacts
-
-    ## Evidence
-
-    - Internal interviews with five solo founders running similar businesses
-    - Personal experience building three SaaS products solo
-    """
-  end
-
-  defp persona_sources_content do
-    """
-    - Internal interview log: 2026-04-15 with founder of Acme SaaS
-    - Personal product log: 2025-12 through 2026-04
-    - Public Twitter threads from solo founders documenting their build loops
-    """
-  end
-
-  defp bdd_spec_content(story, criterion) do
-    """
-    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
-      @moduledoc \"\"\"
-      Story #{story.id} — #{story.title}
-      Criterion #{criterion.id} — #{criterion.description}
-      \"\"\"
-
-      use CodeMySpecSpex.Case
-
-      spex "#{story.title}" do
-        scenario "the criterion holds" do
-          then_ "the placeholder assertion passes" do
-            assert true
-            :ok
-          end
-        end
-      end
-    end
-    """
-  end
-
-  defp qa_brief_content do
-    """
-    # QA Brief
-
-    ## Tool
-
-    web
-
-    ## Auth
-
-    Run `.code_my_spec/qa/scripts/auth.sh` and copy the session cookie.
-
-    ## Seeds
-
-    `mix run priv/repo/qa_seeds.exs`
-
-    ## What to test
-
-    - Visit /reservations and verify the index page renders
-    - Create a reservation via the form and verify success flash
-    - Delete a reservation and verify it's removed from the list
-
-    ## Result Path
-
-    .code_my_spec/qa/<story_id>/result.md
-    """
-  end
-
-  defp qa_result_content do
-    """
-    # QA Result
-
-    ## Status
-
-    pass
-
-    ## Scenarios
-
-    ### Index page renders
-
-    Visited /reservations — page rendered with empty state placeholder.
-    """
-  end
-
-  defp add_rule_via_mcp(scope, story_id, statement) do
-    frame = %Frame{assigns: %{current_scope: scope}}
-
-    CodeMySpec.McpServers.BddRules.Tools.AddRule.execute(
-      %{story_id: story_id, statement: statement},
-      frame
-    )
-  end
-
-  defp add_scenario_via_mcp(scope, story_id, rule_statement, kind, opts) do
-    frame = %Frame{assigns: %{current_scope: scope}}
-
-    CodeMySpec.McpServers.BddRules.Tools.AddScenario.execute(
-      %{
-        story_id: story_id,
-        rule_statement: rule_statement,
-        kind: kind,
-        title: Keyword.fetch!(opts, :title),
-        body: Keyword.fetch!(opts, :body)
-      },
-      frame
-    )
   end
 
   # AddCriterion is referenced for future use if extra criteria need to

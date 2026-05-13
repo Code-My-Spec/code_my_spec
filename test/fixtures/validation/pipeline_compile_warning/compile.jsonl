@@ -1,0 +1,1 @@
+{"severity":"warning","file":"lib/example_context.ex","line":3,"message":"variable \"unused\" is unused (if the variable is not meant to be used, prefix it with an underscore)"}
