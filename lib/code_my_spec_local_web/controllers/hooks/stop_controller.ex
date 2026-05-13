@@ -9,6 +9,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   require Logger
 
+  alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
@@ -95,17 +96,19 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
       true ->
         case RequirementGraph.next_actionable(scope) do
-          [_ | _] ->
+          [_ | _] = nodes ->
             Logger.info(
               "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
             )
 
+            directive = RequirementsMapper.format_next_requirements(nodes)
+
             %{
               "decision" => "block",
               "reason" => """
-              Task completed successfully. There is more work to do on this project.
+              Task completed successfully. Continuing the autonomous loop with the next assignment:
 
-              Call `get_next_requirement` to find your next assignment, then `start_task` to begin.
+              #{directive}
               """
             }
 

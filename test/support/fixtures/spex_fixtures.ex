@@ -126,6 +126,39 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate write_framework_knowledge_file(dir, filename, content), to: EmbeddingsFixtures
   defdelegate simulate_framework_knowledge_boot_embed(scope), to: EmbeddingsFixtures
 
+  # -- Continuous mode (Story 538) --
+  @doc """
+  Drive the real `POST /api/skills/start` endpoint with skill=implement
+  so the agent's autonomous loop is enabled on the named session.
+
+  Production surface: `cms implement` (CLI) → POST /api/skills/start
+  → SkillController.start_skill → StartAgentTask.run("start_implementation")
+  → StartImplementation.init_session sets `session.continuous = true`.
+
+  Returns `:ok`. The session's `external_id` is whatever the caller passed
+  in; calling this AFTER a regular `start_task` for that session flips the
+  continuous flag on the existing row.
+  """
+  @spec start_continuous_mode(map(), String.t()) :: :ok
+  def start_continuous_mode(scope, external_id) when is_binary(external_id) do
+    response =
+      Phoenix.ConnTest.build_conn()
+      |> Plug.Conn.put_req_header("x-working-dir", scope.cwd)
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> Phoenix.ConnTest.dispatch(
+        CodeMySpecLocalWeb.Endpoint,
+        :post,
+        "/api/skills/start",
+        %{"skill" => "implement", "external_id" => external_id}
+      )
+      |> Phoenix.ConnTest.json_response(200)
+
+    case response do
+      %{"prompt" => _} -> :ok
+      _ -> raise "start_continuous_mode failed: #{inspect(response)}"
+    end
+  end
+
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures
   defdelegate user_scope_fixture(), to: UsersFixtures

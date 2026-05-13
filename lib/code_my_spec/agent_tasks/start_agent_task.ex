@@ -178,6 +178,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # themselves. This dispatcher keeps the per-task logic in the task module
   # so MCP tools and CLI entry points share one source of truth.
   defp init_session_state(scope, session, agent_task_module) do
+    # Ensure the module is loaded before `function_exported?` — otherwise
+    # the very first call after boot returns false because the BEAM
+    # hasn't pulled in the task module yet, and the session-state hook
+    # silently skips (e.g., StartImplementation never sets continuous).
+    Code.ensure_loaded?(agent_task_module)
+
     if function_exported?(agent_task_module, :init_session, 2) do
       agent_task_module.init_session(scope, session)
     else
