@@ -46,7 +46,7 @@ marker for the plug — every real file read/write in the spec goes
 through the memfs.
 
 ```elixir
-# From code_my_spec_spex_case.ex
+# From <app>_spex_case.ex
 stub_dir = Path.join(System.tmp_dir!(), "spex-#{...}")
 File.mkdir_p!(stub_dir)
 File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
@@ -115,15 +115,15 @@ output (e.g. "the blocking check classifies this problem as
 advisory"), seeding a `Problem` via `Fixtures.problem_fixture/2` is a
 pragmatic shortcut — as long as another spec covers the end-to-end
 path that would produce the same problem. See
-[boundaries.md](boundaries.md) for the anti-pattern discussion
-(5088 vs 5087).
+[boundaries.md](boundaries.md) for the anti-pattern discussion (the
+"shortcut paired with a separate end-to-end spec" example).
 
 ## Environment gotchas
 
 - **Paths in the memfs are relative to `env.cwd`.** Don't prefix
   `/memfs/...` when calling `write_file` — pass the same path shape
   sync is going to look for (`"lib/foo.ex"`,
-  `".code_my_spec/spec/foo.spec.md"`, etc.).
+  `"<project>/spec/foo.spec.md"`, etc.).
 - **FileSync wipes problems for missing files.** If you seed a
   `Problem` against `lib/example_context.ex`, make sure that file
   exists in the memfs (the `:synced_context_component` given writes

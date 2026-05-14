@@ -168,9 +168,9 @@ what the sync pipeline will pick up when the LiveView sync button runs.
 ## Running specs
 
 ```
-mix spex                # whole suite
-mix spex test/spex/553  # one story
-mix spex test/spex/553/5088_spex.exs
+mix spex                                          # whole suite
+mix spex test/spex/<story_id>                     # one story
+mix spex test/spex/<story_id>/<crit_id>_spex.exs  # one criterion
 ```
 
 `mix spex` is aliased in `mix.exs` to `spex --quiet` under `MIX_ENV=test`.

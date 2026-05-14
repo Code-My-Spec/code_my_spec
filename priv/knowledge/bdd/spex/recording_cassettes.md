@@ -55,8 +55,9 @@ response =
 ```
 
 The `test_output_files` key is an optional POST body field that
-`StopController` extracts (see
-`lib/code_my_spec_local_web/controllers/hooks/stop_controller.ex:extract_test_output_files/1`)
+`StopController` extracts (see the equivalent of
+`lib/<app>_local_web/controllers/hooks/stop_controller.ex:extract_test_output_files/1`
+in the project)
 and threads into `Validation.validate_stop/3` as
 `compile_output_file` / `exunit_output_file` / `spex_output_file`
 options. `Validation` passes them through to
@@ -95,8 +96,10 @@ task.
 
 ## Recipe: recording an exunit failure cassette
 
-Scenario name: `pipeline_exunit_failure`. Shared by specs 5088 and
-5089.
+Scenario name: `pipeline_exunit_failure`. Reused across any specs that
+need a "test failure was persisted" precondition (the matching
+"untouched-scope demotion" scenario typically reuses the same
+cassette — see the untouched-component recipe below).
 
 1. **Prep the test repo.** Add a failing test file. From the main
    project directory:
@@ -120,9 +123,9 @@ Scenario name: `pipeline_exunit_failure`. Shared by specs 5088 and
    MIX_ENV=test EXUNIT_JSON_OUTPUT_FILE=/tmp/exunit_failure.json \
      mix test --formatter ClientUtils.TestFormatter --stale
 
-   mkdir -p ../code_my_spec/test/fixtures/validation/pipeline_exunit_failure
+   mkdir -p ../<app>/test/fixtures/validation/pipeline_exunit_failure
    cp /tmp/exunit_failure.json \
-      ../code_my_spec/test/fixtures/validation/pipeline_exunit_failure/exunit.json
+      ../<app>/test/fixtures/validation/pipeline_exunit_failure/exunit.json
    ```
 
 3. **Capture a clean compile JSONL.** Delete the failing test first so
@@ -133,7 +136,7 @@ Scenario name: `pipeline_exunit_failure`. Shared by specs 5088 and
    rm test/example_context_test.exs
    DIAGNOSTICS_OUTPUT=/tmp/compile_clean.jsonl mix compile --return-errors
    cp /tmp/compile_clean.jsonl \
-      ../code_my_spec/test/fixtures/validation/pipeline_exunit_failure/compile.jsonl
+      ../<app>/test/fixtures/validation/pipeline_exunit_failure/compile.jsonl
    ```
 
    An empty `compile.jsonl` is the "no compile diagnostics" signal and
@@ -144,10 +147,10 @@ Scenario name: `pipeline_exunit_failure`. Shared by specs 5088 and
    any stale cassette, run the spec, then flip back:
 
    ```bash
-   cd ../code_my_spec
+   cd ../<app>
    rm -f test/fixtures/cassettes/pipeline_exunit_failure.json
    # (edit spec to use record: :once)
-   mix spex test/spex/553/5089_spex.exs
+   mix spex test/spex/<story_id>/<crit_id>_spex.exs
    # (edit spec back to record: :none)
    ```
 
@@ -166,7 +169,7 @@ Scenario name: `pipeline_exunit_failure`. Shared by specs 5088 and
 
 7. **Commit** the cassette and JSON fixtures alongside the spec.
 
-## Recipe: recording a spex failure cassette (5090)
+## Recipe: recording a spex failure cassette
 
 Scenario name: `pipeline_spex_failure`. The test repo does not currently
 have `:sexy_spex` as a dependency, so we cannot run real `mix spex` in
@@ -223,11 +226,11 @@ EOF
 mix spex test/spex/failing_example_spex.exs --jsonl=/tmp/spex_failure.jsonl
 
 cp /tmp/spex_failure.jsonl \
-   ../code_my_spec/test/fixtures/validation/pipeline_spex_failure/spex.jsonl
+   ../<app>/test/fixtures/validation/pipeline_spex_failure/spex.jsonl
 rm test/spex/failing_example_spex.exs
 ```
 
-## Recipe: untouched-component scenario (5088)
+## Recipe: untouched-component scenario
 
 Scenario: an exunit failure exists on a component *not* touched this
 turn, and `block_changed` renders it advisory.
@@ -244,10 +247,10 @@ The honest flow fires the stop hook **twice**:
   it to advisory. No new System.cmd calls — nothing to record for
   turn 2.
 
-5088 reuses 5089's `pipeline_exunit_failure` cassette and JSON
-fixtures. The spec's `given_` does both POSTs in sequence; only the
-first is wrapped in `use_cmd_cassette`, and the `then_` asserts on
-turn 2's response.
+The untouched-scope spec reuses the standard failure recipe's
+`pipeline_exunit_failure` cassette and JSON fixtures. The spec's
+`given_` does both POSTs in sequence; only the first is wrapped in
+`use_cmd_cassette`, and the `then_` asserts on turn 2's response.
 
 ## Matching behavior notes
 
@@ -266,7 +269,7 @@ Do not add `:env` or `:cd` to `match_on` for these cassettes.
 
 ### `mix spex <path>` runs the whole directory, not just that file
 
-`mix spex test/spex/553/5089_spex.exs` still runs every spec file under
+`mix spex test/spex/<story_id>/<crit_id>_spex.exs` still runs every spec file under
 `test/spex/`. Do not assume passing a path narrows execution. When
 recording a single cassette, either delete the other specs' cassettes
 temporarily, or accept that unrelated specs will also try to use the
@@ -274,7 +277,8 @@ recording session — which matters because of the next gotcha.
 
 ### Concurrent specs racing a shared cassette
 
-When two specs share a cassette name (e.g. 5088 and 5089 both use
+When two specs share a cassette name (e.g. a happy-path failure spec
+and its untouched-scope demotion counterpart both use
 `pipeline_exunit_failure`), `record: :once` writes the cassette only
 after the recording block finishes. If both specs run concurrently,
 the second may try to replay before the first has written — and fail

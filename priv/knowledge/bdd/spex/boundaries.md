@@ -58,8 +58,9 @@ fixture.
 | Top-level entities | `project_fixture/2` (or app's equivalent) |
 
 Project specifics — full inventory, types, and any project-specific
-fixtures — belong in the project's own BDD spec plan
-(`.code_my_spec/knowledge/bdd/spex/`), not here.
+fixtures — belong in the project's own BDD spec plan (under the
+project's local knowledge directory, e.g. `<project>/knowledge/bdd/spex/`),
+not here.
 
 ### When to add to Fixtures
 
