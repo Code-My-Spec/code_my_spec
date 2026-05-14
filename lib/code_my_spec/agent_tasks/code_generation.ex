@@ -1,32 +1,15 @@
 defmodule CodeMySpec.AgentTasks.CodeGeneration do
   @moduledoc """
-  Agent task for running code generators after technical decisions are made.
+  Run CodeMySpec generators (phx.gen.auth + cms_gen.*) to scaffold a new project.
 
-  Reads the project's technical decisions (ADRs) and existing dependencies to
-  determine which generators need to run, then guides the agent through executing
-  them in the correct order:
-
-  1. `mix phx.gen.auth` — authentication (if not already done)
-  2. `mix cms_gen.accounts` — multi-tenant accounts, members, invitations
-  3. `mix cms_gen.integrations` — OAuth integration scaffolding
-  4. `mix cms_gen.integration_provider` — per-provider OAuth modules
-  5. `mix cms_gen.feedback_widget` — CodeMySpec feedback widget
-
-  Artifact produced:
-  - `.code_my_spec/tasks/code_generation.sh` — reproducible script of all generator commands run
+  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/code_generation.spec.md`.
   """
 
   alias CodeMySpec.AgentTasks.Setup.Helpers
   alias CodeMySpec.{Environments, Paths}
 
-  def orchestrate(node) do
-    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
-  end
-
   @artifact_path Path.join(Paths.tasks_dir(), "code_generation.sh")
 
-  # Ordered list of generators with their detection heuristics.
-  # Each entry: {id, command, description, prerequisite_id, detection_glob}
   @generators [
     {"phx_gen_auth", "mix phx.gen.auth Users User users --live",
      "Authentication with registration, login, session management",
@@ -46,10 +29,23 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   def generators, do: @generators
 
   @doc """
-  Generate the orchestration prompt for the code generation session.
+  One-line description surfaced by the requirement graph when this task is
+  the next thing to do.
+  """
+  def orchestrate(_node) do
+    "Run CodeMySpec generators (phx.gen.auth, cms_gen.*) to scaffold auth, " <>
+      "multi-tenancy, OAuth integrations, and the feedback widget for this " <>
+      "project. Produces an idempotent bash script at " <>
+      "`.code_my_spec/tasks/code_generation.sh`. Use when ADRs reference " <>
+      "generated code and generators haven't been run yet."
+  end
 
-  Reads technical decisions, checks which generators have already been run,
-  and builds a prompt for the remaining work.
+  @doc """
+  Generate the prompt for the code generation session.
+
+  Inspects the current project state — ADRs, which generators have already
+  run, which integration providers are declared — and renders a prompt that
+  points the agent at the knowledge MCP playbook and lists what's left to do.
   """
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, _task) do
@@ -60,59 +56,40 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     existing_artifact = read_existing_artifact(env)
     providers = detect_needed_providers(env)
 
-    prompt =
-      build_prompt(
-        app_name,
-        decisions,
-        already_run,
-        existing_artifact,
-        providers
-      )
-
+    prompt = build_prompt(scope, decisions, already_run, existing_artifact, providers)
     {:ok, prompt}
   end
 
   @doc """
   Validate code generation output.
 
-  Checks:
-  1. The generation script artifact exists
-  2. At minimum, phx.gen.auth detection file exists
-  3. The script is non-empty and contains at least one mix command
-
-  Returns:
-  - `{:ok, :valid}` if all checks pass
-  - `{:ok, :invalid, feedback}` if anything is incomplete
+  Checks for the existence and non-emptiness of the reproducible bash script
+  at `.code_my_spec/tasks/code_generation.sh`. Compile and test failures
+  don't gate the task.
   """
   @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, _task) do
-    env = scope.environment
-
-    case check_artifact(env) do
+    case check_artifact(scope.environment) do
       :ok -> {:ok, :valid}
       {:error, feedback} -> {:ok, :invalid, feedback}
     end
   end
 
-  # ============================================================================
-  # Data Loading
-  # ============================================================================
+  # State inspection — the dynamic-context win that justifies an agent_task
+  # over a static skill.
 
   defp list_decisions(env) do
     case Environments.glob(env, Path.join(Paths.decisions_dir(), "*.md")) do
-      files when is_list(files) ->
-        Enum.map(files, &Path.basename(&1, ".md"))
-
-      _ ->
-        []
+      files when is_list(files) -> Enum.map(files, &Path.basename(&1, ".md"))
+      _ -> []
     end
   end
 
   defp detect_already_run(env, app_name) do
-    Enum.filter(@generators, fn {_id, _cmd, _desc, _prereq, glob} ->
-      resolved = resolve_glob(glob, app_name)
-      Environments.file_exists?(env, resolved) == true
+    @generators
+    |> Enum.filter(fn {_id, _cmd, _desc, _prereq, glob} ->
+      Environments.file_exists?(env, resolve_glob(glob, app_name)) == true
     end)
     |> Enum.map(fn {id, _, _, _, _} -> id end)
   end
@@ -120,9 +97,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   defp detect_needed_providers(env) do
     case Environments.glob(env, Path.join(Paths.integrations_dir(), "*.md")) do
       files when is_list(files) ->
-        files
-        |> Enum.map(&Path.basename(&1, ".md"))
-        |> Enum.reject(&(&1 == "index"))
+        files |> Enum.map(&Path.basename(&1, ".md")) |> Enum.reject(&(&1 == "index"))
 
       _ ->
         []
@@ -153,116 +128,129 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
         {:error, "Generation script at `#{@artifact_path}` is empty."}
 
       _ ->
-        {:error, "Generation script not found at `#{@artifact_path}`. Record the commands you ran."}
+        {:error,
+         "Generation script not found at `#{@artifact_path}`. Record the commands you ran."}
     end
   end
 
-  # ============================================================================
-  # Prompt Building
-  # ============================================================================
+  # Prompt assembly. Static procedural detail lives in
+  # `priv/knowledge/cms_generators/` — read via the knowledge MCP rather than
+  # inlined here.
 
-  defp build_prompt(app_name, decisions, already_run, existing_artifact, providers) do
-    sections =
-      [
-        build_header(),
-        build_decisions_section(decisions),
-        build_status_section(app_name, already_run),
-        build_providers_section(providers),
-        build_existing_artifact_section(existing_artifact),
-        build_instructions(app_name, already_run)
-      ]
-      |> Enum.reject(&is_nil/1)
-
-    Enum.join(sections, "\n\n")
+  defp build_prompt(scope, decisions, already_run, existing_artifact, providers) do
+    [
+      header_section(),
+      decisions_section(decisions),
+      status_section(already_run),
+      providers_section(providers),
+      existing_artifact_section(existing_artifact),
+      playbook_section(),
+      pending_section(already_run),
+      feedback_widget_secrets_section(scope, already_run),
+      done_signal_section()
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
   end
 
-  defp build_header do
+  defp header_section do
     """
     # Code Generation Session
 
-    You are running code generators for this project. These generators scaffold
-    authentication, multi-tenancy, OAuth integrations, and the feedback widget.
-
-    Generators must be run in order because each depends on the previous one's output.
-    After running generators, you must also run migrations and resolve any compilation issues.\
+    You are running CodeMySpec generators to scaffold auth, multi-tenancy,
+    OAuth integrations, and the feedback widget for this project. Order matters
+    — each generator depends on the previous one's output.\
     """
   end
 
-  defp build_decisions_section([]) do
+  defp decisions_section([]) do
     """
     ## Technical Decisions
 
-    No decision records found. Check that technical strategy has been completed.\
+    No ADRs found in `#{Paths.decisions_dir()}/`. Confirm `technical_strategy`
+    has been completed before continuing.\
     """
   end
 
-  defp build_decisions_section(decisions) do
-    decision_list = Enum.map_join(decisions, "\n", &"- `#{&1}`")
+  defp decisions_section(decisions) do
+    list = Enum.map_join(decisions, "\n", &"- `#{&1}`")
 
     """
     ## Technical Decisions
 
-    The following ADRs exist in `#{Paths.decisions_dir()}/`:
+    ADRs in `#{Paths.decisions_dir()}/`:
 
-    #{decision_list}
+    #{list}
 
-    Review these to understand which generators are needed.\
+    Review these to confirm which generators apply.\
     """
   end
 
-  defp build_status_section(_app_name, []) do
+  defp status_section([]) do
     """
     ## Current Status
 
-    No generators have been run yet. Start from the beginning.\
+    No generators have run yet.\
     """
   end
 
-  defp build_status_section(_app_name, already_run) do
-    status_list =
-      Enum.map_join(@generators, "\n", fn {id, cmd, _desc, _prereq, _glob} ->
-        if id in already_run do
-          "- [x] `#{cmd}` — already run"
-        else
-          "- [ ] `#{cmd}`"
-        end
+  defp status_section(already_run) do
+    list =
+      Enum.map_join(@generators, "\n", fn {id, cmd, _, _, _} ->
+        if id in already_run, do: "- [x] `#{cmd}` — already run", else: "- [ ] `#{cmd}`"
       end)
 
     """
     ## Current Status
 
-    #{status_list}\
+    #{list}\
     """
   end
 
-  defp build_providers_section([]), do: nil
+  defp providers_section([]), do: nil
 
-  defp build_providers_section(providers) do
-    provider_list = Enum.map_join(providers, "\n", &"- `#{&1}`")
+  defp providers_section(providers) do
+    list = Enum.map_join(providers, "\n", &"- `#{&1}`")
 
     """
     ## Integration Providers
 
-    The following integration specs exist in `#{Paths.integrations_dir()}/`.
-    Generate a provider module for each using `mix cms_gen.integration_provider`:
+    Specs exist in `#{Paths.integrations_dir()}/`:
 
-    #{provider_list}\
+    #{list}
+
+    Run `mix cms_gen.integration_provider <DisplayName> <key>` for each.
+    See the playbook for the command format.\
     """
   end
 
-  defp build_existing_artifact_section(nil), do: nil
+  defp existing_artifact_section(nil), do: nil
 
-  defp build_existing_artifact_section(_content) do
+  defp existing_artifact_section(_content) do
     """
     ## Existing Generation Script
 
-    A generation script already exists at `#{@artifact_path}`. Confirm with the
-    user before overwriting it. The new script will replace the file with one
+    A script already exists at `#{@artifact_path}`. The user may have
+    hand-edited it — confirm before overwriting. The new script should be
     rewritten from the currently-detected project state.\
     """
   end
 
-  defp build_instructions(app_name, already_run) do
+  defp playbook_section do
+    """
+    ## Read the playbook first
+
+    Query the knowledge MCP `semantic_search` with:
+
+        cms generators workflow and script format
+
+    Returns: generator order, post-generation steps (deps/migrate/compile/test),
+    integration provider command pattern, reproducible script format, and the
+    feedback widget multi-step setup procedure.\
+    """
+  end
+
+  defp pending_section(already_run) do
     pending =
       @generators
       |> Enum.reject(fn {id, _, _, _, _} -> id in already_run end)
@@ -271,89 +259,63 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
         "- `#{cmd}` — #{desc}#{prereq_note}"
       end)
 
-    pending_section =
+    body =
       case pending do
         [] -> "All standard generators have already been run."
         list -> Enum.join(list, "\n")
       end
 
     """
-    ## Instructions
+    ## Pending Generators
 
-    ### Step 1: Run Pending Generators
+    #{body}\
+    """
+  end
 
-    Run each generator in order. After each one, run `mix deps.get` if new deps
-    were added, then `mix ecto.migrate` to apply migrations.
+  # Surface this whenever the task runs — the feedback widget is part of the
+  # standard scaffold, so the engineer will need credentials regardless of
+  # whether the widget generator has already run or is still pending.
+  defp feedback_widget_secrets_section(scope, _already_run) do
+    project_url = project_url(scope)
 
-    #{pending_section}
+    """
+    ## Feedback widget — credentials (relay to engineer)
 
-    ### Step 2: Generate Integration Providers
+    The feedback widget needs CodeMySpec client credentials at runtime.
+    The agent can apply the generator's post-gen config edits (config.exs,
+    runtime.exs, root.html.heex, npm install) automatically — see the
+    playbook. But the credentials themselves are generated on the CodeMySpec
+    server.
 
-    If integration specs exist in `#{Paths.integrations_dir()}/`, run
-    `mix cms_gen.integration_provider <DisplayName> <key>` for each provider.
+    Tell the engineer:
 
-    For example:
-    ```
-    mix cms_gen.integration_provider GitHub github
-    mix cms_gen.integration_provider Google google
-    mix cms_gen.integration_provider CodeMySpec codemyspec
-    ```
+    1. Open #{project_url}
+    2. Click **Generate Credentials** on the project page.
+    3. Set the resulting client ID and client secret as runtime env vars
+       before deploying. The exact env var names are in
+       `config/runtime.exs` after you wire it up (typically
+       `CODEMYSPEC_CLIENT_ID` and `CODEMYSPEC_CLIENT_SECRET`, but read
+       runtime.exs to be sure).
 
-    ### Step 3: Resolve Compilation Issues
+    Without these in env, the widget compiles cleanly but authentication
+    fails at runtime. Surface this in your summary message — don't bury
+    it in script comments.\
+    """
+  end
 
-    After running all generators:
-    1. Run `mix compile` and fix any issues
-    2. Run `mix ecto.migrate` to apply all pending migrations
-    3. Run `mix test` to verify nothing is broken
+  defp project_url(scope) do
+    base = Application.get_env(:code_my_spec, :base_url, "https://codemyspec.com")
+    uuid = scope.active_project_id || "<your-project-uuid>"
+    "#{base}/app/projects/#{uuid}"
+  end
 
-    ### Step 4: Update Infrastructure Paths
+  defp done_signal_section do
+    """
+    ## Done signal
 
-    The generators create framework/infrastructure modules that should be added
-    to `.code_my_spec/config.yml` `infrastructure_paths`. Add paths for generated
-    modules like `lib/#{app_name}/vault.ex`, `lib/#{app_name}/encrypted/*`,
-    `lib/#{app_name}/authorization.ex`, etc. ComponentSync will tag matching
-    components with `type: "infrastructure"` so they get an empty requirement
-    graph (no work driven) but still appear as first-class components.
-
-    ### Step 5: Record the Generation Script
-
-    Write a shell script to `#{@artifact_path}` that rewrites the file from the
-    currently-detected project state — the script should match what's actually
-    in the project today, not what was previously recorded. Include comments
-    noting what each generator produces. The script should be re-runnable on a
-    fresh Phoenix project.
-
-    Format:
-    ```bash
-    #!/bin/bash
-    # Code generation script — produced by CodeMySpec code_generation task
-    # Re-run on a fresh Phoenix project to reproduce this scaffold.
-
-    set -e
-
-    # Authentication (LiveView)
-    mix phx.gen.auth Users User users --live
-
-    # Multi-tenant accounts
-    mix cms_gen.accounts
-
-    # ... etc
-    ```
-
-    ### No Generators Needed?
-
-    If no generators are needed for this project (no ADRs reference generated code),
-    write an empty script with just the shebang and a comment:
-
-    ```bash
-    #!/bin/bash
-    # No generators needed for this project.
-    ```
-
-    ### Step 6: Stop
-
-    When all generators have been run, compilation is clean, and the script is
-    written, stop the session so validation can check your work.\
+    Write the reproducible bash script to `#{@artifact_path}` capturing every
+    generator command you ran. The evaluator checks for the file's existence
+    and non-emptiness. See the playbook for the script format.\
     """
   end
 end
