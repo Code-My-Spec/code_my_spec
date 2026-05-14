@@ -1,28 +1,18 @@
 defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   @moduledoc """
-  Orchestrator task for identifying and resolving technology decisions.
+  Identify project technology decisions and document each as an ADR.
 
-  Analyzes the project's architecture, stories, and dependencies to identify
-  topics needing technology decisions, then auto-writes pre-made ADRs for
-  standard stack choices and guides the agent through cursory research and
-  ADR creation for remaining topics.
-
-  Focused purely on decisions.
-
-  Two phases:
-  1. **Pre-made decisions** — auto-writes ADRs for standard stack choices before prompting
-  2. **Decision-making** — identifies new topics, does cursory research, writes ADRs,
-     updates the decisions index
-
-  Artifacts produced:
-  - `.code_my_spec/architecture/decisions.md` — index of all decisions
-  - `.code_my_spec/architecture/decisions/{topic}.md` — individual decision records
+  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/technical_strategy.spec.md`.
   """
 
   require Logger
 
-  def orchestrate(node) do
-    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Identify project-specific technology decisions and write ADRs for each. " <>
+      "Pre-made ADRs for the standard CodeMySpec stack (Elixir, Phoenix, " <>
+      "LiveView, Tailwind, etc.) are auto-written before the agent sees the " <>
+      "prompt — agent focuses on project-specific topics. Use when stories " <>
+      "exist but the architecture/decisions.md index isn't on disk yet."
   end
 
   alias CodeMySpec.{Components, Environments, Paths, Stories}
@@ -293,7 +283,8 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         build_deps_section(mix_exs),
         build_existing_decisions_section(existing_decisions),
         build_stories_section(story_titles),
-        build_instructions()
+        build_playbook_section(),
+        build_done_signal_section()
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -302,12 +293,15 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   defp build_header(project) do
     """
-    # Technical Strategy Session
+    # Technical Strategy: #{project.name}
 
-    You are conducting a technical strategy session for the **#{project.name}** project.
-
-    Your goal is to identify technology decisions that need to be made, research the
-    options, and produce decision records.
+    Identify the technology decisions this project still needs to make and
+    write an ADR for each. ADRs for the standard CodeMySpec stack (Elixir,
+    Phoenix, LiveView, Tailwind, DaisyUI, ExVCR, Wallaby, SexySpex BDD,
+    Dotenvy, Resend, Hetzner deployment, PowAssent) have already been
+    auto-written before this prompt — they show up in the Existing Decisions
+    section below. Focus on project-specific topics the pre-made set doesn't
+    cover.
     """
   end
 
@@ -367,43 +361,26 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     """
   end
 
-  defp build_instructions do
+  defp build_playbook_section do
     """
-    ## Instructions
+    ## Read the playbook
 
-    ### Step 1: Identify Topics
+    `priv/knowledge/technical_strategy/workflow.md` — full procedure: how
+    pre-made decisions work, how to identify project-specific topics, the
+    cursory-research bar, ADR format, index format, and out-of-scope items
+    (deep research goes to `research_topic`; bootstrap goes to
+    `code_generation`).
+    """
+  end
 
-    Analyze the architecture, stories, and current dependencies to identify technology
-    decisions that need to be made. Skip topics already covered by pre-made or
-    existing decisions. Common categories include:
+  defp build_done_signal_section do
+    """
+    ## Done signal
 
-    - **Testing:** Integration test framework, E2E approach, test data strategy
-    - **Deployment:** Hosting, CI/CD, release strategy
-    - **Infrastructure:** Caching, background jobs, file storage
-    - **Integrations:** Third-party APIs, payment processing, auth providers
-
-    ### Step 2: Research and Decide Each Topic
-
-    For each identified topic, do cursory research (search hex.pm, check docs), evaluate
-    against project needs, and write a decision record to
-    `#{Paths.decisions_dir()}/{topic}.md` with sections:
-
-    - **Title** — a concise statement of the decision
-    - **Status** — Accepted, Proposed, or Superseded
-    - **Context** — why this decision is needed
-    - **Options Considered** — alternatives evaluated with pros and cons
-    - **Decision** — what was chosen and why
-    - **Consequences** — tradeoffs and follow-on work
-
-    ### Step 3: Update the Index
-
-    Ensure `#{Paths.decisions_index()}` exists and lists all decision records
-    (pre-made and new) with their status.
-
-    ### Step 4: Stop
-
-    When all topics have been researched and decision records written, stop the session
-    so validation can check your work.
+    Write or update `#{Paths.decisions_index()}` to list every ADR (pre-made
+    + new) with status, then stop the session. The evaluator only checks the
+    index exists — quality of individual ADRs is reviewed downstream when
+    `code_generation` and `architecture_designed` consume them.
     """
   end
 
