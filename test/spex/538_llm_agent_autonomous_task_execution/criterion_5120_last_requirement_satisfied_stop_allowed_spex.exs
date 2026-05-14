@@ -62,8 +62,12 @@ defmodule CodeMySpecSpex.Story538.Criterion5120Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the stop is allowed with the empty signal", context do
-        assert context.response == %{},
+      then_ "the stop is allowed (no block decision)", context do
+        # Post-R7 the R6 terminus carries a retrospective payload, so the
+        # signal is no longer literally `%{}`. The terminal contract is
+        # the absence of a block decision; the retrospective belongs to
+        # criterion 6219 and is asserted there.
+        refute context.response["decision"] == "block",
                "empty actionable set must allow stop even with continuous on — got: #{inspect(context.response)}"
 
         {:ok, context}

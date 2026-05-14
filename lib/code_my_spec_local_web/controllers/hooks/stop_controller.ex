@@ -159,7 +159,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     # an R8 terminate from an R6 "all work complete" allow. Both
     # paths return an allow (no `decision: block`), but only R8 names
     # the stuck-detection reason here.
-    %{"systemMessage" => message}
+    Map.merge(%{"systemMessage" => message}, terminus_retrospective())
   end
 
   defp maybe_terminate_stuck(_scope, nil, reason, req_id),
@@ -181,7 +181,29 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   defp block_with_reason(reason, req_id) do
     Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}")
-    %{"decision" => "block", "reason" => reason}
+    %{"decision" => "block", "reason" => reason <> harness_hint_footer()}
+  end
+
+  # R9 — every block-with-feedback reason carries a one-line affordance
+  # pointing the agent at the framework-issue surface so harness friction
+  # gets reported instead of worked around.
+  defp harness_hint_footer do
+    "\n\nIf this looks like harness friction (looping hook, contradictory prompt, tool error), call `create_issue` with `scope: framework`."
+  end
+
+  # R7 — terminus payload carried by every loop-terminating allow (R6
+  # graph-empty and R8 stuck-detection). The agent is expected to write
+  # a short retrospective before stopping; the `scope` hint points at the
+  # framework-issue surface for any harness friction observed during the
+  # run.
+  defp terminus_retrospective do
+    %{
+      "retrospective" => %{
+        "prompt" =>
+          "The autonomous loop has terminated. Write a brief retrospective on this run: what worked, what was friction, and any harness issues to file. If you hit any CodeMySpec friction (looping hooks, contradictory prompts, tool errors, missing docs), call `create_issue` with `scope: framework` before you stop.",
+        "scope" => "framework"
+      }
+    }
   end
 
   defp allow(req_id, label) do
@@ -249,7 +271,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
           [] ->
             Logger.info("[StopHook] [#{req_id}] All work complete, allowing stop")
             notify_complete()
-            %{}
+            terminus_retrospective()
         end
     end
   end
