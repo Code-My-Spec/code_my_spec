@@ -240,13 +240,13 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     """
     ## Read the playbook first
 
-    Query the knowledge MCP `semantic_search` with:
+    Read these two files before running any generators:
 
-        cms generators workflow and script format
-
-    Returns: generator order, post-generation steps (deps/migrate/compile/test),
-    integration provider command pattern, reproducible script format, and the
-    feedback widget multi-step setup procedure.\
+    - `priv/knowledge/cms_generators/workflow.md` — generator order,
+      post-generation steps (deps/migrate/compile/test), integration provider
+      command pattern, and the feedback widget multi-step setup procedure.
+    - `priv/knowledge/cms_generators/script-format.md` — reproducible bash
+      script format and rules.\
     """
   end
 

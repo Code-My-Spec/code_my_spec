@@ -1051,13 +1051,15 @@ defmodule CodeMySpec.Files.FileSync do
     String.starts_with?(path, qa_prefix) and String.ends_with?(path, "/" <> filename)
   end
 
-  # .code_my_spec/qa/{story_id}/result.md or result_complete.md or result_failed_*.md
+  # Only result_complete.md satisfies the :qa_result role. In-progress
+  # (result.md) and archived failures (result_failed_<ts>.md) live on disk
+  # but aren't role-tagged — qa_complete must not be satisfied by an
+  # unfinished or failed run.
   defp match_qa_result?(path) do
     qa_prefix = Paths.qa_dir() <> "/"
 
     String.starts_with?(path, qa_prefix) and
-      String.ends_with?(path, ".md") and
-      (path |> Path.basename() |> String.starts_with?("result"))
+      Path.basename(path) == "result_complete.md"
   end
 
   @doc "Stat a file for mtime and size. Returns entry map or nil if file doesn't exist."
