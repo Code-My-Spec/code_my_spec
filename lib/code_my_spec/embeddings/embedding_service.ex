@@ -67,8 +67,16 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
     file_hash = content_hash(content)
 
     if file_hash_matches?(project_id, source, path, file_hash) do
+      Logger.info(
+        "[EmbedDecision] skip file_hash_match source=#{source} path=#{path} hash=#{String.slice(file_hash, 0, 8)}"
+      )
+
       {:ok, %{embedded: 0, skipped: :unchanged}}
     else
+      Logger.info(
+        "[EmbedDecision] embed file_hash_changed source=#{source} path=#{path} hash=#{String.slice(file_hash, 0, 8)}"
+      )
+
       do_embed_file(project_id, source, path, content, file_hash)
     end
   end

@@ -129,9 +129,18 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   defp run_boot_embed_pass(watchers) do
     Enum.each(watchers, fn {root, %{scope: scope}} ->
       Task.start(fn ->
+        Logger.info("[FileWatcher] Boot embed pass start root=#{root}")
+        knowledge_start = System.monotonic_time(:millisecond)
         Embeddings.sync_framework_knowledge(scope)
+        knowledge_ms = System.monotonic_time(:millisecond) - knowledge_start
+
+        projector_start = System.monotonic_time(:millisecond)
         HexDocProjector.project(scope)
-        Logger.info("[FileWatcher] Boot embed pass complete for #{root}")
+        projector_ms = System.monotonic_time(:millisecond) - projector_start
+
+        Logger.info(
+          "[FileWatcher] Boot embed pass complete root=#{root} knowledge_ms=#{knowledge_ms} projector_ms=#{projector_ms}"
+        )
       end)
     end)
   end

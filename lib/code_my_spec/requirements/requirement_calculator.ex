@@ -21,9 +21,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Users.Scope
 
   @type computed_requirement :: %{
