@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> ProjectStateFixtures.apply_architecture()
     |> ProjectStateFixtures.apply_spex_boundary_ready()
     |> apply_component_subgraph()
-    |> ProjectStateFixtures.apply_qa_setup_preflight()
+    |> ProjectStateFixtures.apply_qa_setup()
     |> ProjectStateFixtures.apply_persona()
     |> apply_story()
     |> apply_three_amigos_artifacts()
