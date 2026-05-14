@@ -873,7 +873,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # A component inherits priority from:
   # 1. Stories that directly link to it (story.component_id)
   # 2. Stories that link to components that depend on it
-  # 3. Parent components (via parent_component_id chain)
+  # 3. Parent components (via parent_component_id chain), but only
+  #    through *container* parents — types whose graph template
+  #    stamps `:child` nodes (`ComponentRegistry.has_children?/1`).
+  #    Containers own their children in the graph; non-container
+  #    intermediates (behaviour, schema, module, etc.) do not.
+  #    Without this guard, a grandchild nested under a non-container
+  #    intermediate leaks priority from a far ancestor while sitting
+  #    entirely disconnected from the story chain — making its
+  #    `implementation_file` actionable as soon as its spec validates,
+  #    with no kickoff edge and no clamping. See spex criterion 6801.
   defp build_component_priority_map(ctx) do
     # Direct: story.component_id → component
     direct =
@@ -903,36 +912,47 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         end)
       end)
 
-    # Spread priority down parent_component_id chains
+    # Spread priority down parent_component_id chains, gated by
+    # container-typed ancestry.
     parent_map = Map.new(ctx.components, &{&1.id, &1.parent_component_id})
+
+    container_ids =
+      ctx.components
+      |> Enum.filter(&ComponentRegistry.has_children?(&1.type))
+      |> MapSet.new(& &1.id)
 
     Enum.reduce(ctx.components, with_deps, fn comp, acc ->
       if Map.has_key?(acc, comp.id) do
         acc
       else
         # Walk up parent chain looking for a component with priority
-        find_priority_from_parent(comp.id, parent_map, acc)
+        find_priority_from_parent(comp.id, parent_map, container_ids, acc)
       end
     end)
   end
 
-  defp find_priority_from_parent(nil, _parent_map, acc), do: acc
+  defp find_priority_from_parent(nil, _parent_map, _container_ids, acc), do: acc
 
-  defp find_priority_from_parent(component_id, parent_map, acc) do
+  defp find_priority_from_parent(component_id, parent_map, container_ids, acc) do
     if Map.has_key?(acc, component_id),
       do: acc,
-      else: walk_to_parent(component_id, parent_map, acc)
+      else: walk_to_parent(component_id, parent_map, container_ids, acc)
   end
 
-  defp walk_to_parent(component_id, parent_map, acc) do
+  defp walk_to_parent(component_id, parent_map, container_ids, acc) do
     case Map.get(parent_map, component_id) do
-      nil -> acc
-      parent_id -> inherit_priority(component_id, parent_id, parent_map, acc)
+      nil ->
+        acc
+
+      parent_id ->
+        if MapSet.member?(container_ids, parent_id),
+          do: inherit_priority(component_id, parent_id, parent_map, container_ids, acc),
+          else: acc
     end
   end
 
-  defp inherit_priority(component_id, parent_id, parent_map, acc) do
-    acc = find_priority_from_parent(parent_id, parent_map, acc)
+  defp inherit_priority(component_id, parent_id, parent_map, container_ids, acc) do
+    acc = find_priority_from_parent(parent_id, parent_map, container_ids, acc)
 
     case Map.get(acc, parent_id) do
       nil -> acc
