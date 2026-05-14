@@ -52,4 +52,5 @@ config :code_my_spec,
   github_client_secret: "test_github_client_secret",
   git_impl_module: CodeMySpec.Support.TestAdapter,
   environment: CodeMySpec.Support.RecordingEnvironment,
-  embeddings_backend: CodeMySpec.Embeddings.TestBackend
+  embeddings_backend: CodeMySpec.Embeddings.TestBackend,
+  issues_remote_client: CodeMySpecSpex.Stubs.IssuesRemoteClient

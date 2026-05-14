@@ -52,15 +52,80 @@ defmodule CodeMySpec.Issues.RemoteClient do
     end
   end
 
+  @doc """
+  Lists issues from the remote API with the given filters.
+
+  `filters` is a map; keys are converted to query-string params. Used by
+  the local CLI's `list_issues` MCP tool when called with `scope: framework`
+  — framework issues live on the server, never locally.
+  """
+  def list_issues(%Scope{} = scope, filters, opts \\ []) do
+    params = filters |> Map.to_list() |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    with {:ok, client} <- new(scope, opts),
+         {:ok, response} <- Req.get(client, url: "/api/issues", params: params) do
+      handle_list_response(response)
+    end
+  end
+
+  @doc """
+  Gets a single issue from the remote API by id.
+
+  Returns `{:ok, %Issue{}}` on success, `{:error, :not_found}` on 404, or
+  `{:error, reason}` otherwise. Used by the local CLI's `get_issue` MCP
+  tool as a fall-through when the issue is not present in the local DB.
+  """
+  def get_issue(%Scope{} = scope, issue_id, opts \\ []) do
+    with {:ok, client} <- new(scope, opts),
+         {:ok, response} <- Req.get(client, url: "/api/issues/#{issue_id}") do
+      handle_show_response(response)
+    end
+  end
+
   defp handle_list_response(%{status: 200, body: body}),
     do: {:ok, Enum.map(body["data"], &deserialize_issue/1)}
 
   defp handle_list_response(%{status: status, body: body}),
     do: {:error, {:unexpected_status, status, body}}
 
+  defp handle_show_response(%{status: 200, body: body}),
+    do: {:ok, deserialize_issue(body["data"])}
+
+  defp handle_show_response(%{status: 404}), do: {:error, :not_found}
+
+  defp handle_show_response(%{status: status, body: body}),
+    do: {:error, {:unexpected_status, status, body}}
+
   # ---------------------------------------------------------------------------
   # Mutation operations
   # ---------------------------------------------------------------------------
+
+  @doc """
+  Creates an issue on the remote API.
+
+  Used by the local CLI's `create_issue` MCP tool when called with
+  `scope: framework`. Framework-scoped friction (looping hooks, contradictory
+  prompts, tool errors) lives on the CodeMySpec server, never in the local
+  CLI's DB; this is the one and only path for framework writes.
+
+  Returns `{:ok, %Issue{}}` on 201, `{:error, {:validation, body}}` on 422,
+  or `{:error, reason}` otherwise.
+  """
+  def create_issue(%Scope{} = scope, attrs, opts \\ []) do
+    with {:ok, client} <- new(scope, opts),
+         {:ok, response} <-
+           Req.post(client, url: "/api/issues", json: %{issue: stringify_attrs(attrs)}) do
+      handle_create_response(response)
+    end
+  end
+
+  defp handle_create_response(%{status: status, body: body}) when status in [200, 201],
+    do: {:ok, deserialize_issue(body["data"])}
+
+  defp handle_create_response(%{status: 422, body: body}), do: {:error, {:validation, body}}
+
+  defp handle_create_response(%{status: status, body: body}),
+    do: {:error, {:unexpected_status, status, body}}
 
   def update_issue(%Scope{} = scope, issue_id, attrs, opts \\ []) do
     with {:ok, client} <- new(scope, opts),

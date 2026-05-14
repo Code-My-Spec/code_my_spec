@@ -82,14 +82,27 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
   end
 
   defp file_hash_matches?(project_id, source, path, file_hash) do
-    from(e in DocEmbedding,
-      where:
-        e.project_id == ^project_id and e.source == ^source and e.path == ^path and
-          e.file_hash == ^file_hash,
-      limit: 1,
-      select: 1
+    rows =
+      from(e in DocEmbedding,
+        where: e.project_id == ^project_id and e.source == ^source and e.path == ^path,
+        select: %{file_hash: e.file_hash, chunk_index: e.chunk_index}
+      )
+      |> Repo.all()
+
+    hash_summary =
+      rows
+      |> Enum.map(& &1.file_hash)
+      |> Enum.uniq()
+      |> Enum.map_join(",", fn
+        nil -> "nil"
+        h -> String.slice(h, 0, 8)
+      end)
+
+    Logger.info(
+      "[EmbedDecision.probe] source=#{source} path=#{path} want_hash=#{String.slice(file_hash, 0, 8)} row_count=#{length(rows)} stored_hashes=[#{hash_summary}]"
     )
-    |> Repo.one() == 1
+
+    Enum.any?(rows, &(&1.file_hash == file_hash))
   end
 
   defp do_embed_file(project_id, source, path, content, file_hash) do

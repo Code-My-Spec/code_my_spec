@@ -10,7 +10,24 @@ defmodule CodeMySpec.Issues do
   alias CodeMySpec.Documents.QaIssue
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository
+  alias CodeMySpec.Issues.RemoteClient
   alias CodeMySpec.Users.Scope
+
+  @doc """
+  Returns the configured remote-issues client module.
+
+  In production this is `CodeMySpec.Issues.RemoteClient` (real HTTP to
+  the CodeMySpec server). In tests it is swapped via
+  `:code_my_spec, :issues_remote_client` to the in-process stub so
+  spex can drive framework-scope operations without outbound HTTP.
+
+  The MCP Issues tools call this when routing `scope: framework`
+  operations — framework issues live on the server, never in the
+  local CLI's DB.
+  """
+  def remote_client do
+    Application.get_env(:code_my_spec, :issues_remote_client, RemoteClient)
+  end
 
   # -- Reads ------------------------------------------------------------------
 
