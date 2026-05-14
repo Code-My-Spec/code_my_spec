@@ -908,17 +908,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [7]
       }),
       new!(%{
-        id: 8,
-        name: "qa_preflight",
-        node_scope: :self,
-        check_type: :path_exists,
-        config: %{path: ".code_my_spec/qa/preflight.md"},
-        satisfied_by: AgentTasks.QaPreflight,
-        artifact_type: :review,
-        description: "App-level integration verification complete",
-        prerequisites: [14]
-      }),
-      new!(%{
         id: 9,
         name: "all_bdd_specs_passing",
         node_scope: :self,
@@ -926,7 +915,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.FixAllBddSpecs,
         artifact_type: :tests,
         description: "All BDD specs pass across all stories",
-        prerequisites: [8]
+        prerequisites: [14]
       }),
       new!(%{
         id: 10,

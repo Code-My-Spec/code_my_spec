@@ -29,7 +29,8 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLiveTest do
       {:noreply, socket} = NextTaskLive.handle_params(%{"project_name" => project.name}, "/", socket)
 
       # An unbootstrapped project computes project-level requirements
-      # (project_setup, qa_preflight) which appear in the rendered markdown.
+      # (project_setup, all_bdd_specs_passing, etc.) which appear in
+      # the rendered markdown.
       assert socket.assigns.markdown =~ "### ProjectSetup"
       assert socket.assigns.markdown =~ "start_task"
     end

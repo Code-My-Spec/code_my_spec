@@ -72,8 +72,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
 
   After this returns, the project-level chain (project_setup, personas_complete,
   technical_strategy, code_generation, qa_integration_plan,
-  architecture_designed, spex_boundary_ready, qa_setup, qa_preflight,
-  qa_journey_*) is satisfied. The caller is responsible for `stories_exist`
+  architecture_designed, spex_boundary_ready, qa_setup, qa_journey_*) is
+  satisfied. The caller is responsible for `stories_exist`
   (creating stories) and component artifacts.
 
   Produces `context.persona_slug` and `context.persona_id`.
@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     |> apply_qa_integration_plan()
     |> apply_architecture(opts)
     |> apply_spex_boundary_ready()
-    |> apply_qa_setup_preflight()
+    |> apply_qa_setup()
     |> apply_journey_artifacts()
     |> apply_persona()
   end
@@ -177,12 +177,11 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     context
   end
 
-  @doc "Satisfies `qa_setup` and `qa_preflight` by writing their plan files."
-  @spec apply_qa_setup_preflight(map()) :: map()
-  def apply_qa_setup_preflight(context) do
+  @doc "Satisfies `qa_setup` by writing the QA plan file."
+  @spec apply_qa_setup(map()) :: map()
+  def apply_qa_setup(context) do
     env = context.environment
     :ok = Environments.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
-    :ok = Environments.write_file(env, ".code_my_spec/qa/preflight.md", qa_preflight_content())
     context
   end
 
@@ -409,14 +408,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     ## Seed Strategy
 
     Run `mix run priv/repo/qa_seeds.exs` to seed the QA fixture project.
-    """
-  end
-
-  defp qa_preflight_content do
-    """
-    # QA Preflight
-
-    App-level integration verification complete. No outstanding system issues.
     """
   end
 

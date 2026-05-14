@@ -67,7 +67,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       # Cross-entity: component → story (component terminal → bdd_specs_passing)
       assert {"component", "story"} in edge_types
 
-      # Cross-entity: story → project (qa_complete → qa_preflight)
+      # Cross-entity: story → project (qa_complete → all_bdd_specs_passing)
       assert {"story", "project"} in edge_types
     end
 

@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   - `qa_integration_plan` — via `Fixtures.with_verified_integration_spec/2`
   - `architecture_designed` — via `Fixtures.with_proposal/2`
   - `issues_triaged`, `issues_resolved` — vacuous (no incoming issues)
-  - `qa_setup`, `qa_preflight` — write `.code_my_spec/qa/{plan,preflight}.md`
+  - `qa_setup` — write `.code_my_spec/qa/plan.md`
   - `all_bdd_specs_passing` — bdd spec file written + zero spex problems
   - `qa_journey_plan`, `qa_journey_execute`, `qa_journey_wallaby` — files written
 

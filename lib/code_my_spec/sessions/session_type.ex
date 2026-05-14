@@ -33,7 +33,6 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.QaApp,
     AgentTasks.QaIntegrationPlan,
     AgentTasks.QaJourney,
-    AgentTasks.QaPreflight,
     AgentTasks.QaSetup,
     AgentTasks.QaStory,
     AgentTasks.ResearchTopic,

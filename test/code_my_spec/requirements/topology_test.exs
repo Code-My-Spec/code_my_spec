@@ -33,7 +33,7 @@ defmodule CodeMySpec.Requirements.TopologyTest do
   # Edges form a typical chain: story → component → component → story → project.
   defp sample_graph do
     proj_setup = req(entity_type: "project", entity_id: 1, name: "project_setup")
-    proj_qa = req(entity_type: "project", entity_id: 1, name: "qa_preflight")
+    proj_qa = req(entity_type: "project", entity_id: 1, name: "all_bdd_specs_passing")
 
     story_a_in = req(entity_type: "story", entity_id: 10, name: "bdd_specs_exist")
     story_a_out = req(entity_type: "story", entity_id: 10, name: "bdd_specs_passing")
@@ -76,7 +76,7 @@ defmodule CodeMySpec.Requirements.TopologyTest do
       {story_nodes, _} = Map.fetch!(result, "story")
       {comp_nodes, _} = Map.fetch!(result, "component")
 
-      assert MapSet.new(project_nodes, & &1.name) == MapSet.new(["project_setup", "qa_preflight"])
+      assert MapSet.new(project_nodes, & &1.name) == MapSet.new(["project_setup", "all_bdd_specs_passing"])
       assert MapSet.new(story_nodes, & &1.name) == MapSet.new(["bdd_specs_exist", "bdd_specs_passing"])
       assert MapSet.new(comp_nodes, & &1.name) == MapSet.new(["spec_file", "implementation_file"])
     end
@@ -187,16 +187,16 @@ defmodule CodeMySpec.Requirements.TopologyTest do
       sinks = Topology.cross_entity_sinks(g.nodes, g.edges)
 
       assert MapSet.new(sinks, & &1.name) ==
-               MapSet.new(["spec_file", "bdd_specs_passing", "qa_preflight"])
+               MapSet.new(["spec_file", "bdd_specs_passing", "all_bdd_specs_passing"])
     end
 
-    test "qa_preflight is a sink but not a source — it's the project's fan-in seam" do
+    test "all_bdd_specs_passing is a sink but not a source — it's the project's fan-in seam" do
       g = sample_graph()
       sources = Topology.cross_entity_sources(g.nodes, g.edges)
       sinks = Topology.cross_entity_sinks(g.nodes, g.edges)
 
-      refute Enum.any?(sources, &(&1.name == "qa_preflight"))
-      assert Enum.any?(sinks, &(&1.name == "qa_preflight"))
+      refute Enum.any?(sources, &(&1.name == "all_bdd_specs_passing"))
+      assert Enum.any?(sinks, &(&1.name == "all_bdd_specs_passing"))
     end
   end
 
@@ -262,7 +262,7 @@ defmodule CodeMySpec.Requirements.TopologyTest do
         |> Enum.filter(fn n -> Map.fetch!(indeg, k(n)) >= 2 end)
         |> Enum.map(& &1.name)
 
-      assert fan_in == ["qa_preflight"]
+      assert fan_in == ["all_bdd_specs_passing"]
     end
   end
 

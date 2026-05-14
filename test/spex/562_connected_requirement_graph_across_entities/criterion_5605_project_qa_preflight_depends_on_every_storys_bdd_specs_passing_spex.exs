@@ -1,15 +1,17 @@
 defmodule CodeMySpecSpex.Story562.Criterion5605Spex do
   @moduledoc """
   Story 562 — Connected Requirement Graph Across Entities
-  Criterion 5605 — Project qa_preflight depends on every story's
-  bdd_specs_passing.
+  Criterion 5605 — Project terminal requirement depends on every
+  story's qa_complete.
 
   Surface: requirements graph LiveView. Verifies the project-level
   fan-in: for each story in the project, there is at least one edge
   from a story-owned node to a project-owned node. (The exact
-  endpoints are the story's `bdd_specs_passing` and the project's
-  `qa_preflight`, but we assert structurally to stay resilient
-  against name shuffling during the rewrite.)
+  endpoints are the story's `qa_complete` and the project's
+  `all_bdd_specs_passing` — formerly `qa_preflight`, now that the
+  qa_preflight task has been removed and stories fan in to the next
+  project node. We assert structurally to stay resilient against
+  name shuffling during further graph changes.)
   """
 
   use CodeMySpecSpex.Case

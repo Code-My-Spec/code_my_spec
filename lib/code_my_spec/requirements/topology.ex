@@ -13,7 +13,7 @@ defmodule CodeMySpec.Requirements.Topology do
 
   …plus `name` solely as part of the node key.
 
-  Names of specific requirements (e.g. `"qa_preflight"`,
+  Names of specific requirements (e.g. `"all_bdd_specs_passing"`,
   `"spec_valid"`) and component-type strings (e.g. `"context"`,
   `"schema"`) never appear here. Layout rules that used to depend
   on those names should ask Topology for the underlying graph fact

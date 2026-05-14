@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   1. **Same-entity prerequisites**: spec_file → spec_valid (within a component)
   2. **Story → component tree**: bdd_specs_exist → component's first req;
      component's terminal req → bdd_specs_passing
-  3. **Stories → project**: each story's qa_complete → qa_preflight
+  3. **Stories → project**: each story's qa_complete → all_bdd_specs_passing
   """
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
@@ -472,13 +472,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # Cross-entity: story.qa_complete → project.qa_preflight
+  # Cross-entity: story.qa_complete → project.all_bdd_specs_passing
+  # (previously fanned into qa_preflight, which was deleted — the
+  # fan-in now lands on the next node in the chain, gating the QA
+  # journey on every story being QA-complete.)
   defp story_to_project_edges(ctx) do
     project_id = hd(ctx.stories ++ [nil]) && List.first(ctx.stories) && List.first(ctx.stories).project_id
 
     if project_id && ctx.stories != [] do
       Enum.map(ctx.stories, fn story ->
-        %{from: {"story", story.id, "qa_complete"}, to: {"project", project_id, "qa_preflight"}}
+        %{from: {"story", story.id, "qa_complete"}, to: {"project", project_id, "all_bdd_specs_passing"}}
       end)
     else
       []

@@ -207,8 +207,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # -- Path checks (project-level) --
 
   # Check if path exists: try File records first, fall back to filesystem.
-  # Many project-level paths (qa/preflight.md, journey_plan.md, etc.) aren't
-  # classified by FileSync, so the DB won't have them — filesystem is authoritative.
+  # Many project-level paths (qa/journey_plan.md, journey_result.md, etc.)
+  # aren't classified by FileSync, so the DB won't have them — filesystem is
+  # authoritative.
   defp check_path_exists(scope, ctx, path) do
     in_db = ctx[:files_by_path] && Map.has_key?(ctx.files_by_path, path)
 
