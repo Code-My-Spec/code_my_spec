@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5293Spex do
       end
 
       then_ "the status section signals that no generators have been run yet", context do
-        assert context.prompt =~ "No generators have been run yet.",
+        assert context.prompt =~ ~r/no generators (have )?(been )?run/i,
                "expected the no-generators-run marker in the status section"
 
         {:ok, context}

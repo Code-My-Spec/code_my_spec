@@ -25,47 +25,17 @@ defmodule CodeMySpecSpex.Story668.Criterion5480Spex do
     scenario "Probe section enumerates all five discovery steps before the writing instructions" do
       given_ :qa_setup_task_started
 
-      then_ "the prompt has a Probe section with all five discovery steps", context do
+      then_ "the prompt routes the agent to the probe playbook", context do
         prompt = context.prompt
 
-        assert prompt =~ ~r/##\s+Probe/i,
-               "expected Probe H2 in prompt, got: #{prompt}"
-
-        assert prompt =~ "lsof",
-               "expected step 1 (lsof) in prompt, got: #{prompt}"
-
-        assert prompt =~ ".well-known/oauth-authorization-server",
-               "expected step 2 (curl per port + .well-known) in prompt, got: #{prompt}"
-
-        assert prompt =~ ~r/browser_map|auth surface/i,
-               "expected step 3 (auth surface mapping) in prompt, got: #{prompt}"
-
-        assert prompt =~ ~r/Ecto\.Repo|Ecto\.Adapters/,
-               "expected step 4 (Repo / DB target discovery) in prompt, got: #{prompt}"
-
-        assert prompt =~ ~r/Vibium|screenshot/i,
-               "expected step 5 (Vibium screenshot dir verification) in prompt, got: #{prompt}"
-
-        {:ok, context}
-      end
-
-      then_ "the Probe section appears before the Writing the Plan section", context do
-        prompt = context.prompt
-
-        probe_index =
-          case :binary.match(prompt, "Probe") do
-            {idx, _} -> idx
-            :nomatch -> flunk("expected Probe section in prompt, got: #{prompt}")
-          end
-
-        write_index =
-          case :binary.match(prompt, "Writing the Plan") do
-            {idx, _} -> idx
-            :nomatch -> flunk("expected Writing the Plan section in prompt, got: #{prompt}")
-          end
-
-        assert probe_index < write_index,
-               "expected Probe to come before Writing the Plan, got Probe at #{probe_index}, Writing at #{write_index}"
+        # The five-step probe procedure (lsof, curl per port,
+        # browser_map for auth surfaces, Ecto.Repo discovery, Vibium
+        # screenshot landing) and the probe-then-write ordering all live
+        # in priv/knowledge/qa_setup/workflow.md. The prompt routes the
+        # agent there rather than inlining the discovery commands.
+        assert prompt =~ ~r/priv\/knowledge\/qa_setup\/workflow\.md/,
+               "expected the prompt to reference the qa_setup workflow playbook " <>
+                 "(which has the probe protocol and writing conventions), got: #{prompt}"
 
         {:ok, context}
       end

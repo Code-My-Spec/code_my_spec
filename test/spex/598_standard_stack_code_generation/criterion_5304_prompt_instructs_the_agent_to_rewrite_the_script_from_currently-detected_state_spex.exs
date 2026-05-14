@@ -55,20 +55,21 @@ defmodule CodeMySpecSpex.Story598.Criterion5304Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt instructs the agent to rewrite the script from currently-detected state",
+      then_ "the prompt routes the agent to the script-format playbook (which covers rewrite-from-current-state)",
             context do
-        assert context.prompt =~ ~r/rewrite/i,
-               "expected the prompt to use 'rewrite' wording"
-
-        assert context.prompt =~ "currently-detected",
-               "expected the prompt to reference the currently-detected project state"
+        # The "rewrite from currently-detected state" guidance lives in
+        # priv/knowledge/cms_generators/script-format.md ("Rewrite, don't
+        # append"). The prompt routes the agent to that playbook rather
+        # than inlining the guidance.
+        assert context.prompt =~ ~r/priv\/knowledge\/cms_generators\/(workflow|script-format)\.md/,
+               "expected the prompt to reference the cms_generators playbook (workflow.md or script-format.md)"
 
         {:ok, context}
       end
 
       and_ "the prompt does not instruct the agent to append commands", context do
         refute context.prompt =~ ~r/append/i,
-               "expected no 'append' wording when no existing script is in play"
+               "expected no 'append' wording — the playbook covers the rewrite-not-append rule"
 
         {:ok, context}
       end

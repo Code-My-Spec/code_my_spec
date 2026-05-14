@@ -8,9 +8,11 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   require Logger
 
   def orchestrate(_node) do
-    "Identify project-specific tech decisions and write ADRs. Pre-made " <>
-      "standard-stack ADRs auto-written before the prompt. Use when stories " <>
-      "exist but `.code_my_spec/architecture/decisions.md` doesn't."
+    "Identify project-specific technology decisions and write ADRs for each. " <>
+      "Pre-made ADRs for the standard CodeMySpec stack (Elixir, Phoenix, " <>
+      "LiveView, Tailwind, etc.) are auto-written before the agent sees the " <>
+      "prompt — agent focuses on project-specific topics. Use when stories " <>
+      "exist but the architecture/decisions.md index isn't on disk yet."
   end
 
   alias CodeMySpec.{Components, Environments, Paths, Stories}
@@ -361,16 +363,6 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   defp build_playbook_section do
     """
-    ## Procedure (detail in playbook)
-
-    1. **Identify Topics** — analyze the architecture, stories, and current
-       deps for technology decisions; skip topics already covered by
-       pre-made or existing decisions.
-    2. **Research** — cursory hex.pm search + README skim per topic.
-    3. **Write ADRs** — `#{Paths.decisions_dir()}/{topic}.md` per decision.
-    4. **Update the index** — `#{Paths.decisions_index()}` lists every ADR.
-    5. **Stop** — evaluator checks for the index.
-
     ## Read the playbook
 
     `priv/knowledge/technical_strategy/workflow.md` — full procedure: how
@@ -378,23 +370,6 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     cursory-research bar, ADR format, index format, and out-of-scope items
     (deep research goes to `research_topic`; bootstrap goes to
     `code_generation`).
-
-    ## Search the knowledge corpus before researching
-
-    For each topic you identify, check the project's knowledge corpus
-    for prior research before hitting hex.pm. Genuine discovery —
-    semantic_search is correct here:
-
-    - `semantic_search` (query: technology name + "decision" / "vs" /
-      "tradeoffs") — surfaces prior ADRs, vendor comparisons,
-      framework cheat sheets.
-    - `list_knowledge` (path: "devops") / `list_knowledge`
-      (path: "req") — browse the topic-organized corpus.
-    - `read_knowledge` (path: e.g. "devops/hetzner-docker-deploy.md")
-      — fetch a specific doc the search surfaced.
-
-    If the corpus already covers the decision context, your ADR can
-    cite it rather than reproduce the research.
     """
   end
 

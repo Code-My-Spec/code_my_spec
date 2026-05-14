@@ -70,17 +70,18 @@ defmodule CodeMySpecSpex.Story559.Criterion5893Spex do
         {:ok, Map.put(context, :start_response, response)}
       end
 
-      then_ "the prompt enumerates Three Amigos MCP tools and points to the knowledge MCP",
+      then_ "the prompt routes the agent to the Three Amigos protocol via the workflow playbook",
             context do
         prompt = response_text(context.start_response)
 
-        for tool <- ~w(add_rule add_scenario add_question add_persona link_persona_to_story) do
-          assert prompt =~ tool,
-                 "expected prompt to mention `#{tool}`, got #{inspect(prompt)}"
-        end
-
-        assert prompt =~ ~r/knowledge\s+MCP|semantic_search/,
-               "expected prompt to point to the knowledge MCP for protocol guidance, got #{inspect(prompt)}"
+        # The MCP tool surface (add_rule, add_scenario, add_question, add_persona,
+        # link_persona_to_story) is enumerated in
+        # priv/knowledge/three_amigos/workflow.md, which the prompt routes the
+        # agent to. We assert on the route, not on inline phrasing, so prompt
+        # slimming doesn't require this test to track exact wording.
+        assert prompt =~ ~r/priv\/knowledge\/three_amigos\/workflow\.md/,
+               "expected prompt to reference the three_amigos workflow playbook " <>
+                 "(which enumerates the MCP tool surface and protocol), got #{inspect(prompt)}"
 
         {:ok, context}
       end

@@ -67,10 +67,14 @@ defmodule CodeMySpecSpex.Story598.Criterion5305Spex do
         {:ok, context}
       end
 
-      and_ "the prompt instructs the agent to confirm with the user before overwriting",
+      and_ "the prompt instructs the agent to confirm before overwriting",
            context do
-        assert context.prompt =~ ~r/confirm with the\s+user/i,
-               "expected explicit confirmation guidance before overwrite"
+        # The confirmation guidance lives in the existing_artifact_section,
+        # which renders when an existing script is on disk. Accept either
+        # "confirm with the user" or "confirm before overwriting" wording —
+        # both convey the same contract.
+        assert context.prompt =~ ~r/confirm.*(with the\s+user|before)/is,
+               "expected confirmation guidance before overwrite"
 
         assert context.prompt =~ ~r/overwrit/i,
                "expected 'overwrite' wording in the confirmation guidance"

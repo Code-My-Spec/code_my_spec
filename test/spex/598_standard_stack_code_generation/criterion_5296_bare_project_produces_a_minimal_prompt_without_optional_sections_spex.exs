@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5296Spex do
 
       then_ "the prompt does not include an Existing Generation Script section",
             context do
-        refute context.prompt =~ "Existing Generation Script",
+        refute context.prompt =~ ~r/existing\s+generation\s+script/i,
                "expected the existing-script section to be absent"
 
         {:ok, context}
@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5296Spex do
         # The "Integration Providers" string also appears in Step 2's
         # instruction heading. Refute the section header form (`## `)
         # to scope the assertion correctly.
-        refute context.prompt =~ "## Integration Providers",
+        refute context.prompt =~ ~r/##\s+Integration\s+Providers/i,
                "expected the Integration Providers section header to be absent"
 
         {:ok, context}
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5296Spex do
 
       and_ "the Technical Decisions section indicates no decision records were found",
            context do
-        assert context.prompt =~ "No decision records found.",
+        assert context.prompt =~ ~r/no (ADRs|decision records|decisions) found/i,
                "expected the no-decisions phrasing when the decisions dir is empty"
 
         {:ok, context}

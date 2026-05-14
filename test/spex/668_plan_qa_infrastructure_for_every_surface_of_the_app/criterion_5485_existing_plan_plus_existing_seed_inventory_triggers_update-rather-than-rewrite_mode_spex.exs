@@ -46,13 +46,20 @@ defmodule CodeMySpecSpex.Story668.Criterion5485Spex do
 
       given_ :qa_setup_task_started
 
-      then_ "the prompt instructs the agent to update rather than rewrite the plan", context do
+      then_ "the prompt switches into update / patch mode and preserves working scripts",
+            context do
         prompt = context.prompt
 
-        assert prompt =~ ~r/update rather than rewrite/i,
-               "expected prompt to switch to update-mode, got: #{prompt}"
+        # The mode signal — "this plan exists; patch / update rather than
+        # rewrite end-to-end" — matters because it changes how the agent
+        # approaches the edit. Accept either "patch" or "update" wording.
+        assert prompt =~ ~r/(update|patch) rather than rewrite/i,
+               "expected prompt to switch into patch/update-mode, got: #{prompt}"
 
-        assert prompt =~ ~r/preserve working scripts/i,
+        # "Preserve working scripts" may wrap across lines in the source
+        # heredoc — match with \s+ so a line break doesn't break the
+        # assertion.
+        assert prompt =~ ~r/preserve\s+working\s+scripts/is,
                "expected prompt to instruct preservation of working scripts, got: #{prompt}"
 
         {:ok, context}

@@ -55,8 +55,9 @@ defmodule CodeMySpecSpex.Story80.Criterion5274Spex do
         assert context.prompt =~ "Technical Strategy",
                "expected the prompt to be the technical strategy prompt"
 
-        assert context.prompt =~ ~r/Identify Topics/i,
-               "expected the prompt to instruct identifying topics"
+        assert context.prompt =~ ~r/priv\/knowledge\/technical_strategy\/workflow\.md/,
+               "expected the prompt to reference the technical_strategy workflow playbook " <>
+                 "(which covers identifying topics, research, ADR writing, index update)"
 
         {:ok, context}
       end

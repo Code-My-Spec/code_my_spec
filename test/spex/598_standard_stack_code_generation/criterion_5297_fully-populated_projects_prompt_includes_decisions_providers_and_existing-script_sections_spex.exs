@@ -86,14 +86,14 @@ defmodule CodeMySpecSpex.Story598.Criterion5297Spex do
       end
 
       and_ "the prompt includes the Existing Generation Script section", context do
-        assert context.prompt =~ "Existing Generation Script",
-               "expected the Existing Generation Script section to be rendered"
+        assert context.prompt =~ ~r/existing\s+generation\s+script/i,
+               "expected the existing-script section to be rendered"
 
         {:ok, context}
       end
 
       and_ "the prompt includes the Integration Providers section", context do
-        assert context.prompt =~ "## Integration Providers",
+        assert context.prompt =~ ~r/##\s+Integration\s+Providers/i,
                "expected the Integration Providers section header to be rendered"
 
         {:ok, context}

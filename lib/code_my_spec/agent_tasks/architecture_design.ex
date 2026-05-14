@@ -16,10 +16,13 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
 
   def orchestrate(_node) do
-    "Map stories to components (surfaces, contexts, children) via architecture " <>
-      "MCP tools (analyze_stories, create_component, validate_dependency_graph, " <>
-      "set_story_component). Use when stories have criteria but no components, " <>
-      "or when proposal.md exists but unsatisfied stories / orphans remain."
+    "Map user stories to application components (surfaces, contexts, children) " <>
+      "via the architecture MCP tools (analyze_stories, create_component, " <>
+      "validate_dependency_graph, set_story_component, execute_proposal). " <>
+      "Runs in initial or revision mode depending on whether proposal.md " <>
+      "exists. Use when stories have linked criteria but no components, or " <>
+      "when the proposal exists but unsatisfied stories / orphan contexts " <>
+      "remain."
   end
 
   @doc """

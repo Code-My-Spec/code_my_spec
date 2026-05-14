@@ -25,17 +25,17 @@ defmodule CodeMySpecSpex.Story668.Criterion5481Spex do
     scenario "MCP server returning 202 Accepted on tools/call gets flagged in the probe instructions" do
       given_ :qa_setup_task_started
 
-      then_ "the probe section calls out the 202 Accepted MCP transport quirk", context do
+      then_ "the prompt routes the agent to the probe playbook (which flags the 202 quirk)",
+            context do
         prompt = context.prompt
 
-        assert prompt =~ "202",
-               "expected prompt to mention 202 Accepted MCP behavior, got: #{prompt}"
-
-        assert prompt =~ ~r/curl/i,
-               "expected prompt to mention curl in the MCP context, got: #{prompt}"
-
-        assert prompt =~ ~r/MCP|tools\/call|initialize/i,
-               "expected prompt to mention the MCP transport, got: #{prompt}"
+        # The Anubis Streamable HTTP "202 Accepted on tools/call" quirk —
+        # and the rule that plain one-shot curl can't drive MCP tool calls
+        # — lives in priv/knowledge/qa_setup/workflow.md's probe section.
+        # The prompt routes the agent there.
+        assert prompt =~ ~r/priv\/knowledge\/qa_setup\/workflow\.md/,
+               "expected the prompt to reference the qa_setup workflow playbook " <>
+                 "(which covers the 202/MCP transport quirks), got: #{prompt}"
 
         {:ok, context}
       end

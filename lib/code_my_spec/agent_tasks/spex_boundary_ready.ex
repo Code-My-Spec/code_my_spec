@@ -14,9 +14,11 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   # ============================================================================
 
   def orchestrate(_node) do
-    "Install BDD spec boundary: framework Credo checks, project-local deny " <>
-      "check, `<App>Spex.Fixtures` bridge, project BDD plan. Use when " <>
-      "architecture proposal exists but boundary infrastructure isn't on disk."
+    "Install BDD spec boundary protections: framework Credo checks, a " <>
+      "project-local deny check, a curated `<App>Spex.Fixtures` bridge, and " <>
+      "a project BDD spec plan. Use when the architecture proposal exists " <>
+      "and the project is about to start writing BDD specs but the boundary " <>
+      "infrastructure isn't on disk yet."
   end
 
   # ============================================================================
