@@ -1,9 +1,17 @@
 defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   @moduledoc """
-  Report an issue with the development system you are working inside.
+  Record an issue against the project (`scope: app`) or against
+  CodeMySpec itself (`scope: framework`).
 
-  You are an agent operating within CodeMySpec, an AI-assisted software development
-  system. Use this tool to report problems you encounter with the system itself:
+  If you encounter undocumented config, a looping hook, a tool error,
+  or contradictory prompts inside CodeMySpec, your FIRST call is
+  `create_issue` with `scope: framework` — before asking the human
+  operator and before working around the problem. The framework is
+  the system you are operating inside; friction with it is a
+  first-class issue, not a question to escalate or a workaround to
+  invent.
+
+  Trigger examples (use `scope: framework`):
 
   - Confusing or contradictory prompts/instructions
   - Looping stop hooks or stuck workflows
@@ -11,9 +19,12 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   - Missing, broken, or poorly documented tools
   - Suggestions for improvements to the system
 
-  Issues are created as "incoming" and will be triaged by the human operator.
-  Be specific in your description — include error messages, what you were trying
-  to do, and what you expected to happen.
+  For project-side bugs and feature gaps (the app under development,
+  not CodeMySpec), use `scope: app` (the default).
+
+  Issues land as `incoming` and are triaged by the human operator. Be
+  specific in your description — include the exact error message, what
+  you were doing, and what you expected to happen.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -34,7 +45,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
       doc: "Detailed description of the issue including steps to reproduce if applicable"
 
     field :scope, :string,
-      doc: "Issue scope: app (default), qa, or docs"
+      doc: "Issue scope: app (default), qa, docs, or framework"
 
     field :story_id, :integer,
       doc: "Related user story ID, if applicable"

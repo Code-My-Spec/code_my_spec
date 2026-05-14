@@ -8,7 +8,7 @@ defmodule CodeMySpec.Issues.Issue do
           id: Ecto.UUID.t() | nil,
           title: String.t(),
           severity: :critical | :high | :medium | :low | :info,
-          scope: :app | :qa | :docs,
+          scope: :app | :qa | :docs | :framework,
           description: String.t(),
           status: :incoming | :accepted | :dismissed | :resolved,
           category: :bug | :requirements_change | nil,
@@ -23,7 +23,7 @@ defmodule CodeMySpec.Issues.Issue do
         }
 
   @severities [:critical, :high, :medium, :low, :info]
-  @scopes [:app, :qa, :docs]
+  @scopes [:app, :qa, :docs, :framework]
   @statuses [:incoming, :accepted, :dismissed, :resolved]
   @categories [:bug, :requirements_change]
 
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Issues.Issue do
       title: "Short issue title",
       severity: "Issue severity: critical, high, medium, low, or info",
       description: "Detailed description including steps to reproduce if applicable",
-      scope: "Issue scope: app (default), qa, or docs",
+      scope: "Issue scope: app (default), qa, docs, or framework",
       status: "Issue status: incoming, accepted, dismissed, or resolved",
       resolution: "How the issue was resolved or why it was dismissed",
       story_id: "Related story ID, if applicable",

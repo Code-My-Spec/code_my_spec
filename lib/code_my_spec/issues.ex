@@ -114,7 +114,6 @@ defmodule CodeMySpec.Issues do
     end
   end
 
-
   # -- Query helpers ----------------------------------------------------------
 
   def has_unresolved_issues?(%Scope{} = scope, min_severity \\ :medium) do
@@ -145,11 +144,11 @@ defmodule CodeMySpec.Issues do
       "app" -> :app
       "qa" -> :qa
       "docs" -> :docs
+      "framework" -> :framework
       _ -> :app
     end
   end
   defp parse_scope(nil), do: :app
-
 
   defp parse_braindump(content) do
     case Regex.run(~r/^#\s+(.+)$/m, content) do
