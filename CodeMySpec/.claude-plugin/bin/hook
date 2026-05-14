@@ -9,11 +9,13 @@ STDIN_DATA=$(cat)
 EVENT=$(echo "$STDIN_DATA" | grep -o '"hook_event_name":"[^"]*"' | cut -d'"' -f4)
 
 case "$EVENT" in
-  SessionStart)  ENDPOINT="/api/hooks/session-start" ;;
-  PreToolUse)    ENDPOINT="/api/hooks/pre-tool-use" ;;
-  PostToolUse)   ENDPOINT="/api/hooks/post-tool-use" ;;
-  Stop)          ENDPOINT="/api/hooks/stop" ;;
-  *)             exit 0 ;;
+  SessionStart)   ENDPOINT="/api/hooks/session-start" ;;
+  PreToolUse)     ENDPOINT="/api/hooks/pre-tool-use" ;;
+  PostToolUse)    ENDPOINT="/api/hooks/post-tool-use" ;;
+  Stop)           ENDPOINT="/api/hooks/stop" ;;
+  SubagentStart)  ENDPOINT="/api/hooks/subagent-start" ;;
+  SubagentStop)   ENDPOINT="/api/hooks/subagent-stop" ;;
+  *)              exit 0 ;;
 esac
 
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
