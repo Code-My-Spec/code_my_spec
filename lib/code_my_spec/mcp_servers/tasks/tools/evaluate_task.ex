@@ -106,6 +106,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
           {:reply, TasksMapper.evaluate_passed_response(task, info), frame}
 
         {:ok, :invalid, feedback} ->
+          # R8: bump per-task failure_count on every observed failure so
+          # the stop hook can detect a stuck manual-task loop too. (The
+          # auto-task counterpart lives in TaskEvaluator; the two
+          # surfaces are disjoint in production.)
+          Sessions.increment_failure_count(scope, session, task.id)
           Logger.info("[EvaluateTask] #{type_name(task_module)} failed — feedback returned")
           {:reply, TasksMapper.evaluate_needs_work_response(task, feedback), frame}
 

@@ -186,6 +186,31 @@ defmodule CodeMySpec.Sessions do
   end
 
   @doc """
+  Increment the `failure_count` on a task.
+
+  Called by `TaskEvaluator` and the `EvaluateTask` MCP tool when
+  evaluate returns `:invalid` so the stop hook can detect stuck loops
+  (R8). Fire-and-forget: callers ignore the return value, so a
+  `{:error, :task_not_found}` for a stale task id silently no-ops
+  rather than crashing the surface.
+  """
+  @spec increment_failure_count(Scope.t(), Session.t(), String.t()) ::
+          {:ok, Session.t()} | {:error, :task_not_found | Ecto.Changeset.t()}
+  def increment_failure_count(%Scope{} = _scope, %Session{} = session, task_id) do
+    case Session.find_task(session, task_id) do
+      nil ->
+        {:error, :task_not_found}
+
+      task ->
+        next = (task.failure_count || 0) + 1
+
+        session
+        |> Session.update_task(task_id, %{failure_count: next})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
   Atomically reassign a sub-agent: clear `agent_id` from any task that
   currently carries it (other than `target_task_id`) and set
   `agent_id` on the target task — in a single `Repo.update`.

@@ -67,6 +67,9 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
           {:ok, :valid}
 
         {:ok, :invalid, feedback} ->
+          # R8: bump the per-task failure count so stop_controller can
+          # detect a stuck loop (5 consecutive failures → terminate).
+          Sessions.increment_failure_count(scope, session, task.id)
           {:error, feedback}
 
         {:error, :entity_missing} ->

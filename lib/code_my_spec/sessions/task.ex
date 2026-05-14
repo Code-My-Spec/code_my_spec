@@ -33,7 +33,8 @@ defmodule CodeMySpec.Sessions.Task do
           agent_id: String.t() | nil,
           expected_files: [String.t()],
           started_at: DateTime.t() | nil,
-          completed_at: DateTime.t() | nil
+          completed_at: DateTime.t() | nil,
+          failure_count: integer() | nil
         }
 
   @primary_key false
@@ -57,6 +58,11 @@ defmodule CodeMySpec.Sessions.Task do
     # that want the pipeline to short-circuit on no-file-changes.
     field :started_at, :utc_datetime_usec
     field :completed_at, :utc_datetime_usec
+    # Story 538 / R8 — counts consecutive evaluate_task failures on this
+    # task. Reset is structural: a new task starts at 0, and a completed
+    # task no longer accrues failures. The stop hook reads this to
+    # decide whether stuck-detection has tripped.
+    field :failure_count, :integer, default: 0
   end
 
   @doc "Changeset for creating or updating a task."
@@ -77,7 +83,8 @@ defmodule CodeMySpec.Sessions.Task do
       :agent_id,
       :expected_files,
       :started_at,
-      :completed_at
+      :completed_at,
+      :failure_count
     ])
     |> validate_required([:id, :status])
     |> put_id_if_missing()
