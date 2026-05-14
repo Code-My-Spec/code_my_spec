@@ -758,7 +758,10 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
         --wall-card-hi: var(--color-base-200);
         --wall-accent: var(--color-primary);
         --wall-accent-soft: color-mix(in oklch, var(--color-primary) 18%, transparent);
-        --wall-secondary: var(--color-secondary);
+        /* daisyUI --color-secondary lands near-black on the dark local theme,
+         * so the failure-path border + label disappeared. Derive a muted red
+         * from primary instead — distinct from HAPPY but still red-family. */
+        --wall-secondary: color-mix(in oklch, var(--color-primary) 55%, var(--color-base-content));
         --wall-aqua: var(--color-info);
         --wall-sand: var(--color-warning);
         --wall-q: var(--color-warning);
