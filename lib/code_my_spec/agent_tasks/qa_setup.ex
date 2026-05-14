@@ -19,12 +19,9 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   # ============================================================================
 
   def orchestrate(_node) do
-    "Produce the project-wide QA plan at `.code_my_spec/qa/plan.md`. " <>
-      "Probes every running endpoint (listening ports, auth pipelines, MCP " <>
-      "transports) then writes the plan covering App Overview, Tools Registry, " <>
-      "and Seed Strategy. Use when starting QA work and no plan exists, or " <>
-      "when routers / seed scripts / auth surfaces have changed since the " <>
-      "last plan."
+    "Produce the project-wide QA plan at `.code_my_spec/qa/plan.md` — probe " <>
+      "every running endpoint, then write App Overview / Tools Registry / " <>
+      "Seed Strategy. Use when starting QA and no plan exists yet."
   end
 
   # ============================================================================
@@ -262,12 +259,15 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
 
   defp existing_plan_section(_content) do
     """
-    ## Existing plan — patch rather than rewrite
+    ## Existing plan — update rather than rewrite
 
     A plan already exists at `#{Paths.qa_plan()}`. The playbook covers the
     idempotent-rerun procedure: diff against the Router Files and Inventory
-    sections above, and edit only the sections that drifted. Preserve working
-    scripts and credentials — the plan is institutional memory.\
+    sections above, and edit only the sections that drifted.
+    **Preserve working scripts and credentials** — the plan is institutional memory.
+    Existing artifacts to reference rather than duplicate include seed
+    scripts like `priv/repo/qa_seeds.exs` and auth wrappers like
+    `#{@scripts_dir}/authenticated_curl.sh`.\
     """
   end
 
@@ -282,7 +282,45 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
       script rules, idempotent-rerun procedure).
     - `priv/knowledge/qa-tooling.md` — tool selection (Vibium vs curl) and
       authentication patterns.
-    - `priv/knowledge/qa-tooling/` — per-tool cheat sheets.\
+    - `priv/knowledge/qa-tooling/` — per-tool cheat sheets.
+
+    ## Probe (run BEFORE writing — detail in playbook)
+
+    Phoenix's compile-time `:url`, OAuth issuer config, and live_session
+    gating only show real behavior when you hit them. The 5-step discovery
+    sequence:
+
+    1. `lsof -i -P -n | grep LISTEN` — what's actually listening on the box.
+    2. `curl -sS http://127.0.0.1:<port>/.well-known/oauth-authorization-server`
+       on every listening port — record response codes and OAuth metadata.
+    3. Vibium `browser_map` on each login page — capture the REAL auth
+       surface selectors (Phoenix forms use `name="user[email]"`, not
+       guessed ids).
+    4. `grep -rn "use Ecto.Repo\\|Ecto.Adapters" config/ lib/` — identify
+       Repos and DB targets so seed scripts hit every adapter.
+    5. For MCP / SSE pipelines, POST `initialize` and watch headers.
+       Anubis Streamable HTTP returns `202 Accepted` on subsequent
+       `tools/call` requests with the response delivered over the original
+       init stream — plain one-shot curl WILL NOT work for tool calls.
+
+    Verify Vibium `browser_screenshot` landing-dir behavior on this box —
+    some Vibium builds ignore the directory portion of `filename` and
+    write to `~/Pictures/Vibium/<basename>`.
+
+    ## Writing the Plan (AFTER probe — detail in playbook)
+
+    Once probe is done, draw the plan from observed reality only — don't
+    promise selectors / paths / headers you haven't verified.
+
+    Required H2 sections (validated, must be non-empty):
+    - **App Overview** — endpoints, ports, pipelines, auth model.
+    - **Tools Registry** — Vibium / curl / mix / iex with real commands
+      and the selectors/headers you captured during probe.
+    - **Seed Strategy** — per-Repo seed scripts. One `.exs` file per
+      target. NEVER bash `for` loops over `mix run -e`.
+
+    Strongly recommended: **System Issues** — anything that took >5 min to
+    figure out. Institutional memory for future QA agents.\
     """
   end
 end

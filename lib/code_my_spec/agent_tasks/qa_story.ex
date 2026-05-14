@@ -19,10 +19,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # ============================================================================
 
   def orchestrate(_node) do
-    "Run a per-story QA session: write a testing brief, execute it against " <>
-      "the running app (MCP browser for UI, curl for API), and produce a " <>
-      "pass/fail result with issues filed. Use when a story has passing BDD " <>
-      "specs and is ready for QA. Sub-agent: spawn @qa to call `start_task`."
+    "Per-story QA: write brief, execute against the running app (Vibium for UI, " <>
+      "curl for API), produce result + file issues. Use when a story has passing " <>
+      "BDD specs. Sub-agent: spawn @qa."
   end
 
   # ============================================================================

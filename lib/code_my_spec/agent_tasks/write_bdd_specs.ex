@@ -23,11 +23,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # ============================================================================
 
   def orchestrate(_node) do
-    "Write BDD spec files (`*_spex.exs`) for a story's acceptance criteria, " <>
-      "one file per criterion, driving the real interaction surface from " <>
-      "Given/When/Then steps. Use when a story has rules and scenarios " <>
-      "(three-amigos complete) but no spec files yet. " <>
-      "Sub-agent: spawn @bdd-spec-writer to call `start_task`."
+    "Write `*_spex.exs` files for a story's criteria, one per criterion. " <>
+      "Use when three-amigos is complete (rules + scenarios) but no spex " <>
+      "files yet. Sub-agent: spawn @bdd-spec-writer."
   end
 
   # ============================================================================
@@ -131,6 +129,11 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     Read both knowledge layers before writing specs. **Project rules
     override framework rules where they conflict.**
+
+    Before reading: fetch the story's three-amigos artifacts so you know
+    what to spec. Call the `get_story_gherkin` MCP tool with the story_id
+    to retrieve all rules + scenarios as Gherkin. Each scenario maps to a
+    `*_spex.exs` file under the criterion's expected path below.
 
     ### Framework BDD knowledge (`priv/knowledge/bdd/spex/`)
 

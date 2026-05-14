@@ -33,11 +33,9 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   the next thing to do.
   """
   def orchestrate(_node) do
-    "Run CodeMySpec generators (phx.gen.auth, cms_gen.*) to scaffold auth, " <>
-      "multi-tenancy, OAuth integrations, and the feedback widget for this " <>
-      "project. Produces an idempotent bash script at " <>
-      "`.code_my_spec/tasks/code_generation.sh`. Use when ADRs reference " <>
-      "generated code and generators haven't been run yet."
+    "Run CodeMySpec generators (phx.gen.auth, cms_gen.*) — auth, multi-tenancy, " <>
+      "integrations, feedback widget. Use when ADRs reference generated code " <>
+      "and no script at `.code_my_spec/tasks/code_generation.sh` yet."
   end
 
   @doc """
@@ -167,8 +165,8 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     """
     ## Technical Decisions
 
-    No ADRs found in `#{Paths.decisions_dir()}/`. Confirm `technical_strategy`
-    has been completed before continuing.\
+    No decision records found. ADRs live in `#{Paths.decisions_dir()}/` —
+    confirm `technical_strategy` has been completed before continuing.\
     """
   end
 
@@ -190,7 +188,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     """
     ## Current Status
 
-    No generators have run yet.\
+    No generators have been run yet.\
     """
   end
 
@@ -231,8 +229,9 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     ## Existing Generation Script
 
     A script already exists at `#{@artifact_path}`. The user may have
-    hand-edited it — confirm before overwriting. The new script should be
-    rewritten from the currently-detected project state.\
+    hand-edited it — confirm with the user before overwriting. The new
+    script should be rewritten from the currently-detected project state
+    — do not accumulate prior commands.\
     """
   end
 
@@ -246,7 +245,14 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
       post-generation steps (deps/migrate/compile/test), integration provider
       command pattern, and the feedback widget multi-step setup procedure.
     - `priv/knowledge/cms_generators/script-format.md` — reproducible bash
-      script format and rules.\
+      script format and rules.
+
+    ## Post-generation commands (run between every generator + at the end)
+
+    - `mix deps.get` — if the generator added new dependencies.
+    - `mix ecto.migrate` — apply new migrations the generator produced.
+    - `mix compile` — confirm clean compile before continuing.
+    - `mix test` — at the end, verify nothing broke.\
     """
   end
 
@@ -315,7 +321,11 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
 
     Write the reproducible bash script to `#{@artifact_path}` capturing every
     generator command you ran. The evaluator checks for the file's existence
-    and non-emptiness. See the playbook for the script format.\
+    and non-emptiness. See the playbook for the script format.
+
+    **Always rewrite the script from the currently-detected project state**
+    — do not accumulate commands from prior runs. Each run produces a
+    script that matches what's actually in the project today.\
     """
   end
 end

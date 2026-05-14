@@ -13,12 +13,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
 
   @spec orchestrate(map()) :: String.t()
   def orchestrate(_node) do
-    "Run a Three Amigos / Example Mapping session on a story. Agent plays " <>
-      "Business / Developer / QA while the PM holds intent; deliverable is " <>
-      "rules + scenarios + questions persisted via MCP tools. Use when a " <>
-      "story has a linked component but no rules/scenarios yet. Manual " <>
-      "validation — the agent calls `evaluate_task` when readiness " <>
-      "conditions are met."
+    "Three Amigos / Example Mapping session — produce rules + scenarios + " <>
+      "questions on a story via MCP tools. Use when a story has a linked " <>
+      "component but no rules yet. Manual validation."
   end
 
   @spec command(term(), map()) :: {:ok, String.t()}
@@ -136,11 +133,31 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
 
   defp playbook_section do
     """
+    ## MCP tools you'll call (per protocol phase)
+
+    - **Persona** — `list_personas`, `add_persona`, `link_persona_to_story`.
+    - **Rules** — `add_rule` (one rule per call).
+    - **Scenarios** — `add_scenario` (one per call, `kind: happy_path` or
+      `failure_path`).
+    - **Questions** — `add_question` (parks unresolved questions; don't
+      let them derail).
+
     ## Read the playbook
 
     `priv/knowledge/three_amigos/workflow.md` — protocol ordering (persona
     → rules → scenarios → questions), MCP tool usage per phase, done-signal
-    conditions, anti-patterns to avoid.
+    conditions, anti-patterns. The knowledge MCP also serves the framework
+    BDD docs at `priv/knowledge/bdd/spex/` if you need the broader context.
+
+    ## Idempotent reruns — check what's already on the story
+
+    If this is a continuation of a prior session, call these BEFORE
+    starting fresh so you don't duplicate work:
+
+    - `list_rules` (story_id) — rules already persisted.
+    - `list_questions` (story_id) — questions already parked.
+    - `get_story_gherkin` (story_id) — full Gherkin view (rules +
+      scenarios) in one call.
     """
   end
 end
