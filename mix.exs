@@ -102,7 +102,7 @@ defmodule CodeMySpec.MixProject do
       {:exvcr, "~> 0.15", only: :test},
       {:req_cassette, "~> 0.6.0", only: :test},
       {:paper_trail, "~> 1.1"},
-      {:anubis_mcp, github: "zoedsoupe/anubis-mcp"},
+      {:anubis_mcp, github: "zoedsoupe/anubis-mcp", branch: "main"},
       {:oban, "~> 2.19.4"},
       {:briefly, "~> 0.5.1"},
       {:nimble_csv, "~> 1.2"},
