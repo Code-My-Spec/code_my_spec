@@ -67,8 +67,9 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
   defp analyze(path, dispatch_map, dispatch_index, custom_eval) do
     content = File.read!(path)
     module = extract_module(content)
-    source_lines = content |> String.split("\n") |> length()
-    heredocs = heredoc_sizes(content)
+    raw_source_lines = content |> String.split("\n") |> length()
+    %{moduledoc_size: moduledoc_size, heredocs: heredocs} = heredoc_analysis(content)
+    source_lines = raw_source_lines - moduledoc_size
     largest_heredoc = Enum.max(heredocs, fn -> 0 end)
     heredoc_total = Enum.sum(heredocs)
     big_heredoc_count = Enum.count(heredocs, &(&1 > 30))
@@ -169,29 +170,40 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
   defp normalize_orchestrate({:ok, s}) when is_binary(s), do: s
   defp normalize_orchestrate(_), do: nil
 
-  defp heredoc_sizes(content) do
+  # Walk the source, classify each heredoc as either inside a @moduledoc or
+  # a regular code heredoc. Moduledoc heredocs don't ship to the agent at
+  # runtime — they're documentation — so they're tracked separately and
+  # excluded from the bloat metrics.
+  defp heredoc_analysis(content) do
     content
     |> String.split("\n")
     |> Enum.with_index()
-    |> Enum.reduce({[], :outside}, fn {line, idx}, {sizes, state} ->
-      triple_count = length(Regex.scan(~r/"""/, line))
+    |> Enum.reduce({%{moduledoc_size: 0, heredocs: []}, :outside}, fn
+      {line, idx}, {acc, state} ->
+        triple_count = length(Regex.scan(~r/"""/, line))
 
-      case {state, triple_count} do
-        {:outside, 0} ->
-          {sizes, :outside}
+        case {state, triple_count} do
+          {:outside, 0} ->
+            {acc, :outside}
 
-        {:outside, n} when rem(n, 2) == 0 ->
-          {sizes, :outside}
+          {:outside, n} when rem(n, 2) == 0 ->
+            {acc, :outside}
 
-        {:outside, _} ->
-          {sizes, {:inside, idx}}
+          {:outside, _} ->
+            is_moduledoc = Regex.match?(~r/@moduledoc\s*"""/, line)
+            {acc, {:inside, idx, is_moduledoc}}
 
-        {{:inside, _start}, 0} ->
-          {sizes, state}
+          {{:inside, _start, _moduledoc?}, 0} ->
+            {acc, state}
 
-        {{:inside, start}, _} ->
-          {[idx - start - 1 | sizes], :outside}
-      end
+          {{:inside, start, true}, _} ->
+            size = idx - start - 1
+            {%{acc | moduledoc_size: acc.moduledoc_size + size}, :outside}
+
+          {{:inside, start, false}, _} ->
+            size = idx - start - 1
+            {%{acc | heredocs: [size | acc.heredocs]}, :outside}
+        end
     end)
     |> elem(0)
   end
