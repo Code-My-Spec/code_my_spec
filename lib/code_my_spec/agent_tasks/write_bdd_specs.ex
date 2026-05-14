@@ -1,17 +1,10 @@
 defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   @moduledoc """
-  Agent task for generating BDD specification files for a story.
+  Generate BDD specification files for a story whose three-amigos session
+  is complete but whose specs haven't been written yet.
 
-  Returns a prompt telling the agent how to write BDD specs for the story's
-  acceptance criteria. The prompt includes the Spex DSL guide, testing patterns
-  for the component type, and per-criterion file paths.
+  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/write_bdd_specs.spec.md`.
   """
-
-  def analyzers, do: [:spex_stale]
-
-  def orchestrate(node) do
-    "Spawn a @bdd-spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
-  end
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.BddSpecs.Parser
@@ -23,8 +16,22 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   @spex_dir "test/spex"
 
+  def analyzers, do: [:spex_stale]
+
   # ============================================================================
-  # Command — build and return the prompt
+  # orchestrate — relevance signal for the requirement graph
+  # ============================================================================
+
+  def orchestrate(_node) do
+    "Write BDD spec files (`*_spex.exs`) for a story's acceptance criteria, " <>
+      "one file per criterion, driving the real interaction surface from " <>
+      "Given/When/Then steps. Use when a story has rules and scenarios " <>
+      "(three-amigos complete) but no spec files yet. " <>
+      "Sub-agent: spawn @bdd-spec-writer to call `start_task`."
+  end
+
+  # ============================================================================
+  # Command — slim prompt that points at framework + project BDD knowledge
   # ============================================================================
 
   @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
@@ -32,16 +39,15 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     with {:ok, story} <- resolve_story(scope, task),
          {:ok, component} <- get_story_component(scope, story) do
       app_name = derive_app_name(scope)
-      app_module = camelize(app_name)
-      spex_module = "#{app_module}Spex"
+      spex_module = "#{camelize(app_name)}Spex"
 
-      prompt = build_prompt(story, component, app_name, app_module, spex_module)
+      prompt = build_prompt(story, component, app_name, spex_module)
       {:ok, prompt}
     end
   end
 
   # ============================================================================
-  # Evaluate — check that spec files exist, parse, and compile
+  # Evaluate — file exists, parses, compiles, uses Spex.Case, has scenarios
   # ============================================================================
 
   @spec evaluate(term(), map()) ::
@@ -87,169 +93,204 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   end
 
   # ============================================================================
-  # Prompt
+  # Prompt assembly
   # ============================================================================
 
-  defp build_prompt(story, component, app_name, _app_module, spex_module) do
+  defp build_prompt(story, component, app_name, spex_module) do
     criteria = story.criteria || []
-    component_type = component.type
 
-    criteria_sections =
+    sections =
+      [
+        header_section(story, component),
+        knowledge_section(),
+        component_context_section(component),
+        sibling_specs_section(story, criteria),
+        surface_hint_section(component),
+        criteria_section(story, criteria),
+        procedure_section(spex_module),
+        reference_files_section(app_name, spex_module)
+      ]
+      |> Enum.reject(&(&1 == nil or &1 == ""))
+
+    Enum.join(sections, "\n\n")
+  end
+
+  defp header_section(story, component) do
+    """
+    # Write BDD Specs: #{story.title}
+
+    **Story ID**: #{story.id}
+    **Description**: #{story.description || "No description"}
+    **Component**: `#{component.module_name}` (#{component.type})\
+    """
+  end
+
+  defp knowledge_section do
+    """
+    ## Required reading — both layers
+
+    Read both knowledge layers before writing specs. **Project rules
+    override framework rules where they conflict.**
+
+    ### Framework BDD knowledge (`priv/knowledge/bdd/spex/`)
+
+    - `writing_a_spex.md` — file layout, module template, DSL syntax,
+      step return values. **Essential — read first.**
+    - `philosophy.md` — what Spex is and how it differs from regular tests.
+    - `environment.md` — environment abstraction in steps.
+    - `boundaries.md` — what `given_` / `when_` / `then_` can and can't do.
+    - `shared_givens.md` — importing shared given blocks.
+    - `recording_cassettes.md` — when and how to record HTTP cassettes.
+
+    ### Project BDD knowledge (`.code_my_spec/knowledge/bdd/spex/`)
+
+    - `four_surfaces_quick_reference.md` — the four interaction surfaces
+      in this codebase (MCP tool, HTTP, LiveView, filesystem) with
+      one-line "I'm testing X → use surface Y" table and 30-second
+      skeletons. **Read second.**
+    - `surfaces.md` — canonical skeletons per surface, deeper detail.
+    - `cassettes.md` — project-specific cassette conventions.\
+    """
+  end
+
+  # Surfaces the component's source location and @moduledoc so the
+  # spec-writer can see the real public interface rather than grepping
+  # blind.
+  defp component_context_section(%{module_name: module_name}) do
+    path = module_path(module_name)
+
+    body =
+      case path && File.read(path) do
+        {:ok, source} ->
+          """
+          Source: `#{path}`
+
+          #{extract_moduledoc(source)}\
+          """
+
+        _ ->
+          "Source: `#{inferred_path_hint(module_name)}` (couldn't read — open the file before writing specs to see the public API)"
+      end
+
+    """
+    ## Component under test
+
+    #{body}\
+    """
+  end
+
+  # If other specs in the same story already exist, point at one so the
+  # author can copy the established pattern (setup blocks, fixture paths,
+  # shared givens, module namespace) rather than reinventing.
+  defp sibling_specs_section(story, criteria) do
+    dir = story_spec_dir(story, criteria)
+
+    case dir && list_existing_specs(dir) do
+      [_ | _] = existing ->
+        bullets = Enum.map_join(existing, "\n", &"- `#{&1}`")
+
+        """
+        ## Sibling specs in this story
+
+        Other criteria in this story have already been written. Read at
+        least one end-to-end as a template for shared setup, fixture
+        paths, case template, and given usage:
+
+        #{bullets}\
+        """
+
+      _ ->
+        nil
+    end
+  end
+
+  # Component-type-aware hint that routes the agent to the right section
+  # of the project's four_surfaces doc. Avoids inlining per-type skeletons
+  # — those live in the knowledge corpus already.
+  defp surface_hint_section(component) do
+    hint = surface_hint(component.type)
+
+    """
+    ## Likely surface for this component
+
+    This component is a **#{component.type}**. The most likely surface is
+    **#{hint}**.
+
+    Pick by what the user (engineer or agent) would actually do, not by
+    component type alone — see
+    `.code_my_spec/knowledge/bdd/spex/four_surfaces_quick_reference.md`
+    for the full decision table and the 30-second skeleton.\
+    """
+  end
+
+  defp surface_hint("liveview"), do: "LiveView (a user interacting with a page)"
+  defp surface_hint("liveview_component"), do: "LiveView (a user interacting with a page)"
+  defp surface_hint("live_context"), do: "LiveView (a user interacting with a page)"
+  defp surface_hint("controller"), do: "HTTP (a controller endpoint, possibly with cassette)"
+
+  defp surface_hint(_),
+    do:
+      "MCP tool or HTTP — depends on whether an agent or a hook drives the criterion"
+
+  defp criteria_section(story, criteria) do
+    sections =
       Enum.map_join(criteria, "\n\n", fn criterion ->
         spec_path = BddSpecs.spec_file_path(story, criterion)
 
         """
         ### Criterion #{criterion.id}: #{criterion.description}
 
-        **Expected File Path**: `#{spec_path}`
+        **Expected file path**: `#{spec_path}`\
         """
       end)
 
     """
-    # Write BDD Specs: #{story.title}
+    ## Acceptance criteria
 
-    **Story ID**: #{story.id}
-    **Description**: #{story.description || "No description"}
-    **Component**: `#{component.module_name}` (#{component_type})
-
-    ## Required Reading — BDD Rules & Conventions
-
-    Before writing specs, pull in both the framework rules and this
-    project's local conventions via the knowledge MCP tools:
-
-    - **Framework rules** (Spex philosophy, environment, shared givens,
-      boundaries, recording cassettes, writing-a-spex):
-      `read_knowledge` with `library: "knowledge"` and
-      `path: "bdd/spex/<file>.md"`. Use `list_knowledge` with
-      `library: "knowledge"` and `path: "bdd/spex"` to see what's
-      available, or `semantic_search` with `source: "knowledge"` to
-      query across them.
-    - **Project rules** at `.code_my_spec/knowledge/bdd/spex`:
-      `read_knowledge` with `library: "project_knowledge"` and
-      `path: "bdd/spex/<file>.md"`. List with `list_knowledge`
-      (`library: "project_knowledge"`, `path: "bdd/spex"`) or query
-      with `semantic_search` (`source: "project_knowledge"`).
-
-    Project rules override framework rules where they conflict.
-
-    ## Component Under Test
-
-    #{component_context_section(component)}
-
-    #{sibling_specs_section(story, criteria)}
-
-    ## Acceptance Criteria
-
-    #{criteria_sections}
-
-    ## Instructions
-
-    Write ONE spec file per criterion, then STOP for validation.
-
-    For each criterion:
-    1. Create the spec file at the path shown above
-    2. All spec modules must be under the `#{spex_module}` namespace
-    3. Write actual test implementations — no TODOs or placeholders
-    4. Drive the real interaction surface only — engineers interact
-       through LiveView, agents through files + HTTP hooks + MCP tools.
-       Never call context functions directly from `when_` / `then_`
-       steps; never read the DB from `then_`
-    5. Run `mix compile` to verify
-    6. STOP and wait for validation before the next spec
-
-    #{testing_setup(component_type, spex_module)}
-
-    ## Spex DSL Quick Reference
-
-    Every spec file uses `#{spex_module}.Case` as its base — that case
-    template wires up `Phoenix.ConnTest`, `Phoenix.LiveViewTest`, the
-    SexySpex DSL, and the DB sandbox. Never reach for
-    `<App>Web.ConnCase` directly; always go through `#{spex_module}.Case`.
-
-    ```elixir
-    defmodule #{spex_module}.FeatureNameSpex do
-      use #{spex_module}.Case
-
-      spex "feature name" do
-        scenario "description" do
-          given_ "setup", context do
-            # Return {:ok, updated_context} or :ok
-            {:ok, Map.put(context, :key, value)}
-          end
-
-          when_ "action", context do
-            {:ok, Map.put(context, :result, value)}
-          end
-
-          then_ "assertion", context do
-            assert context.result == expected
-            :ok
-          end
-        end
-      end
-    end
-    ```
-
-    ### Step return values
-    - `given_` / `when_` that update context: `{:ok, updated_map}`
-    - `given_` / `when_` that don't: `:ok`
-    - `then_`: `:ok` after assertions
-    - Never return a bare map — wrap in `{:ok, map}`
-
-    ## Reference Files
-    - Case template: `test/support/#{app_name}_spex_case.ex` — defines `#{spex_module}.Case`
-    - Boundary definition: `#{@spex_dir}/#{app_name}_spex.ex`
-    - Shared givens: `test/support/shared_givens.ex`
-    - Framework BDD rules: `read_knowledge` `library: "knowledge"`, `path: "bdd/spex/<file>.md"`
-    - Project BDD rules (`.code_my_spec/knowledge/bdd/spex`): `read_knowledge` `library: "project_knowledge"`, `path: "bdd/spex/<file>.md"`
+    #{sections}\
     """
   end
 
-  # Surfaces the component's source location and @moduledoc so the
-  # spec-writer can see the real public interface rather than
-  # grepping blind.
-  defp component_context_section(%{module_name: module_name}) do
-    path = module_path(module_name)
+  defp procedure_section(spex_module) do
+    """
+    ## Procedure
 
-    case path && File.read(path) do
-      {:ok, source} ->
-        """
-        Source: `#{path}`
+    Write **one** spec file per criterion, then **stop** for validation.
+    The evaluator runs after each session — it checks file existence,
+    parses, compiles via `Code.string_to_quoted/2`, asserts `use` of
+    `#{spex_module}.Case`, and asserts at least one scenario with
+    Given/When/Then steps. If validation fails, next-session feedback
+    tells you exactly what's wrong.
 
-        #{extract_moduledoc(source)}
-        """
+    For each criterion:
 
-      _ ->
-        """
-        Source: `#{inferred_path_hint(module_name)}` (couldn't read — read the file before writing specs to see the public API)
-        """
-    end
+    1. Create the spec file at the path shown above.
+    2. Module name under the `#{spex_module}` namespace.
+    3. `use #{spex_module}.Case` (NOT `<App>Web.ConnCase` directly —
+       the case template wires up SexySpex + ConnTest + LiveViewTest +
+       DB sandbox).
+    4. Drive the real interaction surface from `given_` / `when_` /
+       `then_` steps. Never call context functions or `Repo` directly.
+       Never read the DB from `then_`.
+    5. Run `mix compile` to verify.
+    6. **Stop and wait for validation** before starting the next spec.\
+    """
   end
 
-  # If other specs in the same story already exist, point at one so
-  # the author can copy the established pattern (setup blocks, fixture
-  # paths, shared givens, module namespace) rather than reinventing.
-  defp sibling_specs_section(story, criteria) do
-    dir = story_spec_dir(story, criteria)
+  defp reference_files_section(app_name, spex_module) do
+    """
+    ## Reference files
 
-    case dir && list_existing_specs(dir) do
-      [_ | _] = existing ->
-        bullets = Enum.map_join(existing, "\n", &"    - `#{&1}`")
-
-        """
-        ## Sibling Specs in This Story
-
-        Other criteria in this story have already been written. Read at
-        least one end-to-end as a template for shared setup, fixture
-        paths, case template, and given usage:
-
-        #{bullets}
-        """
-
-      _ ->
-        ""
-    end
+    - Case template: `test/support/#{app_name}_spex_case.ex` — defines
+      `#{spex_module}.Case`.
+    - Boundary: `#{@spex_dir}/#{app_name}_spex.ex`.
+    - Shared givens: `test/support/shared_givens.ex`.\
+    """
   end
+
+  # ============================================================================
+  # Component source helpers
+  # ============================================================================
 
   defp module_path(module_name) when is_binary(module_name) do
     relative =
@@ -281,7 +322,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
         "### Module documentation\n\n#{trimmed}"
 
       _ ->
-        "(No @moduledoc; read the file to understand the public API.)"
+        "(No @moduledoc; open the file to understand the public API.)"
     end
   end
 
@@ -302,106 +343,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       _ ->
         []
     end
-  end
-
-  defp testing_setup("liveview", spex_module) do
-    """
-    ## LiveView Testing
-
-    `#{spex_module}.Case` already imports `Phoenix.LiveViewTest`. Test what users SEE and DO.
-
-    ```elixir
-    defmodule #{spex_module}.FeatureSpex do
-      use #{spex_module}.Case
-
-      spex "feature" do
-        scenario "user interaction" do
-          given_ "page loaded", context do
-            {:ok, view, _html} = live(context.conn, "/path")
-            {:ok, Map.put(context, :view, view)}
-          end
-
-          when_ "user submits form", context do
-            html = context.view
-              |> form("#form", data: %{field: "value"})
-              |> render_submit()
-            {:ok, Map.put(context, :html, html)}
-          end
-
-          then_ "user sees result", context do
-            assert render(context.view) =~ "Success"
-            :ok
-          end
-        end
-      end
-    end
-    ```
-
-    Use plain string paths (`"/path"`), not `~p` sigils.
-    """
-  end
-
-  defp testing_setup("controller", spex_module) do
-    """
-    ## Controller Testing
-
-    `#{spex_module}.Case` already imports `Phoenix.ConnTest`. Test HTTP requests and responses.
-
-    ```elixir
-    defmodule #{spex_module}.FeatureSpex do
-      use #{spex_module}.Case
-
-      spex "feature" do
-        scenario "API call" do
-          when_ "user makes request", context do
-            conn = post(context.conn, "/api/resource", %{name: "Test"})
-            {:ok, Map.put(context, :conn, conn)}
-          end
-
-          then_ "response is correct", context do
-            assert json_response(context.conn, 201)
-            :ok
-          end
-        end
-      end
-    end
-    ```
-
-    Use plain string paths, not `~p` sigils.
-    """
-  end
-
-  defp testing_setup(_type, spex_module) do
-    """
-    ## Testing
-
-    `#{spex_module}.Case` provides the SexySpex DSL plus standard ExUnit
-    assertions. Drive the component's real interaction surface from
-    Given/When/Then steps; never call context functions directly.
-
-    ```elixir
-    defmodule #{spex_module}.FeatureSpex do
-      use #{spex_module}.Case
-
-      spex "feature" do
-        scenario "behavior" do
-          given_ "setup", context do
-            {:ok, context}
-          end
-
-          when_ "action through the real surface", context do
-            {:ok, context}
-          end
-
-          then_ "outcome is observable through the same surface", context do
-            assert true
-            :ok
-          end
-        end
-      end
-    end
-    ```
-    """
   end
 
   # ============================================================================
@@ -477,8 +418,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Compile each spec file in-process via `Code.string_to_quoted/2` —
   # cheap, deterministic, and operates on the in-memory string rather
   # than shelling out to `mix compile`. Catches syntax errors with
-  # `{file, line}` location info; semantic issues like undefined
-  # macros are caught by `validate_uses_spex_case/1` instead.
+  # `{file, line}` location info; semantic issues like undefined macros
+  # are caught by `validate_uses_spex_case/1` instead.
   defp validate_compiles(content, spec_path) do
     case Code.string_to_quoted(content, file: spec_path) do
       {:ok, _ast} ->
@@ -520,9 +461,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # `use SexySpex` directly) would compile in isolation but breaks the
   # established pattern, so reject it at validation time rather than
   # surface a confusing macro error at run time.
-  #
-  # AST walk (rather than a textual regex) so a comment that mentions
-  # `<App>Spex.Case` doesn't satisfy the check by accident.
   defp validate_uses_spex_case(content) do
     case Code.string_to_quoted(content) do
       {:ok, ast} ->
@@ -531,8 +469,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
           else: {:error, :missing_spex_case}
 
       {:error, _} ->
-        # Code couldn't even parse it — let the Spex parser surface
-        # the parse error in its own pass.
         :ok
     end
   end
