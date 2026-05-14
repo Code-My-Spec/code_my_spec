@@ -33,6 +33,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Stories.Tools.AddCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateCriterion)
   component(CodeMySpec.McpServers.Stories.Tools.DeleteCriterion)
+  component(CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule)
   component(CodeMySpec.McpServers.Stories.Tools.ListProjectTags)
   component(CodeMySpec.McpServers.Stories.Tools.TagStories)
   component(CodeMySpec.McpServers.Stories.Tools.StartStoryInterview)

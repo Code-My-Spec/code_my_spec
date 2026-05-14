@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion6801Spex do
+defmodule CodeMySpecSpex.Story561.Criterion6213Spex do
   @moduledoc """
   Story 561 — Next Actionable Requirements
-  Criterion 6801 — A grandchild component nested under a non-container
+  Criterion 6213 — A grandchild component nested under a non-container
   intermediate (e.g., `Context → Behaviour → Implementation`) does
   not appear in the next-actionable wave.
 

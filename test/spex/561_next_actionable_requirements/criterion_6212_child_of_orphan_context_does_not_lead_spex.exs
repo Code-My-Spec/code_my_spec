@@ -1,7 +1,7 @@
-defmodule CodeMySpecSpex.Story561.Criterion6800Spex do
+defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
   @moduledoc """
   Story 561 — Next Actionable Requirements
-  Criterion 6800 — A child component of an orphan bounded context
+  Criterion 6212 — A child component of an orphan bounded context
   does not appear in the next-actionable wave.
 
   The architecture gate's orphan check (`ArchitectureChecker.orphans/1`)
