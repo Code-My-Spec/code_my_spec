@@ -38,18 +38,22 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     json(conn, response)
   end
 
+  defp decide(scope, session_id, nil, _active_task, _idle_sub, validation_opts, req_id) do
+    run_and_decide(scope, session_id, nil, nil, validation_opts, req_id)
+  end
+
   defp decide(scope, session_id, session, active_task, idle_sub, validation_opts, req_id) do
     cond do
-      session && has_active_subagent_task?(session) ->
+      has_active_subagent_task?(session) ->
         allow(req_id, "Active subagent task")
 
-      session && r5b_applies?(session, active_task, idle_sub) ->
+      r5b_applies?(session, active_task, idle_sub) ->
         block_assign_directive(active_task, idle_sub, req_id)
 
-      session && continuous_mode?(session) && stuck_threshold_hit?(active_task) ->
+      continuous_mode?(session) && stuck_threshold_hit?(active_task) ->
         terminate_stuck(scope, session, active_task, req_id)
 
-      session && has_active_manual_task?(session) ->
+      has_active_manual_task?(session) ->
         allow(req_id, "Active manual task")
 
       true ->
