@@ -76,14 +76,18 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
         {:ok, context}
       end
 
-      then_ "list_issues filtered by scope=framework excludes the issue", context do
+      then_ "list_issues filtered by scope=qa excludes the issue", context do
+        # The local list_issues surface refuses scope=framework on purpose
+        # (framework issues live server-side, not locally), so we use
+        # scope=qa here to prove the default-scoped issue lands as :app
+        # and is filtered out of any other local scope.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListIssues.execute(%{scope: "framework"}, frame)
+        {:reply, response, _frame} = ListIssues.execute(%{scope: "qa"}, frame)
         body = response_text(response)
 
         refute body =~ "Toast disappears too quickly",
-               "expected default-scoped issue to NOT appear in framework filter, got: #{inspect(body)}"
+               "expected default-scoped issue to NOT appear in qa filter, got: #{inspect(body)}"
 
         {:ok, context}
       end

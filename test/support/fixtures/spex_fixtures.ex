@@ -295,4 +295,24 @@ defmodule CodeMySpecSpex.Fixtures do
 
     :ok
   end
+
+  # -- Framework-issue remote stub --
+
+  @doc """
+  Resets the in-process framework-issue stub. Spex setup should call
+  this so each scenario starts with an empty server-side capture.
+  """
+  def reset_framework_issue_stub do
+    CodeMySpec.Issues.RemoteClientStub.reset()
+  end
+
+  @doc """
+  Returns the framework issues captured by the remote stub during this
+  test. Lets a `then_` step assert "the framework write reached the
+  server surface" through the approved bridge instead of touching the
+  stub module directly.
+  """
+  def captured_framework_issues do
+    CodeMySpec.Issues.RemoteClientStub.stored_issues()
+  end
 end

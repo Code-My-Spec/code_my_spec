@@ -16,13 +16,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   schema do
     field :status, :string, doc: "Filter by status: incoming, accepted, dismissed, resolved"
     field :severity, :string, doc: "Filter by severity: critical, high, medium, low, info"
-    field :scope, :string, doc: "Filter by scope: app, qa, docs, framework"
+    field :scope, :string, doc: "Filter by scope: app, qa, docs"
     field :story_id, :integer, doc: "Filter by related story ID"
   end
 
   @valid_statuses ~w(incoming accepted dismissed resolved)
   @valid_severities ~w(critical high medium low info)
-  @valid_scopes ~w(app qa docs framework)
+  @valid_scopes ~w(app qa docs)
 
   @impl true
   def execute(params, frame) do

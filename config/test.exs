@@ -53,4 +53,4 @@ config :code_my_spec,
   git_impl_module: CodeMySpec.Support.TestAdapter,
   environment: CodeMySpec.Support.RecordingEnvironment,
   embeddings_backend: CodeMySpec.Embeddings.TestBackend,
-  issues_remote_client: CodeMySpecSpex.Stubs.IssuesRemoteClient
+  issues_remote_client: CodeMySpec.Issues.RemoteClientStub

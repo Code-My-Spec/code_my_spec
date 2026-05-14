@@ -58,7 +58,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          attrs <- build_attrs(params),
-         {:ok, issue} <- Issues.create_issue(scope, attrs) do
+         {:ok, issue} <- create(scope, attrs) do
       {:reply, IssuesMapper.issue_created_response(issue), frame}
     else
       {:error, changeset = %Ecto.Changeset{}} ->
@@ -68,6 +68,16 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
         {:reply, IssuesMapper.error(reason), frame}
     end
   end
+
+  # Framework-scoped issues live on the CodeMySpec server, never in the
+  # local CLI's DB. Every other scope (app/qa/docs) writes to the local
+  # context. The configured remote client is real HTTP in production and
+  # an in-process stub in tests.
+  defp create(scope, %{scope: :framework} = attrs) do
+    Issues.remote_client().create_issue(scope, attrs)
+  end
+
+  defp create(scope, attrs), do: Issues.create_issue(scope, attrs)
 
   defp build_attrs(params) do
     params
