@@ -364,7 +364,11 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
       Environments.write_file(env, ".code_my_spec/qa/#{story_id}/brief.md", qa_brief_content())
 
     :ok =
-      Environments.write_file(env, ".code_my_spec/qa/#{story_id}/result.md", qa_result_content())
+      Environments.write_file(
+        env,
+        ".code_my_spec/qa/#{story_id}/result_complete.md",
+        qa_result_content()
+      )
 
     :ok
   end
