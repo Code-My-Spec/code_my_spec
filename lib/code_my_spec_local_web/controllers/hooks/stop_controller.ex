@@ -109,7 +109,12 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   end
 
   defp run_and_decide(scope, session_id, session, active_task, validation_opts, req_id) do
-    with {:ok, _result} <- Validation.validate_stop(scope, active_task, validation_opts),
+    opts =
+      validation_opts
+      |> Keyword.put(:session_id, session_id)
+      |> Keyword.put(:agent_id, active_task && active_task.agent_id)
+
+    with {:ok, _result} <- Validation.validate_stop(scope, active_task, opts),
          {:ok, :valid} <- maybe_evaluate(scope, session_id, session) do
       maybe_continue_with_next_task(scope, session, req_id)
     else

@@ -21,6 +21,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
+  alias CodeMySpec.FileEdits
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
@@ -53,6 +54,12 @@ defmodule CodeMySpec.Validation do
   - `:compile_output_file` - pre-recorded diagnostics JSONL (test-only)
   - `:exunit_output_file` - pre-recorded ExUnit JSON (test-only)
   - `:spex_output_file` - pre-recorded spex JSONL (test-only)
+  - `:session_id` - external session id; when present, the changed-file
+    set is intersected with PostToolUse-attributed edits for this
+    `(session_id, agent_id)`. Problems on files attributed elsewhere
+    are excluded from the block decision.
+  - `:agent_id` - sub-agent id; nil means the main agent. Combined with
+    `:session_id` for the FileEdits attribution lookup.
 
   Set by `StopController` from the `test_output_files` request param so
   cassette-backed specs can drive the pipeline with known outputs without
@@ -83,7 +90,11 @@ defmodule CodeMySpec.Validation do
       changed_paths: sync_result.changed_paths
     )
 
-    changed_files = resolve_changed_files(scope, task, sync_result)
+    changed_files =
+      scope
+      |> resolve_changed_files(task, sync_result)
+      |> filter_by_session_attribution(opts)
+
     config = Configurations.get_or_create(scope)
 
     with :ok <- run_pipeline(scope, task, changed_files, config, opts),
@@ -91,6 +102,37 @@ defmodule CodeMySpec.Validation do
       {:ok, %{changed_files: changed_files}}
     end
   end
+
+  # When a session is in play, narrow the changed-file set to files this
+  # session+agent actually wrote (via PostToolUse). The mtime-based
+  # `Files.changed_since` view picks up every dirty file on disk; without
+  # this filter a parallel session's writes leak into the current stop's
+  # block decision. No session → no filter (preserves behaviour for direct
+  # callers that don't run inside the hook lifecycle).
+  defp filter_by_session_attribution(files, opts) do
+    case Keyword.get(opts, :session_id) do
+      session_id when is_binary(session_id) ->
+        attributed = attributed_paths(session_id, Keyword.get(opts, :agent_id))
+
+        # An empty attribution set means "this session has not edited
+        # anything via PostToolUse yet" — preserve mtime semantics so we
+        # don't accidentally suppress blocking problems on a session that
+        # simply hasn't fired a tracked edit yet (e.g. direct evaluators
+        # that don't go through Claude's Write/Edit pipeline).
+        case attributed do
+          [] -> files
+          _ -> Enum.filter(files, &(&1.path in attributed))
+        end
+
+      _ ->
+        files
+    end
+  end
+
+  defp attributed_paths(session_id, nil), do: FileEdits.get_edited_files(session_id)
+
+  defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
+    do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
   defp run_pipeline(_scope, _task, [], _config, _opts) do
     Logger.info("[Validation] No changed files, skipping pipeline")
