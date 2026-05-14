@@ -110,7 +110,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
              "expected the projector to skip the write when content is unchanged"
     end
 
-    test "writes when the on-disk content differs from the rendered markdown" do
+    test "re-renders when the BEAM has been recompiled with new docs" do
       {scope, tmp_dir} = setup_project()
 
       install_fixture_beam(tmp_dir, "phoenix", "Phoenix", "v1 docs")
@@ -119,15 +119,17 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
       target = Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"])
       assert File.read!(target) =~ "v1 docs"
 
-      # Externally clobber the projected file with stale content so
-      # the projector's needs_write? check has something to disagree
-      # with.
-      File.write!(target, "stale content that does not match")
+      # Recompile the fixture BEAM with new doc content + a forward
+      # mtime so the projector's pre-`fetch_docs` mtime gate detects
+      # the change. (POSIX mtime is second-precision; we need at
+      # least a full second of clock movement to be observable.)
+      Process.sleep(1_100)
+      install_fixture_beam(tmp_dir, "phoenix", "Phoenix", "v2 docs")
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
-      assert File.read!(target) =~ "v1 docs",
-             "expected the projector to overwrite stale content with the rendered markdown"
+      assert File.read!(target) =~ "v2 docs",
+             "expected the projector to re-render after the BEAM moved forward in mtime"
     end
   end
 

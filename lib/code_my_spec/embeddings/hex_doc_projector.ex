@@ -114,23 +114,82 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   end
 
   defp project_package_from_ebin(scope, pkg, ebin_dir) do
-    docs = extract_package_docs(ebin_dir)
+    target_mtimes = projected_module_mtimes(scope, pkg)
+    {fresh_mods, docs} = extract_package_docs(ebin_dir, target_mtimes)
     write_module_files(scope, pkg, docs)
-    drop_orphan_modules(scope, pkg, MapSet.new(Map.keys(docs)))
+    drop_orphan_modules(scope, pkg, fresh_mods)
   end
 
-  defp extract_package_docs(ebin_dir) do
-    ebin_dir
-    |> Path.join("*.beam")
-    |> Path.wildcard()
-    |> Enum.flat_map(&extract_beam_docs/1)
+  # Map of {module_name => projected_markdown_mtime} for modules already on
+  # disk under .code_my_spec/hex_docs/<pkg>/. Used to skip Code.fetch_docs
+  # + render entirely when a BEAM's mtime is older than its already-projected
+  # markdown — the common case on every boot after the first.
+  defp projected_module_mtimes(scope, pkg) do
+    pattern = Path.join([Paths.hex_docs_dir(), pkg, "*.md"])
+
+    scope.environment
+    |> Environments.glob(pattern)
+    |> Enum.flat_map(fn path ->
+      case Environments.stat(scope.environment, path) do
+        {:ok, %{mtime: mtime}} ->
+          [{Path.basename(path, ".md"), mtime}]
+
+        _ ->
+          []
+      end
+    end)
     |> Map.new()
   end
 
-  defp extract_beam_docs(beam_path) do
+  defp extract_package_docs(ebin_dir, target_mtimes) do
+    beams =
+      ebin_dir
+      |> Path.join("*.beam")
+      |> Path.wildcard()
+
+    fresh_mods =
+      beams
+      |> Enum.map(&beam_module_name/1)
+      |> MapSet.new()
+
+    docs =
+      beams
+      |> Enum.flat_map(&extract_beam_docs(&1, target_mtimes))
+      |> Map.new()
+
+    {fresh_mods, docs}
+  end
+
+  defp beam_module_name(beam_path) do
+    beam_path |> Path.basename(".beam") |> strip_elixir_prefix()
+  end
+
+  # Pre-`fetch_docs` skip: if the projected markdown already exists and
+  # is at least as recent as the BEAM, the rendered content cannot have
+  # changed. Avoids loading + decoding the BEAM and re-rendering on every
+  # boot when nothing's actually moved.
+  defp extract_beam_docs(beam_path, target_mtimes) do
+    mod_name = beam_module_name(beam_path)
+
+    if projected_up_to_date?(beam_path, target_mtimes, mod_name) do
+      []
+    else
+      do_extract_beam_docs(beam_path, mod_name)
+    end
+  end
+
+  defp projected_up_to_date?(beam_path, target_mtimes, mod_name) do
+    with %DateTime{} = target_mtime <- Map.get(target_mtimes, mod_name),
+         {:ok, %File.Stat{mtime: beam_mtime}} <- File.stat(beam_path, time: :posix) do
+      DateTime.to_unix(target_mtime) >= beam_mtime
+    else
+      _ -> false
+    end
+  end
+
+  defp do_extract_beam_docs(beam_path, mod_name) do
     case Code.fetch_docs(beam_path) do
       {:docs_v1, _anno, _lang, "text/markdown", mod_doc, _meta, func_docs} ->
-        mod_name = beam_path |> Path.basename(".beam") |> strip_elixir_prefix()
         markdown = render_module(mod_name, mod_doc, func_docs)
         if markdown == "", do: [], else: [{mod_name, markdown}]
 
