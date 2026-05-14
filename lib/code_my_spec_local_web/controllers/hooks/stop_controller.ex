@@ -12,11 +12,14 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.Notifications.NotificationClient
+  alias CodeMySpec.Problems
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
   alias CodeMySpec.Validation.TaskEvaluator
+
+  @total_response_cap 4096
 
   def handle(conn, params) do
     scope = conn.assigns.current_scope
@@ -190,12 +193,17 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
 
   defp block_with_reason(reason, req_id) do
     Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}")
-    %{"decision" => "block", "reason" => reason <> harness_hint_footer()}
+    hint = harness_hint_footer()
+    reason_budget = @total_response_cap - byte_size(hint)
+    capped_reason = Problems.truncate_to_cap(reason, cap: reason_budget)
+    %{"decision" => "block", "reason" => capped_reason <> hint}
   end
 
   # R9 — every block-with-feedback reason carries a one-line affordance
   # pointing the agent at the framework-issue surface so harness friction
-  # gets reported instead of worked around.
+  # gets reported instead of worked around. The reason is truncated to
+  # leave room for this footer so the whole response stays under the
+  # @total_response_cap.
   defp harness_hint_footer do
     "\n\nIf this looks like harness friction (looping hook, contradictory prompt, tool error), call `create_issue` with `scope: framework`."
   end
