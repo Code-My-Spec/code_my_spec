@@ -1,13 +1,8 @@
 defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @moduledoc """
-  Architecture design session for Claude Code slash commands.
+  Map user stories to application components via proposal + MCP-tool mutations.
 
-  Initiates a guided architecture design session that maps user stories
-  to application surface components (controllers, liveviews, CLI modules).
-
-  Two main functions:
-  - `command/2` - Called by slash command to generate the design prompt
-  - `evaluate/2` - Called by stop hook to validate and execute the proposal
+  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/architecture_design.spec.md`.
   """
 
   alias CodeMySpec.Architecture.Proposal
@@ -20,8 +15,14 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @proposal_path Paths.proposal_path()
   @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
 
-  def orchestrate(node) do
-    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Map user stories to application components (surfaces, contexts, children) " <>
+      "via the architecture MCP tools (analyze_stories, create_component, " <>
+      "validate_dependency_graph, set_story_component, execute_proposal). " <>
+      "Runs in initial or revision mode depending on whether proposal.md " <>
+      "exists. Use when stories have linked criteria but no components, or " <>
+      "when the proposal exists but unsatisfied stories / orphan contexts " <>
+      "remain."
   end
 
   @doc """
@@ -262,11 +263,18 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       end
 
     """
-    # Architecture Design Session
+    # Architecture Design — #{project.name}
 
-    You are beginning an architecture design session for the **#{project.name}** project.
+    Map user stories to application components (surfaces, contexts,
+    children) for **#{project.name}** (`#{app_name}`).
 
-    ## Project Overview
+    Mutate the architecture via the architecture MCP tools wherever
+    possible: `analyze_stories`, `create_component`, `update_component`,
+    `validate_dependency_graph`, `set_story_component`, `execute_proposal`.
+    Direct file edits are reserved for the spec `## Dependencies` section,
+    which ComponentSync re-derives.
+
+    ## Project
 
     **Name:** #{project.name}
     **App Module:** #{app_name}
@@ -277,6 +285,12 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     #{stories_section}
 
     #{task_section}
+
+    ## Read the playbook
+
+    `priv/knowledge/architecture_design/workflow.md` — full procedure for
+    both modes, complete MCP tool reference, dependency-edge conventions,
+    orphan resolution options, and anti-patterns to avoid.
     """
   end
 
@@ -284,90 +298,80 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     document_spec = DocumentSpecProjector.project_spec("architecture_proposal")
 
     """
-    ## Your Task
+    ## Mode — initial
 
-    ### Step 1: Analyze Stories
+    No proposal exists yet. Design the architecture end-to-end, write
+    `#{@proposal_path}`, and stop. The evaluator validates the proposal
+    against the `architecture_proposal` document spec AND executes it as one
+    transaction — creating spec files under `.code_my_spec/spec/` and
+    linking stories to components.
 
-    Use `analyze_stories` to identify patterns and groupings.
+    Procedure:
+    1. Call `analyze_stories` for groupings and suggested context names.
+    2. Design surface / context / children per story (read the playbook for
+       conventions).
+    3. Write the proposal to `#{@proposal_path}`.
+    4. Stop. The evaluator runs validate + execute atomically.
 
-    ### Step 2: Design the Architecture
+    ## Document format
 
-    For each story, determine:
-    - **Surface Component**: What screen/endpoint handles the user interaction? (LiveView, Controller)
-    - **Context/Child**: What domain logic implements this? (Schema, Module)
-
-    Consider how new components relate to existing ones (if any).
-
-    ### Step 3: Write the Proposal
-
-    Write your proposal directly to: `#{@proposal_path}`
-
-    The proposal must follow this exact format:
+    The proposal must match this spec exactly (the evaluator parses it
+    against the `architecture_proposal` document type):
 
     #{document_spec}
 
-    **Naming Rules:**
-    - Contexts: `#{app_name}.{ContextName}` (e.g., `#{app_name}.Accounts`)
-    - Children: `#{app_name}.{Context}.{Child}` (e.g., `#{app_name}.Accounts.User`)
-    - Surface: `#{app_name}Web.{Name}Live` or `#{app_name}Web.{Name}Controller`
+    ## Naming conventions
 
-    ### Step 4: Submit for Validation
-
-    Stop when your proposal is complete. The system will automatically validate and execute it,
-    creating all spec files and linking stories. If validation fails, you'll receive feedback to fix.
-
-    ## Begin
-
-    1. Optionally use `analyze_stories` to identify patterns
-    2. Write your proposal to `#{@proposal_path}`
-    3. Stop - the system will validate and execute your proposal
+    - Contexts: `#{app_name}.{ContextName}` (e.g., `#{app_name}.Accounts`).
+    - Children: `#{app_name}.{Context}.{Child}` (e.g., `#{app_name}.Accounts.User`).
+    - Surface: `#{app_name}Web.{Name}Live` or `#{app_name}Web.{Name}Controller`.
     """
   end
 
   defp revision_task_section(app_name) do
     """
-    ## Your Task
+    ## Mode — revision
 
-    The architecture has already been designed (`#{@proposal_path}` exists). Apply
-    targeted edits to satisfy the unsatisfied stories and resolve any architectural
-    issues above. **Do not rewrite the proposal end-to-end** unless the changes are
-    too sweeping for incremental edits.
+    `#{@proposal_path}` already exists. Apply targeted edits via the
+    architecture MCP tools to satisfy unsatisfied stories and resolve the
+    architectural issues listed above. **Do not rewrite the proposal
+    end-to-end** unless the changes are too sweeping for incremental tools.
 
-    ### Prefer Incremental Tools
+    ### Primary tool surface (use these first)
 
-    - `set_story_component` — link an unsatisfied story to an existing component
-    - `create_component` — add a new context, child, or surface when no existing component fits
-    - `validate_dependency_graph` — check for cycles after edits
+    - **`set_story_component`** — link an unsatisfied story to an existing
+      component. The simplest action when the architecture already has the
+      right component.
+    - **`create_component`** — add a new context / child / surface when no
+      existing component fits. Scaffolds the spec file automatically.
+    - **`update_component`** — edit existing component metadata; the spec
+      file is re-projected.
+    - **`validate_dependency_graph`** — run after every structural change.
 
-    ### Wiring Dependencies
+    ### Dependencies are spec-derived, not a tool call
 
-    Dependency edges are spec-derived, not a tool call. To add an edge
-    from a story-linked context to an orphan context, edit the
-    story-linked context's spec file under `.code_my_spec/spec/` and
-    append the orphan's module name as a bullet under the
-    `## Dependencies` heading. ComponentSync re-derives the dependency
-    graph from spec files on save.
+    To add an edge from a story-linked context to an orphan context, edit
+    the story-linked context's spec file under `.code_my_spec/spec/` and
+    append the orphan's module name as a bullet under `## Dependencies`.
+    ComponentSync re-derives the graph on save.
 
-    For orphan contexts, the resolution options are listed under **Architectural
-    Issues** above.
+    ### Naming conventions for new components
 
-    **Naming Rules** (when creating new components):
-    - Contexts: `#{app_name}.{ContextName}` (e.g., `#{app_name}.Accounts`)
-    - Children: `#{app_name}.{Context}.{Child}` (e.g., `#{app_name}.Accounts.User`)
-    - Surface: `#{app_name}Web.{Name}Live` or `#{app_name}Web.{Name}Controller`
+    - Contexts: `#{app_name}.{ContextName}` (e.g., `#{app_name}.Accounts`).
+    - Children: `#{app_name}.{Context}.{Child}` (e.g., `#{app_name}.Accounts.User`).
+    - Surface: `#{app_name}Web.{Name}Live` or `#{app_name}Web.{Name}Controller`.
 
-    ### Fallback: Full Rewrite
+    ### Fallback — full rewrite
 
-    Only if the design needs a fresh pass: rewrite `#{@proposal_path}` to the
-    `architecture_proposal` document format and call `execute_proposal` to apply
-    it. The system will not auto-execute the proposal in revision mode — it will
-    only verify that every story is linked.
+    Only if the design needs a fresh pass: rewrite `#{@proposal_path}` to
+    the `architecture_proposal` format and call `execute_proposal` to apply
+    it. **The evaluator does NOT auto-execute in revision mode** — it only
+    verifies every story is linked.
 
-    ### Submit for Validation
+    ### Stop
 
-    Stop when your edits are complete. The system will verify that every story
-    is linked to a component. If any are still unlinked, you'll receive feedback
-    listing them.
+    Stop when your edits are complete. The evaluator checks that every
+    story has a linked component AND no orphan contexts remain.
     """
   end
 
