@@ -71,43 +71,28 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
           <h1 class="text-3xl font-bold">Issues <span class="text-base-content/50 font-normal text-xl">({length(@issues)})</span></h1>
         </div>
 
-        <div class="flex flex-wrap gap-2 mb-6">
-          <select
-            name="status"
-            phx-change="filter"
-            class="select select-sm select-bordered"
-            value={@filters[:status]}
-          >
+        <form phx-change="filter" class="flex flex-wrap gap-2 mb-6">
+          <select name="status" class="select select-sm select-bordered">
             <option value="">All statuses</option>
             <option :for={s <- ~w(incoming accepted dismissed resolved)} value={s} selected={@filters[:status] == String.to_existing_atom(s)}>
               {s}
             </option>
           </select>
 
-          <select
-            name="severity"
-            phx-change="filter"
-            class="select select-sm select-bordered"
-            value={@filters[:severity]}
-          >
+          <select name="severity" class="select select-sm select-bordered">
             <option value="">All severities</option>
             <option :for={s <- ~w(critical high medium low info)} value={s} selected={@filters[:severity] == String.to_existing_atom(s)}>
               {s}
             </option>
           </select>
 
-          <select
-            name="scope"
-            phx-change="filter"
-            class="select select-sm select-bordered"
-            value={@filters[:scope]}
-          >
+          <select name="scope" class="select select-sm select-bordered">
             <option value="">All scopes</option>
             <option :for={s <- ~w(app qa docs)} value={s} selected={@filters[:scope] == String.to_existing_atom(s)}>
               {s}
             </option>
           </select>
-        </div>
+        </form>
 
         <div :if={@issues == []} class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box">
           No issues found.
@@ -160,14 +145,13 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
   defp severity_badge(_), do: ""
 
   defp parse_filters(params) do
-    %{}
-    |> maybe_put(:status, parse_atom(params["status"]))
-    |> maybe_put(:severity, parse_atom(params["severity"]))
-    |> maybe_put(:scope, parse_atom(params["scope"]))
+    Enum.reduce([:status, :severity, :scope], %{}, fn key, acc ->
+      case parse_atom(params[Atom.to_string(key)]) do
+        nil -> acc
+        value -> Map.put(acc, key, value)
+      end
+    end)
   end
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp parse_atom(nil), do: nil
   defp parse_atom(s) when is_binary(s) and s != "", do: String.to_existing_atom(s)

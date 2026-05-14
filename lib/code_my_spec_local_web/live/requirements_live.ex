@@ -240,8 +240,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
         lines = Enum.map_join(stories, "\n", &story_line(&1, nodes, slug))
 
-        back = "[← Back to requirements](/projects/#{slug}/requirements)\n\n"
-        markdown = back <> "# Stories\n\n#{lines}\n"
+        markdown = "# Stories\n\n#{lines}\n"
 
         {:noreply, assign(socket, project: project, scope: scope, markdown: markdown, graph_data: nil, error: nil)}
 
@@ -364,6 +363,23 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
           style="width: 100%; height: 80vh;"
         >
         </div>
+      </div>
+
+      <div :if={@live_action in [:index, :stories] && @project} role="tablist" class="tabs tabs-bordered mb-6">
+        <.link
+          patch={~p"/projects/#{project_slug(@project)}/requirements"}
+          role="tab"
+          class={["tab", @live_action == :index && "tab-active"]}
+        >
+          Project
+        </.link>
+        <.link
+          patch={~p"/projects/#{project_slug(@project)}/requirements/stories"}
+          role="tab"
+          class={["tab", @live_action == :stories && "tab-active"]}
+        >
+          Stories
+        </.link>
       </div>
 
       <article :if={@markdown} class="prose max-w-none">

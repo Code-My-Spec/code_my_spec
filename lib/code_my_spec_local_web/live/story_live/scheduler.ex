@@ -16,6 +16,23 @@ defmodule CodeMySpecLocalWeb.StoryLive.Scheduler do
       section={:scheduler}
       page_title="Story Scheduler"
     >
+      <div :if={@project} role="tablist" class="tabs tabs-bordered mb-6">
+        <.link
+          navigate={~p"/projects/#{@slug}/stories"}
+          role="tab"
+          class="tab"
+        >
+          Stories
+        </.link>
+        <.link
+          navigate={~p"/projects/#{@slug}/stories/scheduler"}
+          role="tab"
+          class={["tab", "tab-active"]}
+        >
+          Scheduler
+        </.link>
+      </div>
+
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>

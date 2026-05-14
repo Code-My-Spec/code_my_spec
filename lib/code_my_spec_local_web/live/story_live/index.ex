@@ -16,6 +16,23 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
       section={:stories}
       page_title={Map.get(assigns, :page_title, "Stories")}
     >
+      <div :if={@project} role="tablist" class="tabs tabs-bordered mb-6">
+        <.link
+          navigate={~p"/projects/#{@slug}/stories"}
+          role="tab"
+          class={["tab", "tab-active"]}
+        >
+          Stories
+        </.link>
+        <.link
+          navigate={~p"/projects/#{@slug}/stories/scheduler"}
+          role="tab"
+          class="tab"
+        >
+          Scheduler
+        </.link>
+      </div>
+
       <.header>
         Stories
         <:actions>
