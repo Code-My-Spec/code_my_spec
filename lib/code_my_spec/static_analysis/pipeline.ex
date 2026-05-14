@@ -270,13 +270,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
       case result do
         {:ok, problems} ->
-          file_count =
-            if is_nil(analyzer_files), do: "all", else: Integer.to_string(length(analyzer_files))
-
-          Logger.info(
-            "[Pipeline] #{atom}: #{length(problems)} problem(s) on #{file_count} file(s) (#{ms}ms)"
-          )
-
+          log_analyzer_success(atom, problems, analyzer_files, ms)
           problems
 
         {:error, reason} ->
@@ -284,6 +278,14 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
           []
       end
     end)
+  end
+
+  defp log_analyzer_success(atom, problems, analyzer_files, ms) do
+    file_count = if is_nil(analyzer_files), do: "all", else: Integer.to_string(length(analyzer_files))
+
+    Logger.info(
+      "[Pipeline] #{atom}: #{length(problems)} problem(s) on #{file_count} file(s) (#{ms}ms)"
+    )
   end
 
   # Project-wide credo when its mode is :block_all — `nil` tells the
@@ -357,7 +359,9 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   end
 
   defp run_document_validation(scope, file, source, document_type, content) do
-    case Documents.create_dynamic_document(content, document_type) do
+    strict? = strict_for_source?(scope, source)
+
+    case Documents.create_dynamic_document(content, document_type, strict: strict?) do
       {:ok, _document} ->
         Files.mark_validated(file, true)
         []
@@ -379,6 +383,14 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
         ]
     end
   end
+
+  # `require_specs == false` only loosens spec-file validation, not QA
+  # artifact validation. QA briefs/results have their own analyzer field
+  # (`qa_validation`) and stay strict whenever they run.
+  defp strict_for_source?(scope, "spec_validation"),
+    do: CodeMySpec.Configurations.require_specs?(scope)
+
+  defp strict_for_source?(_scope, _source), do: true
 
   defp spec_document_type(%{role: :review}, _content), do: "design_review"
   defp spec_document_type(_file, content), do: document_type_from_content(content)

@@ -337,8 +337,16 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     - `set_story_component` — link an unsatisfied story to an existing component
     - `create_component` — add a new context, child, or surface when no existing component fits
-    - `create_dependency` — wire an orphan context into the graph from a story-linked context
     - `validate_dependency_graph` — check for cycles after edits
+
+    ### Wiring Dependencies
+
+    Dependency edges are spec-derived, not a tool call. To add an edge
+    from a story-linked context to an orphan context, edit the
+    story-linked context's spec file under `.code_my_spec/spec/` and
+    append the orphan's module name as a bullet under the
+    `## Dependencies` heading. ComponentSync re-derives the dependency
+    graph from spec files on save.
 
     For orphan contexts, the resolution options are listed under **Architectural
     Issues** above.
@@ -417,7 +425,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     For each orphan context, choose one resolution:
     - Link a story directly to the context using `set_story_component`
-    - Add a dependency edge from a story-linked context using `create_dependency`
+    - Add a dependency edge from a story-linked context: edit that context's spec under `.code_my_spec/spec/` and add the orphan module as a bullet under `## Dependencies`. ComponentSync re-derives the graph on save.
     - Classify the context as framework boilerplate by adding its file path to `infrastructure_paths` in `.code_my_spec/config.yml`
     - Delete the context's spec, implementation, and test files; ComponentSync will remove the component on the next sync
 

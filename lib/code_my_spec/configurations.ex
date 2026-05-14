@@ -51,4 +51,20 @@ defmodule CodeMySpec.Configurations do
   def change(%ProjectConfiguration{} = configuration, attrs \\ %{}) do
     ProjectConfiguration.changeset(configuration, attrs)
   end
+
+  @doc """
+  Whether the active project requires specs as a generated artifact.
+  Drives `Documents.create_dynamic_document`'s strict-section gate:
+  off means partial specs are allowed.
+
+  Falls back to `true` when no scope/project is available so non-
+  scoped callers stay in strict mode by default.
+  """
+  @spec require_specs?(Scope.t() | nil) :: boolean()
+  def require_specs?(%Scope{active_project_id: project_id} = scope)
+      when not is_nil(project_id) do
+    get_or_create(scope).require_specs
+  end
+
+  def require_specs?(_), do: true
 end

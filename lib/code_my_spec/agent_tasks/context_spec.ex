@@ -91,7 +91,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
       {:ok, :valid} ->
         # Requirements and problems pass — create child spec stubs (won't overwrite existing)
         with {:ok, spec_content} <- read_spec_file(scope, component, project),
-             {:ok, document} <- validate_document(spec_content),
+             {:ok, document} <- validate_document(scope, spec_content),
              {:ok, _paths} <- create_child_spec_files(scope, document.sections) do
           {:ok, :valid}
         end
@@ -220,8 +220,9 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end
   end
 
-  defp validate_document(spec_content) do
-    Documents.create_dynamic_document(spec_content, "context_spec")
+  defp validate_document(scope, spec_content) do
+    strict? = CodeMySpec.Configurations.require_specs?(scope)
+    Documents.create_dynamic_document(spec_content, "context_spec", strict: strict?)
   end
 
   defp create_child_spec_files(scope, %{"components" => components})

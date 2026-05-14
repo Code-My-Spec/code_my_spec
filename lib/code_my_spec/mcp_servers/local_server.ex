@@ -48,11 +48,11 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Components — incremental architecture mutations (patch mode).
   # Deletion is intentionally not a tool: the architect deletes the
   # spec/impl/test files and ComponentSync removes the component on
-  # the next sync.
+  # the next sync. Dependency edges are likewise spec-driven — the
+  # architect edits the source spec's `## Dependencies` section and
+  # ComponentSync re-derives the graph.
   component(CodeMySpec.McpServers.Components.Tools.CreateComponent)
   component(CodeMySpec.McpServers.Components.Tools.UpdateComponent)
-  component(CodeMySpec.McpServers.Components.Tools.CreateDependency)
-  component(CodeMySpec.McpServers.Components.Tools.DeleteDependency)
 
   # Requirements — discovery and sync
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)

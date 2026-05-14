@@ -122,23 +122,45 @@ defmodule CodeMySpec.Documents do
 
   Returns `{:ok, document}` with sections map and type or `{:error, reason}` on failure.
   """
-  def create_dynamic_document(markdown_content, document_type) do
+  def create_dynamic_document(markdown_content, document_type, opts \\ []) do
+    strict? = Keyword.get(opts, :strict, true)
+
     with :ok <- validate_document_type(document_type),
          doc_def = CodeMySpec.Documents.Registry.get_definition(document_type),
+         {required, optional} = effective_section_requirements(doc_def, strict?),
          :ok <- validate_h1_title(markdown_content, document_type),
          {:ok, sections} <- MarkdownParser.parse(markdown_content),
-         :ok <- validate_required_sections(sections, doc_def.required_sections),
-         :ok <- validate_section_bodies(sections, doc_def.required_sections),
+         :ok <- validate_required_sections(sections, required),
+         :ok <- validate_section_bodies(sections, required),
          :ok <-
            validate_additional_sections(
              sections,
-             doc_def.required_sections,
-             doc_def.optional_sections,
+             required,
+             optional,
              doc_def.allowed_additional_sections
            ),
          :ok <- validate_parsed_issues(sections) do
       {:ok, %{sections: sections, type: document_type}}
     end
+  end
+
+  # In lenient mode (project config `require_specs: false`), required
+  # sections are treated as optional so a spec file can be edited
+  # piecewise without being forced to fill in every section. Structural
+  # checks that don't depend on completeness (H1, parse, disallowed
+  # sections, parsed-issue shape) still run.
+  defp effective_section_requirements(doc_def, true), do:
+    {doc_def.required_sections, doc_def.optional_sections}
+
+  defp effective_section_requirements(doc_def, false) do
+    flattened =
+      doc_def.required_sections
+      |> Enum.flat_map(fn
+        section when is_binary(section) -> [section]
+        alternatives when is_list(alternatives) -> alternatives
+      end)
+
+    {[], doc_def.optional_sections ++ flattened}
   end
 
   defp validate_document_type(type) when is_binary(type) and byte_size(type) > 0, do: :ok

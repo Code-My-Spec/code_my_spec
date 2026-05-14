@@ -15,11 +15,10 @@ defmodule CodeMySpec.McpServers.ComponentsServer do
 
   # Batch operations
   # component(CodeMySpec.McpServers.Components.Tools.CreateComponents)
-  # component(CodeMySpec.McpServers.Components.Tools.CreateDependencies)
 
-  # Dependency management
-  component(CodeMySpec.McpServers.Components.Tools.CreateDependency)
-  component(CodeMySpec.McpServers.Components.Tools.DeleteDependency)
+  # Dependency edges are derived from spec files — the architect edits
+  # the source component's `## Dependencies` section and ComponentSync
+  # writes the graph rows. No CRUD tool surface for dependencies.
 
   # Architecture and design tools
   component(CodeMySpec.McpServers.Components.Tools.StartContextDesign)

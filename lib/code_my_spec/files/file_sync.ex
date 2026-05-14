@@ -10,6 +10,7 @@ defmodule CodeMySpec.Files.FileSync do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Documents
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
@@ -115,9 +116,13 @@ defmodule CodeMySpec.Files.FileSync do
 
           components = Components.list_components(scope)
           component_by_id = Map.new(components, &{&1.id, &1})
+          strict? = Configurations.require_specs?(scope)
 
           validated_entries =
-            Enum.map(entries_with_fingerprints, &validate_entry(&1, env, component_by_id))
+            Enum.map(
+              entries_with_fingerprints,
+              &validate_entry(&1, env, component_by_id, strict?)
+            )
 
           changed = changed_entries(validated_entries, existing_by_path)
 
@@ -332,9 +337,13 @@ defmodule CodeMySpec.Files.FileSync do
 
           components = Components.list_components(scope)
           component_by_id = Map.new(components, &{&1.id, &1})
+          strict? = Configurations.require_specs?(scope)
 
           validated_entries =
-            Enum.map(entries_with_fingerprints, &validate_entry(&1, env, component_by_id))
+            Enum.map(
+              entries_with_fingerprints,
+              &validate_entry(&1, env, component_by_id, strict?)
+            )
 
           embedding_changed = changed_entries(validated_entries, existing_by_path)
 
@@ -441,7 +450,8 @@ defmodule CodeMySpec.Files.FileSync do
             [entry] = fingerprint_entries(env, [entry])
             components = Components.list_components(scope)
             component_by_id = Map.new(components, &{&1.id, &1})
-            validate_entry(entry, env, component_by_id)
+            strict? = Configurations.require_specs?(scope)
+            validate_entry(entry, env, component_by_id, strict?)
           else
             [entry] = fingerprint_entries(env, [entry])
             entry |> Map.put(:component_id, nil) |> Map.put(:story_id, nil) |> Map.put(:valid, true) |> Map.put(:validation_errors, nil)
@@ -518,28 +528,30 @@ defmodule CodeMySpec.Files.FileSync do
   Tests with a component are checked for spec alignment.
   Other tracked roles are valid by existence.
   """
-  def validate_entry(%{role: :spec} = entry, env, _component_by_id) do
+  def validate_entry(entry, env, component_by_id, strict? \\ true)
+
+  def validate_entry(%{role: :spec} = entry, env, _component_by_id, strict?) do
     case Environments.read_file(env, entry.path) do
       {:ok, content} ->
         document_type = document_type_from_content(content)
-        validate_spec_content(entry, content, document_type)
+        validate_spec_content(entry, content, document_type, strict?)
 
       {:error, reason} ->
         Map.merge(entry, %{valid: false, validation_errors: %{error: "Read failed: #{inspect(reason)}"}})
     end
   end
 
-  def validate_entry(%{role: :review} = entry, env, _component_by_id) do
+  def validate_entry(%{role: :review} = entry, env, _component_by_id, strict?) do
     case Environments.read_file(env, entry.path) do
       {:ok, content} ->
-        validate_spec_content(entry, content, "design_review")
+        validate_spec_content(entry, content, "design_review", strict?)
 
       {:error, reason} ->
         Map.merge(entry, %{valid: false, validation_errors: %{error: "Read failed: #{inspect(reason)}"}})
     end
   end
 
-  def validate_entry(%{role: :test, component_id: component_id} = entry, env, component_by_id)
+  def validate_entry(%{role: :test, component_id: component_id} = entry, env, component_by_id, _strict?)
        when not is_nil(component_id) do
     component = Map.get(component_by_id, component_id)
 
@@ -554,23 +566,23 @@ defmodule CodeMySpec.Files.FileSync do
   # steps used to do at evaluate-time, and persists the results into
   # `validation_errors` keyed by concern. The corresponding Setup.* step then
   # decides pass/fail by reading those keys — zero filesystem access.
-  def validate_entry(%{role: :mix_exs} = entry, env, _component_by_id) do
+  def validate_entry(%{role: :mix_exs} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_mix_exs/1)
   end
 
-  def validate_entry(%{role: :credo_exs} = entry, env, _component_by_id) do
+  def validate_entry(%{role: :credo_exs} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_credo_exs/1)
   end
 
-  def validate_entry(%{role: :claude_md} = entry, env, _component_by_id) do
+  def validate_entry(%{role: :claude_md} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_claude_md/1)
   end
 
-  def validate_entry(%{role: :setup_config} = entry, env, _component_by_id) do
+  def validate_entry(%{role: :setup_config} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_setup_config/1)
   end
 
-  def validate_entry(%{role: :test_support} = entry, env, _component_by_id) do
+  def validate_entry(%{role: :test_support} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_test_support(&1, entry.path))
   end
 
@@ -591,13 +603,13 @@ defmodule CodeMySpec.Files.FileSync do
     :hex_doc
   ]
 
-  def validate_entry(%{role: role} = entry, _env, _component_by_id)
+  def validate_entry(%{role: role} = entry, _env, _component_by_id, _strict?)
       when role in @valid_by_existence_roles do
     # These roles are valid if they exist (which they do, since FileSync found them)
     Map.merge(entry, %{valid: true, validation_errors: nil})
   end
 
-  def validate_entry(entry, _env, _component_by_id) do
+  def validate_entry(entry, _env, _component_by_id, _strict?) do
     Map.merge(entry, %{valid: nil, validation_errors: nil})
   end
 
@@ -824,8 +836,8 @@ defmodule CodeMySpec.Files.FileSync do
     %{errors: %{has_defmodule: error}, data: %{module_name: module_name}}
   end
 
-  defp validate_spec_content(entry, content, document_type) do
-    case Documents.create_dynamic_document(content, document_type) do
+  defp validate_spec_content(entry, content, document_type, strict?) do
+    case Documents.create_dynamic_document(content, document_type, strict: strict?) do
       {:ok, _document} ->
         Map.merge(entry, %{valid: true, validation_errors: nil})
 

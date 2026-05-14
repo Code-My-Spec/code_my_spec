@@ -82,7 +82,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
 
       {:ok, :valid} ->
         with {:ok, spec_content} <- read_spec_file(scope, component, project),
-             {:ok, document} <- validate_document(spec_content),
+             {:ok, document} <- validate_document(scope, spec_content),
              {:ok, _paths} <- create_child_spec_files(scope, document.sections) do
           {:ok, :valid}
         end
@@ -151,8 +151,9 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     end
   end
 
-  defp validate_document(spec_content) do
-    Documents.create_dynamic_document(spec_content, "live_context_spec")
+  defp validate_document(scope, spec_content) do
+    strict? = CodeMySpec.Configurations.require_specs?(scope)
+    Documents.create_dynamic_document(spec_content, "live_context_spec", strict: strict?)
   end
 
   defp create_child_spec_files(scope, sections) do

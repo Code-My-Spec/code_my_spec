@@ -173,9 +173,14 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
         # the prompt's resolution menu AND be registered. Drift in
         # either direction (prompt drops the mention, or registration
         # disappears) breaks the agent's ability to resolve orphans.
+        #
+        # Dependency wiring is intentionally NOT a tool — the spec
+        # files are the source of truth and ComponentSync re-derives
+        # edges on save. The prompt must still describe that path
+        # (asserted via the `dependency edge` regex in criterion 5873).
         registered = registered_tool_names()
 
-        for tool <- ["set_story_component", "create_dependency"] do
+        for tool <- ["set_story_component"] do
           assert tool in registered,
                  "expected `#{tool}` to be registered on LocalServer, but it is not"
 
