@@ -613,8 +613,9 @@ defmodule CodeMySpec.Architecture.ProposalTest do
 
       assert {:ok, result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
 
-      # 5 link attempts: context (2) + child schema (1) + surface (2)
-      assert result.linked_stories == 5
+      # 2 unique stories linked. Raw claims (context 2 + child schema 1 + surface 2 = 5)
+      # are deduped by story_id, keeping the last (surface) claim per story.
+      assert result.linked_stories == 2
 
       # Surface is processed last so it wins on the single component_id field
       liveview = Components.get_component_by_module_name(scope, "MetricFlowWeb.DashboardLive")
@@ -636,6 +637,110 @@ defmodule CodeMySpec.Architecture.ProposalTest do
 
       assert context_stories == []
       assert schema_stories == []
+    end
+
+    test "from_markdown + execute: surface wins when both context and surface claim a story",
+         %{tmp_dir: tmp_dir, scope: scope} do
+      alias CodeMySpec.Components
+      alias CodeMySpec.Stories
+
+      {:ok, story} =
+        Stories.create_story(scope, %{title: "Persona Research", description: "Story"})
+
+      markdown = """
+      # Architecture Proposal
+
+      ## Contexts
+
+      ### MetricFlow.Personas
+
+      - **Type:** context
+      - **Description:** Personas context
+      - **Stories:** #{story.id}
+
+      ## Surface Components
+
+      ### MetricFlowWeb.PersonasLive
+
+      - **Type:** live_context
+      - **Description:** Personas UI
+      - **Stories:** #{story.id}
+
+      ## Dependencies
+
+      - MetricFlowWeb.PersonasLive -> MetricFlow.Personas
+      """
+
+      assert {:ok, proposal} = Proposal.from_markdown(markdown, app_name: "MetricFlow")
+      assert {:ok, _result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
+
+      surface = Components.get_component_by_module_name(scope, "MetricFlowWeb.PersonasLive")
+      story_updated = Stories.get_story(scope, story.id)
+
+      assert story_updated.component_id == surface.id,
+             "Expected story linked to surface MetricFlowWeb.PersonasLive (#{inspect(surface.id)}), got #{inspect(story_updated.component_id)}"
+    end
+
+    test "from_markdown + execute: surface still wins when surface exists in DB with children",
+         %{tmp_dir: tmp_dir, scope: scope} do
+      alias CodeMySpec.Components
+      alias CodeMySpec.Stories
+
+      # Pre-existing surface live_context + child liveview already in DB
+      {:ok, existing_surface} =
+        Components.create_component(scope, %{
+          module_name: "MetricFlowWeb.PersonasLive",
+          name: "PersonasLive",
+          type: "live_context",
+          description: "Existing"
+        })
+
+      {:ok, _existing_child} =
+        Components.create_component(scope, %{
+          module_name: "MetricFlowWeb.PersonasLive.Index",
+          name: "Index",
+          type: "liveview",
+          description: "Existing child",
+          parent_component_id: existing_surface.id
+        })
+
+      {:ok, story} =
+        Stories.create_story(scope, %{title: "Persona Research", description: "Story"})
+
+      # Proposal lists the surface WITHOUT children (children stay in DB but
+      # are not enumerated in the proposal).
+      markdown = """
+      # Architecture Proposal
+
+      ## Contexts
+
+      ### MetricFlow.Personas
+
+      - **Type:** context
+      - **Description:** Personas context
+      - **Stories:** #{story.id}
+
+      ## Surface Components
+
+      ### MetricFlowWeb.PersonasLive
+
+      - **Type:** live_context
+      - **Description:** Personas UI
+      - **Stories:** #{story.id}
+
+      ## Dependencies
+
+      - MetricFlowWeb.PersonasLive -> MetricFlow.Personas
+      """
+
+      assert {:ok, proposal} = Proposal.from_markdown(markdown, app_name: "MetricFlow")
+      assert {:ok, _result} = Proposal.execute(proposal, scope, working_dir: tmp_dir)
+
+      surface = Components.get_component_by_module_name(scope, "MetricFlowWeb.PersonasLive")
+      story_updated = Stories.get_story(scope, story.id)
+
+      assert story_updated.component_id == surface.id,
+             "Expected story linked to surface; got #{inspect(story_updated.component_id)} (surface id: #{inspect(surface.id)})"
     end
 
     test "links stories to pre-existing surface components", %{tmp_dir: tmp_dir, scope: scope} do

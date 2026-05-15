@@ -883,7 +883,7 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp sync_and_link_components(scope, components) do
     Logger.debug("[Proposal] sync_and_link_components: #{length(components)} components")
 
-    links =
+    raw_links =
       Enum.flat_map(components, fn comp_attrs ->
         case sync_component_to_db(scope, comp_attrs) do
           %{id: component_id} ->
@@ -907,7 +907,21 @@ defmodule CodeMySpec.Architecture.Proposal do
         end
       end)
 
+    # Dedupe by story_id keeping the LAST occurrence. `components` is ordered
+    # `context_components ++ surface`, so the last claim of a given story_id
+    # belongs to the surface component. Deduping here makes "surface wins"
+    # deterministic — independent of `apply_link/4`'s order semantics or any
+    # downstream reordering in the bulk path.
+    links = dedupe_links_last_wins(raw_links)
+
     apply_story_links(scope, links)
+  end
+
+  defp dedupe_links_last_wins(links) do
+    links
+    |> Enum.reverse()
+    |> Enum.uniq_by(& &1.story_id)
+    |> Enum.reverse()
   end
 
   defp apply_story_links(_scope, []), do: 0
