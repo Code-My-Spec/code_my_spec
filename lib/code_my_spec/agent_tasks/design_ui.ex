@@ -1,14 +1,19 @@
 defmodule CodeMySpec.AgentTasks.DesignUi do
   @moduledoc """
-  Agent task that interviews the user to establish the project's design system.
+  Interview the engineer to establish the project's design system.
 
-  Produces a self-contained HTML file (`.code_my_spec/design/design_system.html`) that serves as
-  both documentation and live preview using DaisyUI CDN with a theme switcher. The agent
-  walks the user through theme selection, color palette, typography scale, layout patterns,
-  and tone, modifying an HTML template as they go.
+  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/design_ui.spec.md`.
   """
 
   alias CodeMySpec.Environments
+
+  def orchestrate(_node) do
+    "Interview the engineer to establish the project's design system. " <>
+      "Walks theme / colors / typography / layout / tone with concrete " <>
+      "options (no open-ended questions), modifying an HTML template to " <>
+      "produce `.code_my_spec/design/design_system.html` (live DaisyUI " <>
+      "preview). Use when starting a project or revising its design system."
+  end
 
   @design_system_path CodeMySpec.Paths.design_system_path()
   @template_path "priv/templates/design_system.html"
@@ -167,40 +172,25 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
 
   defp build_instructions do
     """
-    ## Interview Instructions
+    ## Read the playbook
 
-    Walk the user through each section one at a time. At each step, show concrete options and
-    examples — don't ask open-ended questions. Modify the template based on their choices.
+    `priv/knowledge/design_ui/workflow.md` — the five-section interview
+    procedure (theme / colors / typography / layout / tone), concrete
+    options per step (no open-ended questions), required sections in
+    the validated HTML, done signal.
 
-    ### 1. Theme
-    Present DaisyUI built-in themes by name: corporate, nord, dracula, winter, cupcake, emerald,
-    cyberpunk, valentine, garden, lofi, pastel, wireframe, luxury, night, coffee, dim, sunset.
-    Ask the user to pick a base theme or go custom. If custom, you'll define CSS variables using
-    the `[data-theme="my-brand"]` format with oklch color values.
+    Supporting docs:
 
-    ### 2. Colors
-    If custom theme: walk through primary, secondary, accent, and neutral color roles with oklch values.
-    If built-in theme: confirm the palette works or adjust individual colors.
-    Show color swatches in the HTML as you go.
+    - `priv/knowledge/ui/daisyui.md` — DaisyUI theme system, semantic colors.
+    - `priv/knowledge/ui/tailwind.md` — Tailwind utilities, layout, responsive.
 
-    ### 3. Typography
-    Ask about heading scale, content density, and font preferences.
-    Options: compact (1.125 scale), default (1.25 scale), spacious (1.333 scale).
-    Font options: system fonts, Inter, or custom.
+    ## Done signal
 
-    ### 4. Layout
-    Ask about navigation pattern (sidebar, top nav, hybrid), content width (narrow/medium/wide),
-    and page templates needed (list, form, detail, dashboard).
-
-    ### 5. Tone
-    Ask about visual personality:
-    - Density: minimal vs information-dense
-    - Corners: rounded-lg vs rounded-sm vs sharp
-    - Shadows: none, subtle, pronounced
-    - Overall feel: professional, playful, technical
-
-    After each section, update the HTML template file with the user's choices. Write the file
-    to `.code_my_spec/design/design_system.html`.
+    Write each interview answer back to
+    `.code_my_spec/design/design_system.html` incrementally. The evaluator
+    parses the HTML and requires: non-empty `data-theme` on `<html>`,
+    `<section id="theme">` / `id="colors"` / `id="typography"` /
+    `id="layout"` / `id="tone"`, each non-empty beyond its heading.\
     """
   end
 
