@@ -87,8 +87,12 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     end
   end
 
-  def orchestrate(node) do
-    "Spawn a @spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Review the context's design — verify component boundaries, dependency " <>
+      "edges, and public interface against the design rules. Produces a " <>
+      "context_design_review document. Use when child component specs all " <>
+      "pass and the context is ready for cross-component review before " <>
+      "implementation. Sub-agent: spawn @spec-writer."
   end
 
   # Private functions - Data extraction

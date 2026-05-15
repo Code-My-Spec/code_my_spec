@@ -89,8 +89,11 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     end
   end
 
-  def orchestrate(node) do
-    "Spawn a @spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Write the spec file for a LiveView context — like context_spec but for " <>
+      "the LiveView-component-tree pattern (no parent test/impl gates). Use " <>
+      "when the live_context has no spec or its spec failed validation. " <>
+      "Sub-agent: spawn @spec-writer."
   end
 
   # Private functions

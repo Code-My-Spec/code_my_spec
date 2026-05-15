@@ -85,8 +85,10 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
-  def orchestrate(node) do
-    "Spawn a @test-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Write the test file for a component based on its spec's test assertions. " <>
+      "Use when the component spec is valid and no test file exists yet, or " <>
+      "test_spec_alignment failed. Sub-agent: spawn @test-writer."
   end
 
   # Private functions - command

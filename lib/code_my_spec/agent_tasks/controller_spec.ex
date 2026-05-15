@@ -60,8 +60,10 @@ defmodule CodeMySpec.AgentTasks.ControllerSpec do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
-  def orchestrate(node) do
-    "Spawn a @spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Write the spec file for a Phoenix controller — actions, params, render " <>
+      "targets, dependencies. Use when the controller has no spec yet. " <>
+      "Sub-agent: spawn @spec-writer."
   end
 
   defp get_design_rules(scope, component) do

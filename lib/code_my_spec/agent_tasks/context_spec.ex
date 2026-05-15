@@ -98,8 +98,11 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end
   end
 
-  def orchestrate(node) do
-    "Spawn a @spec-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Write the spec file for a Phoenix bounded context — context_spec document " <>
+      "with components, dependencies, public interface, based on design rules " <>
+      "and linked stories. Use when a context has no spec or its spec failed " <>
+      "validation. Sub-agent: spawn @spec-writer."
   end
 
   # Private functions
