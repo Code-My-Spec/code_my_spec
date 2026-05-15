@@ -21,8 +21,17 @@ defmodule CodeMySpec.Repo.Migrations.FixDocEmbeddingsUniqueness do
   # the rows whose existence caused the new boot-pass inserts to
   # collide on the old content_hash uniqueness.
 
+  # The original index was created without an explicit name in
+  # `20260329200000_create_doc_embeddings.exs`, but that migration used
+  # `name: :doc_embeddings_content_hash_index` directly, so Ecto's
+  # default naming (`doc_embeddings_project_id_content_hash_index`)
+  # does NOT match what's on disk. Pass the explicit name when
+  # dropping.
+
   def up do
-    drop index(:doc_embeddings, [:project_id, :content_hash])
+    drop index(:doc_embeddings, [:project_id, :content_hash],
+           name: :doc_embeddings_content_hash_index
+         )
 
     create unique_index(:doc_embeddings, [:project_id, :source, :path, :chunk_index],
              name: :doc_embeddings_path_chunk_index
@@ -38,6 +47,8 @@ defmodule CodeMySpec.Repo.Migrations.FixDocEmbeddingsUniqueness do
            name: :doc_embeddings_path_chunk_index
          )
 
-    create unique_index(:doc_embeddings, [:project_id, :content_hash])
+    create unique_index(:doc_embeddings, [:project_id, :content_hash],
+             name: :doc_embeddings_content_hash_index
+           )
   end
 end
