@@ -134,21 +134,55 @@ defmodule CodeMySpec.Validation do
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
     do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
-  defp run_pipeline(_scope, _task, [], _config, _opts) do
-    Logger.info("[Validation] No changed files, skipping pipeline")
-    :ok
+  defp run_pipeline(scope, task, changed_files, config, opts) do
+    forced = forced_runners(scope, config)
+
+    cond do
+      changed_files != [] ->
+        log_changed_files(changed_files)
+        run_full_pipeline(scope, task, changed_files, config, opts, forced)
+
+      forced != [] ->
+        Logger.info(
+          "[Validation] No changed files; reconciling persisted problems via #{inspect(forced)}"
+        )
+
+        run_runner_analyzers(scope, forced, opts)
+        :ok
+
+      true ->
+        Logger.info("[Validation] No changed files, skipping pipeline")
+        :ok
+    end
   end
 
-  defp run_pipeline(scope, task, changed_files, config, opts) do
-    log_changed_files(changed_files)
-
+  defp run_full_pipeline(scope, task, changed_files, config, opts, forced) do
     with :ok <- StaticAnalysis.compile(scope, opts) do
       analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
       {runners, static} = Enum.split_with(analyzers, &(&1 in @runner_analyzers))
+      runners = Enum.uniq(runners ++ forced)
       StaticAnalysis.run_analyzers(scope, static, changed_files, config)
       run_runner_analyzers(scope, runners, opts)
       :ok
     end
+  end
+
+  # `mix spex --stale` keeps previously-failed specs in its stale set (via
+  # `Mix.Compilers.Test`), so re-running it reconciles persisted spex problems
+  # even on turns that touched no implementation or bdd_spec files. Without
+  # this, stale failures linger until something in those roles changes.
+  defp forced_runners(scope, config) do
+    if mode_for(config, :spex) != :off and persisted_problems?(scope, "spex") do
+      [:spex_stale]
+    else
+      []
+    end
+  end
+
+  defp persisted_problems?(scope, source) do
+    scope
+    |> Problems.list_project_problems(source: source)
+    |> Enum.any?()
   end
 
   defp resolve_changed_files(scope, %{started_at: started_at}, _sync_result)
