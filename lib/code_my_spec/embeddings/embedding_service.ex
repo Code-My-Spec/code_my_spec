@@ -67,42 +67,21 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
     file_hash = content_hash(content)
 
     if file_hash_matches?(project_id, source, path, file_hash) do
-      Logger.info(
-        "[EmbedDecision] skip file_hash_match source=#{source} path=#{path} hash=#{String.slice(file_hash, 0, 8)}"
-      )
-
       {:ok, %{embedded: 0, skipped: :unchanged}}
     else
-      Logger.info(
-        "[EmbedDecision] embed file_hash_changed source=#{source} path=#{path} hash=#{String.slice(file_hash, 0, 8)}"
-      )
-
       do_embed_file(project_id, source, path, content, file_hash)
     end
   end
 
   defp file_hash_matches?(project_id, source, path, file_hash) do
-    rows =
-      from(e in DocEmbedding,
-        where: e.project_id == ^project_id and e.source == ^source and e.path == ^path,
-        select: %{file_hash: e.file_hash, chunk_index: e.chunk_index}
-      )
-      |> Repo.all()
-
-    hash_summary =
-      rows
-      |> Enum.map(& &1.file_hash)
-      |> Enum.uniq()
-      |> Enum.map_join(",", fn
-        nil -> "nil"
-        h -> String.slice(h, 0, 8)
-      end)
-
-    Logger.info(
-      "[EmbedDecision.probe] source=#{source} path=#{path} want_hash=#{String.slice(file_hash, 0, 8)} row_count=#{length(rows)} stored_hashes=[#{hash_summary}]"
+    from(e in DocEmbedding,
+      where:
+        e.project_id == ^project_id and e.source == ^source and e.path == ^path and
+          e.file_hash == ^file_hash,
+      limit: 1,
+      select: 1
     )
-
-    Enum.any?(rows, &(&1.file_hash == file_hash))
+    |> Repo.one() == 1
   end
 
   defp do_embed_file(project_id, source, path, content, file_hash) do

@@ -154,10 +154,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
     target = Path.join([Paths.hex_docs_dir(), pkg, mod_name <> ".md"])
 
     if needs_write?(scope, target, markdown) do
-      Logger.info("[ProjectorDecision] write pkg=#{pkg} mod=#{mod_name} bytes=#{byte_size(markdown)}")
       do_write_module_file(scope, target, markdown)
-    else
-      Logger.info("[ProjectorDecision] skip pkg=#{pkg} mod=#{mod_name} (content unchanged)")
     end
   end
 
