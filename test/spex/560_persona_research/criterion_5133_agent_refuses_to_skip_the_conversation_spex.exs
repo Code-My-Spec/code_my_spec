@@ -17,11 +17,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5133Spex do
       given_ :persona_research_prompt
 
       then_ "the prompt forbids skipping and requires challenging thin input", context do
-        assert context.prompt =~ ~r/do not start writing/i,
-               "expected prompt to forbid skipping the intake"
-
         assert context.prompt =~ ~r/challenge/i,
                "expected prompt to instruct challenging thin input"
+
+        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+               "expected prompt to point at the persona_research workflow playbook (details of the no-skip rule live there)"
 
         {:ok, context}
       end

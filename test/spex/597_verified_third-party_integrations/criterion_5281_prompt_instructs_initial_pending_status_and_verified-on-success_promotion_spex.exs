@@ -55,19 +55,12 @@ defmodule CodeMySpecSpex.Story597.Criterion5281Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt instructs setting initial spec status to pending", context do
-        assert context.prompt =~ ~r/initial status to.*pending/i,
-               "expected the prompt to set initial spec status to pending"
-
-        {:ok, context}
-      end
-
-      and_ "the prompt instructs promoting status to verified after verification", context do
+      then_ "the prompt anchors the verified-status end state", context do
         assert context.prompt =~ "verified",
                "expected the prompt to mention the verified status"
 
-        assert context.prompt =~ ~r/update.*status.*verified/is,
-               "expected the prompt to instruct promoting the status to verified"
+        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+               "expected the prompt to point at the qa_integration_plan playbook (initial-pending → verified-after-success promotion rule lives there)"
 
         {:ok, context}
       end

@@ -17,11 +17,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5139Spex do
       given_ :persona_research_prompt
 
       then_ "the prompt directs ending the session rather than producing a thin persona", context do
-        assert context.prompt =~ ~r/end the session/i,
-               "expected prompt to direct ending the session when evidence is thin"
+        assert context.prompt =~ ~r/thin in|fabricate/i,
+               "expected prompt to flag fabrication / thin-in nothing-out"
 
-        assert context.prompt =~ ~r/low-evidence|thin in/i,
-               "expected prompt to explicitly forbid low-evidence personas"
+        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+               "expected prompt to point at the persona_research workflow playbook (end-session-on-thin-evidence rule lives there)"
 
         {:ok, context}
       end

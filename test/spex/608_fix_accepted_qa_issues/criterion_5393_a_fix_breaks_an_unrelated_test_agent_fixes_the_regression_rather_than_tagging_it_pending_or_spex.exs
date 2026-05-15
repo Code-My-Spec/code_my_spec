@@ -48,25 +48,18 @@ defmodule CodeMySpecSpex.Story608.Criterion5393Spex do
 
       given_ :fix_issues_task_started
 
-      then_ "the prompt explicitly forbids tagging tests :pending or :skip",
+      then_ "the prompt anchors regression handling in the playbook",
             context do
         prompt = context.prompt
 
-        assert prompt =~ ~r/@tag\s+:pending|@tag\s+:skip/,
-               "expected prompt to name @tag :pending and/or @tag :skip when forbidding test silencing, got:\n#{prompt}"
-
-        {:ok, context}
-      end
-
-      then_ "the prompt instructs the agent to fix regressions in source code, not in tests",
-            context do
-        prompt = context.prompt
-
-        # The directive should make it clear that test failures introduced
-        # by a fix are addressed by changing the code, not by editing the
-        # failing test or skipping it.
         assert prompt =~ ~r/regression/i,
                "expected prompt to reference regression handling, got:\n#{prompt}"
+
+        assert prompt =~ ~r/silencing|silence/i,
+               "expected prompt to flag test silencing as a no-go, got:\n#{prompt}"
+
+        assert prompt =~ "priv/knowledge/fix_issues/workflow.md",
+               "expected prompt to point at the fix_issues playbook (the @tag :pending / @tag :skip prohibition lives there)"
 
         {:ok, context}
       end

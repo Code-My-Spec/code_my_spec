@@ -66,8 +66,11 @@ defmodule CodeMySpecSpex.Story597.Criterion5277Spex do
 
       and_ "the prompt instructs writing one integration spec per third-party service",
            context do
-        assert context.prompt =~ ~r/draft.*integration spec/i,
-               "expected the prompt to instruct drafting integration specs"
+        assert context.prompt =~ ~r/integration spec/i,
+               "expected the prompt to reference integration specs"
+
+        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+               "expected the prompt to point at the qa_integration_plan playbook (per-service spec procedure lives there)"
 
         {:ok, context}
       end

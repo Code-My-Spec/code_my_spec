@@ -16,13 +16,14 @@ defmodule CodeMySpecSpex.Story560.Criterion5135Spex do
     scenario "prompt names read_knowledge and the playbook files" do
       given_ :persona_research_prompt
 
-      then_ "the prompt instructs the agent to use read_knowledge on playbook files", context do
-        assert context.prompt =~ "read_knowledge",
-               "expected prompt to name the read_knowledge MCP tool"
+      then_ "the prompt instructs the agent to load playbook files", context do
+        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+               "expected prompt to point at the persona_research workflow playbook"
 
-        assert context.prompt =~ "persona_research/overview.md"
-        assert context.prompt =~ "persona_research/pm_intake.md"
-        assert context.prompt =~ "persona_research/primary_research.md"
+        for file <- ~w(overview.md pm_intake.md primary_research.md) do
+          assert context.prompt =~ file,
+                 "expected prompt to reference topic file #{file}"
+        end
 
         {:ok, context}
       end

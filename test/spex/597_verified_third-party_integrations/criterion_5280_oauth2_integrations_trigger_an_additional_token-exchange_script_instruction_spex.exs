@@ -54,12 +54,9 @@ defmodule CodeMySpecSpex.Story597.Criterion5280Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt names the OAuth2 token-exchange script path pattern", context do
-        assert context.prompt =~ "exchange_",
-               "expected the prompt to mention the exchange_ script for OAuth2"
-
-        assert context.prompt =~ "_token.sh",
-               "expected the OAuth2 path pattern to include _token.sh"
+      then_ "the prompt routes OAuth2 token-exchange guidance through the playbook", context do
+        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+               "expected the prompt to point at the qa_integration_plan playbook (the exchange_<name>_token.sh OAuth2 path pattern lives there)"
 
         {:ok, context}
       end

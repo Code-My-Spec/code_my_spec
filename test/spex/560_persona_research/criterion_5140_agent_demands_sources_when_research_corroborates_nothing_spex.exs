@@ -17,11 +17,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5140Spex do
       given_ :persona_research_prompt
 
       then_ "the prompt requires asking the PM for sources when research fails", context do
-        assert context.prompt =~ ~r/source leads|ask the PM for source/i,
-               "expected prompt to instruct asking the PM for source leads"
-
         assert context.prompt =~ ~r/triangulate|three|≥3/i,
                "expected prompt to reference the triangulation guardrail"
+
+        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+               "expected prompt to point at the persona_research workflow playbook (demand-sources rule lives there)"
 
         {:ok, context}
       end

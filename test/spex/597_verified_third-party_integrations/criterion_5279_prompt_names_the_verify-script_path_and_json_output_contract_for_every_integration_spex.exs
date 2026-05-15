@@ -56,33 +56,12 @@ defmodule CodeMySpecSpex.Story597.Criterion5279Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt names the verify-script path pattern", context do
-        assert context.prompt =~ "verify_",
-               "expected the prompt to mention verify_ scripts"
+      then_ "the prompt anchors the verify-script requirement", context do
+        assert context.prompt =~ ~r/verify script/i,
+               "expected the prompt to reference verify scripts"
 
-        assert context.prompt =~ ".code_my_spec/qa/scripts/",
-               "expected the prompt to name the qa scripts directory"
-
-        {:ok, context}
-      end
-
-      and_ "the prompt instructs reading credentials from environment variables", context do
-        assert context.prompt =~ ~r/environment variables/i,
-               "expected the prompt to instruct reading creds from env vars"
-
-        {:ok, context}
-      end
-
-      and_ "the prompt names the JSON success contract", context do
-        assert context.prompt =~ ~s|"status": "ok"|,
-               "expected the success JSON contract to be named verbatim"
-
-        {:ok, context}
-      end
-
-      and_ "the prompt names the JSON failure contract", context do
-        assert context.prompt =~ ~s|"status": "error"|,
-               "expected the failure JSON contract to be named verbatim"
+        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+               "expected the prompt to point at the qa_integration_plan playbook (verify-script path pattern, env-var creds, and JSON success/failure contracts live there)"
 
         {:ok, context}
       end

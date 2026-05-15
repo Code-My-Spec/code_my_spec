@@ -17,8 +17,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5136Spex do
       given_ :persona_research_prompt
 
       then_ "the prompt tells the agent to surface conflicts", context do
-        assert context.prompt =~ ~r/conflict|disagree/i,
-               "expected prompt to reference handling conflicting sources"
+        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+               "expected prompt to point at the persona_research workflow playbook (conflict-handling rule lives there)"
 
         {:ok, context}
       end

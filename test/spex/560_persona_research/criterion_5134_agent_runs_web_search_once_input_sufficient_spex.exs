@@ -17,11 +17,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5134Spex do
       given_ :persona_research_prompt
 
       then_ "the prompt instructs the agent to use web search", context do
-        assert context.prompt =~ ~r/web search/i,
-               "expected prompt to instruct web search"
-
         assert context.prompt =~ ~r/research/i,
                "expected prompt to reference the research phase"
+
+        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+               "expected prompt to point at the persona_research workflow playbook (web-search guidance lives there)"
 
         {:ok, context}
       end

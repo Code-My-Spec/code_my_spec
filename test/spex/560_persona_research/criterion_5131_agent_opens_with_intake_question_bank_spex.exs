@@ -24,7 +24,9 @@ defmodule CodeMySpecSpex.Story560.Criterion5131Spex do
                "expected prompt to name pm_intake.md as the intake reference"
 
         assert context.prompt =~ ~r/intake/i, "expected prompt to reference an intake step"
-        assert context.prompt =~ ~r/question/i, "expected prompt to instruct asking questions"
+
+        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+               "expected prompt to point at the persona_research workflow playbook"
 
         {:ok, context}
       end

@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5913Spex do
         assert body =~ "Product Manager",
                "expected interview prompt header, got: #{inspect(body)}"
 
-        assert body =~ "produce a set of bare user stories",
+        assert body =~ ~r/produce a set of\s+bare user stories/,
                "expected the bare-user-stories instruction, got: #{inspect(body)}"
 
         {:ok, context}
