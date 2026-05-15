@@ -162,7 +162,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       response = RequirementsMapper.next_requirements_response(nodes)
       [%{"text" => text}] = response.content
 
-      assert text =~ "`start_task` with requirement_name=`spec_file`"
+      assert text =~ "requirement_name=`spec_file`"
       assert text =~ "entity_type=`component`"
       assert text =~ "entity_id=`comp_1`"
     end

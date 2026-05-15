@@ -242,7 +242,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
 
     test "instructs to stop after completing the work", %{scope: scope, task: task} do
       assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
-      assert prompt =~ "Stop"
+      assert prompt =~ ~r/stop the session/i
     end
 
     test "omits architecture section when project has no components", %{

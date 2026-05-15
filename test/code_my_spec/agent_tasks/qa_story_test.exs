@@ -198,34 +198,31 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   describe "command/3 — combined prompt" do
     setup [:create_scope, :create_story, :create_task]
 
-    test "returns a combined prompt with all three phases", %{scope: scope, task: task} do
+    test "returns a combined prompt covering the brief and result phases", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "Complete QA Session"
-      assert prompt =~ "Phase 1: QA Plan"
-      assert prompt =~ "Phase 2: Testing Brief"
-      assert prompt =~ "Phase 3: Execute Tests"
+      assert prompt =~ ~r/QA Story/i
+      assert prompt =~ "qa_story_brief"
+      assert prompt =~ "qa_result"
     end
 
     test "includes story context", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ "User Authentication"
       assert prompt =~ "Users can log in and out"
-      assert prompt =~ "Acceptance Criteria"
+      assert prompt =~ ~r/acceptance criteria/i
     end
 
-    test "includes all format specs", %{scope: scope, task: task} do
+    test "references the QA plan as required reading", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ "App Overview"
-      assert prompt =~ "Tools Registry"
+      assert prompt =~ ~r/Tools\s+Registry/
       assert prompt =~ "Seed Strategy"
     end
 
-    test "includes tool rules and testing approach", %{scope: scope, task: task} do
+    test "points at the qa-tooling playbook for tool rules and testing approach", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "MCP browser tools"
-      assert prompt =~ "curl"
-      assert prompt =~ "Testing Approach"
-      assert prompt =~ "screenshot"
+      assert prompt =~ "priv/knowledge/qa_story/workflow.md"
+      assert prompt =~ "priv/knowledge/qa-tooling"
     end
 
     test "references all artifact paths", %{scope: scope, task: task, story: story} do
@@ -275,12 +272,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert feedback =~ "QA plan not found"
     end
 
-    test "feedback includes doc spec sections", %{scope: scope, task: task} do
+    test "feedback points at qa_setup when plan is missing", %{scope: scope, task: task} do
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-      assert feedback =~ "Required Sections"
-      assert feedback =~ "App Overview"
-      assert feedback =~ "Tools Registry"
-      assert feedback =~ "Seed Strategy"
+      assert feedback =~ "qa_setup"
     end
 
     test "returns invalid when plan missing required sections", %{
@@ -390,7 +384,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert feedback =~ "invalid"
     end
 
-    test "feedback includes result format spec", %{
+    test "feedback names the result path when brief is valid but result is missing", %{
       scope: scope,
       task: task,
       story: story
@@ -398,9 +392,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
 
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-      assert feedback =~ "Required Sections"
-      assert feedback =~ "Status"
-      assert feedback =~ "Scenarios"
+      assert feedback =~ "Brief validated"
+      assert feedback =~ ".code_my_spec/qa/#{story.id}/result.md"
     end
 
     test "feedback on invalid result also includes result format spec", %{

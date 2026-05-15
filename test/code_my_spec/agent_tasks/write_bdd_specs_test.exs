@@ -113,17 +113,17 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       end
     end
 
-    test "includes LiveView testing guide for liveview components", %{tmp_dir: tmp_dir} do
+    test "names LiveView as the likely surface for liveview components", %{tmp_dir: tmp_dir} do
       scope = scope_with_cwd(tmp_dir)
       {story, _component} = create_story_with_component(scope)
       task = task_for_story(story)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
-      assert prompt =~ "LiveView Testing"
-      assert prompt =~ "Phoenix.LiveViewTest"
+      assert prompt =~ ~r/liveview/i
+      assert prompt =~ "priv/knowledge/bdd/spex/"
     end
 
-    test "includes Controller testing guide for controller components", %{tmp_dir: tmp_dir} do
+    test "names HTTP/controller as the likely surface for controller components", %{tmp_dir: tmp_dir} do
       scope = scope_with_cwd(tmp_dir)
 
       {story, _component} =
@@ -134,20 +134,20 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       task = task_for_story(story)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
-      assert prompt =~ "Controller Testing"
-      assert prompt =~ "ConnTest"
+      assert prompt =~ ~r/controller|HTTP/i
+      assert prompt =~ "priv/knowledge/bdd/spex/"
     end
 
-    test "includes Spex DSL reference", %{tmp_dir: tmp_dir} do
+    test "points at the spex DSL playbook and names step macros", %{tmp_dir: tmp_dir} do
       scope = scope_with_cwd(tmp_dir)
       {story, _component} = create_story_with_component(scope)
       task = task_for_story(story)
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
-      assert prompt =~ "Spex DSL"
       assert prompt =~ "given_"
       assert prompt =~ "when_"
       assert prompt =~ "then_"
+      assert prompt =~ "priv/knowledge/bdd/spex/"
     end
 
     test "returns error when story not found", %{tmp_dir: tmp_dir} do

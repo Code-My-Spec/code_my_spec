@@ -83,7 +83,7 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
     # and technical_strategy waits on stories_exist.
     next_text2 = call_get_next_text!(frame)
     assert next_text2 =~ "### PersonaResearch"
-    assert next_text2 =~ "requirement_name `personas_complete`"
+    assert next_text2 =~ "requirement_name=`personas_complete`"
   end
 
   # ---------------------------------------------------------------------------

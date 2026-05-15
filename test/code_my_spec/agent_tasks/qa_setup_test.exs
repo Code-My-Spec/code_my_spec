@@ -141,8 +141,8 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       write_qa_plan(scope.environment)
 
       assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ "Existing Plan"
-      assert prompt =~ "update rather than"
+      assert prompt =~ ~r/existing plan/i
+      assert prompt =~ ~r/patch|update/i
     end
 
     test "does not include existing plan section when no plan", %{
@@ -150,13 +150,12 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       task: task
     } do
       assert {:ok, prompt} = QaSetup.command(scope, task)
-      refute prompt =~ "Existing Plan"
+      refute prompt =~ ~r/existing plan/i
     end
 
-    test "includes shell scripts instructions", %{scope: scope, task: task} do
+    test "points at the qa-tooling playbook for shell-script details", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ "qa/scripts"
-      assert prompt =~ "authenticated_curl"
+      assert prompt =~ "priv/knowledge/qa-tooling"
     end
 
     test "includes plan output path", %{scope: scope, task: task} do

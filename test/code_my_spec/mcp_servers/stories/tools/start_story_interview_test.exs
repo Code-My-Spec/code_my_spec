@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.StartStoryInterviewTest do
 
       text = get_text(response)
       assert text =~ "Product Manager"
-      assert text =~ "produce a set of bare user stories"
+      assert text =~ ~r/produce a set of\s+bare user stories/
       assert text =~ "Test Story"
     end
 
