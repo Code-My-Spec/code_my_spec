@@ -74,8 +74,18 @@ defmodule CodeMySpec.UsersFixtures do
     member_fixture(user, account)
     project = user_scope_fixture(user, account) |> project_fixture(project_attrs)
 
+    # Anchor the test scope's environment to an isolated tmp dir. With a nil
+    # cwd, Environments.Local.resolve_path/2 falls through to the BEAM's
+    # working directory — i.e. the project root — and any code path under
+    # test that writes through scope.environment leaks files into the live
+    # tree (e.g. SpecStub.write_for_scope creating
+    # .code_my_spec/spec/my_app/... which ComponentSync then re-projects
+    # into the DB on the next sync). Briefly cleans up the dir when the
+    # test process exits.
+    {:ok, tmp_dir} = Briefly.create(directory: true)
+
     user_scope_fixture(user, account, project)
-    |> Map.put(:environment, Environment.new(:local, nil))
+    |> Map.put(:environment, Environment.new(:local, tmp_dir))
   end
 
   def full_preferences_fixture() do
