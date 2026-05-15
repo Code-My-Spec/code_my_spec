@@ -5,11 +5,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories
+  alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
@@ -31,20 +32,43 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       assert first.name == "project_setup"
     end
 
-    test "returns component spec requirements when project setup is complete" do
+    test "returns component spec requirements when the project chain is fully satisfied" do
       {scope, tmp_dir} = setup_project()
 
-      # Seed project setup files
-      seed_setup(tmp_dir)
-      sync!(scope, tmp_dir)
+      # Advance the project-level serial chain (project_setup → personas_complete →
+      # technical_strategy → architecture_designed → spex_boundary_ready →
+      # qa_setup → qa_journey_*). Without this the component-level requirement
+      # graph stays clamped behind the project chain.
+      kickoff_context =
+        ProjectStateFixtures.apply_project_kickoff(%{
+          scope: scope,
+          environment: scope.environment
+        })
 
-      # Create a component without a spec
-      {:ok, component} =
+      scope = kickoff_context.scope
+      persona_id = kickoff_context.persona_id
+
+      # Create a component without a spec, story-linked to satisfy
+      # stories_exist + the architecture orphan check.
+      {:ok, _component} =
         Components.create_component(scope, %{
           name: "Widget",
           type: "schema",
           module_name: "MyApp.Widget"
         })
+
+      story =
+        StoryHelpers.create_and_link(scope, "MyApp.Widget",
+          title: "Build the widget",
+          description: "As an engineer, I want a Widget so that I can store things.",
+          acceptance_criteria: ["widget exists"],
+          priority: 5
+        )
+
+      # The story-to-component edge requires the story chain (three_amigos
+      # → bdd_specs_exist → bdd_specs_passing → qa_complete) to clear before
+      # the component's spec_file becomes actionable.
+      seed_story_chain_complete(scope, tmp_dir, story, persona_id)
 
       write_file(tmp_dir, "lib/my_app/widget.ex", "defmodule MyApp.Widget do\nend")
       sync!(scope, tmp_dir)
@@ -305,6 +329,52 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
   defp seed_setup(tmp_dir) do
     # Minimal files to make project_setup pass
     CodeMySpec.Integration.WorkflowHelpers.seed_all_setup_steps(tmp_dir)
+  end
+
+  # Clear the full story-level chain inline. (The LiveView-driven
+  # `apply_story_chain_complete` fixture needs a `context.conn`, which
+  # this plain-ExUnit test doesn't have.) Mirrors three_amigos →
+  # bdd_spec file → qa result_complete file → sync.
+  defp seed_story_chain_complete(scope, tmp_dir, story, persona_id) do
+    :ok =
+      ProjectStateFixtures.apply_three_amigos_for_story(scope, story,
+        persona_id: persona_id,
+        rule_statement: "Rule for #{story.title}"
+      )
+
+    [criterion | _] = story.criteria
+    bdd_path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
+
+    bdd_content = """
+    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
+      use ExUnit.Case, async: true
+
+      test "placeholder" do
+        assert true
+      end
+    end
+    """
+
+    write_file(tmp_dir, bdd_path, bdd_content)
+
+    qa_result = """
+    # QA Result
+
+    ## Status
+
+    pass
+
+    ## Scenarios
+
+    ### Placeholder
+
+    Passed.
+    """
+
+    write_file(tmp_dir, ".code_my_spec/qa/#{story.id}/result_complete.md", qa_result)
+
+    sync!(scope, tmp_dir)
+    :ok
   end
 
   defp write_file(tmp_dir, relative_path, content) do

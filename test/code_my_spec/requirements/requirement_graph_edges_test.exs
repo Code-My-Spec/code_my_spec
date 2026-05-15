@@ -15,6 +15,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
+  alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -404,7 +406,19 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     @tag :lifecycle
     test "parent-child phases are correctly gated end-to-end" do
       {scope, tmp_dir} = setup_project()
-      seed_setup(tmp_dir)
+
+      # Advance the project-level serial chain so component-level requirements
+      # become the actionable frontier. Without this, the chain (project_setup
+      # → personas_complete → stories_exist → technical_strategy →
+      # architecture_designed → ...) clamps every component-level requirement.
+      kickoff_context =
+        ProjectStateFixtures.apply_project_kickoff(%{
+          scope: scope,
+          environment: scope.environment
+        })
+
+      scope = kickoff_context.scope
+      persona_id = kickoff_context.persona_id
 
       # Write stub spec files for all three components upfront. Stubs carry
       # the correct `## Type` (so ComponentSync derives the right graph shape)
@@ -436,6 +450,24 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       # set them explicitly in case the derivation hasn't stuck.
       {:ok, _} = Components.update_component(scope, child1, %{parent_component_id: parent.id})
       {:ok, _} = Components.update_component(scope, child2, %{parent_component_id: parent.id})
+
+      # Link the parent context to a story to satisfy `stories_exist` AND
+      # the architecture orphan check (children inherit linkage transitively
+      # via parent_component_id).
+      story =
+        StoryHelpers.create_and_link(scope, "MyApp.Accounts",
+          title: "Accounts context",
+          description: "As a user, I want accounts so that I can sign in.",
+          acceptance_criteria: ["accounts work"],
+          priority: 5
+        )
+
+      # Clear the full story-level chain (three_amigos_complete →
+      # bdd_specs_exist → bdd_specs_passing → qa_complete) so the wave
+      # can advance to component-level work for Accounts. Without all
+      # four gates cleared, actionable stays parked on the next story-
+      # level gate.
+      seed_story_chain_complete(scope, tmp_dir, story, persona_id)
 
       # === STEP 1: Spec files exist but content is invalid ===
       # All three files fail required-section validation → spec_valid: false.
@@ -565,6 +597,59 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     full_path = Path.join(tmp_dir, relative_path)
     File.mkdir_p!(Path.dirname(full_path))
     File.write!(full_path, content)
+  end
+
+  # Clear the full story-level chain inline (the LiveView-driven
+  # `apply_story_chain_complete` fixture needs a `context.conn`, which
+  # this unit test doesn't have). Mirrors the same steps:
+  # three_amigos → bdd_spec file → qa result_complete file → sync.
+  defp seed_story_chain_complete(scope, tmp_dir, story, persona_id) do
+    :ok =
+      ProjectStateFixtures.apply_three_amigos_for_story(scope, story,
+        persona_id: persona_id,
+        rule_statement: "Rule for #{story.title}"
+      )
+
+    [criterion | _] = story.criteria
+    bdd_path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
+    write_file(tmp_dir, bdd_path, bdd_spec_stub(story, criterion))
+
+    write_file(
+      tmp_dir,
+      ".code_my_spec/qa/#{story.id}/result_complete.md",
+      qa_result_complete_stub()
+    )
+
+    sync!(scope, tmp_dir)
+    :ok
+  end
+
+  defp bdd_spec_stub(story, criterion) do
+    """
+    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
+      use ExUnit.Case, async: true
+
+      test "placeholder" do
+        assert true
+      end
+    end
+    """
+  end
+
+  defp qa_result_complete_stub do
+    """
+    # QA Result
+
+    ## Status
+
+    pass
+
+    ## Scenarios
+
+    ### Placeholder
+
+    Passed.
+    """
   end
 
   # Intentionally-invalid spec stub. Carries the correct `## Type` (so
