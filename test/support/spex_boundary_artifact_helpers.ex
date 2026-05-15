@@ -25,19 +25,23 @@ defmodule CodeMySpecSpex.SpexBoundaryArtifactHelpers do
   @bridge_relpath "test/support/fixtures/my_app_spex_fixtures.ex"
   @denied_calls_relpath ".code_my_spec/credo_checks/framework/spex_denied_calls.ex"
   @no_send_relpath ".code_my_spec/credo_checks/framework/no_direct_send_in_spex.ex"
+  @local_check_relpath ".code_my_spec/credo_checks/local/my_app_spex_denies.ex"
   @plan_relpath ".code_my_spec/knowledge/bdd/spex/index.md"
 
   @doc "Path constants — re-exported so spex assertions can name them without re-deriving."
   def bridge_path, do: @bridge_relpath
   def denied_calls_path, do: @denied_calls_relpath
   def no_send_path, do: @no_send_relpath
+  def local_check_path, do: @local_check_relpath
   def plan_path, do: @plan_relpath
 
   @doc """
-  Writes the four spex boundary artifacts into the env.
+  Writes the five spex boundary artifacts into the env (mix.exs plus the
+  four checked artifacts).
 
-  Pass `skip: [:framework_denied | :framework_send | :bridge | :plan]`
-  to omit specific artifacts for failure-path scenarios.
+  Pass `skip: [:framework_denied | :framework_send | :local_check |
+  :bridge | :plan]` to omit specific artifacts for failure-path
+  scenarios.
   """
   @spec write_baseline_artifacts(map(), keyword()) :: :ok
   def write_baseline_artifacts(env, opts \\ []) do
@@ -57,6 +61,10 @@ defmodule CodeMySpecSpex.SpexBoundaryArtifactHelpers do
 
     unless :framework_send in skip do
       :ok = Environments.write_file(env, @no_send_relpath, "# Framework: no direct send in spex\n")
+    end
+
+    unless :local_check in skip do
+      :ok = Environments.write_file(env, @local_check_relpath, "# Project-local: spex whole-module denies\n")
     end
 
     unless :bridge in skip do

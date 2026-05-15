@@ -169,10 +169,14 @@
           {Credo.Check.Warning.UnusedStringOperation, []},
           {Credo.Check.Warning.UnusedTupleOperation, []},
           {Credo.Check.Warning.WrongTestFileExtension, []}
-          | if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
-              do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
-              else: []
-            )
+          | (if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
+               do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
+               else: []
+             ) ++
+               if(File.exists?(".code_my_spec/credo_checks/local/checks.exs"),
+                 do: elem(Code.eval_file(".code_my_spec/credo_checks/local/checks.exs"), 0),
+                 else: []
+               ))
         ],
         disabled: [
           #

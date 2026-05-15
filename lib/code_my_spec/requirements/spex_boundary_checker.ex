@@ -11,11 +11,15 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   Required artifacts:
 
     * `.code_my_spec/credo_checks/framework/spex_denied_calls.ex` — the
-      framework's stdlib denies (File / Port / System.cmd / Code.eval /
-      Kernel.apply / :os.cmd) inside `_spex.exs` files.
+      framework's function-level denies (System.cmd / Code.eval /
+      Kernel.apply / :os.cmd) inside `_spex.exs` files. Whole-module
+      denies live in the project-local check.
     * `.code_my_spec/credo_checks/framework/no_direct_send_in_spex.ex` —
       denies direct `send/2` from a spec, forcing PubSub interactions to
       go through the real Phoenix surface.
+    * At least one `.ex` file under `.code_my_spec/credo_checks/local/` —
+      the project-local check filling in whole-module denies (stdlib
+      bypasses + internal app contexts).
     * `test/support/fixtures/<app>_spex_fixtures.ex` — the curated bridge
       module that's the only legal door from a spec into in-app state.
 
@@ -33,6 +37,7 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     gaps =
       []
       |> add_credo_check_gaps(env)
+      |> add_local_credo_check_gap(env)
       |> add_fixtures_bridge_gap(env)
       |> add_project_bdd_plan_gap(env)
 
@@ -57,6 +62,32 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     Enum.map(missing, fn file ->
       "`#{Path.join(framework_dir, file)}` is missing — call `install_credo_checks` to copy framework checks into the project."
     end) ++ gaps
+  end
+
+  # Looks for at least one .ex file under `.code_my_spec/credo_checks/local/`.
+  # The local check carries the project's whole-module deny list (stdlib
+  # bypasses + internal app contexts); without it the framework template
+  # alone has no whole-module denies wired up.
+  defp add_local_credo_check_gap(gaps, env) do
+    local_dir = Paths.credo_checks_local_dir()
+
+    case Environments.list_directory(env, local_dir) do
+      {:ok, entries} ->
+        if Enum.any?(entries, &String.ends_with?(&1, ".ex")) do
+          gaps
+        else
+          [
+            "`#{local_dir}/` exists but contains no project-local Credo check (`*.ex`) — write `<app>_spex_denies.ex` filling in @denied_whole_modules with stdlib bypasses (File, Port, :file) plus internal app contexts from the architecture proposal."
+            | gaps
+          ]
+        end
+
+      _ ->
+        [
+          "`#{local_dir}/` is missing — write the project-local Credo check that fills in the whole-module deny list."
+          | gaps
+        ]
+    end
   end
 
   defp add_fixtures_bridge_gap(gaps, env) do

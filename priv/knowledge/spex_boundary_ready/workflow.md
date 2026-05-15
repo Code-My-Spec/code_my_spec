@@ -3,11 +3,14 @@
 The `spex_boundary_ready` task installs the four pieces of project-local
 infrastructure that protect the BDD spec boundary:
 
-1. Framework Credo checks (stdlib denies + no_direct_send).
-2. A project-local Credo check denying internal namespaces specs
-   must not reach.
+1. Framework Credo checks (universal function-level denies and the
+   `no_direct_send_in_spex` check).
+2. A project-local Credo check that fills in the whole-module deny list
+   — stdlib bypasses (`File`, `Port`, `:file`) plus internal app
+   contexts the spec boundary must not reach.
 3. A curated fixtures bridge re-exporting the minimum set of
-   server-state seeders specs may use.
+   server-state seeders specs may use. **It is its own top-level
+   Boundary**, separate from the spec boundary — see step 3.
 4. A project-tailored BDD spec plan complementing the generic
    framework docs.
 
@@ -22,7 +25,8 @@ procedure.
 
 - `priv/knowledge/bdd/spex/philosophy.md` — why specs are sealed.
 - `priv/knowledge/bdd/spex/boundaries.md` — what a spec may call and
-  what the Fixtures bridge is for.
+  what the Fixtures bridge is for, including the top-level-Boundary
+  arrangement.
 - `priv/knowledge/bdd/spex/writing_a_spex.md` — file layout, DSL,
   setup template.
 - `.code_my_spec/architecture/proposal.md` — the architecture proposal
@@ -35,46 +39,97 @@ Call the `install_credo_checks` MCP tool. It copies
 harness's `priv/credo_checks/` into
 `.code_my_spec/credo_checks/framework/`. These files are the floor:
 
-- stdlib denies — `File`, `Port`, `System.cmd`, `Code.eval`,
-  `Kernel.apply`, `:os.cmd`
-- a deny on direct `send/2` so specs can't bypass PubSub through the
-  real Phoenix surface
+- `no_direct_send_in_spex` — denies direct `send/2` so specs can't
+  bypass PubSub through the real Phoenix surface.
+- `spex_denied_calls` (framework template) — denies universal
+  function-level bypasses: `System.cmd/shell/halt/...`, `Code.eval_*`,
+  `Code.compile_*`, `:os.cmd`, `Kernel.apply`.
 
-Do not edit the framework files. Project-specific denies go in step 2.
+**The framework template ships with empty whole-module deny lists by
+design.** Stdlib whole-module denies (`File`, `Port`, `:file`) and
+project-context denies go in the project-local check in step 2.
+
+Do not edit the framework files. The harness's `install_credo_checks`
+is idempotent and never overwrites them after the first install, but
+treat them as synced output.
 
 After the tool runs, read
 `.code_my_spec/credo_checks/framework/spex_denied_calls.ex` so you
-can model the project-local check on its structure.
+can mirror its AST traversal in the project-local check.
 
-## Step 2 — write a project-local Credo check
+## Step 2 — write the project-local Credo check
+
+This check carries the whole-module deny list — both the universal
+stdlib bypasses and the project's internal contexts.
 
 Read `.code_my_spec/architecture/proposal.md`. Identify internal
-namespaces that specs must NOT reach.
+namespaces specs must NOT reach.
 
-**Typical candidates to deny:**
+**Baseline (every project should include these):**
+
+- `File`, `:file` — specs run against the in-memory env; real-disk
+  reads silently bypass it.
+- `Port` — ports talk to external programs; use cassettes for
+  CLI-driven steps.
+
+**Project-specific (mine from the architecture proposal):**
 
 - `<App>.Repo` — direct DB access bypasses the public surface.
-- Internal contexts that exist behind a public LiveView / MCP
-  surface. The user's surface is the LiveView; calling the context
-  directly from a spec bypasses auth, validation, broadcasts.
-- Any module the architecture explicitly marks "internal" or
-  "private."
+- Every `<App>` context that the spec boundary does NOT dep on. The
+  spec boundary's deps live in `test/spex/<app>_spex.ex` — anything
+  outside that list belongs on the deny list.
 
 **Do NOT deny** — schemas and the public-surface modules (LiveView
 modules, MCP tool modules, controllers). Those are the legal
 surfaces.
 
 Write the check to
-`.code_my_spec/credo_checks/local/<short_name>_spex_denies.ex`,
-modelled on the framework `spex_denied_calls.ex`. Use:
+`.code_my_spec/credo_checks/local/<app>_spex_denies.ex`, modelled on
+the framework `spex_denied_calls.ex`. Use:
 
 - A fresh `id:` (e.g. `"<APP>0001"` — first six uppercase letters of
   the app name + numeric suffix).
 - `base_priority: :high`.
-- Whole-module denies only. Function-level denies are rarely worth
-  the maintenance.
+- A **distinct module name** from the framework one
+  (e.g. `<App>.Check.Warning.<App>SpexDenies`) so the two checks
+  coexist.
+- Whole-module denies only. Function-level denies are already in the
+  framework check.
+
+Also drop a `local/checks.exs` next to the module:
+
+```elixir
+# Project-local Credo checks — maintained by the project, not synced.
+[
+  {<App>.Check.Warning.<App>SpexDenies, []}
+]
+```
+
+Wire it into `.credo.exs` by appending the eval next to the framework
+one — the convention is:
+
+```elixir
+| if(File.exists?(".code_my_spec/credo_checks/framework/checks.exs"),
+    do: elem(Code.eval_file(".code_my_spec/credo_checks/framework/checks.exs"), 0),
+    else: [])
+  ++
+  if(File.exists?(".code_my_spec/credo_checks/local/checks.exs"),
+    do: elem(Code.eval_file(".code_my_spec/credo_checks/local/checks.exs"), 0),
+    else: [])
+```
 
 ## Step 3 — scaffold the fixtures bridge
+
+The fixtures bridge is **its own top-level Boundary**, not a member of
+the spec boundary. This is load-bearing:
+
+- The bridge needs to dep on `<App>` (and any `<App>Test` shared
+  fixtures) so it can reach across into app internals.
+- The spec boundary (`<App>Spex`) must NOT dep on `<App>` — that would
+  defeat the seal.
+- The bridge's solution: declare `use Boundary, top_level?: true,
+  deps: [<App>, <App>.Environments]`. The spec boundary then deps on
+  the bridge module, not on `<App>` — so the wide deps don't leak.
 
 Create `test/support/fixtures/<app>_spex_fixtures.ex`:
 
@@ -83,17 +138,12 @@ defmodule <App>Spex.Fixtures do
   @moduledoc """
   Curated bridge from BDD specs into in-app state.
 
-  The only module that may dep on `<App>` and `<App>Test` from inside
-  the spex boundary. Re-exports a minimum set of fixture functions
-  for state that originates server-side (users, accounts, sessions).
-  State the user creates locally through the UI should be driven
-  through the LiveView, not seeded here.
+  The only module that may dep on `<App>` from inside the spex test
+  tree. Declared as its own top-level Boundary so the spec boundary
+  can dep on it without inheriting `<App>`'s deps.
   """
 
-  use Boundary, deps: [<App>, <App>Test]
-
-  # --- Sandbox ---
-  defdelegate setup_sandbox(tags), to: <App>Test.DataCase
+  use Boundary, top_level?: true, deps: [<App>, <App>.Environments]
 
   # --- Add re-exports below as specs need them. Keep the list
   # small; every export here is a sanctioned shortcut past the
@@ -133,7 +183,7 @@ Stop the session. Validation checks:
 
 - The two framework Credo check files at
   `.code_my_spec/credo_checks/framework/`.
-- At least one project-local Credo check at
+- At least one project-local Credo check (`*.ex`) at
   `.code_my_spec/credo_checks/local/`.
 - The fixtures bridge at `test/support/fixtures/<app>_spex_fixtures.ex`.
 - At least one `.md` in `.code_my_spec/knowledge/bdd/spex/`.

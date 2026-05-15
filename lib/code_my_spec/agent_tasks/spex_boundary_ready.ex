@@ -14,9 +14,11 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   # ============================================================================
 
   def orchestrate(_node) do
-    "Install BDD spec boundary protections: framework Credo checks, a " <>
-      "project-local deny check, a curated `<App>Spex.Fixtures` bridge, and " <>
-      "a project BDD spec plan. Use when the architecture proposal exists " <>
+    "Install BDD spec boundary protections: framework Credo checks " <>
+      "(function-level denies only), a project-local deny check that fills " <>
+      "in whole-module denies (stdlib + app contexts), a curated " <>
+      "`<App>Spex.Fixtures` bridge as its own top-level Boundary, and a " <>
+      "project BDD spec plan. Use when the architecture proposal exists " <>
       "and the project is about to start writing BDD specs but the boundary " <>
       "infrastructure isn't on disk yet."
   end
@@ -77,9 +79,19 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     work runs against a sealed surface.
 
     Validation is existence-only — the checker only verifies the artifacts
-    are on disk. Quality of the local Credo check, the fixtures-bridge
-    re-export list, and the project BDD plan content lives in the playbook
-    and in this turn's planning. Do the thinking now — next turn won't see it.\
+    are on disk. Quality of the local Credo check's deny list, the
+    fixtures-bridge re-export list, and the project BDD plan content lives
+    in the playbook and in this turn's planning. Do the thinking now — next
+    turn won't see it.
+
+    Key design notes you should know up front:
+
+    - The framework `spex_denied_calls.ex` ships with **empty whole-module
+      lists**. Stdlib bypasses (`File`, `Port`, `:file`) live in the
+      project-local check — not the framework one.
+    - The fixtures bridge is **its own top-level Boundary**, not a member
+      of the spec boundary. That's how it can dep on `<App>` without
+      leaking those deps into specs.\
     """
   end
 
@@ -87,8 +99,9 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     """
     ## Architecture proposal
 
-    Read `#{proposal_path}` — it's the source for the list of internal
-    namespaces your project-local Credo check will deny.\
+    Read `#{proposal_path}` — every `<App>` context listed there that isn't
+    already a dep of the spec boundary belongs on the project-local deny
+    list (plus `<App>.Repo`).\
     """
   end
 
@@ -107,10 +120,12 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     ## Read the playbook
 
     - `priv/knowledge/spex_boundary_ready/workflow.md` — full 5-step install
-      procedure: framework Credo checks, project-local deny check, fixtures
-      bridge, project BDD spec plan, stop.
+      procedure: framework Credo checks, project-local whole-module deny
+      check, fixtures bridge (as its own top-level Boundary), project BDD
+      spec plan, stop.
     - `priv/knowledge/bdd/spex/philosophy.md` — why specs are sealed.
-    - `priv/knowledge/bdd/spex/boundaries.md` — what a spec may call.
+    - `priv/knowledge/bdd/spex/boundaries.md` — what a spec may call and
+      why the fixtures bridge is a separate top-level Boundary.
     - `priv/knowledge/bdd/spex/writing_a_spex.md` — DSL and setup template.
 
     The playbook references concrete paths under
@@ -139,7 +154,23 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     | Fixtures bridge path | `#{fixtures_path}` |
     | Framework Credo checks dir | `#{framework_dir}` |
     | Project-local Credo checks dir | `#{local_dir}` |
-    | Starter Credo check id | `"#{check_id_prefix}0001"` |\
+    | Local check file | `#{local_dir}/#{app_name}_spex_denies.ex` |
+    | Local check module | `#{app_module}.Check.Warning.#{app_module}SpexDenies` |
+    | Local check id | `"#{check_id_prefix}0001"` |
+
+    ## Standard whole-module denies to bake into the local check
+
+    Universal stdlib bypasses — copy these as the baseline:
+
+    - `File`, `:file` — real-disk reads bypass the in-memory environment.
+    - `Port` — talks to external programs; use cassettes for CLI pipelines.
+
+    Project denies — add these after reading
+    `.code_my_spec/architecture/proposal.md`:
+
+    - `#{app_module}.Repo` — direct DB reads bypass the public surface.
+    - Every `#{app_module}.<Context>` listed in the proposal that the spec
+      boundary (`test/spex/#{app_name}_spex.ex`) does NOT already dep on.\
     """
   end
 

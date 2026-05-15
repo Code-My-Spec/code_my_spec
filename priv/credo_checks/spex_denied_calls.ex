@@ -5,16 +5,15 @@ defmodule CodeMySpec.Check.Warning.SpexDeniedCalls do
     category: :warning,
     explanations: [
       check: """
-      Certain stdlib modules and functions are denied inside BDD spec files
-      (`_spex.exs`) because they bypass the sealed test environment:
+      Universal function-level denies for BDD spec files (`_spex.exs`).
 
-      Whole-module denies:
-
-      - `File`, `:file` — the spec suite runs against an in-memory filesystem.
-        Real file I/O reaches past the `CodeMySpec.Environments` abstraction
-        and lets a scenario "succeed" for the wrong reason.
-      - `Port` — ports are for talking to external programs; use cassettes for
-        CLI-driven pipeline steps instead.
+      This is the FRAMEWORK template — it ships with the harness and is
+      installed verbatim into every project. It carries the function-level
+      denies that hold for every project (shell escape, dynamic dispatch,
+      VM mutation, dynamic code eval). Project-specific WHOLE-module
+      denies (`File`, `Port`, `:file`, and any app contexts the spec
+      boundary shouldn't reach) belong in `.code_my_spec/credo_checks/local/`,
+      not here.
 
       Function-level denies (the rest of the module is fine):
 
@@ -26,15 +25,22 @@ defmodule CodeMySpec.Check.Warning.SpexDeniedCalls do
         `Code.require_file` — dynamic code evaluation.
       - `Kernel.apply/2,3` — dynamic dispatch escape hatch.
 
-      If a spec needs real-disk access, shell execution, or dynamic dispatch to
-      make a scenario work, the scenario is almost certainly wrong — re-read
-      `.code_my_spec/knowledge/spex/boundaries.md` before reaching for one of
+      Whole-module denies are intentionally empty here. The AST scaffolding
+      below is wired up so a project-local check can mirror it — see the
+      `spex_boundary_ready` workflow for the standard fill-in.
+
+      If a spec needs shell execution or dynamic dispatch to make a
+      scenario work, the scenario is almost certainly wrong — re-read
+      `.code_my_spec/knowledge/bdd/spex/boundaries.md` before reaching for one of
       these.
       """
     ]
 
-  @denied_whole_modules [File, Port]
-  @denied_whole_erlang_modules [:file]
+  # Whole-module denies are project-specific. The shipped template leaves
+  # these empty by design; fill them in via a project-local check at
+  # `.code_my_spec/credo_checks/local/<app>_spex_denies.ex`.
+  @denied_whole_modules []
+  @denied_whole_erlang_modules []
 
   @denied_module_functions %{
     System => ~w(cmd shell halt stop at_exit put_env delete_env restart)a,
@@ -73,7 +79,7 @@ defmodule CodeMySpec.Check.Warning.SpexDeniedCalls do
     end
   end
 
-  # Aliased Elixir modules — File.*, System.*, Code.*, Port.*, ...
+  # Aliased Elixir modules — System.*, Code.*, and (when filled in) File.*, Port.*, ...
   defp traverse(
          {{:., _, [{:__aliases__, meta, module_parts}, fun]}, _, _args} = ast,
          ctx
@@ -93,7 +99,7 @@ defmodule CodeMySpec.Check.Warning.SpexDeniedCalls do
     end
   end
 
-  # Erlang modules — :file.*, :os.*, ...
+  # Erlang modules — :os.*, and (when filled in) :file.*, ...
   defp traverse({{:., _, [erl_mod, fun]}, meta, _args} = ast, ctx)
        when is_atom(erl_mod) do
     cond do
@@ -129,9 +135,8 @@ defmodule CodeMySpec.Check.Warning.SpexDeniedCalls do
         ctx.issue_meta,
         message:
           "Call to `#{trigger}` is denied in _spex.exs files. Specs must act through " <>
-            "the in-memory environment (`CodeMySpec.Environments`) or the public " <>
-            "LiveView/hook surfaces — not real filesystem, shell, or dynamic dispatch. " <>
-            "See .code_my_spec/knowledge/spex/boundaries.md.",
+            "the public LiveView/hook/MCP surfaces — not shell execution or dynamic dispatch. " <>
+            "See .code_my_spec/knowledge/bdd/spex/boundaries.md.",
         trigger: trigger,
         line_no: meta[:line],
         column: meta[:column]
