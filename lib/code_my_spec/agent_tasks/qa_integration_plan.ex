@@ -1,28 +1,16 @@
 defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   @moduledoc """
-  Integration planning agent task.
+  Identify third-party integrations from ADRs and verify each against real credentials.
 
-  Reads technical decisions from `.code_my_spec/architecture/decisions/` to identify
-  third-party integrations (OAuth providers, API services), then guides the agent to:
-
-  1. Draft integration specs for each identified integration
-  2. Generate verify scripts (and token exchange scripts for OAuth2)
-  3. Ask the user for credentials
-  4. Run verify scripts to confirm credentials work
-  5. Update status to `verified`
-  6. Write the integration index
-
-  Two main functions:
-  - `command/3` — Builds prompt with integration instructions
-  - `evaluate/3` — State machine checking integration spec completeness and verification status
-
-  Sequencing — where this task runs in the requirement graph — is the
-  concern of `CodeMySpec.Requirements.RequirementDefinitionData`, not this
-  module. This task only describes its own contract.
+  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_integration_plan.spec.md`.
   """
 
-  def orchestrate(node) do
-    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def orchestrate(_node) do
+    "Identify third-party integrations from technical decisions, draft a " <>
+      "spec + verify script per integration, gather credentials from the " <>
+      "engineer, and run verify until each spec is `status: verified`. " <>
+      "Use when ADRs reference third-party services and no integration " <>
+      "index exists yet."
   end
 
   alias CodeMySpec.Documents.DocumentSpecProjector
@@ -210,60 +198,18 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
 
   defp build_instructions do
     """
-    ## Instructions
+    ## Read the playbook
 
-    ### Step 1: Identify Integrations
+    `priv/knowledge/qa_integration_plan/workflow.md` — full six-step procedure
+    (identify integrations from ADRs → draft specs → generate verify scripts →
+    request credentials → verify → write index), the JSON-output contract for
+    verify scripts, OAuth2 specifics, anti-patterns.
 
-    Read all decision records in `#{@decisions_dir}/`. For each decision that references
-    a third-party service (OAuth provider, API service, external API), note:
-    - Service name (e.g., twilio, google_calendar, stripe)
-    - Auth type: `api_token` or `oauth2`
-    - Required credentials (env var names)
+    ## Done signal
 
-    If no integrations are needed, write an integration index stating "No integrations required"
-    and stop the session.
-
-    ### Step 2: Draft Integration Specs
-
-    For each identified integration, write a spec to `#{@integrations_dir}/{name}.md`.
-    Set initial status to `pending`.
-
-    ### Step 3: Generate Verify Scripts
-
-    For each integration, write a verify script to `#{@scripts_dir}/verify_{name}.sh`.
-    The script must:
-    - Read credentials from environment variables
-    - Make a test API call to prove the credentials work
-    - Output structured JSON to stdout:
-      ```json
-      {"integration": "name", "status": "ok", "details": "description of what was verified"}
-      ```
-    - On failure:
-      ```json
-      {"integration": "name", "status": "error", "error": "error message", "details": "what went wrong"}
-      ```
-    - Make scripts executable (`chmod +x`)
-
-    For OAuth2 integrations, also write `#{@scripts_dir}/exchange_{name}_token.sh`
-    that exchanges client credentials for a test token.
-
-    ### Step 4: Request Credentials
-
-    Tell the user exactly which environment variables need to be set, where to get them,
-    and how to provide them. Be specific — include URLs to developer consoles.
-
-    ### Step 5: Verify Credentials
-
-    Once the user provides credentials:
-    1. Run each verify script
-    2. Check the JSON output for `"status": "ok"`
-    3. Update the integration spec status to `verified`
-
-    ### Step 6: Write Integration Index
-
-    Write `#{@integrations_index}` summarizing all integrations and their status.
-
-    When all integrations are verified, stop the session so validation can check your work.\
+    Stop the session once `#{@integrations_index}` exists and every spec under
+    `#{@integrations_dir}/` has a verify script on disk plus `status: verified`.
+    The evaluator's state machine will re-check.\
     """
   end
 

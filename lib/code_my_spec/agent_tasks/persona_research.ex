@@ -1,14 +1,8 @@
 defmodule CodeMySpec.AgentTasks.PersonaResearch do
   @moduledoc """
-  Agent task for running a persona research session.
+  Run a persona research session with the PM.
 
-  `command/2` builds a prompt that references the knowledge base playbook at
-  `priv/knowledge/persona_research/` and names the expected output paths under
-  `.code_my_spec/personas/<slug>/`. The agent drives a PM intake conversation,
-  does web + knowledge research, and writes a DB record plus two markdown files.
-
-  `evaluate/2` delegates to `PersonasChecker.complete?/1` and adapts its
-  `{boolean, map}` return into the standard task-evaluation tuple.
+  See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/persona_research.spec.md`.
   """
 
   alias CodeMySpec.Requirements.{CheckerResult, PersonasChecker}
@@ -17,10 +11,12 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
   def analyzers, do: []
 
   @spec orchestrate(map()) :: String.t()
-  def orchestrate(node) do
-    "Run persona research — interview the PM, research, write record + summary.md + sources.md. " <>
-      "Call `start_task` with requirement_name `#{node.name}`, " <>
-      "entity_type `#{node.entity_type}`, entity_id `#{node.entity_id}`."
+  def orchestrate(_node) do
+    "Run a persona research session with the PM. Produce one persona on " <>
+      "the project: DB record (create_persona) + summary.md + sources.md, " <>
+      "linked to ≥1 story. Triangulate ≥3 sources per claim. Use when a " <>
+      "story needs a linked persona for three_amigos to proceed. Manual " <>
+      "validation."
   end
 
   @spec command(term(), map()) :: {:ok, String.t()}
@@ -34,115 +30,71 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
     scope |> PersonasChecker.complete?(nil) |> CheckerResult.to_evaluation()
   end
 
+  # ============================================================================
+  # Prompt assembly. Protocol detail lives in
+  # priv/knowledge/persona_research/workflow.md plus the topic files
+  # (pm_intake, primary_research, synthesis, etc.) — pointed at via the
+  # playbook section rather than inlined here.
+  # ============================================================================
+
   defp prompt do
     """
     # Persona Research
 
-    You are running a **persona research session** with the Product Manager on this project.
-    Output: one persona in the database (via the `create_persona` MCP tool) and two markdown files
-    on disk. Link the persona to at least one story with `link_persona_to_story` before stopping.
+    You are running a **persona research session** with the Product Manager on
+    this project. The deliverable is one persona on the project — a DB record
+    plus two markdown artifacts — linked to at least one story.
 
     ## Prereqs
 
-    Personas are **project-scoped**. `create_persona` and `link_persona_to_story` need the
-    scope to carry an `active_project_id`. If `create_persona` returns `missing_active_project`,
-    the working directory is not linked to a project — run `init_project` to bind it, then retry.
+    Personas are **project-scoped**. `create_persona` and
+    `link_persona_to_story` need the scope to carry an `active_project_id`.
+    If `create_persona` returns `missing_active_project`, run `init_project`
+    first to bind the working directory to a project, then retry.
 
-    ## Existing personas on this project
+    ## Reuse before research
 
-    Before creating a new persona, check whether one already covers the PM's target user:
+    Call `list_personas` early in the intake to see if a prior session
+    already covered this role. Reusing an existing persona via
+    `link_persona_to_story` is often the right answer — don't research a
+    duplicate.
 
-    - `list_personas` — lists every persona on the active project. Use it early in the
-      intake to see if a prior session already researched this role.
-    - `get_persona` — fetch a full persona record by `slug` or `id`. Pair with
-      `read_knowledge` on `.code_my_spec/personas/<slug>/summary.md` to see the research text.
+    ## Read the playbook
 
-    Reusing an existing persona (via `link_persona_to_story`) is often the right answer —
-    don't research a duplicate if a close match already exists on this project. Personas
-    from sibling projects are NOT visible here; the same role researched for a different
-    product is a separate record.
+    - `priv/knowledge/persona_research/workflow.md` — the five-step session
+      (intake → challenge thin input → research → write artifacts → link),
+      evidence bar (triangulate ≥3 sources), done signal, anti-patterns.
+    - Topic files under `priv/knowledge/persona_research/`:
+      `README.md`, `overview.md`, `pm_intake.md`, `primary_research.md`,
+      `secondary_research.md`, `jtbd.md`, `synthesis.md`, `templates.md`,
+      `pitfalls.md`. The workflow doc points at each.
 
-    ## Read the playbook first
+    ## MCP tools you'll use
 
-    Before writing anything, load these files from the knowledge MCP server
-    (`read_knowledge` tool) to orient yourself and shape the conversation:
+    - `list_personas` — check for reuse before researching.
+    - `get_persona` — fetch full persona detail by slug or id.
+    - `create_persona` (alias `add_persona`) — write the DB record.
+    - `link_persona_to_story` — required for the done signal.
+    - `evaluate_task` — manual validation trigger.
 
-    - `persona_research/README.md` — canonical workflow order, guardrails
-      (triangulate, verbatim wins, evidence footer)
-    - `persona_research/overview.md` — what a persona is, which type to build
-      (proto / qualitative / statistical), Cooper roles, Goodwin goal types
-    - `persona_research/pm_intake.md` — the 15-question intake bank + artifact checklist
-    - `persona_research/primary_research.md` — planning fresh user interviews
-      if the PM has no existing qualitative data
+    ## Produced artifacts
 
-    ## The session
+    - DB persona record via `create_persona`.
+    - `.code_my_spec/personas/<slug>/summary.md` — required H2 sections:
+      Role, Goals, Pain Points, Context, Decision Drivers, Evidence.
+      Optional H2: Jobs to Be Done, Quotes, Motivations, Behaviors,
+      Anti-Patterns. Any other H2 fails validation.
+    - `.code_my_spec/personas/<slug>/sources.md` — link list (URL, title,
+      access date per entry).
+    - Persona ↔ story link via `link_persona_to_story` (≥1 required).
 
-    1. **Intake conversation.** Open with the questions from `pm_intake.md`. The PM
-       brings whatever context they have — notes, hypotheses, nothing at all. You ask,
-       they answer. Do not start writing until you have enough signal.
+    ## Manual validation
 
-    2. **Challenge thin input.** If the PM's input is a one-liner, push back with
-       targeted follow-up questions covering Role, Goals, Pain Points, Context, and
-       Decision Drivers. If the PM refuses to provide more context, end the session
-       rather than produce a low-evidence persona. Thin in, nothing out.
-
-    3. **Research.** Once you have signal, do the research. Use web search and the
-       knowledge MCP server. Cite every source. If sources disagree, surface the
-       conflict to the PM. If research produces no supporting data, ask the PM for
-       source leads — do not invent content.
-
-    4. **Write the artifacts.** All three must exist before you stop:
-
-       - **Database record.** Call `create_persona` on the `personas-server` with
-         `slug`, `name`, and optional `headline`. Slug must be lowercase alphanumeric
-         (hyphens or underscores allowed). Pick a memorable name.
-       - **`.code_my_spec/personas/<slug>/summary.md`.** Structured markdown with an
-         H1 matching the persona name and the following H2 sections (required):
-         `## Role`, `## Goals`, `## Pain Points`, `## Context`,
-         `## Decision Drivers`, `## Evidence`. Optional H2 sections: `## Jobs to Be Done`,
-         `## Quotes`, `## Motivations`, `## Behaviors`, `## Anti-Patterns`. Any other
-         section name will fail validation.
-       - **`.code_my_spec/personas/<slug>/sources.md`.** Link list with URL, title,
-         and access date per entry — one entry per line.
-
-    5. **Link to a story.** Call `link_persona_to_story` on the `personas-server` with
-       the persona's id and a story id this persona applies to. At least one link is
-       required before the requirement can be satisfied.
-
-    ## Evidence bar
-
-    - Triangulate — no claim enters `summary.md` unless ≥3 independent sources
-      support it (see `persona_research/README.md#guardrails`).
-    - Verbatim quotes beat paraphrase. Save exact wording with attribution.
-    - Every claim traces to an entry in `## Evidence`. If it doesn't, cut it.
-    - Decision-useful or cut it — if a field wouldn't change a product decision,
-      remove it.
-
-    ## Done signal
-
-    The `personas_complete` requirement is satisfied when:
-
-    - ≥1 persona linked to this project via `persona_stories`.
-    - Every linked persona has a DB row, a valid `summary.md` (all required sections),
-      and a non-empty `sources.md`.
-
-    ## This is a manual-validation task
-
-    The stop hook does NOT auto-evaluate this requirement — that would cut the
-    intake conversation short every time you stopped to ask the PM a question.
-    You own the completion signal:
-
-    - Freely stop between turns to let the PM respond. Each stop is cheap; the
-      task stays active across stops.
-    - When **you believe** all conditions above are met, call `evaluate_task`
-      explicitly to run the checker. Pass/fail feedback comes back; on pass,
-      the task completes and the graph advances.
-    - If the PM directs you to abandon the session (refuses to provide
-      evidence, walks away), stop the task by calling `evaluate_task` with a
-      brief summary — the checker will report "unsatisfied" and the
-      requirement remains open for the next run.
-
-    Never fabricate artifacts to pass the checker. Thin in, nothing out.
+    The stop hook does NOT auto-evaluate. Stop freely between turns to
+    let the PM respond — each stop is cheap, the task stays active. When
+    you believe all artifacts exist and ≥1 story is linked, call
+    `evaluate_task` to run `PersonasChecker.complete?`. Never fabricate
+    artifacts to pass the checker. Thin in, nothing out.
     """
   end
 end
