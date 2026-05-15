@@ -145,6 +145,14 @@ defmodule CodeMySpec.Components.Registry do
       color: "teal",
       dependency_order: 4
     },
+    "skill" => %{
+      graph: :default_graph,
+      display_name: "Skill",
+      document_type: "skill",
+      description: "Agent-task playbook — a runnable, evaluatable agent procedure",
+      icon: "sparkles",
+      color: "pink"
+    },
     "other" => %{
       graph: :default_graph,
       display_name: "Other",

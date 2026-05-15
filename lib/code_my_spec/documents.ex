@@ -168,8 +168,8 @@ defmodule CodeMySpec.Documents do
   defp validate_document_type(""), do: {:error, "Document type is required"}
   defp validate_document_type(_), do: {:error, "Document type must be a string"}
 
-  # Spec files (spec, schema, context_spec) must have a valid H1 title
-  @spec_types ["spec", "schema", "context_spec"]
+  # Spec files (spec, schema, context_spec, skill) must have a valid H1 title
+  @spec_types ["spec", "schema", "context_spec", "skill"]
 
   defp validate_h1_title(markdown_content, document_type) when document_type in @spec_types do
     case Regex.run(~r/^# ([A-Z][a-zA-Z0-9_.]+)$/m, markdown_content) do

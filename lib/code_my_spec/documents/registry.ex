@@ -132,6 +132,89 @@ defmodule CodeMySpec.Documents.Registry do
     | foreign_id  | integer      | Yes        | Foreign key           | References table.id |
   """
 
+  @skill_intent """
+  Format:
+  - Use H2 heading
+  - Paragraphs describing the agent's mandate
+
+  Content:
+  - What the skill exists to do
+  - The user situation or graph state that triggers it
+  - Mode/branching behavior, if any
+  """
+
+  @skill_done_signal """
+  Format:
+  - Use H2 heading
+  - Paragraph or short bullet list
+
+  Content:
+  - The concrete artifact whose existence/validity proves the skill ran to completion
+  - Path, non-empty check, file format, idempotence — whatever the evaluator looks for
+  """
+
+  @skill_dispatch_shape """
+  Format:
+  - Use H2 heading
+  - Paragraph describing how the skill surfaces from the requirement graph
+
+  Content:
+  - Shape: `componentless_task`, component-scoped, story-scoped, etc.
+  - Where it sits in the graph: prerequisites and gating
+  - What the agent receives in the task prompt
+  """
+
+  @skill_out_of_scope """
+  Format:
+  - Use H2 heading
+  - Bullet list of things this skill deliberately does NOT do
+
+  Content:
+  - Boundaries against scope creep
+  - Pointers to the skill that DOES own each excluded responsibility
+  """
+
+  @skill_failure_modes """
+  Format:
+  - Use H2 heading
+  - Bullet list
+
+  Content:
+  - Concrete mistakes the agent should avoid
+  - Drawn from past evaluator failures or scope drift observed in practice
+  """
+
+  @skill_resources """
+  Format:
+  - Use H2 heading
+  - Grouped bullet lists: Required / Optional / Produced
+
+  Content:
+  - Files the skill reads (required), may read (optional), and writes (produced)
+  - Use real paths so the prompt-rendering layer can validate them
+  """
+
+  @skill_tools """
+  Format:
+  - Use H2 heading
+  - Paragraph or bullet list
+
+  Content:
+  - Which MCP tools, knowledge files, or built-ins the agent needs
+  - "No task-specific tools required" is acceptable when built-ins suffice
+  """
+
+  @skill_public_functions """
+  Format:
+  - Use H2 heading
+  - Bullet list of `function/arity` entries with prose descriptions
+
+  Content:
+  - Helper functions worth surfacing to future readers — usually pre-prompt data
+    (e.g. premade decisions, default config) that's revised here rather than in code
+  - Optional; only present when the module exposes data the prompt depends on
+  """
+
   @review_overview """
   Format:
   - Use H2 heading
@@ -1322,6 +1405,39 @@ defmodule CodeMySpec.Documents.Registry do
         "contexts" => @proposal_contexts,
         "surface components" => @proposal_surface_components,
         "dependencies" => @proposal_dependencies
+      }
+    },
+    "skill" => %{
+      overview: """
+      Skill documents describe agent-task playbooks — runnable modules that render a
+      prompt and evaluate the agent's output for a single, repeatable procedure (spec
+      writing, BDD generation, persona research, etc.). Unlike module specs, skills
+      don't enumerate public functions; they describe the agent's mandate, the done
+      signal the evaluator watches for, and the resources/tools the agent is given.
+      """,
+      required_sections: [
+        "intent",
+        "done signal",
+        "dispatch shape",
+        "out of scope",
+        "failure modes the agent should avoid",
+        "resources",
+        "tools",
+        "dependencies"
+      ],
+      optional_sections: ["public functions worth knowing"],
+      allowed_additional_sections: [],
+      section_descriptions: %{
+        "type" => @spec_type,
+        "intent" => @skill_intent,
+        "done signal" => @skill_done_signal,
+        "dispatch shape" => @skill_dispatch_shape,
+        "out of scope" => @skill_out_of_scope,
+        "failure modes the agent should avoid" => @skill_failure_modes,
+        "resources" => @skill_resources,
+        "tools" => @skill_tools,
+        "dependencies" => @spec_dependencies,
+        "public functions worth knowing" => @skill_public_functions
       }
     }
   }
