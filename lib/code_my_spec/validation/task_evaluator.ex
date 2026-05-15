@@ -64,12 +64,14 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       case result do
         {:ok, :valid} ->
           Sessions.complete_task(scope, session, task.id, :completed)
+          Sessions.clear_eval_feedback(scope, session)
           {:ok, :valid}
 
         {:ok, :invalid, feedback} ->
-          # R8: bump the per-task failure count so stop_controller can
-          # detect a stuck loop (5 consecutive failures → terminate).
-          Sessions.increment_failure_count(scope, session, task.id)
+          # R8: hash the feedback and bump (or reset) the session-level
+          # repeat counter so stop_controller can detect a stuck loop
+          # (same hash 5 times in a row → terminate).
+          Sessions.record_eval_feedback(scope, session, feedback)
           {:error, feedback}
 
         {:error, :entity_missing} ->

@@ -25,6 +25,8 @@ defmodule CodeMySpec.Sessions.Session do
           component_module_name: String.t() | nil,
           state: map() | nil,
           continuous: boolean() | nil,
+          last_eval_feedback_hash: String.t() | nil,
+          eval_feedback_count: integer() | nil,
           tasks: [Task.t()],
           subagents: [Subagent.t()],
           project_id: Ecto.UUID.t() | nil,
@@ -47,6 +49,8 @@ defmodule CodeMySpec.Sessions.Session do
     field :component_module_name, :string
     field :state, :map, default: %{}
     field :continuous, :boolean, default: false
+    field :last_eval_feedback_hash, :string
+    field :eval_feedback_count, :integer, default: 0
 
     embeds_many :tasks, Task, on_replace: :delete
     embeds_many :subagents, Subagent, on_replace: :delete
@@ -75,6 +79,8 @@ defmodule CodeMySpec.Sessions.Session do
       :component_module_name,
       :state,
       :continuous,
+      :last_eval_feedback_hash,
+      :eval_feedback_count,
       :project_id,
       :account_id,
       :user_id,

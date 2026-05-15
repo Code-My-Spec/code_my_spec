@@ -18,7 +18,6 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
 
   @integrations_index Paths.integrations_index()
   @integrations_dir Paths.integrations_dir()
-  @scripts_dir Paths.qa_scripts_dir()
   @decisions_dir Paths.decisions_dir()
 
   @doc """

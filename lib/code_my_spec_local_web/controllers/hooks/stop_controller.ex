@@ -53,8 +53,8 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
       r5b_applies?(session, active_task, idle_sub) ->
         block_assign_directive(active_task, idle_sub, req_id)
 
-      continuous_mode?(session) && stuck_threshold_hit?(active_task) ->
-        terminate_stuck(scope, session, active_task, req_id)
+      continuous_mode?(session) && stuck_threshold_hit?(session) ->
+        terminate_stuck(scope, session, req_id)
 
       has_active_manual_task?(session) ->
         allow(req_id, "Active manual task")
@@ -126,10 +126,10 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     end
   end
 
-  # R8 — stuck-detection. Two check points share `terminate_stuck/4`:
-  # (a) `decide/7` checks `active_task.failure_count` BEFORE the manual
-  #     short-circuit, so manual-task loops bumped by `EvaluateTask`
-  #     MCP calls can still terminate.
+  # R8 — stuck-detection. Two check points share `terminate_stuck/3`:
+  # (a) `decide/7` checks `session.eval_feedback_count` BEFORE the
+  #     manual short-circuit, so manual-task loops bumped by
+  #     `EvaluateTask` MCP calls can still terminate.
   # (b) `maybe_terminate_stuck/4` checks AFTER evaluate has run inside
   #     this stop, so auto-task loops bumped by `TaskEvaluator` in the
   #     same request also terminate. The re-fetch via
@@ -139,26 +139,25 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   # Below threshold: fall through to block-with-feedback.
   @stuck_threshold 5
 
-  defp stuck_threshold_hit?(nil), do: false
-
-  defp stuck_threshold_hit?(%{failure_count: count}) when is_integer(count),
+  defp stuck_threshold_hit?(%Session{eval_feedback_count: count}) when is_integer(count),
     do: count >= @stuck_threshold
 
   defp stuck_threshold_hit?(_), do: false
 
-  defp terminate_stuck(scope, session, active_task, req_id) do
-    count = active_task.failure_count || 0
+  defp terminate_stuck(scope, session, req_id) do
+    count = session.eval_feedback_count || 0
 
     message =
-      "Continuous mode terminated by stuck-detection: task #{active_task.id} " <>
-        "failed evaluate_task #{count} times in a row."
+      "Continuous mode terminated by stuck-detection: evaluate_task " <>
+        "returned the same feedback #{count} times in a row."
 
     Logger.info("[StopHook] [#{req_id}] R8 stuck-detection (count=#{count}) — terminating loop")
 
-    # `failure_count` is intentionally NOT reset here. If the user
-    # later re-enables continuous mode on the same active task without
-    # resolving it, the very next stop will re-terminate — the loop
-    # stays stuck until the task is completed, cancelled, or replaced.
+    # Stuck-detection state is intentionally NOT cleared here. If the
+    # user later re-enables continuous mode without resolving the
+    # underlying problem, the very next failure will re-trip — the
+    # loop stays stuck until a different feedback or a passing eval
+    # clears the counter via `record_eval_feedback` / `clear_eval_feedback`.
     Sessions.update_session(scope, session, %{continuous: false})
 
     NotificationClient.notify(%{
@@ -183,10 +182,8 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
         block_with_reason(reason, req_id)
 
       session ->
-        active = Session.active_task(session)
-
-        if continuous_mode?(session) and stuck_threshold_hit?(active),
-          do: terminate_stuck(scope, session, active, req_id),
+        if continuous_mode?(session) and stuck_threshold_hit?(session),
+          do: terminate_stuck(scope, session, req_id),
           else: block_with_reason(reason, req_id)
     end
   end

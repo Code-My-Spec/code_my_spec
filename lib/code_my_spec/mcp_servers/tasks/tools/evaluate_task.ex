@@ -97,20 +97,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
       case result do
         {:ok, :valid} ->
           {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
+          Sessions.clear_eval_feedback(scope, session)
           Logger.info("[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed")
           {:reply, TasksMapper.evaluate_passed_response(task), frame}
 
         {:ok, :valid, info} ->
           {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
+          Sessions.clear_eval_feedback(scope, session)
           Logger.info("[EvaluateTask] #{type_name(task_module)} passed with info — task #{task.id} completed")
           {:reply, TasksMapper.evaluate_passed_response(task, info), frame}
 
         {:ok, :invalid, feedback} ->
-          # R8: bump per-task failure_count on every observed failure so
-          # the stop hook can detect a stuck manual-task loop too. (The
-          # auto-task counterpart lives in TaskEvaluator; the two
-          # surfaces are disjoint in production.)
-          Sessions.increment_failure_count(scope, session, task.id)
+          # R8: hash the feedback and bump (or reset) the session-level
+          # repeat counter so the stop hook can detect a stuck loop —
+          # this surface (manual evaluate) and TaskEvaluator (auto stop
+          # hook) share the same session-scoped counter.
+          Sessions.record_eval_feedback(scope, session, feedback)
           Logger.info("[EvaluateTask] #{type_name(task_module)} failed — feedback returned")
           {:reply, TasksMapper.evaluate_needs_work_response(task, feedback), frame}
 

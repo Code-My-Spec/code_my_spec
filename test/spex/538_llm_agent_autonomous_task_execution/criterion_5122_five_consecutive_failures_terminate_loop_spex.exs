@@ -1,21 +1,26 @@
 defmodule CodeMySpecSpex.Story538.Criterion5122Spex do
   @moduledoc """
   Story 538 — LLM Agent Autonomous Task Execution
-  Criterion 5122 — When evaluate_task fails 5 times in a row on the
-  same task, the loop terminates and escalates.
+  Criterion 5122 — When evaluate_task returns the same feedback hash
+  five times in a row in a session, the autonomous loop terminates
+  and escalates.
 
-  Covers Rule R8 (stuck-detection clause): consecutive failures bump
-  `Task.failure_count`; when the count reaches the threshold (5),
-  the stop hook clears `session.continuous` and emits an allow with
-  a `systemMessage` that names stuck-detection.
+  Covers Rule R8 (stuck-detection clause): each `{:ok, :invalid,
+  feedback}` is hashed and compared against
+  `session.last_eval_feedback_hash`. Matching hash → bump
+  `eval_feedback_count`; differing hash → reset to 1. When the count
+  reaches 5, the stop hook clears `session.continuous` and emits an
+  allow with a `systemMessage` that names stuck-detection.
 
   ## Surface
 
   - `EvaluateTask` MCP tool — the same surface a manual-validation
-    agent calls per Rule R4. Each `{:ok, :invalid, _}` result
-    increments `Task.failure_count` via `Sessions.increment_failure_count/3`.
+    agent calls per Rule R4. Each `{:ok, :invalid, feedback}` result
+    bumps the session-level counter via
+    `Sessions.record_eval_feedback/3`.
   - `POST /api/hooks/stop` — the production webhook that observes
-    `failure_count` and fires R8 when continuous is on + threshold hit.
+    `session.eval_feedback_count` and fires R8 when continuous is on
+    + threshold hit.
   - `:persona_research_task_started` — shared given that creates a
     `personas_complete` manual task that fails by default (no persona
     exists yet), so every `EvaluateTask` call returns needs-work.

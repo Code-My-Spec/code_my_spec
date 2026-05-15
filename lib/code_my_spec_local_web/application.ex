@@ -29,6 +29,7 @@ defmodule CodeMySpecLocalWeb.Application do
       CodeMySpec.Environments.registry_child_spec(),
       CodeMySpecLocalWeb.Migrator,
       {Phoenix.PubSub, name: CodeMySpec.PubSub},
+      {Task.Supervisor, name: CodeMySpec.Permissions.TaskSupervisor},
       CodeMySpec.Auth.AuthState,
       CodeMySpec.Embeddings.Serving,
       {CodeMySpec.McpServers.LocalServer, transport: {:streamable_http, start: true}},

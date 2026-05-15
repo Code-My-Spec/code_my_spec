@@ -186,28 +186,47 @@ defmodule CodeMySpec.Sessions do
   end
 
   @doc """
-  Increment the `failure_count` on a task.
+  Record an `{:ok, :invalid, feedback}` result on the session.
 
-  Called by `TaskEvaluator` and the `EvaluateTask` MCP tool when
-  evaluate returns `:invalid` so the stop hook can detect stuck loops
-  (R8). Fire-and-forget: callers ignore the return value, so a
-  `{:error, :task_not_found}` for a stale task id silently no-ops
-  rather than crashing the surface.
+  Hashes `feedback` and compares against `session.last_eval_feedback_hash`:
+  a match increments `eval_feedback_count`; a miss resets the count to 1
+  and stores the new hash. Story 538 / R8 — the stop hook reads the
+  resulting count to detect a stuck loop.
   """
-  @spec increment_failure_count(Scope.t(), Session.t(), String.t()) ::
-          {:ok, Session.t()} | {:error, :task_not_found | Ecto.Changeset.t()}
-  def increment_failure_count(%Scope{} = _scope, %Session{} = session, task_id) do
-    case Session.find_task(session, task_id) do
-      nil ->
-        {:error, :task_not_found}
+  @spec record_eval_feedback(Scope.t(), Session.t(), String.t()) ::
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def record_eval_feedback(%Scope{} = _scope, %Session{} = session, feedback)
+      when is_binary(feedback) do
+    hash = :crypto.hash(:sha256, feedback) |> Base.encode16(case: :lower)
 
-      task ->
-        next = (task.failure_count || 0) + 1
+    next_count =
+      if session.last_eval_feedback_hash == hash,
+        do: (session.eval_feedback_count || 0) + 1,
+        else: 1
 
-        session
-        |> Session.update_task(task_id, %{failure_count: next})
-        |> Repo.update()
-    end
+    session
+    |> Session.changeset(%{
+      last_eval_feedback_hash: hash,
+      eval_feedback_count: next_count
+    })
+    |> Repo.update()
+  end
+
+  @doc """
+  Clear the stuck-detection state on a passing evaluation.
+
+  Story 538 / R8 — called from the `{:ok, :valid}` paths so the next
+  failure starts a fresh streak.
+  """
+  @spec clear_eval_feedback(Scope.t(), Session.t()) ::
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def clear_eval_feedback(%Scope{} = _scope, %Session{} = session) do
+    session
+    |> Session.changeset(%{
+      last_eval_feedback_hash: nil,
+      eval_feedback_count: 0
+    })
+    |> Repo.update()
   end
 
   @doc """

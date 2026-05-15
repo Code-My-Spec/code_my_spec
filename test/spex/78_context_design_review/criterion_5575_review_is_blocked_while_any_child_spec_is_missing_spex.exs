@@ -52,8 +52,16 @@ defmodule CodeMySpecSpex.Story78.Criterion5575Spex do
         assert context.response_text =~ "spec_file",
                "expected the missing child spec_file to surface in the actionable list"
 
-        assert context.response_text =~ "ExampleContext.Item",
-               "expected the actionable to be scoped to the child whose spec is missing"
+        # Intent: the actionable must be scoped to a component (the child whose
+        # spec is missing), not to the parent context or to a story. We assert
+        # the entity_type rather than the entity_name because the orchestrate
+        # prompt rubric (see .code_my_spec/knowledge/skills/description_rubric.md
+        # and agent_task_guide.md) deliberately keeps orchestrate strings as
+        # static routing signals, so the human-readable module name is no
+        # longer pinned in the rendered output — the entity_type + entity_id
+        # in the dispatch signature is the stable identifier.
+        assert context.response_text =~ "entity_type=`component`",
+               "expected the actionable to be scoped to a component (the child whose spec is missing)"
 
         {:ok, context}
       end
