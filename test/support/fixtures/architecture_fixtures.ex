@@ -120,6 +120,44 @@ defmodule CodeMySpec.ArchitectureFixtures do
     Proposal.execute(proposal, scope, env: env, working_dir: working_dir)
   end
 
+  @doc """
+  Inserts a component dependency row directly via `Components.create_dependency/2`,
+  bypassing `Proposal.validate/2`. Use this when a spec needs a cyclic
+  dependency in the DB — the proposal flow rejects non-schema cycles by
+  design, so the architect's normal write surface can't produce them. The
+  validator-under-test (`validate_dependency_graph`) still needs the cycle
+  to assert against.
+
+  Takes the source and target components (as returned by
+  `with_executed_proposal/3` + `get_component_by_module_name/2`).
+  """
+  @spec dependency_fixture(map(), map(), map()) :: {:ok, map()} | {:error, term()}
+  def dependency_fixture(scope, %{id: source_id}, %{id: target_id}) do
+    alias CodeMySpec.Components
+
+    Components.create_dependency(scope, %{
+      source_component_id: source_id,
+      target_component_id: target_id
+    })
+  end
+
+  @doc """
+  Upserts a component row directly via `Components.upsert_component/2`,
+  bypassing `Proposal.validate/2`. Use this when a spec needs an
+  orphaned context (no story link, no incoming/outgoing dependencies) —
+  the proposal flow rejects orphan contexts unless they're typed
+  `infrastructure`, and the orphan detector (`list_orphaned_contexts`)
+  excludes infrastructure. The validator-under-test needs an honest
+  orphan that the surface can't produce.
+  """
+  @spec component_fixture(map(), map()) :: map()
+  def component_fixture(scope, attrs) do
+    alias CodeMySpec.Components
+
+    {:ok, component} = Components.upsert_component(scope, attrs)
+    component
+  end
+
   defp app_name_for(scope) do
     case scope.active_project do
       %{module_name: name} when is_binary(name) and name != "" -> name

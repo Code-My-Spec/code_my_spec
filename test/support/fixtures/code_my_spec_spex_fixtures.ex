@@ -219,6 +219,8 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate proposal_with_surface_and_context(opts \\ []), to: ArchitectureFixtures
   defdelegate with_proposal(env, content), to: ArchitectureFixtures
   defdelegate with_executed_proposal(scope, env, content), to: ArchitectureFixtures
+  defdelegate dependency_fixture(scope, source, target), to: ArchitectureFixtures
+  defdelegate component_fixture(scope, attrs), to: ArchitectureFixtures
 
   # -- BDD Specs --
   defdelegate spec_file_path(story, criterion), to: BddSpecs
