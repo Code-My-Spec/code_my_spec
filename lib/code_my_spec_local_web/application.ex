@@ -32,7 +32,14 @@ defmodule CodeMySpecLocalWeb.Application do
       {Task.Supervisor, name: CodeMySpec.Permissions.TaskSupervisor},
       CodeMySpec.Auth.AuthState,
       CodeMySpec.Embeddings.Serving,
-      {CodeMySpec.McpServers.LocalServer, transport: {:streamable_http, start: true}},
+      # session_idle_timeout: 4h — agent workflow has long gaps between MCP
+      # calls (writing code, running tests, browser automation). The Anubis
+      # default of 30 min was dropping the session ~8-10 times per multi-hour
+      # session, forcing manual `/mcp` reconnects (-32603 "No active session").
+      # 4h covers a normal working block; supervisor restarts re-arm the timer.
+      {CodeMySpec.McpServers.LocalServer,
+       transport: {:streamable_http, start: true},
+       session_idle_timeout: to_timeout(hour: 4)},
       CodeMySpecLocalWeb.Endpoint,
       CodeMySpec.ProjectSync.FileWatcherServer,
       CodeMySpecLocalWeb.SocketSupervisor,
