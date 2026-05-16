@@ -8,9 +8,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   1. **Same-entity prerequisites**: spec_file → spec_valid (within a component)
   2. **Project → story**: project.qa_setup → story.component_linked (the
      whole-project gate that opens story-level work)
-  3. **Story → component tree**: bdd_specs_exist → component's first req
-     in the surface's dep closure. (No story → project fan-in: project-
-     level BDD passing now lives at the stop hook, not the graph.)
+  2. **Story → component tree**: bdd_specs_exist → component's first req;
+     component's terminal req → bdd_specs_passing
+  3. **Stories → project**: each story's qa_complete → all_bdd_specs_passing
+     (project-level fan-in node — gives the requirements graph a structural
+     seam where story state aggregates into project state, which the
+     graph projector uses to lay out late_project nodes at the bottom band)
   """
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
@@ -205,7 +208,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     (template_edges ++
        project_to_story_edges(ctx) ++
        component_tree_edges(ctx, config) ++
-       cross_context_dependency_edges(ctx, config))
+       cross_context_dependency_edges(ctx, config) ++
+       story_to_project_edges(ctx))
     |> Enum.filter(fn %{from: f, to: t} ->
       MapSet.member?(node_keys, f) and MapSet.member?(node_keys, t)
     end)
@@ -247,7 +251,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       surface ->
         kickoff_components = transitive_dep_closure(surface, ctx)
-        Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
+        kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
+        kickoff_edges ++ surface_exit_edge(surface, story, ctx, config)
     end
   end
 
@@ -283,8 +288,75 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.any?(&(&1.name == name))
   end
 
+  # bdd_specs_passing is gated on the LEAVES of the surface's
+  # orchestration tree:
+  # - leaf surface (template has no :child defs): the surface's own
+  #   last :self def feeds bdd_specs_passing.
+  # - container surface (template has :child defs): each direct
+  #   child's terminal feeds bdd_specs_passing. Sibling children
+  #   with cross-context deps collapse via transitive reduction —
+  #   only the deepest leaf survives.
+  defp surface_exit_edge(surface, story, ctx, config) do
+    if ComponentRegistry.has_children?(surface.type) do
+      container_exit_edges(surface, story, ctx, config)
+    else
+      leaf_exit_edge(surface, story, config)
+    end
+  end
+
+  defp leaf_exit_edge(surface, story, config) do
+    case last_filtered_def(surface.type, config) do
+      nil ->
+        []
+
+      terminal ->
+        [
+          %{
+            from: {"component", surface.id, terminal.name},
+            to: {"story", story.id, "bdd_specs_passing"}
+          }
+        ]
+    end
+  end
+
+  defp container_exit_edges(surface, story, ctx, config) do
+    surface
+    |> direct_children(ctx)
+    |> Enum.flat_map(fn child ->
+      case child_terminal_name(surface.type, child.type, config) do
+        nil ->
+          []
+
+        name ->
+          [
+            %{
+              from: {"component", child.id, name},
+              to: {"story", story.id, "bdd_specs_passing"}
+            }
+          ]
+      end
+    end)
+  end
+
   defp direct_children(parent, ctx) do
     Enum.filter(ctx.components, &(&1.parent_component_id == parent.id))
+  end
+
+  defp child_terminal_name(parent_type, child_type, config) do
+    child_own_names =
+      child_type
+      |> ComponentRegistry.get_requirements_for_type()
+      |> MapSet.new(& &1.name)
+
+    parent_type
+    |> ComponentRegistry.get_requirements_for_type()
+    |> filter_definitions_by_config(config)
+    |> Enum.filter(&(&1.node_scope == :child and &1.name in child_own_names))
+    |> List.last()
+    |> case do
+      nil -> nil
+      def -> def.name
+    end
   end
 
   defp first_filtered_def(type, config) do
@@ -292,6 +364,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> ComponentRegistry.get_requirements_for_type()
     |> filter_definitions_by_config(config)
     |> List.first()
+  end
+
+  defp last_filtered_def(type, config) do
+    type
+    |> ComponentRegistry.get_requirements_for_type()
+    |> filter_definitions_by_config(config)
+    |> List.last()
   end
 
   defp transitive_dep_closure(start_component, ctx) do
@@ -321,6 +400,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp find_def(definitions, name) do
     Enum.find(definitions, &(&1.name == name))
+  end
+
+  # Cross-entity: story.qa_complete → project.all_bdd_specs_passing.
+  # The project-level fan-in: every story's QA completion gates the
+  # project's `all_bdd_specs_passing` aggregate, which downstream
+  # nodes (qa_journey_plan etc.) depend on. Restoring this edge after
+  # the e7452b3a / 36ae631e removal so the graph projector has a
+  # structural seam to lay late_project nodes against the bottom band.
+  defp story_to_project_edges(ctx) do
+    project_id =
+      case ctx.stories do
+        [story | _] -> story.project_id
+        _ -> nil
+      end
+
+    if project_id do
+      Enum.map(ctx.stories, fn story ->
+        %{
+          from: {"story", story.id, "qa_complete"},
+          to: {"project", project_id, "all_bdd_specs_passing"}
+        }
+      end)
+    else
+      []
+    end
   end
 
   # Cross-context dependency edges.

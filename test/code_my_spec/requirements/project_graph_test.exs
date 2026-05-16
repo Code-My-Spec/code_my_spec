@@ -64,11 +64,11 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       # Cross-entity: story → component (bdd_specs_exist → component first req)
       assert {"story", "component"} in edge_types
 
-      # Cross-entity: project → story (qa_setup → story.component_linked)
-      assert {"project", "story"} in edge_types
+      # Cross-entity: component → story (component terminal → bdd_specs_passing)
+      assert {"component", "story"} in edge_types
 
-      # component → story edges were removed along with bdd_specs_passing.
-      # BDD test passing is enforced at the stop hook, not via graph edges.
+      # Cross-entity: story → project (qa_complete → all_bdd_specs_passing)
+      assert {"story", "project"} in edge_types
     end
 
     test "component nodes include context, its children, and dependencies" do
@@ -109,7 +109,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       assert "User Registration" in story_names
     end
 
-    test "story requirements include component_linked, bdd_specs_exist, and qa_complete" do
+    test "story requirements include bdd_specs_exist and bdd_specs_passing" do
       {scope, _tmp_dir} = setup_full_project()
 
       %{nodes: nodes} = Requirements.project_graph(scope)
@@ -122,10 +122,8 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
 
       assert "component_linked" in story_req_names
       assert "bdd_specs_exist" in story_req_names
+      assert "bdd_specs_passing" in story_req_names
       assert "qa_complete" in story_req_names
-
-      # bdd_specs_passing removed — BDD test passing is enforced at the stop hook.
-      refute "bdd_specs_passing" in story_req_names
     end
 
     test "each node has all required Requirement struct fields" do
@@ -156,15 +154,14 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       end)
     end
 
-    test "qa_complete is NOT actionable when bdd_specs_exist is unsatisfied" do
+    test "bdd_specs_passing is NOT actionable when component tree is unsatisfied" do
       {scope, _tmp_dir} = setup_full_project()
 
       actionable = Requirements.next_actionable_project(scope)
       actionable_keys = MapSet.new(actionable, fn n -> {n.entity_type, n.name} end)
 
-      # Story has no bdd_spec files, so qa_complete should be gated by
-      # bdd_specs_exist (the prereq chain that replaced bdd_specs_passing).
-      refute MapSet.member?(actionable_keys, {"story", "qa_complete"})
+      # Component tree has no files yet, so bdd_specs_passing should be blocked
+      refute MapSet.member?(actionable_keys, {"story", "bdd_specs_passing"})
     end
 
     test "personas_complete surfaces when project_setup is satisfied and no personas exist" do
