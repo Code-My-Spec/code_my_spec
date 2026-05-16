@@ -172,13 +172,19 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Index do
                   Edit
                 </.button>
                 <button
-                  phx-click="delete"
-                  phx-value-id={persona.id}
-                  data-confirm={"Delete persona \"#{persona.name}\"? This removes all story links."}
+                  type="button"
+                  phx-click={show_confirm("confirm-delete-persona-#{persona.id}")}
                   class="btn btn-ghost btn-sm text-error"
                 >
                   Delete
                 </button>
+                <.confirm_dialog
+                  id={"confirm-delete-persona-#{persona.id}"}
+                  title={"Delete persona \"#{persona.name}\"?"}
+                  message="This removes the persona and all story links."
+                  confirm_label="Delete"
+                  on_confirm={JS.push("delete", value: %{id: persona.id})}
+                />
               </div>
             </div>
           </li>

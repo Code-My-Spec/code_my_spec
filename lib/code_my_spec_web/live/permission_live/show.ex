@@ -99,9 +99,9 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
               <%= if @request.status == "pending" do %>
                 <div class="card-actions justify-end mt-6 gap-3">
                   <button
-                    phx-click="deny"
+                    type="button"
+                    phx-click={show_confirm("confirm-deny-request")}
                     class="btn btn-error btn-lg"
-                    data-confirm="Deny this request?"
                   >
                     Deny
                   </button>
@@ -111,6 +111,12 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
                   >
                     Approve
                   </button>
+                  <.confirm_dialog
+                    id="confirm-deny-request"
+                    title="Deny this request?"
+                    confirm_label="Deny"
+                    on_confirm={JS.push("deny")}
+                  />
                 </div>
               <% else %>
                 <div class="mt-6 text-center opacity-70">

@@ -140,13 +140,20 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
                 <.link navigate={~p"/projects/#{@slug}/stories/#{story.id}/edit"} class="btn btn-sm btn-outline">
                   Edit
                 </.link>
-                <.link
-                  phx-click={JS.push("delete", value: %{id: story.id}) |> hide("##{id}")}
-                  data-confirm="Are you sure?"
+                <button
+                  type="button"
+                  phx-click={show_confirm("confirm-delete-story-#{story.id}")}
                   class="btn btn-sm btn-error btn-outline"
                 >
                   Delete
-                </.link>
+                </button>
+                <.confirm_dialog
+                  id={"confirm-delete-story-#{story.id}"}
+                  title={"Delete story \"#{story.title}\"?"}
+                  message="This removes the story and its rules/scenarios; linked issues are preserved with story_id cleared."
+                  confirm_label="Delete"
+                  on_confirm={JS.push("delete", value: %{id: story.id}) |> hide("##{id}")}
+                />
               </div>
             </div>
           </div>

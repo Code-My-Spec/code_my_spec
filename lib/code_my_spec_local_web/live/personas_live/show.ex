@@ -223,13 +223,19 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
                   >
                     <span class="flex-1">{story.title}</span>
                     <button
-                      phx-click="unlink"
-                      phx-value-story_id={story.id}
-                      data-confirm="Unlink this story?"
+                      type="button"
+                      phx-click={show_confirm("confirm-unlink-story-#{story.id}")}
                       class="btn btn-ghost btn-xs text-error"
                     >
                       Unlink
                     </button>
+                    <.confirm_dialog
+                      id={"confirm-unlink-story-#{story.id}"}
+                      title="Unlink this story?"
+                      message={"\"#{story.title}\" will no longer reference this persona. The story itself isn't deleted."}
+                      confirm_label="Unlink"
+                      on_confirm={JS.push("unlink", value: %{story_id: story.id})}
+                    />
                   </li>
                 </ul>
               </div>

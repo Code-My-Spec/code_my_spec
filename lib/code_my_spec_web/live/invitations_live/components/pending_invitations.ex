@@ -39,14 +39,24 @@ defmodule CodeMySpecWeb.InvitationsLive.Components.PendingInvitations do
               <%= if @can_manage and not expired?(invitation) do %>
                 <button
                   type="button"
-                  phx-click="cancel_invitation"
-                  phx-value-invitation-id={invitation.id}
-                  phx-target={@myself}
+                  phx-click={show_confirm("confirm-cancel-invitation-#{invitation.id}")}
                   class="btn btn-error btn-sm"
-                  data-confirm="Are you sure you want to cancel this invitation?"
                 >
                   Cancel
                 </button>
+                <.confirm_dialog
+                  id={"confirm-cancel-invitation-#{invitation.id}"}
+                  title="Cancel this invitation?"
+                  message={"#{invitation.email} will no longer be able to use this invitation link."}
+                  confirm_label="Cancel invitation"
+                  cancel_label="Keep it"
+                  on_confirm={
+                    JS.push("cancel_invitation",
+                      value: %{"invitation-id" => invitation.id},
+                      target: @myself
+                    )
+                  }
+                />
               <% end %>
             </:action>
           </.table>

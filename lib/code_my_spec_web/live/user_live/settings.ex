@@ -84,14 +84,30 @@ defmodule CodeMySpecWeb.UserLive.Settings do
           </div>
 
           <%= if @github_connected do %>
+            <button
+              type="button"
+              class="btn btn-sm btn-outline btn-error"
+              phx-click={show_confirm("confirm-disconnect-github")}
+            >
+              Disconnect
+            </button>
             <.link
+              id="disconnect-github-link"
               href={~p"/auth/github"}
               method="delete"
-              data-confirm="Are you sure you want to disconnect GitHub?"
-              class="btn btn-sm btn-outline btn-error"
+              class="hidden"
+              aria-hidden="true"
+              tabindex="-1"
             >
               Disconnect
             </.link>
+            <.confirm_dialog
+              id="confirm-disconnect-github"
+              title="Disconnect GitHub?"
+              message="You'll need to reconnect to use GitHub features."
+              confirm_label="Disconnect"
+              on_confirm={JS.dispatch("click", to: "#disconnect-github-link")}
+            />
           <% else %>
             <.link href={~p"/auth/github"} class="btn btn-sm btn-primary">
               Connect GitHub
@@ -130,14 +146,30 @@ defmodule CodeMySpecWeb.UserLive.Settings do
           </div>
 
           <%= if @google_connected do %>
+            <button
+              type="button"
+              class="btn btn-sm btn-outline btn-error"
+              phx-click={show_confirm("confirm-disconnect-google")}
+            >
+              Disconnect
+            </button>
             <.link
+              id="disconnect-google-link"
               href={~p"/auth/google"}
               method="delete"
-              data-confirm="Are you sure you want to disconnect Google?"
-              class="btn btn-sm btn-outline btn-error"
+              class="hidden"
+              aria-hidden="true"
+              tabindex="-1"
             >
               Disconnect
             </.link>
+            <.confirm_dialog
+              id="confirm-disconnect-google"
+              title="Disconnect Google?"
+              message="You'll need to reconnect to use Google features."
+              confirm_label="Disconnect"
+              on_confirm={JS.dispatch("click", to: "#disconnect-google-link")}
+            />
           <% else %>
             <.link href={~p"/auth/google"} class="btn btn-sm btn-primary">
               Connect Google

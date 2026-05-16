@@ -69,15 +69,22 @@ defmodule CodeMySpecWeb.AccountLive.Members do
                       {Calendar.strftime(member.inserted_at, "%B %d, %Y")}
                     </td>
                     <td :if={can_manage_members?(@current_scope, @account)}>
-                      <.button
-                        :if={member.user.id != @current_scope.user.id}
-                        phx-click="remove-member"
-                        phx-value-member-id={member.id}
-                        class="btn btn-sm btn-error"
-                        data-confirm="Are you sure you want to remove this member?"
-                      >
-                        Remove
-                      </.button>
+                      <%= if member.user.id != @current_scope.user.id do %>
+                        <.button
+                          type="button"
+                          phx-click={show_confirm("confirm-remove-member-#{member.id}")}
+                          class="btn btn-sm btn-error"
+                        >
+                          Remove
+                        </.button>
+                        <.confirm_dialog
+                          id={"confirm-remove-member-#{member.id}"}
+                          title="Remove this member?"
+                          message={"#{member.user.email} will lose access to this account."}
+                          confirm_label="Remove"
+                          on_confirm={JS.push("remove-member", value: %{"member-id" => member.id})}
+                        />
+                      <% end %>
                     </td>
                   </tr>
                 </tbody>

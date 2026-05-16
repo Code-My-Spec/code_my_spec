@@ -265,14 +265,20 @@ defmodule CodeMySpecLocalWeb.FilesLive do
             </button>
             <button
               type="button"
-              phx-click="purge"
+              phx-click={show_confirm("confirm-purge-files")}
               data-test="purge-button"
               disabled={@sync_status == :running}
-              data-confirm="This will delete ALL components and requirements for this project. Continue?"
               class="btn btn-error btn-outline"
             >
               Purge All
             </button>
+            <.confirm_dialog
+              id="confirm-purge-files"
+              title="Purge all components and requirements?"
+              message="This will delete ALL components and requirements for this project."
+              confirm_label="Purge"
+              on_confirm={JS.push("purge")}
+            />
           </div>
         </div>
 

@@ -95,19 +95,34 @@ defmodule CodeMySpecWeb.ProjectLive.Components.OauthCredentials do
 
           <div class="flex gap-2 mt-4">
             <button
-              phx-click="regenerate_oauth_secret"
-              data-confirm="This will invalidate the current secret. Any clients using it will need to be updated. Continue?"
+              type="button"
+              phx-click={show_confirm("confirm-regenerate-oauth-secret")}
               class="btn btn-warning btn-sm"
             >
               <.icon name="hero-arrow-path" class="size-4" /> Regenerate Secret
             </button>
             <button
-              phx-click="delete_oauth_app"
-              data-confirm="This will permanently delete the OAuth credentials. Any connected clients will stop working. Continue?"
+              type="button"
+              phx-click={show_confirm("confirm-delete-oauth-app")}
               class="btn btn-error btn-sm"
             >
               <.icon name="hero-trash" class="size-4" /> Delete Credentials
             </button>
+            <.confirm_dialog
+              id="confirm-regenerate-oauth-secret"
+              title="Regenerate OAuth secret?"
+              message="This will invalidate the current secret. Any clients using it will need to be updated."
+              confirm_label="Regenerate"
+              confirm_class="btn btn-warning"
+              on_confirm={JS.push("regenerate_oauth_secret")}
+            />
+            <.confirm_dialog
+              id="confirm-delete-oauth-app"
+              title="Delete OAuth credentials?"
+              message="This will permanently delete the OAuth credentials. Any connected clients will stop working."
+              confirm_label="Delete"
+              on_confirm={JS.push("delete_oauth_app")}
+            />
           </div>
         </div>
       </div>

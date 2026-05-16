@@ -33,12 +33,20 @@ defmodule CodeMySpecWeb.ProjectLive.Index do
           <.link navigate={~p"/app/projects/#{project}/edit"}>Edit</.link>
         </:action>
         <:action :let={{id, project}}>
-          <.link
-            phx-click={JS.push("delete", value: %{id: project.id}) |> hide("##{id}")}
-            data-confirm="Are you sure?"
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs text-error"
+            phx-click={show_confirm("confirm-delete-project-#{project.id}")}
           >
             Delete
-          </.link>
+          </button>
+          <.confirm_dialog
+            id={"confirm-delete-project-#{project.id}"}
+            title={"Delete #{project.name}?"}
+            message="This cannot be undone."
+            confirm_label="Delete"
+            on_confirm={JS.push("delete", value: %{id: project.id}) |> hide("##{id}")}
+          />
         </:action>
       </.table>
     </Layouts.app>

@@ -184,8 +184,7 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
 
         <div class="flex gap-4">
           <.button
-            phx-click="delete"
-            data-confirm="Are you sure? ContentAdmin will re-sync on next Git sync."
+            phx-click={show_confirm("confirm-delete-content-admin")}
             class="btn-error"
           >
             Delete ContentAdmin
@@ -197,6 +196,13 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
           >
             View Public
           </.link>
+          <.confirm_dialog
+            id="confirm-delete-content-admin"
+            title="Delete this ContentAdmin entry?"
+            message="ContentAdmin will re-sync on next Git sync."
+            confirm_label="Delete"
+            on_confirm={JS.push("delete")}
+          />
         </div>
       </div>
     </Layouts.app>

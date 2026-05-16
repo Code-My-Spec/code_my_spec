@@ -110,6 +110,86 @@ defmodule CodeMySpecWeb.CoreComponents do
   end
 
   @doc """
+  Renders a confirmation dialog with Cancel + Confirm buttons.
+
+  Replaces the legacy `data-confirm` pattern, which uses the native
+  browser `window.confirm()` dialog. That dialog renders outside the
+  DOM, so Vibium / Playwright / Wallaby can't observe or click it —
+  every destructive action gated by it is silently un-testable.
+
+  This component renders a DaisyUI `<dialog>` with two regular
+  buttons, both clickable by browser automation. The dialog is
+  hidden by default; trigger it from a sibling button's `phx-click`
+  via `show_confirm("the-id")`.
+
+  ## Example
+
+      <button class="btn btn-error" phx-click={show_confirm("delete-project-\#{@project.id}")}>
+        Delete
+      </button>
+
+      <.confirm_dialog
+        id={"delete-project-\#{@project.id}"}
+        title="Delete this project?"
+        message="This cannot be undone."
+        confirm_label="Delete"
+        on_confirm={JS.push("delete", value: %{id: @project.id})}
+      />
+
+  Stable selectors for tests:
+  - The trigger button — whatever the caller renders
+  - `[data-role="confirm-cancel"]` inside the dialog
+  - `[data-role="confirm-confirm"]` inside the dialog
+  """
+  attr :id, :string, required: true
+  attr :title, :string, default: "Are you sure?"
+  attr :message, :string, default: nil
+  attr :confirm_label, :string, default: "Confirm"
+  attr :cancel_label, :string, default: "Cancel"
+  attr :confirm_class, :string, default: "btn btn-error"
+
+  attr :on_confirm, JS,
+    required: true,
+    doc: "JS command run when the confirm button is clicked"
+
+  def confirm_dialog(assigns) do
+    ~H"""
+    <dialog id={@id} class="modal" data-role="confirm-dialog">
+      <div class="modal-box">
+        <h3 class="text-lg font-bold">{@title}</h3>
+        <p :if={@message} class="py-4">{@message}</p>
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn"
+            data-role="confirm-cancel"
+            phx-click={hide_confirm(@id)}
+          >
+            {@cancel_label}
+          </button>
+          <button
+            type="button"
+            class={@confirm_class}
+            data-role="confirm-confirm"
+            phx-click={@on_confirm |> hide_confirm(@id)}
+          >
+            {@confirm_label}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button type="button" aria-label="close" phx-click={hide_confirm(@id)}>close</button>
+      </form>
+    </dialog>
+    """
+  end
+
+  @doc "Show a `confirm_dialog` by id (use as a trigger button's `phx-click`)."
+  def show_confirm(js \\ %JS{}, id), do: JS.add_class(js, "modal-open", to: "#" <> id)
+
+  defp hide_confirm(js \\ %JS{}, id), do: JS.remove_class(js, "modal-open", to: "#" <> id)
+
+  @doc """
   Renders an input with label and error messages.
 
   A `Phoenix.HTML.FormField` may be passed as argument,

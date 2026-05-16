@@ -124,12 +124,20 @@ defmodule CodeMySpecWeb.ContentAdminLive.Index do
             <.link navigate={~p"/app/content_admin/#{content_admin}"}>View</.link>
           </:action>
           <:action :let={{id, content_admin}}>
-            <.link
-              phx-click={JS.push("delete", value: %{id: content_admin.id}) |> hide("##{id}")}
-              data-confirm="Are you sure? ContentAdmin will re-sync on next Git sync."
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs text-error"
+              phx-click={show_confirm("confirm-delete-content-admin-#{content_admin.id}")}
             >
               Delete
-            </.link>
+            </button>
+            <.confirm_dialog
+              id={"confirm-delete-content-admin-#{content_admin.id}"}
+              title="Delete this ContentAdmin entry?"
+              message="ContentAdmin will re-sync on next Git sync."
+              confirm_label="Delete"
+              on_confirm={JS.push("delete", value: %{id: content_admin.id}) |> hide("##{id}")}
+            />
           </:action>
         </.table>
 

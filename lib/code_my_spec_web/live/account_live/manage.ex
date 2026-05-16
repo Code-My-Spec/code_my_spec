@@ -38,9 +38,9 @@ defmodule CodeMySpecWeb.AccountLive.Manage do
                   />
                   <div class="flex justify-end gap-x-4">
                     <.button
-                      phx-click="delete-account"
+                      type="button"
+                      phx-click={show_confirm("confirm-delete-account")}
                       class="btn btn-error"
-                      data-confirm="Are you sure you want to delete this account?"
                       disabled={!can_delete_account?(@current_scope, @account)}
                     >
                       Delete Account
@@ -49,6 +49,13 @@ defmodule CodeMySpecWeb.AccountLive.Manage do
                       Update Account
                     </.button>
                   </div>
+                  <.confirm_dialog
+                    id="confirm-delete-account"
+                    title="Delete this account?"
+                    message="All projects, stories, and members in this account will be permanently removed."
+                    confirm_label="Delete"
+                    on_confirm={JS.push("delete-account")}
+                  />
                 </div>
               </.form>
             </div>
