@@ -6,7 +6,7 @@ defmodule CodeMySpec.Architecture do
   namespace trees) written to the repository and synchronized with current project state during full syncs.
   """
 
-  alias CodeMySpec.Architecture.{NamespaceProjector, OverviewProjector}
+  alias CodeMySpec.Architecture.{MermaidProjector, NamespaceProjector, OverviewProjector}
   alias CodeMySpec.Components
   alias CodeMySpec.Components.{Component, ComponentRepository}
   alias CodeMySpec.Repo
@@ -15,6 +15,7 @@ defmodule CodeMySpec.Architecture do
   # Delegate projector functions
   defdelegate generate_overview(components), to: OverviewProjector, as: :project
   defdelegate generate_namespace_hierarchy(components), to: NamespaceProjector, as: :project
+  defdelegate generate_mermaid(components), to: MermaidProjector, as: :project
 
   @doc """
   Returns a structured summary of architecture metrics for programmatic use.
