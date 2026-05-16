@@ -734,17 +734,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [5],
         execution_type: :sub_agent
       }),
-      new!(%{
-        id: 3,
-        name: "bdd_specs_passing",
-        node_scope: :self,
-        check_type: :spex_passing,
-        satisfied_by: AgentTasks.FixBddSpecs,
-        artifact_type: :tests,
-        description: "BDD specs pass",
-        prerequisites: [2],
-        execution_type: :sub_agent
-      }),
+      # bdd_specs_passing intentionally removed — BDD test passing is
+      # enforced at the stop hook (the validation pipeline forces
+      # `:spex_stale` whenever persisted spex problems exist), so a
+      # graph node duplicates that gate and produces cascade noise.
+      # qa_complete now gates directly on bdd_specs_exist.
       new!(%{
         id: 4,
         name: "qa_complete",
@@ -754,7 +748,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA brief and result artifacts valid",
-        prerequisites: [3],
+        prerequisites: [2],
         execution_type: :sub_agent
       })
     ]
@@ -907,16 +901,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
           "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
         prerequisites: [7]
       }),
-      new!(%{
-        id: 9,
-        name: "all_bdd_specs_passing",
-        node_scope: :self,
-        check_type: :spex_passing,
-        satisfied_by: AgentTasks.FixAllBddSpecs,
-        artifact_type: :tests,
-        description: "All BDD specs pass across all stories",
-        prerequisites: [14]
-      }),
+      # all_bdd_specs_passing intentionally removed — same rationale as
+      # story.bdd_specs_passing: the stop hook handles BDD test runs
+      # unconditionally when persisted spex problems exist, so a
+      # project-level graph node is redundant. qa_journey_plan now
+      # gates directly on qa_setup.
       new!(%{
         id: 10,
         name: "qa_journey_plan",
@@ -926,7 +915,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaJourney,
         artifact_type: :review,
         description: "QA journey plan exists and valid",
-        prerequisites: [9]
+        prerequisites: [14]
       }),
       new!(%{
         id: 11,
