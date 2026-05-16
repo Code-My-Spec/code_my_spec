@@ -56,8 +56,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
 
     **Status:** #{if node.satisfied, do: "Satisfied", else: "Not satisfied"}
     **Entity:** #{String.capitalize(node.entity_type)}: #{node.entity_name}
-    **Execution:** #{execution_label(node[:execution_type])}
-    **Validation:** #{validation_label(node[:validation_type])}
+    **Execution:** #{execution_label(node.execution_type)}
+    **Validation:** #{validation_label(node.validation_type)}
     """
 
     Anubis.Server.Response.tool()
