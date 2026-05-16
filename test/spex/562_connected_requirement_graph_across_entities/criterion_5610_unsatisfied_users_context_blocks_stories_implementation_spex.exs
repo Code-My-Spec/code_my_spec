@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5610Spex do
       then_ "no Stories implementation_file or tests_passing node is satisfied",
             context do
         stories_ids = MapSet.new([context.stories_context.id, context.stories_child.id])
-        satisfied_color = "#60a5fa"
+        satisfied_color = "#ff3838"
 
         satisfied_impl_nodes =
           context.graph["nodes"]

@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5600Spex do
 
       then_ "the parent's tests_passing is not satisfied vacuously",
             context do
-        satisfied_color = "#60a5fa"
+        satisfied_color = "#ff3838"
 
         satisfied_tests_passing =
           context.graph["nodes"]

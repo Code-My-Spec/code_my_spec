@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5640Spex do
   alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
 
-  @actionable "#4ade80"
+  @actionable "#f5f5f7"
 
   setup :register_log_in_setup_account
   setup :setup_active_project

@@ -32,10 +32,18 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
+  # Brand-aligned palette — matches the legend's bg-primary / bg-success /
+  # bg-warning DaisyUI tokens defined in assets/css/app.css. Sigma renders
+  # to canvas so the projector emits resolved hex instead of CSS variables.
+  # Update these in lockstep with the brand tokens to keep legend and
+  # graph nodes visually aligned.
   @colors %{
-    satisfied: "#60a5fa",
-    actionable: "#4ade80",
-    blocked: "#fbbf24"
+    # bg-primary — signal red, "satisfied" reads as the primary brand intent
+    satisfied: "#ff3838",
+    # bg-success — white-on-black brand inverts the usual green-for-success
+    actionable: "#f5f5f7",
+    # bg-warning — yellow, matches the legend's blocked indicator
+    blocked: "#fde047"
   }
 
   @row_gap 500
@@ -90,9 +98,15 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     # Project chain splits where cross-entity edges first land on a
     # project node — that's the structural fan-in seam, no need to
-    # name the requirement.
+    # name the requirement. When NO project node receives a cross-
+    # entity edge (e.g. after a downstream-consumer gate like
+    # qa_preflight is removed) the whole project chain is upstream
+    # gates with no story/component output to consume — split at
+    # the END so every project node lands in `early_project` at the
+    # top of the canvas, rather than degenerating to all-late.
     fan_in_idx =
-      Enum.find_index(sorted_project, fn n -> MapSet.member?(cross_sinks, node_key(n)) end) || 0
+      Enum.find_index(sorted_project, fn n -> MapSet.member?(cross_sinks, node_key(n)) end) ||
+        length(sorted_project)
 
     {early_project, late_project} = Enum.split(sorted_project, fan_in_idx)
 
@@ -105,17 +119,26 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     story_count = length(sorted_stories)
 
-    # --- Layer 1: Early project chain ---
+    # --- Layer 1: Early project chain (horizontal row at top) ---
+    # Project gates lay out left-to-right in a single horizontal band
+    # so the canvas reads as three stacked bands — project on top,
+    # stories in the middle, components at the bottom — instead of
+    # a vertical stem that visually competes with the story spread.
+    early_count = length(early_project)
+
     early_sigma =
       early_project
       |> Enum.with_index()
       |> Enum.map(fn {n, idx} ->
-        mk_node(nkey(n), label(n), 0, -(idx * @row_gap), 12, cls(n, actionable_set),
+        x = (idx - (early_count - 1) / 2) * @story_col_gap
+        mk_node(nkey(n), label(n), x, 0, 12, cls(n, actionable_set),
           entity_type: "project", name: n.name)
       end)
 
     # --- Layer 2: Pre-component story reqs (all stories, same Y band) ---
-    story_start_y = -(length(early_project) * @row_gap)
+    # One row gap below the project band (or anchored at 0 when there's
+    # no project band above).
+    story_start_y = if early_count > 0, do: -@row_gap, else: 0
 
     # Pre-component story nodes: every story node that is NOT
     # downstream of any component. This includes purely-internal
@@ -213,15 +236,20 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         end)
       end)
 
-    # --- Layer 5: Late project chain ---
+    # --- Layer 5: Late project chain (horizontal row at bottom) ---
+    # Mirrors Layer 1's horizontal layout — single band of project
+    # nodes that consume story/component output, anchored one row
+    # below the post-story zone.
     post_lowest_y = post_sigma |> Enum.map(& &1.attributes.y) |> Enum.min(fn -> post_zone_y end)
     late_start_y = post_lowest_y - @story_row_gap - @row_gap
+    late_count = length(late_project)
 
     late_sigma =
       late_project
       |> Enum.with_index()
       |> Enum.map(fn {n, idx} ->
-        mk_node(nkey(n), label(n), 0, late_start_y - (idx * @row_gap), 12, cls(n, actionable_set),
+        x = (idx - (late_count - 1) / 2) * @story_col_gap
+        mk_node(nkey(n), label(n), x, late_start_y, 12, cls(n, actionable_set),
           entity_type: "project", name: n.name)
       end)
 

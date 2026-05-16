@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5871Spex do
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.GraphAssertions
 
-  @satisfied "#60a5fa"
+  @satisfied "#ff3838"
 
   setup :register_log_in_setup_account
   setup :setup_active_project

@@ -128,7 +128,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
   end
 
   describe "project_graph/1 topology-flow properties" do
-    test "intra-entity edges flow downward (source.y > target.y)", ctx do
+    test "intra-entity edges flow downward or rightward (toward target)", ctx do
       sync_three_children(ctx)
       %{nodes: nodes, edges: edges} = Requirements.project_graph(ctx.scope)
       sigma = GraphProjector.project_graph(ctx.scope)
@@ -143,21 +143,36 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
           ft != tt
         end)
 
+      # Layout invariant: intra-entity dependency edges must flow either
+      # DOWNWARD (source.y > target.y, vertical-band layouts like the
+      # story/component zones) or RIGHTWARD when source and target sit
+      # in the same horizontal band (source.y == target.y, source.x <
+      # target.x — the horizontal layout used by the project chain at
+      # top/bottom). Anything else is an upward/leftward arrow, which
+      # contradicts the visual dependency flow.
       violations =
         intra
         |> Enum.map(fn e -> {sigma_key(e.from), sigma_key(e.to)} end)
         |> Enum.flat_map(fn {f, t} ->
           with %{} = source <- Map.get(by_key, f),
                %{} = target <- Map.get(by_key, t),
-               true <- source.attributes.y <= target.attributes.y do
-            [{f, t, source.attributes.y, target.attributes.y}]
+               false <- flows_correctly?(source.attributes, target.attributes) do
+            [{f, t, source.attributes, target.attributes}]
           else
             _ -> []
           end
         end)
 
       _ = nodes
-      assert violations == [], "edges with flipped y: #{inspect(violations)}"
+      assert violations == [], "edges with flipped flow: #{inspect(violations)}"
+    end
+
+    defp flows_correctly?(%{x: sx, y: sy}, %{x: tx, y: ty}) do
+      cond do
+        sy > ty -> true
+        sy == ty and sx < tx -> true
+        true -> false
+      end
     end
 
     test "fan-in nodes (indegree >= 2) sit at-or-below all their sources", ctx do

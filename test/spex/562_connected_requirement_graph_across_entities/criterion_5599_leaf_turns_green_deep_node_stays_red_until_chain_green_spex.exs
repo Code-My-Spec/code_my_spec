@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5599Spex do
 
       then_ "every component's spec_file renders satisfied",
             context do
-        satisfied_color = "#60a5fa"
+        satisfied_color = "#ff3838"
         component_ids =
           MapSet.new([
             context.parent_context.id,
@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5599Spex do
 
       and_ "the parent context's tests_passing is not satisfied",
            context do
-        satisfied_color = "#60a5fa"
+        satisfied_color = "#ff3838"
 
         satisfied_terminals =
           context.graph["nodes"]

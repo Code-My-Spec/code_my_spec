@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5639Spex do
   actionable, and it is not gated on a removed review node.
 
   The rendered graph encodes actionability via node color
-  (#4ade80 = actionable, #fbbf24 = blocked, #60a5fa = satisfied).
+  (#f5f5f7 = actionable, #fde047 = blocked, #ff3838 = satisfied).
   Asserting on the graph color faithfully reproduces what
   `Requirements.next_actionable_project/1` (the function MCP
   get_next_requirement wraps) returns.
@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5639Spex do
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.GraphAssertions
 
-  @actionable "#4ade80"
+  @actionable "#f5f5f7"
 
   setup :register_log_in_setup_account
   setup :setup_active_project

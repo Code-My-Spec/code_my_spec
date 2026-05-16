@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5604Spex do
 
         # Satisfied nodes use the satisfied color; actionable/blocked use others.
         # The parent's terminal must NOT be satisfied while a child is incomplete.
-        satisfied_color = "#60a5fa"
+        satisfied_color = "#ff3838"
 
         satisfied_parent_terminals =
           Enum.filter(parent_nodes, fn n ->
