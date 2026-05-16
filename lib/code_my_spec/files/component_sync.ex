@@ -63,8 +63,16 @@ defmodule CodeMySpec.Files.ComponentSync do
     # authoritative when present).
     infra_paths = FileSync.load_infrastructure_paths(scope)
 
-    spec_data = Enum.map(spec_files, &parse_spec_file(&1, env))
-    impl_data = Enum.map(impl_files, &parse_impl_file(&1, env, infra_paths))
+    spec_data =
+      spec_files
+      |> Enum.map(&parse_spec_file(&1, env))
+      |> Enum.reject(&is_nil/1)
+
+    impl_data =
+      impl_files
+      |> Enum.map(&parse_impl_file(&1, env, infra_paths))
+      |> Enum.reject(&is_nil/1)
+
     merged = merge_by_module_name(spec_data, impl_data)
 
     if merged == [] do
@@ -147,68 +155,59 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # -- Spec parsing --
 
+  # Spec files: the H1 line (e.g. `# CodeMySpec.Git.Behaviour`) is the
+  # authoritative module identifier. Path is purely storage — the file
+  # can live anywhere; the H1 inside is what names it.
   defp parse_spec_file(%File{path: path} = _file, env) do
-    module_name = module_name_from_path(path, :spec)
+    case Environments.read_file(env, path) do
+      {:ok, content} ->
+        case extract_h1_module(content) do
+          nil ->
+            nil
 
-    {type, description, dependencies} =
-      case Environments.read_file(env, path) do
-        {:ok, content} ->
-          {extract_type_section(content), extract_intro_text(content), extract_dependencies(content)}
+          name ->
+            %{
+              module_name: name,
+              type: extract_type_section(content),
+              description: extract_intro_text(content),
+              dependencies: extract_dependencies(content)
+            }
+        end
 
-        {:error, _} ->
-          {nil, nil, []}
-      end
-
-    %{
-      module_name: module_name,
-      type: type,
-      description: description,
-      dependencies: dependencies
-    }
+      {:error, _} ->
+        nil
+    end
   end
 
+  # Impl files: the `defmodule X do` declaration is the authoritative
+  # module identifier. Path is purely storage. Files without a
+  # `defmodule` line (scripts, .exs, etc.) are skipped.
   defp parse_impl_file(%File{path: path} = _file, env, infra_paths) do
-    fallback = module_name_from_path(path, :implementation)
+    case Environments.read_file(env, path) do
+      {:ok, content} ->
+        case Regex.run(~r/^defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
+          [_, name] ->
+            type =
+              if FileSync.infrastructure_path?(path, infra_paths),
+                do: "infrastructure",
+                else: nil
 
-    module_name =
-      case Environments.read_file(env, path) do
-        {:ok, content} ->
-          case Regex.run(~r/defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
-            [_, name] -> name
-            _ -> fallback
-          end
+            %{module_name: name, type: type, description: nil, dependencies: []}
 
-        {:error, _} ->
-          fallback
-      end
+          _ ->
+            nil
+        end
 
-    type = if FileSync.infrastructure_path?(path, infra_paths), do: "infrastructure", else: nil
-
-    %{module_name: module_name, type: type, description: nil, dependencies: []}
+      {:error, _} ->
+        nil
+    end
   end
 
-  # -- Module name derivation --
-
-  defp module_name_from_path(path, :spec) do
-    path
-    |> String.replace_prefix(Paths.spec_dir() <> "/", "")
-    |> String.replace_suffix(".spec.md", "")
-    |> path_to_module()
-  end
-
-  defp module_name_from_path(path, :implementation) do
-    path
-    |> String.replace_prefix("lib/", "")
-    |> String.replace_suffix(".ex", "")
-    |> path_to_module()
-  end
-
-  defp path_to_module(path) do
-    path
-    |> String.split("/")
-    |> Enum.map_join(".", fn segment ->
-      segment |> String.split("_") |> Enum.map_join(&String.capitalize/1)
-    end)
+  defp extract_h1_module(content) do
+    case Regex.run(~r/^# ([A-Z][a-zA-Z0-9_.]+)$/m, content) do
+      [_, name] -> name
+      _ -> nil
+    end
   end
 
   # -- Merge --

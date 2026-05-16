@@ -119,9 +119,6 @@ defmodule CodeMySpecWeb.Router do
 
     forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer
-
-    forward "/analytics-admin", Anubis.Server.Transport.StreamableHTTP.Plug,
-      server: CodeMySpec.McpServers.AnalyticsAdminServer
   end
 
   # API routes
