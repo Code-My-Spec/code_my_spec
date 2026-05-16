@@ -6,9 +6,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   whether they cross entity boundaries. There are three kinds of edges:
 
   1. **Same-entity prerequisites**: spec_file → spec_valid (within a component)
-  2. **Story → component tree**: bdd_specs_exist → component's first req;
-     component's terminal req → bdd_specs_passing
-  3. **Stories → project**: each story's qa_complete → all_bdd_specs_passing
+  2. **Project → story**: project.qa_setup → story.component_linked (the
+     whole-project gate that opens story-level work)
+  3. **Story → component tree**: bdd_specs_exist → component's first req
+     in the surface's dep closure. (No story → project fan-in: project-
+     level BDD passing now lives at the stop hook, not the graph.)
   """
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
@@ -203,8 +205,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     (template_edges ++
        project_to_story_edges(ctx) ++
        component_tree_edges(ctx, config) ++
-       cross_context_dependency_edges(ctx, config) ++
-       story_to_project_edges(ctx))
+       cross_context_dependency_edges(ctx, config))
     |> Enum.filter(fn %{from: f, to: t} ->
       MapSet.member?(node_keys, f) and MapSet.member?(node_keys, t)
     end)
@@ -395,22 +396,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     if project_id && ctx.stories != [] do
       Enum.map(ctx.stories, fn story ->
         %{from: {"project", project_id, "qa_setup"}, to: {"story", story.id, "component_linked"}}
-      end)
-    else
-      []
-    end
-  end
-
-  # Cross-entity: story.qa_complete → project.all_bdd_specs_passing
-  # (previously fanned into qa_preflight, which was deleted — the
-  # fan-in now lands on the next node in the chain, gating the QA
-  # journey on every story being QA-complete.)
-  defp story_to_project_edges(ctx) do
-    project_id = hd(ctx.stories ++ [nil]) && List.first(ctx.stories) && List.first(ctx.stories).project_id
-
-    if project_id && ctx.stories != [] do
-      Enum.map(ctx.stories, fn story ->
-        %{from: {"story", story.id, "qa_complete"}, to: {"project", project_id, "all_bdd_specs_passing"}}
       end)
     else
       []

@@ -93,20 +93,24 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
         {:ok, context}
       end
 
-      and_ "bdd_specs_exist has no foreign outgoing edges",
+      and_ "bdd_specs_exist has no foreign component kickoff edges",
            context do
         bdd_exist_key =
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
-        outgoing_targets =
+        component_targets =
           context.graph
           |> GraphAssertions.edges_from(bdd_exist_key)
           |> Enum.map(& &1["target"])
+          # Filter to component kickoffs only — bdd_specs_exist also has
+          # an internal-story prereq edge to qa_complete (since the now-
+          # removed bdd_specs_passing gate moved out of the graph).
+          |> Enum.filter(&String.starts_with?(&1, "component_"))
 
         # The kickoff should resolve to a single component, not multiple
         # (no deps to fan out into).
-        assert length(outgoing_targets) == 1,
-               "expected exactly one outgoing edge from bdd_specs_exist when the surface has no extra deps, got: #{inspect(outgoing_targets)}"
+        assert length(component_targets) == 1,
+               "expected exactly one component-kickoff edge from bdd_specs_exist when the surface has no extra deps, got: #{inspect(component_targets)}"
 
         {:ok, context}
       end

@@ -54,22 +54,13 @@ defmodule CodeMySpecSpex.Story671.Criterion5634Spex do
         {:ok, context}
       end
 
-      and_ "BDD nodes are present on the story and the project", context do
-        for name <- ["bdd_specs_exist", "bdd_specs_passing"] do
-          node = GraphAssertions.find_node(context.graph, "story", context.story.id, name)
-          assert node, "expected story to have #{name} node regardless of unit-tests flag"
-        end
-
-        proj_node =
-          GraphAssertions.find_node(
-            context.graph,
-            "project",
-            context.project.id,
-            "all_bdd_specs_passing"
-          )
-
-        assert proj_node,
-               "expected project to have all_bdd_specs_passing node regardless of unit-tests flag"
+      and_ "the BDD coverage node is present on the story", context do
+        # bdd_specs_passing was removed in favor of stop-hook
+        # enforcement; the surviving BDD-coverage gate is
+        # bdd_specs_exist at the story level. Project-level
+        # all_bdd_specs_passing was also removed for the same reason.
+        node = GraphAssertions.find_node(context.graph, "story", context.story.id, "bdd_specs_exist")
+        assert node, "expected story to have bdd_specs_exist node regardless of unit-tests flag"
 
         {:ok, context}
       end

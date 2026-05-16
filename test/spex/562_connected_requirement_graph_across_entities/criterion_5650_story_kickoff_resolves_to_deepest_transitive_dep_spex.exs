@@ -65,19 +65,26 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "bdd_specs_exist's only outgoing edge is to BaseContext's first requirement",
+      then_ "bdd_specs_exist's only component-bound outgoing edge is to BaseContext's first requirement",
             context do
         bdd_exist_key =
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
         outgoing = GraphAssertions.edges_from(context.graph, bdd_exist_key)
-        outgoing_targets = Enum.map(outgoing, & &1["target"])
+        # bdd_specs_exist also has an internal-story prereq edge to
+        # qa_complete (replacing the now-removed bdd_specs_passing
+        # gate); we only care about the surface-tree kickoff edges
+        # here, so filter to component targets.
+        component_targets =
+          outgoing
+          |> Enum.map(& &1["target"])
+          |> Enum.filter(&String.starts_with?(&1, "component_"))
 
         base_first_key =
           GraphAssertions.node_key("component", context.base.id, "spec_file")
 
-        assert outgoing_targets == [base_first_key],
-               "expected bdd_specs_exist to have exactly one outgoing edge to BaseContext.spec_file (the chain's root), got: #{inspect(outgoing_targets)}"
+        assert component_targets == [base_first_key],
+               "expected bdd_specs_exist's only component kickoff edge to be BaseContext.spec_file (the chain's root), got: #{inspect(component_targets)}"
 
         {:ok, context}
       end
