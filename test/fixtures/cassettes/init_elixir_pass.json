@@ -1,0 +1,13 @@
+{
+  "commands": [
+    {
+      "command": "elixir",
+      "args": ["--version"],
+      "opts": {"stderr_to_stdout": true},
+      "output": "Erlang/OTP 27 [erts-15.1.2]\n\nElixir 1.18.1 (compiled with Erlang/OTP 27)\n",
+      "exit_code": 0,
+      "recorded_at": "2026-05-15T00:00:00Z"
+    }
+  ],
+  "ports": []
+}

@@ -1,0 +1,13 @@
+{
+  "commands": [
+    {
+      "command": "mix",
+      "args": ["phx.new", "--version"],
+      "opts": {"stderr_to_stdout": true},
+      "output": "** (Mix) The task \"phx.new\" could not be found\n",
+      "exit_code": 1,
+      "recorded_at": "2026-05-15T00:00:00Z"
+    }
+  ],
+  "ports": []
+}
