@@ -74,30 +74,55 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   def requirements_summary_response(nodes, opts) do
     total = length(nodes)
+    filters = format_active_filters(opts)
+    diagnostic? = Map.get(opts, :diagnostic, false)
+
     by_name =
       nodes
-      |> Enum.frequencies_by(& &1.name)
-      |> Enum.sort_by(fn {_name, count} -> -count end)
-
-    filters = format_active_filters(opts)
+      |> Enum.group_by(& &1.name)
+      |> Enum.sort_by(fn {_name, group} -> -length(group) end)
 
     body =
       case by_name do
         [] ->
           "_No requirements match the current filter._"
 
-        pairs ->
-          rows =
-            Enum.map_join(pairs, "\n", fn {name, count} ->
-              "- **#{name}**: #{count}"
-            end)
+        groups ->
+          rows = Enum.map_join(groups, "\n", &format_summary_row(&1, diagnostic?))
 
-          "#{rows}\n\n_Total: #{total}. Drill in with `requirement_name: \"<name>\"`, " <>
-            "`entity_type`, or `module_filter`. Set `summary: false` for per-entity rows._"
+          footer =
+            if diagnostic? do
+              "_Total: #{total}. `locally failing` = the requirement's own check failed; " <>
+                "`blocked` = clamped because an upstream prereq is unsatisfied. " <>
+                "Real friction lives in `locally failing` counts._"
+            else
+              "_Total: #{total}. Drill in with `requirement_name: \"<name>\"`, `entity_type`, " <>
+                "or `module_filter`. Pass `diagnostic: true` to break out `locally failing` " <>
+                "vs `blocked by prereqs`. Set `summary: false` for per-entity rows._"
+            end
+
+          "#{rows}\n\n#{footer}"
       end
 
     tool_text("# Requirements Summary#{filters}\n\n#{body}")
   end
+
+  defp format_summary_row({name, group}, true) do
+    {locally, blocked} =
+      Enum.split_with(group, fn node ->
+        # A node is "locally failing" if its leaf check returned false.
+        # Clamped nodes carry the original leaf result on :locally_satisfied;
+        # unclamped nodes use :satisfied directly.
+        case Map.get(node, :locally_satisfied) do
+          nil -> not node.satisfied
+          locally -> not locally
+        end
+      end)
+
+    "- **#{name}**: #{length(group)} (#{length(locally)} locally failing, #{length(blocked)} blocked)"
+  end
+
+  defp format_summary_row({name, group}, false), do: "- **#{name}**: #{length(group)}"
 
   defp format_active_filters(opts) do
     parts =

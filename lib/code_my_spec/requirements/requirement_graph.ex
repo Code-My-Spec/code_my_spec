@@ -181,11 +181,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp unsatisfy(node) do
-    %{
-      node
-      | satisfied: false,
-        details: Map.put(node.details || %{}, :reason, "prerequisites not yet satisfied")
-    }
+    # Preserve the leaf-check result before overriding so diagnostic
+    # consumers (e.g. `list_requirements`) can distinguish "locally
+    # failing" from "clamped by an unsatisfied prereq."
+    locally = Map.get(node, :locally_satisfied, node.satisfied)
+
+    node
+    |> Map.put(:satisfied, false)
+    |> Map.put(:locally_satisfied, locally)
+    |> Map.put(:details, Map.put(node.details || %{}, :reason, "prerequisites not yet satisfied"))
   end
 
   # -- Edge computation --

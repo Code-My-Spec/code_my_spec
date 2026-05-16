@@ -68,6 +68,39 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert qa
       refute qa.satisfied
     end
+
+    test "node already-failing from its own leaf check is reported as unsatisfied without clamping" do
+      # Sanity check on the clamping contract: a node whose leaf check
+      # already returned false stays at satisfied=false and does NOT get
+      # tagged with :locally_satisfied (the tag is only added when the
+      # clamping pass flips a previously-true node).
+      #
+      # Diagnostic consumers (`list_requirements diagnostic: true`)
+      # treat a missing :locally_satisfied key as "leaf truth equals
+      # current satisfied value" — see RequirementsMapper.
+      {scope, tmp_dir} = setup_project()
+      seed_setup(tmp_dir)
+
+      context = create_component(scope, "MyApp.Accounts", "context")
+
+      {:ok, story} =
+        Stories.create_story(scope, %{
+          title: "Test Story",
+          description: "As a user...",
+          acceptance_criteria: ["AC1"],
+          component_id: context.id
+        })
+
+      sync!(scope, tmp_dir)
+
+      {nodes, _edges} = RequirementGraph.compute_graph(scope)
+
+      qa = find_node(nodes, "story", story.id, "qa_complete")
+      assert qa
+      refute qa.satisfied
+      refute Map.has_key?(qa, :locally_satisfied),
+             "qa_complete's leaf check is already false (no qa_result file) — clamping skips it"
+    end
   end
 
   describe "vacuous truth prevention" do

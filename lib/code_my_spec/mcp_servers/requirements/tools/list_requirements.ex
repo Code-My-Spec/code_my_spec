@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   schema do
     field :status, :string,
       doc:
-        "Filter by satisfaction status — `satisfied` or `unsatisfied`. Default: `unsatisfied`."
+        "Filter by satisfaction status — `satisfied` or `unsatisfied`. Default: no filter (returns both)."
 
     field :entity_type, :string,
       doc: "Filter to one entity type — `project`, `story`, or `component`."
@@ -36,11 +36,15 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
     field :summary, :boolean,
       doc:
-        "Return aggregate counts by requirement name instead of per-entity rows. Default: `true` when no other filter is provided; `false` otherwise."
+        "Return aggregate counts by requirement name instead of per-entity rows. Default: `false` (per-entity view, matches the historical tool shape). Pass `true` for a friction breakdown that won't blow the token budget on big projects."
 
     field :limit, :integer,
       doc:
-        "Cap number of per-entity rows when `summary` is false. Default: 100."
+        "Cap number of per-entity rows when `summary` is false. Default: 100. Bounds the response so a 500-component project doesn't return 180k+ chars."
+
+    field :diagnostic, :boolean,
+      doc:
+        "When `summary: true`, break out counts into `locally failing` vs `blocked by prereqs` (clamped). Useful for triage — distinguishes real friction from cascade effects. Default: false."
   end
 
   @impl true
@@ -72,20 +76,18 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   end
 
   defp parse_opts(params) do
-    status = get_param(params, :status) || "unsatisfied"
+    # Defaults match the tool's historical shape so existing callers
+    # (spex tests, agents asking "what's the full picture") don't get
+    # surprised: status=all, summary=false (per-entity view), limit=100.
+    # The previous tool ignored params entirely; the new filters are
+    # strictly opt-in.
+    status = get_param(params, :status)
     entity_type = get_param(params, :entity_type)
     requirement_name = get_param(params, :requirement_name)
     module_filter = get_param(params, :module_filter)
     limit = get_param(params, :limit) || 100
-
-    explicit_filters? =
-      entity_type != nil or requirement_name != nil or module_filter != nil
-
-    summary =
-      case get_param(params, :summary) do
-        nil -> not explicit_filters?
-        bool -> bool
-      end
+    summary = get_param(params, :summary) == true
+    diagnostic = get_param(params, :diagnostic) == true
 
     %{
       status: status,
@@ -93,7 +95,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
       requirement_name: requirement_name,
       module_filter: module_filter,
       summary: summary,
-      limit: limit
+      limit: limit,
+      diagnostic: diagnostic
     }
   end
 
