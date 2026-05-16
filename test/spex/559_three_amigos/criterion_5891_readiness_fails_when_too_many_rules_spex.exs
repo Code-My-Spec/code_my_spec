@@ -27,13 +27,13 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
   setup :setup_active_project
 
   spex "evaluate fails when story has too many rules" do
-    scenario "evaluate_task fails on rules < 10 and instructs the PM to slice" do
+    scenario "evaluate_task fails on rules < 15 and instructs the PM to slice" do
       given_ :persona_exists
 
-      given_ "ten rules exist on the story, each with happy + failure scenarios", context do
+      given_ "fifteen rules exist on the story, each with happy + failure scenarios", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        for n <- 1..10 do
+        for n <- 1..15 do
           statement = "Rule number #{n}"
 
           {:reply, _add_rule, _frame} =
@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
             context do
         body = response_text(context.evaluate_response)
 
-        assert body =~ ~r/rules?\s*<\s*10|too many rules|slice/i,
+        assert body =~ ~r/rules?\s*<\s*15|too many rules|slice/i,
                "expected response to name the rules-ceiling failure and slice instruction, got #{inspect(context.evaluate_response)}"
 
         {:ok, context}

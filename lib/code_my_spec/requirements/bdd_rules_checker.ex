@@ -7,8 +7,13 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
 
     * ≥1 persona linked via `persona_stories`
     * ≥1 Rule (blue card) on the story
-    * `rules < 10` — Example Mapping ceiling: too many rules means the
-      story is too big to spec coherently in one session
+    * `rules < 15` — Example Mapping hard ceiling: too many rules means
+      the story is too big to spec coherently in one session. Raised
+      from 10 once real infrastructure stories (e.g. requirement-graph
+      semantics) showed legitimate complexity past 10 that doesn't
+      split coherently. Past 10 rules emits a non-blocking advisory
+      ("consider whether this story should be split") so the heuristic
+      still nudges without trapping legitimately big stories.
     * Every Rule has at least one scenario of any kind — agents must not
       fabricate failure-path examples to satisfy a coverage gate when
       the failure surface lives at a different layer
@@ -34,7 +39,8 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @rule_ceiling 10
+  @rule_ceiling 15
+  @rule_advisory_threshold 10
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
   def complete?(%Scope{active_account_id: account_id} = scope, %Story{id: story_id} = story)
@@ -56,22 +62,42 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
       |> maybe_add_uncovered_rules_gap(rules, scenarios)
       |> maybe_add_questions_gap(scenarios, questions)
 
-    case gaps do
-      [] ->
+    advisory = build_rules_advisory(rules)
+
+    case {gaps, advisory} do
+      {[], nil} ->
         {true,
          %{
            status:
              "Three Amigos complete: #{length(personas)} persona(s), #{length(rules)} rule(s), #{length(scenarios)} scenario(s)"
          }}
 
-      gaps ->
+      {[], advisory} ->
+        {true,
+         %{
+           status:
+             "Three Amigos complete: #{length(personas)} persona(s), #{length(rules)} rule(s), #{length(scenarios)} scenario(s)",
+           advisory: advisory
+         }}
+
+      {gaps, nil} ->
         {false, %{reason: format_gaps(story, gaps)}}
+
+      {gaps, advisory} ->
+        {false, %{reason: format_gaps(story, gaps) <> "\n\nAdvisory: " <> advisory}}
     end
   end
 
   def complete?(_scope, _entity) do
     {false, %{reason: "No active scope or invalid story entity — cannot check Three Amigos."}}
   end
+
+  defp build_rules_advisory(rules)
+       when length(rules) >= @rule_advisory_threshold and length(rules) < @rule_ceiling do
+    "Heads up — this story has #{length(rules)} rules (past the recommended #{@rule_advisory_threshold}). The hard ceiling is #{@rule_ceiling}. Consider whether this story should be split into smaller, more focused ones before adding more rules."
+  end
+
+  defp build_rules_advisory(_rules), do: nil
 
   defp maybe_add_persona_gap(gaps, []),
     do: ["No personas linked to this story — call `add_persona` and `link_persona_to_story`." | gaps]

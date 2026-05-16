@@ -101,6 +101,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.BddRules.Tools.DeleteRule)
   component(CodeMySpec.McpServers.BddRules.Tools.ListRules)
   component(CodeMySpec.McpServers.BddRules.Tools.AddScenario)
+  component(CodeMySpec.McpServers.BddRules.Tools.UpdateScenario)
   component(CodeMySpec.McpServers.BddRules.Tools.AddQuestion)
   component(CodeMySpec.McpServers.BddRules.Tools.ListQuestions)
   component(CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion)

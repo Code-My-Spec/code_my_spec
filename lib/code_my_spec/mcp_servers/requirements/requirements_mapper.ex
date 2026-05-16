@@ -53,13 +53,67 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     |> Enum.join("\n\n")
   end
 
-  def list_requirements_response(nodes) do
-    summary =
+  def list_requirements_response(nodes, meta \\ []) do
+    total = Keyword.get(meta, :total, length(nodes))
+    shown = length(nodes)
+
+    body =
       nodes
       |> group_by_entity()
       |> format_grouped_summary()
 
-    tool_text("# Project Requirements\n\n#{summary}")
+    header =
+      if total > shown do
+        "# Project Requirements (showing #{shown} of #{total})\n\n_Use filters (`requirement_name`, `entity_type`, `module_filter`) or raise `limit` to see more._\n\n"
+      else
+        "# Project Requirements (#{total})\n\n"
+      end
+
+    tool_text(header <> body)
+  end
+
+  def requirements_summary_response(nodes, opts) do
+    total = length(nodes)
+    by_name =
+      nodes
+      |> Enum.frequencies_by(& &1.name)
+      |> Enum.sort_by(fn {_name, count} -> -count end)
+
+    filters = format_active_filters(opts)
+
+    body =
+      case by_name do
+        [] ->
+          "_No requirements match the current filter._"
+
+        pairs ->
+          rows =
+            Enum.map_join(pairs, "\n", fn {name, count} ->
+              "- **#{name}**: #{count}"
+            end)
+
+          "#{rows}\n\n_Total: #{total}. Drill in with `requirement_name: \"<name>\"`, " <>
+            "`entity_type`, or `module_filter`. Set `summary: false` for per-entity rows._"
+      end
+
+    tool_text("# Requirements Summary#{filters}\n\n#{body}")
+  end
+
+  defp format_active_filters(opts) do
+    parts =
+      [
+        {"status", opts.status},
+        {"entity_type", opts.entity_type},
+        {"requirement_name", opts.requirement_name},
+        {"module_filter", opts.module_filter}
+      ]
+      |> Enum.reject(fn {_k, v} -> v == nil end)
+      |> Enum.map(fn {k, v} -> "#{k}=`#{v}`" end)
+
+    case parts do
+      [] -> ""
+      _ -> " (" <> Enum.join(parts, ", ") <> ")"
+    end
   end
 
   def sync_required_response do

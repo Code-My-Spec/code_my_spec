@@ -25,7 +25,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   def command(scope, task) do
     case resolve_command_story(scope, task) do
       nil -> {:ok, no_story_prompt()}
-      story -> {:ok, story_prompt(story)}
+      story -> {:ok, story_prompt(scope, story)}
     end
   end
 
@@ -44,7 +44,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   defp resolve_command_story(_scope, _task), do: nil
 
   @spec evaluate(term(), map()) ::
-          {:ok, :valid} | {:ok, :invalid, String.t()}
+          {:ok, :valid} | {:ok, :valid, String.t()} | {:ok, :invalid, String.t()}
   def evaluate(scope, task) do
     story = resolve_story(scope, task)
     scope |> BddRulesChecker.complete?(story) |> CheckerResult.to_evaluation()
@@ -93,9 +93,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     """
   end
 
-  defp story_prompt(story) do
-    base_url = Application.get_env(:code_my_spec, :base_url, "http://localhost:4000")
-    session_url = "#{base_url}/app/stories/#{story.id}/three-amigos"
+  defp story_prompt(scope, story) do
+    base_url = CodeMySpec.PublicUrl.local_base()
+    session_url = "#{base_url}/projects/#{project_slug(scope)}/stories/#{story.id}/three-amigos"
     quoted_description = String.replace(story.description || "(no description)", "\n", "\n> ")
 
     """
@@ -132,6 +132,16 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     to run the checker. On pass the task completes and the graph advances;
     on fail you get feedback and continue.
     """
+  end
+
+  defp project_slug(%{active_project: %{name: name}}) when is_binary(name), do: slugify(name)
+  defp project_slug(_), do: "project"
+
+  defp slugify(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 
   defp playbook_section do

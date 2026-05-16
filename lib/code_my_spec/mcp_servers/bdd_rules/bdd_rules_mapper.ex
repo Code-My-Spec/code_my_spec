@@ -56,6 +56,14 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
     |> Response.text(String.trim(summary))
   end
 
+  def scenario_updated_response(criterion) do
+    summary =
+      "Scenario updated: \"#{criterion.description}\" (id: `#{criterion.id}`, story_id: `#{criterion.story_id}`, kind: `#{criterion.kind}`)."
+
+    Response.tool()
+    |> Response.text(summary)
+  end
+
   def question_response(question) do
     summary = """
     Question added: "#{question.text}" (id: `#{question.id}`, status: `#{question.status}`)
@@ -115,6 +123,25 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
     Response.tool()
     |> Response.error(
       "Rule not found on this story. Use `list_rules` to see existing rule statements, or call `add_rule` to create one."
+    )
+  end
+
+  def error(:criterion_not_found) do
+    Response.tool()
+    |> Response.error("Scenario not found in the active project.")
+  end
+
+  def error(:criterion_verified) do
+    Response.tool()
+    |> Response.error(
+      "Cannot update a verified scenario. Verified criteria are locked and protected from changes."
+    )
+  end
+
+  def error(:no_attrs) do
+    Response.tool()
+    |> Response.error(
+      "Nothing to update — pass at least one of `title`, `body`, or `kind`."
     )
   end
 
