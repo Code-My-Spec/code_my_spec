@@ -11,11 +11,6 @@ defmodule CodeMySpecSpex.Story460.Criterion5537Spex do
   the criterion's id and description.
 
   Surface: `EvaluateTask` MCP tool.
-
-  KNOWN-RED. Same gap as criterion 5531 — the unified `Evaluator`
-  path doesn't reach `WriteBddSpecs.evaluate/2` (where the parser
-  + `:no_scenarios` check live), so the literal feedback string
-  isn't produced today. See 5531's moduledoc for the wiring fix.
   """
 
   use CodeMySpecSpex.Case
