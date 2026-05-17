@@ -158,6 +158,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/architecture"} active={@section == :architecture}>Architecture</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/personas"} active={@section == :personas}>Personas</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/issues"} active={@section == :issues}>Issues</.sidebar_item>
+      <.sidebar_item to={~p"/projects/#{project_slug(@project)}/qa"} active={@section == :qa}>QA</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/sessions"} active={@section == :sessions}>Sessions</.sidebar_item>
     </div>
 
@@ -237,6 +238,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
   defp section_label(:scheduler), do: "Scheduler"
   defp section_label(:personas), do: "Personas"
   defp section_label(:issues), do: "Issues"
+  defp section_label(:qa), do: "QA"
   defp section_label(:sessions), do: "Sessions"
   defp section_label(:knowledge), do: "Knowledge Base"
   defp section_label(:project_knowledge), do: "Project Knowledge"

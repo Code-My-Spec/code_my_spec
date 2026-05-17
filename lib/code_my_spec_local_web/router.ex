@@ -66,6 +66,7 @@ defmodule CodeMySpecLocalWeb.Router do
 
       live "/projects/:project_name/issues", IssuesLive.Index, :index
       live "/projects/:project_name/issues/:id", IssuesLive.Show, :show
+      live "/projects/:project_name/qa", QaLive
       live "/projects/:project_name/sessions", SessionsLive, :index
       live "/projects/:project_name/sessions/:id", SessionsLive, :show
       live "/projects/:project_name/sessions/:id/tasks/:task_id", SessionsLive, :task_show

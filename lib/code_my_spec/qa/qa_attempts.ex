@@ -83,6 +83,55 @@ defmodule CodeMySpec.Qa.QaAttempts do
   end
 
   @doc """
+  List QA attempts across the project's stories.
+
+  Options:
+
+    * `:include_older` (default `false`) — when `false`, returns only
+      the most-recent attempt per story (after invalidation filtering);
+      when `true`, returns every attempt.
+    * `:include_invalidated` (default `false`) — when `false`, filters
+      out attempts that carry an invalidation event.
+
+  Returns a list of `QaAttempt` structs with `:story` and
+  `:invalidations` preloaded, ordered most-recent first.
+  """
+  @spec list_project(Scope.t(), keyword()) :: [QaAttempt.t()]
+  def list_project(scope, opts \\ [])
+
+  def list_project(%Scope{active_project: nil}, _opts), do: []
+
+  def list_project(%Scope{} = scope, opts) do
+    include_older = Keyword.get(opts, :include_older, false)
+    include_invalidated = Keyword.get(opts, :include_invalidated, false)
+
+    QaAttempt
+    |> by_project(scope)
+    |> order_by([a], desc: a.submitted_at, desc: a.id)
+    |> preload([:story, :invalidations])
+    |> Repo.all()
+    |> maybe_drop_invalidated(include_invalidated)
+    |> maybe_collapse_to_latest(include_older)
+  end
+
+  defp maybe_drop_invalidated(attempts, true), do: attempts
+
+  defp maybe_drop_invalidated(attempts, false) do
+    Enum.reject(attempts, fn a -> match?([_ | _], a.invalidations) end)
+  end
+
+  defp maybe_collapse_to_latest(attempts, true), do: attempts
+
+  defp maybe_collapse_to_latest(attempts, false) do
+    attempts
+    |> Enum.group_by(& &1.story_id)
+    |> Enum.map(fn {_story_id, group} ->
+      Enum.max_by(group, & &1.submitted_at, DateTime)
+    end)
+    |> Enum.sort_by(& &1.submitted_at, {:desc, DateTime})
+  end
+
+  @doc """
   Is `qa_complete` satisfied for the story?
 
   True iff the **most-recent attempt on the story** (regardless of

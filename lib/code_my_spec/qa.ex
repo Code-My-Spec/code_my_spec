@@ -54,6 +54,16 @@ defmodule CodeMySpec.Qa do
   defdelegate list_qa_attempts(scope, story_id), to: QaAttempts, as: :list
 
   @doc """
+  List QA attempts across the active project's stories.
+
+  See `CodeMySpec.Qa.QaAttempts.list_project/2` for option semantics
+  (`:include_older`, `:include_invalidated`). Drives the project-wide
+  engineer surface — see `CodeMySpecSpex.Story727.Criterion6474Spex`
+  / `Criterion6475Spex`.
+  """
+  defdelegate list_project_attempts(scope, opts \\ []), to: QaAttempts, as: :list_project
+
+  @doc """
   Invalidate a prior passed attempt with a non-empty reason.
 
   Audit-stamped (engineer id, timestamp, reason). The original
