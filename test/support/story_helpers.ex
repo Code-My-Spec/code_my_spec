@@ -2,7 +2,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
   @moduledoc """
   Surface-level story setup for spex tests. Drives the same MCP tools
   the agent uses in production — `CreateStory`, `SetStoryComponent`,
-  `GetStory` — keeping spec setup on the agent surface.
+  `AddCriterion`, `GetStory` — keeping spec setup on the agent surface.
 
   Returns plain maps shaped to match what `BddSpecs.spec_file_path/2`
   needs (`:id`, `:title`, `:criteria`, with each criterion exposing
@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
   """
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
@@ -19,8 +20,9 @@ defmodule CodeMySpecSpex.StoryHelpers do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   @doc """
-  Drives the `CreateStory` MCP tool, then `GetStory` to read the
-  persisted story (with criteria ids).
+  Drives the `CreateStory` MCP tool, then `AddCriterion` for each
+  acceptance criterion, then `GetStory` to read the persisted story
+  (with criteria ids).
 
   ## Required keys
   - `:title`
@@ -33,8 +35,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
 
     base_params = %{
       title: Keyword.fetch!(attrs, :title),
-      description: Keyword.fetch!(attrs, :description),
-      acceptance_criteria: Keyword.fetch!(attrs, :acceptance_criteria)
+      description: Keyword.fetch!(attrs, :description)
     }
 
     params =
@@ -45,9 +46,19 @@ defmodule CodeMySpecSpex.StoryHelpers do
 
     {:reply, response, _frame} = CreateStory.execute(params, frame)
 
-    response
-    |> extract_id()
-    |> then(&fetch(scope, &1))
+    story_id = extract_id(response)
+
+    # CreateStory no longer accepts acceptance_criteria (those land via
+    # Three Amigos at runtime). Use AddCriterion per description here.
+    Enum.each(Keyword.get(attrs, :acceptance_criteria, []), fn description ->
+      {:reply, _resp, _frame} =
+        AddCriterion.execute(
+          %{story_id: to_string(story_id), description: description},
+          frame
+        )
+    end)
+
+    fetch(scope, story_id)
   end
 
   @doc """

@@ -3,6 +3,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   QA-test a single user story end-to-end.
 
   See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_story.spec.md`.
+
+  ## Deprecation notice
+
+  The file-rename approach (`result.md` → `result_complete.md`) that this
+  evaluator previously used to signal QA completion is **no longer load-bearing**.
+  `qa_complete` satisfaction is now driven by DB-backed QA attempts via
+  `CodeMySpec.Qa.complete?/2`. The `evaluate/2` function below retains the
+  plan/brief/result validation logic and issue-filing side-effect, but no
+  longer renames any files. Use `CodeMySpec.Qa.submit_qa_result/2` (exposed
+  as the `submit_qa_result` MCP tool) as the new completion path.
   """
 
   require Logger
@@ -42,30 +52,29 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   # ============================================================================
-  # Evaluate — phase chain + renames on pass/fail
+  # Evaluate — validates artifacts and files issues; no longer renames files
+  #
+  # @deprecated Use `CodeMySpec.Qa.submit_qa_result/2` (the `submit_qa_result`
+  # MCP tool) as the new completion path. The file-rename side-effect
+  # (result.md → result_complete.md) has been removed; `qa_complete` satisfaction
+  # is now driven by DB-backed QA attempts via `CodeMySpec.Qa.complete?/2`.
   # ============================================================================
 
   @doc """
   Validate the QA cycle for a story.
 
-  Walks plan → brief → result. Files issues from the result to the DB and
-  renames `result.md` to `result_complete.md` (on pass) or
-  `result_failed_<ts>.md` (on fail). Returns `:valid` once the result is
-  structurally valid — pass/fail is encoded in the file rename, not the
-  evaluate return value (the requirement graph checks for
-  `result_complete.md` separately).
+  Walks plan → brief → result. Files issues from the result to the DB.
+  Returns `:valid` once the result is structurally valid.
+
+  Note: this evaluator no longer renames `result.md` to `result_complete.md`.
+  QA completion is now recorded via `CodeMySpec.Qa.submit_qa_result/2` and
+  checked by the requirement graph through `CodeMySpec.Qa.complete?/2`.
   """
   def evaluate(scope, task) do
     with {:ok, story_id} <- get_story_id(task) do
       env = scope.environment
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
-
-      if Environments.file_exists?(env, result_complete_path(story_id)) do
-        Logger.info("[QaStory] evaluate: result_complete.md exists, already passed")
-        {:ok, :valid}
-      else
-        do_evaluate(scope, env, story_id)
-      end
+      do_evaluate(scope, env, story_id)
     end
   end
 
@@ -73,7 +82,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     with :ok <- check_plan(env),
          :ok <- check_brief(env, story_id),
          {:ok, document} <- check_result(env, story_id) do
-      finalize_result(scope, env, story_id, document)
+      finalize_result(scope, story_id, document)
     else
       {:ok, :invalid, feedback} = result ->
         Logger.info("[QaStory] evaluate: invalid — #{String.slice(feedback, 0..120)}")
@@ -81,44 +90,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp finalize_result(scope, env, story_id, document) do
+  defp finalize_result(scope, story_id, document) do
     ensure_issues_filed(scope, story_id, document)
-
-    if qa_passed?(document) do
-      Logger.info("[QaStory] evaluate(#{story_id}): QA passed — promoting to result_complete.md")
-      move_file(env, result_path(story_id), result_complete_path(story_id))
-    else
-      timestamp = DateTime.utc_now() |> Calendar.strftime("%Y%m%d_%H%M%S")
-      failed_path = result_failed_path(story_id, timestamp)
-      Logger.info("[QaStory] evaluate(#{story_id}): QA failed — archiving to #{failed_path}, issues filed for triage")
-      move_file(env, result_path(story_id), failed_path)
-    end
-
-    # Always return :valid — session is done. The requirement graph checks
-    # for result_complete.md, so the story stays open until QA actually passes.
+    Logger.info("[QaStory] evaluate(#{story_id}): artifacts valid, issues filed")
     {:ok, :valid}
-  end
-
-  defp qa_passed?(document) do
-    status =
-      document.sections
-      |> Map.get("status", "")
-      |> to_string()
-      |> String.downcase()
-      |> String.trim()
-
-    status in ["pass", "passed"]
-  end
-
-  defp move_file(env, from, to) do
-    case Environments.read_file(env, from) do
-      {:ok, content} ->
-        Environments.write_file(env, to, content)
-        Environments.delete_file(env, from)
-
-      {:error, _} ->
-        :ok
-    end
   end
 
   defp ensure_issues_filed(scope, story_id, document) do
@@ -321,10 +296,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     ## Done signal
 
     Write the result to `#{result_path(story_id)}` and stop the session.
-    The evaluator validates the result, files issues to the DB, and renames
-    the result file based on `status` (pass → `result_complete.md`,
-    fail/partial → `result_failed_<timestamp>.md`). Story QA is complete
-    when `result_complete.md` exists.\
+    The evaluator validates the result and files issues to the DB.
+    Call `submit_qa_result` (MCP tool) with `status: pass` to mark QA complete.
+    The requirement graph reads completion from the DB, not from the filesystem.\
     """
   end
 
@@ -422,14 +396,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp result_path(story_id) do
     Path.join([Paths.qa_dir(), to_string(story_id), "result.md"])
-  end
-
-  defp result_complete_path(story_id) do
-    Path.join([Paths.qa_dir(), to_string(story_id), "result_complete.md"])
-  end
-
-  defp result_failed_path(story_id, timestamp) do
-    Path.join([Paths.qa_dir(), to_string(story_id), "result_failed_#{timestamp}.md"])
   end
 
   defp screenshot_dir(story_id) do

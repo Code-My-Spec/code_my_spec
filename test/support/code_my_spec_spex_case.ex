@@ -112,6 +112,46 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Setup helper that creates a fully-satisfied story with an active
+  `qa_complete` session task.
+
+  Applies the full project + story chain (project_setup → qa_setup,
+  component subgraph, three_amigos_complete, bdd_specs_exist/passing)
+  but leaves qa_complete open so the spex drives it.
+
+  Requires context from `setup_active_project`. Produces:
+  - `context.story` — the created story struct
+  - `context.task_id` — an active `qa_complete` session task id
+  - `context.session_id` — the external conversation id of the seeded session
+  - `context.persona_id` and `context.persona_slug` (from project kickoff)
+  - `context.component` — the synced architecture component
+
+  Used by Stories 726 and 727 spex — all QA tool specs need a story with
+  a valid session task so `submit_qa_result` can resolve `story_id` and
+  `agent_id` from the session's tasks JSONB.
+
+      setup :setup_active_project
+      setup :setup_qa_story_task
+  """
+  def setup_qa_story_task(context) do
+    # Apply the full project + story chain (component subgraph + three_amigos
+    # + bdd_specs) but NOT qa_complete — the spex drives that itself.
+    context = CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)
+
+    scope = context.scope
+    story = context.story
+
+    # Create an active session with a qa_complete task for this story
+    {_story, task_id, session} = Fixtures.qa_story_task_fixture(scope, story: story)
+
+    Map.merge(context, %{
+      story: story,
+      task_id: task_id,
+      session_id: session.external_conversation_id
+    })
+  end
+
+  @doc """
   Setup helper that registers, logs in, and sets up an active account.
   """
   def register_log_in_setup_account(context) do

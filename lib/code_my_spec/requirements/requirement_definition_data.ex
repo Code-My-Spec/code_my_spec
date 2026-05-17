@@ -749,11 +749,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         id: 4,
         name: "qa_complete",
         node_scope: :self,
-        check_type: :file_exists,
-        config: %{role: :qa_result},
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Qa, function: :complete_check},
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
-        description: "QA brief and result artifacts valid",
+        description: "QA complete: at least one valid DB-backed pass attempt exists",
         prerequisites: [3],
         execution_type: :sub_agent
       })

@@ -83,6 +83,19 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     # `apply_persona` is folded into kickoff there; the result still merges
     # `:persona_slug` and `:persona_id` into context for the story-level
     # steps below.
+    |> apply_without_qa_story()
+    |> apply_qa_story_artifacts()
+  end
+
+  @doc """
+  Apply every satisfaction layer EXCEPT the story-level `qa_complete`
+  artifacts. Useful when a spex needs the chain prepared so a
+  `qa_complete` task can be STARTED (i.e. its prerequisites are met
+  but the requirement itself is open).
+  """
+  @spec apply_without_qa_story(map()) :: map()
+  def apply_without_qa_story(context) do
+    context
     |> ProjectStateFixtures.apply_project_setup_steps()
     |> ProjectStateFixtures.apply_technical_strategy()
     |> ProjectStateFixtures.apply_code_generation()
@@ -95,7 +108,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> apply_story()
     |> apply_three_amigos_artifacts()
     |> apply_bdd_spec_file()
-    |> apply_qa_story_artifacts()
     |> ProjectStateFixtures.apply_journey_artifacts()
   end
 

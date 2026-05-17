@@ -635,7 +635,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   # Clear the full story-level chain inline (the LiveView-driven
   # `apply_story_chain_complete` fixture needs a `context.conn`, which
   # this unit test doesn't have). Mirrors the same steps:
-  # three_amigos → bdd_spec file → qa result_complete file → sync.
+  # three_amigos → bdd_spec file → DB QA pass attempt → sync.
   defp seed_story_chain_complete(scope, tmp_dir, story, persona_id) do
     :ok =
       ProjectStateFixtures.apply_three_amigos_for_story(scope, story,
@@ -643,15 +643,24 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         rule_statement: "Rule for #{story.title}"
       )
 
+    # Re-fetch the story so criteria (created during three amigos) are available.
+    story = StoryHelpers.fetch(scope, story.id)
     [criterion | _] = story.criteria
     bdd_path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
     write_file(tmp_dir, bdd_path, bdd_spec_stub(story, criterion))
 
-    write_file(
-      tmp_dir,
-      ".code_my_spec/qa/#{story.id}/result_complete.md",
-      qa_result_complete_stub()
-    )
+    # Insert a DB-backed QA pass attempt. The requirement graph now checks
+    # Qa.complete?/2 (DB-driven), not result_complete.md on disk.
+    {:ok, _attempt} =
+      %CodeMySpec.Qa.QaAttempt{}
+      |> CodeMySpec.Qa.QaAttempt.changeset(%{
+        story_id: story.id,
+        status: :pass,
+        scenarios: [%{name: "Placeholder", status: :pass, observation: "All checks passed."}],
+        issue_ids: [],
+        submitted_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+      |> CodeMySpec.Repo.insert()
 
     sync!(scope, tmp_dir)
     :ok
@@ -666,22 +675,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         assert true
       end
     end
-    """
-  end
-
-  defp qa_result_complete_stub do
-    """
-    # QA Result
-
-    ## Status
-
-    pass
-
-    ## Scenarios
-
-    ### Placeholder
-
-    Passed.
     """
   end
 

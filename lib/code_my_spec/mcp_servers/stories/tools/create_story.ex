@@ -1,11 +1,14 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
   @moduledoc """
-  Creates a user story with title, description, and acceptance criteria.
+  Creates a user story with title and description.
+
+  Acceptance criteria are NOT created here — they emerge from Three
+  Amigos as rule-bearing scenarios, never invented up-front. Run
+  `start_three_amigos_session` after creating the story.
 
   Example:
     title: "User Login"
     description: "As a user, I want to log in so I can access my account"
-    acceptance_criteria: ["User can enter email and password", "Invalid credentials show error"]
   """
 
   use Anubis.Server.Component, type: :tool
@@ -24,10 +27,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
           "The role MUST be a real human (user, admin, manager) - never a system, API, or service. " <>
           "Focus on business value, not technical implementation."
 
-    field :acceptance_criteria, {:list, :string},
-      required: true,
-      doc: "List of acceptance criteria strings"
-
     field :priority, :integer,
       doc: "Priority order (1 = highest). Lower numbers are higher priority."
   end
@@ -35,8 +34,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         story_params <- transform_params(params),
-         {:ok, story} <- Stories.create_story(scope, story_params) do
+         {:ok, story} <- Stories.create_story(scope, params) do
       {:reply, StoriesMapper.story_response(story), frame}
     else
       {:error, changeset = %Ecto.Changeset{}} ->
@@ -45,17 +43,5 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
       {:error, atom} ->
         {:reply, StoriesMapper.error(atom), frame}
     end
-  end
-
-  # Transform acceptance_criteria strings to criteria nested params
-  defp transform_params(params) do
-    criteria =
-      params
-      |> Map.get(:acceptance_criteria, [])
-      |> Enum.map(fn description -> %{description: description} end)
-
-    params
-    |> Map.delete(:acceptance_criteria)
-    |> Map.put(:criteria, criteria)
   end
 end

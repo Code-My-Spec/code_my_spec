@@ -47,6 +47,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
   alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @endpoint CodeMySpecLocalWeb.Endpoint
@@ -332,6 +333,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_bdd_spec_for_story(map(), term()) :: :ok
   def apply_bdd_spec_for_story(context, story) do
+    story = StoryHelpers.fetch(context.scope, story.id)
     [criterion | _] = story.criteria
 
     bdd_path = Fixtures.spec_file_path(story, criterion)
@@ -352,8 +354,13 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   end
 
   @doc """
-  Satisfies `qa_complete` on a story by writing the qa brief and
-  result files at `.code_my_spec/qa/<story_id>/{brief,result}.md`.
+  Satisfies `qa_complete` on a story.
+
+  The `qa_complete` requirement now checks `CodeMySpec.Qa.complete?/2`
+  (DB-driven) rather than `result_complete.md` existence. This fixture
+  inserts a `QaAttempt` row directly via the schema changeset to mark
+  the story's QA as passed. The legacy brief file is still written for
+  any backward-compatibility readers, but it no longer gates anything.
   """
   @spec apply_qa_complete_for_story(map(), term()) :: :ok
   def apply_qa_complete_for_story(context, story) do
@@ -363,12 +370,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     :ok =
       Environments.write_file(env, ".code_my_spec/qa/#{story_id}/brief.md", qa_brief_content())
 
-    :ok =
-      Environments.write_file(
-        env,
-        ".code_my_spec/qa/#{story_id}/result_complete.md",
-        qa_result_content()
-      )
+    {:ok, _attempt} =
+      Fixtures.passed_qa_attempt(context.scope, story_id: story_id)
 
     :ok
   end

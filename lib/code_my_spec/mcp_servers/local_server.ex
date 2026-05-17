@@ -106,4 +106,9 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.BddRules.Tools.ListQuestions)
   component(CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion)
   component(CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin)
+
+  # QA — attempt submission and lifecycle
+  component(CodeMySpec.McpServers.Qa.Tools.SubmitQaResult)
+  component(CodeMySpec.McpServers.Qa.Tools.ListQaAttempts)
+  component(CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt)
 end

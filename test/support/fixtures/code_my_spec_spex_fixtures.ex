@@ -32,8 +32,11 @@ defmodule CodeMySpecSpex.Fixtures do
     ProblemsFixtures,
     ProjectsFixtures,
     ProjectSync,
+    QaFixtures,
     QaIntegrationPlanFixtures,
+    Sessions,
     SetupFixtures,
+    Stories,
     TechnicalStrategyFixtures,
     UserPreferences,
     Users,
@@ -211,6 +214,72 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
 
+  # -- Stories (QA spex fixture setup, Stories 726/727) --
+  @doc """
+  Creates a story directly through the Stories context for use in QA
+  spex setup. Returns the created story struct.
+  """
+  @spec story_fixture(Scope.t(), map()) :: CodeMySpec.Stories.Story.t()
+  def story_fixture(scope, attrs \\ %{}) do
+    attrs =
+      Enum.into(attrs, %{
+        title: "QA Story #{System.unique_integer([:positive])}",
+        description: "A story for QA spex testing",
+        status: :in_progress
+      })
+
+    {:ok, story} = Stories.create_story(scope, attrs)
+    story
+  end
+
+  # -- Sessions (QA spex fixture setup, Stories 726/727) --
+  @doc """
+  Creates an active session with a `qa_complete` task linked to the given
+  story. Used by QA spex setup to seed `context.story` and `context.task_id`
+  without needing the full requirement prerequisite chain satisfied.
+
+  Returns `{story, task_id, session}`.
+  """
+  @spec qa_story_task_fixture(Scope.t(), keyword()) ::
+          {CodeMySpec.Stories.Story.t(), String.t(), CodeMySpec.Sessions.Session.t()}
+  def qa_story_task_fixture(scope, opts \\ []) do
+    story =
+      case Keyword.fetch(opts, :story) do
+        {:ok, existing} ->
+          existing
+
+        :error ->
+          story_fixture(scope, %{
+            title: Keyword.get(opts, :title, "QA Story #{System.unique_integer([:positive])}"),
+            description: Keyword.get(opts, :description, "Story for QA testing"),
+            status: :in_progress
+          })
+      end
+
+    task_id = Ecto.UUID.generate()
+    session_external_id = "spex-qa-#{System.unique_integer([:positive])}"
+
+    {:ok, session} =
+      Sessions.create_session(scope, %{
+        external_conversation_id: session_external_id,
+        status: :active,
+        type: CodeMySpec.AgentTasks.QaStory,
+        tasks: [
+          %{
+            id: task_id,
+            status: :active,
+            requirement_name: "qa_complete",
+            story_id: story.id,
+            project_id: scope.active_project_id,
+            agent_id: "spex-agent",
+            started_at: DateTime.utc_now()
+          }
+        ]
+      })
+
+    {story, task_id, session}
+  end
+
   # -- Components --
   defdelegate get_component_by_module_name(scope, module_name), to: Components
 
@@ -230,6 +299,9 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Issues (QA triage / fix scenarios) --
   defdelegate issue_fixture(scope, attrs \\ %{}), to: IssuesFixtures
+
+  # -- QA Attempts --
+  defdelegate passed_qa_attempt(scope, opts \\ []), to: QaFixtures
 
   # -- OAuth (CLI client for Story 698) --
   defdelegate cli_oauth_application_fixture(attrs \\ %{}), to: OauthFixtures

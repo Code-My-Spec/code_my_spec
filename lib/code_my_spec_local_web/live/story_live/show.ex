@@ -3,9 +3,12 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Projects
+  alias CodeMySpec.Qa
   alias CodeMySpec.Stories
   alias CodeMySpec.Tags
+  alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecLocalWeb.QaHistoryComponent
 
   @impl true
   def render(assigns) do
@@ -104,14 +107,20 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
           <:item title="Locked at">{@story.locked_at}</:item>
           <:item title="Lock expires at">{@story.lock_expires_at}</:item>
         </.list>
+
+        <QaHistoryComponent.qa_history
+          attempts={@qa_attempts}
+          invalidating_attempt_id={@invalidating_attempt_id}
+        />
       </div>
     </Layouts.app>
     """
   end
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     projects = Projects.list_local_projects()
+    current_user = load_current_user(session)
 
     {:ok,
      assign(socket,
@@ -121,6 +130,9 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
        slug: nil,
        story: nil,
        tags: [],
+       qa_attempts: [],
+       invalidating_attempt_id: nil,
+       current_user: current_user,
        error: nil,
        page_title: "Story",
        subscribed?: false
@@ -132,6 +144,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
     with {:ok, project, scope} <- load_project_and_scope(name),
          %Stories.Story{} = story <- Stories.get_story(scope, id) do
       tags = Tags.list_story_tags(scope, story)
+      qa_attempts = Qa.list_qa_attempts(scope, story.id)
 
       socket =
         socket
@@ -141,6 +154,8 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
           slug: project_slug(project),
           story: story,
           tags: tags,
+          qa_attempts: qa_attempts,
+          invalidating_attempt_id: nil,
           error: nil,
           page_title: "Story #{story.id}"
         )
@@ -218,6 +233,39 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
   end
 
   @impl true
+  def handle_event("start_invalidate", %{"attempt_id" => attempt_id}, socket) do
+    {:noreply, assign(socket, :invalidating_attempt_id, attempt_id)}
+  end
+
+  @impl true
+  def handle_event("cancel_invalidate", _params, socket) do
+    {:noreply, assign(socket, :invalidating_attempt_id, nil)}
+  end
+
+  @impl true
+  def handle_event(
+        "invalidate_qa_attempt",
+        %{"attempt_id" => attempt_id, "reason" => reason},
+        socket
+      ) do
+    scope = build_invalidation_scope(socket)
+    story = socket.assigns.story
+
+    case Qa.invalidate_qa_attempt(scope, attempt_id, reason) do
+      {:ok, _invalidation} ->
+        qa_attempts = Qa.list_qa_attempts(socket.assigns.scope, story.id)
+
+        {:noreply,
+         socket
+         |> assign(:qa_attempts, qa_attempts)
+         |> assign(:invalidating_attempt_id, nil)}
+
+      {:error, reason_msg} ->
+        {:noreply, put_flash(socket, :error, "Invalidation failed: #{inspect(reason_msg)}")}
+    end
+  end
+
+  @impl true
   def handle_info(
         {:updated, %CodeMySpec.Stories.Story{id: id} = story},
         %{assigns: %{story: %{id: id}}} = socket
@@ -253,6 +301,27 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # Build a scope for invalidation that uses the authenticated user (if any),
+  # falling back to the project scope's user. This ensures the FK constraint
+  # on `invalidated_by_user_id` is satisfied when accessed from the browser.
+  defp build_invalidation_scope(socket) do
+    base_scope = socket.assigns.scope
+
+    case socket.assigns.current_user do
+      nil -> base_scope
+      user -> %{base_scope | user: user, user_id: user.id}
+    end
+  end
+
+  defp load_current_user(session) do
+    with token when is_binary(token) <- session["user_token"],
+         {user, _token} when not is_nil(user) <- Users.get_user_by_session_token(token) do
+      user
+    else
+      _ -> nil
+    end
+  end
 
   defp load_project_and_scope(name) do
     with {:ok, project} <- Projects.get_project_by_name(name),
