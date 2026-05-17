@@ -74,7 +74,21 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     with {:ok, story_id} <- get_story_id(task) do
       env = scope.environment
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
-      do_evaluate(scope, env, story_id)
+
+      cond do
+        CodeMySpec.Qa.qa_complete?(scope, story_id) ->
+          # Cutover short-circuit: a DB-backed pass attempt exists for
+          # this story. The legacy file-validation chain (plan/brief/
+          # result on disk) is obsolete once `submit_qa_result` has
+          # landed, so skip it. The brief.md file is now optional per
+          # story 726 R4; result.md is replaced entirely by the
+          # `qa_attempts` row + `list_qa_attempts` MCP tool.
+          Logger.info("[QaStory] evaluate(#{story_id}): DB attempt satisfies qa_complete; skipping legacy file checks")
+          {:ok, :valid}
+
+        true ->
+          do_evaluate(scope, env, story_id)
+      end
     end
   end
 
