@@ -80,7 +80,14 @@ defmodule CodeMySpec.Components.DependencyRepository do
   end
 
   @doc """
-  Simple circular dependency check - looks for direct cycles.
+  Simple circular dependency check — looks for direct cycles between
+  architectural components.
+
+  Skips dependency pairs where either side is a schema. Ecto's
+  `has_many`/`belongs_to` association pairs are bidirectional by
+  design (Account ↔ Member, Persona ↔ PersonaStory) and are not
+  architectural cycles. Flagging them as cycles trains callers to
+  ignore the output, masking real cycles between contexts.
   """
   @spec validate_dependency_graph(Scope.t()) :: :ok | {:error, list()}
   def validate_dependency_graph(%Scope{active_project_id: project_id}) do
@@ -92,7 +99,10 @@ defmodule CodeMySpec.Components.DependencyRepository do
             d1.target_component_id == d2.source_component_id,
         join: sc in Component,
         on: d1.source_component_id == sc.id,
+        join: tc in Component,
+        on: d1.target_component_id == tc.id,
         where: sc.project_id == ^project_id,
+        where: sc.type != "schema" and tc.type != "schema",
         preload: [:source_component, :target_component]
       )
       |> Repo.all()
