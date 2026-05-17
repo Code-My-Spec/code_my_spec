@@ -145,7 +145,7 @@ defmodule CodeMySpec.Issues.RemoteClient do
   end
 
   defp get_base_url do
-    Application.get_env(:code_my_spec, :base_url, "https://dev.codemyspec.com")
+    Application.get_env(:code_my_spec, :base_url, "https://codemyspec.com")
   end
 
   defp maybe_plug(req, opts) do

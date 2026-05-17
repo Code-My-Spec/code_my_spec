@@ -40,9 +40,9 @@ end
 
 # CLI mode — minimal runtime config
 if config_env() in [:dev_cli, :prod_cli] do
-  config :code_my_spec,
-    api_base_url: env!("API_BASE_URL", :string, "https://codemyspec.com"),
-    oauth_base_url: env!("OAUTH_BASE_URL", :string, "https://codemyspec.com")
+  # api_base_url / oauth_base_url / base_url are now set per-env in
+  # dev_cli.exs and prod_cli.exs at compile time so the shipped binary
+  # is statically wired to prod and the in-repo build is wired to dev.
 
   # Resolve `~` on the user's machine. If we do this at compile time
   # (in {dev,prod}_cli.exs) it gets baked to the CI builder's $HOME

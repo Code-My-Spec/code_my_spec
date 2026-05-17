@@ -2,6 +2,13 @@ import Config
 
 config :code_my_spec, env: :dev_cli
 
+# Dev_cli build talks to dev so the in-repo CLI workflow exercises the
+# dev server, not prod. See prod_cli.exs for why three keys.
+config :code_my_spec,
+  api_base_url: "https://dev.codemyspec.com",
+  oauth_base_url: "https://dev.codemyspec.com",
+  base_url: "https://dev.codemyspec.com"
+
 # PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
 # Disable on the local CLI deployment; versions are still recorded but
 # `first_version_id` / `current_version_id` columns stay nil.

@@ -2,6 +2,15 @@ import Config
 
 config :code_my_spec, env: :prod_cli
 
+# Shipped binary talks to prod. All three URL keys exist because different
+# call sites read different ones: OAuth registration reads :oauth_base_url,
+# OAuthClient.get_server_url + IssuesClient read :base_url, MCP-side flows
+# read :api_base_url.
+config :code_my_spec,
+  api_base_url: "https://codemyspec.com",
+  oauth_base_url: "https://codemyspec.com",
+  base_url: "https://codemyspec.com"
+
 # PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
 # Disable on the local CLI deployment; versions are still recorded but
 # `first_version_id` / `current_version_id` columns stay nil.
