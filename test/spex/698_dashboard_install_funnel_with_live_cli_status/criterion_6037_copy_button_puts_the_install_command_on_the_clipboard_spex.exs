@@ -6,11 +6,11 @@ defmodule CodeMySpecSpex.Story698.Criterion6037Spex do
   The actual clipboard write is browser-side JS — the spec can't drive
   navigator.clipboard. The contract this spec enforces is: each copy
   button carries the correct command as its clipboard payload (a
-  `data-clipboard-text` attribute), so a JS hook can wire navigator
+  `data-copy` attribute), so a JS hook can wire navigator
   to it and a UI test (Wallaby, future) can assert the side-effect.
 
   Surface contract assumed:
-    * [data-test="copy-step-1|2|3"][data-clipboard-text="..."]
+    * [data-test="copy-step-1|2|3"][data-copy="..."]
     * step 1: "/plugin marketplace add Code-My-Spec/plugins"
     * step 2: "/plugin install codemyspec@codemyspec"
     * step 3: "/plugin-reload"
