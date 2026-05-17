@@ -20,6 +20,7 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
       grep -rn 4003 release/codemyspec-extension          # should show rewrites
   """
   @shortdoc "Lay out the plugin release locally for inspection"
+  use Boundary, classify_to: CodeMySpecCli
   use Mix.Task
 
   alias CodeMySpecCli.Release.PackageExtension

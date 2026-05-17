@@ -47,11 +47,20 @@ if config_env() in [:dev_cli, :prod_cli] do
   # Resolve `~` on the user's machine. If we do this at compile time
   # (in {dev,prod}_cli.exs) it gets baked to the CI builder's $HOME
   # (`/Users/runner/...`) and every SQLite call fails with EACCES on end users.
+  #
+  # Dev_cli uses a separate file so an in-repo `mix run` can't trample
+  # the schema the published `cms` binary is using.
+  cli_db_filename =
+    case config_env() do
+      :prod_cli -> "cli.db"
+      :dev_cli -> "cli_dev.db"
+    end
+
   repo_config = Application.get_env(:code_my_spec, CodeMySpec.Repo, [])
 
   repo_config =
     repo_config
-    |> Keyword.put(:database, Path.expand("~/.codemyspec/cli.db"))
+    |> Keyword.put(:database, Path.expand("~/.codemyspec/#{cli_db_filename}"))
     |> Keyword.put(:load_extensions, [SqliteVec.path()])
 
   config :code_my_spec, CodeMySpec.Repo, repo_config

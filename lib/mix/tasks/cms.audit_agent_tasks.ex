@@ -16,6 +16,7 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
       mix cms.audit_agent_tasks > audit.md # capture to file
   """
   @shortdoc "Audit agent_task design conventions"
+  use Boundary, classify_to: CodeMySpec
   use Mix.Task
 
   alias CodeMySpec.AgentTasks.{Evaluator, StartAgentTask}
