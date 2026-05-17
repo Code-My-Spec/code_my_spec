@@ -32,8 +32,10 @@ config :code_my_spec, CodeMySpec.Repo,
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   server: false
 
-# Local web endpoint (port 4003)
+# Local web endpoint — runs on 4004 in dev_cli so an in-repo CLI build
+# can coexist with the published `cms` binary on 4003.
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: 4004],
   code_reloader: true,
   debug_errors: true,
   check_origin: false,

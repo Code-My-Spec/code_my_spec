@@ -3,5 +3,5 @@
 # Requires authentication (run bootstrap-auth-start first)
 # Returns {"projects": [...]}
 
-PORT="${CODEMYSPEC_PORT:-4003}"
+PORT="${CODEMYSPEC_PORT:-4004}"
 curl -s "http://localhost:${PORT}/api/bootstrap/projects"

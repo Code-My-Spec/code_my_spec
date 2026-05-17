@@ -26,7 +26,7 @@ fi
 
 PAYLOAD="$PAYLOAD}"
 
-PORT="${CODEMYSPEC_PORT:-4003}"
+PORT="${CODEMYSPEC_PORT:-4004}"
 
 curl -s -X POST "http://localhost:${PORT}/api/skills/start" \
   -H "Content-Type: application/json" \

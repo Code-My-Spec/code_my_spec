@@ -36,21 +36,13 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     extension_dir = Path.join(release_base, @release_dir)
     binaries_dir = Path.join(release_base, "binaries")
 
-    # Clean and create directories
-    File.rm_rf!(extension_dir)
     File.rm_rf!(binaries_dir)
-    File.mkdir_p!(extension_dir)
     File.mkdir_p!(binaries_dir)
 
-    # Marketplace repo layout — the plugin content lives under
-    # plugins/<slug>/, with .claude-plugin/marketplace.json at root so
-    # Code-My-Spec/plugins can host multiple plugins over time.
-    plugin_dest = Path.join([extension_dir, "plugins", @plugin_slug])
-    File.mkdir_p!(plugin_dest)
-
-    # Copy plugin files into plugins/<slug>/
-    copy_extension_files(source_extension, plugin_dest)
-    log("Copied plugin files into plugins/#{@plugin_slug}/")
+    # Plugin file shuffle — copy, port rewrite, marketplace.json, README,
+    # install.sh, .gitignore. Lives in its own function so `mix cms.package_plugin`
+    # can run the same dance without a burrito context.
+    package_plugin_files(source_extension, extension_dir)
 
     # Copy binary for GitHub Release
     binary_name = binary_name_for_target(context.target)
@@ -58,21 +50,6 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     File.copy!(source_binary, target_binary)
     File.chmod!(target_binary, 0o755)
     log("Copied binary to #{target_binary}")
-
-    # Create marketplace.json at repo root
-    create_marketplace_json(extension_dir, plugin_dest)
-    log("Created marketplace.json")
-
-    # Create install script (manual-install fallback) at repo root
-    create_install_script(extension_dir)
-    log("Created install script")
-
-    # Create repo-level README (marketplace doc)
-    create_readme(extension_dir)
-    log("Created README")
-
-    # Create .gitignore
-    create_gitignore(extension_dir)
 
     log("Extension packaged to: #{extension_dir}")
     log("Binary ready for upload: #{target_binary}")
@@ -91,6 +68,42 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     end
 
     context
+  end
+
+  @doc """
+  Runs the plugin file-shuffling steps (copy, port rewrite, marketplace.json,
+  install.sh, README, .gitignore) into `extension_dir`.
+
+  Pure file I/O — no burrito, no binary, no GitHub. `mix cms.package_plugin`
+  uses this to lay out the release locally for inspection.
+
+  Returns `%{extension_dir: ..., plugin_dest: ...}`.
+  """
+  # sobelow_skip ["Traversal"]
+  def package_plugin_files(source_extension, extension_dir) do
+    plugin_dest = Path.join([extension_dir, "plugins", @plugin_slug])
+
+    File.rm_rf!(extension_dir)
+    File.mkdir_p!(plugin_dest)
+
+    copy_extension_files(source_extension, plugin_dest)
+    log("Copied plugin files into plugins/#{@plugin_slug}/")
+
+    rewrite_dev_port(plugin_dest)
+    log("Rewrote dev port 4004 -> prod port 4003")
+
+    create_marketplace_json(extension_dir, plugin_dest)
+    log("Created marketplace.json")
+
+    create_install_script(extension_dir)
+    log("Created install script")
+
+    create_readme(extension_dir)
+    log("Created README")
+
+    create_gitignore(extension_dir)
+
+    %{extension_dir: extension_dir, plugin_dest: plugin_dest}
   end
 
   # sobelow_skip ["Traversal"]
@@ -211,6 +224,26 @@ defmodule CodeMySpecCli.Release.PackageExtension do
         File.cp!(source_file, dest_file)
       end
     end
+  end
+
+  # Source tree is configured for dev (port 4004 so it can coexist with
+  # the published binary on 4003). Walk .claude-plugin/ and swap every
+  # `4004` token to `4003` so the shipped plugin lands on the prod port.
+  # sobelow_skip ["Traversal"]
+  defp rewrite_dev_port(plugin_dest) do
+    root = Path.join(plugin_dest, ".claude-plugin")
+
+    root
+    |> Path.join("**/*")
+    |> Path.wildcard()
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.each(fn path ->
+      content = File.read!(path)
+
+      if String.contains?(content, "4004") do
+        File.write!(path, String.replace(content, "4004", "4003"))
+      end
+    end)
   end
 
   defp binary_name_for_target(target) do
