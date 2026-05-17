@@ -29,16 +29,17 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     end
   end
 
-  # The skill route (`/codemyspec:product three-amigos <story_id>`) threads
-  # the story_id through `requirement_name` per the topic-task convention.
-  # The graph-dispatch route uses `entity_id`. Either lands us at the right
-  # Story.
-  defp resolve_command_story(scope, %{requirement_name: requirement}) when is_binary(requirement) do
-    fetch_story(scope, requirement)
-  end
-
+  # The graph-dispatch route sets `entity_id` to the story id and
+  # `requirement_name` to the requirement (e.g. "three_amigos_complete"),
+  # so entity_id must win when both are present. The skill route
+  # (`/codemyspec:product three-amigos <story_id>`) threads the story_id
+  # through `requirement_name` instead per the topic-task convention.
   defp resolve_command_story(scope, %{entity_id: entity_id}) when is_binary(entity_id) do
     fetch_story(scope, entity_id)
+  end
+
+  defp resolve_command_story(scope, %{requirement_name: requirement}) when is_binary(requirement) do
+    fetch_story(scope, requirement)
   end
 
   defp resolve_command_story(_scope, _task), do: nil

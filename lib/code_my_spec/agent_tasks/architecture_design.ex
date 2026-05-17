@@ -70,8 +70,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   defp patch_mode?(env), do: Environments.file_exists?(env, @patch_mode_marker)
 
-  defp clear_patch_mode_marker(env), do: Environments.delete_file(env, @patch_mode_marker)
-
   @doc """
   Evaluate the architecture design session output.
 
@@ -84,14 +82,16 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
     env = scope.environment || Environment.new(:cli, working_dir)
 
+    # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
+    # A failing patch-mode evaluate (e.g. unlinked story) used to clear the
+    # marker and silently promote the next evaluate to full proposal
+    # validation, forcing the architect to hand-edit proposal.md after
+    # any DB-side fix. The marker survives until the next `start_task`,
+    # which re-records based on proposal existence.
     if patch_mode?(env) do
-      result = evaluate_patch_mode(scope)
-      clear_patch_mode_marker(env)
-      result
+      evaluate_patch_mode(scope)
     else
-      result = evaluate_initial_mode(scope, env, working_dir)
-      clear_patch_mode_marker(env)
-      result
+      evaluate_initial_mode(scope, env, working_dir)
     end
   end
 

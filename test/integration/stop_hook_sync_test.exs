@@ -56,44 +56,11 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   end
 
   # ============================================================================
-  # Test 2: ignored components excluded from tracking
-  # ============================================================================
-
-  describe "infrastructure_paths classification" do
-    test "files matching infrastructure_paths config are tagged as infrastructure" do
-      {scope, tmp_dir} = setup_component_scenario()
-
-      config_dir = Path.join(tmp_dir, ".code_my_spec")
-      File.mkdir_p!(config_dir)
-
-      File.write!(Path.join(config_dir, "config.yml"), """
-      infrastructure_paths:
-        - "lib/my_app/infra.ex"
-      """)
-
-      # Write files for both regular and infra-classified components
-      write_spec_file(tmp_dir, "my_app/tracked", "MyApp.Tracked")
-      write_impl_file(tmp_dir, "my_app/tracked", "MyApp.Tracked")
-      write_impl_file(tmp_dir, "my_app/infra", "MyApp.Infra")
-
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-      {:ok, comp_result} = FileComponentSync.sync_from_files(scope, base_dir: tmp_dir)
-
-      by_name = Map.new(comp_result.all_components, &{&1.module_name, &1})
-
-      assert Map.has_key?(by_name, "MyApp.Tracked")
-      assert by_name["MyApp.Tracked"].type != "infrastructure"
-
-      assert Map.has_key?(by_name, "MyApp.Infra"),
-             "expected MyApp.Infra to be synced (classify, not skip)"
-
-      assert by_name["MyApp.Infra"].type == "infrastructure",
-             "expected MyApp.Infra to be classified as infrastructure"
-    end
-  end
-
-  # ============================================================================
-  # Test 3: requirement satisfaction via file creation
+  # Test 2: requirement satisfaction via file creation
+  # (Previous infrastructure_paths classification test removed —
+  # `parse_impl_file` no longer sets `type: "infrastructure"` from the
+  # config whitelist. Type is spec-driven; the `infrastructure_paths`
+  # config is currently vestigial.)
   # ============================================================================
 
   describe "requirement satisfaction" do

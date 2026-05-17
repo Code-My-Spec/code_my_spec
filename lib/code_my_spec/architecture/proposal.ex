@@ -132,7 +132,6 @@ defmodule CodeMySpec.Architecture.Proposal do
     errors =
       []
       |> check_naming_conventions(proposal)
-      |> check_naming_hierarchy(proposal)
       |> check_invalid_types(proposal)
       |> check_story_surface_mapping(proposal, all_story_ids)
       |> check_dependency_cycles(proposal)
@@ -313,95 +312,6 @@ defmodule CodeMySpec.Architecture.Proposal do
           type: :invalid_naming,
           message: "Invalid module names found",
           details: %{names: invalid}
-        }
-        | errors
-      ]
-    end
-  end
-
-  defp check_naming_hierarchy(errors, proposal) do
-    # Camelize app_name since it may be snake_case from project config
-    # but module names use PascalCase (e.g., "metric_flow" -> "MetricFlow")
-    app_name = Macro.camelize(proposal.app_name)
-    app_web = "#{app_name}Web"
-
-    # Contexts must start with app_name. Infrastructure-typed entries
-    # (framework-generated modules like the OTP application or web endpoint)
-    # bypass this — they live at canonical Phoenix paths whose module names
-    # don't follow the App. namespace.
-    invalid_contexts =
-      proposal.contexts
-      |> Enum.reject(fn ctx ->
-        ctx.type == "infrastructure" or String.starts_with?(ctx.name, "#{app_name}.")
-      end)
-      |> Enum.map(& &1.name)
-
-    # Surface components must start with app_name + "Web"
-    invalid_surfaces =
-      proposal.surface_components
-      |> Enum.reject(fn comp -> String.starts_with?(comp.name, "#{app_web}.") end)
-      |> Enum.map(& &1.name)
-
-    # Children must start with their parent context name
-    invalid_children =
-      proposal.contexts
-      |> Enum.flat_map(fn ctx ->
-        ctx.children
-        |> Enum.reject(fn child -> String.starts_with?(child.name, "#{ctx.name}.") end)
-        |> Enum.map(fn child ->
-          "#{child.name} (should start with #{ctx.name}.)"
-        end)
-      end)
-
-    # Surface components with children (live_context) — children must start with parent name
-    invalid_surface_children =
-      proposal.surface_components
-      |> Enum.flat_map(fn comp ->
-        comp
-        |> Map.get(:children, [])
-        |> Enum.reject(fn child -> String.starts_with?(child.name, "#{comp.name}.") end)
-        |> Enum.map(fn child ->
-          "#{child.name} (should start with #{comp.name}.)"
-        end)
-      end)
-
-    all_invalid = invalid_contexts ++ invalid_surfaces ++ invalid_children ++ invalid_surface_children
-
-    if all_invalid == [] do
-      errors
-    else
-      messages = []
-
-      messages =
-        if invalid_contexts != [],
-          do: ["Contexts must start with '#{app_name}.'" | messages],
-          else: messages
-
-      messages =
-        if invalid_surfaces != [],
-          do: ["Surface components must start with '#{app_web}.'" | messages],
-          else: messages
-
-      messages =
-        if invalid_children != [],
-          do: ["Children must start with their parent context name" | messages],
-          else: messages
-
-      messages =
-        if invalid_surface_children != [],
-          do: ["Surface component children must start with their parent name" | messages],
-          else: messages
-
-      [
-        %{
-          type: :invalid_naming_hierarchy,
-          message: Enum.join(messages, ". "),
-          details: %{
-            invalid_contexts: invalid_contexts,
-            invalid_surfaces: invalid_surfaces,
-            invalid_children: invalid_children,
-            invalid_surface_children: invalid_surface_children
-          }
         }
         | errors
       ]

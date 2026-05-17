@@ -21,6 +21,7 @@ defmodule CodeMySpec.Requirements.Preloader do
           files_by_project: [File.t()],
           files_by_path: %{String.t() => File.t()},
           problems_by_component: %{Ecto.UUID.t() => %{String.t() => integer()}},
+          problems_by_story: %{integer() => %{String.t() => integer()}},
           problems_by_source: %{String.t() => integer()},
           components: [Component.t()],
           stories: [Story.t()]
@@ -73,7 +74,8 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> where([s], s.project_id == ^project_id)
       |> Repo.all()
 
-    # Global problem counts by source (for story/project-level checks)
+    # Global problem counts by source (for project-level checks like
+    # `all_bdd_specs_passing`).
     global_problem_counts =
       Problem
       |> where([p], p.project_id == ^project_id)
@@ -82,12 +84,31 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> Repo.all()
       |> Map.new()
 
+    # Per-story problem counts. Joins problems → files on path, so a
+    # spex failure shows up under the story whose `test/spex/<id>_*/`
+    # directory owns the file. Without this, story-level
+    # `spex_passing` would have to fall back to the project-wide
+    # count and clamp every story when one spex fails anywhere.
+    problems_by_story =
+      Problem
+      |> join(:inner, [p], f in File,
+        on: f.path == p.file_path and f.project_id == p.project_id
+      )
+      |> where([p, f], p.project_id == ^project_id and not is_nil(f.story_id))
+      |> group_by([p, f], [f.story_id, p.source])
+      |> select([p, f], {f.story_id, p.source, count(p.id)})
+      |> Repo.all()
+      |> Enum.reduce(%{}, fn {story_id, source, count}, acc ->
+        Map.update(acc, story_id, %{source => count}, &Map.put(&1, source, count))
+      end)
+
     %{
       files_by_component: files_by_component,
       files_by_story: files_by_story,
       files_by_project: all_files,
       files_by_path: Map.new(all_files, &{&1.path, &1}),
       problems_by_component: problems_by_component,
+      problems_by_story: problems_by_story,
       problems_by_source: global_problem_counts,
       components: components,
       stories: stories

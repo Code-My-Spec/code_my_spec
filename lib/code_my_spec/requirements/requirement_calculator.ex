@@ -24,6 +24,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   @type computed_requirement :: %{
@@ -119,8 +120,30 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  # Per-story scope: only count spex problems whose file belongs to this
+  # story. Without this, one failing spex anywhere in the project blocks
+  # every story's `bdd_specs_passing` (and clamps every story's
+  # `qa_complete` to false), which is the stale-listing symptom callers
+  # see from `list_requirements`.
+  defp check(%{check_type: :spex_passing}, _scope, %Story{id: story_id}, files, ctx) do
+    bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
+
+    if bdd_files == [] do
+      {false, %{reason: "No BDD spec files exist yet"}}
+    else
+      spex_problems = get_story_problem_count(story_id, "spex", ctx)
+
+      if spex_problems == 0 do
+        {true, %{status: "All BDD specs passing"}}
+      else
+        {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
+      end
+    end
+  end
+
+  # Project (or other non-story) scope: existing project-wide count.
+  # Powers `all_bdd_specs_passing` on the project graph.
   defp check(%{check_type: :spex_passing}, _scope, _entity, files, ctx) do
-    # For stories, check that BDD spec files exist before declaring passing
     bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
 
     if bdd_files == [] do
@@ -306,4 +329,14 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   defp get_global_problem_count(_, _source), do: 0
+
+  # Per-story problem count keyed by source. Loaded by Preloader by
+  # joining `problems` to `files` on `path` and grouping by
+  # `files.story_id`. Returns 0 when the preload is missing (legacy
+  # callers without a ctx).
+  defp get_story_problem_count(story_id, source, %{problems_by_story: pbs}) when is_map(pbs) do
+    pbs |> Map.get(story_id, %{}) |> Map.get(source, 0)
+  end
+
+  defp get_story_problem_count(_story_id, _source, _ctx), do: 0
 end

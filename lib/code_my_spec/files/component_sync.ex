@@ -22,7 +22,6 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -55,14 +54,6 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     {spec_files, impl_files} = query_files(scope, changed_paths)
 
-    # `infrastructure_paths` classifies framework-generated modules as
-    # `type: "infrastructure"` — components for them get an empty
-    # requirement graph, so no agent work is driven. The classifier wins
-    # over the impl-only type fallback (`module`) but loses to an
-    # explicit type written in a spec file (the architect's word is
-    # authoritative when present).
-    infra_paths = FileSync.load_infrastructure_paths(scope)
-
     spec_data =
       spec_files
       |> Enum.map(&parse_spec_file(&1, env))
@@ -70,7 +61,7 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     impl_data =
       impl_files
-      |> Enum.map(&parse_impl_file(&1, env, infra_paths))
+      |> Enum.map(&parse_impl_file(&1, env))
       |> Enum.reject(&is_nil/1)
 
     merged = merge_by_module_name(spec_data, impl_data)
@@ -181,18 +172,16 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # Impl files: the `defmodule X do` declaration is the authoritative
   # module identifier. Path is purely storage. Files without a
-  # `defmodule` line (scripts, .exs, etc.) are skipped.
-  defp parse_impl_file(%File{path: path} = _file, env, infra_paths) do
+  # `defmodule` line (scripts, .exs, etc.) are skipped. Type is never
+  # inferred from impl content — it lives in the spec (and may move to
+  # a module attribute later). Type defaults are owned by
+  # `Components.upsert_component`.
+  defp parse_impl_file(%File{path: path} = _file, env) do
     case Environments.read_file(env, path) do
       {:ok, content} ->
         case Regex.run(~r/^defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
           [_, name] ->
-            type =
-              if FileSync.infrastructure_path?(path, infra_paths),
-                do: "infrastructure",
-                else: nil
-
-            %{module_name: name, type: type, description: nil, dependencies: []}
+            %{module_name: name, type: nil, description: nil, dependencies: []}
 
           _ ->
             nil

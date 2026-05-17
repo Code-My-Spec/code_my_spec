@@ -230,66 +230,6 @@ defmodule CodeMySpec.Architecture.ProposalTest do
       assert {:ok, _} = Proposal.validate(proposal, story_ids: [1])
     end
 
-    test "returns error for child not starting with parent context name" do
-      proposal =
-        Proposal.new(%{
-          app_name: "Fuellytics",
-          contexts: [
-            %{
-              name: "Fuellytics.Verification",
-              description: "Test",
-              children: [%{name: "Transaction", type: "schema"}]
-            }
-          ],
-          surface_components: [
-            %{name: "FuellyticsWeb.DashboardLive", type: "liveview", story_ids: [1]}
-          ]
-        })
-
-      assert {:error, errors} = Proposal.validate(proposal)
-      assert Enum.any?(errors, &(&1.type == :invalid_naming_hierarchy))
-    end
-
-    test "returns error for context not starting with app name" do
-      proposal =
-        Proposal.new(%{
-          app_name: "Fuellytics",
-          contexts: [
-            %{
-              name: "Verification",
-              description: "Test",
-              children: [%{name: "Verification.Transaction", type: "schema"}]
-            }
-          ],
-          surface_components: [
-            %{name: "FuellyticsWeb.DashboardLive", type: "liveview", story_ids: [1]}
-          ]
-        })
-
-      assert {:error, errors} = Proposal.validate(proposal)
-      assert Enum.any?(errors, &(&1.type == :invalid_naming_hierarchy))
-    end
-
-    test "returns error for surface component not starting with app web name" do
-      proposal =
-        Proposal.new(%{
-          app_name: "Fuellytics",
-          contexts: [
-            %{
-              name: "Fuellytics.Verification",
-              description: "Test",
-              children: [%{name: "Fuellytics.Verification.Transaction", type: "schema"}]
-            }
-          ],
-          surface_components: [
-            %{name: "DashboardLive", type: "liveview", story_ids: [1]}
-          ]
-        })
-
-      assert {:error, errors} = Proposal.validate(proposal)
-      assert Enum.any?(errors, &(&1.type == :invalid_naming_hierarchy))
-    end
-
     test "allows consecutive capitals in module names (Macro.underscore handles them)" do
       proposal =
         Proposal.new(%{
