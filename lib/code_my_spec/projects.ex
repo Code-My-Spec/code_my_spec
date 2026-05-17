@@ -127,7 +127,13 @@ defmodule CodeMySpec.Projects do
   resolve project from X-Working-Dir instead of a project name in the URL.
   """
   def get_project_by_local_path(path) when is_binary(path) do
-    case Repo.get_by(Project, local_path: path) do
+    query =
+      from p in Project,
+        where: p.local_path == ^path,
+        order_by: [desc: p.updated_at],
+        limit: 1
+
+    case Repo.one(query) do
       nil -> {:error, :not_found}
       project -> {:ok, project}
     end

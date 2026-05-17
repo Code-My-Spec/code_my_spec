@@ -23,6 +23,8 @@
 #
 # Idempotent — safe to re-run.
 
+import Ecto.Query
+
 alias CodeMySpec.ClientUsers
 alias CodeMySpec.Projects.Project
 alias CodeMySpec.Repo
@@ -32,9 +34,37 @@ account_id = 1
 project_id = "11111111-1111-4111-8111-111111111111"
 project_name = "QA Fixture Project"
 project_module = "QaFixtureProject"
-local_path = File.cwd!()
+local_path = System.get_env("QA_LOCAL_PATH") || File.cwd!()
 
 IO.puts("\n=== QA Seeds — local CLI ===")
+
+# Refuse if `local_path` already belongs to a different project. Running this
+# seed from a real project checkout (the default `mix run` working dir) used
+# to stamp the fixture's local_path onto your real project's path, producing
+# two rows that collided in WorkingDirScope.
+case Repo.one(
+       from p in Project,
+         where: p.local_path == ^local_path and p.id != ^project_id,
+         limit: 1
+     ) do
+  nil ->
+    :ok
+
+  %Project{name: name, id: id} ->
+    IO.puts(:stderr, """
+
+    Refusing to run: local_path #{inspect(local_path)} is already linked to
+    project "#{name}" (#{id}).
+
+    The QA fixture would collide with that real project and cause
+    Ecto.MultipleResultsError in CodeMySpecLocalWeb.Plugs.WorkingDirScope.
+
+    Re-run with a throwaway path:
+        QA_LOCAL_PATH=/tmp/cms_qa MIX_ENV=dev_cli mix run priv/repo/cli_qa_seeds.exs
+    """)
+
+    System.halt(1)
+end
 
 # 1. Optional client_user (lets /api/bootstrap/auth/status report authenticated).
 case ClientUsers.get_client_user_by_email(email) do

@@ -93,8 +93,8 @@ defmodule CodeMySpecCli.PresenceClient do
 
   defp authenticate do
     with {:ok, user} <- OAuthClient.get_active_client_user(),
-         server_url when is_binary(server_url) <- OAuthClient.get_server_url(),
-         token when is_binary(token) <- user.oauth_token do
+         {:ok, token} <- OAuthClient.get_token(),
+         server_url when is_binary(server_url) <- OAuthClient.get_server_url() do
       {:ok, user.id, build_ws_url(server_url, token)}
     else
       _ -> {:error, :not_authenticated}
