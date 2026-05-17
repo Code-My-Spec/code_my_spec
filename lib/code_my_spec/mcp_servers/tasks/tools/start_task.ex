@@ -246,7 +246,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       prompt =
         case task_module.command(scope, task) do
           {:ok, text} -> text
-          {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
+          {:error, reason} -> "Error generating prompt: #{format_error_reason(reason)}"
         end
 
       prompt
@@ -254,4 +254,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   rescue
     error -> "Error: #{inspect(error)}"
   end
+
+  # Task modules may return `{:error, atom}` (terse code) or
+  # `{:error, {atom, message}}` (terse code + agent-actionable
+  # message). Prefer the message when present.
+  defp format_error_reason({atom, message}) when is_atom(atom) and is_binary(message) do
+    "#{atom}\n\n#{message}"
+  end
+
+  defp format_error_reason(reason), do: inspect(reason)
 end

@@ -9,6 +9,18 @@ The framework knowledge corpus (`priv/knowledge/persona_research/`)
 has the full content for each phase — this doc is the workflow
 sequencer pointing at the right knowledge file for each step.
 
+## Two personas, two methodologies
+
+The default workflow (the rest of this document) assumes the
+persona is a **human** — interviews, jobs-to-be-done, secondary
+research about people. If the persona you're researching is an
+**LLM agent class** (e.g. `Per-Story QA Agent`, `Code Writer
+Agent`), follow `agent_personas.md` instead. The artifact contract
+is identical (summary.md + sources.md, same H2 sections); the
+research sources are entirely different (agent docs, MCP spec,
+codebase agent definitions, log behavior, self-reflection — no
+intake interview, no JTBD).
+
 ## Prereqs
 
 Personas are **project-scoped**. `create_persona` and

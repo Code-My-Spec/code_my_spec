@@ -26,26 +26,29 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   @proposal_path Paths.proposal_path()
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
   def complete?(%Scope{environment: env} = scope, _entity) when not is_nil(env) do
-    if proposal_present?(env) do
-      case orphans(scope) do
-        [] ->
-          {true, %{status: "Architecture clean — every component is covered."}}
+    cond do
+      not proposal_present?(env) ->
+        {false,
+         %{
+           reason:
+             "`#{@proposal_path}` is missing — run an architecture session and write the proposal."
+         }}
 
-        orphans ->
-          {false, %{reason: format_orphans(orphans)}}
-      end
-    else
-      {false,
-       %{
-         reason:
-           "`#{@proposal_path}` is missing — run an architecture session and write the proposal."
-       }}
+      (unlinked = unlinked_stories(scope)) != [] ->
+        {false, %{reason: format_unlinked_stories(unlinked)}}
+
+      (orphan_components = orphans(scope)) != [] ->
+        {false, %{reason: format_orphans(orphan_components)}}
+
+      true ->
+        {true, %{status: "Architecture clean — every component is covered and every story is linked."}}
     end
   end
 
@@ -162,6 +165,32 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
 
   defp dep_target_ids(%{dependencies: deps}) when is_list(deps), do: Enum.map(deps, & &1.id)
   defp dep_target_ids(_), do: []
+
+  # Returns project stories whose `component_id` is nil. These stories
+  # have nothing to drive BDD spex / implementation against — the
+  # architecture phase needs to assign them a surface component before
+  # downstream work can proceed.
+  defp unlinked_stories(%Scope{} = scope) do
+    scope
+    |> Stories.list_stories()
+    |> Enum.filter(fn s -> Map.get(s, :component_id) == nil end)
+    |> Enum.sort_by(& &1.id)
+  end
+
+  defp format_unlinked_stories(stories) do
+    bullets =
+      Enum.map_join(stories, "\n", fn s ->
+        "- story `#{s.id}` — #{s.title}"
+      end)
+
+    """
+    Architecture has #{length(stories)} unlinked story/stories — each needs a surface component before BDD spex or implementation can proceed:
+
+    #{bullets}
+
+    Resolve each via `set_story_component` (MCP tool) pointing at an existing component, or create the component first with `create_component` and then link.
+    """
+  end
 
   defp format_orphans(orphans) do
     bullets =

@@ -169,7 +169,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       story = story_fixture(scope, %{title: "Unlinked", component_id: nil, criteria: []})
       task = %{story_id: story.id, component_id: nil, project_id: nil}
 
-      assert {:error, :component_not_linked} = WriteBddSpecs.command(scope, task)
+      assert {:error, {:component_not_linked, message}} = WriteBddSpecs.command(scope, task)
+      assert message =~ "has no surface component linked"
+      assert message =~ "set_story_component"
     end
   end
 

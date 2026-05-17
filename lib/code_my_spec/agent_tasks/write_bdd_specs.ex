@@ -73,14 +73,23 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp get_story_component(_scope, %{component_id: nil} = story) do
     Logger.warning("[WriteBddSpecs] Story #{story.id} (#{story.title}) has no component linked")
-    {:error, :component_not_linked}
+
+    {:error,
+     {:component_not_linked,
+      "Story #{story.id} (#{story.title}) has no surface component linked. " <>
+        "Run architecture (the `architecture_designed` requirement will surface every unlinked story) " <>
+        "or call `set_story_component` with the implementing component's module name to link it directly."}}
   end
 
   defp get_story_component(scope, %{component_id: component_id} = story) do
     case Components.get_component(scope, component_id) do
       nil ->
         Logger.warning("[WriteBddSpecs] Story #{story.id} component #{component_id} not found")
-        {:error, :component_not_found}
+
+        {:error,
+         {:component_not_found,
+          "Story #{story.id} is linked to component #{component_id} but no such component exists. " <>
+            "The component may have been deleted; re-link the story via `set_story_component`."}}
 
       component ->
         {:ok, component}
@@ -89,7 +98,11 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp get_story_component(_scope, story) do
     Logger.warning("[WriteBddSpecs] Story #{inspect(story.id)} has no component_id field")
-    {:error, :component_not_linked}
+
+    {:error,
+     {:component_not_linked,
+      "Story #{inspect(story.id)} payload has no component_id field. " <>
+        "Refresh the story via `get_story` or link a component via `set_story_component`."}}
   end
 
   # ============================================================================

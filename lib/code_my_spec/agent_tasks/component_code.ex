@@ -10,6 +10,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.{Rules, Utils}
@@ -31,7 +32,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     project = scope.active_project
 
     with {:ok, rules} <- get_implementation_rules(scope, component) do
-      {:ok, prompt} = build_implementation_prompt(project, component, rules)
+      {:ok, prompt} = build_implementation_prompt(scope, project, component, rules)
       {:ok, prompt}
     end
   end
@@ -91,7 +92,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     end
   end
 
-  defp build_implementation_prompt(project, component, rules) do
+  defp build_implementation_prompt(scope, project, component, rules) do
     rules_text = Enum.map_join(rules, "\n\n", & &1.content)
 
     %{
@@ -99,6 +100,8 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       code_file: code_file_path,
       test_file: test_file_path
     } = Utils.component_files(component, project)
+
+    spec_section = build_spec_section(scope, spec_file_path)
 
     prompt =
       """
@@ -110,16 +113,10 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       Component Description: #{component.description || "No description provided"}
       Type: #{component.type}
 
-      Spec File: #{spec_file_path}
-      Test File: #{test_file_path}
+      #{spec_section}Test File: #{test_file_path}
 
       Implementation Instructions:
-      1. Read the spec file to understand the component architecture
-      2. Read the test file to understand the expected behavior and any test fixtures
-      3. Create all necessary module files following the component spec
-      4. Implement all public API functions specified in the spec
-      5. Ensure the implementation satisfies the tests
-      6. Create schemas, migrations, or supporting code as needed
+      #{implementation_steps(spec_section)}
 
       Coding Rules:
       #{rules_text}
@@ -129,4 +126,58 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
 
     {:ok, prompt}
   end
+
+  # Reference the spec file only if there's substantive content to
+  # read. When the spec is a `create_component` stub (just name +
+  # description + type — typically < 15 lines and missing any
+  # API/dependencies sections) pointing the agent at it is moot.
+  # In that case, the BDD spex layer (driven by linked stories) is
+  # the contract.
+  defp build_spec_section(scope, spec_file_path) do
+    case read_spec(scope, spec_file_path) do
+      {:ok, content} ->
+        if substantive_spec?(content) do
+          "Spec File: #{spec_file_path}\n"
+        else
+          ""
+        end
+
+      _ ->
+        ""
+    end
+  end
+
+  defp read_spec(%{environment: env}, path) when not is_nil(env) do
+    case Environments.read_file(env, path) do
+      {:ok, content} -> {:ok, content}
+      _ -> File.read(path)
+    end
+  end
+
+  defp read_spec(_scope, path), do: File.read(path)
+
+  defp substantive_spec?(content) do
+    line_count = content |> String.split("\n") |> length()
+    has_api_section? = content =~ ~r/^## (Public API|Public Interface|Dependencies|Schema)/m
+
+    line_count > 15 or has_api_section?
+  end
+
+  defp implementation_steps(""), do: """
+      1. Read the test file to understand the expected behavior and any test fixtures
+      2. Read the linked story's BDD spex (under `test/spex/<story_id>_*/`) — they are the contract for this component's public API
+      3. Create all necessary module files
+      4. Implement all public API functions implied by the spex and tests
+      5. Ensure the implementation satisfies the tests
+      6. Create schemas, migrations, or supporting code as needed
+      """
+
+  defp implementation_steps(_), do: """
+      1. Read the spec file to understand the component architecture
+      2. Read the test file to understand the expected behavior and any test fixtures
+      3. Create all necessary module files following the component spec
+      4. Implement all public API functions specified in the spec
+      5. Ensure the implementation satisfies the tests
+      6. Create schemas, migrations, or supporting code as needed
+      """
 end
