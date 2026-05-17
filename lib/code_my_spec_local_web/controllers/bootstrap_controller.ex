@@ -14,16 +14,13 @@ defmodule CodeMySpecLocalWeb.BootstrapController do
   alias CodeMySpec.Auth.OAuthClient
 
   def auth_status(conn, _params) do
-    case OAuthClient.get_active_client_user() do
-      {:ok, user} ->
-        if OAuthClient.token_expired?(user) do
-          json(conn, %{authenticated: false})
-        else
-          json(conn, %{authenticated: true, email: user.email})
-        end
-
-      {:error, _} ->
-        json(conn, %{authenticated: false})
+    if OAuthClient.authenticated?() do
+      case OAuthClient.get_active_client_user() do
+        {:ok, user} -> json(conn, %{authenticated: true, email: user.email})
+        {:error, _} -> json(conn, %{authenticated: false})
+      end
+    else
+      json(conn, %{authenticated: false})
     end
   end
 

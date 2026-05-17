@@ -55,6 +55,13 @@ if config_env() in [:dev_cli, :prod_cli] do
     |> Keyword.put(:load_extensions, [SqliteVec.path()])
 
   config :code_my_spec, CodeMySpec.Repo, repo_config
+
+  # Allow seed scripts to run while the local app already occupies port 4003.
+  # Set NO_SERVER=true to skip the HTTP listener (Repo is still available).
+  # Example: NO_SERVER=true MIX_ENV=dev_cli mix run priv/repo/cli_qa_seeds.exs
+  if System.get_env("NO_SERVER") do
+    config :code_my_spec, CodeMySpecLocalWeb.Endpoint, server: false
+  end
 end
 
 # Web app mode

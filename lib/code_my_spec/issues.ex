@@ -196,27 +196,32 @@ defmodule CodeMySpec.Issues do
   defp broadcast(_scope, _message), do: :ok
 
   defp sync_resolution_to_remote(scope, %Issue{} = issue) do
+    alias CodeMySpec.Auth.OAuthClient
     alias CodeMySpec.Issues.RemoteClient
     require Logger
 
-    Task.start(fn ->
-      case RemoteClient.update_issue(scope, issue.id, %{
-             status: "resolved",
-             resolution: issue.resolution
-           }) do
-        {:ok, _} ->
-          :ok
+    unless OAuthClient.authenticated?() do
+      :ok
+    else
+      Task.start(fn ->
+        case RemoteClient.update_issue(scope, issue.id, %{
+               status: "resolved",
+               resolution: issue.resolution
+             }) do
+          {:ok, _} ->
+            :ok
 
-        {:error, :not_authenticated} ->
-          # No remote configured (CLI/local without auth). Local
-          # resolution is the source of truth; nothing to sync to.
-          :ok
+          {:error, :not_authenticated} ->
+            # No remote configured (CLI/local without auth). Local
+            # resolution is the source of truth; nothing to sync to.
+            :ok
 
-        {:error, reason} ->
-          Logger.warning(
-            "[Issues] Remote resolution sync failed for issue #{issue.id}: #{inspect(reason)}"
-          )
-      end
-    end)
+          {:error, reason} ->
+            Logger.warning(
+              "[Issues] Remote resolution sync failed for issue #{issue.id}: #{inspect(reason)}"
+            )
+        end
+      end)
+    end
   end
 end

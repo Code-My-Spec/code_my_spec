@@ -1,9 +1,20 @@
 # QA Seeds — Local CLI (SQLite)
 #
 # Creates the minimum fixture for QA against the CLI binary's local DB
-# (`priv/repo/cli_dev.db` in dev_cli, the bundled DB in prod_cli).
+# (~/.codemyspec/cli.db under MIX_ENV=dev_cli).
 #
-# Usage: MIX_ENV=dev_cli mix run priv/repo/cli_qa_seeds.exs
+# Usage (local app NOT running):
+#   MIX_ENV=dev_cli mix run priv/repo/cli_qa_seeds.exs
+#
+# Usage (local app already running on port 4003):
+#   NO_SERVER=true MIX_ENV=dev_cli mix run priv/repo/cli_qa_seeds.exs
+#
+# IMPORTANT: always use MIX_ENV=dev_cli. Plain `mix run` defaults to
+# MIX_ENV=dev (Postgres) and will write to the wrong database entirely.
+#
+# The NO_SERVER=true flag disables the HTTP endpoint at runtime config so
+# this script can run while the app is already listening on port 4003.
+# Seed data does not need the web server — only the Repo supervision tree.
 #
 # The local schema is account-less — `WorkingDirScope` only needs a Project row
 # with `local_path` matching the request's working dir to resolve a scope.
