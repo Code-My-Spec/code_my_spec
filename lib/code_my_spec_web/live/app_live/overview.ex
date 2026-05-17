@@ -604,7 +604,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp plugin_rung(assigns) do
     ~H"""
-    <div data-test="plugin-rung" data-state={@state} class="contents">
+    <div data-test="plugin-rung" data-state={@state} class="cms-onboarding contents">
       <.onboarding_card {assigns} />
     </div>
     """
