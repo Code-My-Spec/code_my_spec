@@ -483,7 +483,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <p class="cms-onboarding-sub mb-6">
           This is the workspace where your projects will live. You can rename it later.
         </p>
-        <.form for={@account_form} id="account_form" phx-submit="create_account" class="flex flex-col gap-4">
+        <.form for={@account_form} id="account_form" phx-submit="create_account" class="flex flex-col gap-4" novalidate={Mix.env() == :test}>
           <.input
             field={@account_form[:name]}
             type="text"

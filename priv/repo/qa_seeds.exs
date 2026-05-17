@@ -123,45 +123,66 @@ project =
 #    (rules, scenarios, questions, criteria) lands on these instead of dev
 #    project stories. Add new entries to qa_stories below as new feature areas
 #    need their own isolated test target.
-qa_scope = %{
-  scope
-  | active_account: account,
-    active_account_id: account.id,
-    active_project: project,
-    active_project_id: project.id
-}
+#
+# Guard against environments where the stories table does not yet exist
+# (e.g. a fresh checkout with partial migrations, or a DB that predates
+# the stories schema). If the table is absent we skip story seeding and
+# emit a note — the user/account/project seeds above still land cleanly.
+stories_table_exists? =
+  case Ecto.Adapters.SQL.query(Repo, "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'stories' LIMIT 1") do
+    {:ok, %{num_rows: n}} -> n > 0
+    _ -> false
+  end
 
-qa_stories = [
-  %{
-    title: "QA: Three Amigos UI smoke",
-    description:
-      "Dedicated story for exercising the Three Amigos LiveView wall (story 559's UI surface). All persona/rule/scenario/question mutations from QA land here, not on the real story 559.",
-    priority: 100
-  }
-]
+stories_module_loaded? = Code.ensure_loaded?(CodeMySpec.Stories)
 
-story_ids =
-  Enum.map(qa_stories, fn attrs ->
-    case Repo.one(
-           from s in Story,
-             where: s.title == ^attrs.title and s.project_id == ^project.id
-         ) do
-      nil ->
-        {:ok, story} = Stories.create_story(qa_scope, attrs)
-        IO.puts("  story: created \"#{story.title}\" (id=#{story.id})")
-        {attrs.title, story.id}
+{_story_ids, stories_block} =
+  if stories_table_exists? and stories_module_loaded? do
+    qa_scope = %{
+      scope
+      | active_account: account,
+        active_account_id: account.id,
+        active_project: project,
+        active_project_id: project.id
+    }
 
-      existing ->
-        IO.puts("  story: exists \"#{existing.title}\" (id=#{existing.id})")
-        {existing.title, existing.id}
-    end
-  end)
+    qa_stories = [
+      %{
+        title: "QA: Three Amigos UI smoke",
+        description:
+          "Dedicated story for exercising the Three Amigos LiveView wall (story 559's UI surface). All persona/rule/scenario/question mutations from QA land here, not on the real story 559.",
+        priority: 100
+      }
+    ]
 
-stories_block =
-  story_ids
-  |> Enum.map_join("\n", fn {title, id} ->
-    "  - #{title} (id=#{id})\n      http://127.0.0.1:4003/projects/qa-fixture-project/stories/#{id}/three-amigos"
-  end)
+    ids =
+      Enum.map(qa_stories, fn attrs ->
+        case Repo.one(
+               from s in Story,
+                 where: s.title == ^attrs.title and s.project_id == ^project.id
+             ) do
+          nil ->
+            {:ok, story} = Stories.create_story(qa_scope, attrs)
+            IO.puts("  story: created \"#{story.title}\" (id=#{story.id})")
+            {attrs.title, story.id}
+
+          existing ->
+            IO.puts("  story: exists \"#{existing.title}\" (id=#{existing.id})")
+            {existing.title, existing.id}
+        end
+      end)
+
+    block =
+      ids
+      |> Enum.map_join("\n", fn {title, id} ->
+        "  - #{title} (id=#{id})\n      http://127.0.0.1:4003/projects/qa-fixture-project/stories/#{id}/three-amigos"
+      end)
+
+    {ids, block}
+  else
+    IO.puts("  stories: skipped (table not found or module not loaded)")
+    {[], "  (stories table unavailable — run pending migrations)"}
+  end
 
 IO.puts("""
 

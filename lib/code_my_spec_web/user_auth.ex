@@ -42,7 +42,7 @@ defmodule CodeMySpecWeb.UserAuth do
 
     conn
     |> create_or_extend_session(user, params)
-    |> redirect(to: user_return_to || signed_in_path(conn))
+    |> redirect(to: user_return_to || signed_in_path(user))
   end
 
   @doc """
@@ -334,7 +334,10 @@ defmodule CodeMySpecWeb.UserAuth do
   end
 
   @doc "Returns the path to redirect to after log in."
-  # the user was already logged in, redirect to settings
+  # Called with a User struct directly (e.g. from log_in_user/3 before the scope plug runs)
+  def signed_in_path(%Users.User{}), do: ~p"/app/users/settings"
+
+  # Called with a Conn that already has current_scope populated (legacy callers)
   def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{user: %Users.User{}}}}) do
     ~p"/app/users/settings"
   end

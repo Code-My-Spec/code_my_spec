@@ -18,7 +18,7 @@ defmodule CodeMySpecWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/"
+      assert redirected_to(conn) == ~p"/app/users/settings"
 
       # Now do a logged in request and assert on the menu
       conn = get(conn, ~p"/")
@@ -40,7 +40,7 @@ defmodule CodeMySpecWeb.UserSessionControllerTest do
         })
 
       assert conn.resp_cookies["_code_my_spec_web_user_remember_me"]
-      assert redirected_to(conn) == ~p"/"
+      assert redirected_to(conn) == ~p"/app/users/settings"
     end
 
     test "logs the user in with return to", %{conn: conn, user: user} do
@@ -81,7 +81,7 @@ defmodule CodeMySpecWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/"
+      assert redirected_to(conn) == ~p"/app/users/settings"
 
       # Now do a logged in request and assert on the menu
       conn = get(conn, ~p"/")

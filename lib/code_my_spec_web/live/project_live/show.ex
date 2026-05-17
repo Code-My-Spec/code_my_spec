@@ -10,7 +10,7 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
-        Project {@project.id}
+        Project {@project.name}
         <:subtitle>This is a project record from your database.</:subtitle>
         <:actions>
           <.button navigate={~p"/app/projects"}>
