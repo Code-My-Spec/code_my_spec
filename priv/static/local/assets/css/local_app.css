@@ -2405,6 +2405,12 @@
       margin-bottom: 0;
     }
   }
+  .modal-action {
+    margin-top: calc(0.25rem * 6);
+    display: flex;
+    justify-content: flex-end;
+    gap: calc(0.25rem * 2);
+  }
   .-mt-1 {
     margin-top: calc(var(--spacing) * -1);
   }
