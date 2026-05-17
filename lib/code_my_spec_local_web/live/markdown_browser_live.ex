@@ -14,6 +14,7 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
 
   alias CodeMySpec.Knowledge
   alias CodeMySpec.Projects
+  alias CodeMySpec.Users.Scope
 
   # Library config + path resolution rules live in CodeMySpec.Knowledge —
   # the LiveView is the display surface, the lib module is the contract.
@@ -131,7 +132,18 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
     """
   end
 
-  defdelegate resolve_root(root, project_name), to: Knowledge
+  # Resolves a root spec ({:priv, _} | {:project, _}) for the given project_name.
+  # Mirrors MarkdownBrowserController.resolve_scope/1 + Knowledge.resolve_root/2
+  # so the LiveView and the API agree on path resolution. The previous
+  # `defdelegate resolve_root(root, project_name), to: Knowledge` passed args
+  # in the wrong order (and the wrong type for the scope arg), crashing every
+  # knowledge route with a FunctionClauseError.
+  defp resolve_root(root_spec, project_name) do
+    with {:ok, project} <- Projects.get_project_by_name(project_name),
+         {:ok, scope} <- Scope.for_local_project(project) do
+      Knowledge.resolve_root(scope, root_spec)
+    end
+  end
 
   defp build_index(config, dir_path, base_url) do
     back =
