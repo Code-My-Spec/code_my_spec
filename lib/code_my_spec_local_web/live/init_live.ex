@@ -49,6 +49,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
       flash={@flash}
       projects={@projects}
       project={@project}
+      section={:init}
       page_title={assigns[:page_title] || "Project Init"}
     >
       <div :if={@error} role="alert" class="alert alert-error">
