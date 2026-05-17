@@ -10,15 +10,17 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   "what's its depth?". Domain meaning lives on each node's FK
   fields (`entity_type`, `entity_id`, `parent_entity_id`).
 
-  Horizontal bands, top-to-bottom:
+  Canvas bands, top-to-bottom:
 
-  1. Project nodes upstream of any cross-entity edge (early chain).
+  1. Early project chain — vertical column at x=0, project nodes
+     upstream of any cross-entity edge stacking downward.
   2. Story bridge nodes upstream of any component
      (cross-entity sources/sinks not downstream of components).
   3. Component zone — one tree per top-level component, sized
      dynamically by child count and phase break depth.
   4. Story bridge nodes downstream of components.
-  5. Project nodes downstream of stories (late chain).
+  5. Late project chain — vertical column at x=0, project nodes
+     downstream of stories stacking downward.
 
   Phase breaks within a context tree are detected via
   `Topology.fans_out_to_children?/3` — wherever a parent-scope
@@ -119,26 +121,26 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     story_count = length(sorted_stories)
 
-    # --- Layer 1: Early project chain (horizontal row at top) ---
-    # Project gates lay out left-to-right in a single horizontal band
-    # so the canvas reads as three stacked bands — project on top,
-    # stories in the middle, components at the bottom — instead of
-    # a vertical stem that visually competes with the story spread.
+    # --- Layer 1: Early project chain (vertical column at top) ---
+    # Project gates stack top-to-bottom in a single vertical column
+    # centered at x=0. Edges flow strictly downward so the chain reads
+    # as a sequence of gates feeding into the story zone below.
     early_count = length(early_project)
 
     early_sigma =
       early_project
       |> Enum.with_index()
       |> Enum.map(fn {n, idx} ->
-        x = (idx - (early_count - 1) / 2) * @story_col_gap
-        mk_node(nkey(n), label(n), x, 0, 12, cls(n, actionable_set),
+        y = -(idx * @story_row_gap)
+        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set),
           entity_type: "project", name: n.name)
       end)
 
     # --- Layer 2: Pre-component story reqs (all stories, same Y band) ---
-    # One row gap below the project band (or anchored at 0 when there's
-    # no project band above).
-    story_start_y = if early_count > 0, do: -@row_gap, else: 0
+    # Anchored one row gap below the lowest early-project node (or at 0
+    # when there's no project band above).
+    story_start_y =
+      if early_count > 0, do: -(early_count - 1) * @story_row_gap - @row_gap, else: 0
 
     # Pre-component story nodes: every story node that is NOT
     # downstream of any component. This includes purely-internal
@@ -236,20 +238,19 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         end)
       end)
 
-    # --- Layer 5: Late project chain (horizontal row at bottom) ---
-    # Mirrors Layer 1's horizontal layout — single band of project
-    # nodes that consume story/component output, anchored one row
-    # below the post-story zone.
+    # --- Layer 5: Late project chain (vertical column at bottom) ---
+    # Mirrors Layer 1's vertical layout — single column at x=0 of
+    # project nodes that consume story/component output, anchored
+    # one row below the post-story zone and stacking downward.
     post_lowest_y = post_sigma |> Enum.map(& &1.attributes.y) |> Enum.min(fn -> post_zone_y end)
     late_start_y = post_lowest_y - @story_row_gap - @row_gap
-    late_count = length(late_project)
 
     late_sigma =
       late_project
       |> Enum.with_index()
       |> Enum.map(fn {n, idx} ->
-        x = (idx - (late_count - 1) / 2) * @story_col_gap
-        mk_node(nkey(n), label(n), x, late_start_y, 12, cls(n, actionable_set),
+        y = late_start_y - (idx * @story_row_gap)
+        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set),
           entity_type: "project", name: n.name)
       end)
 

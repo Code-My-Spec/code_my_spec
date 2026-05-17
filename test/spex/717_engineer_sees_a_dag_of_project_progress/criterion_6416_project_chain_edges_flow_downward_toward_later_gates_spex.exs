@@ -1,13 +1,12 @@
 defmodule CodeMySpecSpex.Story717.Criterion6416Spex do
   @moduledoc """
   Story 717 — Engineer sees a DAG of project progress
-  Criterion 6416 — Project chain edges flow rightward toward later gates.
+  Criterion 6416 — Project chain edges flow downward toward later gates.
 
   When the engineer opens the requirements graph view and the project
   chain has at least two project nodes with a dependency edge between
-  them, the source endpoint sits to the left of the target endpoint
-  and both endpoints share the same y coordinate — the project chain
-  lays out as a single horizontal band at the top.
+  them, the source endpoint sits above the target endpoint — the project
+  chain lays out as a single vertical column at the top of the canvas.
 
   Surface: `/projects/:project_name/requirements/graph?preload=true`
   LiveView render. We extract the `data-graph` JSON from the rendered
@@ -19,8 +18,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6416Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Intra-entity dependency edges flow toward their target — rightward in horizontal bands like the project chain" do
-    scenario "Project chain edges flow rightward toward later gates" do
+  spex "Intra-entity dependency edges flow toward their target — downward in the vertical project chain column" do
+    scenario "Project chain edges flow downward toward later gates" do
       given_ "the project chain has at least two project nodes (the default project always exposes a chain of gates)",
              context do
         {:ok, context}
@@ -35,7 +34,7 @@ defmodule CodeMySpecSpex.Story717.Criterion6416Spex do
         {:ok, Map.put(context, :graph, graph)}
       end
 
-      then_ "every intra-project edge flows rightward — source.x < target.x and source.y == target.y",
+      then_ "every intra-project edge flows downward — source.y > target.y",
             context do
         nodes_by_key = Map.new(context.graph["nodes"], fn n -> {n["key"], n} end)
 
@@ -57,11 +56,11 @@ defmodule CodeMySpecSpex.Story717.Criterion6416Spex do
               sy = source["attributes"]["y"],
               tx = target["attributes"]["x"],
               ty = target["attributes"]["y"],
-              not (sy == ty and sx < tx),
+              not (sy > ty),
               do: {e["key"], sx, sy, tx, ty}
 
         assert violations == [],
-               "edges that do not flow rightward in the project band: #{inspect(violations)}"
+               "edges that do not flow downward in the project column: #{inspect(violations)}"
 
         {:ok, context}
       end

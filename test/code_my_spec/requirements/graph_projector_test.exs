@@ -128,7 +128,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
   end
 
   describe "project_graph/1 topology-flow properties" do
-    test "intra-entity edges flow downward or rightward (toward target)", ctx do
+    test "intra-entity edges flow downward (toward target)", ctx do
       sync_three_children(ctx)
       %{nodes: nodes, edges: edges} = Requirements.project_graph(ctx.scope)
       sigma = GraphProjector.project_graph(ctx.scope)
@@ -143,12 +143,10 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
           ft != tt
         end)
 
-      # Layout invariant: intra-entity dependency edges must flow either
-      # DOWNWARD (source.y > target.y, vertical-band layouts like the
-      # story/component zones) or RIGHTWARD when source and target sit
-      # in the same horizontal band (source.y == target.y, source.x <
-      # target.x — the horizontal layout used by the project chain at
-      # top/bottom). Anything else is an upward/leftward arrow, which
+      # Layout invariant: intra-entity dependency edges must flow strictly
+      # DOWNWARD (source.y > target.y). Project, story, and component
+      # zones all stack their internal chains vertically — there is no
+      # horizontal-band layout, so an edge with source.y <= target.y
       # contradicts the visual dependency flow.
       violations =
         intra
@@ -167,13 +165,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
       assert violations == [], "edges with flipped flow: #{inspect(violations)}"
     end
 
-    defp flows_correctly?(%{x: sx, y: sy}, %{x: tx, y: ty}) do
-      cond do
-        sy > ty -> true
-        sy == ty and sx < tx -> true
-        true -> false
-      end
-    end
+    defp flows_correctly?(%{y: sy}, %{y: ty}), do: sy > ty
 
     test "fan-in nodes (indegree >= 2) sit at-or-below all their sources", ctx do
       sync_three_children(ctx)
