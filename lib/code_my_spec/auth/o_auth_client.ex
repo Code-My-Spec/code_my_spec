@@ -15,7 +15,7 @@ defmodule CodeMySpec.Auth.OAuthClient do
   alias CodeMySpec.ClientUsers.ClientUser
   alias CodeMySpec.Repo
 
-  @client_config_file ".codemyspec_client"
+  @client_config_prefix ".codemyspec_client"
 
   # --- Token Management ---
 
@@ -97,7 +97,7 @@ defmodule CodeMySpec.Auth.OAuthClient do
   Returns `{:ok, client_id, client_secret}`.
   """
   def get_or_register_client(server_base_url, redirect_uri \\ nil) do
-    config_path = Path.join(System.user_home!(), @client_config_file)
+    config_path = client_config_path(server_base_url)
 
     case File.read(config_path) do
       {:ok, content} ->
@@ -112,6 +112,19 @@ defmodule CodeMySpec.Auth.OAuthClient do
       {:error, _} ->
         register_new_client(config_path, server_base_url, redirect_uri)
     end
+  end
+
+  # Per-server credentials file so a dev cms (against dev.codemyspec.com on
+  # :4004) can coexist with a prod cms (against codemyspec.com on :4003).
+  # The host suffix isolates client_id + secret + the auth server's
+  # redirect_uri allowlist per server.
+  defp client_config_path(server_base_url) do
+    host =
+      server_base_url
+      |> URI.parse()
+      |> Map.get(:host, "default")
+
+    Path.join(System.user_home!(), "#{@client_config_prefix}_#{host}")
   end
 
   # --- PKCE & State Helpers ---
