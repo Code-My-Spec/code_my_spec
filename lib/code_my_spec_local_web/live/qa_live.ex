@@ -14,6 +14,8 @@ defmodule CodeMySpecLocalWeb.QaLive do
   alias CodeMySpec.Qa
   alias CodeMySpec.Users.Scope
 
+  @per_page 25
+
   @impl true
   def mount(_params, _session, socket) do
     projects = Projects.list_local_projects()
@@ -23,14 +25,19 @@ defmodule CodeMySpecLocalWeb.QaLive do
        projects: projects,
        project: nil,
        attempts: [],
+       page_attempts: [],
        include_older: false,
        include_invalidated: false,
+       page: 1,
+       per_page: @per_page,
+       total: 0,
+       total_pages: 1,
        error: nil
      )}
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
+  def handle_params(%{"project_name" => name} = params, _uri, socket) do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
       socket =
@@ -38,6 +45,7 @@ defmodule CodeMySpecLocalWeb.QaLive do
         |> assign(
           project: project,
           scope: scope,
+          page: parse_page(params),
           page_title: "#{project.name} — QA",
           error: nil
         )
@@ -54,6 +62,7 @@ defmodule CodeMySpecLocalWeb.QaLive do
   def handle_event("toggle_older", _params, socket) do
     socket
     |> update(:include_older, &(!&1))
+    |> assign(:page, 1)
     |> load_attempts()
     |> then(&{:noreply, &1})
   end
@@ -61,8 +70,22 @@ defmodule CodeMySpecLocalWeb.QaLive do
   def handle_event("toggle_invalidated", _params, socket) do
     socket
     |> update(:include_invalidated, &(!&1))
+    |> assign(:page, 1)
     |> load_attempts()
     |> then(&{:noreply, &1})
+  end
+
+  def handle_event("go_to_page", %{"page" => raw}, socket) do
+    case Integer.parse(to_string(raw)) do
+      {n, _} when n >= 1 ->
+        {:noreply,
+         socket
+         |> assign(:page, min(n, socket.assigns.total_pages))
+         |> paginate()}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   defp load_attempts(%{assigns: %{scope: scope}} = socket) do
@@ -72,10 +95,36 @@ defmodule CodeMySpecLocalWeb.QaLive do
         include_invalidated: socket.assigns.include_invalidated
       )
 
-    assign(socket, attempts: attempts)
+    socket
+    |> assign(attempts: attempts, total: length(attempts))
+    |> paginate()
   end
 
   defp load_attempts(socket), do: socket
+
+  defp paginate(socket) do
+    per_page = socket.assigns.per_page
+    total = socket.assigns.total
+    total_pages = max(1, div(total + per_page - 1, per_page))
+    page = socket.assigns.page |> max(1) |> min(total_pages)
+    offset = (page - 1) * per_page
+    page_attempts = socket.assigns.attempts |> Enum.drop(offset) |> Enum.take(per_page)
+
+    assign(socket,
+      page: page,
+      total_pages: total_pages,
+      page_attempts: page_attempts
+    )
+  end
+
+  defp parse_page(%{"page" => raw}) do
+    case Integer.parse(to_string(raw)) do
+      {n, _} when n >= 1 -> n
+      _ -> 1
+    end
+  end
+
+  defp parse_page(_), do: 1
 
   @impl true
   def render(assigns) do
@@ -94,7 +143,7 @@ defmodule CodeMySpecLocalWeb.QaLive do
       <div :if={!@error && @project}>
         <div class="flex items-center justify-between mb-6">
           <h1 class="text-3xl font-bold">
-            QA <span class="text-base-content/50 font-normal text-xl">({length(@attempts)})</span>
+            QA <span class="text-base-content/50 font-normal text-xl">({@total})</span>
           </h1>
         </div>
 
@@ -143,13 +192,50 @@ defmodule CodeMySpecLocalWeb.QaLive do
             </thead>
             <tbody>
               <.attempt_row
-                :for={attempt <- @attempts}
+                :for={attempt <- @page_attempts}
                 attempt={attempt}
                 project={@project}
               />
             </tbody>
           </table>
         </div>
+
+        <nav
+          :if={@total_pages > 1}
+          class="flex items-center justify-between mt-4"
+          aria-label="QA index pagination"
+          data-role="qa-index-pagination"
+        >
+          <div class="text-sm text-base-content/60">
+            Showing {page_first(@page, @per_page, @total)}–{page_last(@page, @per_page, @total)} of {@total}
+          </div>
+
+          <div class="join">
+            <button
+              type="button"
+              class="btn btn-sm join-item"
+              data-role="qa-index-page-prev"
+              phx-click="go_to_page"
+              phx-value-page={@page - 1}
+              disabled={@page <= 1}
+            >
+              Prev
+            </button>
+            <span class="btn btn-sm join-item btn-disabled no-animation">
+              Page {@page} / {@total_pages}
+            </span>
+            <button
+              type="button"
+              class="btn btn-sm join-item"
+              data-role="qa-index-page-next"
+              phx-click="go_to_page"
+              phx-value-page={@page + 1}
+              disabled={@page >= @total_pages}
+            >
+              Next
+            </button>
+          </div>
+        </nav>
       </div>
     </Layouts.app>
     """
@@ -216,4 +302,8 @@ defmodule CodeMySpecLocalWeb.QaLive do
   end
 
   defp format_dt(other), do: to_string(other)
+
+  defp page_first(_page, _per, 0), do: 0
+  defp page_first(page, per, _total), do: (page - 1) * per + 1
+  defp page_last(page, per, total), do: min(page * per, total)
 end
