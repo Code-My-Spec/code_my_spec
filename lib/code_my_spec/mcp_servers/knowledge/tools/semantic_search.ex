@@ -18,8 +18,9 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
   - `hexdocs:<package>` — a specific hex package, e.g. `hexdocs:phoenix`
 
   Embeddings are auto-maintained by `sync_project` — running it picks up
-  any changed knowledge/spec/rule files and refreshes their vectors.
-  Hex package embeddings are still managed via `embed_hexdocs`.
+  any changed knowledge/spec/rule files, projects hex docs from compiled
+  deps, and refreshes all vectors. There is no separate `embed_docs` or
+  `embed_hexdocs` tool; `sync_project` is the single entry point.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -88,7 +89,7 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch do
   end
 
   defp format_body([]),
-    do: "\nNo matches found. Run `sync_project` to refresh project/knowledge/spec/rule embeddings, or `embed_hexdocs` for hex package embeddings."
+    do: "\nNo matches found. Run `sync_project` to refresh all embeddings (project knowledge, specs, rules, hex docs)."
 
   defp format_body(results) do
     Enum.map_join(results, "\n\n---\n\n", &format_result/1)
