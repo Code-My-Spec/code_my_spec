@@ -339,21 +339,54 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # global topological depth from the full requirement graph.
   #
   # Approach: layered by global depth (the same depth map used for story and project
-  # zone ordering). All nodes at the same global depth share the same y, so edges
-  # between any two component nodes always flow from shallower (higher y) to deeper
-  # (lower y), eliminating upward or horizontal cross-tree edges.
+  # zone ordering). Nodes at the same global depth share the same y across
+  # components, so cross-component edges always flow from shallower
+  # (higher y) to deeper (lower y), eliminating upward or horizontal
+  # cross-tree edges.
   #
-  # The x coordinates from the tier/tree layout pass are preserved unchanged.
+  # Within a single component, two requirements can land at the same global
+  # depth (e.g. `test_file` and `implementation_file` both depending on
+  # `spec_valid`, both at depth 2). Those would otherwise render on top of
+  # each other AND would violate the "every requirement renders" invariant.
+  # The `spread_y_for_same_entity_collisions/1` pass nudges same-entity
+  # same-y nodes a quarter `@ctx_req_gap` further down per sibling — small
+  # enough that cross-component downward flow is preserved (the next
+  # deeper depth-band is a full `@ctx_req_gap` below), while keeping the
+  # entity's x column intact (which the entity-level invariant in
+  # `GraphProjectorTest` asserts).
   defp normalize_comp_zone_y([], _depth_by_key, _comp_zone_y), do: []
 
   defp normalize_comp_zone_y(comp_nodes, depth_by_key, comp_zone_y) do
     depths = Enum.map(comp_nodes, fn n -> Map.get(depth_by_key, n.key, 0) end)
     min_depth = Enum.min(depths)
 
-    Enum.map(comp_nodes, fn n ->
+    comp_nodes
+    |> Enum.map(fn n ->
       d = Map.get(depth_by_key, n.key, 0)
       new_y = comp_zone_y - (d - min_depth) * @ctx_req_gap
       %{n | attributes: %{n.attributes | y: new_y}}
+    end)
+    |> spread_y_for_same_entity_collisions()
+  end
+
+  defp spread_y_for_same_entity_collisions(nodes) do
+    nodes
+    |> Enum.group_by(fn n -> {n.attributes.entity_id, n.attributes.y} end)
+    |> Enum.flat_map(fn
+      {_, [single]} ->
+        [single]
+
+      {_, siblings} ->
+        spread_step = div(@ctx_req_gap, 4)
+        # Sort for deterministic ordering — node `key` is unique and stable.
+        sorted = Enum.sort_by(siblings, & &1.key)
+
+        sorted
+        |> Enum.with_index()
+        |> Enum.map(fn {n, idx} ->
+          new_y = n.attributes.y - idx * spread_step
+          %{n | attributes: %{n.attributes | y: new_y}}
+        end)
     end)
   end
 
