@@ -352,16 +352,18 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   describe "evaluate/3 test phase" do
     setup [:create_scope, :create_story, :create_task, :create_qa_plan]
 
-    test "returns invalid when brief is valid but result doesn't exist", %{
+    test "returns valid when brief is present but result is missing (DB-only completion)", %{
       scope: scope,
       task: task,
       story: story
     } do
+      # Result is no longer required; `submit_qa_result` is the canonical
+      # completion path. A brief with no result is a fine intermediate
+      # state — the agent finished planning and either ran the tests in
+      # the BEAM/browser or aborted (issue a15c252b).
       write_story_brief(scope.environment, story.id)
 
-      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-      assert feedback =~ "Brief validated"
-      assert feedback =~ "result"
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
     end
 
     test "returns invalid when result is missing required sections", %{
@@ -384,17 +386,12 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert feedback =~ "invalid"
     end
 
-    test "feedback names the result path when brief is valid but result is missing", %{
-      scope: scope,
-      task: task,
-      story: story
-    } do
-      write_story_brief(scope.environment, story.id)
-
-      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-      assert feedback =~ "Brief validated"
-      assert feedback =~ ".code_my_spec/qa/#{story.id}/result.md"
-    end
+    # NOTE: previously asserted that a missing result.md surfaced
+    # "Brief validated; now write result" feedback. Result is no longer
+    # required (issue a15c252b) — `submit_qa_result` is the canonical
+    # completion path — so the brief-only state is now `:valid`. The
+    # path-naming behavior of the prompt remains in the start_task
+    # output; only the evaluator stopped demanding it.
 
     test "feedback on invalid result also includes result format spec", %{
       scope: scope,

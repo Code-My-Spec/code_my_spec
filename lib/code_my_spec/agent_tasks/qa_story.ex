@@ -80,9 +80,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           # Cutover short-circuit: a DB-backed pass attempt exists for
           # this story. The legacy file-validation chain (plan/brief/
           # result on disk) is obsolete once `submit_qa_result` has
-          # landed, so skip it. The brief.md file is now optional per
-          # story 726 R4; result.md is replaced entirely by the
-          # `qa_attempts` row + `list_qa_attempts` MCP tool.
+          # landed, so skip it.
           Logger.info("[QaStory] evaluate(#{story_id}): DB attempt satisfies qa_complete; skipping legacy file checks")
           {:ok, :valid}
 
@@ -92,15 +90,49 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
+  defp brief_exists?(env, story_id) do
+    case Environments.read_file(env, brief_path(story_id)) do
+      {:ok, content} when is_binary(content) and byte_size(content) > 0 -> true
+      _ -> false
+    end
+  end
+
   defp do_evaluate(scope, env, story_id) do
     with :ok <- check_plan(env),
          :ok <- check_brief(env, story_id),
-         {:ok, document} <- check_result(env, story_id) do
-      finalize_result(scope, story_id, document)
+         :ok <- maybe_check_result(scope, env, story_id) do
+      {:ok, :valid}
     else
       {:ok, :invalid, feedback} = result ->
         Logger.info("[QaStory] evaluate: invalid — #{String.slice(feedback, 0..120)}")
         result
+    end
+  end
+
+  # Result is no longer required in any case — `submit_qa_result` is the
+  # canonical completion path, and result.md is now an optional human-
+  # readable evidence trail. When present, validate format and file
+  # issues from it. When absent, accept silently — the agent will call
+  # `submit_qa_result` to land the typed attempt (issue a15c252b).
+  defp maybe_check_result(scope, env, story_id) do
+    if result_exists?(env, story_id) do
+      case check_result(env, story_id) do
+        {:ok, document} ->
+          finalize_result(scope, story_id, document)
+          :ok
+
+        other ->
+          other
+      end
+    else
+      :ok
+    end
+  end
+
+  defp result_exists?(env, story_id) do
+    case Environments.read_file(env, result_path(story_id)) do
+      {:ok, content} when is_binary(content) and byte_size(content) > 0 -> true
+      _ -> false
     end
   end
 

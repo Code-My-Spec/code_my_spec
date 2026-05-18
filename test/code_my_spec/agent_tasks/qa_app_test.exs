@@ -303,7 +303,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert {:ok, :valid} = QaApp.evaluate(scope, task)
     end
 
-    test "returns invalid when story has brief but no result", %{scope: scope} do
+    test "returns valid when story has brief but no result (DB-only path)", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
@@ -311,8 +311,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       write_story_brief(scope.environment, story.id)
       write_qa_summary(scope.environment)
 
-      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
-      assert feedback =~ "Story #{story.id}"
+      # Result is no longer required (issue a15c252b) — `submit_qa_result`
+      # is the canonical completion path. Brief-only is a valid state.
+      assert {:ok, :valid} = QaApp.evaluate(scope, task)
     end
 
     test "returns invalid when stories pass but summary missing", %{scope: scope} do
