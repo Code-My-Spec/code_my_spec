@@ -706,25 +706,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     build_edges_for_scopes(from_scope, def.node_scope, from_keys, to_keys)
   end
 
-  # Walk the original template backwards looking for an effective prereq
-  # — a def that has actual node instances. Skip past two flavors of
-  # "no instances":
-  #
-  #   1. Defs filtered out by config (no entry in `id_map` at all).
-  #   2. Defs that survived filtering but whose scope has no instances
-  #      (entry in `id_map` is `[]`) — e.g., a `:child` def for a
-  #      component with no children.
-  #
-  # Both cases produce an empty `from_keys` in `edges_from_effective_prereq`,
-  # so an edge built from them is silently dropped and the chain breaks.
-  # The walk continues through both flavors so the splice lands on a def
-  # that will actually generate edges.
+  # Walk the original template backwards through any defs that were
+  # filtered out by config (and thus have no entry in `id_map`).
+  # The walk terminates the moment it reaches a def that survived
+  # filtering — even if that def's scope has no instances. This keeps
+  # the splice scoped to the configuration-induced gap, leaving the
+  # natural no-children chain shape unchanged for unfiltered runs.
   defp walk_past_filtered(prereq_id, by_id, id_map, visited) do
     cond do
       MapSet.member?(visited, prereq_id) ->
         []
 
-      has_instances?(id_map, prereq_id) ->
+      Map.has_key?(id_map, prereq_id) ->
         [prereq_id]
 
       true ->
@@ -739,13 +732,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             |> Enum.flat_map(&walk_past_filtered(&1, by_id, id_map, visited))
             |> Enum.uniq()
         end
-    end
-  end
-
-  defp has_instances?(id_map, id) do
-    case Map.get(id_map, id) do
-      [_ | _] -> true
-      _ -> false
     end
   end
 
