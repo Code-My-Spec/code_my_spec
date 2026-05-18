@@ -80,44 +80,13 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   # ============================================================================
 
   defp pull_from_remote(scope) do
-    remote_client = Issues.remote_client()
-
-    case remote_client.list_incoming_issues(scope) do
-      {:ok, issues} ->
-        upsert_remote_issues(scope, issues)
+    case Issues.pull_incoming_from_remote(scope) do
+      {:ok, _issues} ->
         :ok
 
       {:error, reason} ->
         {:error, {:server_unreachable, format_unreachable_error(reason)}}
     end
-  end
-
-  defp upsert_remote_issues(scope, issues) do
-    Enum.each(issues, fn issue ->
-      attrs = %{
-        title: issue.title,
-        severity: issue.severity,
-        scope: issue.scope,
-        description: issue.description,
-        source: "server",
-        status: :incoming,
-        story_id: issue.story_id,
-        source_path: issue.source_path
-      }
-
-      changeset =
-        %Issue{id: issue.id}
-        |> Issue.changeset(attrs)
-        |> Ecto.Changeset.put_change(:project_id, scope.active_project_id)
-        |> Ecto.Changeset.put_change(:account_id, scope.active_account_id)
-        |> Ecto.Changeset.put_change(:source, "server")
-        |> Ecto.Changeset.put_change(:status, :incoming)
-
-      CodeMySpec.Repo.insert(changeset,
-        on_conflict: {:replace_all_except, [:id, :inserted_at]},
-        conflict_target: :id
-      )
-    end)
   end
 
   defp format_unreachable_error(:server_unreachable) do

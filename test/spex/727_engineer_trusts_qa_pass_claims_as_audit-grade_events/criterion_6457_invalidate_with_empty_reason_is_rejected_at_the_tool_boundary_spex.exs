@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.{InvalidateQaAttempt, SubmitQaResult}
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -74,10 +74,12 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
       end
 
       and_ "qa_complete remains satisfied (no invalidation was recorded)", context do
-        # Observed via Qa.qa_complete?/2 — the public context function the
-        # requirement checker delegates to.
-        assert CodeMySpec.Qa.qa_complete?(context.scope, context.story.id),
-               "expected Qa.qa_complete? still true after a rejected empty-reason invalidate"
+        # Observed via list_requirements — the agent-facing MCP surface for
+        # requirement satisfaction.
+        qa_text = satisfied_qa_complete_text(context.scope)
+
+        assert qa_text =~ context.story.title,
+               "expected qa_complete still satisfied for story #{context.story.title} after a rejected empty-reason invalidate, got:\n#{qa_text}"
 
         {:ok, context}
       end

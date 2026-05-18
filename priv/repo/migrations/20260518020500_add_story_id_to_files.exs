@@ -9,11 +9,43 @@ defmodule CodeMySpec.Repo.Migrations.AddStoryIdToFiles do
   # `show_component_requirements`, `show_story_requirements`) crashed
   # with `undefined_column`. The CLI SQLite migration already had this
   # — bringing Postgres in line.
-  def change do
-    alter table(:files) do
-      add :story_id, references(:stories, on_delete: :nilify_all)
-    end
+  #
+  # Uses raw SQL with conditional DDL so the migration is idempotent for
+  # test databases that were seeded from the edited `create_files`
+  # migration which already included the column and FK constraint.
+  def up do
+    execute """
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'files' AND column_name = 'story_id'
+      ) THEN
+        ALTER TABLE files ADD COLUMN story_id bigint REFERENCES stories(id) ON DELETE SET NULL;
+      END IF;
+    END
+    $$;
+    """
 
-    create index(:files, [:story_id])
+    execute """
+    CREATE INDEX IF NOT EXISTS files_story_id_index ON files (story_id);
+    """
+  end
+
+  def down do
+    execute "DROP INDEX IF EXISTS files_story_id_index;"
+
+    execute """
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'files' AND column_name = 'story_id'
+      ) THEN
+        ALTER TABLE files DROP COLUMN story_id;
+      END IF;
+    END
+    $$;
+    """
   end
 end

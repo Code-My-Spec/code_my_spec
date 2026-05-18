@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6251Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6251Spex do
 
       when_ "the agent calls Init.PhoenixProject.command on the scope",
             context do
-        {:ok, prompt} = Init.PhoenixProject.command(context.scope, %{})
+        {:ok, prompt} = Fixtures.init_phoenix_project_command(context.scope, %{})
         {:ok, Map.put(context, :prompt, prompt)}
       end
 

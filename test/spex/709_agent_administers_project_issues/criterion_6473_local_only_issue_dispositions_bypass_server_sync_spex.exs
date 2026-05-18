@@ -16,11 +16,11 @@ defmodule CodeMySpecSpex.Story709.Criterion6473Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.Issues.RemoteClientStub
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story709.Criterion6473Spex do
       end
 
       given_ "the remote server is unreachable (to prove the local path doesn't try to talk to it)", context do
-        :ok = RemoteClientStub.simulate_unreachable(true)
+        :ok = Fixtures.simulate_server_unreachable(true)
         {:ok, context}
       end
 
@@ -79,17 +79,17 @@ defmodule CodeMySpecSpex.Story709.Criterion6473Spex do
         {:reply, response, _} = GetIssue.execute(%{issue_id: context.issue_id}, frame)
         text = response_text(response)
 
-        assert text =~ ~r/status:?\s*accepted/i,
+        assert text =~ ~r/status[:*\s]+accepted/i,
                "expected local-only issue to show :accepted, got: #{inspect(text)}"
 
         {:ok, context}
       end
 
       then_ "the remote client received NO update calls for this issue id", context do
-        calls = RemoteClientStub.update_calls_for(context.issue_id)
+        calls = Fixtures.server_update_calls_for(context.issue_id)
 
         assert calls == [],
-               "expected RemoteClientStub to have received NO update calls for local-only issue #{context.issue_id}, but got: #{inspect(calls)}"
+               "expected the server to have received NO update calls for local-only issue #{context.issue_id}, but got: #{inspect(calls)}"
 
         {:ok, context}
       end

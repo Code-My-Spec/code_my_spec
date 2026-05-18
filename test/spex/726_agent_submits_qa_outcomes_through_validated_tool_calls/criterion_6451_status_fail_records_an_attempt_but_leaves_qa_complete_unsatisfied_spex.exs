@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6451Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -64,10 +64,13 @@ defmodule CodeMySpecSpex.Story726.Criterion6451Spex do
       end
 
       and_ "qa_complete remains unsatisfied for the story", context do
-        # Observed via Qa.complete?/2 — the public context function the
-        # requirement checker delegates to.
-        refute CodeMySpec.Qa.qa_complete?(context.scope, context.story.id),
-               "expected Qa.complete? false after failing submit"
+        # Observed via list_requirements — the agent-facing MCP surface for
+        # requirement satisfaction. The story should NOT appear under the
+        # satisfied=qa_complete filter.
+        qa_text = satisfied_qa_complete_text(context.scope)
+
+        refute qa_text =~ context.story.title,
+               "expected qa_complete UNsatisfied for story #{context.story.title} after failing submit, got:\n#{qa_text}"
 
         {:ok, context}
       end

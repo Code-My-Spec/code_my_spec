@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Fixtures do
     ProblemsFixtures,
     ProjectsFixtures,
     ProjectSync,
+    Qa,
     QaFixtures,
     QaIntegrationPlanFixtures,
     Sessions,
@@ -43,6 +44,7 @@ defmodule CodeMySpecSpex.Fixtures do
     UsersFixtures
   }
 
+  alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Users.Scope
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
@@ -177,6 +179,27 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Permissions.TapOut.respond(scope, session, request_id, decision)
   end
 
+  @doc """
+  Returns the PubSub topic that tap-out events are broadcast on.
+
+  Spex subscribe to this topic to assert that `tap_out` MCP calls
+  publish the expected messages without referencing the internal
+  `CodeMySpec.Permissions.TapOut` module directly.
+  """
+  @spec tap_out_pubsub_topic() :: String.t()
+  def tap_out_pubsub_topic, do: "permissions:tap_out"
+
+  @doc """
+  Looks up a session by its external conversation id (the string the
+  agent passes as `session_id` in hook calls). Returns the DB row so
+  spex can extract the UUID needed for LiveView route params.
+  """
+  @spec get_session_by_external_id(Scope.t(), String.t()) :: CodeMySpec.Sessions.Session.t() | nil
+  def get_session_by_external_id(%Scope{} = scope, session_external_id)
+      when is_binary(session_external_id) do
+    Sessions.get_by_external_id(scope, session_external_id)
+  end
+
   # -- Sub-agent registration with custom heartbeat (Story 704) --
   @doc """
   Register a sub-agent on a session with a specific `last_heartbeat_at`.
@@ -279,6 +302,18 @@ defmodule CodeMySpecSpex.Fixtures do
 
     {story, task_id, session}
   end
+
+  # -- QA completion predicate (Stories 726/727) --
+  @doc """
+  Returns whether the `qa_complete` requirement is satisfied for the
+  given story. Delegates to `CodeMySpec.Qa.qa_complete?/2` — the same
+  function the requirement checker's `:delegate` config calls.
+
+  Spex `then_` steps use this instead of referencing `CodeMySpec.Qa`
+  directly, preserving the boundary invariant.
+  """
+  @spec qa_complete?(Scope.t(), String.t()) :: boolean()
+  def qa_complete?(scope, story_id), do: Qa.qa_complete?(scope, story_id)
 
   # -- Components --
   defdelegate get_component_by_module_name(scope, module_name), to: Components
@@ -389,4 +424,94 @@ defmodule CodeMySpecSpex.Fixtures do
   def captured_framework_issues do
     CodeMySpec.Issues.RemoteClientStub.stored_issues()
   end
+
+  @doc """
+  Seeds a server-side incoming issue on the stub. Spex use this to
+  prime the "server" before calling `start_task` for `issues_triaged`
+  (which triggers the triage-start pull) or `accept_issue` /
+  `dismiss_issue` / `resolve_issue` on a server-origin record.
+  """
+  def seed_server_incoming_issue(scope, attrs) do
+    CodeMySpec.Issues.RemoteClientStub.seed_incoming_issue(scope, attrs)
+  end
+
+  @doc """
+  Toggles the simulated server-unreachable flag on the stub. Set
+  `true` before a `when_` step to exercise the fail-loud paths in 599
+  (triage start) and 709 (disposition sync-back).
+  """
+  def simulate_server_unreachable(flag) when is_boolean(flag) do
+    CodeMySpec.Issues.RemoteClientStub.simulate_unreachable(flag)
+  end
+
+  @doc """
+  Drives `Issues.pull_incoming_from_remote/1` through the bridge so
+  spex can stage the "after triage-start pull" state without calling
+  `start_task` end-to-end (used by 709's disposition spex to focus on
+  the sync-back rule, not the pull rule).
+  """
+  def sync_server_issues_to_local(scope) do
+    CodeMySpec.Issues.RemoteClientStub.pull_to_local(scope)
+  end
+
+  @doc """
+  Returns the recorded `update_issue` calls the stub captured for a
+  given issue id. Lets `then_` steps assert "the local disposition
+  round-tripped to the server" through the approved bridge.
+  """
+  def server_update_calls_for(issue_id) when is_binary(issue_id) do
+    CodeMySpec.Issues.RemoteClientStub.update_calls_for(issue_id)
+  end
+
+  # -- Init sub-step surfaces (Story 711) --
+
+  @doc """
+  Runs `AgentTasks.Init.command/2` through the bridge. Spex use this
+  to exercise the aggregate init prompt surface without referencing the
+  internal `AgentTasks.Init` namespace directly.
+  """
+  def init_command(scope, opts \\ %{}), do: Init.command(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.Elixir.evaluate/2` through the bridge.
+  """
+  def init_elixir_evaluate(scope, opts \\ %{}), do: Init.Elixir.evaluate(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.PhoenixInstaller.evaluate/2` through the bridge.
+  """
+  def init_phoenix_installer_evaluate(scope, opts \\ %{}),
+    do: Init.PhoenixInstaller.evaluate(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.PhoenixProject.evaluate/2` through the bridge.
+  """
+  def init_phoenix_project_evaluate(scope, opts \\ %{}),
+    do: Init.PhoenixProject.evaluate(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.PhoenixProject.command/2` through the bridge.
+  """
+  def init_phoenix_project_command(scope, opts \\ %{}),
+    do: Init.PhoenixProject.command(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.Auth.evaluate/2` through the bridge.
+  """
+  def init_auth_evaluate(scope, opts \\ %{}), do: Init.Auth.evaluate(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.Auth.command/2` through the bridge.
+  """
+  def init_auth_command(scope, opts \\ %{}), do: Init.Auth.command(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.CliConfig.evaluate/2` through the bridge.
+  """
+  def init_cli_config_evaluate(scope, opts \\ %{}), do: Init.CliConfig.evaluate(scope, opts)
+
+  @doc """
+  Runs `AgentTasks.Init.CliConfig.command/2` through the bridge.
+  """
+  def init_cli_config_command(scope, opts \\ %{}), do: Init.CliConfig.command(scope, opts)
 end

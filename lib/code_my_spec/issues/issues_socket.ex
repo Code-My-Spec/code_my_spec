@@ -117,11 +117,18 @@ defmodule CodeMySpec.Issues.IssuesSocket do
       account_id: payload["account_id"]
     }
 
+    # Socket-delivered events are by definition server-origin — set
+    # `synced_from_server: true` so the upsert (which uses
+    # `replace_all_except [:id, :inserted_at]`) doesn't clobber the
+    # flag with the schema default on conflict, and so future local
+    # dispositions on this row route back through
+    # `sync_disposition_to_remote/4`.
     %Issue{id: payload["id"]}
     |> Issue.changeset(attrs)
     |> Ecto.Changeset.put_change(:project_id, payload["project_id"])
     |> Ecto.Changeset.put_change(:account_id, payload["account_id"])
     |> Ecto.Changeset.put_change(:status, safe_atom(payload["status"]))
+    |> Ecto.Changeset.put_change(:synced_from_server, true)
     |> CodeMySpec.Repo.insert(
       on_conflict: {:replace_all_except, [:id, :inserted_at]},
       conflict_target: :id

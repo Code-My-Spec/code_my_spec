@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.{InvalidateQaAttempt, ListQaAttempts, SubmitQaResult}
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -66,10 +66,14 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
       end
 
       then_ "qa_complete is no longer satisfied for the story", context do
-        # Observed via Qa.qa_complete?/2 — the public context function the
-        # requirement checker delegates to.
-        refute CodeMySpec.Qa.qa_complete?(context.scope, context.story.id),
-               "expected Qa.qa_complete? false after invalidating the only pass"
+        # Observed via list_requirements — the agent-facing MCP surface for
+        # requirement satisfaction. The story should NOT appear under the
+        # satisfied=qa_complete filter after the only passed attempt is
+        # invalidated.
+        qa_text = satisfied_qa_complete_text(context.scope)
+
+        refute qa_text =~ context.story.title,
+               "expected qa_complete UNsatisfied for story #{context.story.title} after invalidating the only pass, got:\n#{qa_text}"
 
         {:ok, context}
       end

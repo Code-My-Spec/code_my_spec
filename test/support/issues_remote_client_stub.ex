@@ -23,7 +23,6 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
   """
 
   alias CodeMySpec.Issues.Issue
-  alias CodeMySpec.Issues.IssuesRepository
   alias CodeMySpec.Users.Scope
 
   # ETS table keys stored in process dictionary
@@ -86,48 +85,17 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
   @doc """
   Pulls all server-side seeded issues into the local DB.
 
-  Mirrors what `TriageIssues.command/2` does on triage start: fetches
-  from the stub's remote store and upserts into the Ecto Repo with
-  `source: "server"` so `AcceptIssue` can detect server-origin issues
-  later.
+  Delegates to `CodeMySpec.Issues.pull_incoming_from_remote/1` so the
+  same code path triage start exercises is used here. Sets
+  `synced_from_server: true` on each upserted row (via
+  `IssuesRepository.upsert_from_server/2`) so dispositions on these
+  issues route back through `update_issue/4`.
 
   Returns `{:ok, [%Issue{}]}` on success or `{:error, reason}` when
   the stub is simulating unreachability.
   """
   def pull_to_local(%Scope{} = scope) do
-    case list_incoming_issues(scope) do
-      {:ok, issues} ->
-        Enum.each(issues, fn issue ->
-          attrs = %{
-            title: issue.title,
-            severity: issue.severity,
-            scope: issue.scope,
-            description: issue.description,
-            source: "server",
-            status: :incoming,
-            story_id: issue.story_id,
-            source_path: issue.source_path
-          }
-
-          changeset =
-            %Issue{id: issue.id}
-            |> Issue.changeset(attrs)
-            |> Ecto.Changeset.put_change(:project_id, scope.active_project_id)
-            |> Ecto.Changeset.put_change(:account_id, scope.active_account_id)
-            |> Ecto.Changeset.put_change(:source, "server")
-            |> Ecto.Changeset.put_change(:status, :incoming)
-
-          CodeMySpec.Repo.insert(changeset,
-            on_conflict: {:replace_all_except, [:id, :inserted_at]},
-            conflict_target: :id
-          )
-        end)
-
-        {:ok, issues}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    CodeMySpec.Issues.pull_incoming_from_remote(scope)
   end
 
   @doc """

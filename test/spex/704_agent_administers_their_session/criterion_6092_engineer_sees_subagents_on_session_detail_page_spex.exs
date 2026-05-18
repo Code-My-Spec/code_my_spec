@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6092Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Sessions
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6092Spex do
           )
 
         # We need the session's DB id (UUID) for the LiveView route
-        session = Sessions.get_by_external_id(context.scope, session_id)
+        session = Fixtures.get_session_by_external_id(context.scope, session_id)
 
         {:ok,
          Map.merge(context, %{

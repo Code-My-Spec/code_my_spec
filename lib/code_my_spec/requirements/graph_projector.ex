@@ -26,6 +26,33 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   `Topology.fans_out_to_children?/3` — wherever a parent-scope
   node has same-`entity_type` outgoing edges to nodes with a
   different `entity_id`.
+
+  ## Component zone layout invariants
+
+  The component zone uses two passes to guarantee downward edge flow:
+
+  1. **Tier-based tree layout** (`project_layout/2`, `place_component_trees/2`):
+     Components are grouped into dependency-depth tiers (depth 0 = no deps,
+     depth N = max(dep depths)+1). Within each tier, trees are placed
+     horizontally side by side. This establishes correct x positions.
+
+  2. **Global-depth y normalization** (`normalize_comp_zone_y/3`):
+     After tier layout, every component node's y is overwritten with
+     `comp_zone_y - (global_topo_depth - min_comp_topo_depth) * @ctx_req_gap`
+     where `global_topo_depth` comes from the full requirement graph's
+     topological depth map. This ensures that any two nodes connected by
+     a cross-component edge have strictly decreasing y (source.y > target.y),
+     regardless of which tree they live in or where within that tree
+     they appear locally.
+
+  ## Band-padding invariant
+
+  `comp_zone_y` is derived from `Enum.min` of ALL pre-component story node
+  y values — the worst-case deepest story column across all story columns.
+  Then a `@story_row_gap + @row_gap` pad is subtracted so the component zone
+  starts cleanly below the lowest pre-story node. This guarantees the
+  pre-story band never overlaps the component band regardless of how many
+  columns or rows the story zone spans.
   """
 
   alias CodeMySpec.Components
@@ -51,7 +78,12 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @row_gap 500
   @story_col_gap 700
   @story_row_gap 350
+  # Component zone gap constants — defined here so normalize_comp_zone_y/3 can use them.
   # @comp_gap and @comp_zone_height removed — component zone is now dynamic
+  @ctx_req_gap 250
+  @child_col_gap 350
+  @child_req_gap 200
+  @tree_gap 300
 
   @spec project_graph(Scope.t()) :: map()
   def project_graph(%Scope{} = scope) do
@@ -170,6 +202,10 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       end)
 
     # --- Layer 3: Expanded component zone (layered by dependency depth) ---
+    # Band-padding invariant: comp_zone_y is derived from the minimum y of ALL
+    # pre-component story nodes (worst-case deepest column across all story columns),
+    # then padded by @story_row_gap + @row_gap to guarantee no overlap between the
+    # pre-story band and the component band regardless of story column count or depth.
     pre_height = pre_sigma |> Enum.map(& &1.attributes.y) |> Enum.min(fn -> story_start_y end)
     comp_zone_y = pre_height - @story_row_gap - @row_gap
 
@@ -202,8 +238,14 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.group_by(fn c -> Map.get(dep_depth, c.id, 0) end)
       |> Enum.sort_by(fn {depth, _} -> depth end)
 
-    # Layout each tier as a horizontal band, stacking downward
-    {comp_sigma, comp_zone_total_height} =
+    # Build sigma_key → global topo depth lookup for component requirement nodes.
+    # This is used in the post-layout y-normalization pass (see normalize_comp_zone_y/3).
+    comp_depth_by_sigma_key =
+      Map.new(comp_nodes, fn req -> {nkey(req), Map.get(topo.depth, node_key(req), 0)} end)
+
+    # Layout each tier as a horizontal band, stacking downward.
+    # Pass 1: tier-based placement establishes correct x positions for each tree.
+    {comp_sigma_raw, _tier_bottom} =
       Enum.reduce(tiers, {[], comp_zone_y}, fn {_depth, tier_components}, {all_nodes, tier_y} ->
         tree_layouts =
           Enum.map(
@@ -214,7 +256,25 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         {tier_nodes, tier_height} = place_component_trees(tree_layouts, tier_y)
         {all_nodes ++ tier_nodes, tier_y - tier_height - @row_gap}
       end)
-      |> then(fn {nodes, final_y} -> {nodes, comp_zone_y - final_y} end)
+
+    # Pass 2: global-depth y normalization.
+    # Cross-component edges (e.g., implementation_file_A → implementation_file_B) must
+    # flow downward (source.y > target.y). The tier-based layout places each tree's
+    # nodes relative to the top of its tier, so two trees in the same tier can have
+    # nodes at different local y positions that violate this invariant when a
+    # cross-component edge connects them.
+    # Fix: overwrite every comp node's y with
+    #   comp_zone_y - (global_topo_depth - min_comp_topo_depth) * @ctx_req_gap
+    # so that nodes with higher global depth (more prerequisites) are always placed
+    # lower (more negative y) than the nodes they depend on.
+    comp_sigma = normalize_comp_zone_y(comp_sigma_raw, comp_depth_by_sigma_key, comp_zone_y)
+
+    # Recompute total height from normalized positions for post-zone anchoring.
+    comp_zone_total_height =
+      case Enum.map(comp_sigma, & &1.attributes.y) do
+        [] -> 0
+        ys -> comp_zone_y - Enum.min(ys)
+      end
 
     # --- Layer 4: Post-component story reqs ---
     post_zone_y = comp_zone_y - comp_zone_total_height - @row_gap
@@ -273,6 +333,28 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       end)
 
     %{nodes: all_sigma, edges: sigma_edges}
+  end
+
+  # Overwrite the y coordinate of every component sigma node using the node's
+  # global topological depth from the full requirement graph.
+  #
+  # Approach: layered by global depth (the same depth map used for story and project
+  # zone ordering). All nodes at the same global depth share the same y, so edges
+  # between any two component nodes always flow from shallower (higher y) to deeper
+  # (lower y), eliminating upward or horizontal cross-tree edges.
+  #
+  # The x coordinates from the tier/tree layout pass are preserved unchanged.
+  defp normalize_comp_zone_y([], _depth_by_key, _comp_zone_y), do: []
+
+  defp normalize_comp_zone_y(comp_nodes, depth_by_key, comp_zone_y) do
+    depths = Enum.map(comp_nodes, fn n -> Map.get(depth_by_key, n.key, 0) end)
+    min_depth = Enum.min(depths)
+
+    Enum.map(comp_nodes, fn n ->
+      d = Map.get(depth_by_key, n.key, 0)
+      new_y = comp_zone_y - (d - min_depth) * @ctx_req_gap
+      %{n | attributes: %{n.attributes | y: new_y}}
+    end)
   end
 
   # Source keys of edges whose target is missing from the rendered set.
@@ -422,11 +504,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   # -- Expanded component tree layout --
-
-  @ctx_req_gap 250
-  @child_col_gap 350
-  @child_req_gap 200
-  @tree_gap 300
 
   # Layout a context and its children as a tree. Returns {nodes, width, height}
   # with positions relative to (0, 0) origin.

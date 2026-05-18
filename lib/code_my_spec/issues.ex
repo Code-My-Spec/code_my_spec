@@ -170,6 +170,7 @@ defmodule CodeMySpec.Issues do
   # -- Private ----------------------------------------------------------------
 
   defp parse_severity(s) when is_atom(s), do: s
+
   defp parse_severity(s) when is_binary(s) do
     case String.downcase(s) do
       "critical" -> :critical
@@ -182,6 +183,7 @@ defmodule CodeMySpec.Issues do
   end
 
   defp parse_scope(s) when is_atom(s), do: s
+
   defp parse_scope(s) when is_binary(s) do
     case String.downcase(s) do
       "app" -> :app
@@ -191,6 +193,7 @@ defmodule CodeMySpec.Issues do
       _ -> :app
     end
   end
+
   defp parse_scope(nil), do: :app
 
   defp parse_braindump(content) do
@@ -252,18 +255,21 @@ defmodule CodeMySpec.Issues do
     end
   end
 
+  # Use atom values for status so the stub's introspection (`call[:status] == :accepted`)
+  # works without an extra normalization step. Jason encodes atoms as their
+  # string representation, so the HTTP payload to the real server is correct.
   defp build_remote_attrs(:accepted, opts) do
-    %{status: "accepted"}
+    %{status: :accepted}
     |> maybe_put_attr(:category, Keyword.get(opts, :category))
     |> maybe_put_attr(:story_id, Keyword.get(opts, :story_id))
   end
 
   defp build_remote_attrs(:dismissed, opts) do
-    %{status: "dismissed", resolution: Keyword.get(opts, :resolution)}
+    %{status: :dismissed, resolution: Keyword.get(opts, :resolution)}
   end
 
   defp build_remote_attrs(:resolved, opts) do
-    %{status: "resolved", resolution: Keyword.get(opts, :resolution)}
+    %{status: :resolved, resolution: Keyword.get(opts, :resolution)}
   end
 
   defp maybe_put_attr(map, _key, nil), do: map

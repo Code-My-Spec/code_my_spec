@@ -15,9 +15,9 @@ defmodule CodeMySpecSpex.Story709.Criterion6472Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.Issues.RemoteClientStub
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story709.Criterion6472Spex do
         scope = context.scope
 
         {:ok, issue} =
-          RemoteClientStub.seed_incoming_issue(scope, %{
+          Fixtures.seed_server_incoming_issue(scope, %{
             id: Ecto.UUID.generate(),
             title: "Server-origin issue",
             severity: :high,
@@ -40,12 +40,12 @@ defmodule CodeMySpecSpex.Story709.Criterion6472Spex do
       end
 
       given_ "the triage start pull has imported the issue into the local DB", context do
-        {:ok, _} = RemoteClientStub.pull_to_local(context.scope)
+        {:ok, _} = Fixtures.sync_server_issues_to_local(context.scope)
         {:ok, context}
       end
 
       given_ "the remote server becomes unreachable", context do
-        :ok = RemoteClientStub.simulate_unreachable(true)
+        :ok = Fixtures.simulate_server_unreachable(true)
         {:ok, context}
       end
 
@@ -73,10 +73,10 @@ defmodule CodeMySpecSpex.Story709.Criterion6472Spex do
         {:reply, response, _} = GetIssue.execute(%{issue_id: context.issue.id}, frame)
         text = response_text(response)
 
-        assert text =~ ~r/status:?\s*incoming/i,
+        assert text =~ ~r/status[:*\s]+incoming/i,
                "expected local issue #{context.issue.id} to remain :incoming after failed sync, got: #{inspect(text)}"
 
-        refute text =~ ~r/status:?\s*accepted/i,
+        refute text =~ ~r/status[:*\s]+accepted/i,
                "expected local issue to NOT show :accepted after failed sync, got: #{inspect(text)}"
 
         {:ok, context}

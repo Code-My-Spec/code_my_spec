@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6248Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6248Spex do
       when_ "the agent calls Init.Elixir.evaluate on the scope", context do
         result =
           use_cmd_cassette "init_elixir_pass", record: :none do
-            Init.Elixir.evaluate(context.scope, %{})
+            Fixtures.init_elixir_evaluate(context.scope, %{})
           end
 
         {:ok, Map.put(context, :evaluate_result, result)}

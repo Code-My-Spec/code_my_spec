@@ -13,7 +13,6 @@ defmodule CodeMySpecSpex.Story704.Criterion6094Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
-  alias CodeMySpec.Sessions
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -43,7 +42,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6094Spex do
               |> DateTime.truncate(:second)
           })
 
-        session = Sessions.get_by_external_id(context.scope, session_id)
+        session = Fixtures.get_session_by_external_id(context.scope, session_id)
 
         {:ok,
          Map.merge(context, %{

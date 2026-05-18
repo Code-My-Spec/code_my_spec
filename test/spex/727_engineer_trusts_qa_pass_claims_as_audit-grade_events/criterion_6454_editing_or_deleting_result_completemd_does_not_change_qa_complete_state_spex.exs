@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
+  import CodeMySpecSpex.TaskResponseHelpers, only: [satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -66,10 +67,12 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
 
       then_ "qa_complete remains satisfied (DB state is canonical)", context do
         # The whole point: filesystem manipulation is invisible to the
-        # checker. Observe via Qa.complete?/2 (which the checker
-        # delegates to) — DB attempt status is unchanged.
-        assert CodeMySpec.Qa.qa_complete?(context.scope, context.story.id),
-               "expected Qa.complete? still true after rewriting result_complete.md to 'fail'"
+        # checker. Observed via list_requirements — the agent-facing MCP
+        # surface for requirement satisfaction.
+        qa_text = satisfied_qa_complete_text(context.scope)
+
+        assert qa_text =~ context.story.title,
+               "expected qa_complete still satisfied for story #{context.story.title} after rewriting result_complete.md to 'fail', got:\n#{qa_text}"
 
         {:ok, context}
       end

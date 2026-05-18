@@ -14,9 +14,9 @@ defmodule CodeMySpecSpex.Story599.Criterion6470Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.Issues.RemoteClientStub
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story599.Criterion6470Spex do
   spex "Starting a triage task pulls all incoming server-side issues across every scope into the local view, and the agent discovers them via list_issues and get_issue rather than from a prompt enumeration" do
     scenario "Triage start surfaces a clear error when the server is unreachable" do
       given_ "the remote server is unreachable", context do
-        :ok = RemoteClientStub.simulate_unreachable(true)
+        :ok = Fixtures.simulate_server_unreachable(true)
         {:ok, context}
       end
 

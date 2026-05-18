@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
       when_ "the agent calls Init.command on the scope", context do
         prompt =
           use_cmd_cassette "init_all_prereqs_pass", record: :none do
-            {:ok, prompt} = Init.command(context.scope, %{})
+            {:ok, prompt} = Fixtures.init_command(context.scope, %{})
             prompt
           end
 

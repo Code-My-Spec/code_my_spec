@@ -8,15 +8,25 @@ defmodule CodeMySpec.Repo.Migrations.CreateStoryTags do
   # The CLI SQLite has this table but with a wrong FK (references
   # `component_tags(id)` instead of `tags(id)`) — Postgres gets the
   # correct one here.
-  def change do
-    create table(:story_tags) do
-      add :tag_id, references(:tags, on_delete: :delete_all), null: false
-      add :story_id, references(:stories, on_delete: :delete_all), null: false
+  #
+  # Uses conditional DDL to be idempotent for test databases where the
+  # table already exists.
+  def up do
+    execute """
+    CREATE TABLE IF NOT EXISTS story_tags (
+      id bigserial PRIMARY KEY,
+      tag_id bigint NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+      story_id bigint NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      inserted_at timestamp(0) without time zone NOT NULL,
+      updated_at timestamp(0) without time zone NOT NULL
+    );
+    """
 
-      timestamps(type: :utc_datetime)
-    end
+    execute "CREATE UNIQUE INDEX IF NOT EXISTS story_tags_tag_id_story_id_index ON story_tags (tag_id, story_id);"
+    execute "CREATE INDEX IF NOT EXISTS story_tags_story_id_index ON story_tags (story_id);"
+  end
 
-    create unique_index(:story_tags, [:tag_id, :story_id])
-    create index(:story_tags, [:story_id])
+  def down do
+    execute "DROP TABLE IF EXISTS story_tags;"
   end
 end

@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story704.Criterion6099Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
-  alias CodeMySpec.Permissions.TapOut, as: TapOutCore
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -31,7 +30,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6099Spex do
       given_ "continuous mode is enabled on this session", context do
         :ok = Fixtures.start_continuous_mode(context.scope, context.session_id)
 
-        Phoenix.PubSub.subscribe(CodeMySpec.PubSub, TapOutCore.topic())
+        Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Fixtures.tap_out_pubsub_topic())
 
         {:ok, context}
       end

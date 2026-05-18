@@ -44,4 +44,28 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
       _ -> nil
     end
   end
+
+  @doc """
+  Returns the agent-visible text for satisfied `qa_complete` requirements
+  across all stories in the active scope, observed through the
+  `list_requirements` MCP tool. Spex use this to assert that
+  `qa_complete` is/is not satisfied for a given story without reaching
+  into the `CodeMySpec.Qa` context.
+  """
+  @spec satisfied_qa_complete_text(map()) :: String.t()
+  def satisfied_qa_complete_text(scope) do
+    frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
+
+    {:reply, response, _frame} =
+      CodeMySpec.McpServers.Requirements.Tools.ListRequirements.execute(
+        %{
+          status: "satisfied",
+          entity_type: "story",
+          requirement_name: "qa_complete"
+        },
+        frame
+      )
+
+    response_text(response)
+  end
 end

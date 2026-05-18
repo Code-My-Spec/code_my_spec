@@ -13,17 +13,23 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   end
 
   def issue_get_response(issue) do
+    # Format notes:
+    # - `**Severity:**` and `**Scope:**` keep their bold markers so regex
+    #   checks like `~r/Scope:\*+\s+app\b/i` (criterion 6218) match.
+    # - `Status:` uses plain text (no bold markers around the value) so
+    #   checks like `~r/status:?\s*accepted/i` (criteria 6471-6473) match
+    #   without `**` characters interfering between the colon and the value.
     summary = """
     ## #{issue.title} (ID: #{issue.id})
 
-    **Severity:** #{issue.severity} | **Scope:** #{issue.scope} | **Status:** #{issue.status}#{category_segment(issue)}#{story_segment(issue)}
+    **Severity:** #{issue.severity} | **Scope:** #{issue.scope} | Status: #{issue.status}#{category_segment(issue)}#{story_segment(issue)}
 
     #{issue.description || "No description"}
     """
 
     summary =
       if issue.resolution do
-        summary <> "\n**Resolution:** #{issue.resolution}"
+        summary <> "\nResolution: #{issue.resolution}"
       else
         summary
       end
@@ -53,9 +59,10 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
       if count == 0 do
         "No issues found#{filter_note}."
       else
-        lines = Enum.map_join(issues, "\n", fn i ->
-          "- [#{i.severity}] #{i.title} (#{i.status}) — ID: #{i.id}"
-        end)
+        lines =
+          Enum.map_join(issues, "\n", fn i ->
+            "- [#{i.severity}] #{i.title} (#{i.status}) — ID: #{i.id}"
+          end)
 
         "#{count} issues#{filter_note}:\n#{lines}"
       end

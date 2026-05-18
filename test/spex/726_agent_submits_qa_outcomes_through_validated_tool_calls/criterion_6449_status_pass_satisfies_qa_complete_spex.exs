@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6449Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
+  import CodeMySpecSpex.TaskResponseHelpers, only: [satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -46,13 +47,12 @@ defmodule CodeMySpecSpex.Story726.Criterion6449Spex do
       end
 
       then_ "qa_complete is satisfied for the story", context do
-        # Observed through the public context boundary `Qa.complete?/2`,
-        # which is what the requirement checker's :delegate config calls.
-        # ListRequirements MCP wraps the same call but its graph filter
-        # depends on a fully-synced project — out of scope for this spec's
-        # task-only fixture.
-        assert CodeMySpec.Qa.qa_complete?(context.scope, context.story.id),
-               "expected Qa.complete? true after passing submit"
+        # Observed through the list_requirements MCP surface —
+        # the agent-facing view of requirement satisfaction.
+        qa_text = satisfied_qa_complete_text(context.scope)
+
+        assert qa_text =~ context.story.title,
+               "expected qa_complete satisfied for story #{context.story.title}, got:\n#{qa_text}"
 
         {:ok, context}
       end

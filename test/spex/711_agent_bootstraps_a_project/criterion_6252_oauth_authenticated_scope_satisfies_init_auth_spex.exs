@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story711.Criterion6252Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.AgentTasks.Init
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -29,7 +28,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6252Spex do
       end
 
       when_ "the agent calls Init.Auth.evaluate on the scope", context do
-        {:ok, Map.put(context, :evaluate_result, Init.Auth.evaluate(context.scope, %{}))}
+        {:ok, Map.put(context, :evaluate_result, Fixtures.init_auth_evaluate(context.scope, %{}))}
       end
 
       then_ "the result is {:ok, :valid}", context do

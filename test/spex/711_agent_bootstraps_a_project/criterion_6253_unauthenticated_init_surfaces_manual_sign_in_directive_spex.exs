@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6253Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6253Spex do
       end
 
       when_ "the agent calls Init.Auth.command on the scope", context do
-        {:ok, prompt} = Init.Auth.command(context.scope, %{})
+        {:ok, prompt} = Fixtures.init_auth_command(context.scope, %{})
         {:ok, Map.put(context, :prompt, prompt)}
       end
 

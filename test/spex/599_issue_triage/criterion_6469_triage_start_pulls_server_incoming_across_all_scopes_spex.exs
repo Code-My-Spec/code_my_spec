@@ -17,9 +17,9 @@ defmodule CodeMySpecSpex.Story599.Criterion6469Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.Issues.RemoteClientStub
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story599.Criterion6469Spex do
                 {:framework, :high, "Server framework issue"}
               ] do
             {:ok, issue} =
-              RemoteClientStub.seed_incoming_issue(scope, %{
+              Fixtures.seed_server_incoming_issue(scope, %{
                 id: Ecto.UUID.generate(),
                 title: title,
                 severity: sev,

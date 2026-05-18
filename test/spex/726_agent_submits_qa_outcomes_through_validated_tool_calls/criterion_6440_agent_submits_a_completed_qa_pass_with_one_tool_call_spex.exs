@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -59,10 +59,12 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
         assert text =~ ~r/attempt[_ ]id/i,
                "expected attempt id in response, got:\n#{text}"
 
-        # qa_complete is observed via Qa.complete?/2 — the public context
-        # function the requirement checker delegates to.
-        assert CodeMySpec.Qa.qa_complete?(context.scope, context.story.id),
-               "expected Qa.complete? true after passing submit"
+        # qa_complete is observed via list_requirements — the agent-facing
+        # MCP surface for requirement satisfaction.
+        qa_text = satisfied_qa_complete_text(context.scope)
+
+        assert qa_text =~ context.story.title,
+               "expected qa_complete satisfied for story #{context.story.title}, got:\n#{qa_text}"
 
         {:ok, context}
       end

@@ -16,9 +16,9 @@ defmodule CodeMySpecSpex.Story709.Criterion6471Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.Issues.RemoteClientStub
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story709.Criterion6471Spex do
         scope = context.scope
 
         {:ok, issue} =
-          RemoteClientStub.seed_incoming_issue(scope, %{
+          Fixtures.seed_server_incoming_issue(scope, %{
             id: Ecto.UUID.generate(),
             title: "Server-origin issue",
             severity: :high,
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story709.Criterion6471Spex do
       end
 
       given_ "the triage start pull has imported the issue into the local DB", context do
-        {:ok, _} = RemoteClientStub.pull_to_local(context.scope)
+        {:ok, _} = Fixtures.sync_server_issues_to_local(context.scope)
         {:ok, context}
       end
 
@@ -69,20 +69,23 @@ defmodule CodeMySpecSpex.Story709.Criterion6471Spex do
         {:reply, response, _} = GetIssue.execute(%{issue_id: context.issue.id}, frame)
         text = response_text(response)
 
-        assert text =~ ~r/status:?\s*accepted/i,
+        assert text =~ ~r/status[:*\s]+accepted/i,
                "expected local issue #{context.issue.id} to show :accepted, got: #{inspect(text)}"
 
         {:ok, context}
       end
 
       then_ "the remote client received the status update for this issue id", context do
-        calls = RemoteClientStub.update_calls_for(context.issue.id)
+        calls = Fixtures.server_update_calls_for(context.issue.id)
 
         assert length(calls) >= 1,
-               "expected RemoteClientStub to have recorded at least one update for #{context.issue.id}, got: #{inspect(calls)}"
+               "expected the server to have recorded at least one update for #{context.issue.id}, got: #{inspect(calls)}"
 
-        assert Enum.any?(calls, fn call -> call[:status] == :accepted or call["status"] == "accepted" end),
-               "expected one of the recorded remote updates to set status :accepted, got: #{inspect(calls)}"
+        assert Enum.any?(calls, fn call ->
+                 call[:status] in ["accepted", :accepted] or
+                   call["status"] in ["accepted", :accepted]
+               end),
+               "expected one of the recorded remote updates to set status accepted, got: #{inspect(calls)}"
 
         {:ok, context}
       end

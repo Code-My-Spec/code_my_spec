@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6453Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
+  import CodeMySpecSpex.TaskResponseHelpers, only: [satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -49,11 +50,13 @@ defmodule CodeMySpecSpex.Story727.Criterion6453Spex do
 
       then_ "qa_complete is satisfied for the story (DB-driven, no file gate)",
             context do
-        # Observed via Qa.complete?/2 — the public context function the
-        # requirement checker delegates to. Key property: no file on
-        # disk was involved in the assertion path.
-        assert CodeMySpec.Qa.qa_complete?(context.scope, context.story.id),
-               "expected Qa.complete? true after passing submit, no result_complete.md required"
+        # Observed via list_requirements — the agent-facing MCP surface for
+        # requirement satisfaction. No file on disk was involved in the
+        # assertion path.
+        qa_text = satisfied_qa_complete_text(context.scope)
+
+        assert qa_text =~ context.story.title,
+               "expected qa_complete satisfied for story #{context.story.title} after passing submit, got:\n#{qa_text}"
 
         {:ok, context}
       end

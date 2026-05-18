@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6249Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6249Spex do
             context do
         result =
           use_cmd_cassette "init_phx_installer_missing", record: :none do
-            Init.PhoenixInstaller.evaluate(context.scope, %{})
+            Fixtures.init_phoenix_installer_evaluate(context.scope, %{})
           end
 
         {:ok, Map.put(context, :evaluate_result, result)}
