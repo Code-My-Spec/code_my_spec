@@ -90,13 +90,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp brief_exists?(env, story_id) do
-    case Environments.read_file(env, brief_path(story_id)) do
-      {:ok, content} when is_binary(content) and byte_size(content) > 0 -> true
-      _ -> false
-    end
-  end
-
   defp do_evaluate(scope, env, story_id) do
     with :ok <- check_plan(env),
          :ok <- check_brief(env, story_id),

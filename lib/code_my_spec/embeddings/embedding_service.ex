@@ -249,10 +249,22 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
         vector_json = Jason.encode!(embedding)
         now = DateTime.utc_now() |> DateTime.to_iso8601()
 
+        # UPSERT — when a file is modified, the same (project_id, source,
+        # path, chunk_index) row already exists from the prior version.
+        # `ON CONFLICT DO NOTHING` would silently drop the new chunk, and
+        # the subsequent `delete_old_chunks` would then remove the old row
+        # too (content_hash no longer matches), leaving the file with
+        # zero embeddings. `DO UPDATE SET` replaces the old chunk in
+        # place. (Issue b3826070, story 688 R5970.)
         sql = """
         INSERT INTO doc_embeddings (id, project_id, source, path, chunk_index, content, content_hash, file_hash, embedding, inserted_at, updated_at)
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, vec_f32(?9), ?10, ?11)
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (project_id, source, path, chunk_index) DO UPDATE SET
+          content = excluded.content,
+          content_hash = excluded.content_hash,
+          file_hash = excluded.file_hash,
+          embedding = excluded.embedding,
+          updated_at = excluded.updated_at
         """
 
         params = [

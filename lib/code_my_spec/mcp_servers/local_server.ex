@@ -45,6 +45,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
   component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
+  component(CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview)
 
   # Components — incremental architecture mutations (patch mode).
   # Deletion is intentionally not a tool: the architect deletes the
@@ -59,6 +60,9 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.SyncProject)
+  component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
+  component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
+  component(CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements)
 
   # Tasks — start → evaluate lifecycle
   component(CodeMySpec.McpServers.Tasks.Tools.StartTask)
