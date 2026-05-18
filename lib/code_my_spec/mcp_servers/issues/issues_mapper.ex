@@ -13,23 +13,17 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   end
 
   def issue_get_response(issue) do
-    # Format notes:
-    # - `**Severity:**` and `**Scope:**` keep their bold markers so regex
-    #   checks like `~r/Scope:\*+\s+app\b/i` (criterion 6218) match.
-    # - `Status:` uses plain text (no bold markers around the value) so
-    #   checks like `~r/status:?\s*accepted/i` (criteria 6471-6473) match
-    #   without `**` characters interfering between the colon and the value.
     summary = """
     ## #{issue.title} (ID: #{issue.id})
 
-    **Severity:** #{issue.severity} | **Scope:** #{issue.scope} | Status: #{issue.status}#{category_segment(issue)}#{story_segment(issue)}
+    **Severity:** #{issue.severity} | **Scope:** #{issue.scope} | **Status:** #{issue.status}#{category_segment(issue)}#{story_segment(issue)}
 
     #{issue.description || "No description"}
     """
 
     summary =
       if issue.resolution do
-        summary <> "\nResolution: #{issue.resolution}"
+        summary <> "\n**Resolution:** #{issue.resolution}"
       else
         summary
       end

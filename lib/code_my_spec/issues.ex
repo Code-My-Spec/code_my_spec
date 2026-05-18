@@ -255,21 +255,18 @@ defmodule CodeMySpec.Issues do
     end
   end
 
-  # Use atom values for status so the stub's introspection (`call[:status] == :accepted`)
-  # works without an extra normalization step. Jason encodes atoms as their
-  # string representation, so the HTTP payload to the real server is correct.
   defp build_remote_attrs(:accepted, opts) do
-    %{status: :accepted}
+    %{status: "accepted"}
     |> maybe_put_attr(:category, Keyword.get(opts, :category))
     |> maybe_put_attr(:story_id, Keyword.get(opts, :story_id))
   end
 
   defp build_remote_attrs(:dismissed, opts) do
-    %{status: :dismissed, resolution: Keyword.get(opts, :resolution)}
+    %{status: "dismissed", resolution: Keyword.get(opts, :resolution)}
   end
 
   defp build_remote_attrs(:resolved, opts) do
-    %{status: :resolved, resolution: Keyword.get(opts, :resolution)}
+    %{status: "resolved", resolution: Keyword.get(opts, :resolution)}
   end
 
   defp maybe_put_attr(map, _key, nil), do: map
