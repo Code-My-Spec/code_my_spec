@@ -32,7 +32,6 @@ defmodule CodeMySpecSpex.Fixtures do
     ProblemsFixtures,
     ProjectsFixtures,
     ProjectSync,
-    Qa,
     QaFixtures,
     QaIntegrationPlanFixtures,
     Sessions,
@@ -44,7 +43,6 @@ defmodule CodeMySpecSpex.Fixtures do
     UsersFixtures
   }
 
-  alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Users.Scope
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
@@ -237,6 +235,34 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
 
+  @doc """
+  Creates a project whose `local_path` points at a freshly-created tmp
+  directory that is NOT the spex's `scope.cwd`. Used by scenarios that
+  want a project to exist in the DB while leaving the spex's working
+  directory *unlinked* (e.g. Story 711 / criterion 6255 — the agent is
+  in a working dir with no project row pointing at it, so `CliConfig`
+  must surface the `list_projects` + `init_project` directive).
+
+  Returns the project struct. The unlinked tmp dir is removed on
+  test exit.
+  """
+  @spec project_fixture_unlinked(Scope.t(), map() | keyword()) ::
+          CodeMySpec.Projects.Project.t()
+  def project_fixture_unlinked(%Scope{} = scope, attrs \\ %{}) do
+    unlinked_dir =
+      Path.join(System.tmp_dir!(), "spex-unlinked-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(unlinked_dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(unlinked_dir) end)
+
+    attrs =
+      attrs
+      |> Enum.into(%{})
+      |> Map.put_new(:local_path, unlinked_dir)
+
+    ProjectsFixtures.project_fixture(scope, attrs)
+  end
+
   # -- Stories (QA spex fixture setup, Stories 726/727) --
   @doc """
   Creates a story directly through the Stories context for use in QA
@@ -302,18 +328,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
     {story, task_id, session}
   end
-
-  # -- QA completion predicate (Stories 726/727) --
-  @doc """
-  Returns whether the `qa_complete` requirement is satisfied for the
-  given story. Delegates to `CodeMySpec.Qa.qa_complete?/2` — the same
-  function the requirement checker's `:delegate` config calls.
-
-  Spex `then_` steps use this instead of referencing `CodeMySpec.Qa`
-  directly, preserving the boundary invariant.
-  """
-  @spec qa_complete?(Scope.t(), String.t()) :: boolean()
-  def qa_complete?(scope, story_id), do: Qa.qa_complete?(scope, story_id)
 
   # -- Components --
   defdelegate get_component_by_module_name(scope, module_name), to: Components
@@ -462,56 +476,4 @@ defmodule CodeMySpecSpex.Fixtures do
   def server_update_calls_for(issue_id) when is_binary(issue_id) do
     CodeMySpec.Issues.RemoteClientStub.update_calls_for(issue_id)
   end
-
-  # -- Init sub-step surfaces (Story 711) --
-
-  @doc """
-  Runs `AgentTasks.Init.command/2` through the bridge. Spex use this
-  to exercise the aggregate init prompt surface without referencing the
-  internal `AgentTasks.Init` namespace directly.
-  """
-  def init_command(scope, opts \\ %{}), do: Init.command(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.Elixir.evaluate/2` through the bridge.
-  """
-  def init_elixir_evaluate(scope, opts \\ %{}), do: Init.Elixir.evaluate(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.PhoenixInstaller.evaluate/2` through the bridge.
-  """
-  def init_phoenix_installer_evaluate(scope, opts \\ %{}),
-    do: Init.PhoenixInstaller.evaluate(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.PhoenixProject.evaluate/2` through the bridge.
-  """
-  def init_phoenix_project_evaluate(scope, opts \\ %{}),
-    do: Init.PhoenixProject.evaluate(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.PhoenixProject.command/2` through the bridge.
-  """
-  def init_phoenix_project_command(scope, opts \\ %{}),
-    do: Init.PhoenixProject.command(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.Auth.evaluate/2` through the bridge.
-  """
-  def init_auth_evaluate(scope, opts \\ %{}), do: Init.Auth.evaluate(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.Auth.command/2` through the bridge.
-  """
-  def init_auth_command(scope, opts \\ %{}), do: Init.Auth.command(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.CliConfig.evaluate/2` through the bridge.
-  """
-  def init_cli_config_evaluate(scope, opts \\ %{}), do: Init.CliConfig.evaluate(scope, opts)
-
-  @doc """
-  Runs `AgentTasks.Init.CliConfig.command/2` through the bridge.
-  """
-  def init_cli_config_command(scope, opts \\ %{}), do: Init.CliConfig.command(scope, opts)
 end

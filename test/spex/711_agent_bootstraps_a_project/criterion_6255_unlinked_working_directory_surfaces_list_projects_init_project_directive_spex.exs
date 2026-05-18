@@ -3,57 +3,97 @@ defmodule CodeMySpecSpex.Story711.Criterion6255Spex do
   Story 711 — Agent bootstraps a project
   Criterion 6255 — Unlinked working directory surfaces list_projects→init_project directive.
 
-  When no `Project` row exists with `local_path` equal to the working
-  directory, `Init.CliConfig.command/2` returns a prompt that
-  instructs the agent to call `list_projects`, then `init_project`
-  with the chosen project_id.
+  When the agent calls `get_next_requirement` from a working directory
+  with no `Project` row pointing at it, the MCP fall-through path runs
+  `Init.command` and the returned prompt instructs the agent to:
+    1. Call `list_projects` to see what's available.
+    2. Then `init_project` with the chosen project_id.
 
-  Surface: `AgentTasks.Init.CliConfig.command/2`. The scope's cwd is
-  swapped to a fresh tmp dir (one no Project row points at) so the
-  unlinked branch fires.
+  Surface: `CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement`.
+  When no project resolves from the frame's working_dir,
+  `validate_local_scope/1` errors and the tool falls back to
+  `Init.command/2`. ExCliVcr replays `init_all_prereqs_pass.json` so the
+  Elixir / Phoenix installer / Postgresql probes don't depend on the
+  test host.
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
-  setup :setup_active_project
 
-  spex "Init.CliConfig is satisfied by a Project row whose local_path matches the working directory" do
+  spex "An unlinked working directory surfaces the link-project directive through MCP" do
     scenario "Unlinked working directory surfaces list_projects→init_project directive" do
-      given_ "the local DB has no Project row with local_path equal to the working directory",
+      given_ "a working directory that satisfies the Phoenix shape but no project row points at it",
              context do
-        unlinked_dir = Path.join(System.tmp_dir!(), "unlinked-#{System.unique_integer([:positive])}")
+        unlinked_dir =
+          Path.join(System.tmp_dir!(), "unlinked-#{System.unique_integer([:positive])}")
+
         File.mkdir_p!(unlinked_dir)
+        File.write!(Path.join(unlinked_dir, "mix.exs"), "# stub for PhoenixProject.evaluate\n")
+        File.mkdir_p!(Path.join(unlinked_dir, "lib"))
+        File.mkdir_p!(Path.join(unlinked_dir, "config"))
         ExUnit.Callbacks.on_exit(fn -> File.rm_rf(unlinked_dir) end)
 
-        unlinked_scope = Map.put(context.scope, :cwd, unlinked_dir)
-        {:ok, Map.put(context, :scope, unlinked_scope)}
+        {:ok, Map.put(context, :unlinked_dir, unlinked_dir)}
       end
 
-      when_ "the agent calls Init.CliConfig.command on the scope", context do
-        {:ok, prompt} = Fixtures.init_cli_config_command(context.scope, %{})
-        {:ok, Map.put(context, :prompt, prompt)}
+      given_ "the DB does have a project linked elsewhere (so list_projects has something to return)",
+             context do
+        _other_project = Fixtures.project_fixture_unlinked(context.scope)
+        {:ok, context}
+      end
+
+      given_ "the user is OAuth-authenticated (so Init.Auth is satisfied)", context do
+        _client_user = Fixtures.client_user_fixture(context.user)
+        {:ok, context}
+      end
+
+      when_ "the agent calls get_next_requirement from the unlinked working dir",
+            context do
+        frame = %Frame{assigns: %{working_dir: context.unlinked_dir}}
+
+        prompt_text =
+          use_cmd_cassette "init_all_prereqs_pass", record: :none do
+            {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+            response_text(response)
+          end
+
+        {:ok, Map.put(context, :prompt_text, prompt_text)}
       end
 
       then_ "the prompt instructs the agent to call list_projects", context do
-        assert context.prompt =~ ~r/list_projects/,
-               "expected prompt to mention list_projects, got:\n#{context.prompt}"
+        assert context.prompt_text =~ ~r/list_projects/,
+               "expected prompt to mention list_projects, got:\n#{context.prompt_text}"
 
         {:ok, context}
       end
 
       and_ "the prompt instructs the agent to call init_project with the chosen project_id",
            context do
-        assert context.prompt =~ ~r/init_project/,
-               "expected prompt to mention init_project, got:\n#{context.prompt}"
+        assert context.prompt_text =~ ~r/init_project/,
+               "expected prompt to mention init_project, got:\n#{context.prompt_text}"
 
-        assert context.prompt =~ ~r/project_id/i,
-               "expected prompt to mention the project_id parameter, got:\n#{context.prompt}"
+        assert context.prompt_text =~ ~r/project_id/i,
+               "expected prompt to mention the project_id parameter, got:\n#{context.prompt_text}"
 
         {:ok, context}
       end
     end
   end
+
+  defp response_text(%{content: parts}) when is_list(parts) do
+    Enum.map_join(parts, "\n", fn
+      %{text: t} -> t
+      %{"text" => t} -> t
+      other -> inspect(other)
+    end)
+  end
+
+  defp response_text(%{text: text}), do: text
+  defp response_text(other), do: inspect(other)
 end

@@ -3,22 +3,21 @@ defmodule CodeMySpecSpex.Story711.Criterion6250Spex do
   Story 711 — Agent bootstraps a project
   Criterion 6250 — Phoenix project shape in cwd satisfies Init.PhoenixProject.
 
-  When the working directory contains `mix.exs`, `lib/`, AND `config/`,
-  `Init.PhoenixProject.evaluate/2` returns `{:ok, :valid}`.
+  When the engineer opens the PhoenixProject init step's per-step page
+  against a working directory that contains `mix.exs`, `lib/`, AND
+  `config/`, the page renders the step with the success ("Done") badge.
 
-  Surface: `AgentTasks.Init.PhoenixProject.evaluate/2`. Pure
-  filesystem check — no shell outs, no cassette.
+  Surface: `InitLive` at `/projects/:project_name/init/phoenix_project`.
+  Pure filesystem check — no shell outs, no cassette.
   """
 
   use CodeMySpecSpex.Case
-
-  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "Init.PhoenixProject requires mix.exs + lib/ + config/ in cwd; otherwise emits relaunch guidance" do
-    scenario "Phoenix project shape in cwd satisfies Init.PhoenixProject" do
+    scenario "Phoenix project shape in cwd is rendered as Done on the per-step page" do
       given_ "the working directory contains mix.exs, lib/, and config/",
              context do
         File.mkdir_p!(Path.join(context.scope.cwd, "config"))
@@ -26,14 +25,22 @@ defmodule CodeMySpecSpex.Story711.Criterion6250Spex do
         {:ok, context}
       end
 
-      when_ "the agent calls Init.PhoenixProject.evaluate on the scope",
-            context do
-        {:ok, Map.put(context, :evaluate_result, Fixtures.init_phoenix_project_evaluate(context.scope, %{}))}
+      when_ "the engineer opens the PhoenixProject per-step page", context do
+        {:ok, _view, html} =
+          live(
+            context.conn,
+            ~p"/projects/#{context.project.name}/init/phoenix_project"
+          )
+
+        {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "the result is {:ok, :valid}", context do
-        assert context.evaluate_result == {:ok, :valid},
-               "expected {:ok, :valid}, got: #{inspect(context.evaluate_result)}"
+      then_ "the step shows the Done badge", context do
+        assert context.html =~ "badge-success",
+               "expected the PhoenixProject per-step page to show a success badge, got:\n#{context.html}"
+
+        assert context.html =~ "Done",
+               "expected the PhoenixProject per-step page to render the literal Done badge, got:\n#{context.html}"
 
         {:ok, context}
       end
