@@ -26,9 +26,15 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   def execute(_params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        # Sync files + components before computing the graph
+        # Sync files + components before computing the graph.
+        # `embed: false` because this is a read path — re-embedding the
+        # framework knowledge corpus and re-projecting hex docs on every
+        # `get_next_requirement` is the wrong coupling. The
+        # `FileWatcherServer` boot pass + mix.lock-poll already keep the
+        # embedding store fresh during a session. The explicit
+        # `sync_project` MCP tool is the place for a manual full embed.
         if scope.cwd do
-          FileSync.sync(scope, base_dir: scope.cwd)
+          FileSync.sync(scope, base_dir: scope.cwd, embed: false)
           FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
         end
 

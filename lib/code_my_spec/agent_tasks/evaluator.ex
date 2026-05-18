@@ -90,7 +90,13 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   defp sync_files(%Scope{cwd: nil}), do: :ok
 
   defp sync_files(%Scope{cwd: cwd} = scope) do
-    {:ok, file_result} = FileSync.sync(scope, base_dir: cwd)
+    # `embed: false` — the stop-hook evaluator fires on every turn and
+    # has no business re-embedding the framework knowledge corpus or
+    # re-projecting hex docs each time. `FileWatcherServer`'s boot pass
+    # + mix.lock-poll keep the embedding store fresh during a session;
+    # the explicit `sync_project` MCP tool is the manual-full-sync
+    # surface that opts back into the embed pre-pass.
+    {:ok, file_result} = FileSync.sync(scope, base_dir: cwd, embed: false)
 
     FileComponentSync.sync_from_files(scope,
       base_dir: cwd,
