@@ -220,26 +220,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert ctx_entry, "should have entry edge to direct dependency context"
     end
 
-    @tag :pending
     test "kickoff edge lands on the deepest transitive dep, intermediate kickoffs collapse" do
       # Per the moduledoc on RequirementGraph (`Kickoff edges ... span
       # the surface AND every component in its transitive cross-context
       # dependency closure. Transitive reduction collapses these to the
-      # deepest dep(s)`), the story's outgoing kickoff edge should end up
-      # at the deepest transitive dep, with intermediate kickoffs reduced
+      # deepest dep(s)`), the story's outgoing kickoff edge ends up at
+      # the deepest transitive dep, with intermediate kickoffs reduced
       # away because the path
       #   story → deep_dep → ... → context → ... → surface
       # already exists via the cross-context dependency edges.
-      #
-      # Currently failing: `context.spec_valid → context.review_file` is
-      # missing from the intra-component chain because the only prereq
-      # chain into `review_file` goes through child-scoped reqs, and the
-      # `Todos` context here has no children. With that gap in the
-      # chain, transitive_reduction can't see that surface is reachable
-      # via context, so the intermediate kickoffs survive. This is a
-      # design gap in `context_graph` (child reqs gate parent reqs but
-      # leave the chain broken when no children exist) — not a bug in
-      # this test's expectations.
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
