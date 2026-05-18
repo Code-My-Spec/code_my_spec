@@ -108,6 +108,14 @@ defmodule CodeMySpecWeb.PageController do
             "applicationCategory" => "DeveloperApplication",
             "operatingSystem" => "macOS, Linux, Windows",
             "description" => meta.meta_description,
+            "screenshot" => %{
+              "@type" => "ImageObject",
+              "url" => CodeMySpecWeb.ImageUrl.image_url("og-code-my-spec.png", base_url),
+              "width" => 1200,
+              "height" => 630
+            },
+            "featureList" =>
+              "BDD spec generation; lifecycle requirement graph; browser-based verification; Claude Code plugin; MCP servers for stories, architecture, and QA; BYO model and BYO API keys with no token markup",
             "offers" => %{
               "@type" => "Offer",
               "price" => "0",
@@ -220,6 +228,14 @@ defmodule CodeMySpecWeb.PageController do
             "applicationCategory" => "BusinessApplication",
             "operatingSystem" => "macOS, Linux, Windows",
             "description" => meta.meta_description,
+            "screenshot" => %{
+              "@type" => "ImageObject",
+              "url" => CodeMySpecWeb.ImageUrl.image_url("og-market-my-spec.png", base_url),
+              "width" => 1200,
+              "height" => 630
+            },
+            "featureList" =>
+              "Marketing strategy interview (8-step flow); ICP and competitive research agents; channel-aware infrastructure recipes; daily-plan with weekly review; runs locally in Claude Code; BYO model and BYO API keys",
             "offers" => %{
               "@type" => "Offer",
               "price" => "0",

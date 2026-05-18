@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.SitemapController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Content.ContentRepository
+  alias CodeMySpecWeb.Plugs.LegacyRedirects
 
   @content_types %{
     blog: "/blog/",
@@ -38,7 +39,7 @@ defmodule CodeMySpecWeb.SitemapController do
 
     latest_date =
       all_content
-      |> Enum.map(fn c -> c.updated_at || c.publish_at end)
+      |> Enum.map(fn c -> c.publish_at || c.updated_at end)
       |> Enum.reject(&is_nil/1)
       |> Enum.max(DateTime, fn -> DateTime.utc_now() end)
       |> format_date()
@@ -55,18 +56,25 @@ defmodule CodeMySpecWeb.SitemapController do
             ContentRepository.get_content_by_slug(nil, c.slug, type) != nil
         end)
         |> Enum.map(fn content ->
+          # publish_at is the immutable per-post timestamp from YAML; updated_at is
+          # auto-managed by Ecto and tends to collapse to deploy time, which gives
+          # Google a uniform lastmod and suppresses re-crawl.
           %{
             loc: prefix <> content.slug,
-            lastmod: format_date(content.updated_at) || format_date(content.publish_at)
+            lastmod: format_date(content.publish_at) || format_date(content.updated_at)
           }
         end)
       end)
 
     static_paths = MapSet.new(@static_locs)
+    redirect_paths = LegacyRedirects.redirect_paths()
 
     entries =
       static_entries ++
-        Enum.reject(content_entries, fn entry -> MapSet.member?(static_paths, entry.loc) end)
+        Enum.reject(content_entries, fn entry ->
+          MapSet.member?(static_paths, entry.loc) or
+            MapSet.member?(redirect_paths, entry.loc)
+        end)
 
     conn
     |> put_resp_content_type("application/xml")

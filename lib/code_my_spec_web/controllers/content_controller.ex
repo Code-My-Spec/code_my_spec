@@ -162,9 +162,24 @@ defmodule CodeMySpecWeb.ContentController do
       og_type: if(is_article, do: "article", else: "website"),
       article_published_time: if(is_article, do: format_iso8601(content.publish_at)),
       canonical_url: base_url <> canonical,
+      preload_image: blog_hero_url(content),
       json_ld: build_json_ld(content, is_protected)
     ]
   end
+
+  # Returns the URL of the rendered hero image so the root layout can emit a
+  # <link rel="preload"> in <head>, letting the browser fetch the LCP image
+  # during HTML parse instead of after CSS/JS finish loading. Must produce the
+  # same URL the article template uses for the <img src> to avoid a double fetch.
+  defp blog_hero_url(%{content_type: :blog, slug: slug} = content) do
+    if get_in(content.metadata || %{}, ["metadata", "hero_disabled"]) do
+      nil
+    else
+      CodeMySpecWeb.ImageUrl.image_url("hero-#{slug}.webp")
+    end
+  end
+
+  defp blog_hero_url(_), do: nil
 
   # Route all content actions through show/2
   def blog(conn, params), do: show(conn, params)
@@ -390,7 +405,17 @@ defmodule CodeMySpecWeb.ContentController do
       "@type" => "Person",
       "@id" => "#{base_url}/author/john-davenport",
       "name" => "John Davenport",
-      "url" => "#{base_url}/author/john-davenport"
+      "url" => "#{base_url}/author/john-davenport",
+      "jobTitle" => "Founder, CodeMySpec",
+      "description" =>
+        "Software engineer and methodology author. Writes about spec-driven AI coding, BDD applied to AI agents, and harness engineering.",
+      "sameAs" => [
+        "https://github.com/johns10",
+        "https://www.linkedin.com/in/john-davenport-software/",
+        "https://x.com/johns10d",
+        "https://www.youtube.com/@codemyspec",
+        "https://www.reddit.com/user/johns10davenport/"
+      ]
     }
   end
 
