@@ -110,24 +110,50 @@ defmodule CodeMySpec.Issues do
   # -- Status transitions -----------------------------------------------------
 
   def accept_issue(%Scope{} = scope, %Issue{} = issue, opts \\ []) do
-    with {:ok, issue} <- IssuesRepository.update_status(issue, :accepted, nil, opts) do
+    with :ok <- sync_disposition_to_remote(scope, issue, :accepted, opts),
+         {:ok, issue} <- IssuesRepository.update_status(issue, :accepted, nil, opts) do
       broadcast(scope, {:accepted, issue})
       {:ok, issue}
     end
   end
 
   def dismiss_issue(%Scope{} = scope, %Issue{} = issue, reason) do
-    with {:ok, issue} <- IssuesRepository.update_status(issue, :dismissed, reason) do
+    opts = [resolution: reason]
+
+    with :ok <- sync_disposition_to_remote(scope, issue, :dismissed, opts),
+         {:ok, issue} <- IssuesRepository.update_status(issue, :dismissed, reason) do
       broadcast(scope, {:dismissed, issue})
       {:ok, issue}
     end
   end
 
   def resolve_issue(%Scope{} = scope, %Issue{} = issue, resolution) do
-    with {:ok, issue} <- IssuesRepository.update_status(issue, :resolved, resolution) do
+    opts = [resolution: resolution]
+
+    with :ok <- sync_disposition_to_remote(scope, issue, :resolved, opts),
+         {:ok, issue} <- IssuesRepository.update_status(issue, :resolved, resolution) do
       broadcast(scope, {:resolved, issue})
-      sync_resolution_to_remote(scope, issue)
       {:ok, issue}
+    end
+  end
+
+  @doc """
+  Pulls all incoming issues from the remote server and upserts them
+  into the local DB.
+
+  Called at the start of every triage task so the local view reflects
+  the server's current incoming set across every scope. Failure to
+  reach the server returns `{:error, reason}` — triage callers fail
+  loudly rather than degrading to local-only.
+  """
+  def pull_incoming_from_remote(%Scope{} = scope) do
+    case remote_client().list_incoming_issues(scope) do
+      {:ok, issues} ->
+        Enum.each(issues, fn issue -> IssuesRepository.upsert_from_server(scope, issue) end)
+        {:ok, issues}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -195,33 +221,51 @@ defmodule CodeMySpec.Issues do
 
   defp broadcast(_scope, _message), do: :ok
 
-  defp sync_resolution_to_remote(scope, %Issue{} = issue) do
-    alias CodeMySpec.Auth.OAuthClient
-    alias CodeMySpec.Issues.RemoteClient
-    require Logger
+  # Synchronously sync a local disposition (accept/dismiss/resolve)
+  # back to the remote server when the issue is mirrored. Failure is
+  # surfaced as `{:error, message}` so the caller can refuse to flip
+  # the local state, keeping local and remote in lockstep. Local-only
+  # issues (`synced_from_server` is false/nil) bypass the sync.
+  defp sync_disposition_to_remote(_scope, %Issue{synced_from_server: synced}, _status, _opts)
+       when synced != true do
+    :ok
+  end
 
-    unless OAuthClient.authenticated?() do
-      :ok
-    else
-      Task.start(fn ->
-        case RemoteClient.update_issue(scope, issue.id, %{
-               status: "resolved",
-               resolution: issue.resolution
-             }) do
-          {:ok, _} ->
-            :ok
+  defp sync_disposition_to_remote(scope, %Issue{} = issue, status, opts) do
+    attrs = build_remote_attrs(status, opts)
 
-          {:error, :not_authenticated} ->
-            # No remote configured (CLI/local without auth). Local
-            # resolution is the source of truth; nothing to sync to.
-            :ok
+    case remote_client().update_issue(scope, issue.id, attrs) do
+      {:ok, _} ->
+        :ok
 
-          {:error, reason} ->
-            Logger.warning(
-              "[Issues] Remote resolution sync failed for issue #{issue.id}: #{inspect(reason)}"
-            )
-        end
-      end)
+      {:error, :not_authenticated} ->
+        # The local CLI is unauthenticated against the remote. Treat
+        # this as a hard failure rather than silently degrading — the
+        # rule says fail loudly so the operator knows their local
+        # disposition did NOT round-trip.
+        {:error,
+         "Cannot reach the issues server: not authenticated. Sign in and retry the disposition."}
+
+      {:error, reason} ->
+        {:error,
+         "Cannot reach the issues server: #{inspect(reason)}. Retry when connectivity is restored."}
     end
   end
+
+  defp build_remote_attrs(:accepted, opts) do
+    %{status: "accepted"}
+    |> maybe_put_attr(:category, Keyword.get(opts, :category))
+    |> maybe_put_attr(:story_id, Keyword.get(opts, :story_id))
+  end
+
+  defp build_remote_attrs(:dismissed, opts) do
+    %{status: "dismissed", resolution: Keyword.get(opts, :resolution)}
+  end
+
+  defp build_remote_attrs(:resolved, opts) do
+    %{status: "resolved", resolution: Keyword.get(opts, :resolution)}
+  end
+
+  defp maybe_put_attr(map, _key, nil), do: map
+  defp maybe_put_attr(map, key, value), do: Map.put(map, key, value)
 end

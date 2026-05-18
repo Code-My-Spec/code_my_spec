@@ -92,6 +92,41 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     end
   end
 
+  @doc """
+  Upserts an issue pulled from the remote server.
+
+  Inserts by primary key (the server's UUID is authoritative) and
+  replaces all writable fields on conflict so a subsequent pull
+  rewrites local rows with the server's current view. Sets
+  `synced_from_server: true` so dispositions on this issue route
+  back to the server.
+  """
+  def upsert_from_server(%Scope{} = _scope, %Issue{} = remote_issue) do
+    attrs = %{
+      title: remote_issue.title,
+      severity: remote_issue.severity,
+      scope: remote_issue.scope,
+      description: remote_issue.description,
+      status: remote_issue.status,
+      category: remote_issue.category,
+      resolution: remote_issue.resolution,
+      source: remote_issue.source,
+      story_id: remote_issue.story_id,
+      source_path: remote_issue.source_path
+    }
+
+    %Issue{id: remote_issue.id}
+    |> Issue.changeset(attrs)
+    |> Ecto.Changeset.put_change(:project_id, remote_issue.project_id)
+    |> Ecto.Changeset.put_change(:account_id, remote_issue.account_id)
+    |> Ecto.Changeset.put_change(:status, remote_issue.status)
+    |> Ecto.Changeset.put_change(:synced_from_server, true)
+    |> Repo.insert(
+      on_conflict: {:replace_all_except, [:id, :inserted_at]},
+      conflict_target: :id
+    )
+  end
+
   def update_status(%Issue{} = issue, status, resolution \\ nil, opts \\ []) do
     attrs = %{status: status, resolution: resolution}
 
@@ -154,6 +189,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     from(i in query, where: i.story_id == ^story_id)
   end
 
+  def by_severity(query \\ Issue, severity) do
+    from(i in query, where: i.severity == ^severity)
+  end
+
   def by_min_severity(query \\ Issue, min_severity) do
     severities = Issue.severities_at_or_above(min_severity)
     from(i in query, where: i.severity in ^severities)
@@ -167,7 +206,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     do: by_status(query, status)
 
   defp maybe_filter(query, :severity, %{severity: severity}) when not is_nil(severity),
-    do: by_min_severity(query, severity)
+    do: by_severity(query, severity)
 
   defp maybe_filter(query, :story_id, %{story_id: story_id}) when not is_nil(story_id),
     do: by_story(query, story_id)

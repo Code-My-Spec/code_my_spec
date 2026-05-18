@@ -18,6 +18,7 @@ defmodule CodeMySpec.Issues.Issue do
           source_path: String.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t() | nil,
+          synced_from_server: boolean(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -63,6 +64,7 @@ defmodule CodeMySpec.Issues.Issue do
     field :source_path, :string
     field :project_id, :binary_id
     field :account_id, :binary_id
+    field :synced_from_server, :boolean, default: false
 
     timestamps(type: :utc_datetime)
   end
@@ -77,7 +79,8 @@ defmodule CodeMySpec.Issues.Issue do
     :resolution,
     :source,
     :story_id,
-    :source_path
+    :source_path,
+    :synced_from_server
   ]
 
   @doc false

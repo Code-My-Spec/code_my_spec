@@ -10,29 +10,37 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   Only issues at or above the specified severity are included in the triage.
 
   Two main functions:
-  - `command/2` — Reads incoming issues from DB, builds triage prompt
+  - `command/2` — Pulls server-side incoming issues into the local DB, then
+    declares the threshold; agent discovers issues via `list_issues`
   - `evaluate/2` — Reconciles status field changes to DB, checks that no incoming issues remain
   """
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
 
-
   @doc """
-  Read incoming issues and build a triage prompt.
+  Pull server-side incoming issues into the local DB, then build a triage
+  prompt declaring the severity threshold.
 
-  Queries the database for incoming issues at or above the minimum severity
-  and builds a prompt instructing the agent to review, deduplicate, and
-  execute dispositions by editing the `## Status` field in projected files.
+  The remote pull is synchronous and fails loudly: if the server is
+  unreachable, `command/2` returns `{:error, {:server_unreachable, message}}`
+  so StartTask surfaces the error in the response (no triage prompt is
+  built).
 
-  Returns `{:ok, prompt_text}`
+  The prompt does NOT enumerate issues — the agent discovers them via the
+  `list_issues` MCP tool. This keeps the prompt stable regardless of how
+  many issues exist and forces the agent to use the canonical tool surface.
+
+  Returns `{:ok, prompt_text}` or `{:error, {:server_unreachable, message}}`.
   """
   def command(scope, task) do
-    min_severity = get_min_severity(task)
-    issues = list_incoming_at_severity(scope, min_severity)
+    with :ok <- pull_from_remote(scope) do
+      min_severity = get_min_severity(task)
+      issues = list_incoming_at_severity(scope, min_severity)
 
-    prompt = build_prompt(issues, min_severity)
-    {:ok, prompt}
+      prompt = build_prompt(issues, min_severity)
+      {:ok, prompt}
+    end
   end
 
   @doc """
@@ -68,6 +76,59 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   end
 
   # ============================================================================
+  # Remote Pull
+  # ============================================================================
+
+  defp pull_from_remote(scope) do
+    remote_client = Issues.remote_client()
+
+    case remote_client.list_incoming_issues(scope) do
+      {:ok, issues} ->
+        upsert_remote_issues(scope, issues)
+        :ok
+
+      {:error, reason} ->
+        {:error, {:server_unreachable, format_unreachable_error(reason)}}
+    end
+  end
+
+  defp upsert_remote_issues(scope, issues) do
+    Enum.each(issues, fn issue ->
+      attrs = %{
+        title: issue.title,
+        severity: issue.severity,
+        scope: issue.scope,
+        description: issue.description,
+        source: "server",
+        status: :incoming,
+        story_id: issue.story_id,
+        source_path: issue.source_path
+      }
+
+      changeset =
+        %Issue{id: issue.id}
+        |> Issue.changeset(attrs)
+        |> Ecto.Changeset.put_change(:project_id, scope.active_project_id)
+        |> Ecto.Changeset.put_change(:account_id, scope.active_account_id)
+        |> Ecto.Changeset.put_change(:source, "server")
+        |> Ecto.Changeset.put_change(:status, :incoming)
+
+      CodeMySpec.Repo.insert(changeset,
+        on_conflict: {:replace_all_except, [:id, :inserted_at]},
+        conflict_target: :id
+      )
+    end)
+  end
+
+  defp format_unreachable_error(:server_unreachable) do
+    "Cannot reach the CodeMySpec server. Check your network connection and authentication."
+  end
+
+  defp format_unreachable_error(reason) do
+    "Cannot reach the CodeMySpec server: #{inspect(reason)}"
+  end
+
+  # ============================================================================
   # Prompt Building
   # ============================================================================
 
@@ -79,22 +140,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     """
   end
 
-  defp build_prompt(issues, min_severity) do
-    grouped =
-      issues
-      |> Enum.group_by(& &1.severity)
-      |> Enum.sort_by(fn {sev, _} -> Issue.severity_index(sev) end)
-
-    issues_text =
-      Enum.map_join(grouped, "\n\n", fn {severity, group} ->
-        items =
-          Enum.map_join(group, "\n", fn issue ->
-            "- `#{issue.id}` — #{issue.title} (#{issue.severity})"
-          end)
-
-        "## #{String.capitalize(to_string(severity))} (#{length(group)})\n\n#{items}"
-      end)
-
+  defp build_prompt(_issues, min_severity) do
     """
     # Triage Issues
 
@@ -113,17 +159,14 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
     Review all incoming issues and decide their disposition.
 
-    1. **Read each issue** using `get-issue <id>` for the issues listed below
-    2. **Identify duplicates** — issues describing the same underlying problem
-    3. **Decide a disposition** for each issue:
+    1. **Discover issues** using `list_issues` with `status: "incoming"` and the appropriate `severity` filter
+    2. **Read each issue** using `get_issue` with the issue `id`
+    3. **Identify duplicates** — issues describing the same underlying problem
+    4. **Decide a disposition** for each issue:
        - **Accept** — real issue, call `accept_issue` with the issue `id`
        - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), call `dismiss_issue` with the issue `id` and `reason`
        - **Merge** — accept the best issue, dismiss the others with a reason noting the duplicate
-    4. **Execute** each disposition using the tools above
-
-    ## Incoming Issues
-
-    #{issues_text}
+    5. **Execute** each disposition using the tools above
 
     Stop the session when all issues have been triaged.
     """

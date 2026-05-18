@@ -52,6 +52,22 @@ defmodule CodeMySpec.Issues.RemoteClient do
     end
   end
 
+  @doc """
+  Lists incoming issues across all scopes for the active project.
+
+  Used by `Issues.pull_incoming_from_remote/1` at the start of every
+  triage task to ensure the local DB reflects the server's current
+  incoming-issue view before the agent begins triage. The server
+  honors per-project access via the `x-project-id` header set in
+  `build_headers/2`, so the response is naturally project-scoped.
+  """
+  def list_incoming_issues(%Scope{} = scope, opts \\ []) do
+    with {:ok, client} <- new(scope, opts),
+         {:ok, response} <- Req.get(client, url: "/api/issues", params: [status: "incoming"]) do
+      handle_list_response(response)
+    end
+  end
+
   defp handle_list_response(%{status: 200, body: body}),
     do: {:ok, Enum.map(body["data"], &deserialize_issue/1)}
 

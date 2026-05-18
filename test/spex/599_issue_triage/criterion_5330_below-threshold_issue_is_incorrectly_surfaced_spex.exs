@@ -3,15 +3,19 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
   Story 599 — Issue Triage
   Criterion 5330 — Below-threshold issue is incorrectly surfaced.
 
-  When the task runs with the default :medium threshold, a :low issue must
-  NOT appear in the triage prompt. The prompt's stated threshold must read
-  :medium (or equivalent).
+  Under the tool-driven model, a :low incoming issue must NOT appear
+  enumerated in the triage prompt. `list_issues` still exposes the
+  issue (so the agent can discover it if it ever lowers the threshold),
+  but the prompt declares the :medium threshold so the agent skips it
+  during triage.
 
-  Surface: `start_task` for the `issues_triaged` project requirement.
+  Surface: `start_task` for the `issues_triaged` project requirement,
+  then `list_issues` against the local MCP server.
   """
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
 
   alias CodeMySpecSpex.Fixtures
@@ -39,7 +43,7 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
         {:ok, Map.put(context, :session_id, session_id)}
       end
 
-      when_ "the operator starts a triage task with the default threshold :medium", context do
+      when_ "the operator starts a triage task with the default threshold", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
@@ -56,21 +60,32 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
         {:ok, Map.put(context, :triage_prompt, response_text(response))}
       end
 
-      then_ "the prompt does not list the low issue", context do
-        prompt = context.triage_prompt
-        low_issue = context.low_issue
+      when_ "the agent calls list_issues for the low severity", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        refute prompt =~ low_issue.id,
-               "expected prompt to exclude the low-severity issue #{low_issue.id}, but found it in: #{inspect(prompt)}"
+        {:reply, response, _frame} =
+          ListIssues.execute(%{status: "incoming", severity: "low"}, frame)
+
+        {:ok, Map.put(context, :low_list_text, response_text(response))}
+      end
+
+      then_ "the triage prompt declares the threshold is medium", context do
+        assert context.triage_prompt =~ ~r/medium/i,
+               "expected the triage prompt to declare :medium threshold, got: #{inspect(context.triage_prompt)}"
 
         {:ok, context}
       end
 
-      then_ "the prompt's stated threshold reads medium", context do
-        prompt = context.triage_prompt
+      then_ "the triage prompt does not enumerate the low issue", context do
+        refute context.triage_prompt =~ context.low_issue.id,
+               "expected triage prompt to NOT enumerate :low issue #{context.low_issue.id} under the tool-driven model, got: #{inspect(context.triage_prompt)}"
 
-        assert prompt =~ ~r/medium/i,
-               "expected the prompt to mention the :medium threshold, got: #{inspect(prompt)}"
+        {:ok, context}
+      end
+
+      then_ "list_issues(severity: low) returns the low issue for agent discovery", context do
+        assert context.low_list_text =~ context.low_issue.id,
+               "expected list_issues(severity: low) to expose the :low issue #{context.low_issue.id} (the surface stays discoverable; the prompt-declared threshold tells the agent to skip it during triage), got: #{inspect(context.low_list_text)}"
 
         {:ok, context}
       end

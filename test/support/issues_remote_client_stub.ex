@@ -2,40 +2,152 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
   @moduledoc """
   Test-env in-process stand-in for `CodeMySpec.Issues.RemoteClient`.
 
-  The local CLI's only contract with framework-scoped issues is
-  `create_issue/3` — fire-and-forget to the CodeMySpec server. After
-  creation, framework issues are administered server-side (humans +
-  server tooling); the agent never reads, accepts, dismisses, or
-  resolves them through the local MCP surface. So this stub only
-  mirrors that one method, plus inspection helpers for spex.
+  Supports two use cases:
+
+  1. Framework-scoped issue creation (original use case): `create_issue/3`
+     fires-and-forgets to the stub's "remote" store.
+
+  2. Triage sync scenarios (new): seed incoming server-side issues via
+     `seed_incoming_issue/2`, simulate server outages via
+     `simulate_unreachable/1`, drive triage-start pulls via
+     `pull_to_local/1`, and introspect disposition syncs via
+     `update_calls_for/1`.
 
   Wired in via `config :code_my_spec, :issues_remote_client,
   CodeMySpec.Issues.RemoteClientStub` in `config/test.exs`. The MCP
-  `create_issue` tool fetches the configured module at call time, so
-  production always lands on the real HTTP client.
+  Issues tools fetch the configured module at call time, so production
+  always lands on the real HTTP client.
 
-  State is process-local ETS so concurrent tests do not bleed framework
-  issues into each other.
+  State is process-local ETS so concurrent tests do not bleed into each
+  other. All public helpers operate on the calling process's tables.
   """
 
   alias CodeMySpec.Issues.Issue
+  alias CodeMySpec.Issues.IssuesRepository
   alias CodeMySpec.Users.Scope
 
-  @table_key {__MODULE__, :table}
+  # ETS table keys stored in process dictionary
+  @framework_table_key {__MODULE__, :framework_table}
+  @remote_table_key {__MODULE__, :remote_table}
+  @update_calls_key {__MODULE__, :update_calls}
+  @unreachable_key {__MODULE__, :unreachable}
 
-  @doc "Resets the per-process stub state."
+  # ---------------------------------------------------------------------------
+  # Test-setup helpers
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Resets all per-process stub state (framework issues, remote issues,
+  update call log, unreachable flag).
+  """
   def reset do
-    case Process.get(@table_key) do
-      nil -> :ok
-      table -> :ets.delete_all_objects(table)
+    for key <- [@framework_table_key, @remote_table_key, @update_calls_key] do
+      case Process.get(key) do
+        nil -> :ok
+        table -> :ets.delete_all_objects(table)
+      end
     end
 
+    Process.put(@unreachable_key, false)
     :ok
   end
 
-  @doc "Returns the framework issues the stub captured this test."
+  @doc """
+  Seeds a server-side incoming issue into the stub's remote store.
+
+  `attrs` must include at least `:id`, `:title`, `:severity`, `:scope`,
+  and `:description`. The seeded issue is NOT in the local DB yet —
+  call `pull_to_local/1` (or let `TriageIssues.command/2` do it via
+  triage start) to import it.
+
+  Returns `{:ok, %Issue{}}`.
+  """
+  def seed_incoming_issue(%Scope{} = scope, attrs) do
+    id = fetch(attrs, :id) || Ecto.UUID.generate()
+    issue = build_issue(scope, attrs, id, "server")
+    remote_insert(issue)
+    {:ok, issue}
+  end
+
+  @doc """
+  Toggles the simulated-unreachable flag.
+
+  When `true`, all remote-client methods that contact the "server"
+  (`list_incoming_issues/2`, `update_issue/4`) return
+  `{:error, :server_unreachable}`.
+
+  Returns `:ok`.
+  """
+  def simulate_unreachable(flag) when is_boolean(flag) do
+    Process.put(@unreachable_key, flag)
+    :ok
+  end
+
+  @doc """
+  Pulls all server-side seeded issues into the local DB.
+
+  Mirrors what `TriageIssues.command/2` does on triage start: fetches
+  from the stub's remote store and upserts into the Ecto Repo with
+  `source: "server"` so `AcceptIssue` can detect server-origin issues
+  later.
+
+  Returns `{:ok, [%Issue{}]}` on success or `{:error, reason}` when
+  the stub is simulating unreachability.
+  """
+  def pull_to_local(%Scope{} = scope) do
+    case list_incoming_issues(scope) do
+      {:ok, issues} ->
+        Enum.each(issues, fn issue ->
+          attrs = %{
+            title: issue.title,
+            severity: issue.severity,
+            scope: issue.scope,
+            description: issue.description,
+            source: "server",
+            status: :incoming,
+            story_id: issue.story_id,
+            source_path: issue.source_path
+          }
+
+          changeset =
+            %Issue{id: issue.id}
+            |> Issue.changeset(attrs)
+            |> Ecto.Changeset.put_change(:project_id, scope.active_project_id)
+            |> Ecto.Changeset.put_change(:account_id, scope.active_account_id)
+            |> Ecto.Changeset.put_change(:source, "server")
+            |> Ecto.Changeset.put_change(:status, :incoming)
+
+          CodeMySpec.Repo.insert(changeset,
+            on_conflict: {:replace_all_except, [:id, :inserted_at]},
+            conflict_target: :id
+          )
+        end)
+
+        {:ok, issues}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Returns all recorded remote `update_issue` calls for the given issue ID.
+
+  Each entry is a map with at least `:issue_id` and `:attrs`.
+  Returns `[]` if no calls were recorded for this issue.
+  """
+  def update_calls_for(issue_id) do
+    table = ensure_update_calls_table()
+
+    table
+    |> :ets.tab2list()
+    |> Enum.filter(fn {id, _call} -> id == issue_id end)
+    |> Enum.map(fn {_id, call} -> call end)
+  end
+
+  @doc "Returns all framework issues the stub captured this test."
   def stored_issues do
-    table = ensure_table()
+    table = ensure_framework_table()
 
     table
     |> :ets.tab2list()
@@ -43,22 +155,70 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
   end
 
   # ---------------------------------------------------------------------------
-  # RemoteClient public surface (subset)
+  # RemoteClient public surface
   # ---------------------------------------------------------------------------
 
+  @doc """
+  Mimics `RemoteClient.list_incoming_issues/2`.
+
+  Returns all server-side seeded issues, or `{:error, :server_unreachable}`
+  when unreachable simulation is active.
+  """
+  def list_incoming_issues(%Scope{} = _scope, _opts \\ []) do
+    if unreachable?() do
+      {:error, :server_unreachable}
+    else
+      table = ensure_remote_table()
+
+      issues =
+        table
+        |> :ets.tab2list()
+        |> Enum.map(fn {_id, issue} -> issue end)
+
+      {:ok, issues}
+    end
+  end
+
+  @doc """
+  Mimics `RemoteClient.create_issue/3`.
+
+  Stores the issue in the framework-issues table and returns `{:ok, issue}`.
+  """
   def create_issue(%Scope{} = scope, attrs, _opts \\ []) do
     id = Ecto.UUID.generate()
-    issue = build_issue(scope, attrs, id)
+    issue = build_issue(scope, attrs, id, nil)
 
-    insert(issue)
+    framework_insert(issue)
     {:ok, issue}
+  end
+
+  @doc """
+  Mimics `RemoteClient.update_issue/4`.
+
+  Records the call in the per-process update-calls table so
+  `update_calls_for/1` can introspect it. Returns
+  `{:error, :server_unreachable}` when unreachable simulation is active.
+  """
+  def update_issue(%Scope{} = _scope, issue_id, attrs, _opts \\ []) do
+    if unreachable?() do
+      {:error, :server_unreachable}
+    else
+      table = ensure_update_calls_table()
+      call = Map.put(attrs, :issue_id, issue_id)
+      :ets.insert(table, {issue_id, call})
+      {:ok, %{id: issue_id}}
+    end
   end
 
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
 
-  defp build_issue(scope, attrs, id) do
+  defp unreachable? do
+    Process.get(@unreachable_key, false)
+  end
+
+  defp build_issue(scope, attrs, id, default_source) do
     %Issue{
       id: id,
       title: fetch(attrs, :title),
@@ -68,7 +228,7 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
       status: parse_atom(fetch(attrs, :status)) || :incoming,
       category: parse_atom(fetch(attrs, :category)),
       resolution: fetch(attrs, :resolution),
-      source: fetch(attrs, :source),
+      source: fetch(attrs, :source) || default_source,
       story_id: fetch(attrs, :story_id),
       source_path: fetch(attrs, :source_path),
       project_id: scope.active_project_id,
@@ -78,11 +238,11 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
     }
   end
 
-  defp ensure_table do
-    case Process.get(@table_key) do
+  defp ensure_framework_table do
+    case Process.get(@framework_table_key) do
       nil ->
-        table = :ets.new(:issues_remote_stub, [:set, :private])
-        Process.put(@table_key, table)
+        table = :ets.new(:issues_remote_stub_framework, [:set, :private])
+        Process.put(@framework_table_key, table)
         table
 
       table ->
@@ -90,8 +250,38 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
     end
   end
 
-  defp insert(%Issue{id: id} = issue) do
-    table = ensure_table()
+  defp ensure_remote_table do
+    case Process.get(@remote_table_key) do
+      nil ->
+        table = :ets.new(:issues_remote_stub_remote, [:set, :private])
+        Process.put(@remote_table_key, table)
+        table
+
+      table ->
+        table
+    end
+  end
+
+  defp ensure_update_calls_table do
+    case Process.get(@update_calls_key) do
+      nil ->
+        table = :ets.new(:issues_remote_stub_update_calls, [:bag, :private])
+        Process.put(@update_calls_key, table)
+        table
+
+      table ->
+        table
+    end
+  end
+
+  defp remote_insert(%Issue{id: id} = issue) do
+    table = ensure_remote_table()
+    :ets.insert(table, {id, issue})
+    :ok
+  end
+
+  defp framework_insert(%Issue{id: id} = issue) do
+    table = ensure_framework_table()
     :ets.insert(table, {id, issue})
     :ok
   end
