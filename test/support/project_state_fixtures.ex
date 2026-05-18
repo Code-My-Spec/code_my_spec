@@ -557,19 +557,4 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     """
   end
 
-  defp qa_result_content do
-    """
-    # QA Result
-
-    ## Status
-
-    pass
-
-    ## Scenarios
-
-    ### Surface renders
-
-    Visited the surface — page rendered with placeholder content.
-    """
-  end
 end

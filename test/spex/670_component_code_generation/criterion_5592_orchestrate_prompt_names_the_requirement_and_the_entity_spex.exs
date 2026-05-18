@@ -106,31 +106,4 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
     """
   end
 
-  defp spec_file_content do
-    """
-    # ExampleNoImpl
-
-    ## Type
-
-    context
-
-    A context whose implementation file has not been written yet.
-
-    ## Functions
-
-    ### noop/0
-
-    Returns `:ok`.
-
-    ```elixir
-    @spec noop() :: :ok
-    ```
-
-    ## Dependencies
-
-    - None
-
-    ## Components
-    """
-  end
 end

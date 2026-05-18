@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6048Spex do
   """
 
   use CodeMySpecSpex.Case
-  use Phoenix.ChannelTest
+  import Phoenix.ChannelTest
 
   alias CodeMySpecSpex.Fixtures
 

@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account

@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story698.Criterion6047Spex do
   """
 
   use CodeMySpecSpex.Case
-  use Phoenix.ChannelTest
+  import Phoenix.ChannelTest
 
   @endpoint CodeMySpecWeb.Endpoint
 
