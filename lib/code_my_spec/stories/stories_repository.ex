@@ -196,10 +196,21 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   def delete_story(%Scope{} = scope, %Story{} = story) do
-    case PaperTrail.delete(story, originator: scope.user) do
-      {:ok, %{model: story}} -> {:ok, story}
-      {:error, changeset} -> {:error, changeset}
-    end
+    # `issues.story_id` is a plain integer (no FK constraint), so
+    # deleting a story without manually nilifying linked issues
+    # leaves orphan references that crash when the issue is later
+    # opened in the UI or surfaced through MCP tools (issue a400b815).
+    # Nilify in the same transaction as the delete so the two changes
+    # land atomically.
+    Repo.transaction(fn ->
+      from(i in CodeMySpec.Issues.Issue, where: i.story_id == ^story.id)
+      |> Repo.update_all(set: [story_id: nil])
+
+      case PaperTrail.delete(story, originator: scope.user) do
+        {:ok, %{model: model}} -> model
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
   end
 
   def by_project(query \\ Story, project_id) do

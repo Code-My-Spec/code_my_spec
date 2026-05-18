@@ -58,8 +58,28 @@ defmodule CodeMySpec.Events do
     Enum.reduce(filters, query, fn {key, value}, q ->
       key_str = to_string(key)
       value_str = to_string(value)
-      from e in q, where: fragment("?->>?", e.data, ^key_str) == ^value_str
+      apply_filter(q, key_str, value_str)
     end)
+  end
+
+  # Postgres' `?->>?` accepts a bound parameter for the JSON key, so
+  # `data->>'project_id'` works with the key as a placeholder.
+  # SQLite's `->>` does not bind the key — it requires a string
+  # literal — so the same fragment silently matches zero rows.
+  # Dispatch on the configured Ecto adapter and emit the right
+  # idiom: `->>` for Postgres, `json_extract` with a `$.<key>` path
+  # for SQLite. Issue a784f549, story 701.
+  case Application.compile_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres) do
+    Ecto.Adapters.SQLite3 ->
+      defp apply_filter(q, key_str, value_str) do
+        path = "$." <> key_str
+        from e in q, where: fragment("json_extract(?, ?)", e.data, ^path) == ^value_str
+      end
+
+    _ ->
+      defp apply_filter(q, key_str, value_str) do
+        from e in q, where: fragment("?->>?", e.data, ^key_str) == ^value_str
+      end
   end
 
   defp stringify_keys(map) do
