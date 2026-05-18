@@ -47,8 +47,15 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
       (orphan_components = orphans(scope)) != [] ->
         {false, %{reason: format_orphans(orphan_components)}}
 
+      (childless = childless_contexts(scope)) != [] ->
+        {false, %{reason: format_childless_contexts(childless)}}
+
       true ->
-        {true, %{status: "Architecture clean — every component is covered and every story is linked."}}
+        {true,
+         %{
+           status:
+             "Architecture clean — every story is linked, every context is covered, and every context has children."
+         }}
     end
   end
 
@@ -92,6 +99,36 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
 
   defp context_shaped?(%{type: nil}), do: false
   defp context_shaped?(%{type: type}), do: ComponentRegistry.has_children?(type)
+
+  @doc """
+  Returns the list of context-shaped components that have **no
+  children** in the project DB. A context without children is a
+  stub — the architect created the wrapper but didn't design the
+  module/schema tree underneath. `implementation_file` would fire
+  for the bare context and the agent would have nothing concrete to
+  build.
+
+  This is the "story 726/727 introduced Qa context with no children
+  before implementation_file fired" scenario (issue 65fee01a). The
+  fix: require every context to have at least one child component
+  before architecture_designed can satisfy.
+
+  Infrastructure-typed contexts are exempt — those are framework-
+  generated wrappers (e.g. the OTP application module) that often
+  don't have a children tree by design.
+  """
+  @spec childless_contexts(Scope.t()) :: [Components.Component.t()]
+  def childless_contexts(%Scope{} = scope) do
+    components = Components.list_components_with_dependencies(scope)
+    parented_ids = MapSet.new(components, &(&1.parent_component_id))
+
+    components
+    |> Enum.filter(&context_shaped?/1)
+    |> Enum.reject(fn c ->
+      c.type == "infrastructure" or MapSet.member?(parented_ids, c.id)
+    end)
+    |> Enum.sort_by(& &1.module_name)
+  end
 
   # A component is "covered" when:
   #   1. It is directly story-linked, OR
@@ -208,6 +245,24 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     - Add a dependency edge from a story-linked context: edit that context's spec under `.code_my_spec/spec/` and add the orphan module as a bullet under `## Dependencies` (ComponentSync re-derives the graph on save)
     - Classify as infrastructure (add the file path to `infrastructure_paths` in `.code_my_spec/config.yml`)
     - Delete the context's spec, impl, and test files; ComponentSync will remove the component on the next sync
+    """
+  end
+
+  defp format_childless_contexts(childless) do
+    bullets =
+      Enum.map_join(childless, "\n", fn c ->
+        "- `#{c.module_name}` (type: `#{c.type || "context"}`)"
+      end)
+
+    """
+    Architecture has #{length(childless)} context(s) with no child components — the wrapper exists but the module/schema tree underneath wasn't designed. `implementation_file` would fire for the bare context with nothing concrete to build:
+
+    #{bullets}
+
+    Resolve each via one of:
+    - Add child components via `create_component` (schemas, modules, surfaces) following the context's BDD specs and design rules — this is the architecture-design step that was skipped
+    - Classify as infrastructure if the context truly is a leaf wrapper (add to `infrastructure_paths` in `.code_my_spec/config.yml`)
+    - Delete the context entirely if it's a phantom (remove the spec stub; ComponentSync will reap it)
     """
   end
 end
