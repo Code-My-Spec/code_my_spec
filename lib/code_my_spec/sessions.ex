@@ -8,9 +8,11 @@ defmodule CodeMySpec.Sessions do
   """
 
   import Ecto.Query, warn: false
+  require Logger
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.Users.Scope
 
   # ============================================================================
@@ -29,6 +31,7 @@ defmodule CodeMySpec.Sessions do
     Session
     |> where([s], s.id == ^id and s.project_id == ^scope.active_project_id)
     |> Repo.one()
+    |> maybe_prune_orphan_tasks()
   end
 
   @doc "List all sessions for the project."
@@ -37,6 +40,7 @@ defmodule CodeMySpec.Sessions do
     |> where([s], s.project_id == ^scope.active_project_id)
     |> order_by([s], desc: s.inserted_at)
     |> Repo.all()
+    |> Enum.map(&maybe_prune_orphan_tasks/1)
   end
 
   @doc "List active sessions for the project."
@@ -45,6 +49,7 @@ defmodule CodeMySpec.Sessions do
     |> where([s], s.project_id == ^scope.active_project_id and s.status == :active)
     |> order_by([s], desc: s.inserted_at)
     |> Repo.all()
+    |> Enum.map(&maybe_prune_orphan_tasks/1)
   end
 
   @doc "Find an active session by external conversation ID (Claude session ID)."
@@ -58,6 +63,57 @@ defmodule CodeMySpec.Sessions do
     |> order_by([s], desc: s.inserted_at)
     |> limit(1)
     |> Repo.one()
+    |> maybe_prune_orphan_tasks()
+  end
+
+  # Self-heal: tasks whose `session_type` references a renamed or
+  # removed agent task module (e.g. legacy `QaPreflight`,
+  # `ContextImplementation`) are stripped from the session and the
+  # pruned tasks list is persisted. Keeps the read path resilient to
+  # historical schema drift without requiring a manual data migration.
+  defp maybe_prune_orphan_tasks(nil), do: nil
+
+  defp maybe_prune_orphan_tasks(%Session{tasks: tasks} = session) when is_list(tasks) do
+    {valid, orphans} =
+      Enum.split_with(tasks, fn t ->
+        SessionType.valid_type?(t.session_type)
+      end)
+
+    if orphans == [] do
+      session
+    else
+      Logger.info(
+        "[Sessions] pruning #{length(orphans)} orphan task(s) from session #{session.id}: #{orphan_summary(orphans)}"
+      )
+
+      persist_pruned_tasks(session, valid)
+    end
+  end
+
+  defp maybe_prune_orphan_tasks(session), do: session
+
+  defp orphan_summary(orphans) do
+    orphans
+    |> Enum.map(fn t -> "#{t.id}=#{inspect(t.session_type)}" end)
+    |> Enum.join(", ")
+  end
+
+  defp persist_pruned_tasks(%Session{} = session, valid_tasks) do
+    session
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.put_embed(:tasks, valid_tasks)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        updated
+
+      {:error, changeset} ->
+        Logger.warning(
+          "[Sessions] orphan-task prune failed for session #{session.id}: #{inspect(changeset.errors)} — returning in-memory pruned struct"
+        )
+
+        %Session{session | tasks: valid_tasks}
+    end
   end
 
   @doc "Update a session."

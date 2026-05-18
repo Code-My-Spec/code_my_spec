@@ -75,16 +75,31 @@ defmodule CodeMySpec.Sessions.SessionType do
 
   @spec load(binary()) :: {:ok, t()} | :error
   def load(data) when is_binary(data) do
-    atom = String.to_existing_atom(data)
-
-    if atom in @valid_types do
-      {:ok, atom}
-    else
-      :error
-    end
+    # Tolerant load: accept any pre-existing atom, even if the module
+    # has since been renamed or removed from `@valid_types`. Strict
+    # validation stays on `cast/1` so NEW writes are still rejected
+    # for unknown types — this only matters when reading legacy task
+    # rows whose `session_type` points at a deleted module (e.g. an
+    # old `QaPreflight` or `ContextImplementation` task from before
+    # those modules were consolidated/removed).
+    #
+    # The accompanying `Sessions` context prunes orphan tasks on the
+    # read path (see `Sessions.maybe_prune_orphan_tasks/1`) so the
+    # legacy entries disappear from disk the first time a session is
+    # touched.
+    {:ok, String.to_existing_atom(data)}
   rescue
     ArgumentError -> :error
   end
+
+  @doc "Returns the list of module atoms accepted by `cast/1`."
+  @spec valid_types() :: [t()]
+  def valid_types, do: @valid_types
+
+  @doc "Returns true if the given atom is in `@valid_types`."
+  @spec valid_type?(atom()) :: boolean()
+  def valid_type?(module) when is_atom(module), do: module in @valid_types
+  def valid_type?(_), do: false
 
   @spec dump(atom()) :: {:ok, binary()} | :error
   def dump(module) when is_atom(module), do: {:ok, Atom.to_string(module)}

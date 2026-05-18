@@ -87,6 +87,32 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     |> Response.error(error)
   end
 
+  # RemoteClient returns `{:unexpected_status, code, body}` when the
+  # server's response doesn't match the expected shape (404, 422, 500).
+  # Surface the code + a best-effort body excerpt so the agent (or
+  # operator reading the stack) can act on it instead of crashing the
+  # tool task with a FunctionClauseError.
+  def error({:unexpected_status, status, body}) do
+    message =
+      case body do
+        %{"error" => msg} when is_binary(msg) -> msg
+        %{"errors" => errs} -> inspect(errs)
+        bin when is_binary(bin) -> bin
+        other -> inspect(other)
+      end
+
+    Response.tool()
+    |> Response.error("Remote API returned #{status}: #{message}")
+  end
+
+  # Catch-all for any other shape RemoteClient might return so a
+  # tuple/map never crashes the tool. Inspect the value so the
+  # operator can see what came back.
+  def error(other) do
+    Response.tool()
+    |> Response.error("Unexpected error: #{inspect(other)}")
+  end
+
   # ---------------------------------------------------------------------------
   # Private Helpers
   # ---------------------------------------------------------------------------
