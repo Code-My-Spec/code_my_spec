@@ -123,8 +123,12 @@ defmodule CodeMySpecWeb.AccountLive.Members do
 
   @impl true
   def handle_event("remove-member", %{"member-id" => member_id}, socket) do
+    # `JS.push value: %{"member-id" => id}` from the confirm dialog
+    # preserves integers over the wire (JSON); the legacy
+    # `phx-value-member-id` path delivered a string. Normalize both.
+    member_id = normalize_id(member_id)
     account = socket.assigns.account
-    member = Enum.find(socket.assigns.members, &(&1.id == String.to_integer(member_id)))
+    member = Enum.find(socket.assigns.members, &(&1.id == member_id))
 
     case member do
       nil ->
@@ -151,8 +155,9 @@ defmodule CodeMySpecWeb.AccountLive.Members do
   end
 
   def handle_event("update-member-role", %{"member-id" => member_id, "role" => role}, socket) do
+    member_id = normalize_id(member_id)
     account = socket.assigns.account
-    member = Enum.find(socket.assigns.members, &(&1.id == String.to_integer(member_id)))
+    member = Enum.find(socket.assigns.members, &(&1.id == member_id))
 
     case member do
       nil ->
@@ -208,4 +213,7 @@ defmodule CodeMySpecWeb.AccountLive.Members do
   defp can_manage_members?(current_scope, account) do
     Authorization.authorize(:manage_members, current_scope, account.id)
   end
+
+  defp normalize_id(id) when is_integer(id), do: id
+  defp normalize_id(id) when is_binary(id), do: String.to_integer(id)
 end

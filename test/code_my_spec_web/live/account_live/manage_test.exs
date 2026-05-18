@@ -121,9 +121,12 @@ defmodule CodeMySpecWeb.AccountLive.ManageTest do
 
       {:ok, manage_live, _html} = live(conn, ~p"/app/accounts/#{account.id}/manage")
 
+      # The trigger button (`Delete Account`) only opens the confirm
+      # dialog via `show_confirm/2`; the actual `delete-account` event
+      # is pushed from the dialog's confirm button.
       result =
         manage_live
-        |> element("button", "Delete Account")
+        |> element("#confirm-delete-account [data-role='confirm-confirm']")
         |> render_click()
 
       assert {:error, {:redirect, %{to: "/app/accounts"}}} = result
@@ -140,7 +143,7 @@ defmodule CodeMySpecWeb.AccountLive.ManageTest do
 
       result =
         manage_live
-        |> element("button", "Delete Account")
+        |> element("#confirm-delete-account [data-role='confirm-confirm']")
         |> render_click()
 
       assert {:error, {:redirect, %{to: "/app/accounts"}}} = result

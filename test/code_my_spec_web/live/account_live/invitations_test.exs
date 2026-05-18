@@ -94,10 +94,12 @@ defmodule CodeMySpecWeb.AccountLive.InvitationsTest do
 
       {:ok, invitations_live, _html} = live(conn, ~p"/app/accounts/#{account.id}/invitations")
 
+      # The per-invitation confirm dialog is only rendered when the
+      # invitation is pending AND the user can manage; asserting on its
+      # id is the stable way to confirm the cancel-affordance is exposed.
       assert has_element?(
                invitations_live,
-               "button[phx-value-invitation-id='#{invitation.id}']",
-               "Cancel"
+               "#confirm-cancel-invitation-#{invitation.id}"
              )
     end
 
@@ -255,7 +257,7 @@ defmodule CodeMySpecWeb.AccountLive.InvitationsTest do
       {:ok, invitations_live, _html} = live(conn, ~p"/app/accounts/#{account.id}/invitations")
 
       invitations_live
-      |> element("button[phx-value-invitation-id='#{invitation.id}']", "Cancel")
+      |> element("#confirm-cancel-invitation-#{invitation.id} [data-role='confirm-confirm']")
       |> render_click()
 
       assert render(invitations_live) =~ "Invitation cancelled successfully"
@@ -285,7 +287,7 @@ defmodule CodeMySpecWeb.AccountLive.InvitationsTest do
       {:ok, invitations_live, _html} = live(conn, ~p"/app/accounts/#{account.id}/invitations")
 
       invitations_live
-      |> element("button[phx-value-invitation-id='#{invitation.id}']", "Cancel")
+      |> element("#confirm-cancel-invitation-#{invitation.id} [data-role='confirm-confirm']")
       |> render_click()
 
       assert render(invitations_live) =~ "Invitation cancelled successfully"

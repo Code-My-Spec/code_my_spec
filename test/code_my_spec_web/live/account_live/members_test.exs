@@ -216,8 +216,11 @@ defmodule CodeMySpecWeb.AccountLive.MembersTest do
 
       {:ok, members_live, _html} = live(conn, ~p"/app/accounts/#{account.id}/members")
 
+      # The trigger button only opens the per-member confirm dialog;
+      # the `remove-member` event is pushed from the dialog's confirm
+      # button.
       members_live
-      |> element("button[phx-click='remove-member'][phx-value-member-id='#{member.id}']")
+      |> element("#confirm-remove-member-#{member.id} [data-role='confirm-confirm']")
       |> render_click()
 
       assert render(members_live) =~ "Member removed successfully"

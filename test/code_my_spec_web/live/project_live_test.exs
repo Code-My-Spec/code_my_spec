@@ -91,7 +91,13 @@ defmodule CodeMySpecWeb.ProjectLiveTest do
     test "deletes project in listing", %{conn: conn, project: project} do
       {:ok, index_live, _html} = live(conn, ~p"/app/projects")
 
-      assert index_live |> element("#projects-#{project.id} a", "Delete") |> render_click()
+      # The row's `Delete` link only opens the per-project confirm
+      # dialog; the actual delete event is pushed from the dialog's
+      # confirm button.
+      assert index_live
+             |> element("#confirm-delete-project-#{project.id} [data-role='confirm-confirm']")
+             |> render_click()
+
       refute has_element?(index_live, "#projects-#{project.id}")
     end
   end

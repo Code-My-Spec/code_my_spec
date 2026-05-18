@@ -66,8 +66,19 @@ defmodule CodeMySpecWeb.InvitationsLive.Components.PendingInvitations do
     """
   end
 
-  def handle_event("cancel_invitation", %{"invitation-id" => invitation_id}, socket) do
-    send(self(), {:cancel_invitation, String.to_integer(invitation_id)})
+  # `JS.push value: %{"invitation-id" => id}` from the confirm dialog
+  # serializes via JSON, so an integer `id` stays an integer over the
+  # wire. The old `data-confirm` flow read the value out of a `phx-value-*`
+  # attribute, which is always a string — hence the legacy
+  # `String.to_integer/1` call here. Accept both shapes so the handler
+  # doesn't crash either way.
+  def handle_event("cancel_invitation", %{"invitation-id" => id}, socket) when is_integer(id) do
+    send(self(), {:cancel_invitation, id})
+    {:noreply, socket}
+  end
+
+  def handle_event("cancel_invitation", %{"invitation-id" => id}, socket) when is_binary(id) do
+    send(self(), {:cancel_invitation, String.to_integer(id)})
     {:noreply, socket}
   end
 
