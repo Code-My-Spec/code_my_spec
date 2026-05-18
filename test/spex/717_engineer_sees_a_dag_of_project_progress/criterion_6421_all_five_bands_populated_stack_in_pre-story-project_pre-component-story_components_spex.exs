@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story717.Criterion6421Spex do
         project_ys =
           nodes
           |> Enum.filter(&(&1["attributes"]["entity_type"] == "project"))
-          |> Enum.map(&{&1["attributes"]["x"], &1["attributes"]["y"]})
+          |> Enum.map(& &1["attributes"]["y"])
 
         story_ys =
           nodes
@@ -56,25 +56,55 @@ defmodule CodeMySpecSpex.Story717.Criterion6421Spex do
           |> Enum.filter(&(&1["attributes"]["entity_type"] == "component"))
           |> Enum.map(& &1["attributes"]["y"])
 
-        # Pre-story project = max y across project nodes (they all share y == 0
-        # in the horizontal band layout). Post-story project would be below
-        # the lowest component, but current schema has none — skip when
-        # empty.
-        project_top = project_ys |> Enum.map(&elem(&1, 1)) |> Enum.max(fn -> nil end)
-
-        story_top = if story_ys == [], do: nil, else: Enum.max(story_ys)
-        story_bottom = if story_ys == [], do: nil, else: Enum.min(story_ys)
-
+        # The DAG has FIVE bands, not three. The "story" entity_type covers
+        # two of them — pre-component-story (above components) and
+        # post-component-story (below components). Splitting story.y values
+        # against the component band's y-range gives the actual band
+        # membership: pre = story.y above max(component.y), post = story.y
+        # below min(component.y). Without the split, a project with both
+        # bands trips a false "overlap" because Enum.min(story_ys) picks
+        # the lowest post-story node and the assertion crosses the
+        # component band.
         component_top = if component_ys == [], do: nil, else: Enum.max(component_ys)
+        component_bottom = if component_ys == [], do: nil, else: Enum.min(component_ys)
 
-        if project_top && story_top do
-          assert project_top > story_top,
-                 "expected project band (y=#{project_top}) strictly above story band (y=#{story_top})"
+        {pre_story_ys, post_story_ys} =
+          case component_top do
+            nil -> {story_ys, []}
+            ct -> Enum.split_with(story_ys, &(&1 > ct))
+          end
+
+        project_top = if project_ys == [], do: nil, else: Enum.max(project_ys)
+        project_bottom = if project_ys == [], do: nil, else: Enum.min(project_ys)
+
+        pre_story_bottom = if pre_story_ys == [], do: nil, else: Enum.min(pre_story_ys)
+        pre_story_top = if pre_story_ys == [], do: nil, else: Enum.max(pre_story_ys)
+
+        post_story_top = if post_story_ys == [], do: nil, else: Enum.max(post_story_ys)
+        post_story_bottom = if post_story_ys == [], do: nil, else: Enum.min(post_story_ys)
+
+        # Band ordering: project_top → pre_story → components → post_story → project_bottom.
+        # Each adjacent pair has a strict y inequality when both are populated.
+        if project_top && pre_story_top do
+          assert project_top > pre_story_top,
+                 "project band (y=#{project_top}) must sit above pre-story band (y=#{pre_story_top})"
         end
 
-        if story_bottom && component_top do
-          assert story_bottom > component_top,
-                 "expected story band bottom (y=#{story_bottom}) strictly above component band top (y=#{component_top})"
+        if pre_story_bottom && component_top do
+          assert pre_story_bottom > component_top,
+                 "pre-story band bottom (y=#{pre_story_bottom}) must sit above component band top (y=#{component_top})"
+        end
+
+        if component_bottom && post_story_top do
+          assert component_bottom > post_story_top,
+                 "component band bottom (y=#{component_bottom}) must sit above post-story band top (y=#{post_story_top})"
+        end
+
+        if post_story_bottom && project_bottom && project_bottom != project_top do
+          # post-project band only exists when a project node sits below the
+          # post-story band; collapses cleanly when absent.
+          assert post_story_bottom > project_bottom,
+                 "post-story band bottom (y=#{post_story_bottom}) must sit above post-project band (y=#{project_bottom})"
         end
 
         {:ok, context}

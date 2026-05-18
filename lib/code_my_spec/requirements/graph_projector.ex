@@ -75,14 +75,20 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     blocked: "#fde047"
   }
 
-  @row_gap 500
-  @story_col_gap 700
-  @story_row_gap 350
+  # Vertical gaps inflated 4x (and horizontal narrowed) so the rendered
+  # graph's aspect ratio is closer to a typical viewport's. Sigma.js
+  # preserves aspect ratio when fitting nodes to the canvas, so a
+  # 60k-wide x 8k-tall layout (the pre-inflation shape on real projects)
+  # gets crushed vertically — bands visually collapse into a thin
+  # horizontal line at default zoom. Issue de2403b0.
+  @row_gap 2000
+  @story_col_gap 500
+  @story_row_gap 1400
   # Component zone gap constants — defined here so normalize_comp_zone_y/3 can use them.
   # @comp_gap and @comp_zone_height removed — component zone is now dynamic
-  @ctx_req_gap 250
+  @ctx_req_gap 1000
   @child_col_gap 350
-  @child_req_gap 200
+  @child_req_gap 800
   @tree_gap 300
 
   @spec project_graph(Scope.t()) :: map()
