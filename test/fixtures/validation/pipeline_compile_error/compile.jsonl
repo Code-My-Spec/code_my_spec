@@ -1,1 +1,1 @@
-{"severity":"error","file":"lib/example_context.ex","line":1,"message":"syntax error before: end"}
+{"severity":"error","file":"lib/example_context.ex","line":1,"message":"syntax error before: end","compiler":"elixir"}
