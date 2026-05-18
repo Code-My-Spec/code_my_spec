@@ -37,7 +37,6 @@ defmodule CodeMySpecSpex.Story562.Criterion5598Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  @tag :pending_implementation
   spex "Orphan prereq references are surfaced, not silently dropped" do
     scenario "the orphan-reference indicator API exists on the graph view" do
       given_ :context_with_three_children
