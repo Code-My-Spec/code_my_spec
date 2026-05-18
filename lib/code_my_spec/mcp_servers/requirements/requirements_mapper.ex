@@ -92,13 +92,12 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
           footer =
             if diagnostic? do
-              "_Total: #{total}. `locally failing` = the requirement's own check failed; " <>
-                "`blocked` = clamped because an upstream prereq is unsatisfied. " <>
-                "Real friction lives in `locally failing` counts._"
+              "_Total: #{total}. All unsatisfied counts are local-check failures — " <>
+                "satisfaction is local truth, prerequisites govern actionability separately " <>
+                "(see `get_next_requirement`)._"
             else
               "_Total: #{total}. Drill in with `requirement_name: \"<name>\"`, `entity_type`, " <>
-                "or `module_filter`. Pass `diagnostic: true` to break out `locally failing` " <>
-                "vs `blocked by prereqs`. Set `summary: false` for per-entity rows._"
+                "or `module_filter`. Set `summary: false` for per-entity rows._"
             end
 
           "#{rows}\n\n#{footer}"
@@ -108,18 +107,8 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   defp format_summary_row({name, group}, true) do
-    {locally, blocked} =
-      Enum.split_with(group, fn node ->
-        # A node is "locally failing" if its leaf check returned false.
-        # Clamped nodes carry the original leaf result on :locally_satisfied;
-        # unclamped nodes use :satisfied directly.
-        case Map.get(node, :locally_satisfied) do
-          nil -> not node.satisfied
-          locally -> not locally
-        end
-      end)
-
-    "- **#{name}**: #{length(group)} (#{length(locally)} locally failing, #{length(blocked)} blocked)"
+    locally_failing = Enum.count(group, &(not &1.satisfied))
+    "- **#{name}**: #{length(group)} (#{locally_failing} locally failing)"
   end
 
   defp format_summary_row({name, group}, false), do: "- **#{name}**: #{length(group)}"

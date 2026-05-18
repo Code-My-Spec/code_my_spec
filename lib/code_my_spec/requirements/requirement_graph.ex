@@ -38,7 +38,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     config = CodeMySpec.Configurations.get_or_create(scope)
     {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
     edges = compute_edges(nodes, ctx, config)
-    nodes = clamp_satisfaction(nodes, edges)
     {nodes, edges}
   end
 
@@ -60,7 +59,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     config = CodeMySpec.Configurations.get_or_create(scope)
     {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
     edges = compute_edges(nodes, ctx, config)
-    nodes = clamp_satisfaction(nodes, edges)
     actionable_from(nodes, edges, ctx)
   end
 
@@ -89,7 +87,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {us_config, config} = :timer.tc(fn -> CodeMySpec.Configurations.get_or_create(scope) end)
     {us_nodes, {nodes, ctx}} = :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
     {us_edges, edges} = :timer.tc(fn -> compute_edges(nodes, ctx, config) end)
-    {us_clamp, nodes} = :timer.tc(fn -> clamp_satisfaction(nodes, edges) end)
     {us_actionable, actionable} = :timer.tc(fn -> actionable_from(nodes, edges, ctx) end)
 
     metrics = %{
@@ -97,7 +94,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       config_ms: div(us_config, 1000),
       compute_nodes_ms: div(us_nodes, 1000),
       compute_edges_ms: div(us_edges, 1000),
-      clamp_ms: div(us_clamp, 1000),
       actionable_ms: div(us_actionable, 1000),
       node_count: length(nodes),
       edge_count: length(edges)
@@ -140,62 +136,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def compute_all(%Scope{} = scope) do
     ctx = Preloader.load(scope)
     config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
-    edges = compute_edges(nodes, ctx, config)
-    clamp_satisfaction(nodes, edges)
+    {nodes, _ctx} = compute_all_from_ctx(scope, ctx, config)
+    nodes
   end
 
-  # -- Satisfaction clamping --
-  # A node cannot be satisfied if any of its incoming edge sources are unsatisfied.
-  # This prevents vacuous truth (e.g. "zero problems" when nothing has been built).
-  # Iterates until stable since clamping one node may cascade to its dependents.
-  defp clamp_satisfaction(nodes, edges) do
-    incoming =
-      Enum.reduce(edges, %{}, fn edge, acc ->
-        Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
-      end)
-
-    do_clamp(nodes, incoming)
-  end
-
-  defp do_clamp(nodes, incoming) do
-    satisfaction_map = Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
-
-    {updated_nodes, changed?} =
-      Enum.map_reduce(nodes, false, &maybe_unsatisfy_node(&1, &2, incoming, satisfaction_map))
-
-    if changed?, do: do_clamp(updated_nodes, incoming), else: updated_nodes
-  end
-
-  defp maybe_unsatisfy_node(node, any_changed, _incoming, _satisfaction_map)
-       when not node.satisfied,
-       do: {node, any_changed}
-
-  defp maybe_unsatisfy_node(node, any_changed, incoming, satisfaction_map) do
-    sources = Map.get(incoming, node_key(node), [])
-
-    if any_unsatisfied?(sources, satisfaction_map),
-      do: {unsatisfy(node), true},
-      else: {node, any_changed}
-  end
-
-  defp any_unsatisfied?(sources, satisfaction_map) do
-    Enum.any?(sources, fn source_key ->
-      Map.get(satisfaction_map, source_key, true) == false
-    end)
-  end
-
-  defp unsatisfy(node) do
-    # Preserve the leaf-check result before overriding so diagnostic
-    # consumers (e.g. `list_requirements`) can distinguish "locally
-    # failing" from "clamped by an unsatisfied prereq."
-    locally = Map.get(node, :locally_satisfied, node.satisfied)
-
-    node
-    |> Map.put(:satisfied, false)
-    |> Map.put(:locally_satisfied, locally)
-    |> Map.put(:details, Map.put(node.details || %{}, :reason, "prerequisites not yet satisfied"))
-  end
+  # Satisfaction is a local property — each node's `satisfied` field is the
+  # result of its own leaf check, computed once in `compute_all_from_ctx`
+  # and never mutated by graph context. Story 562: locally-truthful state
+  # plus prerequisite-driven actionability replaced the cascading clamp pass.
+  # Upstream gating happens at `actionable_from` time, not on the node.
 
   # -- Edge computation --
 
