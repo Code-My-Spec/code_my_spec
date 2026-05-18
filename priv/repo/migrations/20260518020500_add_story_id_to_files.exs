@@ -1,18 +1,18 @@
 defmodule CodeMySpec.Repo.Migrations.AddStoryIdToFiles do
   use Ecto.Migration
 
-  # The `Files` schema declares `belongs_to :story` but the column was
-  # never created on the Postgres side. `20260328193741_create_files`
-  # was edited after it was applied (the file has the column today but
-  # production was migrated against an older version). MCP tools that
-  # join through `files.story_id` (`show_requirement`,
+  # Adds `files.story_id` to support `belongs_to :story` on the Files
+  # schema. Prod was migrated against an early working copy of
+  # `20260328193741_create_files` that did not include the column, so
+  # MCP tools joining through `files.story_id` (`show_requirement`,
   # `show_component_requirements`, `show_story_requirements`) crashed
-  # with `undefined_column`. The CLI SQLite migration already had this
-  # — bringing Postgres in line.
+  # with `undefined_column` until this migration ran. The CLI SQLite
+  # migration had the column from the start — this brings Postgres in
+  # line.
   #
-  # Uses raw SQL with conditional DDL so the migration is idempotent for
-  # test databases that were seeded from the edited `create_files`
-  # migration which already included the column and FK constraint.
+  # Uses raw SQL with `DO $$ ... IF NOT EXISTS` blocks so the migration
+  # is idempotent for dev/CI environments whose `create_files` migration
+  # already added the column from a since-reverted version of that file.
   def up do
     execute """
     DO $$

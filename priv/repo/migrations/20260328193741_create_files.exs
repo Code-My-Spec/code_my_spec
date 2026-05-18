@@ -1,6 +1,13 @@
 defmodule CodeMySpec.Repo.Migrations.CreateFiles do
   use Ecto.Migration
 
+  # `story_id` is NOT created here even though the schema declares
+  # `belongs_to :story`. Production was migrated against an earlier
+  # working copy of this file that did not include the column, so its
+  # `files` table came out without it. The column is added later by
+  # `20260518020500_add_story_id_to_files`, which is idempotent so
+  # fresh dev/CI environments end up in the same state.
+
   def change do
     create_query =
       "CREATE TYPE file_role AS ENUM ('spec', 'implementation', 'test', 'rule', 'json', 'review', 'bdd_spec', 'qa_brief', 'qa_result', 'config')"
@@ -16,7 +23,6 @@ defmodule CodeMySpec.Repo.Migrations.CreateFiles do
       add :size, :integer
 
       add :component_id, references(:components, type: :binary_id, on_delete: :nilify_all)
-      add :story_id, references(:stories, on_delete: :nilify_all)
       add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all), null: false
 
       timestamps()
@@ -24,7 +30,6 @@ defmodule CodeMySpec.Repo.Migrations.CreateFiles do
 
     create unique_index(:files, [:project_id, :path])
     create index(:files, [:component_id])
-    create index(:files, [:story_id])
     create index(:files, [:role])
   end
 end
