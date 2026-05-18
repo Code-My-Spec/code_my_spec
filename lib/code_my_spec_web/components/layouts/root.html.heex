@@ -72,6 +72,8 @@
       rel="preload"
       as="image"
       href={@preload_image}
+      imagesrcset={assigns[:preload_image_srcset]}
+      imagesizes={assigns[:preload_image_sizes]}
       fetchpriority="high"
     />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />

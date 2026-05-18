@@ -162,24 +162,12 @@ defmodule CodeMySpecWeb.ContentController do
       og_type: if(is_article, do: "article", else: "website"),
       article_published_time: if(is_article, do: format_iso8601(content.publish_at)),
       canonical_url: base_url <> canonical,
-      preload_image: blog_hero_url(content),
+      preload_image: CodeMySpecWeb.ContentHTML.blog_hero_image(content),
+      preload_image_srcset: CodeMySpecWeb.ContentHTML.blog_hero_srcset(content),
+      preload_image_sizes: CodeMySpecWeb.ContentHTML.blog_hero_sizes(),
       json_ld: build_json_ld(content, is_protected)
     ]
   end
-
-  # Returns the URL of the rendered hero image so the root layout can emit a
-  # <link rel="preload"> in <head>, letting the browser fetch the LCP image
-  # during HTML parse instead of after CSS/JS finish loading. Must produce the
-  # same URL the article template uses for the <img src> to avoid a double fetch.
-  defp blog_hero_url(%{content_type: :blog, slug: slug} = content) do
-    if get_in(content.metadata || %{}, ["metadata", "hero_disabled"]) do
-      nil
-    else
-      CodeMySpecWeb.ImageUrl.image_url("hero-#{slug}.webp")
-    end
-  end
-
-  defp blog_hero_url(_), do: nil
 
   # Route all content actions through show/2
   def blog(conn, params), do: show(conn, params)

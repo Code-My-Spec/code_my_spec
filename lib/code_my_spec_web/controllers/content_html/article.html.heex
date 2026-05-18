@@ -30,6 +30,8 @@
         <%= if hero_image = blog_hero_image(@content) do %>
           <img
             src={hero_image}
+            srcset={blog_hero_srcset(@content)}
+            sizes={blog_hero_sizes()}
             alt={@content.title || @content.slug}
             class="w-full rounded-lg mb-8"
             width="1024"

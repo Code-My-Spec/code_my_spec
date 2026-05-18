@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Generate responsive-image variants for every hero-{slug}.webp under
+# priv/static/images/. Produces hero-{slug}-480.webp, -768.webp, -1024.webp
+# alongside the existing master. Idempotent: skips a variant if it already
+# exists. Skips files that already look like a variant (hero-foo-480.webp).
+#
+# Usage:
+#   bin/generate-hero-variants                  # process all heroes
+#   bin/generate-hero-variants hero-foo.webp    # process one (path or basename)
+#   bin/generate-hero-variants --force          # rebuild all variants
+#
+# After running, sync to S3:
+#   bin/sync-images --exclude "*" --include "hero-*"
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DIR="$REPO_ROOT/priv/static/images"
+WIDTHS=(480 768 1024)
+QUALITY=85
+
+if ! command -v cwebp >/dev/null 2>&1; then
+  echo "error: cwebp not found (brew install webp)" >&2
+  exit 1
+fi
+
+FORCE=0
+TARGETS=()
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    *) TARGETS+=("$arg") ;;
+  esac
+done
+
+if [ ${#TARGETS[@]} -eq 0 ]; then
+  # All masters: hero-*.webp that don't end in -NNN.webp
+  while IFS= read -r -d '' f; do
+    base="$(basename "$f")"
+    if [[ ! "$base" =~ -[0-9]+\.webp$ ]]; then
+      TARGETS+=("$f")
+    fi
+  done < <(find "$DIR" -maxdepth 1 -name 'hero-*.webp' -print0)
+fi
+
+count=0
+skipped=0
+for src in "${TARGETS[@]}"; do
+  # Accept either full path or basename
+  if [[ "$src" != */* ]]; then src="$DIR/$src"; fi
+  if [ ! -f "$src" ]; then
+    echo "skip (missing): $src" >&2
+    continue
+  fi
+  base="$(basename "$src" .webp)"
+  for w in "${WIDTHS[@]}"; do
+    out="$DIR/${base}-${w}.webp"
+    if [ -f "$out" ] && [ "$FORCE" -eq 0 ]; then
+      skipped=$((skipped+1))
+      continue
+    fi
+    cwebp -q "$QUALITY" -quiet -resize "$w" 0 "$src" -o "$out"
+    count=$((count+1))
+  done
+done
+
+echo "generated: $count   skipped: $skipped"
