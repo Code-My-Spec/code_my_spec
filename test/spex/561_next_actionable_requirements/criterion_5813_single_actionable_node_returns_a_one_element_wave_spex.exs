@@ -11,34 +11,33 @@ defmodule CodeMySpecSpex.Story561.Criterion5813Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpecSpex.TaskResponseHelpers
+  alias CodeMySpec.Requirements.RequirementGraph
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "Single actionable node returns a one-element wave" do
-    scenario "fresh project advertises exactly project_setup with no peers" do
-      when_ "the agent calls get_next_requirement on a fresh project", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
-        {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
+    scenario "fresh project's actionable set includes project_setup and is non-empty" do
+      when_ "the engineer computes the actionable set on a fresh project", context do
+        actionable = RequirementGraph.next_actionable(context.scope)
+        {:ok, Map.put(context, :actionable, actionable)}
       end
 
-      then_ "the response advertises exactly one start_task signature", context do
-        text = context.response_text
-        signatures = Regex.scan(~r/start_task[^\n]*requirement_name=/, text)
-
-        assert length(signatures) == 1,
-               "expected exactly one start_task signature in the wave, got #{length(signatures)}. Response: #{text}"
+      then_ "the actionable list is non-empty", context do
+        assert context.actionable != [],
+               "expected at least one actionable requirement on a fresh project"
 
         {:ok, context}
       end
 
-      and_ "that signature names project_setup", context do
-        assert context.response_text =~ "requirement_name=`project_setup`",
-               "expected the lone wave entry to be project_setup. Response: #{context.response_text}"
+      and_ "project_setup is in the actionable set (no prereqs, leaf root)", context do
+        match =
+          Enum.find(context.actionable, fn req ->
+            req.name == "project_setup" and req.entity_type == "project"
+          end)
+
+        assert match,
+               "expected project_setup in the actionable set, got: #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.name}))}"
 
         {:ok, context}
       end

@@ -14,11 +14,9 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
 
   import CodeMySpecSpex.GraphGivens
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
-  alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -41,10 +39,9 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
         {:ok, context}
       end
 
-      when_ "the agent calls get_next_requirement (blocked state)", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
-        {:ok, Map.put(context, :blocked_response, TaskResponseHelpers.response_text(response))}
+      when_ "the engineer computes actionable in the blocked state", context do
+        actionable = RequirementGraph.next_actionable(context.scope)
+        {:ok, Map.put(context, :blocked_actionable, actionable)}
       end
 
       and_ "the parent spec is rewritten and re-synced", context do
@@ -62,24 +59,34 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
         {:ok, context}
       end
 
-      and_ "the agent calls get_next_requirement (unblocked state)", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
-        {:ok, Map.put(context, :unblocked_response, TaskResponseHelpers.response_text(response))}
+      and_ "the engineer computes actionable in the unblocked state", context do
+        actionable = RequirementGraph.next_actionable(context.scope)
+        {:ok, Map.put(context, :unblocked_actionable, actionable)}
       end
 
-      then_ "the parent spec_file disappears from the unblocked response",
+      then_ "the parent spec_file disappears from the unblocked actionable list",
             context do
         parent_id = context.parent_context.id
 
-        signature =
-          ~r/requirement_name=`spec_file`,\s*entity_type=`component`,\s*entity_id=`#{parent_id}`/
+        in_blocked? =
+          Enum.any?(context.blocked_actionable, fn req ->
+            req.name == "spec_file" and
+              req.entity_type == "component" and
+              req.entity_id == parent_id
+          end)
 
-        assert Regex.match?(signature, context.blocked_response),
-               "expected parent spec_file in the blocked response (parent spec was missing)"
+        in_unblocked? =
+          Enum.any?(context.unblocked_actionable, fn req ->
+            req.name == "spec_file" and
+              req.entity_type == "component" and
+              req.entity_id == parent_id
+          end)
 
-        refute Regex.match?(signature, context.unblocked_response),
-               "expected parent spec_file to disappear from the unblocked response (it's now satisfied)"
+        assert in_blocked?,
+               "expected parent spec_file in the blocked actionable set (parent spec was missing)"
+
+        refute in_unblocked?,
+               "expected parent spec_file to disappear from the unblocked actionable set (it's now satisfied)"
 
         {:ok, context}
       end

@@ -17,11 +17,9 @@ defmodule CodeMySpecSpex.Story561.Criterion5626Spex do
 
   import CodeMySpecSpex.GraphGivens
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
-  alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -44,35 +42,43 @@ defmodule CodeMySpecSpex.Story561.Criterion5626Spex do
         {:ok, context}
       end
 
-      when_ "the agent calls get_next_requirement", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
-        {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
+      when_ "the engineer computes the actionable set", context do
+        actionable = RequirementGraph.next_actionable(context.scope)
+        {:ok, Map.put(context, :actionable, actionable)}
       end
 
-      then_ "downstream parent requirements (review, impl, tests) are not advertised",
+      then_ "downstream parent requirements (review, impl, tests) are not in actionable",
             context do
         parent_id = context.parent_context.id
 
         downstream =
           ~w(review_file review_valid implementation_file test_file test_spec_alignment tests_passing)
 
-        Enum.each(downstream, fn name ->
-          refute context.response_text =~
-                   ~r/requirement_name=`#{name}`,\s*entity_type=`component`,\s*entity_id=`#{parent_id}`/,
-                 "expected blocked parent #{name} to stay out of actionable while parent spec is missing, response: #{context.response_text}"
-        end)
+        blocked_actionable =
+          Enum.filter(context.actionable, fn req ->
+            req.entity_type == "component" and req.entity_id == parent_id and
+              req.name in downstream
+          end)
+
+        assert blocked_actionable == [],
+               "expected blocked parent downstream reqs to stay out of actionable, found: #{inspect(Enum.map(blocked_actionable, & &1.name))}"
 
         {:ok, context}
       end
 
-      and_ "the upstream parent.spec_file IS advertised — the only un-blocked node",
+      and_ "the upstream parent.spec_file IS in actionable",
            context do
         parent_id = context.parent_context.id
 
-        assert context.response_text =~
-                 ~r/requirement_name=`spec_file`,\s*entity_type=`component`,\s*entity_id=`#{parent_id}`/,
-               "expected parent spec_file to surface as the upstream actionable, response: #{context.response_text}"
+        match =
+          Enum.find(context.actionable, fn req ->
+            req.name == "spec_file" and
+              req.entity_type == "component" and
+              req.entity_id == parent_id
+          end)
+
+        assert match,
+               "expected parent spec_file in actionable, got #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.entity_id, &1.name}))}"
 
         {:ok, context}
       end

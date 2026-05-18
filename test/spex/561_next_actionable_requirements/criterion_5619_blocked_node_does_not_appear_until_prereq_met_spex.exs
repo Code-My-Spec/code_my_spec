@@ -15,11 +15,9 @@ defmodule CodeMySpecSpex.Story561.Criterion5619Spex do
 
   import CodeMySpecSpex.GraphGivens
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
-  alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -43,31 +41,36 @@ defmodule CodeMySpecSpex.Story561.Criterion5619Spex do
         {:ok, context}
       end
 
-      when_ "the agent calls get_next_requirement", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
-        {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
+      when_ "the engineer computes the actionable set", context do
+        actionable = RequirementGraph.next_actionable(context.scope)
+        {:ok, Map.put(context, :actionable, actionable)}
       end
 
-      then_ "review_file and review_valid are not advertised",
+      then_ "no review_file or review_valid is actionable",
             context do
-        refute context.response_text =~ "requirement_name=`review_file`",
-               "expected review_file to be blocked while parent spec is missing"
+        blocked_names = ["review_file", "review_valid"]
 
-        refute context.response_text =~ "requirement_name=`review_valid`",
-               "expected review_valid to be blocked while parent spec is missing"
+        actionable_reviews =
+          Enum.filter(context.actionable, fn req -> req.name in blocked_names end)
+
+        assert actionable_reviews == [],
+               "expected review_file/review_valid to be blocked while parent spec is missing, got actionable: #{inspect(Enum.map(actionable_reviews, &{&1.entity_type, &1.entity_id, &1.name}))}"
 
         {:ok, context}
       end
 
-      and_ "the parent's spec_file is the actionable head", context do
+      and_ "the parent's spec_file is in the actionable set", context do
         parent_id = context.parent_context.id
 
-        signature =
-          ~r/requirement_name=`spec_file`,\s*entity_type=`component`,\s*entity_id=`#{parent_id}`/
+        match =
+          Enum.find(context.actionable, fn req ->
+            req.name == "spec_file" and
+              req.entity_type == "component" and
+              req.entity_id == parent_id
+          end)
 
-        assert Regex.match?(signature, context.response_text),
-               "expected parent spec_file to be the actionable head, response: #{context.response_text}"
+        assert match,
+               "expected parent spec_file in actionable, got #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.entity_id, &1.name}))}"
 
         {:ok, context}
       end

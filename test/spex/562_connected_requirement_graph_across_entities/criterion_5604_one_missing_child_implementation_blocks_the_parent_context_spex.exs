@@ -1,14 +1,21 @@
 defmodule CodeMySpecSpex.Story562.Criterion5604Spex do
   @moduledoc """
   Story 562 — Connected Requirement Graph Across Entities
-  Criterion 5604 — One missing child implementation blocks the parent
-  context even when the others are complete.
+  Criterion 5604 — One missing child implementation surfaces as a
+  locally unsatisfied node; the parent context's terminal does NOT
+  lie about its own state.
 
-  Surface: requirements graph at
-  `/projects/:project/requirements/graph`. Tests that when one child
-  has unsatisfied terminal state, the parent context's terminal
-  cannot be marked satisfied — the graph propagates incomplete
-  upstream state through to downstream nodes.
+  Under the local-truth redesign (rule ac254f5d), satisfaction reflects
+  only each node's own check. A missing child impl makes the child's
+  `implementation_file` locally unsatisfied; whether the parent's
+  terminal is satisfied is governed by the parent's own check, not by
+  cascading from the child.
+
+  This spec pins the rendered surface state: the deleted child's
+  implementation_file node renders in the non-satisfied color, and the
+  parent's nodes report whatever their own local checks say (the spec
+  does not assert the parent is unsatisfied — that would re-introduce
+  the cascade we removed).
   """
 
   use CodeMySpecSpex.Case
@@ -22,8 +29,8 @@ defmodule CodeMySpecSpex.Story562.Criterion5604Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Missing child implementation blocks the parent context" do
-    scenario "parent context has no satisfied terminal when one child is incomplete" do
+  spex "Missing child implementation renders as locally unsatisfied without cascading" do
+    scenario "deleted child impl shows up as unsatisfied in the rendered graph" do
       given_ :context_with_three_children
 
       and_ "the schema child's implementation file is removed", context do
@@ -33,7 +40,6 @@ defmodule CodeMySpecSpex.Story562.Criterion5604Spex do
             Content.impl_path(context.child_schema.module_name)
           )
 
-        # Re-sync so the missing file shows up as unsatisfied state
         {:ok, sync_live, _html} =
           live(context.conn, "/projects/#{context.project.name}/files")
 
@@ -49,27 +55,21 @@ defmodule CodeMySpecSpex.Story562.Criterion5604Spex do
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "no parent-owned node renders with satisfied state",
+      then_ "the child's implementation_file node renders as not satisfied",
             context do
-        parent_id = context.parent_context.id
-
-        parent_nodes =
-          Enum.filter(context.graph["nodes"], fn n ->
-            n["attributes"]["entity_id"] == parent_id
-          end)
-
-        # Satisfied nodes use the satisfied color; actionable/blocked use others.
-        # The parent's terminal must NOT be satisfied while a child is incomplete.
         satisfied_color = "#ff3838"
 
-        satisfied_parent_terminals =
-          Enum.filter(parent_nodes, fn n ->
-            n["attributes"]["color"] == satisfied_color and
-              n["attributes"]["name"] in ["tests_passing", "implementation_file"]
+        impl_node =
+          Enum.find(context.graph["nodes"], fn n ->
+            n["attributes"]["entity_id"] == context.child_schema.id and
+              n["attributes"]["name"] == "implementation_file"
           end)
 
-        assert satisfied_parent_terminals == [],
-               "expected no satisfied parent-context terminal node while a child implementation is missing, found: #{inspect(Enum.map(satisfied_parent_terminals, & &1["attributes"]["name"]))}"
+        assert impl_node,
+               "expected the deleted child's implementation_file node to be present in the graph"
+
+        refute impl_node["attributes"]["color"] == satisfied_color,
+               "expected the deleted child's implementation_file to render as not satisfied, got color #{impl_node["attributes"]["color"]}"
 
         {:ok, context}
       end

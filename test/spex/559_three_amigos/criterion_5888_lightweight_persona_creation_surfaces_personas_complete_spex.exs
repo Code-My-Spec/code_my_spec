@@ -191,7 +191,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         {:ok, Map.put(context, :evaluate_response, response)}
       end
 
-      then_ "evaluate_task accepts the readiness gate and personas_complete clamps the chain",
+      then_ "evaluate_task accepts the readiness gate and personas_complete remains the gating prereq",
             context do
         eval_body = response_text(context.evaluate_response)
 
@@ -208,8 +208,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         assert list_body =~ ~r/\[ \]\s+\*\*personas_complete\*\*/,
                "expected personas_complete to be unsatisfied at the project level, got #{inspect(list_response)}"
 
-        assert list_body =~ ~r/\[ \]\s+\*\*three_amigos_complete\*\*/,
-               "expected three_amigos_complete to be clamped to unsatisfied via personas_complete cascade, got #{inspect(list_response)}"
+        # Under local-truth satisfaction (story 562 redesign): three_amigos_complete
+        # is a story-level local check (persona linked + rule + scenario). Once
+        # the readiness gate writes those artifacts for this story, it satisfies
+        # locally. The project-level gate that still constrains downstream work
+        # is personas_complete — verified unsatisfied above.
 
         {:ok, context}
       end

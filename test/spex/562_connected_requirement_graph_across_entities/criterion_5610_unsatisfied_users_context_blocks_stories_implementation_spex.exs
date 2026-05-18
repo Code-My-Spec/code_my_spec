@@ -1,13 +1,15 @@
 defmodule CodeMySpecSpex.Story562.Criterion5610Spex do
   @moduledoc """
   Story 562 — Connected Requirement Graph Across Entities
-  Criterion 5610 — Unsatisfied Users context blocks Stories
-  implementation even when Stories spec_valid is green.
+  Criterion 5610 — Cross-context dependencies render as locally
+  truthful: the unsatisfied upstream context's own terminal is shown
+  as not satisfied; the cross-context dep edge constrains
+  actionability but does not mutate downstream satisfaction.
 
-  Surface: requirements graph LiveView. When the `Users` context's
-  implementation is missing, no `Stories` implementation_file or
-  tests_passing node should render as satisfied — Stories cannot
-  proceed past its dependency.
+  Under the local-truth redesign (rule ac254f5d), the dep edge from
+  Users.terminal → Stories.first_req means Stories' first req is not
+  actionable while Users' terminal is unsat — but Stories' own nodes
+  report their own local check state.
   """
 
   use CodeMySpecSpex.Case
@@ -21,8 +23,8 @@ defmodule CodeMySpecSpex.Story562.Criterion5610Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Failing dep blocks the dependent context's implementation" do
-    scenario "no Stories implementation node renders satisfied while Users is incomplete" do
+  spex "Cross-context dep renders local truth" do
+    scenario "Users implementation_file renders as not satisfied when its file is missing" do
       given_ :cross_context_dependency
 
       and_ "the Users context's implementation file is removed", context do
@@ -53,21 +55,27 @@ defmodule CodeMySpecSpex.Story562.Criterion5610Spex do
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "no Stories implementation_file or tests_passing node is satisfied",
+      then_ "Users' implementation_file nodes render as not satisfied",
             context do
-        stories_ids = MapSet.new([context.stories_context.id, context.stories_child.id])
         satisfied_color = "#ff3838"
+        users_ids = MapSet.new([context.users_context.id, context.users_child.id])
 
-        satisfied_impl_nodes =
-          context.graph["nodes"]
-          |> Enum.filter(fn n ->
-            MapSet.member?(stories_ids, n["attributes"]["entity_id"]) and
-              n["attributes"]["color"] == satisfied_color and
-              n["attributes"]["name"] in ["implementation_file", "tests_passing"]
+        users_impl_nodes =
+          Enum.filter(context.graph["nodes"], fn n ->
+            MapSet.member?(users_ids, n["attributes"]["entity_id"]) and
+              n["attributes"]["name"] == "implementation_file"
           end)
 
-        assert satisfied_impl_nodes == [],
-               "expected no satisfied Stories implementation/tests_passing nodes while Users is incomplete, found: #{inspect(Enum.map(satisfied_impl_nodes, &{&1["attributes"]["entity_id"], &1["attributes"]["name"]}))}"
+        assert users_impl_nodes != [],
+               "expected the deleted Users implementation_file nodes to appear in the graph"
+
+        satisfied =
+          Enum.filter(users_impl_nodes, fn n ->
+            n["attributes"]["color"] == satisfied_color
+          end)
+
+        assert satisfied == [],
+               "expected Users' implementation_file nodes to render as not satisfied, found satisfied: #{inspect(Enum.map(satisfied, & &1["attributes"]["entity_id"]))}"
 
         {:ok, context}
       end

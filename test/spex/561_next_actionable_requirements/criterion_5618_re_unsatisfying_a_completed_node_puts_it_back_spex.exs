@@ -15,11 +15,9 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
 
   import CodeMySpecSpex.GraphGivens
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
-  alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -44,21 +42,24 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
         {:ok, context}
       end
 
-      when_ "the agent calls get_next_requirement", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
-        {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
+      when_ "the engineer computes the actionable set", context do
+        actionable = RequirementGraph.next_actionable(context.scope)
+        {:ok, Map.put(context, :actionable, actionable)}
       end
 
-      then_ "the parent context's spec_file is now actionable again",
+      then_ "the parent context's spec_file is in the actionable list",
             context do
         parent_id = context.parent_context.id
 
-        signature =
-          ~r/requirement_name=`spec_file`,\s*entity_type=`component`,\s*entity_id=`#{parent_id}`/
+        match =
+          Enum.find(context.actionable, fn req ->
+            req.name == "spec_file" and
+              req.entity_type == "component" and
+              req.entity_id == parent_id
+          end)
 
-        assert Regex.match?(signature, context.response_text),
-               "expected the parent's spec_file to be back in the actionable list after deletion, response was: #{context.response_text}"
+        assert match,
+               "expected the parent's spec_file in the actionable list, got #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.entity_id, &1.name}))}"
 
         {:ok, context}
       end
