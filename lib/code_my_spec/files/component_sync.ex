@@ -99,7 +99,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     existing_components = Components.list_components(scope)
     existing_map = Map.new(existing_components, &{&1.module_name, &1})
 
-    synced_components = Enum.map(merged, &upsert_component(scope, &1, now))
+    synced_components = Enum.map(merged, &upsert_component(scope, &1, now, existing_map))
 
     component_map =
       Map.merge(existing_map, Map.new(synced_components, &{&1.module_name, &1}))
@@ -209,21 +209,33 @@ defmodule CodeMySpec.Files.ComponentSync do
       MapSet.union(MapSet.new(Map.keys(spec_map)), MapSet.new(Map.keys(impl_map)))
 
     Enum.map(all_names, fn name ->
-      spec = Map.get(spec_map, name, %{module_name: name, type: nil, description: nil, dependencies: []})
-      impl = Map.get(impl_map, name, %{module_name: name, type: nil, description: nil, dependencies: []})
+      spec = Map.get(spec_map, name)
+      impl = Map.get(impl_map, name)
 
+      # `dependencies: nil` is the "no spec file present" signal that
+      # `sync_component_dependencies/4` uses to leave the component's deps
+      # untouched. With a spec file present, the spec's list (possibly `[]`)
+      # is authoritative.
       %{
         module_name: name,
-        type: spec.type || impl.type,
-        description: spec.description || impl.description,
-        dependencies: spec.dependencies || []
+        type: (spec && spec.type) || (impl && impl.type),
+        description: (spec && spec.description) || (impl && impl.description),
+        dependencies: spec && spec.dependencies
       }
     end)
   end
 
   # -- Upsert --
 
-  defp upsert_component(%Scope{} = scope, data, synced_at) do
+  # Splits into create-or-update so a sync that lacks new type info (impl
+  # file without a matching spec, which is the dominant case during early
+  # generation) doesn't clobber an existing component's type with the
+  # `Component.changeset` default of `"module"`. The previous
+  # `upsert_component` path always went through `Repo.insert(..., on_conflict:
+  # {:replace_all_except, [...]})`, and the insertion's changeset carried
+  # the default type — which then overwrote the existing row's user-set type
+  # (e.g. "schema" → "module"), reshaping the component's requirement graph.
+  defp upsert_component(%Scope{} = scope, data, synced_at, existing_map) do
     attrs =
       %{
         module_name: data.module_name,
@@ -233,7 +245,14 @@ defmodule CodeMySpec.Files.ComponentSync do
       }
       |> maybe_put(:type, data.type)
 
-    Components.upsert_component(scope, attrs)
+    case Map.get(existing_map, data.module_name) do
+      nil ->
+        Components.upsert_component(scope, attrs)
+
+      existing ->
+        {:ok, updated} = Components.update_component(scope, existing, attrs)
+        updated
+    end
   end
 
   defp maybe_put(map, _key, nil), do: map
@@ -292,12 +311,18 @@ defmodule CodeMySpec.Files.ComponentSync do
     end)
   end
 
+  # `data.dependencies == nil` means we have no spec file for this
+  # component — leave deps alone rather than wiping the user/agent-set
+  # graph. A spec file with no `## Dependencies` section parses to `[]`
+  # and IS authoritative (sync to empty).
+  defp sync_component_dependencies(_scope, _source, %{dependencies: nil}, _component_map), do: :ok
+
   defp sync_component_dependencies(scope, source, data, component_map) do
     current_deps = Components.list_component_dependencies(scope, source.id)
     current_target_ids = MapSet.new(current_deps, & &1.target_component_id)
 
     declared_deps =
-      (data.dependencies || [])
+      data.dependencies
       |> Enum.map(&Map.get(component_map, &1))
       |> Enum.reject(&(is_nil(&1) || &1.id == source.id))
 

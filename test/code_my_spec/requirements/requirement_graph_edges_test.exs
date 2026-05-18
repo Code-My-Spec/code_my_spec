@@ -143,7 +143,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   end
 
   describe "story → component edges" do
-    @tag :pending
     test "creates entry and exit edges for surface component" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
@@ -183,7 +182,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert exit_edge, "should have exit edge from component terminal to story.bdd_specs_passing"
     end
 
-    @tag :pending
     test "creates edges for direct dependencies" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
@@ -222,7 +220,26 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert ctx_entry, "should have entry edge to direct dependency context"
     end
 
-    test "does not create edges to transitive dependencies" do
+    @tag :pending
+    test "kickoff edge lands on the deepest transitive dep, intermediate kickoffs collapse" do
+      # Per the moduledoc on RequirementGraph (`Kickoff edges ... span
+      # the surface AND every component in its transitive cross-context
+      # dependency closure. Transitive reduction collapses these to the
+      # deepest dep(s)`), the story's outgoing kickoff edge should end up
+      # at the deepest transitive dep, with intermediate kickoffs reduced
+      # away because the path
+      #   story → deep_dep → ... → context → ... → surface
+      # already exists via the cross-context dependency edges.
+      #
+      # Currently failing: `context.spec_valid → context.review_file` is
+      # missing from the intra-component chain because the only prereq
+      # chain into `review_file` goes through child-scoped reqs, and the
+      # `Todos` context here has no children. With that gap in the
+      # chain, transitive_reduction can't see that surface is reachable
+      # via context, so the intermediate kickoffs survive. This is a
+      # design gap in `context_graph` (child reqs gate parent reqs but
+      # leave the chain broken when no children exist) — not a bug in
+      # this test's expectations.
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -259,12 +276,22 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      # Should NOT have edges to deep_dep (transitive, not direct)
-      deep_edges = Enum.filter(edges, fn e ->
-        (elem(e.from, 1) == deep_dep.id and elem(e.to, 0) == "story") or
-        (elem(e.to, 1) == deep_dep.id and elem(e.from, 0) == "story")
-      end)
-      assert deep_edges == [], "should not create edges to transitive dependencies"
+      story_kickoffs =
+        edges
+        |> Enum.filter(fn e ->
+          e.from == {"story", story.id, "bdd_specs_exist"} and elem(e.to, 0) == "component"
+        end)
+        |> Enum.map(fn e -> elem(e.to, 1) end)
+        |> MapSet.new()
+
+      assert MapSet.member?(story_kickoffs, deep_dep.id),
+             "story's kickoff edge should land on the deepest transitive dep"
+
+      refute MapSet.member?(story_kickoffs, surface.id),
+             "intermediate surface kickoff should be collapsed by transitive reduction"
+
+      refute MapSet.member?(story_kickoffs, context.id),
+             "intermediate context kickoff should be collapsed by transitive reduction"
     end
   end
 
