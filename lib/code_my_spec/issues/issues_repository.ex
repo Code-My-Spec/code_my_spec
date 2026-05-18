@@ -167,12 +167,22 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   def list_filtered(%Scope{} = scope, filters) when is_map(filters) do
     Issue
     |> by_project(scope.active_project.id)
+    |> exclude_framework_unless_requested(filters)
     |> maybe_filter(:status, filters)
     |> maybe_filter(:severity, filters)
     |> maybe_filter(:story_id, filters)
     |> maybe_filter(:scope, filters)
     |> ordered_by_severity()
     |> Repo.all()
+  end
+
+  # Framework-scoped issues are diagnostic noise from agent-side tooling against
+  # the framework itself; they belong on the upstream server, not in app-facing
+  # triage. Excluded by default; explicit `scope: :framework` filter opts in.
+  defp exclude_framework_unless_requested(query, %{scope: :framework}), do: query
+
+  defp exclude_framework_unless_requested(query, _filters) do
+    from(i in query, where: i.scope != :framework)
   end
 
   # Query composables

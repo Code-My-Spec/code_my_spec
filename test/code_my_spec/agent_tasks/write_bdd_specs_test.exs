@@ -154,14 +154,16 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       scope = scope_with_cwd(tmp_dir)
       task = %{story_id: 999_999, component_id: nil, project_id: nil}
 
-      assert {:error, :story_not_found} = WriteBddSpecs.command(scope, task)
+      assert {:error, {:story_not_found, message}} = WriteBddSpecs.command(scope, task)
+      assert message =~ "999999"
     end
 
     test "returns error when no story_id", %{tmp_dir: tmp_dir} do
       scope = scope_with_cwd(tmp_dir)
       task = %{story_id: nil, component_id: nil, project_id: nil}
 
-      assert {:error, :story_not_specified} = WriteBddSpecs.command(scope, task)
+      assert {:error, {:story_not_specified, message}} = WriteBddSpecs.command(scope, task)
+      assert message =~ "story_id"
     end
 
     test "returns error when story has no component linked", %{tmp_dir: tmp_dir} do
@@ -231,7 +233,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       scope = scope_with_cwd(tmp_dir)
       task = %{story_id: 999_999, component_id: nil, project_id: nil}
 
-      assert {:error, :story_not_found} = WriteBddSpecs.evaluate(scope, task)
+      assert {:error, {:story_not_found, _message}} = WriteBddSpecs.evaluate(scope, task)
     end
   end
 end

@@ -3,8 +3,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   Lists issues in a project with optional filters.
 
   Filter by status (incoming, accepted, dismissed, resolved),
-  severity (critical, high, medium, low, info), scope (app, qa, docs),
-  or story_id.
+  severity (critical, high, medium, low, info), scope (app, qa, docs,
+  framework), or story_id.
+
+  Framework-scoped issues are excluded by default — they are diagnostic
+  noise from the agent's interaction with CodeMySpec itself, not app
+  bugs to triage locally. Pass `scope: "framework"` explicitly to
+  surface them.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -16,13 +21,17 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   schema do
     field :status, :string, doc: "Filter by status: incoming, accepted, dismissed, resolved"
     field :severity, :string, doc: "Filter by severity: critical, high, medium, low, info"
-    field :scope, :string, doc: "Filter by scope: app, qa, docs"
+
+    field :scope, :string,
+      doc:
+        "Filter by scope: app, qa, docs, framework. Framework-scoped issues are excluded by default; pass `framework` explicitly to see them."
+
     field :story_id, :integer, doc: "Filter by related story ID"
   end
 
   @valid_statuses ~w(incoming accepted dismissed resolved)
   @valid_severities ~w(critical high medium low info)
-  @valid_scopes ~w(app qa docs)
+  @valid_scopes ~w(app qa docs framework)
 
   @impl true
   def execute(params, frame) do

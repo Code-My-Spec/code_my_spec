@@ -64,21 +64,40 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp resolve_story(scope, %{story_id: story_id}) when not is_nil(story_id) do
     case Stories.get_story(scope, story_id) do
-      nil -> {:error, :story_not_found}
-      story -> {:ok, story}
+      nil ->
+        {:error,
+         {:story_not_found,
+          "Story #{story_id} was not found in this project. " <>
+            "Check the id with `list_stories` (the story may have been deleted, or you're " <>
+            "scoped to the wrong project)."}}
+
+      story ->
+        {:ok, story}
     end
   end
 
-  defp resolve_story(_scope, _task), do: {:error, :story_not_specified}
+  defp resolve_story(_scope, _task) do
+    {:error,
+     {:story_not_specified,
+      "The bdd_specs_exist task was started without a story_id. " <>
+        "Call `start_task` with `entity_type: \"story\"` and `entity_id: <story_id>`."}}
+  end
 
   defp get_story_component(_scope, %{component_id: nil} = story) do
     Logger.warning("[WriteBddSpecs] Story #{story.id} (#{story.title}) has no component linked")
 
     {:error,
      {:component_not_linked,
-      "Story #{story.id} (#{story.title}) has no surface component linked. " <>
-        "Run architecture (the `architecture_designed` requirement will surface every unlinked story) " <>
-        "or call `set_story_component` with the implementing component's module name to link it directly."}}
+      "Story #{story.id} (#{story.title}) has no surface component linked, so the BDD spec " <>
+        "writer can't tell which surface to drive in Given/When/Then steps.\n\n" <>
+        "Resolutions:\n" <>
+        "  - If the implementing component already exists in the architecture, call " <>
+        "`set_story_component` with its module name.\n" <>
+        "  - If the story introduces a NEW context that doesn't have a component yet, " <>
+        "call `create_component` first (name + module_name + type), then `set_story_component`. " <>
+        "Children can be added later; a context with no children is a valid state.\n" <>
+        "  - Or run the project-level `architecture_designed` task — it surfaces every unlinked " <>
+        "story along with diagnostic context."}}
   end
 
   defp get_story_component(scope, %{component_id: component_id} = story) do
