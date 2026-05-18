@@ -32,14 +32,24 @@ defmodule CodeMySpecWeb.UserSessionController do
   end
 
   # magic link login
+  #
+  # Magic links are a remembered-intent flow — the user demonstrated
+  # they want a persistent login by clicking the email link. Force
+  # `remember_me: "true"` regardless of form-field state. Without
+  # this, the Plug.Session cookie is browser-life only and the user
+  # gets bounced back to login when navigating across live_session
+  # boundaries (issue e7e15279). Matches the `confirm/2` path above
+  # which already forces it.
   defp create(conn, %{"user" => %{"token" => token} = user_params}, info) do
     case Users.login_user_by_magic_link(token) do
       {:ok, {user, tokens_to_disconnect}} ->
         UserAuth.disconnect_sessions(tokens_to_disconnect)
 
+        params = Map.put(user_params, "remember_me", "true")
+
         conn
         |> put_flash(:info, info)
-        |> UserAuth.log_in_user(user, user_params)
+        |> UserAuth.log_in_user(user, params)
 
       _ ->
         conn
