@@ -16,14 +16,16 @@ defmodule CodeMySpecSpex.Story561.Criterion5619Spex do
   import CodeMySpecSpex.GraphGivens
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
+
+  @actionable_color "#f5f5f7"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Blocked nodes are excluded until prereqs are satisfied" do
-    scenario "child review work is not advertised while parent spec is missing" do
+  spex "Blocked nodes do not render as actionable until their prereqs are satisfied" do
+    scenario "child review work does not render actionable while parent spec is missing" do
       given_ :context_with_three_children_in_satisfied_project
 
       and_ "the parent context's spec file is removed", context do
@@ -41,36 +43,43 @@ defmodule CodeMySpecSpex.Story561.Criterion5619Spex do
         {:ok, context}
       end
 
-      when_ "the engineer computes the actionable set", context do
-        actionable = RequirementGraph.next_actionable(context.scope)
-        {:ok, Map.put(context, :actionable, actionable)}
+      when_ "the engineer opens the requirements graph", context do
+        {:ok, _live, html} =
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+
+        {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "no review_file or review_valid is actionable",
+      then_ "no review_file or review_valid node renders in actionable color",
             context do
         blocked_names = ["review_file", "review_valid"]
 
         actionable_reviews =
-          Enum.filter(context.actionable, fn req -> req.name in blocked_names end)
+          Enum.filter(context.graph["nodes"], fn n ->
+            n["attributes"]["name"] in blocked_names and
+              n["attributes"]["color"] == @actionable_color
+          end)
 
         assert actionable_reviews == [],
-               "expected review_file/review_valid to be blocked while parent spec is missing, got actionable: #{inspect(Enum.map(actionable_reviews, &{&1.entity_type, &1.entity_id, &1.name}))}"
+               "expected review_file/review_valid to NOT render actionable while parent spec is missing, found: #{inspect(Enum.map(actionable_reviews, &{&1["attributes"]["entity_id"], &1["attributes"]["name"]}))}"
 
         {:ok, context}
       end
 
-      and_ "the parent's spec_file is in the actionable set", context do
+      and_ "the parent's spec_file renders in actionable color", context do
         parent_id = context.parent_context.id
 
-        match =
-          Enum.find(context.actionable, fn req ->
-            req.name == "spec_file" and
-              req.entity_type == "component" and
-              req.entity_id == parent_id
+        node =
+          Enum.find(context.graph["nodes"], fn n ->
+            n["attributes"]["entity_id"] == parent_id and
+              n["attributes"]["name"] == "spec_file"
           end)
 
-        assert match,
-               "expected parent spec_file in actionable, got #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.entity_id, &1.name}))}"
+        assert node,
+               "expected parent's spec_file node in the graph"
+
+        assert node["attributes"]["color"] == @actionable_color,
+               "expected parent's spec_file to render as actionable (#{@actionable_color}), got #{node["attributes"]["color"]}"
 
         {:ok, context}
       end

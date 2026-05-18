@@ -11,33 +11,33 @@ defmodule CodeMySpecSpex.Story561.Criterion5813Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpecSpex.GraphAssertions
+
+  @actionable_color "#f5f5f7"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Single actionable node returns a one-element wave" do
-    scenario "fresh project's actionable set includes project_setup and is non-empty" do
-      when_ "the engineer computes the actionable set on a fresh project", context do
-        actionable = RequirementGraph.next_actionable(context.scope)
-        {:ok, Map.put(context, :actionable, actionable)}
+  spex "Project_setup renders as actionable on a fresh project" do
+    scenario "fresh project's graph shows project_setup in the actionable color" do
+      when_ "the engineer opens the requirements graph on a fresh project", context do
+        {:ok, _live, html} =
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+
+        {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "the actionable list is non-empty", context do
-        assert context.actionable != [],
-               "expected at least one actionable requirement on a fresh project"
-
-        {:ok, context}
-      end
-
-      and_ "project_setup is in the actionable set (no prereqs, leaf root)", context do
-        match =
-          Enum.find(context.actionable, fn req ->
-            req.name == "project_setup" and req.entity_type == "project"
+      then_ "project_setup renders in the actionable color", context do
+        node =
+          Enum.find(context.graph["nodes"], fn n ->
+            n["attributes"]["name"] == "project_setup" and
+              n["attributes"]["entity_type"] == "project"
           end)
 
-        assert match,
-               "expected project_setup in the actionable set, got: #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.name}))}"
+        assert node, "expected project_setup node in the graph on a fresh project"
+
+        assert node["attributes"]["color"] == @actionable_color,
+               "expected project_setup to render as actionable (#{@actionable_color}), got #{node["attributes"]["color"]}"
 
         {:ok, context}
       end

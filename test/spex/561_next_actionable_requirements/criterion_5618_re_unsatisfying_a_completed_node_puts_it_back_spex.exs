@@ -16,14 +16,16 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
   import CodeMySpecSpex.GraphGivens
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
+
+  @actionable_color "#f5f5f7"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "Deleting a completed artifact re-surfaces its requirement" do
-    scenario "the parent spec_file reappears as actionable after deletion" do
+    scenario "the parent spec_file renders as actionable after deletion" do
       given_ :context_with_three_children_in_satisfied_project
 
       and_ "the engineer deletes the parent context's spec file from disk",
@@ -42,24 +44,28 @@ defmodule CodeMySpecSpex.Story561.Criterion5618Spex do
         {:ok, context}
       end
 
-      when_ "the engineer computes the actionable set", context do
-        actionable = RequirementGraph.next_actionable(context.scope)
-        {:ok, Map.put(context, :actionable, actionable)}
+      when_ "the engineer opens the requirements graph", context do
+        {:ok, _live, html} =
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+
+        {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "the parent context's spec_file is in the actionable list",
+      then_ "the parent context's spec_file renders in the actionable color",
             context do
         parent_id = context.parent_context.id
 
-        match =
-          Enum.find(context.actionable, fn req ->
-            req.name == "spec_file" and
-              req.entity_type == "component" and
-              req.entity_id == parent_id
+        node =
+          Enum.find(context.graph["nodes"], fn n ->
+            n["attributes"]["entity_id"] == parent_id and
+              n["attributes"]["name"] == "spec_file"
           end)
 
-        assert match,
-               "expected the parent's spec_file in the actionable list, got #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.entity_id, &1.name}))}"
+        assert node,
+               "expected parent's spec_file node to be present in the graph"
+
+        assert node["attributes"]["color"] == @actionable_color,
+               "expected parent's spec_file to render as actionable (#{@actionable_color}), got color #{node["attributes"]["color"]}"
 
         {:ok, context}
       end

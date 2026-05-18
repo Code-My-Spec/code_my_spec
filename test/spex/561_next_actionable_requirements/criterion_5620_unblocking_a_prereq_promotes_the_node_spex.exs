@@ -15,14 +15,17 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
   import CodeMySpecSpex.GraphGivens
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
+
+  @actionable_color "#f5f5f7"
+  @satisfied_color "#ff3838"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Unblocking a prereq promotes its dependents into actionable" do
-    scenario "downstream items appear after the prereq is satisfied" do
+  spex "Unblocking a prereq flips its dependent from actionable to satisfied" do
+    scenario "parent spec_file renders actionable when missing, satisfied after re-write" do
       given_ :context_with_three_children_in_satisfied_project
 
       and_ "the parent context's spec file is removed and re-synced", context do
@@ -39,9 +42,11 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
         {:ok, context}
       end
 
-      when_ "the engineer computes actionable in the blocked state", context do
-        actionable = RequirementGraph.next_actionable(context.scope)
-        {:ok, Map.put(context, :blocked_actionable, actionable)}
+      when_ "the engineer opens the requirements graph in the blocked state", context do
+        {:ok, _live, html} =
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+
+        {:ok, Map.put(context, :blocked_graph, GraphAssertions.extract_graph!(html))}
       end
 
       and_ "the parent spec is rewritten and re-synced", context do
@@ -59,34 +64,34 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
         {:ok, context}
       end
 
-      and_ "the engineer computes actionable in the unblocked state", context do
-        actionable = RequirementGraph.next_actionable(context.scope)
-        {:ok, Map.put(context, :unblocked_actionable, actionable)}
+      and_ "the engineer re-opens the requirements graph in the unblocked state", context do
+        {:ok, _live, html} =
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+
+        {:ok, Map.put(context, :unblocked_graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "the parent spec_file disappears from the unblocked actionable list",
+      then_ "the parent spec_file flips from actionable color to satisfied color",
             context do
         parent_id = context.parent_context.id
 
-        in_blocked? =
-          Enum.any?(context.blocked_actionable, fn req ->
-            req.name == "spec_file" and
-              req.entity_type == "component" and
-              req.entity_id == parent_id
+        blocked_node =
+          Enum.find(context.blocked_graph["nodes"], fn n ->
+            n["attributes"]["entity_id"] == parent_id and
+              n["attributes"]["name"] == "spec_file"
           end)
 
-        in_unblocked? =
-          Enum.any?(context.unblocked_actionable, fn req ->
-            req.name == "spec_file" and
-              req.entity_type == "component" and
-              req.entity_id == parent_id
+        unblocked_node =
+          Enum.find(context.unblocked_graph["nodes"], fn n ->
+            n["attributes"]["entity_id"] == parent_id and
+              n["attributes"]["name"] == "spec_file"
           end)
 
-        assert in_blocked?,
-               "expected parent spec_file in the blocked actionable set (parent spec was missing)"
+        assert blocked_node && blocked_node["attributes"]["color"] == @actionable_color,
+               "expected parent spec_file to render as actionable (#{@actionable_color}) in the blocked state, got #{inspect(blocked_node && blocked_node["attributes"]["color"])}"
 
-        refute in_unblocked?,
-               "expected parent spec_file to disappear from the unblocked actionable set (it's now satisfied)"
+        assert unblocked_node && unblocked_node["attributes"]["color"] == @satisfied_color,
+               "expected parent spec_file to render as satisfied (#{@satisfied_color}) in the unblocked state, got #{inspect(unblocked_node && unblocked_node["attributes"]["color"])}"
 
         {:ok, context}
       end

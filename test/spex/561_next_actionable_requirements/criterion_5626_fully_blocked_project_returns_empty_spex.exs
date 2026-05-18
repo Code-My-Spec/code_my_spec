@@ -18,14 +18,16 @@ defmodule CodeMySpecSpex.Story561.Criterion5626Spex do
   import CodeMySpecSpex.GraphGivens
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
+
+  @actionable_color "#f5f5f7"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Blocked-by-prereq nodes do not surface in actionable" do
-    scenario "with parent spec missing, downstream parent requirements stay out of actionable" do
+  spex "Blocked-by-prereq nodes do not render in actionable color" do
+    scenario "with parent spec missing, downstream parent requirements render as blocked, not actionable" do
       given_ :context_with_three_children_in_satisfied_project
 
       and_ "the parent context's spec file is removed and re-synced", context do
@@ -42,43 +44,45 @@ defmodule CodeMySpecSpex.Story561.Criterion5626Spex do
         {:ok, context}
       end
 
-      when_ "the engineer computes the actionable set", context do
-        actionable = RequirementGraph.next_actionable(context.scope)
-        {:ok, Map.put(context, :actionable, actionable)}
+      when_ "the engineer opens the requirements graph", context do
+        {:ok, _live, html} =
+          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+
+        {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "downstream parent requirements (review, impl, tests) are not in actionable",
+      then_ "no downstream parent requirement renders in actionable color",
             context do
         parent_id = context.parent_context.id
 
         downstream =
           ~w(review_file review_valid implementation_file test_file test_spec_alignment tests_passing)
 
-        blocked_actionable =
-          Enum.filter(context.actionable, fn req ->
-            req.entity_type == "component" and req.entity_id == parent_id and
-              req.name in downstream
+        actionable_downstream =
+          Enum.filter(context.graph["nodes"], fn n ->
+            n["attributes"]["entity_id"] == parent_id and
+              n["attributes"]["name"] in downstream and
+              n["attributes"]["color"] == @actionable_color
           end)
 
-        assert blocked_actionable == [],
-               "expected blocked parent downstream reqs to stay out of actionable, found: #{inspect(Enum.map(blocked_actionable, & &1.name))}"
+        assert actionable_downstream == [],
+               "expected blocked parent downstream reqs to NOT render as actionable, found: #{inspect(Enum.map(actionable_downstream, & &1["attributes"]["name"]))}"
 
         {:ok, context}
       end
 
-      and_ "the upstream parent.spec_file IS in actionable",
+      and_ "the upstream parent.spec_file renders in actionable color",
            context do
         parent_id = context.parent_context.id
 
-        match =
-          Enum.find(context.actionable, fn req ->
-            req.name == "spec_file" and
-              req.entity_type == "component" and
-              req.entity_id == parent_id
+        node =
+          Enum.find(context.graph["nodes"], fn n ->
+            n["attributes"]["entity_id"] == parent_id and
+              n["attributes"]["name"] == "spec_file"
           end)
 
-        assert match,
-               "expected parent spec_file in actionable, got #{inspect(Enum.map(context.actionable, &{&1.entity_type, &1.entity_id, &1.name}))}"
+        assert node && node["attributes"]["color"] == @actionable_color,
+               "expected parent spec_file to render as actionable (#{@actionable_color}), got #{inspect(node && node["attributes"]["color"])}"
 
         {:ok, context}
       end
