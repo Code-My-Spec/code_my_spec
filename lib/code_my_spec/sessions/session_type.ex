@@ -75,21 +75,26 @@ defmodule CodeMySpec.Sessions.SessionType do
 
   @spec load(binary()) :: {:ok, t()} | :error
   def load(data) when is_binary(data) do
-    # Tolerant load: accept any pre-existing atom, even if the module
-    # has since been renamed or removed from `@valid_types`. Strict
+    # Tolerant load: convert the DB string to an atom whether or not
+    # the matching module still exists in the release. Strict
     # validation stays on `cast/1` so NEW writes are still rejected
     # for unknown types — this only matters when reading legacy task
     # rows whose `session_type` points at a deleted module (e.g. an
     # old `QaPreflight` or `ContextImplementation` task from before
     # those modules were consolidated/removed).
     #
+    # `to_atom/1` (vs `to_existing_atom/1`) is needed because deleted
+    # modules don't pre-register their atom in the released BEAM, so
+    # `to_existing_atom/1` would raise ArgumentError → Ecto sees
+    # `:error` → crashes the row load. Safe here: the set of distinct
+    # `session_type` strings ever written to disk is bounded (one per
+    # historical agent task module).
+    #
     # The accompanying `Sessions` context prunes orphan tasks on the
     # read path (see `Sessions.maybe_prune_orphan_tasks/1`) so the
     # legacy entries disappear from disk the first time a session is
     # touched.
-    {:ok, String.to_existing_atom(data)}
-  rescue
-    ArgumentError -> :error
+    {:ok, String.to_atom(data)}
   end
 
   @doc "Returns the list of module atoms accepted by `cast/1`."
