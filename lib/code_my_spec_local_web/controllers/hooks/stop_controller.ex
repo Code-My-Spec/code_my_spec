@@ -64,15 +64,18 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
     end
   end
 
-  # R5b — Continuous mode + a still-open main-agent task + an alive idle
-  # sub-agent: hand the work off so the main agent can stop and further
-  # stops happen via the sub-agent's own lifecycle. Without continuous
-  # mode, the regular allow path fires; R5b never preempts a one-shot
-  # stop.
-  defp r5b_applies?(session, active_task, idle_sub) do
-    continuous_mode?(session) and
-      not is_nil(active_task) and
-      not is_nil(idle_sub)
+  # R5b — A still-open main-agent task + an alive idle sub-agent: hand
+  # the work off so the main agent can stop and further stops happen via
+  # the sub-agent's own lifecycle. This applies regardless of continuous
+  # mode — the assign-from-outside flow lets the parent set agent_id on
+  # the task BEFORE its own stop, so the R5a short-circuit (active task
+  # with agent_id → allow) fires next turn. Without this rule firing
+  # outside continuous mode, a parent that spawns a subagent for a
+  # one-shot QA pass loses the race between subagent registration and
+  # the parent's stop, falls through to validation, and gets blocked on
+  # "Brief not found." Issue b597bbca.
+  defp r5b_applies?(_session, active_task, idle_sub) do
+    not is_nil(active_task) and not is_nil(idle_sub)
   end
 
   # Returns the first alive sub-agent on the session whose agent_id is
