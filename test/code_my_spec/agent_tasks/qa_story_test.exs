@@ -363,7 +363,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # the BEAM/browser or aborted (issue a15c252b).
       write_story_brief(scope.environment, story.id)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
     end
 
     test "returns invalid when result is missing required sections", %{
@@ -428,7 +428,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_story_result(scope.environment, story.id)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
     end
 
     test "returns valid when result has low/info issues (files created for all severities)", %{
@@ -473,7 +473,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       The submit button is #007bff instead of the design system's #0066cc.
       """)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
       # Issues are created in DB for all severities including low/info
       issues = Issues.list_by_story(scope, story.id)
@@ -490,7 +490,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
       issues = Issues.list_by_story(scope, story.id)
       titles = Enum.map(issues, & &1.title)
@@ -508,7 +508,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
       issues = Issues.list_by_story(scope, story.id)
       login_issue = Enum.find(issues, &String.contains?(&1.title, "redirect"))
@@ -526,13 +526,13 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
       issues_first = Issues.list_by_story(scope, story.id)
 
       # Write a new result and run evaluate again
       write_result_with_issues(scope.environment, story.id)
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
       issues_second = Issues.list_by_story(scope, story.id)
 
@@ -556,7 +556,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       write_story_brief(scope.environment, story.id)
       write_result_with_issues(scope.environment, story.id)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
       issues = Issues.list_by_story(scope, story.id)
       login_issue = Enum.find(issues, &String.contains?(&1.title, "redirect"))
@@ -600,7 +600,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       Running qa_seeds.exs on a freshly migrated database fails.
       """)
 
-      assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
 
       issues = Issues.list_by_story(scope, story.id)
       seed_issue = Enum.find(issues, &String.contains?(&1.title, "Seed script"))

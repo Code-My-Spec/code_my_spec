@@ -291,12 +291,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert feedback =~ "Brief"
     end
 
-    test "returns invalid demanding submit_qa_result when stories have file artifacts but no DB attempts", %{scope: scope} do
-      # Per issue 3dd4ec46: file-based artifacts alone don't satisfy
-      # qa_complete anymore. submit_qa_result lands the DB attempt that
-      # the requirement graph reads. QaApp delegates to QaStory.evaluate;
-      # without a DB attempt for the story, QaStory returns invalid,
-      # and QaApp aggregates that into its own invalid response.
+    test "returns valid when all stories have brief + result and summary exists", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
@@ -305,11 +300,10 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       write_story_result(scope.environment, story.id)
       write_qa_summary(scope.environment)
 
-      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
-      assert feedback =~ "submit_qa_result"
+      assert {:ok, :valid} = QaApp.evaluate(scope, task)
     end
 
-    test "returns invalid demanding submit_qa_result when story has brief but no result and no DB attempt", %{scope: scope} do
+    test "returns valid when story has brief but no result (DB-only path)", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
@@ -317,8 +311,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       write_story_brief(scope.environment, story.id)
       write_qa_summary(scope.environment)
 
-      assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
-      assert feedback =~ "submit_qa_result"
+      # Result is no longer required (issue a15c252b) — `submit_qa_result`
+      # is the canonical completion path. Brief-only is a valid state.
+      assert {:ok, :valid} = QaApp.evaluate(scope, task)
     end
 
     test "returns invalid when stories pass but summary missing", %{scope: scope} do
