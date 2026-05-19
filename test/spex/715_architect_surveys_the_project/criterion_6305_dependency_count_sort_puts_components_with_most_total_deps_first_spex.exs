@@ -60,10 +60,8 @@ defmodule CodeMySpecSpex.Story715.Criterion6305Spex do
     end
   end
 
-  defp position_of(text, needle) do
-    case :binary.match(text, needle) do
-      {pos, _} -> pos
-      :nomatch -> nil
-    end
-  end
+  defp position_of(text, needle), do: match_pos(:binary.match(text, needle))
+
+  defp match_pos({pos, _}), do: pos
+  defp match_pos(:nomatch), do: nil
 end

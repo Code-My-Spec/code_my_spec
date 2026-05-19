@@ -139,10 +139,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
     pattern =
       ~r/data-file-path="#{Regex.escape(path)}".*?data-mtime="([^"]+)"/s
 
-    case Regex.run(pattern, html) do
-      [_, mtime] -> mtime
-      _ -> nil
-    end
+    extract_match(Regex.run(pattern, html))
   end
 
   defp content_v1 do
@@ -164,4 +161,6 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
   defp sha256(content) do
     :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
   end
+  defp extract_match([_, value]), do: value
+  defp extract_match(_), do: nil
 end

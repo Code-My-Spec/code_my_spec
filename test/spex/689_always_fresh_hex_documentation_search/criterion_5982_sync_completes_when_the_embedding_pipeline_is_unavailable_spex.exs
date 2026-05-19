@@ -78,14 +78,10 @@ defmodule CodeMySpecSpex.Story689.Criterion5982Spex do
     prior = Application.get_env(:code_my_spec, :embeddings_backend)
     Application.delete_env(:code_my_spec, :embeddings_backend)
 
-    ExUnit.Callbacks.on_exit(fn ->
-      if prior do
-        Application.put_env(:code_my_spec, :embeddings_backend, prior)
-      else
-        Application.delete_env(:code_my_spec, :embeddings_backend)
-      end
-    end)
+    ExUnit.Callbacks.on_exit(fn -> restore_embeddings_backend(prior) end)
 
     :ok
   end
+  defp restore_embeddings_backend(nil), do: Application.delete_env(:code_my_spec, :embeddings_backend)
+  defp restore_embeddings_backend(prior), do: Application.put_env(:code_my_spec, :embeddings_backend, prior)
 end

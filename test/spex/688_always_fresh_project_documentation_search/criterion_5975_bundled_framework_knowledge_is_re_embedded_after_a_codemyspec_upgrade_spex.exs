@@ -137,14 +137,10 @@ defmodule CodeMySpecSpex.Story688.Criterion5975Spex do
     prior = Application.get_env(:code_my_spec, :framework_knowledge_dir)
     Application.put_env(:code_my_spec, :framework_knowledge_dir, dir)
 
-    ExUnit.Callbacks.on_exit(fn ->
-      if prior do
-        Application.put_env(:code_my_spec, :framework_knowledge_dir, prior)
-      else
-        Application.delete_env(:code_my_spec, :framework_knowledge_dir)
-      end
-    end)
+    ExUnit.Callbacks.on_exit(fn -> restore_framework_knowledge_dir(prior) end)
 
     Map.put(context, :framework_knowledge_dir, dir)
   end
+  defp restore_framework_knowledge_dir(nil), do: Application.delete_env(:code_my_spec, :framework_knowledge_dir)
+  defp restore_framework_knowledge_dir(prior), do: Application.put_env(:code_my_spec, :framework_knowledge_dir, prior)
 end
