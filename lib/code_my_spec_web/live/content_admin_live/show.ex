@@ -212,24 +212,32 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     scope = socket.assigns.current_scope
-    content_admin = ContentAdmin.get_content!(scope, id)
-    # ContentAdmin doesn't have tags - that's for Content
-    tags = []
 
-    if connected?(socket) do
-      subscribe_content_admin(scope)
+    with {parsed_id, ""} <- Integer.parse(id),
+         %ContentAdmin.ContentAdmin{} = content_admin <-
+           ContentAdmin.get_content(scope, parsed_id) do
+      if connected?(socket) do
+        subscribe_content_admin(scope)
+      end
+
+      title =
+        get_in(content_admin.metadata, ["title"]) || get_in(content_admin.metadata, ["slug"]) ||
+          "Untitled"
+
+      {:ok,
+       socket
+       |> assign(:page_title, title)
+       |> assign(:content_admin, content_admin)
+       # ContentAdmin doesn't have tags - that's for Content
+       |> assign(:tags, [])
+       |> assign(:show_raw, false)}
+    else
+      _ ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Content not found.")
+         |> push_navigate(to: ~p"/app/content_admin")}
     end
-
-    title =
-      get_in(content_admin.metadata, ["title"]) || get_in(content_admin.metadata, ["slug"]) ||
-        "Untitled"
-
-    {:ok,
-     socket
-     |> assign(:page_title, title)
-     |> assign(:content_admin, content_admin)
-     |> assign(:tags, tags)
-     |> assign(:show_raw, false)}
   end
 
   @impl true

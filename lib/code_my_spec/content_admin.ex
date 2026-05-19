@@ -49,6 +49,14 @@ defmodule CodeMySpec.ContentAdmin do
   end
 
   @doc """
+  Gets a single content admin record. Returns nil if not found.
+  """
+  @spec get_content(Scope.t(), integer()) :: ContentAdmin.t() | nil
+  def get_content(%Scope{} = scope, id) do
+    ContentAdminRepository.get_content(scope, id)
+  end
+
+  @doc """
   Gets a content admin record by slug and content type.
   Returns nil if not found.
   """
