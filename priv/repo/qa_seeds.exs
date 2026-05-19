@@ -75,6 +75,38 @@ user =
 
 scope = Scope.for_user(user)
 
+# 1a. CLI OAuth application — required by the `/codemyspec:authenticate` flow
+#     and any criterion that exercises the dashboard install funnel. Inserted
+#     idempotently keyed on `uid = "codemyspec-cli"`. Previously only seeded
+#     in the test env via `CodeMySpec.OauthFixtures.cli_oauth_application_fixture/1`;
+#     dev-DB QA runs had to insert it via psql by hand (issue 3dbf422e).
+cli_oauth_uid = "codemyspec-cli"
+now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+case Repo.one(from a in "oauth_applications", where: a.uid == ^cli_oauth_uid, select: a.id) do
+  nil ->
+    {1, _} =
+      Repo.insert_all(
+        "oauth_applications",
+        [
+          %{
+            name: "CodeMySpec CLI",
+            uid: cli_oauth_uid,
+            secret: "",
+            redirect_uri: "http://localhost:9876/oauth/callback",
+            scopes: "",
+            inserted_at: now,
+            updated_at: now
+          }
+        ]
+      )
+
+    IO.puts("  oauth_application: created codemyspec-cli")
+
+  _id ->
+    IO.puts("  oauth_application: exists codemyspec-cli")
+end
+
 # 2. Resolve target account. We use the existing Code My Spec team account so
 #    the QA Fixture Project shows up in the dev user's local project list.
 account =
