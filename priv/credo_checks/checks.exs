@@ -3,5 +3,6 @@
 # Do not edit manually; changes will be overwritten on next sync.
 [
   {CodeMySpec.Check.Warning.NoDirectSendInSpex, []},
-  {CodeMySpec.Check.Warning.SpexDeniedCalls, []}
+  {CodeMySpec.Check.Warning.SpexDeniedCalls, []},
+  {CodeMySpec.Check.Warning.NoControlFlowInTests, []}
 ]

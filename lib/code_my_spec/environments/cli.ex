@@ -1,67 +1,56 @@
 defmodule CodeMySpec.Environments.Cli do
   @moduledoc """
-  Executes commands in tmux windows for CLI display.
+  Server-side filesystem environment for the CLI binary path.
 
-  Commands run for demonstration purposes; output capture not supported.
-  Delegates to TmuxAdapter for testability.
+  Reads, writes, and stats files on the local filesystem with paths
+  resolved against an optional working directory carried on the
+  environment struct.
+
+  `create/1` and `destroy/1` are kept as no-op lifecycle hooks for
+  symmetry with other environment implementations — the CLI environment
+  has no external resources (windows, panes, etc.) to allocate or
+  release.
   """
 
   @behaviour CodeMySpec.Environments.EnvironmentsBehaviour
-  alias CodeMySpec.Environments.Cli.TmuxAdapter
   alias CodeMySpec.Environments.Environment
   require Logger
 
-  # Allow adapter injection for testing
-  defp adapter do
-    Application.get_env(:code_my_spec, :tmux_adapter, TmuxAdapter)
-  end
-
   @doc """
-  Create an environment for command execution (lazy window creation).
-
-  The tmux window is not created immediately. Instead, it's created on-demand
-  when the first command runs. This allows for more efficient resource usage.
+  Create an environment for filesystem operations.
 
   ## Options
 
-  - `:session_id` - Used for window naming (e.g., "session-123")
+  - `:session_id` - Used for the environment `ref` (e.g., "session-123")
   - `:working_dir` - Current working directory for the environment
   - `:metadata` - Optional metadata to include in Environment struct
 
   ## Returns
 
   - `{:ok, %Environment{}}` - Environment created successfully
-  - `{:error, reason}` - Failed to validate environment (e.g., not inside tmux)
   """
-  @spec create(opts :: keyword()) :: {:ok, Environment.t()} | {:error, term()}
+  @spec create(opts :: keyword()) :: {:ok, Environment.t()}
   def create(opts \\ []) do
     session_id = Keyword.get(opts, :session_id, :rand.uniform(10_000))
-    window_name = "session-#{session_id}"
+    ref = "session-#{session_id}"
     working_dir = Keyword.get(opts, :working_dir)
     metadata = Keyword.get(opts, :metadata, %{})
 
     {:ok,
      %Environment{
        type: :cli,
-       ref: window_name,
+       ref: ref,
        cwd: working_dir,
        metadata: metadata
      }}
   end
 
   @doc """
-  Destroy a tmux window and clean up resources.
-
-  This function is idempotent - returns `:ok` even if the window doesn't exist.
-  Since window creation is lazy, this might be called on a window that was never created.
+  No-op destroy. The CLI environment owns no external resources so
+  there's nothing to release. Returns `:ok` for behaviour symmetry.
   """
-  @spec destroy(env :: Environment.t()) :: :ok | {:error, term()}
-  def destroy(%Environment{ref: window_name}) do
-    case adapter().kill_window(window_name) do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
+  @spec destroy(env :: Environment.t()) :: :ok
+  def destroy(%Environment{}), do: :ok
 
   @doc """
   Read a file from the server-side file system.

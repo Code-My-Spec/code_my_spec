@@ -24,9 +24,6 @@ Application.put_env(:code_my_spec, :git_impl_module, CodeMySpec.Support.TestAdap
 # Use RecordingEnvironment as default for local environment in tests
 Application.put_env(:code_my_spec, :environment, CodeMySpec.Support.RecordingEnvironment)
 
-# Use MockTmuxAdapter as default for tmux operations in tests
-Application.put_env(:code_my_spec, :tmux_adapter, CodeMySpec.Environments.MockTmuxAdapter)
-
 # Own the embedding TestBackend ETS table from a long-lived agent so it
 # survives across async tests. Without a stable owner the table dies with
 # whichever test process happened to create it, breaking the next concurrent

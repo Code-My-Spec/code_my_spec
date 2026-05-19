@@ -156,11 +156,7 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     )
   end
 
-  defp cleanup_file(path) do
-    if File.exists?(path) do
-      File.rm!(path)
-    end
-  end
+  defp cleanup_file(path), do: File.rm(path)
 
   # ============================================================================
   # parse_metadata_file/1 - Valid Metadata Tests
@@ -170,27 +166,23 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "successfully parses minimal required fields" do
       path = temp_yaml_file(valid_minimal_yaml())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "My Post Title"
-        assert metadata.slug == "my-post-slug"
-        assert metadata.type == "blog"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "My Post Title"
+      assert metadata.slug == "my-post-slug"
+      assert metadata.type == "blog"
     end
 
     test "returns map with atom keys for required fields" do
       path = temp_yaml_file(valid_minimal_yaml())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert is_atom(Map.keys(metadata) |> Enum.find(&(&1 == :title)))
-        assert is_atom(Map.keys(metadata) |> Enum.find(&(&1 == :slug)))
-        assert is_atom(Map.keys(metadata) |> Enum.find(&(&1 == :type)))
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert is_atom(Map.keys(metadata) |> Enum.find(&(&1 == :title)))
+      assert is_atom(Map.keys(metadata) |> Enum.find(&(&1 == :slug)))
+      assert is_atom(Map.keys(metadata) |> Enum.find(&(&1 == :type)))
     end
   end
 
@@ -198,47 +190,41 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "successfully parses all standard fields" do
       path = temp_yaml_file(valid_complete_yaml())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "Complete Blog Post"
-        assert metadata.slug == "complete-blog-post"
-        assert metadata.type == "blog"
-        assert metadata.meta_title == "Complete Blog Post - SEO Title"
-        assert metadata.meta_description == "A comprehensive blog post with all metadata fields"
-        assert metadata.og_image == "/images/blog/complete-post.jpg"
-        assert metadata.og_title == "Complete Blog Post - Social Media"
-        assert metadata.og_description == "Check out this comprehensive blog post"
-        assert metadata.protected == false
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "Complete Blog Post"
+      assert metadata.slug == "complete-blog-post"
+      assert metadata.type == "blog"
+      assert metadata.meta_title == "Complete Blog Post - SEO Title"
+      assert metadata.meta_description == "A comprehensive blog post with all metadata fields"
+      assert metadata.og_image == "/images/blog/complete-post.jpg"
+      assert metadata.og_title == "Complete Blog Post - Social Media"
+      assert metadata.og_description == "Check out this comprehensive blog post"
+      assert metadata.protected == false
     end
 
     test "successfully parses tags as list" do
       path = temp_yaml_file(valid_complete_yaml())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert is_list(metadata.tags)
-        assert length(metadata.tags) == 3
-        assert "elixir" in metadata.tags
-        assert "phoenix" in metadata.tags
-        assert "testing" in metadata.tags
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert is_list(metadata.tags)
+      assert length(metadata.tags) == 3
+      assert "elixir" in metadata.tags
+      assert "phoenix" in metadata.tags
+      assert "testing" in metadata.tags
     end
 
     test "parses datetime strings" do
       path = temp_yaml_file(valid_complete_yaml())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.publish_at == "2025-01-15T10:00:00Z"
-        assert metadata.expires_at == "2025-12-31T23:59:59Z"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.publish_at == "2025-01-15T10:00:00Z"
+      assert metadata.expires_at == "2025-12-31T23:59:59Z"
     end
   end
 
@@ -246,32 +232,28 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "successfully parses metadata with null values" do
       path = temp_yaml_file(valid_yaml_with_null_values())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "Post with Nulls"
-        assert metadata.slug == "post-with-nulls"
-        assert metadata.type == "page"
-        assert is_nil(metadata[:publish_at])
-        assert is_nil(metadata[:expires_at])
-        assert metadata.protected == false
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "Post with Nulls"
+      assert metadata.slug == "post-with-nulls"
+      assert metadata.type == "page"
+      assert is_nil(metadata[:publish_at])
+      assert is_nil(metadata[:expires_at])
+      assert metadata.protected == false
     end
 
     test "allows missing optional fields" do
       path = temp_yaml_file(valid_minimal_yaml())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        refute Map.has_key?(metadata, :publish_at)
-        refute Map.has_key?(metadata, :expires_at)
-        refute Map.has_key?(metadata, :meta_title)
-        refute Map.has_key?(metadata, :meta_description)
-        refute Map.has_key?(metadata, :tags)
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      refute Map.has_key?(metadata, :publish_at)
+      refute Map.has_key?(metadata, :expires_at)
+      refute Map.has_key?(metadata, :meta_title)
+      refute Map.has_key?(metadata, :meta_description)
+      refute Map.has_key?(metadata, :tags)
     end
   end
 
@@ -279,31 +261,27 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "preserves unknown fields in the metadata map" do
       path = temp_yaml_file(valid_yaml_with_extra_fields())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "Post with Extra Fields"
-        assert metadata.slug == "post-with-extras"
-        assert metadata.type == "landing"
-        assert metadata["custom_field"] == "custom value"
-        assert metadata["another_field"] == 123
-        assert is_map(metadata["nested_field"])
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "Post with Extra Fields"
+      assert metadata.slug == "post-with-extras"
+      assert metadata.type == "landing"
+      assert metadata["custom_field"] == "custom value"
+      assert metadata["another_field"] == 123
+      assert is_map(metadata["nested_field"])
     end
 
     test "keeps unknown fields as string keys" do
       path = temp_yaml_file(valid_yaml_with_extra_fields())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert Map.has_key?(metadata, "custom_field")
-        assert Map.has_key?(metadata, "another_field")
-        refute Map.has_key?(metadata, :custom_field)
-        refute Map.has_key?(metadata, :another_field)
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert Map.has_key?(metadata, "custom_field")
+      assert Map.has_key?(metadata, "another_field")
+      refute Map.has_key?(metadata, :custom_field)
+      refute Map.has_key?(metadata, :another_field)
     end
   end
 
@@ -317,12 +295,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.type == "blog"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.type == "blog"
     end
 
     test "accepts 'page' content type" do
@@ -334,12 +310,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.type == "page"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.type == "page"
     end
 
     test "accepts 'landing' content type" do
@@ -351,12 +325,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.type == "landing"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.type == "landing"
     end
 
     test "accepts custom content types" do
@@ -368,12 +340,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.type == "custom_type"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.type == "custom_type"
     end
   end
 
@@ -381,12 +351,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "parses protected flag as true" do
       path = temp_yaml_file(valid_yaml_with_protected_content())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.protected == true
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.protected == true
     end
 
     test "parses protected flag as false" do
@@ -399,12 +367,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.protected == false
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.protected == false
     end
   end
 
@@ -443,42 +409,36 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "returns error for malformed YAML with unclosed quote" do
       path = temp_yaml_file(invalid_yaml_syntax())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :yaml_parse_error
-        assert error_detail.message == "Invalid YAML syntax"
-        assert error_detail.file_path == path
-        assert not is_nil(error_detail.details)
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :yaml_parse_error
+      assert error_detail.message == "Invalid YAML syntax"
+      assert error_detail.file_path == path
+      assert not is_nil(error_detail.details)
     end
 
     test "accepts YAML with tab characters (YamlElixir is lenient)" do
       path = temp_yaml_file(invalid_yaml_tabs())
 
-      try do
-        # YamlElixir is lenient and accepts tabs, though YAML spec discourages them
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "Tab Issue"
-        assert metadata.slug == "test-slug"
-        assert metadata.type == "blog"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      # YamlElixir is lenient and accepts tabs, though YAML spec discourages them
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "Tab Issue"
+      assert metadata.slug == "test-slug"
+      assert metadata.type == "blog"
     end
 
     test "returns error for empty YAML file" do
       path = temp_yaml_file(empty_yaml())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :invalid_structure
-        assert error_detail.message == "Metadata must be a map with required keys"
-        assert error_detail.file_path == path
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :invalid_structure
+      assert error_detail.message == "Metadata must be a map with required keys"
+      assert error_detail.file_path == path
     end
   end
 
@@ -490,43 +450,37 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "returns error when title is missing" do
       path = temp_yaml_file(yaml_missing_required_title())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :invalid_structure
-        assert error_detail.message == "Metadata must be a map with required keys"
-        assert error_detail.file_path == path
-        assert not is_nil(error_detail.details)
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :invalid_structure
+      assert error_detail.message == "Metadata must be a map with required keys"
+      assert error_detail.file_path == path
+      assert not is_nil(error_detail.details)
     end
 
     test "returns error when slug is missing" do
       path = temp_yaml_file(yaml_missing_required_slug())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :invalid_structure
-        assert error_detail.message == "Metadata must be a map with required keys"
-        assert error_detail.file_path == path
-        assert not is_nil(error_detail.details)
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :invalid_structure
+      assert error_detail.message == "Metadata must be a map with required keys"
+      assert error_detail.file_path == path
+      assert not is_nil(error_detail.details)
     end
 
     test "returns error when type is missing" do
       path = temp_yaml_file(yaml_missing_required_type())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :invalid_structure
-        assert error_detail.message == "Metadata must be a map with required keys"
-        assert error_detail.file_path == path
-        assert not is_nil(error_detail.details)
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :invalid_structure
+      assert error_detail.message == "Metadata must be a map with required keys"
+      assert error_detail.file_path == path
+      assert not is_nil(error_detail.details)
     end
 
     test "returns error when all required fields are missing" do
@@ -537,13 +491,11 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :invalid_structure
-        assert error_detail.file_path == path
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :invalid_structure
+      assert error_detail.file_path == path
     end
   end
 
@@ -551,26 +503,22 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "returns error when YAML is a list instead of map" do
       path = temp_yaml_file(yaml_not_a_map())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :invalid_structure
-        assert error_detail.message == "Metadata must be a map with required keys"
-        assert error_detail.file_path == path
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :invalid_structure
+      assert error_detail.message == "Metadata must be a map with required keys"
+      assert error_detail.file_path == path
     end
 
     test "returns error when YAML is a scalar value" do
       path = temp_yaml_file(yaml_scalar_value())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert error_detail.type == :invalid_structure
-        assert error_detail.file_path == path
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert error_detail.type == :invalid_structure
+      assert error_detail.file_path == path
     end
   end
 
@@ -590,12 +538,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert String.length(metadata.title) == 10_000
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert String.length(metadata.title) == 10_000
     end
 
     test "handles unicode characters in metadata" do
@@ -607,12 +553,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "测试标题 🚀 émojis"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "测试标题 🚀 émojis"
     end
 
     test "handles multiline string values" do
@@ -627,12 +571,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert String.contains?(metadata.title, "multiline")
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert String.contains?(metadata.title, "multiline")
     end
 
     test "handles empty string values for required fields" do
@@ -644,14 +586,12 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == ""
-        assert metadata.slug == ""
-        assert metadata.type == ""
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == ""
+      assert metadata.slug == ""
+      assert metadata.type == ""
     end
 
     test "handles special characters in slug" do
@@ -663,12 +603,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.slug == "test-post-with-special-chars-123_456"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.slug == "test-post-with-special-chars-123_456"
     end
 
     test "handles very deeply nested custom fields" do
@@ -686,13 +624,11 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "Deep Nesting"
-        assert is_map(metadata["custom"])
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "Deep Nesting"
+      assert is_map(metadata["custom"])
     end
 
     test "handles empty tags list" do
@@ -705,12 +641,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.tags == []
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.tags == []
     end
 
     test "handles large number of tags" do
@@ -727,12 +661,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert length(metadata.tags) == 100
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert length(metadata.tags) == 100
     end
   end
 
@@ -744,13 +676,11 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "parses ISO 8601 datetime strings" do
       path = temp_yaml_file(valid_yaml_with_datetime_strings())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.publish_at == "2025-01-15T10:00:00Z"
-        assert metadata.expires_at == "2025-12-31T23:59:59Z"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.publish_at == "2025-01-15T10:00:00Z"
+      assert metadata.expires_at == "2025-12-31T23:59:59Z"
     end
 
     test "handles datetime with timezone offset" do
@@ -763,12 +693,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.publish_at == "2025-01-15T10:00:00-05:00"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.publish_at == "2025-01-15T10:00:00-05:00"
     end
 
     test "handles date-only strings" do
@@ -781,12 +709,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.publish_at == "2025-01-15"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.publish_at == "2025-01-15"
     end
   end
 
@@ -799,25 +725,21 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
       path = Path.join(System.tmp_dir!(), "my-post.yaml")
       File.write!(path, valid_minimal_yaml())
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "My Post Title"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "My Post Title"
     end
 
     test "works with absolute file paths" do
       path = Path.join(System.tmp_dir!(), "absolute-path-test.yaml")
       File.write!(path, valid_minimal_yaml())
 
-      try do
-        absolute_path = Path.expand(path)
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(absolute_path)
-        assert metadata.slug == "my-post-slug"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      absolute_path = Path.expand(path)
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(absolute_path)
+      assert metadata.slug == "my-post-slug"
     end
 
     test "works with relative file paths" do
@@ -837,16 +759,14 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "parsing the same file multiple times returns identical results" do
       path = temp_yaml_file(valid_complete_yaml())
 
-      try do
-        {:ok, result1} = MetaDataParser.parse_metadata_file(path)
-        {:ok, result2} = MetaDataParser.parse_metadata_file(path)
-        {:ok, result3} = MetaDataParser.parse_metadata_file(path)
+      on_exit(fn -> cleanup_file(path) end)
 
-        assert result1 == result2
-        assert result2 == result3
-      after
-        cleanup_file(path)
-      end
+      {:ok, result1} = MetaDataParser.parse_metadata_file(path)
+      {:ok, result2} = MetaDataParser.parse_metadata_file(path)
+      {:ok, result3} = MetaDataParser.parse_metadata_file(path)
+
+      assert result1 == result2
+      assert result2 == result3
     end
 
     test "file not found errors have consistent structure" do
@@ -864,33 +784,29 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
     test "yaml parse errors have consistent structure" do
       path = temp_yaml_file(invalid_yaml_syntax())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert is_map(error_detail)
-        assert Map.has_key?(error_detail, :type)
-        assert Map.has_key?(error_detail, :message)
-        assert Map.has_key?(error_detail, :file_path)
-        assert Map.has_key?(error_detail, :details)
-        assert error_detail.type == :yaml_parse_error
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert is_map(error_detail)
+      assert Map.has_key?(error_detail, :type)
+      assert Map.has_key?(error_detail, :message)
+      assert Map.has_key?(error_detail, :file_path)
+      assert Map.has_key?(error_detail, :details)
+      assert error_detail.type == :yaml_parse_error
     end
 
     test "invalid structure errors have consistent structure" do
       path = temp_yaml_file(yaml_missing_required_title())
 
-      try do
-        assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
-        assert is_map(error_detail)
-        assert Map.has_key?(error_detail, :type)
-        assert Map.has_key?(error_detail, :message)
-        assert Map.has_key?(error_detail, :file_path)
-        assert Map.has_key?(error_detail, :details)
-        assert error_detail.type == :invalid_structure
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:error, error_detail} = MetaDataParser.parse_metadata_file(path)
+      assert is_map(error_detail)
+      assert Map.has_key?(error_detail, :type)
+      assert Map.has_key?(error_detail, :message)
+      assert Map.has_key?(error_detail, :file_path)
+      assert Map.has_key?(error_detail, :details)
+      assert error_detail.type == :invalid_structure
     end
   end
 
@@ -909,12 +825,10 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        assert metadata.title == "Safe Title"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      assert metadata.title == "Safe Title"
     end
 
     test "handles potentially malicious strings safely" do
@@ -926,14 +840,12 @@ defmodule CodeMySpec.ContentSync.MetaDataParserTest do
 
       path = temp_yaml_file(yaml)
 
-      try do
-        assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
-        # Parser should return strings as-is, sanitization happens elsewhere
-        assert metadata.title == "<script>alert('xss')</script>"
-        assert metadata.slug == "'; DROP TABLE content; --"
-      after
-        cleanup_file(path)
-      end
+      on_exit(fn -> cleanup_file(path) end)
+
+      assert {:ok, metadata} = MetaDataParser.parse_metadata_file(path)
+      # Parser should return strings as-is, sanitization happens elsewhere
+      assert metadata.title == "<script>alert('xss')</script>"
+      assert metadata.slug == "'; DROP TABLE content; --"
     end
   end
 end

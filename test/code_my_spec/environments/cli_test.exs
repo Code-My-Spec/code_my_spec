@@ -4,25 +4,15 @@ defmodule CodeMySpec.Environments.CliTest do
 
   alias CodeMySpec.Environments.Cli
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Environments.MockTmuxAdapter
-
-  setup do
-    MockTmuxAdapter.reset!()
-
-    :ok
-  end
 
   describe "create/1" do
-    test "creates Environment struct with window name (lazy creation)" do
+    test "creates Environment struct with the expected ref" do
       session_id = :rand.uniform(10_000)
 
       assert {:ok, %Environment{} = env} = Cli.create(session_id: session_id)
       assert env.type == :cli
       assert env.ref == "session-#{session_id}"
       assert env.metadata == %{}
-
-      # Window should not be created yet (lazy creation)
-      refute MockTmuxAdapter.window_exists?("session-#{session_id}")
     end
 
     test "includes metadata in Environment struct when provided" do
@@ -41,19 +31,16 @@ defmodule CodeMySpec.Environments.CliTest do
   end
 
   describe "destroy/1" do
-    test "destroys tmux window successfully" do
+    test "returns :ok (no-op lifecycle hook)" do
       {:ok, env} = Cli.create(session_id: :rand.uniform(10_000))
 
       assert :ok = Cli.destroy(env)
     end
 
-    test "is idempotent (returns :ok even if already destroyed)" do
+    test "is idempotent — repeated calls all return :ok" do
       {:ok, env} = Cli.create(session_id: :rand.uniform(10_000))
 
-      # Destroy once
       assert :ok = Cli.destroy(env)
-
-      # Destroy again - still succeeds
       assert :ok = Cli.destroy(env)
     end
   end
