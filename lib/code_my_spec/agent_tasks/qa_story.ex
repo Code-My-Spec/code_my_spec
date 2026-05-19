@@ -84,11 +84,28 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           Logger.info("[QaStory] evaluate(#{story_id}): DB attempt satisfies qa_complete; skipping legacy file checks")
           {:ok, :valid}
 
+        subagent_owns?(task) ->
+          # Issue c884dbda: when the qa_complete task is owned by a
+          # sub-agent (agent_id set), the parent agent's stop hook must
+          # NOT demand a submit. The sub-agent owns the work and the
+          # submission; the parent has no scenarios to report.
+          # TaskEvaluator iterates all session tasks regardless of
+          # which agent is stopping, so this guard prevents the
+          # parent's stop from getting slammed with demand-submit
+          # feedback for the sub-agent's in-flight task.
+          Logger.info("[QaStory] evaluate(#{story_id}): task is owned by sub-agent #{task.agent_id}; skipping demand-submit on parent stop")
+          {:ok, :valid}
+
         true ->
           do_evaluate(scope, env, story_id)
       end
     end
   end
+
+  defp subagent_owns?(%{agent_id: agent_id}) when is_binary(agent_id) and byte_size(agent_id) > 0,
+    do: true
+
+  defp subagent_owns?(_), do: false
 
   defp do_evaluate(scope, env, story_id) do
     with :ok <- check_plan(env),
