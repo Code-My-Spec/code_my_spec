@@ -86,35 +86,38 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
         high_pos = position_of(context.response_text, "entity_id=`#{high_id}`")
         low_pos = position_of(context.response_text, "entity_id=`#{low_id}`")
 
-        cond do
-          high_pos != nil and low_pos == nil ->
-            # Orchestration grouping correctly scoped to high-priority context.
-            :ok
-
-          high_pos == nil and low_pos != nil ->
-            flunk(
-              "low-priority context appeared while high-priority context did not — priority sort violated. Response: #{context.response_text}"
-            )
-
-          high_pos != nil and low_pos != nil ->
-            assert high_pos < low_pos,
-                   "high-priority (pos #{high_pos}) must come before low-priority (pos #{low_pos}). Response: #{context.response_text}"
-
-          true ->
-            flunk(
-              "neither context appeared in the actionable response — fixture didn't surface either chain. Response: #{context.response_text}"
-            )
-        end
+        verify_priority_order(
+          {high_pos, low_pos},
+          high_label: "high_pos",
+          low_label: "low_pos",
+          only_low_flunk:
+            "low-priority context appeared while high-priority context did not — priority sort violated. Response: #{context.response_text}",
+          order_assert:
+            "high-priority (pos #{high_pos}) must come before low-priority (pos #{low_pos}). Response: #{context.response_text}",
+          neither_flunk:
+            "neither context appeared in the actionable response — fixture didn't surface either chain. Response: #{context.response_text}"
+        )
 
         {:ok, context}
       end
     end
   end
 
-  defp position_of(text, substring) do
-    case :binary.match(text, substring) do
-      {pos, _len} -> pos
-      :nomatch -> nil
-    end
-  end
+  # Verifies ordering of two positions in a response text. Pattern-matched
+  # rather than imperative branching so the spex stays declarative.
+  defp verify_priority_order({high_pos, nil}, _opts) when not is_nil(high_pos), do: :ok
+
+  defp verify_priority_order({nil, low_pos}, opts) when not is_nil(low_pos),
+    do: flunk(opts[:only_low_flunk])
+
+  defp verify_priority_order({high_pos, low_pos}, opts)
+       when not is_nil(high_pos) and not is_nil(low_pos),
+       do: assert(high_pos < low_pos, opts[:order_assert])
+
+  defp verify_priority_order({nil, nil}, opts), do: flunk(opts[:neither_flunk])
+
+  defp position_of(text, substring), do: match_pos(:binary.match(text, substring))
+
+  defp match_pos({pos, _len}), do: pos
+  defp match_pos(:nomatch), do: nil
 end

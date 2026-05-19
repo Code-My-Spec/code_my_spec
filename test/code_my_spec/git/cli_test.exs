@@ -36,11 +36,7 @@ defmodule CodeMySpec.Git.CLITest do
     %Scope{user: user}
   end
 
-  defp cleanup_path(path) do
-    if File.exists?(path) do
-      File.rm_rf!(path)
-    end
-  end
+  defp cleanup_path(path), do: File.rm_rf(path)
 
   # ============================================================================
   # clone/3 - Integration Tests (with real GitHub repo)
@@ -182,20 +178,18 @@ defmodule CodeMySpec.Git.CLITest do
       {scope, _token} = scope_with_github_integration()
       clone_path = temp_clone_path()
 
-      try do
-        # Clone and pull
-        {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
-        _result = CLI.pull(scope, clone_path)
+      on_exit(fn -> cleanup_path(clone_path) end)
 
-        # Verify remote URL doesn't contain token
-        {remote_url, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: clone_path)
-        remote_url = String.trim(remote_url)
+      # Clone and pull
+      {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
+      _result = CLI.pull(scope, clone_path)
 
-        refute String.contains?(remote_url, "ghp_")
-        refute String.contains?(remote_url, "@github.com")
-      after
-        cleanup_path(clone_path)
-      end
+      # Verify remote URL doesn't contain token
+      {remote_url, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: clone_path)
+      remote_url = String.trim(remote_url)
+
+      refute String.contains?(remote_url, "ghp_")
+      refute String.contains?(remote_url, "@github.com")
     end
   end
 
@@ -208,18 +202,20 @@ defmodule CodeMySpec.Git.CLITest do
       scope = scope_without_integration()
       clone_path = temp_clone_path()
 
-      try do
-        # Local `git init` is enough — pull's integration check fires before any network.
-        File.mkdir_p!(clone_path)
-        {_, 0} = System.cmd("git", ["init"], cd: clone_path)
-        {_, 0} = System.cmd("git", ["remote", "add", "origin", "https://github.com/owner/repo.git"], cd: clone_path)
+      on_exit(fn -> cleanup_path(clone_path) end)
 
-        result = CLI.pull(scope, clone_path)
+      # Local `git init` is enough — pull's integration check fires before any network.
+      File.mkdir_p!(clone_path)
+      {_, 0} = System.cmd("git", ["init"], cd: clone_path)
 
-        assert {:error, :not_connected} = result
-      after
-        cleanup_path(clone_path)
-      end
+      {_, 0} =
+        System.cmd("git", ["remote", "add", "origin", "https://github.com/owner/repo.git"],
+          cd: clone_path
+        )
+
+      result = CLI.pull(scope, clone_path)
+
+      assert {:error, :not_connected} = result
     end
   end
 
@@ -238,13 +234,11 @@ defmodule CodeMySpec.Git.CLITest do
 
       File.mkdir_p!(non_repo_path)
 
-      try do
-        result = CLI.pull(scope, non_repo_path)
+      on_exit(fn -> cleanup_path(non_repo_path) end)
 
-        assert {:error, _reason} = result
-      after
-        cleanup_path(non_repo_path)
-      end
+      result = CLI.pull(scope, non_repo_path)
+
+      assert {:error, _reason} = result
     end
 
     test "returns error for nil path" do
@@ -274,27 +268,25 @@ defmodule CodeMySpec.Git.CLITest do
       {scope, _token} = scope_with_github_integration()
       clone_path = temp_clone_path()
 
-      try do
-        # Clone the repository
-        {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
+      on_exit(fn -> cleanup_path(clone_path) end)
 
-        # Create a conflict to force pull failure
-        readme_path = Path.join(clone_path, "README.md")
-        File.write!(readme_path, "# Conflicting change\n")
-        System.cmd("git", ["add", "."], cd: clone_path)
-        System.cmd("git", ["commit", "-m", "Local change"], cd: clone_path)
+      # Clone the repository
+      {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
 
-        # Attempt pull (may fail due to divergence)
-        _result = CLI.pull(scope, clone_path)
+      # Create a conflict to force pull failure
+      readme_path = Path.join(clone_path, "README.md")
+      File.write!(readme_path, "# Conflicting change\n")
+      System.cmd("git", ["add", "."], cd: clone_path)
+      System.cmd("git", ["commit", "-m", "Local change"], cd: clone_path)
 
-        # Verify token was cleaned up from remote URL
-        {remote_url, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: clone_path)
-        remote_url = String.trim(remote_url)
+      # Attempt pull (may fail due to divergence)
+      _result = CLI.pull(scope, clone_path)
 
-        refute String.contains?(remote_url, "@github.com")
-      after
-        cleanup_path(clone_path)
-      end
+      # Verify token was cleaned up from remote URL
+      {remote_url, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: clone_path)
+      remote_url = String.trim(remote_url)
+
+      refute String.contains?(remote_url, "@github.com")
     end
   end
 

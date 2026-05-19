@@ -75,32 +75,35 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
         urgent_pos = position_of(text, "entity_id=`#{context.urgent.id}`")
         later_pos = position_of(text, "entity_id=`#{context.later.id}`")
 
-        cond do
-          urgent_pos != nil and later_pos == nil ->
-            :ok
-
-          urgent_pos == nil and later_pos != nil ->
-            flunk(
-              "later (priority 5) appeared while urgent (priority 1) did not — sort violated. Response: #{text}"
-            )
-
-          urgent_pos != nil and later_pos != nil ->
-            assert urgent_pos < later_pos,
-                   "expected urgent before later. Response: #{text}"
-
-          true ->
-            flunk("neither context appeared. Response: #{text}")
-        end
+        verify_priority_order(
+          {urgent_pos, later_pos},
+          high_label: "urgent_pos",
+          low_label: "later_pos",
+          only_low_flunk: "later (priority 5) appeared while urgent (priority 1) did not — sort violated. Response: #{text}",
+          order_assert: "expected urgent before later. Response: #{text}",
+          neither_flunk: "neither context appeared. Response: #{text}"
+        )
 
         {:ok, context}
       end
     end
   end
 
-  defp position_of(text, substring) do
-    case :binary.match(text, substring) do
-      {pos, _len} -> pos
-      :nomatch -> nil
-    end
-  end
+
+  # Verifies ordering of two positions in a response text. Pattern-matched
+  # rather than imperative branching so the spex stays declarative.
+  defp verify_priority_order({high_pos, nil}, _opts) when not is_nil(high_pos), do: :ok
+
+  defp verify_priority_order({nil, low_pos}, opts) when not is_nil(low_pos),
+    do: flunk(opts[:only_low_flunk])
+
+  defp verify_priority_order({high_pos, low_pos}, opts)
+       when not is_nil(high_pos) and not is_nil(low_pos),
+       do: assert(high_pos < low_pos, opts[:order_assert])
+
+  defp verify_priority_order({nil, nil}, opts), do: flunk(opts[:neither_flunk])
+  defp position_of(text, substring), do: match_pos(:binary.match(text, substring))
+
+  defp match_pos({pos, _len}), do: pos
+  defp match_pos(:nomatch), do: nil
 end

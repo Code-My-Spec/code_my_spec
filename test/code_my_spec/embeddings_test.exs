@@ -25,13 +25,7 @@ defmodule CodeMySpec.EmbeddingsTest do
     prior = Application.get_env(:code_my_spec, :framework_knowledge_dir)
     Application.put_env(:code_my_spec, :framework_knowledge_dir, knowledge_dir)
 
-    on_exit(fn ->
-      if prior do
-        Application.put_env(:code_my_spec, :framework_knowledge_dir, prior)
-      else
-        Application.delete_env(:code_my_spec, :framework_knowledge_dir)
-      end
-    end)
+    on_exit(fn -> restore_knowledge_dir(prior) end)
 
     %{knowledge_dir: knowledge_dir}
   end
@@ -116,15 +110,23 @@ defmodule CodeMySpec.EmbeddingsTest do
 
       prior = Application.get_env(:code_my_spec, :embeddings_backend)
       Application.delete_env(:code_my_spec, :embeddings_backend)
+      on_exit(fn -> restore_embeddings_backend(prior) end)
 
-      try do
-        assert {:error, :embeddings_unavailable} =
-                 Embeddings.sync_framework_knowledge(scope)
-      after
-        if prior, do: Application.put_env(:code_my_spec, :embeddings_backend, prior)
-      end
+      assert {:error, :embeddings_unavailable} =
+               Embeddings.sync_framework_knowledge(scope)
     end
   end
+
+  defp restore_knowledge_dir(nil),
+    do: Application.delete_env(:code_my_spec, :framework_knowledge_dir)
+
+  defp restore_knowledge_dir(prior),
+    do: Application.put_env(:code_my_spec, :framework_knowledge_dir, prior)
+
+  defp restore_embeddings_backend(nil), do: :ok
+
+  defp restore_embeddings_backend(prior),
+    do: Application.put_env(:code_my_spec, :embeddings_backend, prior)
 
   defp setup_scope do
     {:ok, tmp_dir} = Briefly.create(directory: true)

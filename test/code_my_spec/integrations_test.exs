@@ -132,20 +132,14 @@ defmodule CodeMySpec.IntegrationsTest do
     test "swaps in a fresh access_token from Google's token endpoint",
          %{scope: scope} do
       cassette_path = Path.join(@cassette_dir, @cassette_name <> ".json")
+      have_cassette = File.exists?(cassette_path)
+      have_env_token = is_binary(System.get_env("TEST_GOOGLE_REFRESH_TOKEN"))
 
-      cond do
-        File.exists?(cassette_path) ->
-          :replay
-
-        is_binary(System.get_env("TEST_GOOGLE_REFRESH_TOKEN")) ->
-          :record
-
-        true ->
-          flunk("""
-          missing cassette at #{cassette_path} and no TEST_GOOGLE_REFRESH_TOKEN
-          set to record one. See the comment block above this test.
-          """)
-      end
+      assert have_cassette or have_env_token,
+             """
+             missing cassette at #{cassette_path} and no TEST_GOOGLE_REFRESH_TOKEN
+             set to record one. See the comment block above this test.
+             """
 
       refresh_token =
         System.get_env("TEST_GOOGLE_REFRESH_TOKEN") || "1//placeholder_refresh_token"
@@ -423,14 +417,17 @@ defmodule CodeMySpec.IntegrationsTest do
     organizations_url repos_url events_url received_events_url)
 
   defp scrub_github_user(map) when is_map(map) do
-    Enum.reduce(@github_pii_fields, map, fn key, acc ->
-      if Map.has_key?(acc, key) and is_binary(Map.get(acc, key)) do
-        Map.put(acc, key, "<TEST_#{String.upcase(key)}_PLACEHOLDER>")
-      else
-        acc
-      end
-    end)
+    Enum.reduce(@github_pii_fields, map, &scrub_pii_field/2)
   end
+
+  defp scrub_pii_field(key, acc) do
+    do_scrub_pii_field(Map.get(acc, key), key, acc)
+  end
+
+  defp do_scrub_pii_field(value, key, acc) when is_binary(value),
+    do: Map.put(acc, key, "<TEST_#{String.upcase(key)}_PLACEHOLDER>")
+
+  defp do_scrub_pii_field(_value, _key, acc), do: acc
 
   defp scrub_github_email(%{"email" => _} = entry) do
     Map.put(entry, "email", "<TEST_EMAIL_PLACEHOLDER>")
@@ -442,13 +439,10 @@ defmodule CodeMySpec.IntegrationsTest do
     previous = Application.get_env(:assent, :http_adapter)
     Application.put_env(:assent, :http_adapter, {Assent.HTTPAdapter.Req, [plug: plug]})
 
-    try do
-      fun.()
-    after
-      case previous do
-        nil -> Application.delete_env(:assent, :http_adapter)
-        adapter -> Application.put_env(:assent, :http_adapter, adapter)
-      end
-    end
+    ExUnit.Callbacks.on_exit(fn -> restore_assent_adapter(previous) end)
+    fun.()
   end
+
+  defp restore_assent_adapter(nil), do: Application.delete_env(:assent, :http_adapter)
+  defp restore_assent_adapter(adapter), do: Application.put_env(:assent, :http_adapter, adapter)
 end

@@ -736,15 +736,7 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessorTest do
       malformed = String.duplicate("[", 2)
 
       assert {:ok, result} = MarkdownProcessor.process(malformed)
-
-      if result.parse_status == :error do
-        assert not is_nil(result.parse_errors)
-        assert Map.has_key?(result.parse_errors, :error_type)
-        assert Map.has_key?(result.parse_errors, :message)
-        assert is_nil(result.processed_content)
-      else
-        assert result.parse_status == :success
-      end
+      verify_either_outcome(result.parse_status, result)
     end
 
     test "error result includes raw content" do
@@ -752,11 +744,7 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessorTest do
       possibly_bad = "# Title\n\n" <> String.duplicate("*", 2)
 
       assert {:ok, result} = MarkdownProcessor.process(possibly_bad)
-
-      if result.parse_status == :error do
-        assert result.raw_content == possibly_bad
-        assert is_nil(result.processed_content)
-      end
+      verify_raw_content(result.parse_status, result, possibly_bad)
     end
   end
 
@@ -836,11 +824,7 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessorTest do
   describe "process/1 - output validation" do
     test "processed HTML is valid for simple markdown" do
       assert {:ok, result} = MarkdownProcessor.process(valid_minimal_markdown())
-
-      if result.parse_status == :success do
-        assert String.contains?(result.processed_content, "<h1>")
-        assert String.contains?(result.processed_content, "</h1>")
-      end
+      verify_html_when_successful(result.parse_status, result)
     end
 
     test "converts all heading levels correctly" do
@@ -1078,4 +1062,29 @@ defmodule CodeMySpec.ContentSync.MarkdownProcessorTest do
       assert result.parse_status == :success
     end
   end
+
+  # Helpers that branch on parse_status without imperative control flow.
+
+  defp verify_either_outcome(:error, result) do
+    refute is_nil(result.parse_errors)
+    assert Map.has_key?(result.parse_errors, :error_type)
+    assert Map.has_key?(result.parse_errors, :message)
+    assert is_nil(result.processed_content)
+  end
+
+  defp verify_either_outcome(:success, result), do: assert(result.parse_status == :success)
+
+  defp verify_raw_content(:error, result, raw) do
+    assert result.raw_content == raw
+    assert is_nil(result.processed_content)
+  end
+
+  defp verify_raw_content(:success, _result, _raw), do: :ok
+
+  defp verify_html_when_successful(:success, result) do
+    assert String.contains?(result.processed_content, "<h1>")
+    assert String.contains?(result.processed_content, "</h1>")
+  end
+
+  defp verify_html_when_successful(:error, _result), do: :ok
 end

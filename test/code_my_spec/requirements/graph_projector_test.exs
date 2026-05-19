@@ -187,17 +187,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
 
           edges
           |> Enum.filter(fn e -> sigma_key(e.to) == fk end)
-          |> Enum.flat_map(fn e ->
-            sk = sigma_key(e.from)
-
-            case Map.get(by_sigma, sk) do
-              %{attributes: %{y: source_y}} when source_y <= target_y ->
-                [{sk, fk, source_y, target_y}]
-
-              _ ->
-                []
-            end
-          end)
+          |> Enum.flat_map(fn e -> fan_in_violations(e, by_sigma, fk, target_y) end)
         end)
 
       assert violations == [], "fan-in not below sources: #{inspect(violations)}"
@@ -213,10 +203,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
           {n.attributes[:entity_type], n.attributes[:entity_id]}
         end)
         |> Enum.reject(fn {{type, id}, _} -> is_nil(type) or is_nil(id) end)
-        |> Enum.flat_map(fn {key, group_nodes} ->
-          xs = group_nodes |> Enum.map(& &1.attributes.x) |> Enum.uniq()
-          if length(xs) > 1, do: [{key, xs}], else: []
-        end)
+        |> Enum.flat_map(&split_x_offenders/1)
 
       assert offenders == [], "entities with split x: #{inspect(offenders)}"
     end
@@ -241,16 +228,42 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
 
   defp write_specs(env, specs) do
     Enum.each(specs, fn {module_name, type, deps} ->
-      spec_content =
-        case type do
-          :context -> Content.context_spec(module_name, type: "context", dependencies: deps)
-          atom when is_atom(atom) -> Content.child_spec(module_name, type: Atom.to_string(atom), dependencies: deps)
-        end
+      spec_content = spec_content_for(type, module_name, deps)
 
       :ok = Environments.write_file(env, Content.spec_path(module_name), spec_content)
       :ok = Environments.write_file(env, Content.impl_path(module_name), Content.impl_file(module_name))
     end)
   end
+
+  defp spec_content_for(:context, module_name, deps),
+    do: Content.context_spec(module_name, type: "context", dependencies: deps)
+
+  defp spec_content_for(type, module_name, deps) when is_atom(type),
+    do: Content.child_spec(module_name, type: Atom.to_string(type), dependencies: deps)
+
+  # Returns a list of {source_key, target_key, source_y, target_y} for each
+  # edge into `fk` whose source sits at or above the target — i.e. a
+  # fan-in violation. Pattern-matched on the by_sigma lookup so misses
+  # silently produce no entry.
+  defp fan_in_violations(edge, by_sigma, target_key, target_y) do
+    source_key = sigma_key(edge.from)
+    fan_in_at_offending_y(Map.get(by_sigma, source_key), source_key, target_key, target_y)
+  end
+
+  defp fan_in_at_offending_y(%{attributes: %{y: source_y}}, source_key, target_key, target_y)
+       when source_y <= target_y,
+       do: [{source_key, target_key, source_y, target_y}]
+
+  defp fan_in_at_offending_y(_, _, _, _), do: []
+
+  # Returns [{key, xs}] when the entity has nodes on more than one x-column.
+  defp split_x_offenders({key, group_nodes}) do
+    xs = group_nodes |> Enum.map(& &1.attributes.x) |> Enum.uniq()
+    list_when_split(xs, key)
+  end
+
+  defp list_when_split([_, _ | _] = xs, key), do: [{key, xs}]
+  defp list_when_split(_xs, _key), do: []
 
   defp sigma_key({type, id, name}) do
     "#{type}_#{sanitize_id(id)}_#{name}"

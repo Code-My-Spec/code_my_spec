@@ -166,19 +166,24 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
   end
 
   defp cleanup_file(path) do
-    if File.exists?(path) do
-      File.rm!(path)
-    end
-
-    # Also cleanup parent directory if it's a test story directory
-    parent = Path.dirname(path)
-
-    if String.contains?(parent, "test_") and
-         String.contains?(parent, "_user_authentication") and
-         File.dir?(parent) do
-      File.rm_rf!(parent)
-    end
+    File.rm(path)
+    cleanup_parent_dir(Path.dirname(path))
   end
+
+  # Recursively remove the per-test story directory if it matches the
+  # naming convention used by temp_spex_file/1. Pattern-matched on the
+  # full predicate rather than imperative branching.
+  defp cleanup_parent_dir(parent) do
+    should_remove =
+      String.contains?(parent, "test_") and
+        String.contains?(parent, "_user_authentication") and
+        File.dir?(parent)
+
+    do_cleanup_parent(should_remove, parent)
+  end
+
+  defp do_cleanup_parent(true, parent), do: File.rm_rf(parent)
+  defp do_cleanup_parent(false, _parent), do: :ok
 
   # ============================================================================
   # parse_file/1 - Valid Files

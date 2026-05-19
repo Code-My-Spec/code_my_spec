@@ -32,7 +32,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     on_exit(fn ->
       # Clean up spec files created by tests (docs is a submodule, git clean won't reach it)
       spec_file = Path.join(project_dir, ".code_my_spec/spec/my_module.spec.md")
-      if File.exists?(spec_file), do: File.rm!(spec_file)
+      File.rm(spec_file)
 
       CodeMySpec.Support.TestAdapter.checkin(project_dir)
     end)
@@ -160,16 +160,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         ]
 
         Enum.each(analyzers_to_test, fn analyzer_name ->
-          result = Runner.run(scope, analyzer_name)
-
-          case result do
-            {:ok, problems} ->
-              assert is_list(problems)
-
-            {:error, message} ->
-              # Some analyzers may not be available, which is fine
-              assert is_binary(message)
-          end
+          assert_analyzer_result(Runner.run(scope, analyzer_name))
         end)
       end
     end
@@ -298,9 +289,9 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         assert is_list(problems)
 
         # Problems shouldn't be from SpecAlignment since no spec directory
-        if problems != [] do
-          refute Enum.any?(problems, fn p -> p.source == "spec_alignment" end)
-        end
+        # (Enum.any? on [] is false, so this assertion holds trivially when
+        # problems is empty.)
+        refute Enum.any?(problems, fn p -> p.source == "spec_alignment" end)
       end
     end
 
@@ -401,4 +392,8 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       end
     end
   end
+
+  defp assert_analyzer_result({:ok, problems}), do: assert(is_list(problems))
+  # Some analyzers may not be available, which is fine — assert the error is well-shaped.
+  defp assert_analyzer_result({:error, message}), do: assert(is_binary(message))
 end

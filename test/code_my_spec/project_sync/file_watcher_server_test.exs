@@ -328,13 +328,15 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
   end
 
   defp do_wait_until(deadline, check_fn) do
-    cond do
-      check_fn.() -> true
-      System.monotonic_time(:millisecond) >= deadline -> false
-      true ->
-        Process.sleep(20)
-        do_wait_until(deadline, check_fn)
-    end
+    next_step(check_fn.(), System.monotonic_time(:millisecond) >= deadline, deadline, check_fn)
+  end
+
+  defp next_step(true, _expired, _deadline, _check_fn), do: true
+  defp next_step(_check, true, _deadline, _check_fn), do: false
+
+  defp next_step(_check, _expired, deadline, check_fn) do
+    Process.sleep(20)
+    do_wait_until(deadline, check_fn)
   end
 
   # Compile a tiny fixture module with EEP-48 docs and write its BEAM
@@ -359,13 +361,9 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
     prior = Code.get_compiler_option(:docs)
     Code.put_compiler_option(:docs, true)
+    ExUnit.Callbacks.on_exit(fn -> Code.put_compiler_option(:docs, prior) end)
 
-    [{_mod, binary}] =
-      try do
-        Code.compile_string(source)
-      after
-        Code.put_compiler_option(:docs, prior)
-      end
+    [{_mod, binary}] = Code.compile_string(source)
 
     File.write!(beam_path, binary)
     beam_path
