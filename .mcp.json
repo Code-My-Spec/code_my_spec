@@ -9,6 +9,11 @@
         "semble"
       ],
       "env": {}
+    },
+    "vibium": {
+      "type": "stdio",
+      "command": "vibium",
+      "args": ["mcp"]
     }
   }
 }

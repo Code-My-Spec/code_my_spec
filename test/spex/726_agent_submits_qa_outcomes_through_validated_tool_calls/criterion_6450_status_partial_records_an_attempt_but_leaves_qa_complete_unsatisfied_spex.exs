@@ -6,9 +6,11 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
 
   Demonstrates the only-pass-satisfies rule for the partial state:
   the attempt persists in history (audit-grade) but the requirement
-  is still open.
+  is still open. Per rule aa9a29e6 and criterion 6487, the partial
+  submission must carry at least one linked issue_id.
 
   Surfaces:
+  - `CodeMySpec.McpServers.Issues.Tools.CreateIssue`
   - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
   - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts`
   - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
@@ -17,6 +19,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, satisfied_qa_complete_text: 1]
 
@@ -26,11 +29,28 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
 
   spex "Status partial is audit-grade but does not satisfy qa_complete" do
     scenario "Status partial records an attempt but leaves qa_complete unsatisfied" do
-      given_ "a started qa_complete task", context do
-        {:ok, context}
+      given_ "a started qa_complete task and a finding filed via create_issue", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, issue_response, _frame} =
+          CreateIssue.execute(
+            %{
+              title: "QA-found gap from criterion 6450 spex",
+              severity: "medium",
+              scope: "app",
+              story_id: context.story.id,
+              description: "Discovered before the agent ran out of time."
+            },
+            frame
+          )
+
+        refute issue_response.isError
+        issue_id = extract_issue_id(response_text(issue_response))
+
+        {:ok, Map.put(context, :issue_id, issue_id)}
       end
 
-      when_ "the agent submits with status partial", context do
+      when_ "the agent submits with status partial referencing the issue id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
@@ -39,7 +59,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
               task_id: context.task_id,
               status: "partial",
               scenarios: [%{name: "smoke", status: "partial", observation: "ran out of time"}],
-              issue_ids: []
+              issue_ids: [context.issue_id]
             },
             frame
           )
@@ -75,5 +95,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
         {:ok, context}
       end
     end
+  end
+
+  defp extract_issue_id(text) do
+    [_, id] = Regex.run(~r/(?:ID:?\s*|issue[_ ]id[: ]+)([a-f0-9-]+)/i, text)
+    id
   end
 end

@@ -3,14 +3,22 @@ defmodule CodeMySpecSpex.Story717.Criterion6422Spex do
   Story 717 — Engineer sees a DAG of project progress
   Criterion 6422 — Empty post-story-project band leaves the remaining four bands in correct order.
 
-  When the schema has no project gate consuming story output (the
-  current post-`a774e35b` state), the four populated bands —
-  pre-story-project, pre-component-story, components,
-  post-component-story — still stack in correct order, and no node
-  drifts into the empty post-story-project slot at the bottom.
+  When the post-project band (project nodes BELOW the component zone,
+  populated in production by qa_complete et al) is empty — as it is in
+  the fixture topology this spec exercises — the remaining bands still
+  stack in order without any node drifting into the empty slot. The
+  fixture (`:cross_context_dependency`) populates project + component
+  nodes only; no story-typed nodes appear, and no project node ever
+  appears below the component zone. The two invariants the layout must
+  hold under this shape:
+
+  1. The topmost node in the graph is a project node (pre-project band
+     occupied at the top).
+  2. Every project node sits strictly above every component node
+     (post-project band is empty — no project drifted past the
+     component zone).
 
   Surface: `/projects/:project_name/requirements/graph?preload=true`.
-  Default project setup already matches this state.
   """
 
   use CodeMySpecSpex.Case
@@ -33,44 +41,46 @@ defmodule CodeMySpecSpex.Story717.Criterion6422Spex do
         {:ok, Map.put(context, :graph, graph)}
       end
 
-      then_ "the pre-story project band still sits at the top (y == 0)", context do
-        project_nodes =
-          Enum.filter(context.graph["nodes"], fn n ->
-            n["attributes"]["entity_type"] == "project"
-          end)
+      then_ "the topmost node in the graph is a project node", context do
+        nodes = context.graph["nodes"]
 
-        assert project_nodes != [], "expected project nodes in the graph"
+        project_ys =
+          nodes
+          |> Enum.filter(&(&1["attributes"]["entity_type"] == "project"))
+          |> Enum.map(& &1["attributes"]["y"])
 
-        ys = Enum.map(project_nodes, & &1["attributes"]["y"])
+        all_ys = Enum.map(nodes, & &1["attributes"]["y"])
 
-        assert Enum.max(ys) == 0,
-               "expected pre-story project band at top (y == 0), got max y == #{Enum.max(ys)}"
+        assert project_ys != [], "expected project nodes in the graph"
+
+        assert Enum.max(project_ys) == Enum.max(all_ys),
+               "expected topmost node to be a project node " <>
+                 "(project_top=#{Enum.max(project_ys)}, graph_top=#{Enum.max(all_ys)})"
 
         {:ok, context}
       end
 
-      and_ "no node from any other band drifts into the bottom (below the component zone)",
+      and_ "every project node sits above every component node (post-project band empty)",
            context do
         nodes = context.graph["nodes"]
 
-        component_min_y =
+        project_ys =
+          nodes
+          |> Enum.filter(&(&1["attributes"]["entity_type"] == "project"))
+          |> Enum.map(& &1["attributes"]["y"])
+
+        component_ys =
           nodes
           |> Enum.filter(&(&1["attributes"]["entity_type"] == "component"))
           |> Enum.map(& &1["attributes"]["y"])
-          |> Enum.min(fn -> nil end)
 
-        # Project/story nodes should never sit BELOW any component node in
-        # current schema — late_project is empty so the bottom band is the
-        # component zone.
-        violations =
-          for n <- nodes,
-              n["attributes"]["entity_type"] in ["project", "story"],
-              component_min_y != nil,
-              n["attributes"]["y"] < component_min_y,
-              do: {n["label"], n["attributes"]["entity_type"], n["attributes"]["y"]}
+        assert component_ys != [],
+               "expected component nodes from cross_context_dependency fixture"
 
-        assert violations == [],
-               "expected no project/story node below component zone (component_min_y=#{component_min_y}); got: #{inspect(violations)}"
+        assert Enum.min(project_ys) > Enum.max(component_ys),
+               "expected all project nodes above all components — " <>
+                 "post-project band must be empty in this fixture " <>
+                 "(project_min=#{Enum.min(project_ys)}, component_max=#{Enum.max(component_ys)})"
 
         {:ok, context}
       end

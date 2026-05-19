@@ -5,14 +5,19 @@ defmodule CodeMySpecSpex.Story717.Criterion6420Spex do
 
   When no project node receives a cross-entity edge from a story or
   component (the schema state after the 2026-05-16 `qa_preflight`
-  deletion), the project chain still renders in the TOP band at y=0
-  rather than collapsing into the bottom band — the layout split is
-  robust to the absence of cross-entity sinks on project nodes.
+  deletion), the project chain still renders in the TOP band of the
+  5-band layout rather than collapsing into a lower band. The
+  invariant: the highest node in the graph is a project node.
+
+  Note on the 5-band layout (pre-project → pre-story → components →
+  post-story → post-project): project-typed nodes can sit in BOTH the
+  pre-project band (the top) AND the post-project band (below stories,
+  populated in production by qa_complete et al). What "project chain at
+  the top" means is that the TOPMOST node of the graph is a project
+  node — not that every project node is above every non-project node.
 
   Surface: `/projects/:project_name/requirements/graph?preload=true`.
-  Default project setup matches the schema state being tested (no
-  current project gate consumes story output), so no extra fixture
-  work is needed.
+  Default project setup matches the schema state being tested.
   """
 
   use CodeMySpecSpex.Case
@@ -36,27 +41,23 @@ defmodule CodeMySpecSpex.Story717.Criterion6420Spex do
         {:ok, Map.put(context, :graph, graph)}
       end
 
-      then_ "every project node renders above the highest non-project node (the top band)",
+      then_ "the topmost node in the graph is a project node",
             context do
-        {project_nodes, other_nodes} =
-          Enum.split_with(context.graph["nodes"], fn n ->
-            n["attributes"]["entity_type"] == "project"
-          end)
+        nodes = context.graph["nodes"]
 
-        assert project_nodes != [],
+        project_ys =
+          nodes
+          |> Enum.filter(&(&1["attributes"]["entity_type"] == "project"))
+          |> Enum.map(& &1["attributes"]["y"])
+
+        all_ys = Enum.map(nodes, & &1["attributes"]["y"])
+
+        assert project_ys != [],
                "expected at least one project node in the graph, got none"
 
-        project_min_y = project_nodes |> Enum.map(& &1["attributes"]["y"]) |> Enum.min()
-        other_max_y = other_nodes |> Enum.map(& &1["attributes"]["y"]) |> Enum.max(fn -> :neg_infinity end)
-
-        # The vertical project chain stacks downward at the top of the
-        # canvas; with no cross-entity sink on project nodes the whole
-        # chain renders as early_project (above the story zone) rather
-        # than collapsing into the bottom band. We assert that the
-        # LOWEST project node still sits above the HIGHEST non-project
-        # node — i.e. the chain hasn't degenerated into late_project.
-        assert other_max_y == :neg_infinity or project_min_y > other_max_y,
-               "expected project chain above all non-project nodes; project_min_y=#{project_min_y}, other_max_y=#{other_max_y}"
+        assert Enum.max(project_ys) == Enum.max(all_ys),
+               "expected topmost node to be a project node " <>
+                 "(project_top=#{Enum.max(project_ys)}, graph_top=#{Enum.max(all_ys)})"
 
         {:ok, context}
       end
