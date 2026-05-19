@@ -56,6 +56,23 @@ bump VERSION:
     echo
     echo "Bumped to {{VERSION}}, staged. Commit (bundling other changes if you like), push, then \`just release\`."
 
+# One-shot bump + commit + push + tag — wires both files together so the marketplace manifest can't drift from mix.exs
+publish VERSION:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! echo "{{VERSION}}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+      echo "Bad version: {{VERSION}} (want N.N.N)" >&2
+      exit 1
+    fi
+    if [ -n "$(git status --porcelain CodeMySpec/.claude-plugin/plugin.json mix.exs)" ]; then
+      echo "plugin.json or mix.exs already has uncommitted changes — commit or reset first" >&2
+      exit 1
+    fi
+    just bump {{VERSION}}
+    git commit -m "Release v{{VERSION}}"
+    git push origin HEAD
+    just release
+
 # Tag HEAD with vN.N.N from plugin.json and push the tag — triggers the marketplace release CI
 release:
     #!/usr/bin/env bash
