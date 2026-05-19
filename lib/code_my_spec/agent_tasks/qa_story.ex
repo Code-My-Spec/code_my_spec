@@ -94,12 +94,37 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     with :ok <- check_plan(env),
          :ok <- check_brief(env, story_id),
          :ok <- maybe_check_result(scope, env, story_id) do
-      {:ok, :valid}
+      # File-based artifacts validate, but `qa_complete?` was false so no DB
+      # attempt exists. The DB attempt is canonical (issue 3dd4ec46) — without
+      # it, `qa_complete` stays unsatisfied even though `evaluate_task` would
+      # mark the Task completed. Force a submit instead of silently passing.
+      {:ok, :invalid, submit_required_feedback(story_id)}
     else
       {:ok, :invalid, feedback} = result ->
         Logger.info("[QaStory] evaluate: invalid — #{String.slice(feedback, 0..120)}")
         result
     end
+  end
+
+  defp submit_required_feedback(story_id) do
+    """
+    Call `submit_qa_result` to land a DB attempt for story #{story_id} — file-based artifacts alone don't satisfy `qa_complete`.
+
+    Brief and result.md are on disk and validate, but the requirement graph
+    reads completion from the qa_attempts table, not the filesystem. Use the
+    fully-qualified MCP tool name:
+
+        mcp__plugin_codemyspec_local__submit_qa_result(
+          task_id: <task_id from start_task>,
+          status: "pass" | "fail" | "partial",
+          scenarios: [%{name: "...", status: "...", observation: "..."}, ...],
+          issue_ids: [...]   # ids returned from any create_issue calls
+        )
+
+    The scenarios payload should mirror the `## Scenarios` section of your
+    result.md — one entry per scenario you exercised. Only `status: "pass"`
+    satisfies the `qa_complete` requirement.
+    """
   end
 
   # Result is no longer required in any case — `submit_qa_result` is the
@@ -336,8 +361,20 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     Write the result to `#{result_path(story_id)}` and stop the session.
     The evaluator validates the result and files issues to the DB.
-    Call `submit_qa_result` (MCP tool) with `status: pass` to mark QA complete.
-    The requirement graph reads completion from the DB, not from the filesystem.\
+
+    **Then call `mcp__plugin_codemyspec_local__submit_qa_result`** (fully-qualified
+    name — the bare `submit_qa_result` will not resolve) with the scenarios
+    payload mirroring your result.md's `## Scenarios` section. The DB attempt
+    is the canonical satisfaction signal for `qa_complete` — the requirement
+    graph reads completion from the DB, not from the filesystem. Without the
+    DB attempt, the file-based pass is dead work.
+
+        mcp__plugin_codemyspec_local__submit_qa_result(
+          task_id: <task_id>,
+          status: "pass",
+          scenarios: [%{name: "...", status: "pass", observation: "..."}, ...],
+          issue_ids: [...]
+        )\
     """
   end
 
