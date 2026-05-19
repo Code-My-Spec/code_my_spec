@@ -1,6 +1,10 @@
 defmodule CodeMySpecLocalWeb.IssuesLive.Show do
   @moduledoc """
   Displays a single issue with full details.
+
+  Renders triage actions (Accept / Dismiss / Resolve) gated by the issue's
+  current status. Dismiss and Resolve open a modal that captures the
+  required reason / resolution; Accept is a single click.
   """
   use CodeMySpecLocalWeb, :live_view
 
@@ -28,6 +32,7 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
           {:noreply,
            assign(socket,
              project: project,
+             scope: scope,
              slug: slug,
              issue: issue,
              page_title: "#{project.name} — #{issue.title}",
@@ -37,6 +42,37 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
     else
       {:error, reason} ->
         {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("accept", _params, socket) do
+    case Issues.accept_issue(socket.assigns.scope, socket.assigns.issue) do
+      {:ok, issue} ->
+        {:noreply, socket |> assign(issue: issue) |> put_flash(:info, "Issue accepted.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not accept: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("dismiss", %{"reason" => reason}, socket) do
+    case Issues.dismiss_issue(socket.assigns.scope, socket.assigns.issue, reason) do
+      {:ok, issue} ->
+        {:noreply, socket |> assign(issue: issue) |> put_flash(:info, "Issue dismissed.")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not dismiss: #{format_errors(changeset)}")}
+    end
+  end
+
+  def handle_event("resolve", %{"resolution" => resolution}, socket) do
+    case Issues.resolve_issue(socket.assigns.scope, socket.assigns.issue, resolution) do
+      {:ok, issue} ->
+        {:noreply, socket |> assign(issue: issue) |> put_flash(:info, "Issue resolved.")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not resolve: #{format_errors(changeset)}")}
     end
   end
 
@@ -68,6 +104,58 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
             <span class={"badge badge-outline #{severity_badge(@issue.severity)}"}>{@issue.severity}</span>
           </div>
         </div>
+
+        <div :if={@issue.status in [:incoming, :accepted]} class="flex gap-2 mb-6" data-role="issue-actions">
+          <button
+            :if={@issue.status == :incoming}
+            type="button"
+            class="btn btn-sm btn-success"
+            data-role="issue-accept"
+            phx-click="accept"
+          >
+            Accept
+          </button>
+          <button
+            :if={@issue.status == :accepted}
+            type="button"
+            class="btn btn-sm btn-primary"
+            data-role="issue-resolve"
+            phx-click={show_confirm("resolve-issue-#{@issue.id}")}
+          >
+            Resolve
+          </button>
+          <button
+            :if={@issue.status in [:incoming, :accepted]}
+            type="button"
+            class="btn btn-sm btn-neutral"
+            data-role="issue-dismiss"
+            phx-click={show_confirm("dismiss-issue-#{@issue.id}")}
+          >
+            Dismiss
+          </button>
+        </div>
+
+        <.text_prompt_dialog
+          :if={@issue.status in [:incoming, :accepted]}
+          id={"dismiss-issue-#{@issue.id}"}
+          title="Dismiss this issue?"
+          field_label="Reason"
+          field_name="reason"
+          placeholder="Explain why this issue is not actionable"
+          submit_label="Dismiss"
+          submit_event="dismiss"
+        />
+
+        <.text_prompt_dialog
+          :if={@issue.status == :accepted}
+          id={"resolve-issue-#{@issue.id}"}
+          title="Resolve this issue?"
+          field_label="Resolution"
+          field_name="resolution"
+          placeholder="Describe how the issue was fixed"
+          submit_label="Resolve"
+          submit_event="resolve"
+        />
 
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 text-sm">
           <div>
@@ -131,4 +219,71 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
     |> String.replace(~r/[^a-z0-9]+/, "-")
     |> String.trim("-")
   end
+
+  defp format_errors(%Ecto.Changeset{} = changeset) do
+    changeset.errors
+    |> Enum.map_join(", ", fn {field, {msg, _}} -> "#{field} #{msg}" end)
+  end
+
+  defp format_errors(other), do: inspect(other)
+
+  # Reusable text-input modal — used for Dismiss reason and Resolve
+  # resolution. Submits via the named LiveView event with a single
+  # string field. Renders inline (sibling to the trigger button) and
+  # is shown via `show_confirm/2`.
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :field_label, :string, required: true
+  attr :field_name, :string, required: true
+  attr :placeholder, :string, default: ""
+  attr :submit_label, :string, required: true
+  attr :submit_event, :string, required: true
+
+  defp text_prompt_dialog(assigns) do
+    ~H"""
+    <dialog id={@id} class="modal" data-role="confirm-dialog">
+      <div class="modal-box">
+        <h3 class="text-lg font-bold">{@title}</h3>
+        <form phx-submit={@submit_event} class="space-y-4 mt-4">
+          <label class="form-control">
+            <div class="label">
+              <span class="label-text">{@field_label}</span>
+            </div>
+            <textarea
+              name={@field_name}
+              rows="4"
+              class="textarea textarea-bordered w-full"
+              placeholder={@placeholder}
+              required
+              data-role={"#{@field_name}-input"}
+            ></textarea>
+          </label>
+          <div class="modal-action">
+            <button
+              type="button"
+              class="btn"
+              data-role="confirm-cancel"
+              phx-click={hide_dialog(@id)}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              data-role="confirm-confirm"
+              phx-click={hide_dialog(@id)}
+            >
+              {@submit_label}
+            </button>
+          </div>
+        </form>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button type="button" aria-label="close" phx-click={hide_dialog(@id)}>close</button>
+      </form>
+    </dialog>
+    """
+  end
+
+  defp hide_dialog(js \\ %JS{}, id), do: JS.remove_class(js, "modal-open", to: "#" <> id)
 end
