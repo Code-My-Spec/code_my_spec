@@ -88,7 +88,7 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
 
           <select name="scope" class="select select-sm select-bordered">
             <option value="">All scopes</option>
-            <option :for={s <- ~w(app qa docs)} value={s} selected={@filters[:scope] == String.to_existing_atom(s)}>
+            <option :for={s <- ~w(app qa docs framework)} value={s} selected={@filters[:scope] == String.to_existing_atom(s)}>
               {s}
             </option>
           </select>
