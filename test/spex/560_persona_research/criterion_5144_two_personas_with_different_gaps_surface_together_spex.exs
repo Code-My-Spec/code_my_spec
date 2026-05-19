@@ -161,12 +161,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
 
   defp response_text(other), do: inspect(other)
 
-  defp extract_persona_id(response) do
-    case Regex.run(~r/\bid: `([^`]+)`/, response_text(response)) do
-      [_, id] -> id
-      _ -> raise "Could not extract persona id from response: #{inspect(response)}"
-    end
-  end
+  defp extract_persona_id(response), do: extract_persona_id_from(Regex.run(~r/\bid: `([^`]+)`/, response_text(response)), response)
+
+  defp extract_persona_id_from([_, id], _response), do: id
+  defp extract_persona_id_from(_, response), do: raise("Could not extract persona id from response: #{inspect(response)}")
 
   defp minimal_persona_summary do
     """

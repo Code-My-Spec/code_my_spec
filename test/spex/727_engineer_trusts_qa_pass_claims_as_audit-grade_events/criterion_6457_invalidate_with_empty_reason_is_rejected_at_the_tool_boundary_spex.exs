@@ -86,10 +86,8 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
     end
   end
 
-  defp extract_attempt_id(text) do
-    case Regex.run(~r/attempt[_ ]id[: ]+([a-f0-9-]+)/i, text) do
-      [_, id] -> id
-      _ -> raise "no attempt_id in submit response: #{text}"
-    end
-  end
+  defp extract_attempt_id(text), do: extract_attempt_id_from(Regex.run(~r/attempt[_ ]id[: ]+([a-f0-9-]+)/i, text), text)
+
+  defp extract_attempt_id_from([_, id], _text), do: id
+  defp extract_attempt_id_from(_, text), do: raise("no attempt_id in submit response: #{text}")
 end

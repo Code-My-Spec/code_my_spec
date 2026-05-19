@@ -95,10 +95,8 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
     end
   end
 
-  defp extract_issue_id(text) do
-    case Regex.run(~r/(?:ID:?\s*|issue[_ ]id[: ]+)([a-f0-9-]+)/i, text) do
-      [_, id] -> id
-      _ -> raise "no issue id in create_issue response: #{text}"
-    end
-  end
+  defp extract_issue_id(text), do: extract_issue_id_from(Regex.run(~r/(?:ID:?\s*|issue[_ ]id[: ]+)([a-f0-9-]+)/i, text), text)
+
+  defp extract_issue_id_from([_, id], _text), do: id
+  defp extract_issue_id_from(_, text), do: raise("no issue id in create_issue response: #{text}")
 end

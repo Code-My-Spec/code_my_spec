@@ -159,10 +159,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
   defp response_text(%{text: text}), do: text
   defp response_text(other), do: inspect(other)
 
-  defp extract_task_id(text) do
-    case Regex.run(~r/Task ID: `([^`]+)`/, text) do
-      [_, task_id] -> task_id
-      _ -> raise "Could not extract task ID from response: #{inspect(text)}"
-    end
-  end
+  defp extract_task_id(text), do: extract_task_id_from(Regex.run(~r/Task ID: `([^`]+)`/, text), text)
+
+  defp extract_task_id_from([_, task_id], _text), do: task_id
+  defp extract_task_id_from(_, text), do: raise("Could not extract task ID from response: #{inspect(text)}")
 end
