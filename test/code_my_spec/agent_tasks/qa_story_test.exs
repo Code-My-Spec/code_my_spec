@@ -198,11 +198,12 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   describe "command/3 — combined prompt" do
     setup [:create_scope, :create_story, :create_task]
 
-    test "returns a combined prompt covering the brief and result phases", %{scope: scope, task: task} do
+    test "returns a combined prompt covering the brief and findings phases", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ ~r/QA Story/i
-      assert prompt =~ "qa_story_brief"
-      assert prompt =~ "qa_result"
+      assert prompt =~ ~r/qa.story.brief/i
+      assert prompt =~ "create_issue"
+      assert prompt =~ "submit_qa_result"
     end
 
     test "includes story context", %{scope: scope, task: task} do
@@ -225,11 +226,12 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert prompt =~ "priv/knowledge/qa-tooling"
     end
 
-    test "references all artifact paths", %{scope: scope, task: task, story: story} do
+    test "references the artifact paths still in the prompt", %{scope: scope, task: task, story: story} do
       assert {:ok, prompt} = QaStory.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/plan.md"
       assert prompt =~ ".code_my_spec/qa/#{story.id}/brief.md"
-      assert prompt =~ ".code_my_spec/qa/#{story.id}/result.md"
+      refute prompt =~ ".code_my_spec/qa/#{story.id}/result.md",
+             "result.md path was removed from the prompt; findings flow via create_issue + submit_qa_result"
     end
 
     test "same prompt regardless of existing artifacts", %{scope: scope, task: task, story: story} do

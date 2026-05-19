@@ -32,16 +32,39 @@ defmodule CodeMySpec.Qa.QaAttempts do
   def submit(%Scope{} = scope, params) do
     task_id = Map.get(params, :task_id) || Map.get(params, "task_id")
 
-    Repo.transaction(fn ->
-      with {:ok, {story_id, agent_id}} <- resolve_task_info(scope, task_id),
-           parent_attempt_id <- find_latest_attempt_id(story_id),
-           attrs <- build_attrs(params, story_id, agent_id, task_id, parent_attempt_id),
-           {:ok, attempt} <- insert_attempt(attrs) do
-        attempt
-      else
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
+    with :ok <- validate_findings_path(params) do
+      Repo.transaction(fn ->
+        with {:ok, {story_id, agent_id}} <- resolve_task_info(scope, task_id),
+             parent_attempt_id <- find_latest_attempt_id(story_id),
+             attrs <- build_attrs(params, story_id, agent_id, task_id, parent_attempt_id),
+             {:ok, attempt} <- insert_attempt(attrs) do
+          attempt
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+    end
+  end
+
+  # A `fail` or `partial` outcome MUST be backed by issue ids. Agents
+  # were filing findings into a result.md text blob that the harness
+  # never read — every non-pass came back with `issue_ids: []` and the
+  # finding disappeared. Refuse the submission so the agent has to call
+  # `create_issue` first.
+  defp validate_findings_path(params) do
+    status = Map.get(params, :status) || Map.get(params, "status")
+    issue_ids = Map.get(params, :issue_ids) || Map.get(params, "issue_ids") || []
+
+    cond do
+      status in [:pass, "pass"] ->
+        :ok
+
+      issue_ids != [] ->
+        :ok
+
+      true ->
+        {:error, :fail_requires_issue_ids}
+    end
   end
 
   defp build_attrs(params, story_id, agent_id, task_id, parent_attempt_id) do

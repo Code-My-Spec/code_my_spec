@@ -29,7 +29,7 @@ tools: >-
   mcp__plugin_codemyspec_local__list_stories,
   mcp__plugin_codemyspec_local__get_story,
   mcp__plugin_codemyspec_local__list_components,
-  mcp__plugin_codemyspec_*
+  mcp__plugin_codemyspec_local__*
 mcpServers: vibium, local
 model: sonnet
 color: red

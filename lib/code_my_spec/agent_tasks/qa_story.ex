@@ -292,7 +292,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     scripts_section = build_scripts_section(existing_scripts)
     component_section = build_component_section(scope, story)
     brief_spec = DocumentSpecProjector.project_spec("qa_story_brief")
-    result_spec = DocumentSpecProjector.project_spec("qa_result")
 
     sections =
       [
@@ -301,7 +300,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         scripts_section,
         plan_section(),
         playbook_section(),
-        document_specs_section(brief_spec, result_spec, story_id),
+        document_specs_section(brief_spec, story_id),
         done_signal_section(story_id)
       ]
       |> Enum.reject(&is_nil/1)
@@ -356,42 +355,49 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp document_specs_section(brief_spec, result_spec, story_id) do
+  defp document_specs_section(brief_spec, story_id) do
     """
-    ## Document format specs
+    ## Brief format spec
 
-    Match these exactly — the evaluator validates against them.
+    Write the brief to `#{brief_path(story_id)}` matching this spec exactly.
+    The evaluator validates the brief structure on stop.
 
-    ### Phase 1: qa_story_brief (write to `#{brief_path(story_id)}`)
-
-    #{brief_spec}
-
-    ### Phase 2: qa_result (write to `#{result_path(story_id)}`)
-
-    #{result_spec}\
+    #{brief_spec}\
     """
   end
 
-  defp done_signal_section(story_id) do
+  defp done_signal_section(_story_id) do
     """
-    ## Done signal
+    ## Findings and done signal
 
-    Write the result to `#{result_path(story_id)}` and stop the session.
-    The evaluator validates the result and files issues to the DB.
+    Every finding you uncover during execution gets filed via
+    `mcp__plugin_codemyspec_local__create_issue` **as you find it** — not
+    written into a markdown file. Capture the title, severity, scope, and a
+    short description; the call returns an issue id. Hold those ids.
 
-    **Then call `mcp__plugin_codemyspec_local__submit_qa_result`** (fully-qualified
-    name — the bare `submit_qa_result` will not resolve) with the scenarios
-    payload mirroring your result.md's `## Scenarios` section. The DB attempt
-    is the canonical satisfaction signal for `qa_complete` — the requirement
-    graph reads completion from the DB, not from the filesystem. Without the
-    DB attempt, the file-based pass is dead work.
+    When you finish the session, call
+    `mcp__plugin_codemyspec_local__submit_qa_result` with the structured
+    scenarios payload **and** every issue id you filed:
 
         mcp__plugin_codemyspec_local__submit_qa_result(
           task_id: <task_id>,
-          status: "pass",
-          scenarios: [%{name: "...", status: "pass", observation: "..."}, ...],
-          issue_ids: [...]
-        )\
+          status: "pass" | "partial" | "fail",
+          scenarios: [%{name: "...", status: "pass|partial|fail", observation: "..."}, ...],
+          issue_ids: [<every id returned from create_issue>]
+        )
+
+    Discipline:
+
+    - **`status: "pass"`** with `issue_ids: []` is fine.
+    - **`status: "partial"` or `"fail"`** with `issue_ids: []` is **rejected
+      by the tool**. A failure with no filed issue is a finding that just
+      disappeared when your session ended — there's nowhere else for it to
+      live. File the issues first, then submit.
+    - The bare `submit_qa_result` (without the `mcp__plugin_codemyspec_local__`
+      prefix) does NOT resolve — use the fully-qualified name.
+    - Don't write findings into a result.md file. The harness doesn't read it.
+      Screenshots and other evidence still belong on disk, but the canonical
+      record is the DB attempt + linked issues.\
     """
   end
 

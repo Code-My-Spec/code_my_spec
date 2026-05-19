@@ -1,12 +1,13 @@
 # QA Story Workflow
 
-The `qa_story` agent task is a two-phase QA cycle for a single user story:
-write a brief, then execute the brief. The project-wide QA plan
+The `qa_story` agent task is a per-story QA cycle: write a brief, then execute
+it against the running app. The project-wide QA plan
 (`.code_my_spec/qa/plan.md`) is a prerequisite — produced upstream by
 `qa_setup`, not written here.
 
-If `result_complete.md` already exists for this story, the evaluator
-short-circuits — QA already passed.
+QA completion is recorded by a DB-backed attempt via `submit_qa_result`. There
+is no result.md file in the loop. Findings are filed via `create_issue` as
+they're uncovered and linked into the attempt by id.
 
 ## Phase 1: Testing brief
 
@@ -31,9 +32,9 @@ Procedure:
 
 ## Phase 2: Execute tests
 
-**Artifact:** `.code_my_spec/qa/<story_id>/result.md` → renamed by the
-evaluator on pass to `result_complete.md`, or on fail to
-`result_failed_<timestamp>.md`.
+There is no `result.md` artifact in this phase. Findings flow through
+`create_issue` as you discover them; the run ends with one call to
+`submit_qa_result`.
 
 ### Tool rules — pick by Phoenix pipeline, not by guess
 
@@ -52,11 +53,32 @@ evaluator on pass to `result_complete.md`, or on fail to
 - Capture a screenshot at each key state (initial load, after
   interactions, success/error states). Save to
   `.code_my_spec/qa/<story_id>/screenshots/`. Screenshots are evidence
-  and must be committed.
+  and remain valuable — attach the path in the issue description for
+  any finding that ships a screenshot.
 - After scripted scenarios, explore freely: unexpected inputs, edge
   cases, empty states, anything that feels off.
 - Reference existing scripts in `.code_my_spec/qa/scripts/` by path
   rather than inlining shell commands.
+
+### Filing findings
+
+The moment you observe something wrong — a broken UI, a 500, a missing
+feature, an unexpected behavior — call `create_issue` and hold the
+returned id. Don't accumulate findings in a notepad. Don't write them
+into a markdown file. The DB issue is the canonical record.
+
+- `title` — short, scannable.
+- `severity` — critical / high / medium / low / info.
+- `scope` — `app` for app-under-development bugs; `qa` for QA infrastructure
+  problems; `docs` for docs gaps; (`framework` is a server-side concept and
+  not selectable from the local list_issues filter, but `create_issue`
+  itself supports it for harness issues).
+- `story_id` — the story this finding relates to, when relevant.
+- `description` — the reproduction, the expected vs actual, file paths,
+  and any screenshot or evidence path.
+
+If a finding is a duplicate of an existing issue (you'll see them in the
+prompt's "Existing Issues" section), don't refile.
 
 ### Procedure
 
@@ -70,31 +92,47 @@ evaluator on pass to `result_complete.md`, or on fail to
    understand implementation details.
 6. Execute each test scenario from the brief.
 7. Capture screenshots at key states (save to the screenshots directory).
-8. If you find a gap in the plan or the brief, fix it in-flight — update
+8. For every finding, call `create_issue` immediately and remember the id.
+9. If you find a gap in the plan or the brief, fix it in-flight — update
    `plan.md` or `brief.md` rather than working around the gap.
-9. Write the result to `.code_my_spec/qa/<story_id>/result.md` matching
-   the `qa_result` document spec from the prompt.
-10. Stop the session. The evaluator takes over from here.
+10. Call `submit_qa_result` once at the end with `status`, the structured
+    `scenarios` list, and the full `issue_ids` list. Then stop the session.
 
 ## What the evaluator does when you stop
 
-The evaluator runs a single check chain:
+The evaluator runs a thin check chain:
 
 1. Validates that `.code_my_spec/qa/plan.md` exists with required sections.
    (If missing, returns invalid pointing at `qa_setup`.)
 2. Validates that `.code_my_spec/qa/<story_id>/brief.md` exists and parses.
-3. Validates that `.code_my_spec/qa/<story_id>/result.md` exists and parses
-   against the `qa_result` spec.
-4. Files every issue from the result document to the DB via
-   `Issues.create_from_qa_result/3`. Issues are filed regardless of
-   pass/fail.
-5. Promotes or archives the result based on `status`:
-   - `status: pass` / `passed` → `result.md` renamed to
-     `result_complete.md`. Done signal for the requirement.
-   - `status: fail` / `partial` → `result.md` archived as
-     `result_failed_<timestamp>.md`. Requirement stays unsatisfied. The
-     next run sees no `result.md` and starts Phase 2 fresh.
+3. Checks whether a DB-backed pass attempt exists via
+   `CodeMySpec.Qa.qa_complete?/2`. If yes, the requirement is satisfied
+   and the session ends.
+4. If no DB attempt exists but the brief is valid, feedback is returned
+   demanding a `submit_qa_result` call. The requirement does NOT satisfy
+   off a brief alone.
 
-The evaluator always returns `:valid` once `result.md` is validated —
-session ends. The requirement system separately checks for
-`result_complete.md`, so the story stays open until QA actually passes.
+## The submit_qa_result contract
+
+```
+submit_qa_result(
+  task_id: <task_id from start_task>,
+  status: "pass" | "partial" | "fail",
+  scenarios: [
+    %{name: "...", status: "pass|partial|fail", observation: "..."},
+    ...
+  ],
+  issue_ids: [<every id returned from create_issue this run>]
+)
+```
+
+Rules:
+
+- `status: "pass"` with `issue_ids: []` is allowed — clean pass, nothing to
+  file.
+- `status: "partial"` or `"fail"` with `issue_ids: []` is **rejected** by
+  the tool. File the findings first.
+- Only `status: "pass"` satisfies the `qa_complete` requirement. Other
+  statuses record an audit row but leave the requirement open.
+- Resubmitting on the same `task_id` is allowed — each call creates a new
+  attempt; the latest is canonical.

@@ -18,6 +18,12 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   `partial` and `fail` record an audit row but leave the requirement
   open.
 
+  Non-pass submissions (`fail`, `partial`) **must** carry at least one
+  issue id in `issue_ids`. Findings have nowhere else to live; the
+  legacy result.md blob is not read by the harness. The tool returns
+  an error if you try to submit a non-pass with an empty `issue_ids`
+  list.
+
   Resubmitting on the same `task_id` is allowed and expected — each
   call creates a new attempt; the latest is canonical.
   """
@@ -123,6 +129,22 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   defp safe_to_string(value) when is_binary(value), do: value
   defp safe_to_string(value) when is_atom(value) or is_number(value), do: to_string(value)
   defp safe_to_string(value), do: inspect(value)
+
+  defp error_response(:fail_requires_issue_ids) do
+    Response.error(
+      Response.tool(),
+      """
+      Submission rejected: status `fail` or `partial` must carry at least one issue id in `issue_ids`.
+
+      File every finding via `create_issue` first, then resubmit with the returned ids.
+      A non-pass result with an empty `issue_ids` list is dead work — the failure
+      disappears the moment your session ends. There is no other place for findings
+      to live; the legacy result.md text blob is no longer read by the harness.
+
+      If you genuinely found nothing wrong, submit with `status: "pass"` instead.
+      """
+    )
+  end
 
   defp error_response(reason) when is_atom(reason),
     do: Response.error(Response.tool(), "submit_qa_result failed: #{reason}")

@@ -359,8 +359,9 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
     For each story, invoke the **qa** subagent
     (`@"CodeMySpec:qa (agent)"`) with the prompt file path as the argument.
-    The subagent will read the prompt, write a brief, execute tests, and write
-    a result to `.code_my_spec/qa/{story_id}/result.md`.
+    The subagent will read the prompt, write a brief, execute tests, file every
+    finding via `create_issue` as it runs, and submit a structured QA attempt
+    via `submit_qa_result` with the linked issue ids.
 
     Prompt files have been generated for each story:
 
