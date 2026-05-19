@@ -432,13 +432,18 @@ defmodule CodeMySpecSpex.SharedGivens do
   # production — using the bridge here matches that pattern).
   register_given :persona_exists, context do
     frame = %Frame{assigns: %{current_scope: context.scope}}
-    persona_slug = "founder"
+    # Unique per invocation so a spex block with multiple scenarios
+    # doesn't collide on a single shared slug. CreatePersona enforces
+    # uniqueness; without this, a second scenario in the same spex
+    # block crashes with a stale id and downstream parse failures.
+    unique = System.unique_integer([:positive])
+    persona_slug = "founder-#{unique}"
 
     {:reply, create_response, _frame} =
       CreatePersona.execute(
         %{
           slug: persona_slug,
-          name: "Founder",
+          name: "Founder #{unique}",
           headline: "Solo founder shipping a product without hiring"
         },
         frame
@@ -452,9 +457,9 @@ defmodule CodeMySpecSpex.SharedGivens do
     # to it. Use a leaf-typed liveview so we don't spin up a
     # context's orchestrated requirement chain (which would
     # eclipse three_amigos_complete in the actionable list).
-    surface_module = "ExampleSurfaceLive"
-    surface_spec_path = ".code_my_spec/spec/example_surface_live.spec.md"
-    surface_impl_path = "lib/example_surface_live.ex"
+    surface_module = "ExampleSurfaceLive#{unique}"
+    surface_spec_path = ".code_my_spec/spec/example_surface_live_#{unique}.spec.md"
+    surface_impl_path = "lib/example_surface_live_#{unique}.ex"
 
     :ok =
       Environments.write_file(
