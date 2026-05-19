@@ -22,7 +22,10 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
         enrich_mcp_tool(conn, params)
 
       tool_name == "Bash" ->
-        maybe_rewrite_mix_test(conn, params)
+        case classify_bash(params) do
+          {:deny, reason} -> deny_bash(conn, reason)
+          :pass_through -> maybe_rewrite_mix_test(conn, params)
+        end
 
       true ->
         json(conn, %{})
@@ -65,6 +68,47 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
       agent_id -> Map.put(input, "agent_id", agent_id)
       true -> input
     end
+  end
+
+  # Subagents have no use case for git — QA, codegen, spec-writing all
+  # work against the running app and the filesystem, not git history.
+  # Block ANY git invocation from a subagent context. Main agent (no
+  # agent_id) retains full git access. Issue b5e305fc: a wandering QA
+  # subagent ran `git revert` under the engineer's git identity,
+  # silently destroying a fix; the tightest safe default is "no git
+  # for subagents at all."
+  defp classify_bash(params) do
+    command = get_in(params, ["tool_input", "command"]) || ""
+    agent_id = Map.get(params, "agent_id")
+
+    cond do
+      is_binary(agent_id) and agent_id != "" and git_command?(command) ->
+        {:deny,
+         "Subagents have no git access. Commits stay with the engineer; propose " <>
+           "changes via file edits only. Blocked command: #{String.slice(command, 0, 200)}"}
+
+      true ->
+        :pass_through
+    end
+  end
+
+  # Match any git invocation (`git ...`) at the start of the command or
+  # after a shell separator. Tolerates env-var prefixes and quoting.
+  defp git_command?(command) do
+    command_norm = String.replace(command, "\n", " ")
+    Regex.match?(~r/(^|[;&|`(\s])git(\s|$)/i, command_norm)
+  end
+
+  defp deny_bash(conn, reason) do
+    Logger.warning("[PreToolUse] Bash denied: #{reason}")
+
+    json(conn, %{
+      "hookSpecificOutput" => %{
+        "hookEventName" => "PreToolUse",
+        "permissionDecision" => "deny",
+        "permissionDecisionReason" => reason
+      }
+    })
   end
 
   defp maybe_rewrite_mix_test(conn, params) do
