@@ -332,15 +332,7 @@ defmodule CodeMySpec.Git.URLParserTest do
       ]
 
       for url <- valid_urls do
-        case URLParser.inject_token(url, "test_token") do
-          {:ok, result} ->
-            assert String.starts_with?(result, "https://")
-            assert String.contains?(result, "@")
-            assert String.contains?(result, "test_token")
-
-          {:error, _} ->
-            :ok
-        end
+        assert_inject_token_ok_or_error(URLParser.inject_token(url, "test_token"))
       end
     end
 
@@ -364,4 +356,15 @@ defmodule CodeMySpec.Git.URLParserTest do
       assert result1 == result2
     end
   end
+
+  # Inject-token may either return {:ok, url-with-token} or {:error, reason}
+  # for the valid_urls set; both are acceptable. Multi-clause defp instead
+  # of a `case` in the loop body.
+  defp assert_inject_token_ok_or_error({:ok, result}) do
+    assert String.starts_with?(result, "https://")
+    assert String.contains?(result, "@")
+    assert String.contains?(result, "test_token")
+  end
+
+  defp assert_inject_token_ok_or_error({:error, _}), do: :ok
 end

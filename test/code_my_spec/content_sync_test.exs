@@ -9,13 +9,13 @@ defmodule CodeMySpec.ContentSyncTest do
   alias CodeMySpec.Users.Scope
 
   setup tags do
-    # Only verify mocks for non-integration tests
-    unless tags[:integration] do
-      verify_on_exit!()
-    end
-
+    maybe_verify_on_exit(tags[:integration])
     :ok
   end
+
+  # Only verify mocks for non-integration tests.
+  defp maybe_verify_on_exit(true), do: :ok
+  defp maybe_verify_on_exit(_), do: verify_on_exit!()
 
   # ============================================================================
   # Fixtures - Scope Creation

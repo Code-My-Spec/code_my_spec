@@ -29,7 +29,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     on_exit(fn ->
       # Clean up .code_my_spec/spec files we created (it's a submodule, pool reset won't clean it)
       docs_spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      if File.exists?(docs_spec_dir), do: File.rm_rf!(docs_spec_dir)
+      File.rm_rf(docs_spec_dir)
 
       CodeMySpec.Support.TestAdapter.checkin(project_dir)
     end)

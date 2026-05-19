@@ -113,10 +113,8 @@ defmodule CodeMySpecSpex.Story561.Criterion5615Spex do
     end
   end
 
-  defp position_of(text, substring) do
-    case :binary.match(text, substring) do
-      {pos, _len} -> pos
-      :nomatch -> nil
-    end
-  end
+  defp position_of(text, substring), do: match_pos(:binary.match(text, substring))
+
+  defp match_pos({pos, _len}), do: pos
+  defp match_pos(:nomatch), do: nil
 end

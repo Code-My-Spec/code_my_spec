@@ -33,14 +33,7 @@ defmodule CodeMySpecWeb.ContentSyncControllerTest do
     # Set the deploy key in application config for tests
     original_deploy_key = Application.get_env(:code_my_spec, :deploy_key)
     Application.put_env(:code_my_spec, :deploy_key, @valid_deploy_key)
-
-    on_exit(fn ->
-      if original_deploy_key do
-        Application.put_env(:code_my_spec, :deploy_key, original_deploy_key)
-      else
-        Application.delete_env(:code_my_spec, :deploy_key)
-      end
-    end)
+    on_exit(fn -> restore_deploy_key(original_deploy_key) end)
 
     :ok
   end
@@ -391,4 +384,7 @@ defmodule CodeMySpecWeb.ContentSyncControllerTest do
       assert json_response(conn, 401)["error"] == "Invalid deployment key"
     end
   end
+
+  defp restore_deploy_key(nil), do: Application.delete_env(:code_my_spec, :deploy_key)
+  defp restore_deploy_key(key), do: Application.put_env(:code_my_spec, :deploy_key, key)
 end

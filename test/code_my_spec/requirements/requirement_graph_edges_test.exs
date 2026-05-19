@@ -362,7 +362,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       # Validate the parent spec (mark valid)
       parent_spec = CodeMySpec.Files.get_by_path(scope, ".code_my_spec/spec/my_app/accounts.spec.md")
-      if parent_spec, do: CodeMySpec.Files.mark_validated(parent_spec, true)
+      maybe_mark_validated(parent_spec)
 
       # Compute the graph
       {nodes, edges} = RequirementGraph.compute_graph(scope)
@@ -799,4 +799,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
     """
   end
+
+  defp maybe_mark_validated(nil), do: :ok
+  defp maybe_mark_validated(spec), do: CodeMySpec.Files.mark_validated(spec, true)
 end

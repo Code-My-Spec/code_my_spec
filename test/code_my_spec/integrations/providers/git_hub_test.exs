@@ -234,20 +234,11 @@ defmodule CodeMySpec.Integrations.Providers.GitHubTest do
     end
 
     test "handles numeric provider_user_id by converting to string" do
-      # GitHub sometimes returns numeric IDs
+      # GitHub sometimes returns numeric IDs; either {:ok, normalized}
+      # (impl coerces to string) or {:error, _} (impl requires string)
+      # is acceptable.
       assent_user = github_assent_user_fixture(%{"sub" => 12_345})
-
-      result = GitHub.normalize_user(assent_user)
-
-      case result do
-        {:ok, normalized} ->
-          # If implementation coerces to string
-          assert is_binary(normalized.provider_user_id)
-
-        {:error, _} ->
-          # If implementation requires string
-          assert true
-      end
+      assert_numeric_id_ok_or_error(GitHub.normalize_user(assent_user))
     end
 
     test "normalizes multiple different GitHub users independently" do
@@ -346,4 +337,9 @@ defmodule CodeMySpec.Integrations.Providers.GitHubTest do
       assert is_binary(reason) or is_atom(reason)
     end
   end
+
+  defp assert_numeric_id_ok_or_error({:ok, normalized}),
+    do: assert(is_binary(normalized.provider_user_id))
+
+  defp assert_numeric_id_ok_or_error({:error, _}), do: :ok
 end

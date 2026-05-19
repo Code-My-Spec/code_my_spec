@@ -144,9 +144,7 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
       test "#{label} resolves to #{expected_status}", %{scope: scope} do
         params =
           %{"skill" => unquote(skill), "external_id" => "test-route"}
-          |> then(fn p ->
-            if unquote(subcmd), do: Map.put(p, "subcommand", unquote(subcmd)), else: p
-          end)
+          |> maybe_put_subcommand(unquote(subcmd))
 
         conn = build_post(scope, params)
         conn = SkillController.start_skill(conn, conn.body_params)
@@ -170,4 +168,7 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
     |> assign(:current_scope, scope)
     |> Map.put(:body_params, body_params)
   end
+
+  defp maybe_put_subcommand(params, nil), do: params
+  defp maybe_put_subcommand(params, subcmd), do: Map.put(params, "subcommand", subcmd)
 end

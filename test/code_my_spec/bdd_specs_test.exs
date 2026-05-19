@@ -41,11 +41,11 @@ defmodule CodeMySpec.BddSpecsTest do
     }
   end
 
-  defp cleanup_test_directory(scope) do
-    if scope.active_project.code_repo && File.exists?(scope.active_project.code_repo) do
-      File.rm_rf!(scope.active_project.code_repo)
-    end
-  end
+  defp cleanup_test_directory(scope), do: do_cleanup_dir(scope.active_project.code_repo)
+
+  defp do_cleanup_dir(nil), do: :ok
+  defp do_cleanup_dir(""), do: :ok
+  defp do_cleanup_dir(path), do: File.rm_rf(path)
 
   defp valid_spex_content(name \\ "test spec") do
     """

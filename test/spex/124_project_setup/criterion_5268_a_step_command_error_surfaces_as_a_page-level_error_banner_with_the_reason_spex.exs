@@ -24,12 +24,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5268Spex do
         original = Application.get_env(:code_my_spec, :project_setup_steps)
         Application.put_env(:code_my_spec, :project_setup_steps, [Fixtures.erroring_setup_step()])
 
-        on_exit(fn ->
-          case original do
-            nil -> Application.delete_env(:code_my_spec, :project_setup_steps)
-            value -> Application.put_env(:code_my_spec, :project_setup_steps, value)
-          end
-        end)
+        on_exit(fn -> restore_project_setup_steps(original) end)
 
         {:ok, context}
       end
@@ -52,4 +47,10 @@ defmodule CodeMySpecSpex.Story124.Criterion5268Spex do
       end
     end
   end
+
+  defp restore_project_setup_steps(nil),
+    do: Application.delete_env(:code_my_spec, :project_setup_steps)
+
+  defp restore_project_setup_steps(value),
+    do: Application.put_env(:code_my_spec, :project_setup_steps, value)
 end

@@ -22,11 +22,7 @@ defmodule CodeMySpec.ContentSync.SyncTest do
     dir
   end
 
-  defp cleanup_directory(dir) do
-    if File.exists?(dir) do
-      File.rm_rf!(dir)
-    end
-  end
+  defp cleanup_directory(dir), do: File.rm_rf(dir)
 
   defp valid_blog_metadata do
     """

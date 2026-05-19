@@ -204,13 +204,9 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
     # compile.
     prior = Code.get_compiler_option(:docs)
     Code.put_compiler_option(:docs, true)
+    ExUnit.Callbacks.on_exit(fn -> Code.put_compiler_option(:docs, prior) end)
 
-    [{_mod, binary}] =
-      try do
-        Code.compile_string(source)
-      after
-        Code.put_compiler_option(:docs, prior)
-      end
+    [{_mod, binary}] = Code.compile_string(source)
 
     File.write!(beam_path, binary)
 

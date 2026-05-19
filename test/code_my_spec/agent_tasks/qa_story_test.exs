@@ -31,16 +31,17 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   end
 
   defp create_task(context) do
-    story_id = if context[:story], do: context.story.id, else: 42
-
     task = %{
       project_id: context.scope.active_project.id,
       component_id: nil,
-      story_id: story_id
+      story_id: task_story_id(context[:story])
     }
 
     Map.put(context, :task, task)
   end
+
+  defp task_story_id(nil), do: 42
+  defp task_story_id(%{id: id}), do: id
 
   defp write_file!(env, relative_path, content) do
     full_path = Path.join(env.cwd, relative_path)

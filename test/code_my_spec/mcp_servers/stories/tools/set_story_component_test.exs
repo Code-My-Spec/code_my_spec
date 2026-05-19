@@ -19,25 +19,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       component = component_fixture(scope)
 
       remote_plug = fn conn ->
-        body =
-          case conn.method do
-            "POST" ->
-              Jason.encode!(%{
-                data: %{
-                  id: story.id,
-                  title: story.title,
-                  component_id: component.id,
-                  status: "#{story.status}",
-                  priority: story.priority,
-                  project_id: story.project_id,
-                  account_id: story.account_id
-                }
-              })
-
-            "GET" ->
-              # RemoteSync.sync fetches stories list
-              Jason.encode!(%{data: []})
-          end
+        body = remote_plug_body(conn.method, story, component)
 
         conn
         |> put_resp_content_type("application/json")
@@ -106,4 +88,21 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
       assert response.isError == true
     end
   end
+
+  defp remote_plug_body("POST", story, component) do
+    Jason.encode!(%{
+      data: %{
+        id: story.id,
+        title: story.title,
+        component_id: component.id,
+        status: "#{story.status}",
+        priority: story.priority,
+        project_id: story.project_id,
+        account_id: story.account_id
+      }
+    })
+  end
+
+  # RemoteSync.sync fetches stories list on GET.
+  defp remote_plug_body("GET", _story, _component), do: Jason.encode!(%{data: []})
 end
