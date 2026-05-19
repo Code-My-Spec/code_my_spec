@@ -256,12 +256,7 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
   @impl true
   def handle_info({:updated, %ContentAdmin.ContentAdmin{id: id}}, socket)
       when id == socket.assigns.content_admin.id do
-    scope = socket.assigns.current_scope
-    content_admin = ContentAdmin.get_content!(scope, id)
-
-    {:noreply,
-     socket
-     |> assign(:content_admin, content_admin)}
+    refresh_or_redirect(socket, id, nil)
   end
 
   def handle_info({:deleted, %ContentAdmin.ContentAdmin{id: id}}, socket)
@@ -273,24 +268,32 @@ defmodule CodeMySpecWeb.ContentAdminLive.Show do
   end
 
   def handle_info({:sync_completed, _sync_result}, socket) do
-    scope = socket.assigns.current_scope
-
-    case ContentAdmin.get_content!(scope, socket.assigns.content_admin.id) do
-      content_admin ->
-        {:noreply,
-         socket
-         |> assign(:content_admin, content_admin)}
-    end
-  rescue
-    Ecto.NoResultsError ->
-      {:noreply,
-       socket
-       |> put_flash(:info, "ContentAdmin was removed during sync")
-       |> push_navigate(to: ~p"/app/content_admin")}
+    refresh_or_redirect(
+      socket,
+      socket.assigns.content_admin.id,
+      "ContentAdmin was removed during sync"
+    )
   end
 
   def handle_info(_msg, socket) do
     {:noreply, socket}
+  end
+
+  # Re-fetch the record and either update the assign or redirect to the
+  # index. `removed_flash` is the message shown when the record no longer
+  # exists (nil means redirect silently, as on the :updated path where a
+  # missing record is unexpected but not user-visible).
+  defp refresh_or_redirect(socket, id, removed_flash) do
+    case ContentAdmin.get_content(socket.assigns.current_scope, id) do
+      %ContentAdmin.ContentAdmin{} = content_admin ->
+        {:noreply, assign(socket, :content_admin, content_admin)}
+
+      nil ->
+        socket =
+          if removed_flash, do: put_flash(socket, :info, removed_flash), else: socket
+
+        {:noreply, push_navigate(socket, to: ~p"/app/content_admin")}
+    end
   end
 
   defp subscribe_content_admin(scope) do

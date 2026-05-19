@@ -125,11 +125,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp submit_required_feedback(story_id) do
     """
-    Call `submit_qa_result` to land a DB attempt for story #{story_id} — file-based artifacts alone don't satisfy `qa_complete`.
-
-    Brief and result.md are on disk and validate, but the requirement graph
-    reads completion from the qa_attempts table, not the filesystem. Use the
-    fully-qualified MCP tool name:
+    Call `submit_qa_result` to land a DB attempt for story #{story_id} — the
+    requirement graph reads completion from the qa_attempts table, not the
+    filesystem. Use the fully-qualified MCP tool name:
 
         mcp__plugin_codemyspec_local__submit_qa_result(
           task_id: <task_id from start_task>,
@@ -138,9 +136,11 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           issue_ids: [...]   # ids returned from any create_issue calls
         )
 
-    The scenarios payload should mirror the `## Scenarios` section of your
-    result.md — one entry per scenario you exercised. Only `status: "pass"`
-    satisfies the `qa_complete` requirement.
+    The scenarios payload is a structured list — one entry per scenario you
+    exercised, each carrying its own name, status, and observation. Only
+    `status: "pass"` satisfies the `qa_complete` requirement. Non-pass
+    (`fail` / `partial`) submissions must carry at least one issue id in
+    `issue_ids`; the tool rejects them otherwise.
     """
   end
 

@@ -244,7 +244,7 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
     <dialog id={@id} class="modal" data-role="confirm-dialog">
       <div class="modal-box">
         <h3 class="text-lg font-bold">{@title}</h3>
-        <form phx-submit={@submit_event} class="space-y-4 mt-4">
+        <form phx-submit={JS.push(@submit_event) |> hide_dialog(@id)} class="space-y-4 mt-4">
           <label class="form-control">
             <div class="label">
               <span class="label-text">{@field_label}</span>
@@ -271,7 +271,6 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
               type="submit"
               class="btn btn-primary"
               data-role="confirm-confirm"
-              phx-click={hide_dialog(@id)}
             >
               {@submit_label}
             </button>

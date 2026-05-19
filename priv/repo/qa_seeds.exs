@@ -80,6 +80,12 @@ scope = Scope.for_user(user)
 #     idempotently keyed on `uid = "codemyspec-cli"`. Previously only seeded
 #     in the test env via `CodeMySpec.OauthFixtures.cli_oauth_application_fixture/1`;
 #     dev-DB QA runs had to insert it via psql by hand (issue 3dbf422e).
+#
+#     NOTE: secret is intentionally empty — the CLI is a TRUSTED PUBLIC client
+#     that uses PKCE, not a confidential client. `OAuthController` recognises
+#     this uid and grants silent approval without exchanging a secret. The
+#     `claude-mcp-connector` in `priv/repo/seeds.exs` IS a confidential client
+#     and uses a generated secret; that's a different OAuth flow.
 cli_oauth_uid = "codemyspec-cli"
 now = DateTime.utc_now() |> DateTime.truncate(:second)
 

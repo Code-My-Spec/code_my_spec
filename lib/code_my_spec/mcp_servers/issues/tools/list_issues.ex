@@ -3,8 +3,14 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   Lists issues in a project with optional filters.
 
   Filter by status (incoming, accepted, dismissed, resolved),
-  severity (critical, high, medium, low, info), scope (app, qa, docs,
-  framework), or story_id.
+  severity (critical, high, medium, low, info), scope (app, qa, docs),
+  or story_id.
+
+  `framework` is NOT a valid scope filter on the local agent surface
+  — framework issues route to the hosted server (story 709 / criterion
+  6215). The local LiveView at `/projects/<slug>/issues` exposes a
+  `framework` dropdown option for operator browsing, but the agent
+  surface (this tool) stays scoped to project-local concerns.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -16,7 +22,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   schema do
     field :status, :string, doc: "Filter by status: incoming, accepted, dismissed, resolved"
     field :severity, :string, doc: "Filter by severity: critical, high, medium, low, info"
-    field :scope, :string, doc: "Filter by scope: app, qa, docs"
+    field :scope, :string, doc: "Filter by scope: app, qa, docs (framework is server-routed, not filterable here)"
     field :story_id, :integer, doc: "Filter by related story ID"
   end
 

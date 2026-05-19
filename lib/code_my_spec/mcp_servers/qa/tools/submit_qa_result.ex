@@ -50,7 +50,11 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
           "%{name: string, status: 'pass'|'partial'|'fail', observation: string}."
 
     field :issue_ids, {:list, :string},
-      doc: "Optional list of issue ids filed via `create_issue` during this QA pass"
+      doc:
+        "List of issue ids filed via `create_issue` during this QA pass. " <>
+          "REQUIRED when `status` is `partial` or `fail` — submissions with a non-pass " <>
+          "status and an empty `issue_ids` list are rejected at the tool boundary. " <>
+          "May be empty when `status` is `pass`."
   end
 
   @impl true
