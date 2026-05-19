@@ -73,9 +73,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   end
 
   # ============================================================================
-  # Prompt assembly. Protocol detail lives in
-  # priv/knowledge/three_amigos/workflow.md — pointed at via the playbook
-  # section rather than inlined here.
+  # Prompt assembly. Protocol detail lives in the framework knowledge library
+  # at `three_amigos/workflow.md` (read via the `read_knowledge` MCP tool) —
+  # pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
   defp no_story_prompt do
@@ -149,9 +149,9 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     """
     ## Read the playbook
 
-    `priv/knowledge/three_amigos/workflow.md` — protocol ordering (persona
-    → rules → scenarios → questions), MCP tool usage per phase, done-signal
-    conditions, anti-patterns to avoid.
+    Read `three_amigos/workflow.md` via the `read_knowledge` MCP tool —
+    protocol ordering (persona → rules → scenarios → questions), MCP tool
+    usage per phase, done-signal conditions, anti-patterns to avoid.
     """
   end
 end

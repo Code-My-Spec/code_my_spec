@@ -40,9 +40,9 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   end
 
   # ============================================================================
-  # Prompt assembly. Procedure detail lives in
-  # priv/knowledge/fix_issues/workflow.md — pointed at via the playbook
-  # section rather than inlined here.
+  # Prompt assembly. Procedure detail lives in the framework knowledge library
+  # at `fix_issues/workflow.md` (read via the `read_knowledge` MCP tool) —
+  # pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
   defp build_prompt([]) do
@@ -75,9 +75,10 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     ## Read the playbook
 
-    `priv/knowledge/fix_issues/workflow.md` — per-issue procedure (read → fix
-    → resolve → test), scope-aware fixing rules (`app` / `qa` / `docs`),
-    regression-handling rules (no silencing tests), and MCP tool usage.
+    Read `fix_issues/workflow.md` via the `read_knowledge` MCP tool —
+    per-issue procedure (read → fix → resolve → test), scope-aware fixing
+    rules (`app` / `qa` / `docs`), regression-handling rules (no silencing
+    tests), and MCP tool usage.
 
     ## QA context
 

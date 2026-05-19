@@ -288,9 +288,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     ## Read the playbook
 
-    `priv/knowledge/architecture_design/workflow.md` — full procedure for
-    both modes, complete MCP tool reference, dependency-edge conventions,
-    orphan resolution options, and anti-patterns to avoid.
+    Read `architecture_design/workflow.md` via the `read_knowledge` MCP
+    tool — full procedure for both modes, complete MCP tool reference,
+    dependency-edge conventions, orphan resolution options, and
+    anti-patterns to avoid.
     """
   end
 

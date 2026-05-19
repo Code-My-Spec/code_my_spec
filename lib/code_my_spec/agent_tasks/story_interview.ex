@@ -43,9 +43,9 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
   defp mode_from_task(_), do: :interview
 
   # ============================================================================
-  # Prompt assembly. Protocol detail lives in
-  # priv/knowledge/story_interview/workflow.md — pointed at via the playbook
-  # section rather than inlined here.
+  # Prompt assembly. Protocol detail lives in the framework knowledge library
+  # at `story_interview/workflow.md` (read via the `read_knowledge` MCP tool)
+  # — pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
   defp build_prompt(:interview, stories) do
@@ -62,10 +62,10 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
 
     ## Read the playbook
 
-    `priv/knowledge/story_interview/workflow.md` — interview-mode role,
-    CRITICAL user-story quality rules (persona must be human, "As a... I
-    want... so that..." format, business value), out-of-scope items
-    deferred to Three Amigos, MCP tool surface.
+    Read `story_interview/workflow.md` via the `read_knowledge` MCP tool
+    — interview-mode role, CRITICAL user-story quality rules (persona
+    must be human, "As a... I want... so that..." format, business value),
+    out-of-scope items deferred to Three Amigos, MCP tool surface.
 
     Persist each finalized story via the `create_story` / `update_story`
     MCP tools.
@@ -86,9 +86,10 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
 
     ## Read the playbook
 
-    `priv/knowledge/story_interview/workflow.md` — review-mode procedure,
-    persona validation rules (flag technical/system personas), review
-    criteria and process, MCP tool surface.
+    Read `story_interview/workflow.md` via the `read_knowledge` MCP tool
+    — review-mode procedure, persona validation rules (flag
+    technical/system personas), review criteria and process, MCP tool
+    surface.
 
     Give specific, actionable feedback per story. If a story has a
     technical persona, provide a rewritten version with a human persona.

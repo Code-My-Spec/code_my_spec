@@ -31,10 +31,10 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
   end
 
   # ============================================================================
-  # Prompt assembly. Protocol detail lives in
-  # priv/knowledge/persona_research/workflow.md plus the topic files
-  # (pm_intake, primary_research, synthesis, etc.) — pointed at via the
-  # playbook section rather than inlined here.
+  # Prompt assembly. Protocol detail lives in the framework knowledge library
+  # at `persona_research/workflow.md` plus the topic files (pm_intake,
+  # primary_research, synthesis, etc.) — read via the `read_knowledge` MCP
+  # tool, pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
   defp prompt do
@@ -61,22 +61,23 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
 
     ## Read the playbook
 
-    - `priv/knowledge/persona_research/workflow.md` — the five-step session
-      (intake → challenge thin input → research → write artifacts → link),
-      evidence bar (triangulate ≥3 sources), done signal, anti-patterns.
-      Read this first; it routes to the right methodology guide.
+    Read these via the `read_knowledge` MCP tool:
+
+    - `persona_research/workflow.md` — the five-step session (intake →
+      challenge thin input → research → write artifacts → link), evidence
+      bar (triangulate ≥3 sources), done signal, anti-patterns. Read this
+      first; it routes to the right methodology guide.
     - **If the persona's actor is an LLM agent class** (e.g. `Per-Story QA
       Agent`, `Code Writer Agent`) → switch to
-      `priv/knowledge/persona_research/agent_personas.md`. The artifact
-      contract is identical (summary.md + sources.md, same H2 sections),
-      but sources are agent definitions / MCP spec / log behavior /
-      self-reflection — no intake interview, no JTBD, no human secondary
-      research.
-    - Topic files for the **human** path under
-      `priv/knowledge/persona_research/`: `README.md`, `overview.md`,
-      `pm_intake.md`, `primary_research.md`, `secondary_research.md`,
-      `jtbd.md`, `synthesis.md`, `templates.md`, `pitfalls.md`. The
-      workflow doc points at each.
+      `persona_research/agent_personas.md`. The artifact contract is
+      identical (summary.md + sources.md, same H2 sections), but sources
+      are agent definitions / MCP spec / log behavior / self-reflection —
+      no intake interview, no JTBD, no human secondary research.
+    - Topic files for the **human** path under `persona_research/`:
+      `README.md`, `overview.md`, `pm_intake.md`, `primary_research.md`,
+      `secondary_research.md`, `jtbd.md`, `synthesis.md`, `templates.md`,
+      `pitfalls.md`. The workflow doc points at each; browse the directory
+      with `list_knowledge` if needed.
 
     ## MCP tools you'll use
 

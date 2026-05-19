@@ -164,15 +164,18 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     Read both knowledge layers before writing specs. **Project rules
     override framework rules where they conflict.**
 
-    ### Framework BDD knowledge (`priv/knowledge/bdd/spex/`)
+    ### Framework BDD knowledge (read via the `read_knowledge` MCP tool, under `bdd/spex/`)
 
-    - `writing_a_spex.md` — file layout, module template, DSL syntax,
-      step return values. **Essential — read first.**
-    - `philosophy.md` — what Spex is and how it differs from regular tests.
-    - `environment.md` — environment abstraction in steps.
-    - `boundaries.md` — what `given_` / `when_` / `then_` can and can't do.
-    - `shared_givens.md` — importing shared given blocks.
-    - `recording_cassettes.md` — when and how to record HTTP cassettes.
+    - `bdd/spex/writing_a_spex.md` — file layout, module template, DSL
+      syntax, step return values. **Essential — read first.**
+    - `bdd/spex/philosophy.md` — what Spex is and how it differs from
+      regular tests.
+    - `bdd/spex/environment.md` — environment abstraction in steps.
+    - `bdd/spex/boundaries.md` — what `given_` / `when_` / `then_` can and
+      can't do.
+    - `bdd/spex/shared_givens.md` — importing shared given blocks.
+    - `bdd/spex/recording_cassettes.md` — when and how to record HTTP
+      cassettes.
 
     ### Project BDD knowledge (`.code_my_spec/knowledge/bdd/spex/`)
 

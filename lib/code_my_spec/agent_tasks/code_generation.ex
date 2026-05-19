@@ -133,9 +133,9 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     end
   end
 
-  # Prompt assembly. Static procedural detail lives in
-  # `priv/knowledge/cms_generators/` — read via the knowledge MCP rather than
-  # inlined here.
+  # Prompt assembly. Static procedural detail lives in the framework knowledge
+  # library at `cms_generators/` — read via the `read_knowledge` MCP tool
+  # rather than inlined here.
 
   defp build_prompt(scope, decisions, already_run, existing_artifact, providers) do
     [
@@ -240,13 +240,14 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     """
     ## Read the playbook first
 
-    Read these two files before running any generators:
+    Read these two files via the `read_knowledge` MCP tool before running
+    any generators:
 
-    - `priv/knowledge/cms_generators/workflow.md` — generator order,
-      post-generation steps (deps/migrate/compile/test), integration provider
-      command pattern, and the feedback widget multi-step setup procedure.
-    - `priv/knowledge/cms_generators/script-format.md` — reproducible bash
-      script format and rules.\
+    - `cms_generators/workflow.md` — generator order, post-generation steps
+      (deps/migrate/compile/test), integration provider command pattern,
+      and the feedback widget multi-step setup procedure.
+    - `cms_generators/script-format.md` — reproducible bash script format
+      and rules.\
     """
   end
 

@@ -199,10 +199,11 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
     """
     ## Read the playbook
 
-    `priv/knowledge/qa_integration_plan/workflow.md` — full six-step procedure
-    (identify integrations from ADRs → draft specs → generate verify scripts →
-    request credentials → verify → write index), the JSON-output contract for
-    verify scripts, OAuth2 specifics, anti-patterns.
+    Read `qa_integration_plan/workflow.md` via the `read_knowledge` MCP
+    tool — full six-step procedure (identify integrations from ADRs →
+    draft specs → generate verify scripts → request credentials → verify
+    → write index), the JSON-output contract for verify scripts, OAuth2
+    specifics, anti-patterns.
 
     ## Done signal
 

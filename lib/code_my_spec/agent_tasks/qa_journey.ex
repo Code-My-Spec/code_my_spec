@@ -112,7 +112,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     Three phases, one session at a time. Each phase produces an artifact;
     phases whose artifacts already exist are marked SKIP — work the first
     un-skipped phase. The full procedure lives in the playbook
-    (`priv/knowledge/qa_journey/workflow.md`).\
+    (read `qa_journey/workflow.md` via the `read_knowledge` MCP tool).\
     """
   end
 
@@ -243,10 +243,10 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     """
     ## Read the playbook
 
-    `priv/knowledge/qa_journey/workflow.md` — full three-phase procedure,
-    server-prereq checklist, tool-by-pipeline rules (browser tools vs
-    curl), screenshot evidence requirements, Wallaby conventions,
-    anti-patterns per phase.\
+    Read `qa_journey/workflow.md` via the `read_knowledge` MCP tool —
+    full three-phase procedure, server-prereq checklist, tool-by-pipeline
+    rules (browser tools vs curl), screenshot evidence requirements,
+    Wallaby conventions, anti-patterns per phase.\
     """
   end
 end

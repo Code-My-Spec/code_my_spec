@@ -54,9 +54,9 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   end
 
   # ============================================================================
-  # Prompt assembly. Static procedural detail lives in
-  # priv/knowledge/spex_boundary_ready/workflow.md — pointed at via the
-  # playbook section rather than inlined here.
+  # Prompt assembly. Static procedural detail lives in the framework knowledge
+  # library at `spex_boundary_ready/workflow.md` (read via the `read_knowledge`
+  # MCP tool) — pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
   defp build_prompt(app_name, app_module, proposal_path, proposal_present?) do
@@ -119,14 +119,16 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     """
     ## Read the playbook
 
-    - `priv/knowledge/spex_boundary_ready/workflow.md` — full 5-step install
-      procedure: framework Credo checks, project-local whole-module deny
-      check, fixtures bridge (as its own top-level Boundary), project BDD
-      spec plan, stop.
-    - `priv/knowledge/bdd/spex/philosophy.md` — why specs are sealed.
-    - `priv/knowledge/bdd/spex/boundaries.md` — what a spec may call and
-      why the fixtures bridge is a separate top-level Boundary.
-    - `priv/knowledge/bdd/spex/writing_a_spex.md` — DSL and setup template.
+    Read these via the `read_knowledge` MCP tool:
+
+    - `spex_boundary_ready/workflow.md` — full 5-step install procedure:
+      framework Credo checks, project-local whole-module deny check,
+      fixtures bridge (as its own top-level Boundary), project BDD spec
+      plan, stop.
+    - `bdd/spex/philosophy.md` — why specs are sealed.
+    - `bdd/spex/boundaries.md` — what a spec may call and why the fixtures
+      bridge is a separate top-level Boundary.
+    - `bdd/spex/writing_a_spex.md` — DSL and setup template.
 
     The playbook references concrete paths under
     `.code_my_spec/credo_checks/`, `test/support/fixtures/`, and

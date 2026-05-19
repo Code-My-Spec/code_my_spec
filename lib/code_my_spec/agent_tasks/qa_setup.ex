@@ -158,9 +158,9 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   end
 
   # ============================================================================
-  # Prompt assembly. Static procedural detail lives in
-  # priv/knowledge/qa_setup/workflow.md — pointed at via the playbook section
-  # rather than inlined here.
+  # Prompt assembly. Static procedural detail lives in the framework knowledge
+  # library at `qa_setup/workflow.md` (read via the `read_knowledge` MCP tool)
+  # — pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
   defp build_prompt(routers, existing_plan, existing_seeds, existing_scripts, doc_spec) do
@@ -275,14 +275,15 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     """
     ## Read the playbook
 
-    Read these before probing or writing:
+    Read these via the `read_knowledge` MCP tool before probing or writing:
 
-    - `priv/knowledge/qa_setup/workflow.md` — full two-phase procedure (probe
-      protocol with the 5 discovery steps, writing conventions, seed/auth
-      script rules, idempotent-rerun procedure).
-    - `priv/knowledge/qa-tooling.md` — tool selection (Vibium vs curl) and
-      authentication patterns.
-    - `priv/knowledge/qa-tooling/` — per-tool cheat sheets.\
+    - `qa_setup/workflow.md` — full two-phase procedure (probe protocol
+      with the 5 discovery steps, writing conventions, seed/auth script
+      rules, idempotent-rerun procedure).
+    - `qa-tooling.md` — tool selection (Vibium vs curl) and authentication
+      patterns.
+    - Per-tool cheat sheets under `qa-tooling/` (browse with
+      `list_knowledge`, then read individual entries).\
     """
   end
 end

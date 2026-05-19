@@ -174,15 +174,15 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
     """
     ## Read the playbook
 
-    `priv/knowledge/design_ui/workflow.md` — the five-section interview
-    procedure (theme / colors / typography / layout / tone), concrete
-    options per step (no open-ended questions), required sections in
-    the validated HTML, done signal.
+    Read `design_ui/workflow.md` via the `read_knowledge` MCP tool —
+    the five-section interview procedure (theme / colors / typography /
+    layout / tone), concrete options per step (no open-ended questions),
+    required sections in the validated HTML, done signal.
 
-    Supporting docs:
+    Supporting docs (also via `read_knowledge`):
 
-    - `priv/knowledge/ui/daisyui.md` — DaisyUI theme system, semantic colors.
-    - `priv/knowledge/ui/tailwind.md` — Tailwind utilities, layout, responsive.
+    - `ui/daisyui.md` — DaisyUI theme system, semantic colors.
+    - `ui/tailwind.md` — Tailwind utilities, layout, responsive.
 
     ## Done signal
 

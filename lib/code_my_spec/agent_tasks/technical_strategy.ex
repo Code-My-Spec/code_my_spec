@@ -111,7 +111,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
       context:
         "We need a deployment target that is cost-effective, performant, and supports multi-environment hosting (prod + UAT) on a single server.",
       decision:
-        "Deploy to a Hetzner cax11 ARM64 server running Docker Compose with Caddy as the reverse proxy. Use the internal DevOps knowledge base for implementation guidance — run `search_knowledge` with query \"hetzner\" or `read_knowledge` with path \"devops/hetzner-docker-deploy.md\" for the full deployment playbook covering server provisioning, Docker Compose stack, Caddy config, Postgres backups, and zero-downtime deploys via docker-rollout."
+        "Deploy to a Hetzner cax11 ARM64 server running Docker Compose with Caddy as the reverse proxy. Use the internal DevOps knowledge base for implementation guidance — run `semantic_search` with query \"hetzner\" or `read_knowledge` with path \"devops/hetzner-docker-deploy.md\" for the full deployment playbook covering server provisioning, Docker Compose stack, Caddy config, Postgres backups, and zero-downtime deploys via docker-rollout."
     },
     %{
       topic: "pow-assent-integrations",
@@ -365,11 +365,11 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
     """
     ## Read the playbook
 
-    `priv/knowledge/technical_strategy/workflow.md` — full procedure: how
-    pre-made decisions work, how to identify project-specific topics, the
-    cursory-research bar, ADR format, index format, and out-of-scope items
-    (deep research goes to `research_topic`; bootstrap goes to
-    `code_generation`).
+    Read `technical_strategy/workflow.md` via the `read_knowledge` MCP
+    tool — full procedure: how pre-made decisions work, how to identify
+    project-specific topics, the cursory-research bar, ADR format, index
+    format, and out-of-scope items (deep research goes to `research_topic`;
+    bootstrap goes to `code_generation`).
     """
   end
 

@@ -347,11 +347,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
     ## Read the playbook
 
-    - `priv/knowledge/qa_story/workflow.md` — two-phase procedure (brief,
-      test), tool rules (`:browser` vs `:api` pipelines), testing approach,
-      and what the evaluator does when you stop.
-    - `priv/knowledge/qa-tooling.md` — testing tool patterns and selection.
-    - `priv/knowledge/qa-tooling/` — tool-specific cheat sheets.\
+    Read these via the `read_knowledge` MCP tool:
+
+    - `qa_story/workflow.md` — two-phase procedure (brief, test), tool
+      rules (`:browser` vs `:api` pipelines), testing approach, and what
+      the evaluator does when you stop.
+    - `qa-tooling.md` — testing tool patterns and selection.
+    - Tool-specific cheat sheets under `qa-tooling/` (browse with
+      `list_knowledge`, then read individual entries).\
     """
   end
 
