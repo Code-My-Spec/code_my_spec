@@ -26,9 +26,23 @@ tools: >-
   mcp__plugin_codemyspec_local__create_issue,
   mcp__plugin_codemyspec_local__get_issue,
   mcp__plugin_codemyspec_local__list_issues,
+  mcp__plugin_codemyspec_local__accept_issue,
+  mcp__plugin_codemyspec_local__dismiss_issue,
+  mcp__plugin_codemyspec_local__resolve_issue,
   mcp__plugin_codemyspec_local__list_stories,
   mcp__plugin_codemyspec_local__get_story,
+  mcp__plugin_codemyspec_local__list_story_titles,
   mcp__plugin_codemyspec_local__list_components,
+  mcp__plugin_codemyspec_local__list_requirements,
+  mcp__plugin_codemyspec_local__get_next_requirement,
+  mcp__plugin_codemyspec_local__show_requirement,
+  mcp__plugin_codemyspec_local__list_personas,
+  mcp__plugin_codemyspec_local__get_persona,
+  mcp__plugin_codemyspec_local__list_tasks,
+  mcp__plugin_codemyspec_local__sync_project,
+  mcp__plugin_codemyspec_local__semantic_search,
+  mcp__plugin_codemyspec_local__read_knowledge,
+  mcp__plugin_codemyspec_local__list_knowledge,
   mcp__plugin_codemyspec_local__*
 mcpServers: vibium, local
 model: sonnet
