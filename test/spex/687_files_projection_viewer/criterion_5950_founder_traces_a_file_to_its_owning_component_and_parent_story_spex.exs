@@ -68,13 +68,9 @@ defmodule CodeMySpecSpex.Story687.Criterion5950Spex do
     end
   end
 
-  defp extract_href!(rendered_html) do
-    case Regex.run(~r/href=["']([^"']+)["']/, rendered_html) do
-      [_, href] ->
-        href
+  defp extract_href!(rendered_html),
+    do: href_match(Regex.run(~r/href=["']([^"']+)["']/, rendered_html), rendered_html)
 
-      _ ->
-        raise "could not extract href from rendered component link: #{inspect(rendered_html)}"
-    end
-  end
+  defp href_match([_, href], _html), do: href
+  defp href_match(_, html), do: raise("could not extract href from rendered component link: #{inspect(html)}")
 end

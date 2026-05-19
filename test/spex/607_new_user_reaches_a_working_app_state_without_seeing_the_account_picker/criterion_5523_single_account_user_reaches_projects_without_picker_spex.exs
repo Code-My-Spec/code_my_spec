@@ -37,17 +37,16 @@ defmodule CodeMySpecSpex.Story607.Criterion5523Spex do
       end
 
       then_ "the projects index renders without any redirect to the picker", context do
-        case context.result do
-          {:ok, _view, _html} ->
-            {:ok, context}
-
-          {:error, {_kind, %{to: target}}} ->
-            flunk(
-              "expected /app/projects to render after auto-account-selection, " <>
-                "but got a redirect to: #{inspect(target)}"
-            )
-        end
+        assert_renders_not_redirect(context.result, context)
       end
     end
   end
+
+  defp assert_renders_not_redirect({:ok, _view, _html}, context), do: {:ok, context}
+
+  defp assert_renders_not_redirect({:error, {_kind, %{to: target}}}, _context),
+    do:
+      flunk(
+        "expected /app/projects to render after auto-account-selection, but got a redirect to: #{inspect(target)}"
+      )
 end

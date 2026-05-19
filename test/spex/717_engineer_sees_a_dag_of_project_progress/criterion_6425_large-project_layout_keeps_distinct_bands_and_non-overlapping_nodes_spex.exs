@@ -66,16 +66,10 @@ defmodule CodeMySpecSpex.Story717.Criterion6425Spex do
           end)
 
         # In the current schema with non-empty project/story/component,
-        # project_min > story_max AND story_min > component_max.
-        if ys_by_type["project"] && ys_by_type["story"] do
-          assert ys_by_type["project"].min > ys_by_type["story"].max,
-                 "project band collides with story band: project=#{inspect(ys_by_type["project"])}, story=#{inspect(ys_by_type["story"])}"
-        end
-
-        if ys_by_type["story"] && ys_by_type["component"] do
-          assert ys_by_type["story"].min > ys_by_type["component"].max,
-                 "story band collides with component band: story=#{inspect(ys_by_type["story"])}, component=#{inspect(ys_by_type["component"])}"
-        end
+        # project_min > story_max AND story_min > component_max. Missing
+        # bands collapse cleanly via pattern-matched guard helpers.
+        assert_band_above(ys_by_type["project"], ys_by_type["story"], "project", "story")
+        assert_band_above(ys_by_type["story"], ys_by_type["component"], "story", "component")
 
         {:ok, context}
       end
@@ -89,5 +83,14 @@ defmodule CodeMySpecSpex.Story717.Criterion6425Spex do
     |> Floki.attribute("data-graph")
     |> List.first()
     |> Jason.decode!()
+  end
+
+  # Pattern-matched band-comparison. Either band missing => trivially OK.
+  defp assert_band_above(nil, _below, _upper_label, _lower_label), do: :ok
+  defp assert_band_above(_above, nil, _upper_label, _lower_label), do: :ok
+
+  defp assert_band_above(%{min: above_min} = above, %{max: below_max} = below, upper, lower) do
+    assert above_min > below_max,
+           "#{upper} band collides with #{lower} band: #{upper}=#{inspect(above)}, #{lower}=#{inspect(below)}"
   end
 end

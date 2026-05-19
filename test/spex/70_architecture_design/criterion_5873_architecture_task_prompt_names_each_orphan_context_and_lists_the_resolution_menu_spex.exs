@@ -141,14 +141,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
         # If the satisfied phrase is present, the orphan section must
         # also be present (named module + resolution menu — already
         # asserted above). The dangerous case is the satisfied phrase
-        # WITHOUT any orphan diagnostic. Assert that explicitly.
-        if prompt =~ "All user stories are currently satisfied by the architecture" do
-          refute Regex.run(
-                   ~r/MyOrphanContext/,
-                   String.replace(prompt, "All user stories are currently satisfied by the architecture", "")
-                 ) == nil,
-                 "prompt declares stories satisfied but never names the orphan — agent will stop short"
-        end
+        # WITHOUT any orphan diagnostic. Pattern-matched on the contains?
+        # bool so the assertion stays declarative.
+        assert_orphan_named_when_satisfied(
+          String.contains?(prompt, "All user stories are currently satisfied by the architecture"),
+          prompt
+        )
 
         {:ok, context}
       end
@@ -165,4 +163,16 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
 
   defp response_text(%{text: text}), do: text
   defp response_text(other), do: inspect(other)
+
+  # When the prompt declares all stories satisfied, the orphan must still
+  # be named OUTSIDE that phrase. False short-circuits to :ok.
+  defp assert_orphan_named_when_satisfied(false, _prompt), do: :ok
+
+  defp assert_orphan_named_when_satisfied(true, prompt) do
+    stripped =
+      String.replace(prompt, "All user stories are currently satisfied by the architecture", "")
+
+    refute Regex.run(~r/MyOrphanContext/, stripped) == nil,
+           "prompt declares stories satisfied but never names the orphan — agent will stop short"
+  end
 end

@@ -35,24 +35,22 @@ defmodule CodeMySpecSpex.Story604.Criterion5507Spex do
 
       then_ "an active-project-gated route loads without a picker redirect", context do
         conn = get(context.conn, "/app/issues")
-
-        case conn.status do
-          200 ->
-            {:ok, context}
-
-          302 ->
-            target = redirected_to(conn)
-
-            refute target =~ ~r"/projects/picker",
-                   "expected scope.active_project to be set after onboarding submit — " <>
-                     "got picker redirect to #{target}"
-
-            {:ok, context}
-
-          status ->
-            flunk("unexpected status #{status} reaching /app/issues")
-        end
+        assert_no_picker_redirect(conn.status, conn, context)
       end
     end
   end
+
+  defp assert_no_picker_redirect(200, _conn, context), do: {:ok, context}
+
+  defp assert_no_picker_redirect(302, conn, context) do
+    target = redirected_to(conn)
+
+    refute target =~ ~r"/projects/picker",
+           "expected scope.active_project to be set after onboarding submit — got picker redirect to #{target}"
+
+    {:ok, context}
+  end
+
+  defp assert_no_picker_redirect(status, _conn, _context),
+    do: flunk("unexpected status #{status} reaching /app/issues")
 end

@@ -86,27 +86,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5615Spex do
           end)
 
         present = Enum.reject(positions, fn {_, pos} -> is_nil(pos) end)
-
-        case present do
-          [] ->
-            flunk(
-              "no context appeared in the actionable response — fixture didn't surface any chain. Response: #{context.response_text}"
-            )
-
-          [_only] ->
-            # Exactly one orchestration group rendered — must be Alpha.
-            [{module, _}] = present
-
-            assert module == "AlphaContext",
-                   "single-context response, but it was #{module} instead of AlphaContext (priority 1). Response: #{context.response_text}"
-
-          _multi ->
-            # Multiple contexts rendered — Alpha must come first.
-            {first_module, _} = Enum.min_by(present, fn {_, pos} -> pos end)
-
-            assert first_module == "AlphaContext",
-                   "expected AlphaContext (priority 1) to appear first, got #{first_module}. Response: #{context.response_text}"
-        end
+        assert_alpha_leads(present, context.response_text)
 
         {:ok, context}
       end
@@ -117,4 +97,24 @@ defmodule CodeMySpecSpex.Story561.Criterion5615Spex do
 
   defp match_pos({pos, _len}), do: pos
   defp match_pos(:nomatch), do: nil
+
+  defp assert_alpha_leads([], response_text),
+    do:
+      flunk(
+        "no context appeared in the actionable response — fixture didn't surface any chain. Response: #{response_text}"
+      )
+
+  defp assert_alpha_leads([{module, _}], response_text),
+    do:
+      assert(
+        module == "AlphaContext",
+        "single-context response, but it was #{module} instead of AlphaContext (priority 1). Response: #{response_text}"
+      )
+
+  defp assert_alpha_leads(present, response_text) do
+    {first_module, _} = Enum.min_by(present, fn {_, pos} -> pos end)
+
+    assert first_module == "AlphaContext",
+           "expected AlphaContext (priority 1) to appear first, got #{first_module}. Response: #{response_text}"
+  end
 end

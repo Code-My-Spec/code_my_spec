@@ -257,9 +257,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
   defp count_temp_files do
     temp_dir = System.tmp_dir!()
 
-    case File.ls(temp_dir) do
-      {:ok, files} -> length(files)
-      {:error, _} -> 0
-    end
+    count_listed(File.ls(temp_dir))
   end
+  defp count_listed({:ok, files}), do: length(files)
+  defp count_listed({:error, _}), do: 0
 end

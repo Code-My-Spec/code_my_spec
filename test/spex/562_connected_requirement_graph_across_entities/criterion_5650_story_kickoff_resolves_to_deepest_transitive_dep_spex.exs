@@ -113,13 +113,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
 
   defp write_chain(env, specs) do
     Enum.each(specs, fn {module_name, type, deps} ->
-      content =
-        case type do
-          :context -> Content.context_spec(module_name, type: "context", dependencies: deps)
-          :live_context -> Content.context_spec(module_name, type: "live_context", dependencies: deps)
-          :liveview -> Content.liveview_spec(module_name, dependencies: deps)
-          :schema -> Content.child_spec(module_name, type: "schema", dependencies: deps)
-        end
+      content = spec_content_for(type, module_name, deps)
 
       :ok = Environments.write_file(env, Content.spec_path(module_name), content)
       :ok = Environments.write_file(env, Content.impl_path(module_name), Content.impl_file(module_name))
@@ -133,4 +127,15 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
     sync_live |> element("button[phx-click='sync']") |> render_click()
     :ok
   end
+  defp spec_content_for(:context, module_name, deps),
+    do: Content.context_spec(module_name, type: "context", dependencies: deps)
+
+  defp spec_content_for(:live_context, module_name, deps),
+    do: Content.context_spec(module_name, type: "live_context", dependencies: deps)
+
+  defp spec_content_for(:liveview, module_name, deps),
+    do: Content.liveview_spec(module_name, dependencies: deps)
+
+  defp spec_content_for(:schema, module_name, deps),
+    do: Content.child_spec(module_name, type: "schema", dependencies: deps)
 end

@@ -33,11 +33,13 @@ defmodule CodeMySpecSpex.Story124.Criterion5260Spex do
           Fixtures.satisfy_setup_steps(context.scope, [b])
         end)
 
-        # Odd length — second_half has one extra.
-        if length(second_half) > length(first_half) do
-          leftover = Enum.drop(second_half, length(first_half))
-          Fixtures.satisfy_setup_steps(context.scope, leftover)
-        end
+        # Odd length — second_half has one extra. The drop is a no-op when
+        # both halves are equal-length, so the extra-step path collapses to
+        # an empty seed call (also a no-op) without branching.
+        Fixtures.satisfy_setup_steps(
+          context.scope,
+          Enum.drop(second_half, length(first_half))
+        )
 
         {:ok, context}
       end

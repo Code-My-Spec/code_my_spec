@@ -35,13 +35,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
             {"FanCtx.FanLive", :liveview, ["FanCtx"]}
           ],
           fn {module_name, type, deps} ->
-            content =
-              case type do
-                :context -> Content.context_spec(module_name, type: "context", dependencies: deps)
-                :live_context -> Content.context_spec(module_name, type: "live_context", dependencies: deps)
-                :liveview -> Content.liveview_spec(module_name, dependencies: deps)
-                :schema -> Content.child_spec(module_name, type: "schema", dependencies: deps)
-              end
+            content = spec_content_for(type, module_name, deps)
 
             :ok = Environments.write_file(context.environment, Content.spec_path(module_name), content)
 
@@ -128,4 +122,15 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
       end
     end
   end
+  defp spec_content_for(:context, module_name, deps),
+    do: Content.context_spec(module_name, type: "context", dependencies: deps)
+
+  defp spec_content_for(:live_context, module_name, deps),
+    do: Content.context_spec(module_name, type: "live_context", dependencies: deps)
+
+  defp spec_content_for(:liveview, module_name, deps),
+    do: Content.liveview_spec(module_name, dependencies: deps)
+
+  defp spec_content_for(:schema, module_name, deps),
+    do: Content.child_spec(module_name, type: "schema", dependencies: deps)
 end

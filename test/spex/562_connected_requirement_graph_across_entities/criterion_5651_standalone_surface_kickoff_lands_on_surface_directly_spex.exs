@@ -31,11 +31,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
             {"Standalone.HomeLive", :liveview, ["Standalone"]}
           ],
           fn {module_name, type, deps} ->
-            content =
-              case type do
-                :live_context -> Content.context_spec(module_name, type: "live_context", dependencies: deps)
-                :liveview -> Content.liveview_spec(module_name, dependencies: deps)
-              end
+            content = spec_content_for(type, module_name, deps)
 
             :ok = Environments.write_file(context.environment, Content.spec_path(module_name), content)
 
@@ -116,4 +112,9 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
       end
     end
   end
+  defp spec_content_for(:live_context, module_name, deps),
+    do: Content.context_spec(module_name, type: "live_context", dependencies: deps)
+
+  defp spec_content_for(:liveview, module_name, deps),
+    do: Content.liveview_spec(module_name, dependencies: deps)
 end

@@ -339,12 +339,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
   end
 
   defp list_temp_files(temp_dir, prefix) do
-    case File.ls(temp_dir) do
-      {:ok, files} ->
-        Enum.filter(files, &String.starts_with?(&1, prefix))
-
-      {:error, _} ->
-        []
-    end
+    temp_dir |> File.ls() |> filter_by_prefix(prefix)
   end
+
+  defp filter_by_prefix({:ok, files}, prefix),
+    do: Enum.filter(files, &String.starts_with?(&1, prefix))
+
+  defp filter_by_prefix({:error, _}, _prefix), do: []
 end

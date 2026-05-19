@@ -98,10 +98,9 @@ defmodule CodeMySpecSpex.Story601.Criterion5491Spex do
     end
   end
 
-  defp extract_magic_link_url!(%Swoosh.Email{text_body: body}) when is_binary(body) do
-    case Regex.run(~r{https?://\S+/users/log-in/[^\s.,;:!?\"'>)]+}, body) do
-      [url] -> url
-      _ -> raise "could not extract magic-link URL from email body: #{inspect(body)}"
-    end
-  end
+  defp extract_magic_link_url!(%Swoosh.Email{text_body: body}) when is_binary(body),
+    do: magic_link_match(Regex.run(~r{https?://\S+/users/log-in/[^\s.,;:!?\"'>)]+}, body), body)
+
+  defp magic_link_match([url], _body), do: url
+  defp magic_link_match(_, body), do: raise("could not extract magic-link URL from email body: #{inspect(body)}")
 end

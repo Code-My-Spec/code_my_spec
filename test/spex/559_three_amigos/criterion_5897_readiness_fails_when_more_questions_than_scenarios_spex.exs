@@ -86,9 +86,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
 
           # Loudly fail if question creation didn't succeed —
           # silent failures here would let the readiness assertion lie.
-          if response.isError == true do
-            raise "AddQuestion #{n} failed: #{inspect(response)}"
-          end
+          assert_question_created(response.isError, response, n)
         end
 
         {:ok, context}
@@ -130,4 +128,9 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
 
   defp response_text(%{text: text}), do: text
   defp response_text(other), do: inspect(other)
+
+  defp assert_question_created(true, response, n),
+    do: raise("AddQuestion #{n} failed: #{inspect(response)}")
+
+  defp assert_question_created(_isError, _response, _n), do: :ok
 end

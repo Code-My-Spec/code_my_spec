@@ -61,36 +61,37 @@ defmodule CodeMySpecSpex.Story602.Criterion5494Spex do
           |> Phoenix.ConnTest.init_test_session(%{})
           |> Plug.Conn.put_session(:user_token, context.user_token)
 
-        result = Phoenix.LiveViewTest.live(authed_conn, "/app/users/settings")
-
-        case result do
-          {:ok, _view, html} ->
-            # The Google block renders a "Disconnect" link when connected
-            # and a "Connect Google" CTA when not. Anchor on the Google-specific
-            # CTA so other providers (GitHub, also unconnected on a fresh user)
-            # don't pollute the assertion via the shared "Not connected" label.
-            refute html =~ "Connect Google",
-                   "expected no \"Connect Google\" CTA after the Google integration is saved"
-
-            assert html =~ "Disconnect",
-                   "expected a Disconnect link in the Google block after signup"
-
-            {:ok, context}
-
-          {:error, {:live_redirect, %{to: to}}} ->
-            flunk(
-              "settings page redirected to #{inspect(to)} — " <>
-                "did the OAuth session token satisfy sudo_mode? check?"
-            )
-
-          {:error, {:redirect, %{to: to}}} ->
-            flunk("unexpected redirect to #{inspect(to)} when loading settings")
-
-          other ->
-            flunk("unexpected live/2 result: #{inspect(other)}")
-        end
+        assert_settings_renders_google_connected(
+          Phoenix.LiveViewTest.live(authed_conn, "/app/users/settings"),
+          context
+        )
       end
     end
   end
 
+  # The Google block renders a "Disconnect" link when connected and a
+  # "Connect Google" CTA when not. Anchor on the Google-specific CTA so
+  # other providers (GitHub, also unconnected on a fresh user) don't
+  # pollute the assertion via the shared "Not connected" label.
+  defp assert_settings_renders_google_connected({:ok, _view, html}, context) do
+    refute html =~ "Connect Google",
+           "expected no \"Connect Google\" CTA after the Google integration is saved"
+
+    assert html =~ "Disconnect",
+           "expected a Disconnect link in the Google block after signup"
+
+    {:ok, context}
+  end
+
+  defp assert_settings_renders_google_connected({:error, {:live_redirect, %{to: to}}}, _context),
+    do:
+      flunk(
+        "settings page redirected to #{inspect(to)} — did the OAuth session token satisfy sudo_mode? check?"
+      )
+
+  defp assert_settings_renders_google_connected({:error, {:redirect, %{to: to}}}, _context),
+    do: flunk("unexpected redirect to #{inspect(to)} when loading settings")
+
+  defp assert_settings_renders_google_connected(other, _context),
+    do: flunk("unexpected live/2 result: #{inspect(other)}")
 end

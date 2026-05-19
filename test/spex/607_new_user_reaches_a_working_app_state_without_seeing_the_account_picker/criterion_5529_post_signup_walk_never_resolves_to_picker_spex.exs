@@ -38,16 +38,7 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
       end
 
       then_ "/app renders the wizard rather than redirecting to the picker", context do
-        case context.app_result do
-          {:ok, _view, _html} ->
-            {:ok, context}
-
-          {:error, {_kind, %{to: target}}} ->
-            flunk(
-              "expected /app to render the wizard for a zero-account user, " <>
-                "but got a redirect to: #{inspect(target)}"
-            )
-        end
+        assert_app_renders_wizard(context.app_result, context)
       end
 
       then_ "/app/projects redirects to /app, never the picker", context do
@@ -66,13 +57,18 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
     end
   end
 
-  defp redirect_target!(result, path) do
-    case result do
-      {:error, {kind, %{to: target}}} when kind in [:redirect, :live_redirect] ->
-        target
+  defp redirect_target!({:error, {kind, %{to: target}}}, _path)
+       when kind in [:redirect, :live_redirect],
+       do: target
 
-      other ->
-        flunk("expected redirect from #{path}, got: #{inspect(other)}")
-    end
-  end
+  defp redirect_target!(other, path),
+    do: flunk("expected redirect from #{path}, got: #{inspect(other)}")
+
+  defp assert_app_renders_wizard({:ok, _view, _html}, context), do: {:ok, context}
+
+  defp assert_app_renders_wizard({:error, {_kind, %{to: target}}}, _context),
+    do:
+      flunk(
+        "expected /app to render the wizard for a zero-account user, but got a redirect to: #{inspect(target)}"
+      )
 end

@@ -27,11 +27,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5508Spex do
         |> form("#project_form", project: %{name: "My First Project"})
         |> render_submit()
 
-        target =
-          case assert_redirect(context.view) do
-            {path, _flash} -> path
-            path when is_binary(path) -> path
-          end
+        target = redirect_target(assert_redirect(context.view))
 
         {:ok, Map.merge(context, %{conn: recycle(context.conn), redirect_target: target})}
       end
@@ -50,28 +46,31 @@ defmodule CodeMySpecSpex.Story604.Criterion5508Spex do
 
       then_ "following the redirect does not bounce through any picker", context do
         conn = get(context.conn, context.redirect_target)
-
-        case conn.status do
-          200 ->
-            {:ok, context}
-
-          302 ->
-            next = redirected_to(conn)
-
-            refute next =~ ~r"/accounts/picker",
-                   "expected no account-picker bounce after onboarding submit, " <>
-                     "got: #{next}"
-
-            refute next =~ ~r"/projects/picker",
-                   "expected no project-picker bounce after onboarding submit, " <>
-                     "got: #{next}"
-
-            {:ok, context}
-
-          status ->
-            flunk("unexpected status #{status} after following redirect to #{context.redirect_target}")
-        end
+        assert_no_picker_bounce(conn.status, conn, context)
       end
     end
   end
+
+  defp redirect_target({path, _flash}), do: path
+  defp redirect_target(path) when is_binary(path), do: path
+
+  defp assert_no_picker_bounce(200, _conn, context), do: {:ok, context}
+
+  defp assert_no_picker_bounce(302, conn, context) do
+    next = redirected_to(conn)
+
+    refute next =~ ~r"/accounts/picker",
+           "expected no account-picker bounce after onboarding submit, got: #{next}"
+
+    refute next =~ ~r"/projects/picker",
+           "expected no project-picker bounce after onboarding submit, got: #{next}"
+
+    {:ok, context}
+  end
+
+  defp assert_no_picker_bounce(status, _conn, context),
+    do:
+      flunk(
+        "unexpected status #{status} after following redirect to #{context.redirect_target}"
+      )
 end
