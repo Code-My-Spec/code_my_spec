@@ -107,22 +107,56 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
   defp check_sources(env, path) do
     case Environments.read_file(env, path) do
       {:ok, content} ->
-        if has_non_empty_line?(content) do
-          :ok
-        else
-          {:gap, "`sources.md` present but empty"}
-        end
+        validate_sources_content(content)
 
       {:error, _reason} ->
         {:gap, "`sources.md` missing"}
     end
   end
 
-  defp has_non_empty_line?(content) do
+  # workflow.md spec: "Link list with URL, title, and access date per
+  # entry — one per line." A bare non-empty file is no longer enough —
+  # criterion 5147 / issue c5bf0eda. Entries are markdown list items
+  # (lines starting with `- ` or `* `). Each must carry a URL token
+  # and a YYYY-MM-DD date token; the title sits between them.
+  defp validate_sources_content(content) do
+    entries = entry_lines(content)
+    first_invalid = Enum.find(entries, &(not valid_entry?(&1)))
+
+    cond do
+      entries == [] ->
+        {:gap,
+         "`sources.md` has no entries — expected one markdown list item per source " <>
+           "(URL — title — access date)"}
+
+      first_invalid != nil ->
+        {:gap,
+         "`sources.md` entry missing URL or YYYY-MM-DD date: " <>
+           String.slice(first_invalid, 0, 80)}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp entry_lines(content) do
     content
     |> String.split("\n", trim: true)
-    |> Enum.any?(fn line -> String.trim(line) != "" end)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&entry_line?/1)
   end
+
+  defp entry_line?(line) do
+    String.starts_with?(line, "- ") or String.starts_with?(line, "* ")
+  end
+
+  defp valid_entry?(line) do
+    contains_url?(line) and contains_date?(line)
+  end
+
+  defp contains_url?(line), do: Regex.match?(~r{https?://\S+}, line)
+
+  defp contains_date?(line), do: Regex.match?(~r/\b\d{4}-\d{2}-\d{2}\b/, line)
 
   defp format_gaps(gaps) do
     sections =

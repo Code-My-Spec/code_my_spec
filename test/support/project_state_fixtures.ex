@@ -501,9 +501,9 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
 
   defp persona_sources_content do
     """
-    - Internal interview log: 2026-04-15 with founder of Acme SaaS
-    - Personal product log: 2025-12 through 2026-04
-    - Public Twitter threads from solo founders documenting their build loops
+    - https://example.com/acme-founder-interview — "Acme SaaS founder interview" — accessed 2026-04-15
+    - https://example.com/personal-product-log — "Personal product log 2025-12 through 2026-04" — accessed 2026-04-30
+    - https://twitter.com/example/solo-builder-threads — "Public Twitter threads from solo founders" — accessed 2026-04-20
     """
   end
 
