@@ -36,7 +36,7 @@ defmodule CodeMySpecWeb.Router do
 
     get "/", PageController, :home
     get "/products/code-my-spec", PageController, :code_my_spec
-    get "/products/market-my-spec", PageController, :market_my_spec
+    get "/products/market-my-spec", PageController, :market_my_spec_redirect
     get "/sitemap.xml", SitemapController, :index
     get "/llms.txt", LlmsTxtController, :index
     get "/llms-full.txt", LlmsTxtController, :full

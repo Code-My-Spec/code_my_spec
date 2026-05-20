@@ -251,7 +251,7 @@
     primary: %{
       label: "▸ Run /marketing-strategy",
       href:
-        "/products/market-my-spec?utm_source=blog&utm_medium=internal&utm_campaign=agentic-marketing-with-mcp"
+        "https://marketmyspec.com?utm_source=blog&utm_medium=internal&utm_campaign=agentic-marketing-with-mcp"
     },
     secondary: %{label: "▸ Read the methodology", href: "/methodology"}
   },

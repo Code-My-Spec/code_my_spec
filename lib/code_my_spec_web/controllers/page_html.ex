@@ -16,11 +16,4 @@ defmodule CodeMySpecWeb.PageHTML do
 
   def code_my_spec_copy, do: @code_my_spec_copy
 
-  @external_resource market_my_spec_copy_path =
-                       Path.join(__DIR__, "page_html/market_my_spec_copy.exs")
-  @market_my_spec_copy (case Code.eval_file(market_my_spec_copy_path) do
-                          {copy, _} -> copy
-                        end)
-
-  def market_my_spec_copy, do: @market_my_spec_copy
 end

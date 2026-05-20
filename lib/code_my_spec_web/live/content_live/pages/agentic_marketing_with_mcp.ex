@@ -622,8 +622,8 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
         <.install_card
           harness="marketmyspec"
           accent="bdd"
-          brief_url={~p"/products/market-my-spec"}
-          brief_label="Read the brief →"
+          brief_url="https://marketmyspec.com"
+          brief_label="See marketmyspec.com →"
           footer_label="byok · plain markdown in your repo"
         />
       </div>

@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.MarketingComponents do
   Function components for the marketing zones (brand + product pages).
 
   These components own the brand-system markup that was previously copy-pasted
-  across `home.html.heex`, `code_my_spec.html.heex`, `market_my_spec.html.heex`,
+  across `home.html.heex`, `code_my_spec.html.heex`,
   and `methodology.ex`. Single source of truth for the eyebrow header, the
   /codemyspec install card, and any future shared marketing chrome.
 
@@ -53,7 +53,7 @@ defmodule CodeMySpecWeb.MarketingComponents do
   ## Examples
 
       <.install_card harness="codemyspec" brief_url={~p"/products/code-my-spec"} />
-      <.install_card harness="marketmyspec" accent="bdd" brief_url={~p"/products/market-my-spec"} brief_label="Read the marketing brief →" />
+      <.install_card harness="marketmyspec" accent="bdd" brief_url="https://marketmyspec.com" brief_label="See marketmyspec.com →" />
   """
   attr :harness, :string, required: true, values: ~w(codemyspec marketmyspec)
 

@@ -261,7 +261,11 @@ defmodule CodeMySpecWeb.Layouts do
                     <summary>Products</summary>
                     <ul class="bg-base-200 rounded-box w-48 z-10">
                       <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
-                      <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
+                      <li>
+                        <.link href="https://marketmyspec.com" target="_blank" rel="noopener noreferrer">
+                          MarketMySpec
+                        </.link>
+                      </li>
                     </ul>
                   </details>
                 </li>
@@ -351,7 +355,11 @@ defmodule CodeMySpecWeb.Layouts do
                 <summary>Products</summary>
                 <ul>
                   <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
-                  <li><.link href={~p"/products/market-my-spec"}>MarketMySpec</.link></li>
+                  <li>
+                    <.link href="https://marketmyspec.com" target="_blank" rel="noopener noreferrer">
+                      MarketMySpec
+                    </.link>
+                  </li>
                 </ul>
               </details>
             </li>

@@ -16,4 +16,10 @@ defmodule CodeMySpecWeb.PageControllerTest do
 
     assert body =~ ~s|href="#install-section"|
   end
+
+  test "GET /products/market-my-spec 301-redirects to marketmyspec.com", %{conn: conn} do
+    conn = get(conn, ~p"/products/market-my-spec")
+
+    assert redirected_to(conn, 301) == "https://marketmyspec.com"
+  end
 end
