@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story608.Criterion5393Spex do
         assert prompt =~ ~r/silencing|silence/i,
                "expected prompt to flag test silencing as a no-go, got:\n#{prompt}"
 
-        assert prompt =~ "priv/knowledge/fix_issues/workflow.md",
+        assert prompt =~ "fix_issues/workflow.md",
                "expected prompt to point at the fix_issues playbook (the @tag :pending / @tag :skip prohibition lives there)"
 
         {:ok, context}

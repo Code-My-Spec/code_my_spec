@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5300Spex do
         # The prompt routes the agent there rather than inlining each command,
         # so we assert on the route and trust the playbook content as the
         # source of truth.
-        assert context.prompt =~ ~r/priv\/knowledge\/cms_generators\/workflow\.md/,
+        assert context.prompt =~ ~r/cms_generators\/workflow\.md/,
                "expected the prompt to reference the cms_generators workflow playbook " <>
                  "(which covers deps.get / compile / ecto.migrate / test)"
 

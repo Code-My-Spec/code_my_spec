@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5140Spex do
         assert context.prompt =~ ~r/triangulate|three|≥3/i,
                "expected prompt to reference the triangulation guardrail"
 
-        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+        assert context.prompt =~ "persona_research/workflow.md",
                "expected prompt to point at the persona_research workflow playbook (demand-sources rule lives there)"
 
         {:ok, context}

@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5133Spex do
         assert context.prompt =~ ~r/challenge/i,
                "expected prompt to instruct challenging thin input"
 
-        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+        assert context.prompt =~ "persona_research/workflow.md",
                "expected prompt to point at the persona_research workflow playbook (details of the no-skip rule live there)"
 
         {:ok, context}

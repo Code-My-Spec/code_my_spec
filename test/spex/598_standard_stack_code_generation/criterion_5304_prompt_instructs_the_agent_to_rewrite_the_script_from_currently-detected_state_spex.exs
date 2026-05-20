@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5304Spex do
         # priv/knowledge/cms_generators/script-format.md ("Rewrite, don't
         # append"). The prompt routes the agent to that playbook rather
         # than inlining the guidance.
-        assert context.prompt =~ ~r/priv\/knowledge\/cms_generators\/(workflow|script-format)\.md/,
+        assert context.prompt =~ ~r/cms_generators\/(workflow|script-format)\.md/,
                "expected the prompt to reference the cms_generators playbook (workflow.md or script-format.md)"
 
         {:ok, context}

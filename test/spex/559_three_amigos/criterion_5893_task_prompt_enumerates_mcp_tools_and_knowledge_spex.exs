@@ -77,9 +77,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5893Spex do
         # The MCP tool surface (add_rule, add_scenario, add_question, add_persona,
         # link_persona_to_story) is enumerated in
         # priv/knowledge/three_amigos/workflow.md, which the prompt routes the
-        # agent to. We assert on the route, not on inline phrasing, so prompt
-        # slimming doesn't require this test to track exact wording.
-        assert prompt =~ ~r/priv\/knowledge\/three_amigos\/workflow\.md/,
+        # agent to via `read_knowledge`. We assert on the route, not on inline
+        # phrasing, so prompt slimming doesn't require this test to track exact
+        # wording.
+        assert prompt =~ ~r/three_amigos\/workflow\.md/,
                "expected prompt to reference the three_amigos workflow playbook " <>
                  "(which enumerates the MCP tool surface and protocol), got #{inspect(prompt)}"
 

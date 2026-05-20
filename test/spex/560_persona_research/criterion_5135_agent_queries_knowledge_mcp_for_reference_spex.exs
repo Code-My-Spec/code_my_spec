@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5135Spex do
       given_ :persona_research_prompt
 
       then_ "the prompt instructs the agent to load playbook files", context do
-        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+        assert context.prompt =~ "persona_research/workflow.md",
                "expected prompt to point at the persona_research workflow playbook"
 
         for file <- ~w(overview.md pm_intake.md primary_research.md) do

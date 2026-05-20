@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5134Spex do
         assert context.prompt =~ ~r/research/i,
                "expected prompt to reference the research phase"
 
-        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+        assert context.prompt =~ "persona_research/workflow.md",
                "expected prompt to point at the persona_research workflow playbook (web-search guidance lives there)"
 
         {:ok, context}

@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5481Spex do
         # and the rule that plain one-shot curl can't drive MCP tool calls
         # — lives in priv/knowledge/qa_setup/workflow.md's probe section.
         # The prompt routes the agent there.
-        assert prompt =~ ~r/priv\/knowledge\/qa_setup\/workflow\.md/,
+        assert prompt =~ ~r/qa_setup\/workflow\.md/,
                "expected the prompt to reference the qa_setup workflow playbook " <>
                  "(which covers the 202/MCP transport quirks), got: #{prompt}"
 

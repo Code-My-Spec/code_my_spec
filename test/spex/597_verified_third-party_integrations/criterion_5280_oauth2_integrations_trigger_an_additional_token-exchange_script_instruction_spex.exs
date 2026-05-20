@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story597.Criterion5280Spex do
       end
 
       then_ "the prompt routes OAuth2 token-exchange guidance through the playbook", context do
-        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+        assert context.prompt =~ "qa_integration_plan/workflow.md",
                "expected the prompt to point at the qa_integration_plan playbook (the exchange_<name>_token.sh OAuth2 path pattern lives there)"
 
         {:ok, context}

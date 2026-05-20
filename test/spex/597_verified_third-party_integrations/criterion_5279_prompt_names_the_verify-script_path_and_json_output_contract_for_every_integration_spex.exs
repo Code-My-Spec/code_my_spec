@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story597.Criterion5279Spex do
         assert context.prompt =~ ~r/verify script/i,
                "expected the prompt to reference verify scripts"
 
-        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+        assert context.prompt =~ "qa_integration_plan/workflow.md",
                "expected the prompt to point at the qa_integration_plan playbook (verify-script path pattern, env-var creds, and JSON success/failure contracts live there)"
 
         {:ok, context}

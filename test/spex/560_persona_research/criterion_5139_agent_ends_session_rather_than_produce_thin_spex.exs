@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5139Spex do
         assert context.prompt =~ ~r/thin in|fabricate/i,
                "expected prompt to flag fabrication / thin-in nothing-out"
 
-        assert context.prompt =~ "priv/knowledge/persona_research/workflow.md",
+        assert context.prompt =~ "persona_research/workflow.md",
                "expected prompt to point at the persona_research workflow playbook (end-session-on-thin-evidence rule lives there)"
 
         {:ok, context}

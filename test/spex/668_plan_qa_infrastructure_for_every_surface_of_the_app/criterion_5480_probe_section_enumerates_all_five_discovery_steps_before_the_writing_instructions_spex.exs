@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5480Spex do
         # screenshot landing) and the probe-then-write ordering all live
         # in priv/knowledge/qa_setup/workflow.md. The prompt routes the
         # agent there rather than inlining the discovery commands.
-        assert prompt =~ ~r/priv\/knowledge\/qa_setup\/workflow\.md/,
+        assert prompt =~ ~r/qa_setup\/workflow\.md/,
                "expected the prompt to reference the qa_setup workflow playbook " <>
                  "(which has the probe protocol and writing conventions), got: #{prompt}"
 

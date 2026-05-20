@@ -120,7 +120,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
       assert prompt =~ ~r/liveview/i
-      assert prompt =~ "priv/knowledge/bdd/spex/"
+      assert prompt =~ "bdd/spex/"
     end
 
     test "names HTTP/controller as the likely surface for controller components", %{tmp_dir: tmp_dir} do
@@ -135,7 +135,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
       assert {:ok, prompt} = WriteBddSpecs.command(scope, task)
       assert prompt =~ ~r/controller|HTTP/i
-      assert prompt =~ "priv/knowledge/bdd/spex/"
+      assert prompt =~ "bdd/spex/"
     end
 
     test "points at the spex DSL playbook and names step macros", %{tmp_dir: tmp_dir} do
@@ -147,7 +147,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert prompt =~ "given_"
       assert prompt =~ "when_"
       assert prompt =~ "then_"
-      assert prompt =~ "priv/knowledge/bdd/spex/"
+      assert prompt =~ "bdd/spex/"
     end
 
     test "returns error when story not found", %{tmp_dir: tmp_dir} do

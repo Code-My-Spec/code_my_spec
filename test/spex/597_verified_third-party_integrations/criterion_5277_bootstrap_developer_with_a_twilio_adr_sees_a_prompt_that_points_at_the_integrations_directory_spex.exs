@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story597.Criterion5277Spex do
         assert context.prompt =~ ~r/integration spec/i,
                "expected the prompt to reference integration specs"
 
-        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+        assert context.prompt =~ "qa_integration_plan/workflow.md",
                "expected the prompt to point at the qa_integration_plan playbook (per-service spec procedure lives there)"
 
         {:ok, context}

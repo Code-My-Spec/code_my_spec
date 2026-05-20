@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story597.Criterion5281Spex do
         assert context.prompt =~ "verified",
                "expected the prompt to mention the verified status"
 
-        assert context.prompt =~ "priv/knowledge/qa_integration_plan/workflow.md",
+        assert context.prompt =~ "qa_integration_plan/workflow.md",
                "expected the prompt to point at the qa_integration_plan playbook (initial-pending → verified-after-success promotion rule lives there)"
 
         {:ok, context}
