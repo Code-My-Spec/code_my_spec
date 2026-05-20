@@ -134,12 +134,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     sections =
       [
         header_section(story, component),
+        mental_model_section(),
         knowledge_section(),
         component_context_section(component),
         sibling_specs_section(story, criteria),
         surface_hint_section(component),
         criteria_section(story, criteria),
         procedure_section(spex_module),
+        anti_patterns_section(),
         reference_files_section(app_name, spex_module)
       ]
       |> Enum.reject(&(&1 == nil or &1 == ""))
@@ -154,6 +156,29 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     **Story ID**: #{story.id}
     **Description**: #{story.description || "No description"}
     **Component**: `#{component.module_name}` (#{component.type})\
+    """
+  end
+
+  defp mental_model_section do
+    """
+    ## What you're producing
+
+    These are specifications of acceptance criteria, not regression tests
+    of existing behavior. A scenario is a mechanical translation of the
+    criterion text into Given/When/Then driving the real surface — what
+    the criterion **says must be true**, not what the code happens to do
+    today.
+
+    **Failing on first run is the expected outcome.** Unsatisfied criteria
+    produce red specs; the next workflow step uses that red bar to drive
+    the implementation. You do **not** need the scenarios to pass for
+    this task to succeed.
+
+    **The evaluator is shape-only** — it parses, compiles, asserts
+    `use *.Spex.Case`, and asserts Given/When/Then steps exist. It does
+    **not** run `mix test`. Validation passing is not the same as
+    scenarios passing. Encode the criterion faithfully; let the implementer
+    worry about turning it green.\
     """
   end
 
@@ -309,6 +334,38 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
        Never read the DB from `then_`.
     5. Run `mix compile` to verify.
     6. **Stop and wait for validation** before starting the next spec.\
+    """
+  end
+
+  defp anti_patterns_section do
+    """
+    ## Do not
+
+    Failure modes that turn the spec into a self-fulfilling pass instead
+    of a faithful encoding of the criterion:
+
+    - **Soften the assertion to match current behavior.** If the criterion
+      says 401, assert 401 — not `assert conn.status in [200, 401]`
+      because the code returns 200 today.
+    - **Fabricate rules or criteria.** Only write scenarios for the rules
+      and criteria already on the story. If something feels
+      under-specified, surface the question — don't invent a rule.
+    - **`@tag :pending`, `@tag :skip`, or comment out scenarios that
+      fail.** A failing scenario is the point. Tagging it out hides the
+      signal the implementer needs.
+    - **Pre-seed in `given_` what the SUT should produce.** If the
+      criterion says "creating a Foo also creates a Bar", `when_`
+      triggers the action and `then_` asserts both side effects.
+      Don't `given_` the Bar into existence.
+    - **Stub or mock the surface under test.** Drive the real LiveView /
+      HTTP / MCP tool. Mocks make the spec a tautology.
+    - **Read the implementation and write its current behavior as the
+      expectation.** Read the criterion; write the criterion. If the
+      code doesn't match, that's information — surface it through a
+      failing spec.
+
+    If a criterion is genuinely untestable, contradicts another, or is
+    ambiguous, **stop and flag it** rather than fudging the spec to fit.\
     """
   end
 
