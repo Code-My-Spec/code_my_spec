@@ -22,12 +22,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
 
-    just_confirmed =
-      Phoenix.Flash.get(socket.assigns.flash, :info) == "User confirmed successfully."
-
     socket =
       socket
-      |> assign(page_title: "Overview", just_confirmed: just_confirmed)
+      |> assign(page_title: "Overview")
       |> assign_onboarding_state(scope.user)
       |> dispatch_onboarding_view(scope.user)
 
@@ -342,10 +339,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       <div
         id="onboarding-page"
         phx-hook=".SignUpTracking"
-        data-just-confirmed={to_string(@just_confirmed)}
       >
         <div class="mx-auto max-w-2xl flex flex-col gap-4">
-          <.welcome_banner :if={!@account_done?} just_confirmed={@just_confirmed} />
+          <.welcome_banner :if={!@account_done?} />
 
           <.ladder_progress
             account_done?={@account_done?}
@@ -388,9 +384,11 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
         export default {
           mounted() {
-            if (this.el.dataset.justConfirmed === "true" && typeof gtag === "function") {
-              gtag("event", "sign_up");
-            }
+            // sign_up now fires server-side via CodeMySpec.Analytics from
+            // the user-row insert sites (Users.register_user and
+            // Users.find_or_register_oauth_user). The browser-side
+            // flash-sniff used to trip on every OAuth callback —
+            // including returning logins — producing false positives.
             this.handleEvent("analytics", ({ name, params }) => {
               if (typeof gtag === "function") {
                 gtag("event", name, params || {});
@@ -417,12 +415,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       style="border-left: 2px solid var(--color-cms-red, #ff3838); padding: 18px 22px;"
     >
       <div class="cms-onboarding-eyebrow mb-2" style="color: var(--color-cms-red, #ff3838);">
-        {if @just_confirmed, do: "// welcome", else: "// get started"}
+        // welcome
       </div>
       <h2 class="cms-onboarding-heading" style="font-size: 20px; margin-bottom: 6px;">
-        {if @just_confirmed,
-          do: "You're in. Let's set up your workspace.",
-          else: "Set up your workspace."}
+        You're in. Let's set up your workspace.
       </h2>
       <p class="cms-onboarding-sub" style="margin-bottom: 0;">
         Four steps below — each builds on the last.

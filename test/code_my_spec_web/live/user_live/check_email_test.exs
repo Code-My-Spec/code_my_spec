@@ -16,14 +16,6 @@ defmodule CodeMySpecWeb.UserLive.CheckEmailTest do
       assert html =~ "Wrong email?"
     end
 
-    test "mounts the analytics hook that fires registration_email_sent", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/users/check-email?email=foo@example.com")
-
-      assert html =~ ~s|id="check-email-page"|
-      assert html =~ ~s|phx-hook=|
-      assert html =~ "RegistrationEmailSent"
-    end
-
     test "Wrong email? link navigates back to /users/register", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/check-email?email=foo@example.com")
 

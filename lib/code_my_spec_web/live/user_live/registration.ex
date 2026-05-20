@@ -219,6 +219,8 @@ defmodule CodeMySpecWeb.UserLive.Registration do
             &url(socket, ~p"/users/log-in/#{&1}")
           )
 
+        CodeMySpec.Analytics.dispatch(:registration_email_sent, %{user_id: user.id})
+
         {:noreply, push_navigate(socket, to: ~p"/users/check-email?email=#{user.email}")}
 
       {:error, %Ecto.Changeset{} = changeset} ->

@@ -97,9 +97,16 @@ defmodule CodeMySpec.Users do
 
   """
   def register_user(attrs) do
-    %User{}
-    |> User.email_changeset(attrs)
-    |> Repo.insert()
+    case %User{}
+         |> User.email_changeset(attrs)
+         |> Repo.insert() do
+      {:ok, user} = ok ->
+        CodeMySpec.Analytics.dispatch(:sign_up, %{user_id: user.id, method: "magic_link"})
+        ok
+
+      {:error, _} = err ->
+        err
+    end
   end
 
   @doc """
@@ -115,13 +122,23 @@ defmodule CodeMySpec.Users do
   def find_or_register_oauth_user(provider, %{provider_user_id: provider_user_id, email: email}) do
     alias CodeMySpec.Integrations.IntegrationRepository
 
-    case IntegrationRepository.find_user_id_by_provider_identity(provider, provider_user_id) do
-      user_id when is_integer(user_id) ->
-        {:ok, get_user!(user_id), :existing}
+    result =
+      case IntegrationRepository.find_user_id_by_provider_identity(provider, provider_user_id) do
+        user_id when is_integer(user_id) ->
+          {:ok, get_user!(user_id), :existing}
 
-      nil ->
-        find_or_register_by_email(email)
+        nil ->
+          find_or_register_by_email(email)
+      end
+
+    with {:ok, user, :new} <- result do
+      CodeMySpec.Analytics.dispatch(:sign_up, %{
+        user_id: user.id,
+        method: "oauth_#{provider}"
+      })
     end
+
+    result
   end
 
   defp find_or_register_by_email(nil), do: {:error, :missing_email}

@@ -9,7 +9,9 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter do
 
   @spec post(String.t(), map()) :: :ok
   def post(url, payload) do
-    case Req.post(url, json: payload, receive_timeout: 5_000) do
+    req_opts = [json: payload, receive_timeout: 5_000] |> Keyword.merge(plug_opt())
+
+    case Req.post(url, req_opts) do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
         :ok
 
@@ -20,6 +22,15 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter do
       {:error, reason} ->
         Logger.warning("GA Measurement Protocol HTTP error: #{inspect(reason)}")
         :ok
+    end
+  end
+
+  # Tests inject a ReqCassette plug via Application.put_env so HTTP can be
+  # recorded/replayed against a real cassette without hitting GA.
+  defp plug_opt do
+    case Application.get_env(:code_my_spec, __MODULE__, []) |> Keyword.get(:plug) do
+      nil -> []
+      plug -> [plug: plug]
     end
   end
 end

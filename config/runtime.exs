@@ -149,3 +149,13 @@ if config_env() == :prod do
     adapter: Swoosh.Adapters.Resend,
     api_key: env!("RESEND_API_KEY", :string, "")
 end
+
+# GA4 Measurement Protocol — server-side delivery of activation events.
+# Applies to dev + prod (test overrides http_adapter to a no-op so unit
+# tests can't accidentally POST to real GA). measurement_id + api_secret
+# come from envs/<env>.env (gitignored) via Dotenvy above.
+# If GA4_MP_API_SECRET is unset the handler logs "skipped" and no-ops —
+# signups still work without it.
+config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics,
+  measurement_id: env!("GA4_MEASUREMENT_ID", :string, nil),
+  api_secret: env!("GA4_MP_API_SECRET", :string, nil)

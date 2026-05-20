@@ -10,7 +10,6 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
     <Layouts.marketing flash={@flash} current_scope={@current_scope}>
       <div
         id="check-email-page"
-        phx-hook=".RegistrationEmailSent"
         class="mx-auto max-w-xl py-12 flex flex-col gap-5"
       >
         <%!--
@@ -65,15 +64,6 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
         </div>
       </div>
 
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".RegistrationEmailSent">
-        export default {
-          mounted() {
-            if (typeof gtag === "function") {
-              gtag("event", "registration_email_sent");
-            }
-          }
-        }
-      </script>
     </Layouts.marketing>
     """
   end
