@@ -5,12 +5,27 @@ defmodule CodeMySpecWeb.UserLive.LoginTest do
   import CodeMySpec.UsersFixtures
 
   describe "login page" do
-    test "renders login page", %{conn: conn} do
+    test "renders OAuth-primary login page with magic-link secondary", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/log-in")
 
       assert html =~ "Log in"
-      assert html =~ "Register"
-      assert html =~ "Log in with email"
+      # OAuth primary path — same chamfered/glowing treatment as the
+      # register page (Story C: OAuth-primary visual hierarchy).
+      assert html =~ "Continue with GitHub"
+      assert html =~ "Continue with Google"
+      # Magic-link is the secondary path, behind a divider.
+      assert html =~ "or send a login link"
+      assert html =~ "Email me a login link"
+      # Story C explicitly drops the password form — its endpoint
+      # (POST /users/log-in) is covered by user_session_controller_test.
+      refute html =~ "login_form_password"
+    end
+
+    test "tags OAuth buttons with login-method data attributes for analytics",
+         %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/users/log-in")
+      assert html =~ ~s|data-login-method="github"|
+      assert html =~ ~s|data-login-method="google"|
     end
   end
 
@@ -43,49 +58,17 @@ defmodule CodeMySpecWeb.UserLive.LoginTest do
     end
   end
 
-  describe "user login - password" do
-    test "redirects if user logs in with valid credentials", %{conn: conn} do
-      user = user_fixture() |> set_password()
-
-      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
-
-      form =
-        form(lv, "#login_form_password",
-          user: %{email: user.email, password: valid_user_password(), remember_me: true}
-        )
-
-      conn = submit_form(form, conn)
-
-      assert redirected_to(conn) == ~p"/app/users/settings"
-    end
-
-    test "redirects to login page with a flash error if credentials are invalid", %{
-      conn: conn
-    } do
-      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
-
-      form =
-        form(lv, "#login_form_password", user: %{email: "test@email.com", password: "123456"})
-
-      render_submit(form, %{user: %{remember_me: true}})
-
-      conn = follow_trigger_action(form, conn)
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password"
-      assert redirected_to(conn) == ~p"/users/log-in"
-    end
-  end
-
   describe "login navigation" do
-    test "redirects to registration page when the Register button is clicked", %{conn: conn} do
+    test "links to the registration page via the Get started link", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
 
-      {:ok, _login_live, login_html} =
+      {:ok, _register_live, register_html} =
         lv
-        |> element("main a", "Sign up")
+        |> element("main a", "Get started")
         |> render_click()
         |> follow_redirect(conn, ~p"/users/register")
 
-      assert login_html =~ "Register"
+      assert register_html =~ "holds it together"
     end
   end
 
@@ -99,8 +82,11 @@ defmodule CodeMySpecWeb.UserLive.LoginTest do
       {:ok, _lv, html} = live(conn, ~p"/users/log-in")
 
       assert html =~ "You need to reauthenticate"
-      refute html =~ "Register"
-      assert html =~ "Log in with email"
+      # Logged-in user sees re-auth subcopy, not the "Don't have an
+      # account? Get started" prompt.
+      refute html =~ "Don't have an account"
+      assert html =~ "Continue with GitHub"
+      assert html =~ "Email me a login link"
 
       assert html =~
                ~s(<input type="email" name="user[email]" id="login_form_magic_email" value="#{user.email}")

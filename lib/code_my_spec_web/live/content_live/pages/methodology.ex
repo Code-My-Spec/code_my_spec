@@ -32,6 +32,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
         {proof_section(assigns)}
         {cta_section(assigns)}
         {faq_section(assigns)}
+        {final_cta_section(assigns)}
       </div>
 
       <script>
@@ -795,6 +796,44 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
               </div>
             </details>
           <% end %>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  # ─── FINAL CTA (post-FAQ) ───
+  # Picks up the deep-engaged readers who finish the FAQ at the bottom of
+  # the page and currently have no action button without scrolling back up
+  # (CRO recommendation 2026-05-20). Smaller than the mid-page install
+  # section — the FAQ already qualified them.
+  defp final_cta_section(assigns) do
+    ~H"""
+    <section
+      class="signal-top border-t border-base-300 bg-[radial-gradient(circle_at_50%_50%,_rgba(255,56,56,0.10),_transparent_60%)]"
+    >
+      <div class="max-w-3xl mx-auto px-6 py-20 lg:py-24 text-center">
+        <div class="mb-7 flex items-center justify-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-primary">
+          <span class="h-px w-12 bg-gradient-to-r from-transparent to-primary"></span>
+          <span>08 // ready</span>
+          <span class="h-px w-12 bg-gradient-to-l from-transparent to-primary"></span>
+        </div>
+        <h2 class="font-heading font-bold text-3xl md:text-4xl leading-[1.08] tracking-tight max-w-[20ch] mx-auto">
+          Now run the loop <span class="text-primary">on your codebase.</span>
+        </h2>
+        <p class="text-base text-base-content/70 mt-5 max-w-[48ch] mx-auto leading-relaxed">
+          ~30 minutes to set up. One Claude Code plugin install. BYO model, BYO keys.
+        </p>
+        <div class="mt-9 flex flex-wrap justify-center items-center gap-5">
+          <.link href={~p"/users/register"} class="btn btn-primary">
+            ▸ Get started
+          </.link>
+          <a
+            href="#install"
+            class="font-mono text-sm uppercase tracking-[0.14em] text-base-content border-b border-primary/30 hover:text-primary hover:border-primary transition pb-0.5"
+          >
+            See install commands ↑
+          </a>
         </div>
       </div>
     </section>

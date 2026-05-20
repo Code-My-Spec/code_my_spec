@@ -8,8 +8,9 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
     test "renders the outcome-focused headline", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Run your business"
-      assert html =~ "one terminal"
+      assert html =~ "AI-generated codebase is starting to"
+      assert html =~ "harness"
+      assert html =~ "holds it together"
       assert html =~ "Log in"
     end
 
@@ -75,7 +76,7 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
         |> element("#registration_form")
         |> render_change(user: %{"email" => "with spaces"})
 
-      assert result =~ "Run your business"
+      assert result =~ "holds it together"
       assert result =~ "must have the @ sign and no spaces"
     end
   end

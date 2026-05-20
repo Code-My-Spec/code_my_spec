@@ -281,7 +281,7 @@ defmodule CodeMySpecWeb.Layouts do
                 <.link href={~p"/app"} class="btn btn-primary">Open workspace</.link>
               <% else %>
                 <.link href={~p"/users/log-in"} class="btn btn-ghost hidden sm:inline-flex">Log in</.link>
-                <.link href={~p"/users/register"} class="btn btn-primary">Register</.link>
+                <.link href={~p"/users/register"} class="btn btn-primary">Get started</.link>
               <% end %>
             </div>
           </nav>
@@ -376,12 +376,60 @@ defmodule CodeMySpecWeb.Layouts do
               <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-block">Log out</.link>
             <% else %>
               <.link href={~p"/users/log-in"} class="btn btn-ghost btn-block">Log in</.link>
-              <.link href={~p"/users/register"} class="btn btn-primary btn-block">Register</.link>
+              <.link href={~p"/users/register"} class="btn btn-primary btn-block">Get started</.link>
             <% end %>
           </div>
         </aside>
       </div>
     </div>
+    """
+  end
+
+  @doc """
+  Renders the end-of-blog-post author signature with install commands.
+
+  Used at the bottom of every published blog post (called from the three
+  `content_html` templates: default, article, tutorial). Reads as the
+  author telling you what they use, not a sales pitch — monospace
+  throughout, no buttons, no colored CTA backgrounds.
+
+  The signup URL is UTM-tagged (`source=blog`, `medium=signature`,
+  `campaign=post-cta`) so blog → register conversion can be measured
+  separately from nav, homepage, and Reddit-comment paths.
+
+  See `.code_my_spec/issues/blog-post-install-signature.md` for the
+  full content + measurement plan.
+  """
+  def install_signature(assigns) do
+    ~H"""
+    <aside class="mt-12 pt-8 border-t border-primary/20 max-w-[64ch] font-mono text-[14px] leading-relaxed text-base-content/80">
+      <p class="text-base-content/90">
+        I built this with
+        <a
+          href="/case-studies/market-my-spec?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
+          class="text-base-content underline decoration-primary/60 underline-offset-4 hover:text-primary hover:decoration-primary"
+        >CodeMySpec</a> — the harness I work in.
+      </p>
+      <p class="mt-1 text-base-content/70">
+        Sign up (free, no card) then install:
+      </p>
+
+      <div class="mt-4 pl-4 border-l border-primary/20">
+        <a
+          href="/users/register?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
+          class="text-base-content underline decoration-primary/60 underline-offset-4 hover:text-primary hover:decoration-primary"
+        >
+          https://codemyspec.com/users/register
+        </a>
+      </div>
+
+      <div class="mt-4 pl-4 border-l border-primary/20 text-base-content/70">
+        <p>/plugin marketplace add Code-My-Spec/plugins</p>
+        <p>/plugin install codemyspec@codemyspec</p>
+      </div>
+
+      <p class="mt-6 text-base-content/60">— John</p>
+    </aside>
     """
   end
 

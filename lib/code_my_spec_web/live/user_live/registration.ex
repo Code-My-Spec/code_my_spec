@@ -21,9 +21,9 @@ defmodule CodeMySpecWeb.UserLive.Registration do
           </div>
 
           <h1 class="font-display text-4xl font-bold uppercase leading-[1.02] tracking-tight text-base-content text-balance lg:text-5xl xl:text-[56px]">
-            Run your business —
-            <span class="text-primary">marketing, engineering, ops</span>
-            — from <span class="bg-primary/15 px-1">one terminal</span>.
+            If your AI-generated codebase is starting to
+            <span class="bg-primary/15 px-1">slip</span>,
+            this is the <span class="text-primary">harness</span> that holds it together.
           </h1>
 
           <p class="mt-6 max-w-[48ch] text-[17px] leading-snug text-base-content/70">
@@ -34,9 +34,9 @@ defmodule CodeMySpecWeb.UserLive.Registration do
             <li class="flex items-start gap-3.5">
               <span class="w-4 flex-shrink-0 font-bold text-primary">▸</span>
               <span>
-                One plugin model. One brand.
+                Architecture stays clean as AI volume goes up.
                 <em class="not-italic text-base-content/60">
-                  Marketing, engineering, ops as a system — not chat windows.
+                  Specs, contexts, decisions — the boundaries the harness enforces.
                 </em>
               </span>
             </li>

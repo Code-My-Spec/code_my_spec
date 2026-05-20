@@ -36,6 +36,8 @@
           <% end %>
         </div>
 
+        <Layouts.install_signature :if={@content.content_type == :blog} />
+
         <footer class="mt-12 pt-8 border-t border-base-300">
           <div class="alert alert-info">
             <div>

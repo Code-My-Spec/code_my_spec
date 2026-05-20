@@ -60,6 +60,8 @@
           <% end %>
         </div>
 
+        <Layouts.install_signature :if={@content.content_type == :blog} />
+
         <!-- Tags at the bottom -->
         <div :if={!Enum.empty?(@tags)} class="mt-8 flex gap-2 flex-wrap">
           <span :for={tag <- @tags} class="badge badge-primary">

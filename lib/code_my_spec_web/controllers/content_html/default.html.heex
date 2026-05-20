@@ -34,6 +34,8 @@
         </div>
       <% end %>
     </div>
+
+    <Layouts.install_signature :if={@content.content_type == :blog} />
   </article>
 
   <script>

@@ -5,10 +5,10 @@ defmodule CodeMySpecWeb.PageController do
     meta = %{
       page_title: "CodeMySpec — AI Development for Engineers Who Care About the Codebase",
       meta_description:
-        "Phoenix-native AI development harness for technical founders and Elixir agencies. Specs, code, tests, verification — end to end. BYO model, BYO keys, no token markup.",
+        "Phoenix-native AI development harness for engineer-founders and Elixir agencies. Specs, code, tests, verification — end to end. BYO model, BYO keys, no token markup.",
       og_title: "CodeMySpec — AI Development for Engineers Who Care About the Codebase",
       og_description:
-        "Built by a solo founder, for technical founders shipping their own products and Elixir agencies shipping client work. The full Phoenix lifecycle — specs, code, tests, verification — without LLM-generated slop. Bring your own agent, your own model, your own keys.",
+        "Built by a solo founder, for engineer-founders shipping their own products and Elixir agencies shipping client work. The full Phoenix lifecycle — specs, code, tests, verification — without LLM-generated slop. Bring your own agent, your own model, your own keys.",
       canonical_url: "https://codemyspec.com"
     }
 
