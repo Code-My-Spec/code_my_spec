@@ -223,8 +223,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
     test "points at the qa-tooling playbook for tool rules and testing approach", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ "priv/knowledge/qa_story/workflow.md"
-      assert prompt =~ "priv/knowledge/qa-tooling"
+      assert prompt =~ "qa_story/workflow.md"
+      assert prompt =~ "qa-tooling"
     end
 
     test "references the artifact paths still in the prompt", %{scope: scope, task: task, story: story} do

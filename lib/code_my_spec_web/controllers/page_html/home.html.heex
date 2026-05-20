@@ -5,53 +5,79 @@
     <div class="max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-[1.1fr_1fr] gap-14 items-start">
       <div>
         <div class="flex items-center gap-4 mb-7 font-mono text-[11px] uppercase tracking-[0.2em] text-base-content/40">
-          <span class="border border-primary/30 text-primary px-2.5 py-1 chamfer-sm">▸ 00 · the_harness_platform</span>
+          <span class="border border-primary/30 text-primary px-2.5 py-1 chamfer-sm">▸ the_harness_layer</span>
           <span class="text-primary">●</span><span>v0.9 · early_access</span>
           <span class="animate-pulse">_</span>
         </div>
 
         <h1 class="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-[1.02] tracking-tight">
-          Ship a real product.
+          Ship with Claude Code.
           <span class="text-primary">Hold the codebase together.</span>
         </h1>
         <p class="text-lg text-base-content mt-7 max-w-[58ch] leading-relaxed">
-          CodeMySpec is a platform of harnesses for the engineer-founder shipping a real product. Build it. Market it. Support it. Each harness is a Claude Code plugin that turns one of those jobs from chat-window vibes into a system with a cadence. Use one. Use all of them. Add the next when the bottleneck moves.
+          The harness layer for engineers shipping with Claude Code. Specs as the source of truth, BDD scenarios that compile to standard ExUnit, browser QA against the live app. Phoenix-native today, polyglot core via MCP. One <code class="font-mono text-primary">/plugin install</code> away.
         </p>
 
         <div class="mt-9 flex flex-wrap items-center gap-5">
           <a href="#install-section" class="btn btn-primary">
-            ▸ Install a harness
+            ▸ Install the plugin
           </a>
           <a
-            href={ExternalLinks.cal_john()}
+            href={~p"/blog/the-harness-layer"}
             class="font-mono text-sm uppercase tracking-[0.14em] text-base-content border-b border-primary/30 hover:text-primary hover:border-primary transition pb-0.5"
           >
-            Talk to John →
+            Read the harness layer →
           </a>
+        </div>
+
+        <%!-- Inline install snippet — copy without scrolling --%>
+        <div class="mt-7 max-w-[52ch] border border-primary/30 bg-base-200/60 chamfer-sm overflow-hidden">
+          <div class="flex items-stretch">
+            <div class="flex-1 px-3.5 py-2.5 font-mono text-[12px] leading-[1.55] text-base-content/90 min-w-0">
+              <div class="flex gap-2">
+                <span class="text-primary/70 select-none">$</span>
+                <span class="break-all">/plugin marketplace add Code-My-Spec/plugins</span>
+              </div>
+              <div class="flex gap-2">
+                <span class="text-primary/70 select-none">$</span>
+                <span class="break-all">/plugin install codemyspec@codemyspec</span>
+              </div>
+            </div>
+            <button
+              class="copy-btn font-mono text-[10px] uppercase tracking-[0.2em] text-primary border-l border-primary/30 px-3.5 hover:bg-primary hover:text-base-100 transition flex-shrink-0"
+              data-copy={"/plugin marketplace add Code-My-Spec/plugins\n/plugin install codemyspec@codemyspec"}
+              data-event-name="install_command_copy"
+              data-event-harness="codemyspec"
+              data-event-location="homepage_hero"
+              aria-label="Copy install commands"
+            >
+              [ copy ]
+            </button>
+          </div>
         </div>
       </div>
 
-      <%!-- Hero media: founder's day across harnesses --%>
+      <%!-- Hero media: a real /codemyspec session --%>
       <div class="border border-primary/30 bg-base-200 overflow-hidden chamfer-lg shadow-[0_40px_80px_rgba(255,56,56,0.05)] order-first lg:order-none">
         <div class="h-9 flex items-center gap-2 px-3.5 border-b border-primary/30 bg-base-300 font-mono text-[10px] uppercase tracking-[0.2em] text-base-content/50">
           <span class="w-2.5 h-2.5 bg-primary border border-primary/40"></span>
           <span class="w-2.5 h-2.5 border border-primary/40"></span>
           <span class="w-2.5 h-2.5 border border-primary/40"></span>
-          <span class="ml-auto text-primary">~/codemyspec · engineer-founder/day</span>
+          <span class="ml-auto text-primary">~/your-app · /codemyspec · session</span>
         </div>
         <div class="px-6 py-5 font-mono text-[12.5px] leading-[1.7]">
-          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 09:14 · plan the day</div>
-          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-code">/daily-plan</span></div>
-          <div><span class="text-base-content/50">→</span> 3 activities · awareness loop</div>
-          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 10:32 · build the product</div>
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 09:14 · next requirement</div>
+          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-code">get_next_requirement</span></div>
+          <div><span class="text-base-content/50">→</span> context_spec · accounts · ready</div>
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 10:32 · spec → BDD</div>
+          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-spec">start_task three_amigos</span></div>
+          <div><span class="text-base-content/50">→</span> 4 rules · 12 scenarios · linked</div>
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 13:08 · BDD → ExUnit</div>
           <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span>mix spex --continuous</span></div>
           <div><span class="text-base-content/50">→</span> spec · test · code · <span class="text-success">all green</span></div>
-          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 14:08 · market the product</div>
-          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-spec">/marketing-strategy --review</span></div>
-          <div><span class="text-base-content/50">→</span> bottleneck holds · keep shipping</div>
-          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 16:45 · feedback</div>
-          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-bdd">/marketing-stack --validate</span></div>
-          <div><span class="text-base-content/50">→</span> 17/17 healthy</div>
+          <div class="font-bold text-[10px] tracking-[0.22em] uppercase text-primary mt-2.5 mb-1">// 16:45 · live-app QA</div>
+          <div class="flex gap-2.5"><span class="text-primary font-bold">▸</span><span class="text-cms-agent-bdd">start_task qa_journey</span></div>
+          <div><span class="text-base-content/50">→</span> 17/17 healthy · merge</div>
           <div class="flex gap-2.5 mt-2"><span class="text-primary font-bold">▸</span><span class="border-r-2 border-primary animate-pulse">&nbsp;</span></div>
         </div>
       </div>
@@ -67,87 +93,68 @@
       </h2>
       <div class="grid md:grid-cols-2 gap-12 mt-12">
         <p class="text-lg leading-relaxed text-base-content">
-          Engineers and agencies shipping with AI are watching the same thing happen. Refactoring drops 60%. Duplication jumps 48%. The codebase that flew in week one is unmaintainable by month three. The agent is fast. The architecture is decaying at the same rate.
+          <a href="https://www.gitclear.com/recent_ai_developer_productivity_code_quality_research" target="_blank" rel="noopener noreferrer" class="border-b border-primary/40 hover:text-primary transition">GitClear's 211M-line study</a>: refactoring -60%, duplication +48% post-AI. In Phoenix codebases specifically: Copilot suggesting Ruby in Elixir files, ChatGPT regressing 1.7 templates to 1.6 syntax, defensive code fighting let-it-crash, GenServer deadlocks in generated supervision trees. The agent is fast. The architecture is decaying at the same rate.
         </p>
         <p class="text-lg leading-relaxed text-base-content">
           The fix isn't a better prompt or another IDE. It's the
           <strong class="text-base-content font-medium">harness</strong>
-          — the architectural discipline a real engineering team uses to keep work compounding instead of accumulating as tech debt. Specs as the source of truth. Contexts as AI boundaries. Decisions captured where the agent can read them. CodeMySpec gives you that harness, one domain at a time.
+          — the architectural discipline a real engineering team uses to keep work compounding instead of accumulating as tech debt. Specs as the source of truth. Contexts as AI boundaries. Decisions captured where the agent can read them. Verification the agent can't shortcut.
         </p>
       </div>
     </div>
   </section>
 
-  <%!-- ───────────── PLATFORM ───────────── --%>
+  <%!-- ───────────── THE HARNESS ───────────── --%>
   <section class="border-b border-base-300 signal-top bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,_rgba(255,56,56,0.06),_transparent_70%)]">
     <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
-      <.eyebrow idx="02" name="the_platform" />
+      <.eyebrow idx="02" name="the_harness" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
-        Two harnesses today.<br /><span class="text-primary">More as we need them.</span>
+        Specs in. Tests out.<br /><span class="text-primary">Codebase intact.</span>
       </h2>
       <p class="text-lg text-base-content/70 mt-6 max-w-[64ch] leading-relaxed">
-        Built in the open by an engineer-founder who's using each harness as he ships it. CodeMySpec the product was built with
-        <code class="font-mono text-primary">/codemyspec</code> — Phoenix-native today, broader stack support next. Its marketing runs on
-        <code class="font-mono text-cms-agent-bdd">/marketmyspec</code>. The next harness ships when the bottleneck moves.
+        Three layers on one requirement graph. Specs are markdown in your repo. Tests are standard ExUnit. QA is a browser driving the running app. No DSL to learn, no test runner to adopt, no lock-in.
       </p>
 
       <div class="mt-16 grid grid-cols-1 lg:grid-cols-3 gap-[18px]">
-        <%!-- /codemyspec — production --%>
+        <%!-- Spec layer --%>
         <article class="harness-card flex flex-col" style="--ac: var(--color-cms-red);">
-          <div class="font-mono text-[14px] font-bold text-primary mb-1.5">/codemyspec</div>
-          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// engineering harness</div>
-          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4">Build the product.</h3>
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-primary border border-primary/30 px-2.5 py-1 self-start mb-5 inline-flex items-center gap-2.5">
-            <span class="w-1.5 h-1.5 bg-primary inline-block animate-pulse [box-shadow:0_0_8px_var(--color-cms-red)]"></span>
-            ▸ Production
-          </span>
+          <div class="font-mono text-[14px] font-bold text-primary mb-1.5">/spec</div>
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// the spec layer</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4">Specs the agent has to read.</h3>
           <p class="text-[15px] text-base-content/70 leading-relaxed mb-6 flex-1">
-            Specs as the source of truth. Requirements graph. Six subagents. BDD scenarios in standard ExUnit. Browser QA against the running app. Phoenix-native today — contexts as AI boundaries, OTP-aware, let-it-crash respected — broader stack support next. The harness that built this product.
+            Component specs, context specs, ADRs — markdown in
+            <code class="font-mono text-primary text-xs">.code_my_spec/</code>.
+            A requirement graph tracks dependencies and names the next task. Three Amigos sessions turn each acceptance criterion into rules and Given/When/Then scenarios — written before any code is.
+          </p>
+          <a href={~p"/methodology"} class="font-mono text-xs uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 self-start hover:text-base-content transition">
+            → See the methodology
+          </a>
+        </article>
+
+        <%!-- Code layer --%>
+        <article class="harness-card flex flex-col" style="--ac: var(--color-cms-red);">
+          <div class="font-mono text-[14px] font-bold text-primary mb-1.5">/code</div>
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// the code layer</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4">Polyglot core. Phoenix-deep.</h3>
+          <p class="text-[15px] text-base-content/70 leading-relaxed mb-6 flex-1">
+            Six subagents — context architect, schema writer, BDD writer, code writer, fixer, reviewer — each scoped to one slice. The core lifecycle works on any stack via MCP. The Phoenix-deep path adds contexts as AI boundaries, OTP supervision respected, let-it-crash preserved — for the engineers who want their agent to know what a context is.
           </p>
           <a href={~p"/products/code-my-spec"} class="font-mono text-xs uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 self-start hover:text-base-content transition">
-            → See CodeMySpec
+            → See the engineering brief
           </a>
         </article>
 
-        <%!-- /marketmyspec — early access --%>
-        <article class="harness-card flex flex-col" style="--ac: var(--color-cms-agent-bdd);">
-          <div class="font-mono text-[14px] font-bold text-cms-agent-bdd mb-1.5">/marketmyspec</div>
-          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// marketing harness</div>
-          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4">Market the product.</h3>
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-cms-agent-bdd border border-base-300 px-2.5 py-1 self-start mb-5 inline-flex items-center gap-2.5">
-            <span class="w-1.5 h-1.5 bg-cms-agent-bdd inline-block"></span>
-            ▸ Early Access
-          </span>
+        <%!-- Verify layer --%>
+        <article class="harness-card flex flex-col" style="--ac: var(--color-cms-red);">
+          <div class="font-mono text-[14px] font-bold text-primary mb-1.5">/verify</div>
+          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// the verify layer</div>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4">Tests the agent can't fake.</h3>
           <p class="text-[15px] text-base-content/70 leading-relaxed mb-6 flex-1">
-            8-step strategy interview with research agents. A
-            <code class="font-mono text-cms-agent-code">/daily-plan</code>
-            that picks today's three activities. 17 infrastructure recipes. Adapts to any business — granite countertops to B2B SaaS to Phoenix indie. The harness marketing this product right now.
+            BDD scenarios compile to standard ExUnit — no proprietary runner, no DSL. A QA subagent drives the real Phoenix app in a browser and reports what actually broke. <a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents" target="_blank" rel="noopener noreferrer" class="border-b border-primary/40 hover:text-primary transition">Anthropic's research</a> is explicit: the verification standard you set is the verification standard you get. This is the standard.
           </p>
-          <a
-            href="https://marketmyspec.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-mono text-xs uppercase tracking-[0.14em] text-cms-agent-bdd border-b border-cms-agent-bdd pb-0.5 self-start hover:text-base-content transition"
-          >
-            → See MarketMySpec
+          <a href={~p"/blog/agentic-qa-verification"} class="font-mono text-xs uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 self-start hover:text-base-content transition">
+            → How verification works
           </a>
-        </article>
-
-        <%!-- /portmyspec — planned --%>
-        <article class="harness-card flex flex-col opacity-55" style="--ac: var(--color-cms-text-mute);">
-          <div class="font-mono text-[14px] font-bold text-base-content/50 mb-1.5">/portmyspec</div>
-          <div class="font-mono text-[10px] uppercase tracking-[0.22em] text-base-content/50 mb-6">// support harness</div>
-          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-4 text-base-content/60">Support the product.</h3>
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-base-content/50 border border-base-300 px-2.5 py-1 self-start mb-5 inline-flex items-center gap-2.5">
-            <span class="w-1.5 h-1.5 border border-base-content/50 inline-block"></span>
-            ○ Planned
-          </span>
-          <p class="text-[15px] text-base-content/50 leading-relaxed mb-6 flex-1">
-            Coming when the bottleneck moves. Built when 25 customers need it; not before. No date promised, no waitlist — it'll be here when it earns its place.
-          </p>
-          <span class="font-mono text-xs uppercase tracking-[0.14em] text-base-content/50 border-b border-base-content/30 pb-0.5 self-start">
-            → Coming next
-          </span>
         </article>
       </div>
     </div>
@@ -158,10 +165,10 @@
     <div class="max-w-7xl mx-auto px-6 py-24 lg:py-28">
       <.eyebrow idx="03" name="who_its_for" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight">
-        Built for engineers <span class="text-primary">shipping product.</span>
+        Built for engineers <span class="text-primary">who care about the codebase.</span>
       </h2>
       <p class="text-lg text-base-content/70 mt-6 max-w-[64ch] leading-relaxed">
-        If you're an engineer-founder shipping software with nobody else in the building, you're our beachhead. If you run an Elixir agency delivering across multiple clients, the same harnesses become shared artifacts your team and your clients can both inspect — specs in the repo, MCP across the team.
+        If you're a solo technical founder shipping production code with nobody else in the building, you're the primary buyer. If you run an Elixir agency delivering across multiple clients, the same harness becomes a shared artifact — specs in the repo, MCP across the team, contexts as boundaries every engineer respects.
       </p>
 
       <div class="mt-14 grid lg:grid-cols-[1.2fr_1fr] gap-[18px]">
@@ -169,24 +176,24 @@
         <div class="bg-base-200 border border-primary/30 chamfer-lg p-10 flex flex-col relative">
           <span class="absolute top-0 left-0 h-full w-[3px] bg-primary"></span>
           <div class="font-mono text-[11px] uppercase tracking-[0.22em] text-primary mb-5">▸ Primary</div>
-          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-5">Solo engineer-founder</h3>
+          <h3 class="font-heading font-bold text-2xl leading-[1.1] tracking-tight mb-5">Solo technical founder</h3>
           <div class="font-mono text-sm text-base-content/70 mb-5 flex flex-wrap gap-x-3.5 gap-y-2">
             <span class="text-base-content">1 person</span><span class="text-primary">·</span>
-            <span class="text-base-content">4+ jobs</span><span class="text-primary">·</span>
+            <span class="text-base-content">production code</span><span class="text-primary">·</span>
             <span class="text-base-content">already inside Claude Code</span>
           </div>
           <p class="text-[15px] text-base-content/70 leading-relaxed mb-6">
-            Reads code. Ships product. Knows the codebase is starting to slip under AI-generated volume. Wants a marketing system without hiring a CMO. Wants the work to compound instead of evaporating every Monday.
+            Reads code. Ships product. Watches the codebase start to slip under AI-generated volume. Wants the discipline a real engineering team would have without hiring one. Has tried Cursor, Aider, raw Claude Code — past the hype cycle, wants the architecture to compound.
           </p>
           <p class="text-base text-base-content italic border-l-2 border-primary pl-3.5 mb-6 leading-snug">
             "I want to run a software business by myself. The LLM does the labor. I do the thinking."
           </p>
           <a href="#install-section" class="font-mono text-xs uppercase tracking-[0.14em] text-primary border-b border-primary pb-0.5 self-start mt-auto hover:text-base-content transition">
-            Start with one harness →
+            Install the plugin →
           </a>
         </div>
 
-        <%!-- Small team --%>
+        <%!-- Agency --%>
         <div class="bg-base-300 border border-base-300 chamfer-lg p-10 flex flex-col relative" style="--ac: var(--color-cms-agent-bdd);">
           <span class="absolute top-0 left-0 h-full w-[3px] bg-cms-agent-bdd"></span>
           <div class="font-mono text-[11px] uppercase tracking-[0.22em] text-cms-agent-bdd mb-5">▸ Secondary</div>
@@ -197,7 +204,7 @@
             <span class="text-base-content">CTO sets the AI policy</span>
           </div>
           <p class="text-[15px] text-base-content/70 leading-relaxed mb-6">
-            Phoenix contexts as shared boundaries. Specs as artifacts the engineer hands the client. MCP servers exposing the same source of truth to every Claude Code session on the team. Onboarding is high-touch today by design.
+            Phoenix contexts as shared boundaries across client codebases. Specs as artifacts the team hands the client. One MCP server, every engineer's Claude Code session reading the same graph. The defensible answer when a client asks how you ship AI-assisted code safely. CTO-led adoption, one project at a time — paid team tier lands at 1.0; early-access deployments now.
           </p>
           <p class="text-base text-base-content italic border-l-2 border-cms-agent-bdd pl-3.5 mb-6 leading-snug">
             "I need a defensible answer when a client asks how we prevent AI from ruining the codebase."
@@ -230,7 +237,7 @@
             Multi-context Phoenix app. Phoenix contexts, Ecto schemas, OTP supervision, ExUnit. Google Ads, GA, Facebook, QuickBooks integrations. Built end to end with
             <code class="font-mono text-primary text-xs bg-primary/[0.06] border border-primary/20 px-1.5 py-0.5">/codemyspec</code>. The codebase is the case study.
           </p>
-          <div class="grid grid-cols-3 gap-3.5 border-t border-primary/20 pt-5 mb-5">
+          <div class="grid grid-cols-3 gap-3.5 border-t border-primary/20 pt-5 mb-3">
             <div>
               <div class="font-heading font-bold text-2xl text-primary tracking-tight leading-none [text-shadow:0_0_14px_rgba(255,56,56,0.3)]">40</div>
               <div class="font-mono text-[10px] uppercase tracking-[0.18em] text-base-content/50 mt-1">commits</div>
@@ -244,6 +251,9 @@
               <div class="font-mono text-[10px] uppercase tracking-[0.18em] text-base-content/50 mt-1">integrations</div>
             </div>
           </div>
+          <p class="text-xs text-base-content/60 leading-relaxed mb-5 italic">
+            Multi-context Phoenix app shipped end-to-end in 13 days. 5 SaaS integrations (Google Ads, GA, Facebook, QuickBooks, more). Every line written through <code class="font-mono text-primary text-[11px]">/codemyspec</code>.
+          </p>
           <a href="https://github.com/Code-My-Spec/metricflow" class="font-mono text-xs uppercase tracking-[0.14em] text-base-content border-b border-primary pb-0.5 self-start hover:text-primary transition">
             ▸ github.com/Code-My-Spec/metricflow
           </a>
@@ -259,8 +269,8 @@
           <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
             Production client app built with the CodeMySpec methodology. In UAT March 2026. Real customers, real uptime.
           </p>
-          <a href="#" class="font-mono text-xs uppercase tracking-[0.14em] text-base-content border-b border-primary pb-0.5 self-start hover:text-primary transition">
-            ▸ Case study
+          <a href="https://fuellytics.app/users/log-in" target="_blank" rel="noopener noreferrer" class="font-mono text-xs uppercase tracking-[0.14em] text-base-content border-b border-primary pb-0.5 self-start hover:text-primary transition">
+            ▸ fuellytics.app
           </a>
         </div>
 
@@ -272,7 +282,9 @@
           </div>
           <h3 class="font-heading font-bold text-[22px] leading-tight tracking-tight mb-4">codemyspec.com itself</h3>
           <p class="text-sm text-base-content/70 leading-relaxed mb-5 flex-1">
-            This site, the product pages, the methodology page, the daily Reddit comments — all output of the harness platform marketing this site. The marketing harness is marketing the marketing harness.
+            The harness built the harness. This site, the LiveView pages, the blog, the embedding pipeline — all written by
+            <code class="font-mono text-primary text-xs">/codemyspec</code>. Also built
+            <a href="https://marketmyspec.com" target="_blank" rel="noopener noreferrer" class="text-base-content border-b border-primary/40 hover:text-primary transition">marketmyspec.com ↗</a>.
           </p>
           <a href="https://github.com/Code-My-Spec" class="font-mono text-xs uppercase tracking-[0.14em] text-base-content border-b border-primary pb-0.5 self-start hover:text-primary transition">
             ▸ See the repo
@@ -289,7 +301,7 @@
           <a href={~p"/author/john-davenport"} class="text-base-content border-b border-primary hover:text-primary transition">
             John Davenport
           </a>
-          — six years on r/elixir, working Phoenix engineer, taught himself entrepreneurship from the internet. Building the engineering harness he needs to ship. Building the marketing harness he needs to find users. Open. In real time.
+          — six years on r/elixir, working Phoenix engineer. Building the harness he needs to ship his own apps. Open. In real time.
         </div>
       </div>
     </div>
@@ -312,14 +324,14 @@
           $0<span class="text-base-content/50 text-lg ml-2">/ month</span>
         </h3>
         <p class="text-base text-base-content/70 leading-relaxed">
-          Each harness is free during early access. Server-side platform features will be priced per-seat once we hit 1.0. You bring your own model provider and keys — we never charge a markup on your tokens. Same arrangement on every harness.
+          Plugin stays free forever. Team-tier platform features (multi-engineer MCP, persistence, audit log) will be priced per-seat post-1.0. BYOK throughout — we never mark up your tokens.
         </p>
         <ul class="mt-6 pt-6 border-t border-primary/20 grid gap-3 list-none p-0">
           <%= for item <- [
-            "Unlimited specs, daily plans, BDD scenarios",
-            "All harnesses · all skills · all recipes",
+            "Unlimited specs, requirements, BDD scenarios",
+            "All six subagents · full lifecycle · live-app QA",
             "BYO model · BYO keys · no token markup",
-            "Specs and artifacts live in your repo · no lock-in",
+            "Specs and tests live in your repo · no lock-in",
             "Works with Claude Code today"
           ] do %>
             <li class="font-mono text-[13px] text-base-content flex items-center gap-3.5">
@@ -337,27 +349,29 @@
     <div class="max-w-3xl mx-auto px-6 py-24 lg:py-28">
       <.eyebrow idx="06" name="objections" />
       <h2 class="font-heading font-bold text-3xl md:text-5xl leading-[1.08] tracking-tight mb-3">
-        Questions founders <span class="text-primary">actually ask.</span>
+        Questions engineers <span class="text-primary">actually ask.</span>
       </h2>
 
       <div class="mt-12 border-t border-primary/20">
         <%= for {{idx, q, a}, open?} <- Enum.with_index([
-          {"Q.01", "Is this a CodeMySpec thing or a different product?",
-           "CodeMySpec is the company and the first product — the engineering harness. MarketMySpec is the second product — the marketing harness, now living at its own domain (marketmyspec.com). Both run under one platform: same Claude Code plugin model, same BYO-model commitment, same recursive proof. Future harnesses follow the same pattern."},
-          {"Q.02", "I'm a technical founder, not a software business owner. Does this still work?",
-           "That's exactly who we built it for. The harnesses give one person the discipline a real team would have without making you hire one. The engineer-founder is the primary audience — the person who can read the specs, ship the product, and is now also the marketer, the support team, and the on-call engineer."},
+          {"Q.01", "Is this the harness from /blog/the-harness-layer?",
+           "Yes. This is the harness — specs, requirement graph, BDD scenarios in standard ExUnit, browser QA. Phoenix-native today, polyglot core via Claude Code and MCP."},
+          {"Q.02", "I'm a solo technical founder, not on an engineering team. Does this still work?",
+           "That's exactly who it's built for. The harness gives one person the architectural discipline a real team would have without making you hire one. The engineer-founder is the primary audience — the person who can read the specs, ship the product, and is on call when it breaks at 2am."},
           {"Q.03", "I run an Elixir agency. Does this fit our delivery model?",
-           "Yes — specs as deliverables, MCP servers exposing one source of truth to every engineer's Claude Code, Phoenix contexts as shared boundaries across client projects. CTO-led adoption, one project at a time. Onboarding is high-touch today by design — book time with John."},
-          {"Q.04", "Why two products instead of one?",
-           "Different bottlenecks. Engineering and marketing are completely separate concerns; mashing them into one product would help neither. Same brand, same harness pattern, separate scope. You can install just the one you need."},
+           ~s|Yes — specs as deliverables, MCP servers exposing one source of truth to every engineer's Claude Code, Phoenix contexts as shared boundaries across client projects. CTO-led adoption, one project at a time. Onboarding is high-touch today by design — <a href="https://cal.com/john-s10-davenport" class="border-b border-primary hover:text-primary transition">book time with John</a>.|},
+          {"Q.04", "How is this different from Kiro / OpenSpec / GitHub Spec Kit?",
+           "Those tools generate specs and hand off to other agents to write the code. CodeMySpec owns the whole lifecycle on one requirement graph — specs through architecture through code through BDD scenarios through live-app verification. The spec, the test, and the QA evidence are all linked to the same node. No hand-off, no drift."},
           {"Q.05", "Is this open source?",
-           "Specs are markdown in your repo. Generated tests are standard ExUnit — no proprietary test runner, no DSL you have to learn. The Claude Code plugin code is open and inspectable. The platform service that backs team-features and persistence is closed-source, paid post-1.0."},
+           "Plugin is free, open, and inspectable. Specs and tests are markdown in your repo — no lock-in. Multi-engineer team features (persistence, audit log, shared MCP) will be priced per-seat post-1.0. BYOK throughout."},
           {"Q.06", "What if you build something better tomorrow?",
-           "You own the artifacts. Specs, tests, marketing files, daily plans — all live in your repo as markdown. No lock-in. The platform brings continuity across them; you can always walk."},
+           "You own the artifacts. Specs, tests, ADRs, requirements — all live in your repo as markdown. No lock-in. The platform brings continuity across them; you can always walk."},
           {"Q.07", "What stack do I need to use this?",
-           "The engineering harness is Phoenix-native today, by design. Phoenix contexts are already the right AI boundary — generic AI tools blow through them, generate Ruby syntax in Elixir files, regress to Phoenix 1.6 templates in 1.7 codebases, and add defensive code that fights let-it-crash. CodeMySpec respects how Phoenix is actually built. Other stack support on the roadmap. The marketing harness is stack-agnostic — it's about your business, not your codebase."},
+           "The Phoenix-deep path is the wedge — by design. Phoenix contexts are already the right AI boundary; generic AI tools blow through them, generate Ruby syntax in Elixir files, regress 1.7 templates to 1.6, and add defensive code that fights let-it-crash. CodeMySpec respects how Phoenix is actually built. The polyglot core (specs, requirement graph, BDD, browser QA) works on any stack via MCP; other stack-deep paths are on the roadmap."},
           {"Q.08", "How much time per week?",
-           "5-10 hours/week to keep both harnesses running well. Heavier the first month — strategy interviews, infrastructure wiring, the spec round-trip dialed in. Lighter after that. Three activities a day from /daily-plan is the cap; the harness fights you if you try to do more."}
+           "5-10 hours/week to keep the harness running well. Heavier the first month — Three Amigos sessions, the spec round-trip dialed in, QA briefs written. Lighter after that. The graph fights you if you try to ship faster than you can verify."},
+          {"Q.09", "Does my code or my client's code leave my machine?",
+           "The plugin runs locally inside Claude Code. Your code, your specs, and your model API calls go directly from your terminal to your model provider — never through CodeMySpec servers. We collect plugin usage telemetry (no code content) to improve the product. Specs and tests live in your repo, in markdown."}
         ]) |> Enum.map(fn {item, i} -> {item, i == 0} end) do %>
           <details class="border-b border-primary/20 group" open={open?}>
             <summary class="cursor-pointer list-none py-7 flex justify-between items-center gap-6 font-mono text-[15px] font-medium hover:text-primary transition">
@@ -369,7 +383,12 @@
               </span>
             </summary>
             <div class="pb-7 text-base text-base-content/70 leading-relaxed max-w-[72ch]">
-              {a}
+              <%!--
+                Phoenix.HTML.raw is safe here: FAQ content is author-controlled
+                at compile time. If this ever moves to dynamic source, switch
+                to a markdown renderer or escape.
+              --%>
+              {Phoenix.HTML.raw(a)}
             </div>
           </details>
         <% end %>
@@ -385,29 +404,24 @@
     <div class="max-w-7xl mx-auto px-6 py-28 lg:py-32">
       <.eyebrow idx="07" name="install" />
       <h2 class="font-heading font-bold text-4xl md:text-6xl leading-[1.02] tracking-tight max-w-[14ch]">
-        Pick a harness.<br /><span class="text-primary">Install it.</span>
+        Install it.<br /><span class="text-primary">See if it holds.</span>
       </h2>
-      <p class="text-lg text-base-content mt-6 max-w-[46ch] leading-relaxed">
-        Two commands. No signup gate. The full platform is one Claude Code plugin install away.
+      <p class="text-lg text-base-content mt-6 max-w-[52ch] leading-relaxed">
+        Two commands. No signup gate. No credit card. The plugin is open and inspectable; specs and tests live in your repo from minute one.
       </p>
 
-      <div class="mt-14 grid lg:grid-cols-2 gap-[18px]">
+      <div class="mt-14 max-w-2xl">
         <.install_card
           harness="codemyspec"
           accent="red"
           brief_url={~p"/products/code-my-spec"}
           brief_label="Read the engineering brief →"
-        />
-        <.install_card
-          harness="marketmyspec"
-          accent="bdd"
-          brief_url="https://marketmyspec.com"
-          brief_label="See marketmyspec.com →"
+          location="homepage_final_cta"
         />
       </div>
 
-      <p class="mt-10 text-center font-mono text-sm uppercase tracking-[0.14em] text-base-content/70">
-        Not sure where to start?
+      <p class="mt-10 font-mono text-sm uppercase tracking-[0.14em] text-base-content/70">
+        Running an agency or evaluating for a team?
         <a href={ExternalLinks.cal_john()} class="text-primary border border-primary px-4 py-2 ml-2.5 chamfer-sm hover:bg-primary hover:text-base-100 transition">
           ▸ Talk to John
         </a>

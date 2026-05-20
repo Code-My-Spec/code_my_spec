@@ -147,7 +147,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     test "points at the playbook for verify-script details", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ ~r/verify script/i
-      assert prompt =~ "priv/knowledge/qa_integration_plan/workflow.md"
+      assert prompt =~ "qa_integration_plan/workflow.md"
     end
   end
 

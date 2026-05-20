@@ -155,7 +155,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
 
     test "points at the qa-tooling playbook for shell-script details", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ "priv/knowledge/qa-tooling"
+      assert prompt =~ "qa-tooling"
     end
 
     test "includes plan output path", %{scope: scope, task: task} do

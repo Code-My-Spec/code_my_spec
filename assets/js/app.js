@@ -70,19 +70,40 @@ liveSocket.connect()
 // Used by /codemyspec and /marketmyspec install cards across the marketing
 // pages. Delegation on document handles initial render, LiveView patches,
 // and pages added later — no per-page rebinding needed.
+//
+// GA4: if the button has `data-event-name`, fire that event on successful
+// copy. Any other `data-event-*` attributes become event params (kebab → snake).
+// Example: `data-event-name="install_command_copy" data-event-location="homepage_hero"`
+// fires `gtag('event', 'install_command_copy', { location: 'homepage_hero' })`.
 document.addEventListener("click", (ev) => {
   const btn = ev.target.closest(".copy-btn[data-copy]");
   if (!btn) return;
   const text = btn.getAttribute("data-copy");
   const original = btn.textContent;
   const restore = () => { btn.textContent = original; };
-  const done = () => { btn.textContent = "[ ✓ COPIED ]"; setTimeout(restore, 1800); };
+  const done = () => {
+    btn.textContent = "[ ✓ COPIED ]";
+    setTimeout(restore, 1800);
+    fireCopyEvent(btn);
+  };
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(done, () => fallback(text, done));
   } else {
     fallback(text, done);
   }
 });
+
+function fireCopyEvent(btn) {
+  const name = btn.getAttribute("data-event-name");
+  if (!name || typeof gtag === "undefined") return;
+  const params = {};
+  for (const attr of btn.attributes) {
+    if (attr.name.startsWith("data-event-") && attr.name !== "data-event-name") {
+      params[attr.name.replace("data-event-", "").replace(/-/g, "_")] = attr.value;
+    }
+  }
+  try { gtag("event", name, params); } catch (_) {}
+}
 
 function fallback(text, done) {
   const ta = document.createElement("textarea");

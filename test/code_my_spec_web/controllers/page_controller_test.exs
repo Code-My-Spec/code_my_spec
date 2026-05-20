@@ -5,10 +5,10 @@ defmodule CodeMySpecWeb.PageControllerTest do
     conn = get(conn, ~p"/")
     body = html_response(conn, 200)
 
-    # Hero copy from the current home.html.heex (post-2026-05-07 revert).
-    assert body =~ "Ship a real product"
+    # Hero copy from the current home.html.heex (post-2026-05-20 single-product CMS focus).
+    assert body =~ "Ship with Claude Code"
     assert body =~ "Hold the codebase together"
-    assert body =~ "platform of harnesses for the engineer-founder"
+    assert body =~ "harness layer for engineers shipping with Claude Code"
   end
 
   test "home page links to the install section", %{conn: conn} do

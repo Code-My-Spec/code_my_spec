@@ -69,6 +69,10 @@ defmodule CodeMySpecWeb.MarketingComponents do
     default: nil,
     doc: "small left-side label in the footer (e.g. \"claude code · v1.0\")"
 
+  attr :location, :string,
+    default: "unknown",
+    doc: "GA4 event_location dimension for install_command_copy (e.g. \"homepage_final_cta\", \"product_page_top\")"
+
   def install_card(assigns) do
     assigns =
       assigns
@@ -98,6 +102,9 @@ defmodule CodeMySpecWeb.MarketingComponents do
             @c.hover_bg
           ]}
           data-copy={Enum.join(@commands, "\n")}
+          data-event-name="install_command_copy"
+          data-event-harness={@harness}
+          data-event-location={@location}
         >
           [ copy ]
         </button>
