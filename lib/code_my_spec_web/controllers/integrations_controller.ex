@@ -131,13 +131,9 @@ defmodule CodeMySpecWeb.IntegrationsController do
       Integrations.save_integration(scope, provider, token, normalized_user)
 
       conn =
-        if status == :new do
-          conn
-          |> put_session(:user_return_to, ~p"/app")
-          |> put_flash(:info, "User confirmed successfully.")
-        else
-          conn
-        end
+        conn
+        |> put_session(:user_return_to, ~p"/app")
+        |> maybe_flash_confirmed(status)
 
       UserAuth.log_in_user(conn, user, %{"remember_me" => "true"})
     else
@@ -234,6 +230,11 @@ defmodule CodeMySpecWeb.IntegrationsController do
   defp format_oauth_error(_params, _reason) do
     "Failed to complete OAuth flow. Please try again."
   end
+
+  defp maybe_flash_confirmed(conn, :new),
+    do: put_flash(conn, :info, "User confirmed successfully.")
+
+  defp maybe_flash_confirmed(conn, _), do: conn
 
   defp provider_name(:github), do: "GitHub"
   defp provider_name(:gitlab), do: "GitLab"
