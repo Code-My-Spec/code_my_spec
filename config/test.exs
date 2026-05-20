@@ -16,12 +16,13 @@ config :code_my_spec, CodeMySpec.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
+# Endpoint runs with server: true so Wallaby (browser-driven e2e tests)
+# can hit real HTTP. Phoenix.ConnTest / LiveViewTest don't go through HTTP,
+# so this doesn't affect non-e2e tests.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
-  server: false
+  server: true
 
 # Local web endpoint — needed for spex tests that drive the local UI.
 # server: false, runs as a started-but-quiet endpoint so LiveViewTest can use it.
@@ -48,9 +49,27 @@ config :phoenix_live_view,
 
 config :code_my_spec,
   env: :test,
+  sql_sandbox: true,
   github_client_id: "test_github_client_id",
   github_client_secret: "test_github_client_secret",
   git_impl_module: CodeMySpec.Support.TestAdapter,
   environment: CodeMySpec.Support.RecordingEnvironment,
   embeddings_backend: CodeMySpec.Embeddings.TestBackend,
   issues_remote_client: CodeMySpec.Issues.RemoteClientStub
+
+# Wallaby: drive Chromium via chromedriver. Tests must be tagged
+# `@moduletag :e2e` (excluded by default in test_helper.exs); opt in with
+# `mix test --only e2e`.
+config :wallaby,
+  driver: Wallaby.Chrome,
+  chromedriver: [
+    path: System.get_env("WALLABY_CHROMEDRIVER_PATH", "/opt/homebrew/bin/chromedriver"),
+    binary:
+      System.get_env(
+        "WALLABY_CHROME_BINARY",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      ),
+    headless: System.get_env("WALLABY_HEADLESS", "true") == "true"
+  ],
+  otp_app: :code_my_spec,
+  base_url: "http://localhost:4002"

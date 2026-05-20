@@ -1,6 +1,26 @@
 ExUnit.start(exclude: [:scenario, :e2e, :pending, :record_google_login_shape, :record_github_login_shape])
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 
+# Auto-load envs/test.env (gitignored) for e2e tests so OAuth client_id /
+# secret / test-account creds are available without manual sourcing.
+# Existing process env wins (you can override per-run).
+if File.exists?("envs/test.env") do
+  Dotenvy.source(["envs/test.env"], side_effect: false)
+  |> case do
+    {:ok, vars} ->
+      Enum.each(vars, fn {k, v} ->
+        if System.get_env(k) in [nil, ""], do: System.put_env(k, v)
+      end)
+
+    _ ->
+      :ok
+  end
+end
+
+# Wallaby for browser-driven e2e tests. Cheap to start — chromedriver only
+# spins up when a feature actually requests a session.
+{:ok, _} = Application.ensure_all_started(:wallaby)
+
 case System.get_env("LOG_LEVEL") do
   nil -> :warning
   level -> Logger.configure(level: String.to_existing_atom(level))

@@ -48,6 +48,10 @@ defmodule CodeMySpecWeb.Endpoint do
     cookie_key: "request_logger"
   )
 
+  if Application.compile_env(:code_my_spec, :sql_sandbox) do
+    plug(Phoenix.Ecto.SQL.Sandbox, sandbox: Ecto.Adapters.SQL.Sandbox)
+  end
+
   plug(Plug.RequestId)
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])
 
