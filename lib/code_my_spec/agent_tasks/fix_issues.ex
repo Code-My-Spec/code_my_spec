@@ -6,7 +6,6 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   """
 
   alias CodeMySpec.{Issues, Paths}
-  alias CodeMySpec.Issues.Issue
 
   def orchestrate(_node) do
     "Resolve every accepted QA issue by reading, fixing, and calling " <>
@@ -19,8 +18,8 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   Read accepted issues and build a fix prompt. Returns `{:ok, prompt_text}`.
   """
   def command(scope, _task) do
-    unresolved = Issues.list_by_status(scope, :accepted)
-    {:ok, build_prompt(unresolved)}
+    count = scope |> Issues.list_by_status(:accepted) |> length()
+    {:ok, build_prompt(count)}
   end
 
   @doc """
@@ -45,7 +44,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   # pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
-  defp build_prompt([]) do
+  defp build_prompt(0) do
     """
     # Fix Issues
 
@@ -53,25 +52,18 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     """
   end
 
-  defp build_prompt(unresolved) do
-    grouped_by_scope =
-      unresolved
-      |> Enum.group_by(& &1.scope)
-      |> Enum.sort_by(fn {scope, _} -> to_string(scope) end)
-
-    issues_text =
-      Enum.map_join(grouped_by_scope, "\n\n", fn {scope, group} ->
-        sorted = Enum.sort_by(group, &Issue.severity_index(&1.severity))
-        items = format_issue_items(sorted)
-
-        "## Scope: #{scope} (#{length(group)})\n\n#{items}"
-      end)
-
+  defp build_prompt(count) do
     """
     # Fix Issues
 
     You are fixing every accepted QA issue. The working set is whatever triage
     promoted to `accepted`; there is no severity filter at this layer.
+
+    There are **#{count} accepted issue(s)** to work through. Discover them
+    via `list_issues` (status: "accepted") — DO NOT expect the prompt to
+    embed the backlog; on a large backlog the bodies overflow the response
+    window. Read each issue's detail JIT with `get_issue` only when you're
+    about to fix it.
 
     ## Read the playbook
 
@@ -88,44 +80,13 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     ## MCP tools
 
-    - `get_issue` — read full issue details by id.
+    - `list_issues` — discover the accepted backlog (status: "accepted").
+    - `get_issue` — read full issue details by id, one at a time.
     - `resolve_issue` — mark resolved with `id` + `resolution` (required
       after every fix).
-    - `list_issues` — re-check the accepted list.
-
-    ## Unresolved issues
-
-    #{issues_text}
-
-    ## Directory
-
-    Accepted issues: `#{Paths.issues_accepted_dir()}/`
 
     Fix each issue, call `resolve_issue`, run `mix test` to verify nothing
     else broke, then stop.
     """
-  end
-
-  defp format_issue_items(issues) do
-    Enum.map_join(issues, "\n\n", fn issue ->
-      source_ref = if issue.source_path, do: "**Source:** `#{issue.source_path}`\n", else: ""
-
-      qa_dir_ref =
-        if issue.story_id,
-          do: "**QA evidence:** `#{Paths.qa_dir()}/#{issue.story_id}/`\n",
-          else: ""
-
-      """
-      ### Issue #{issue.id}: #{issue.title}
-
-      #{source_ref}#{qa_dir_ref}\
-      - **Title:** #{issue.title}
-      - **Severity:** #{issue.severity}
-      - **Scope:** #{issue.scope || :app}
-      - **Story:** #{issue.story_id || "N/A"}
-
-      #{issue.description}\
-      """
-    end)
   end
 end
