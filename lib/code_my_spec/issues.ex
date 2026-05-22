@@ -138,6 +138,42 @@ defmodule CodeMySpec.Issues do
   end
 
   @doc """
+  Update non-status fields on an existing issue (severity, story_id,
+  category, source_path). Status transitions go through
+  `accept_issue` / `dismiss_issue` / `resolve_issue` — this is the
+  catch-all for everything else.
+
+  Pushes to the remote server first when the issue is mirrored
+  (same fail-loud pattern as the disposition flow), then updates
+  local. Local-only issues (`synced_from_server == false`) bypass
+  the remote push.
+  """
+  def update_issue(%Scope{} = scope, %Issue{} = issue, attrs) do
+    with :ok <- sync_update_to_remote(scope, issue, attrs),
+         {:ok, updated} <- IssuesRepository.update_attributes(issue, attrs) do
+      broadcast(scope, {:updated, updated})
+      {:ok, updated}
+    end
+  end
+
+  defp sync_update_to_remote(_scope, %Issue{synced_from_server: false}, _attrs), do: :ok
+
+  defp sync_update_to_remote(scope, %Issue{} = issue, attrs) do
+    case remote_client().update_issue(scope, issue.id, attrs) do
+      {:ok, _} ->
+        :ok
+
+      {:error, :not_authenticated} ->
+        {:error,
+         "Cannot reach the issues server: not authenticated. Sign in and retry the update."}
+
+      {:error, reason} ->
+        {:error,
+         "Cannot reach the issues server: #{inspect(reason)}. Retry when connectivity is restored."}
+    end
+  end
+
+  @doc """
   Pulls all incoming issues from the remote server and upserts them
   into the local DB.
 

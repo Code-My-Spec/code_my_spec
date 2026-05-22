@@ -100,6 +100,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)
   component(CodeMySpec.McpServers.Issues.Tools.DismissIssue)
   component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.UpdateIssue)
 
   # Personas — account-scoped persona library
   component(CodeMySpec.McpServers.Personas.Tools.CreatePersona)

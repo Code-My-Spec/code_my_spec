@@ -127,6 +127,23 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     )
   end
 
+  @doc """
+  Update non-status fields on an existing issue (severity, story_id,
+  category, source_path). Goes through the generic `Issue.changeset`
+  so the full validation set applies; status transitions stay on
+  the `update_status` path with its tighter rules.
+  """
+  def update_attributes(%Issue{} = issue, attrs) do
+    safe_attrs =
+      attrs
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.take(["severity", "story_id", "category", "source_path"])
+
+    issue
+    |> Issue.changeset(safe_attrs)
+    |> Repo.update()
+  end
+
   def update_status(%Issue{} = issue, status, resolution \\ nil, opts \\ []) do
     attrs = %{status: status, resolution: resolution}
 
