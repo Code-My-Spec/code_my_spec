@@ -732,7 +732,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "BDD spec files exist for story",
         prerequisites: [5],
-        execution_type: :sub_agent
+        execution_type: :main_agent
       }),
       new!(%{
         id: 3,
@@ -743,7 +743,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "BDD specs pass",
         prerequisites: [2],
-        execution_type: :sub_agent
+        execution_type: :main_agent
       }),
       new!(%{
         id: 4,

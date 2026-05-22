@@ -323,6 +323,15 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     |> Response.text("Criterion deleted (ID: #{criterion.id}): #{criterion.description}")
   end
 
+  def criterion_moved_response(criterion, from_story, to_story) do
+    data = criterion_data(criterion)
+
+    summary =
+      "Criterion moved (ID: #{criterion.id}): \"#{from_story.title}\" (ID: #{from_story.id}) -> \"#{to_story.title}\" (ID: #{to_story.id})"
+
+    hybrid_response(summary, data)
+  end
+
   def criterion_not_found_error do
     Response.tool()
     |> Response.error("Criterion not found. Use get_story to see criteria IDs.")
