@@ -50,9 +50,26 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
 
   defp apply_tag(scope, story, story_id, tag) do
     case Tags.add_tag(scope, story, tag) do
-      {:ok, _tagging} -> {:ok, story_id}
-      # Already tagged is OK
-      {:error, _changeset} -> {:ok, story_id}
+      {:ok, _tagging} ->
+        {:ok, story_id}
+
+      # Unique-constraint violation (already tagged) is the only
+      # acceptable error here. Anything else — FK violations, type
+      # errors, etc. — must surface so the caller knows the tag
+      # didn't land.
+      {:error, %Ecto.Changeset{errors: errors} = changeset} ->
+        if unique_constraint?(errors) do
+          {:ok, story_id}
+        else
+          {:error, story_id, changeset}
+        end
     end
+  end
+
+  defp unique_constraint?(errors) do
+    Enum.any?(errors, fn
+      {_field, {_msg, opts}} -> Keyword.get(opts, :constraint) == :unique
+      _ -> false
+    end)
   end
 end

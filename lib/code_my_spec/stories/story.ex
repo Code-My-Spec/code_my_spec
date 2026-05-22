@@ -13,7 +13,7 @@ defmodule CodeMySpec.Stories.Story do
           acceptance_criteria: [String.t()],
           criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
           tags: [CodeMySpec.Tags.Tag.t()] | Ecto.Association.NotLoaded.t(),
-          status: :in_progress | :completed | :dirty,
+          status: :active | :in_progress | :completed | :dirty,
           priority: integer() | nil,
           locked_at: DateTime.t() | nil,
           lock_expires_at: DateTime.t() | nil,
@@ -43,7 +43,11 @@ defmodule CodeMySpec.Stories.Story do
     field :title, :string
     field :description, :string
     field :acceptance_criteria, {:array, :string}
-    field :status, Ecto.Enum, values: [:in_progress, :completed, :dirty]
+    # `:active` is a legacy status that predates the narrowed enum
+    # (`:in_progress | :completed | :dirty`). Accepted on read to
+    # tolerate stale rows on remote servers; new writes use the
+    # narrowed values.
+    field :status, Ecto.Enum, values: [:active, :in_progress, :completed, :dirty]
     field :priority, :integer
     field :locked_at, :utc_datetime
     field :lock_expires_at, :utc_datetime
