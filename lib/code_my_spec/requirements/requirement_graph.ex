@@ -106,10 +106,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     satisfaction_map =
       Map.new(nodes, fn n -> {node_key(n), n.satisfied} end)
 
-    incoming =
-      Enum.reduce(edges, %{}, fn edge, acc ->
-        Map.update(acc, edge.to, [edge.from], &[edge.from | &1])
-      end)
+    blocked_descendants = compute_blocked_descendants(edges, satisfaction_map)
 
     component_priority = build_component_priority_map(ctx)
 
@@ -118,7 +115,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       not n.satisfied and
         not is_nil(n.satisfied_by) and
         not untethered_component?(n, component_priority) and
-        incoming_prereqs_satisfied?(n, incoming, satisfaction_map)
+        not MapSet.member?(blocked_descendants, node_key(n))
     end)
     |> sort_by_story_priority(ctx)
   end
@@ -199,9 +196,47 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         []
 
       surface ->
-        kickoff_components = transitive_dep_closure(surface, ctx)
+        kickoff_components =
+          surface
+          |> transitive_dep_closure(ctx)
+          |> expand_with_parent_chain_descendants(ctx)
+
         kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
         kickoff_edges ++ surface_exit_edge(surface, story, ctx, config)
+    end
+  end
+
+  # Expand a list of components to include every parent_component_id
+  # descendant. Priority cascades through parent chains (story 561
+  # rule f24fa177, criterion 6259); the kickoff fan-out should mirror
+  # that cascade so descendants of cross-context deps are gated by
+  # upstream work the same way their priority-source ancestor is.
+  # Without this expansion, a non-container intermediate (e.g.
+  # `Environments.Cli`) leaves its descendants (`Cli.TmuxAdapter`)
+  # priority-tethered but edge-orphaned — actionable even when the
+  # whole project chain is unsatisfied. Container-template chains
+  # add their own edges; `Topology.transitive_reduction/1` removes
+  # the resulting redundancies downstream.
+  defp expand_with_parent_chain_descendants(components, ctx) do
+    children_by_parent =
+      ctx.components
+      |> Enum.filter(& &1.parent_component_id)
+      |> Enum.group_by(& &1.parent_component_id)
+
+    components
+    |> Enum.flat_map(&[&1 | descendants_of(&1, children_by_parent, MapSet.new())])
+    |> Enum.uniq_by(& &1.id)
+  end
+
+  defp descendants_of(component, children_by_parent, visited) do
+    if MapSet.member?(visited, component.id) do
+      []
+    else
+      visited = MapSet.put(visited, component.id)
+      children = Map.get(children_by_parent, component.id, [])
+
+      children ++
+        Enum.flat_map(children, &descendants_of(&1, children_by_parent, visited))
     end
   end
 
@@ -457,13 +492,43 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # -- Actionability --
 
-  # A node is actionable when all its incoming edge sources are satisfied.
-  defp incoming_prereqs_satisfied?(node, incoming, satisfaction_map) do
-    sources = Map.get(incoming, node_key(node), [])
+  # Compute the set of node keys whose actionability is blocked by an
+  # unsatisfied upstream node. A node is blocked iff any node reachable
+  # from it via reverse-edge traversal (i.e. any transitive prerequisite)
+  # is unsatisfied. Walks the DAG forward from every unsatisfied node and
+  # marks every strict descendant as blocked.
+  #
+  # This is the single-hop → transitive upgrade that closes the
+  # cross-scope gating gap: when a project-chain requirement reopens,
+  # the unsatisfaction propagates through `project.qa_setup →
+  # story.component_linked → story.bdd_specs_exist → component.first_req`
+  # so component work disappears from the actionable list even though
+  # every locally-satisfied node along the chain still reports
+  # `satisfied: true`.
+  defp compute_blocked_descendants(edges, satisfaction_map) do
+    outgoing =
+      Enum.reduce(edges, %{}, fn edge, acc ->
+        Map.update(acc, edge.from, [edge.to], &[edge.to | &1])
+      end)
 
-    Enum.all?(sources, fn source_key ->
-      Map.get(satisfaction_map, source_key, true)
+    satisfaction_map
+    |> Enum.filter(fn {_key, satisfied} -> not satisfied end)
+    |> Enum.map(fn {key, _} -> key end)
+    |> Enum.reduce(MapSet.new(), fn key, acc ->
+      propagate_downstream(Map.get(outgoing, key, []), outgoing, acc)
     end)
+  end
+
+  defp propagate_downstream([], _outgoing, acc), do: acc
+
+  defp propagate_downstream([key | rest], outgoing, acc) do
+    if MapSet.member?(acc, key) do
+      propagate_downstream(rest, outgoing, acc)
+    else
+      acc = MapSet.put(acc, key)
+      children = Map.get(outgoing, key, [])
+      propagate_downstream(children ++ rest, outgoing, acc)
+    end
   end
 
   defp node_key(n), do: {n.entity_type, n.entity_id, n.name}
