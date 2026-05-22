@@ -227,10 +227,17 @@ defmodule CodeMySpec.Issues do
   # Synchronously sync a local disposition (accept/dismiss/resolve)
   # back to the remote server when the issue is mirrored. Failure is
   # surfaced as `{:error, message}` so the caller can refuse to flip
-  # the local state, keeping local and remote in lockstep. Local-only
-  # issues (`synced_from_server` is false/nil) bypass the sync.
-  defp sync_disposition_to_remote(_scope, %Issue{synced_from_server: synced}, _status, _opts)
-       when synced != true do
+  # the local state, keeping local and remote in lockstep.
+  #
+  # Only locally-created issues (`synced_from_server == false`,
+  # explicit) bypass the sync. NULL means legacy — the `synced_from_server`
+  # column was added in 20260518024054 without a backfill, so every row
+  # that predates the migration shows NULL even though it was originally
+  # pulled from the server. Treating NULL as "skip" silently dropped
+  # every disposition on legacy rows; the next remote sync then
+  # overwrote the local change. NULL now falls through to the remote
+  # push.
+  defp sync_disposition_to_remote(_scope, %Issue{synced_from_server: false}, _status, _opts) do
     :ok
   end
 
