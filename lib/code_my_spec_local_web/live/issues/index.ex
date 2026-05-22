@@ -1,6 +1,13 @@
 defmodule CodeMySpecLocalWeb.IssuesLive.Index do
   @moduledoc """
   Lists issues with optional filtering by status, severity, and scope.
+
+  Filters live in the URL query string so they survive refreshes and
+  back-navigations. The view subscribes to the per-account issues
+  PubSub topic and re-runs the filtered list on every create /
+  accept / dismiss / resolve / update broadcast, so external
+  mutations (MCP tools, the show page) reach the table without a
+  manual refresh.
   """
   use CodeMySpecLocalWeb, :live_view
 
@@ -16,9 +23,11 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
      assign(socket,
        projects: projects,
        project: nil,
+       scope: nil,
        issues: [],
        filters: %{},
-       error: nil
+       error: nil,
+       subscribed_account_id: nil
      )}
   end
 
@@ -29,16 +38,20 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
       filters = parse_filters(params)
       issues = Issues.list_filtered(scope, filters)
 
-      {:noreply,
-       assign(socket,
-         project: project,
-         scope: scope,
-         slug: project_slug(project),
-         issues: issues,
-         filters: filters,
-         page_title: "#{project.name} — Issues",
-         error: nil
-       )}
+      socket =
+        socket
+        |> maybe_subscribe(scope)
+        |> assign(
+          project: project,
+          scope: scope,
+          slug: project_slug(project),
+          issues: issues,
+          filters: filters,
+          page_title: "#{project.name} — Issues",
+          error: nil
+        )
+
+      {:noreply, socket}
     else
       {:error, reason} ->
         {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
@@ -48,9 +61,17 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
   @impl true
   def handle_event("filter", params, socket) do
     filters = parse_filters(params)
-    issues = Issues.list_filtered(socket.assigns.scope, filters)
-    {:noreply, assign(socket, issues: issues, filters: filters)}
+    {:noreply, push_patch(socket, to: filter_path(socket.assigns.slug, filters))}
   end
+
+  @impl true
+  def handle_info({event, %Issues.Issue{}}, socket)
+      when event in [:created, :accepted, :dismissed, :resolved, :updated] do
+    issues = Issues.list_filtered(socket.assigns.scope, socket.assigns.filters)
+    {:noreply, assign(socket, :issues, issues)}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
@@ -163,4 +184,33 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
     |> String.replace(~r/[^a-z0-9]+/, "-")
     |> String.trim("-")
   end
+
+  defp filter_path(slug, filters) do
+    query =
+      filters
+      |> Enum.map(fn {k, v} -> {Atom.to_string(k), Atom.to_string(v)} end)
+      |> URI.encode_query()
+
+    case query do
+      "" -> "/projects/#{slug}/issues"
+      q -> "/projects/#{slug}/issues?#{q}"
+    end
+  end
+
+  defp maybe_subscribe(socket, %Scope{active_account_id: account_id})
+       when is_binary(account_id) do
+    cond do
+      not connected?(socket) ->
+        socket
+
+      socket.assigns.subscribed_account_id == account_id ->
+        socket
+
+      true ->
+        Issues.subscribe(%Scope{active_account_id: account_id})
+        assign(socket, :subscribed_account_id, account_id)
+    end
+  end
+
+  defp maybe_subscribe(socket, _scope), do: socket
 end
