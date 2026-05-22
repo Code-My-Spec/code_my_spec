@@ -206,7 +206,7 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     Resolve each orphan via one of:
     - Link a story (`set_story_component`)
     - Add a dependency edge from a story-linked context: edit that context's spec under `.code_my_spec/spec/` and add the orphan module as a bullet under `## Dependencies` (ComponentSync re-derives the graph on save)
-    - Classify as infrastructure (add the file path to `infrastructure_paths` in `.code_my_spec/config.yml`)
+    - Classify as infrastructure (edit the spec's `## Type` section to `infrastructure`; ComponentSync re-types on next sync)
     - Delete the context's spec, impl, and test files; ComponentSync will remove the component on the next sync
     """
   end

@@ -88,10 +88,6 @@ defmodule CodeMySpec.Files.FileSync do
       HexDocProjector.project(scope)
     end
 
-    # `infrastructure_paths` is no longer a sync-time filter — it's a classifier
-    # consulted by `ComponentSync`. Framework files now sync into the DB and
-    # get tagged with `type: "infrastructure"` downstream, giving them an empty
-    # requirement graph (no work driven) without removing them from tracking.
     file_entries =
       env
       |> stream_files()
@@ -510,11 +506,10 @@ defmodule CodeMySpec.Files.FileSync do
   Returns a stream of maps with `:path`, `:role`, `:mtime`, `:size`. Paths are
   relative to `env.cwd`.
   """
-  @spec stream_files(Environments.Environment.t(), [String.t()]) :: Enumerable.t()
-  def stream_files(env, ignored_patterns \\ []) do
+  @spec stream_files(Environments.Environment.t()) :: Enumerable.t()
+  def stream_files(env) do
     env
     |> Environments.stream_files(@sync_roots)
-    |> Stream.reject(&matches_ignored_pattern?(&1, ignored_patterns))
     |> Stream.map(&classify/1)
     |> Stream.reject(&is_nil/1)
     |> Stream.map(fn {path, role} -> stat_file(env, path, role) end)
@@ -752,17 +747,11 @@ defmodule CodeMySpec.Files.FileSync do
   defp validate_setup_config(content) do
     error =
       case YamlElixir.read_from_string(content) do
-        {:ok, %{"infrastructure_paths" => paths}} when is_list(paths) and paths != [] ->
-          nil
-
-        {:ok, _} ->
-          "`.code_my_spec/config.yml` exists but has no `infrastructure_paths` list."
-
-        _ ->
-          "`.code_my_spec/config.yml` is not valid YAML"
+        {:ok, _} -> nil
+        _ -> "`.code_my_spec/config.yml` is not valid YAML"
       end
 
-    %{errors: %{infrastructure_paths: error}, data: %{}}
+    %{errors: %{config_yaml: error}, data: %{}}
   end
 
   # test/support files: which checks apply depends on filename. Dispatch on
@@ -996,54 +985,6 @@ defmodule CodeMySpec.Files.FileSync do
     first_segment in @ignored_dirs
   end
 
-  defp matches_ignored_pattern?(_path, []), do: false
-
-  defp matches_ignored_pattern?(path, patterns) do
-    Enum.any?(patterns, fn pattern ->
-      if String.contains?(pattern, "*") do
-        # Glob pattern — convert to regex
-        regex_str =
-          pattern
-          |> Regex.escape()
-          |> String.replace("\\*\\*", ".*")
-          |> String.replace("\\*", "[^/]*")
-
-        Regex.match?(~r/^#{regex_str}/, path)
-      else
-        # Exact path or prefix match
-        path == pattern or String.starts_with?(path, pattern <> "/")
-      end
-    end)
-  end
-
-  @doc """
-  Loads `infrastructure_paths` from `.code_my_spec/config.yml`.
-
-  Returns the list of path patterns the user has classified as framework
-  infrastructure. ComponentSync uses this list to tag matching components
-  with `type: "infrastructure"` so they get an empty requirement graph
-  (no spec/test/impl work driven) but still appear as first-class
-  components in the architecture view.
-  """
-  @spec load_infrastructure_paths(Scope.t()) :: [String.t()]
-  def load_infrastructure_paths(%Scope{cwd: nil}), do: []
-
-  def load_infrastructure_paths(%Scope{cwd: cwd}) do
-    case Scope.read_local_config(cwd) do
-      {:ok, config} ->
-        case config["infrastructure_paths"] do
-          list when is_list(list) -> list
-          _ -> []
-        end
-
-      _ ->
-        []
-    end
-  end
-
-  @doc "Whether `path` matches any of `patterns` (literal or `*` glob)."
-  @spec infrastructure_path?(String.t(), [String.t()]) :: boolean()
-  def infrastructure_path?(path, patterns), do: matches_ignored_pattern?(path, patterns)
 
   # .code_my_spec/qa/{story_id}/brief.md
   defp match_qa_file?(path, filename) do

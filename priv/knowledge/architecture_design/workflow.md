@@ -108,9 +108,10 @@ infrastructure. For each:
 2. **Add a dependency edge** — edit a story-linked context's spec
    under `.code_my_spec/spec/`, add the orphan as a bullet under
    `## Dependencies`. ComponentSync re-derives the graph.
-3. **Classify as infrastructure** — add the context's file path to
-   `infrastructure_paths` so the framework treats it as
-   non-feature-driven.
+3. **Classify as infrastructure** — edit the spec's `## Type`
+   section to `infrastructure`. ComponentSync re-types the component
+   on the next sync; the orphan rule skips infrastructure-typed
+   components.
 4. **Delete** — remove the spec / implementation / test files.
    ComponentSync removes the component on the next sync.
 

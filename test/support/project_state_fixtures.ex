@@ -111,11 +111,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
 
     config_path = Path.join([context.scope.cwd, ".code_my_spec", "config.yml"])
     File.mkdir_p!(Path.dirname(config_path))
-
-    File.write!(
-      config_path,
-      CodeMySpec.McpServers.Bootstrap.Content.infrastructure_paths_yaml("MyApp")
-    )
+    File.write!(config_path, "module_name: MyApp\n")
 
     context
   end

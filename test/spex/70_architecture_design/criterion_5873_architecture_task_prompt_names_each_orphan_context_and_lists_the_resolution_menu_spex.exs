@@ -121,8 +121,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
         assert prompt =~ ~r/create_dependency|dependency edge/i,
                "expected prompt to mention adding a dependency edge (create_dependency), got: #{prompt}"
 
-        assert prompt =~ ~r/infrastructure_paths/i,
-               "expected prompt to mention classifying as infrastructure (infrastructure_paths), got: #{prompt}"
+        assert prompt =~ ~r/## Type.*infrastructure|infrastructure.*spec/is,
+               "expected prompt to mention classifying as infrastructure (edit spec's ## Type), got: #{prompt}"
 
         assert prompt =~ ~r/(delete|remove)\s+the\s+(component|spec)/i,
                "expected prompt to mention deleting the component (via spec/impl/test file deletion), got: #{prompt}"

@@ -431,7 +431,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     For each orphan context, choose one resolution:
     - Link a story directly to the context using `set_story_component`
     - Add a dependency edge from a story-linked context: edit that context's spec under `.code_my_spec/spec/` and add the orphan module as a bullet under `## Dependencies`. ComponentSync re-derives the graph on save.
-    - Classify the context as framework boilerplate by adding its file path to `infrastructure_paths` in `.code_my_spec/config.yml`
+    - Classify the context as framework boilerplate by editing its spec's `## Type` section to `infrastructure`. ComponentSync re-types the component on the next sync, the orphan rule skips infrastructure-typed components.
     - Delete the context's spec, implementation, and test files; ComponentSync will remove the component on the next sync
 
     """

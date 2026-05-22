@@ -12,9 +12,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
 
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.McpServers.Bootstrap.BootstrapMapper
-  alias CodeMySpec.McpServers.Bootstrap.Content
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Paths
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
 
@@ -31,7 +29,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
     with {:ok, token} <- OAuthClient.get_token(),
          {:ok, project_data} <- fetch_project(token, project_id),
          {:ok, project} <- upsert_local_project(project_data, working_dir) do
-      seed_infrastructure_paths(working_dir, project.module_name)
       {:reply, BootstrapMapper.init_success("local_path: #{working_dir}", project.name), frame}
     else
       {:error, reason} when reason in [:not_authenticated, :needs_authentication] ->
@@ -39,23 +36,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
 
       {:error, reason} ->
         {:reply, BootstrapMapper.error("#{reason}"), frame}
-    end
-  end
-
-  # Seed `.code_my_spec/config.yml` with the canonical `infrastructure_paths`
-  # list on first init. Idempotent — never overwrites an existing config.
-  # The list mirrors `mix phx.new` output; users can edit the file to add
-  # generated/auth/integration modules later.
-  defp seed_infrastructure_paths(_working_dir, nil), do: :ok
-
-  defp seed_infrastructure_paths(working_dir, module_name) do
-    config_path = Path.join([working_dir, Paths.base_dir(), "config.yml"])
-
-    if File.exists?(config_path) do
-      :ok
-    else
-      File.mkdir_p!(Path.dirname(config_path))
-      File.write!(config_path, Content.infrastructure_paths_yaml(module_name))
     end
   end
 
