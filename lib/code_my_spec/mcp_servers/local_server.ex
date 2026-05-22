@@ -4,6 +4,17 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   Exposes tools relevant to the local agent workflow.
   Story CRUD lives on the web server — only linking is local.
+
+  ## Restart required after tool changes
+
+  Adding or removing a `component(...)` registration below requires
+  a **full `cms server` restart** to take effect. The running BEAM
+  binds its tool registry at boot; reconnecting the MCP client
+  (`/mcp` in Claude Code) only refreshes the client-side tool list,
+  not the server-side handler module list. A freshly-added tool
+  will appear in `tools/list` but invocation returns
+  `MCP error -32603: Internal error` because the server has no
+  handler module loaded for it.
   """
 
   use Anubis.Server,
