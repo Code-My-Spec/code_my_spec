@@ -15,6 +15,17 @@ defmodule CodeMySpecWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
+  Returns the configured GA4 measurement ID, or nil if unset. Used by
+  `root.html.heex` to render the gtag.js init block per-environment
+  instead of hardcoding a production stream ID into the layout.
+  """
+  def ga_measurement_id do
+    :code_my_spec
+    |> Application.get_env(CodeMySpec.Analytics.GoogleAnalytics, [])
+    |> Keyword.get(:measurement_id)
+  end
+
+  @doc """
   Renders your app layout.
 
   This function is typically invoked from every template,

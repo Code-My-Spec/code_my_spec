@@ -9,11 +9,14 @@ defmodule CodeMySpec.Analytics do
     * Test subscribers attached via `attach_test_subscriber/1`, which
       receive `{:analytics_event, name, payload}` messages.
 
-  Browser-originated events (e.g. `:install_step_copied`) are pushed
-  to the client by LiveViews via `push_event("analytics", ...)` and
-  forwarded to gtag by a JS hook — the LiveView is responsible for
-  calling `dispatch/2` so the server-side telemetry handlers see
-  them too.
+  Browser-originated events (e.g. `:install_step_copied`,
+  `:deep_content_read`) are delivered server-side via the GA4
+  Measurement Protocol — LiveViews call `dispatch/3` directly with
+  `origin: :server`, and dead views POST to
+  `/api/browser/analytics/event`, which in turn calls `dispatch/3`.
+  The historical `:browser` origin is preserved for callers that
+  still pair a server dispatch with a `push_event` to gtag, but
+  there are no such callers in this codebase today.
 
   ## Usage
 

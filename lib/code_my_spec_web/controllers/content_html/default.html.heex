@@ -40,12 +40,22 @@
 
   <script>
     setTimeout(function() {
-      if (typeof gtag === "function") {
-        gtag("event", "deep_content_read", {
-          content_category: document.title,
-          page_path: window.location.pathname
-        });
-      }
+      var csrf = document.querySelector("meta[name='csrf-token']");
+      fetch("/api/browser/analytics/event", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-csrf-token": csrf ? csrf.getAttribute("content") : ""
+        },
+        body: JSON.stringify({
+          name: "deep_content_read",
+          params: {
+            content_category: document.title,
+            page_path: window.location.pathname
+          }
+        }),
+        keepalive: true
+      }).catch(function() {});
     }, 60000);
   </script>
 </Layouts.marketing>

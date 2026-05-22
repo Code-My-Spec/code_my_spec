@@ -60,13 +60,23 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
       <script :type={Phoenix.LiveView.ColocatedHook} name=".DeepContentRead">
         export default {
           mounted() {
+            const csrf = document.querySelector("meta[name='csrf-token']")?.getAttribute("content");
             this._timer = setTimeout(() => {
-              if (typeof gtag === "function") {
-                gtag("event", "deep_content_read", {
-                  content_category: document.title,
-                  page_path: window.location.pathname
-                });
-              }
+              fetch("/api/browser/analytics/event", {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-csrf-token": csrf
+                },
+                body: JSON.stringify({
+                  name: "deep_content_read",
+                  params: {
+                    content_category: document.title,
+                    page_path: window.location.pathname
+                  }
+                }),
+                keepalive: true
+              }).catch(() => {});
             }, 60000);
           },
           destroyed() {

@@ -79,16 +79,18 @@
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-EHBYEW52MM">
-    </script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-EHBYEW52MM');
-      window.GA_MEASUREMENT_ID = 'G-EHBYEW52MM'; // Add this line
-    </script>
+    <%= if measurement_id = CodeMySpecWeb.Layouts.ga_measurement_id() do %>
+      <!-- Google tag (gtag.js) -->
+      <script async src={"https://www.googletagmanager.com/gtag/js?id=#{measurement_id}"}>
+      </script>
+      <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', <%= raw(Jason.encode!(measurement_id)) %>);
+        window.GA_MEASUREMENT_ID = <%= raw(Jason.encode!(measurement_id)) %>;
+      </script>
+    <% end %>
 
     <script>
       (() => {

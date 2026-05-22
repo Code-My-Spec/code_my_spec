@@ -190,15 +190,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       # step 0 == prereq (`mix phx.new`), steps 1..3 == plugin install commands.
       {step, ""} when step in 0..3 ->
         user = socket.assigns.current_scope.user
-        payload = %{user_id: user.id, step: step}
-
-        Analytics.dispatch(:install_step_copied, payload, :browser)
-
-        {:noreply,
-         push_event(socket, "analytics", %{
-           name: "install_step_copied",
-           params: payload
-         })}
+        Analytics.dispatch(:install_step_copied, %{user_id: user.id, step: step}, :server)
+        {:noreply, socket}
 
       _ ->
         {:noreply, socket}
@@ -291,16 +284,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp dispatch_onboarding_view(socket, user) do
     if connected?(socket) and not Users.cli_ever_connected?(user) do
-      payload = %{user_id: user.id}
-      Analytics.dispatch(:onboarding_panel_viewed, payload, :browser)
-
-      push_event(socket, "analytics", %{
-        name: "onboarding_panel_viewed",
-        params: payload
-      })
-    else
-      socket
+      Analytics.dispatch(:onboarding_panel_viewed, %{user_id: user.id}, :server)
     end
+
+    socket
   end
 
   defp current_session_count(user) do
@@ -381,22 +368,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           />
         </div>
       </div>
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
-        export default {
-          mounted() {
-            // sign_up now fires server-side via CodeMySpec.Analytics from
-            // the user-row insert sites (Users.register_user and
-            // Users.find_or_register_oauth_user). The browser-side
-            // flash-sniff used to trip on every OAuth callback —
-            // including returning logins — producing false positives.
-            this.handleEvent("analytics", ({ name, params }) => {
-              if (typeof gtag === "function") {
-                gtag("event", name, params || {});
-              }
-            });
-          }
-        }
-      </script>
     </Layouts.app>
     """
   end

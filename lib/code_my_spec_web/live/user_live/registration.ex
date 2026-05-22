@@ -157,15 +157,25 @@ defmodule CodeMySpecWeb.UserLive.Registration do
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ViewRegisterPage">
+        // view_register_page fires server-side from the LV mount/3
+        // (see `dispatch_view_event/1` below). The form/oauth events
+        // here POST to /api/browser/analytics/event so the GA4
+        // measurement_id + API secret stay on the server.
         export default {
           mounted() {
-            const track = (event, params) => {
-              if (typeof gtag === "function") {
-                gtag("event", event, params || {});
-              }
-            };
+            const csrf = document.querySelector("meta[name='csrf-token']")?.getAttribute("content");
 
-            track("view_register_page");
+            const track = (name, params) => {
+              fetch("/api/browser/analytics/event", {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-csrf-token": csrf
+                },
+                body: JSON.stringify({ name: name, params: params || {} }),
+                keepalive: true
+              }).catch(() => {});
+            };
 
             const emailField = this.el.querySelector('input[type="email"]');
             if (emailField) {
@@ -203,6 +213,8 @@ defmodule CodeMySpecWeb.UserLive.Registration do
 
   def mount(_params, _session, socket) do
     changeset = Users.change_user_email(%User{})
+
+    if connected?(socket), do: CodeMySpec.Analytics.dispatch(:view_register_page, %{}, :server)
 
     {:ok, assign_form(socket, changeset), temporary_assigns: [form: nil]}
   end
