@@ -29,6 +29,16 @@ defmodule CodeMySpec.Issues do
     Application.get_env(:code_my_spec, :issues_remote_client, RemoteClient)
   end
 
+  # The server (env: :dev or :prod) IS the source of truth for issues.
+  # Only CLI envs (:dev_cli, :prod_cli) push dispositions/updates to a
+  # remote. Without this guard, the server controller's resolve/dismiss
+  # path would recursively try to push to its own remote_client, fail
+  # auth, and surface a string error tuple the FallbackController can't
+  # translate (→ 500 FunctionClauseError).
+  defp authoritative_mode? do
+    Application.get_env(:code_my_spec, :env) in [:dev, :prod]
+  end
+
   # -- Reads ------------------------------------------------------------------
 
   def list_issues(%Scope{} = scope), do: IssuesRepository.list_issues(scope)
@@ -159,6 +169,14 @@ defmodule CodeMySpec.Issues do
   defp sync_update_to_remote(_scope, %Issue{synced_from_server: false}, _attrs), do: :ok
 
   defp sync_update_to_remote(scope, %Issue{} = issue, attrs) do
+    if authoritative_mode?() do
+      :ok
+    else
+      do_sync_update_to_remote(scope, issue, attrs)
+    end
+  end
+
+  defp do_sync_update_to_remote(scope, %Issue{} = issue, attrs) do
     case remote_client().update_issue(scope, issue.id, attrs) do
       {:ok, _} ->
         :ok
@@ -183,6 +201,14 @@ defmodule CodeMySpec.Issues do
   loudly rather than degrading to local-only.
   """
   def pull_incoming_from_remote(%Scope{} = scope) do
+    if authoritative_mode?() do
+      {:ok, []}
+    else
+      do_pull_incoming_from_remote(scope)
+    end
+  end
+
+  defp do_pull_incoming_from_remote(%Scope{} = scope) do
     case remote_client().list_incoming_issues(scope) do
       {:ok, issues} ->
         Enum.each(issues, fn issue -> IssuesRepository.upsert_from_server(scope, issue) end)
@@ -278,6 +304,14 @@ defmodule CodeMySpec.Issues do
   end
 
   defp sync_disposition_to_remote(scope, %Issue{} = issue, status, opts) do
+    if authoritative_mode?() do
+      :ok
+    else
+      do_sync_disposition_to_remote(scope, issue, status, opts)
+    end
+  end
+
+  defp do_sync_disposition_to_remote(scope, %Issue{} = issue, status, opts) do
     attrs = build_remote_attrs(status, opts)
 
     case remote_client().update_issue(scope, issue.id, attrs) do
