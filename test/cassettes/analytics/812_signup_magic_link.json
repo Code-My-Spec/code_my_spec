@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-05-23T18:44:45.105982Z",
+      "recorded_at": "2026-05-23T18:54:57.658818Z",
       "request": {
         "body_json": {
           "client_id": "anonymous",
@@ -58,7 +58,7 @@
             "cross-origin"
           ],
           "date": [
-            "Sat, 23 May 2026 18:44:45 GMT"
+            "Sat, 23 May 2026 18:54:57 GMT"
           ],
           "expires": [
             "Fri, 01 Jan 1990 00:00:00 GMT"
@@ -80,10 +80,10 @@
       }
     },
     {
-      "recorded_at": "2026-05-23T18:44:45.158034Z",
+      "recorded_at": "2026-05-23T18:54:57.749223Z",
       "request": {
         "body_json": {
-          "client_id": "cms-793450",
+          "client_id": "cms-793453",
           "events": [
             {
               "name": "sign_up",
@@ -92,7 +92,7 @@
               }
             }
           ],
-          "user_id": "793450"
+          "user_id": "793453"
         },
         "body_type": "json",
         "headers": {
@@ -139,7 +139,7 @@
             "cross-origin"
           ],
           "date": [
-            "Sat, 23 May 2026 18:44:45 GMT"
+            "Sat, 23 May 2026 18:54:57 GMT"
           ],
           "expires": [
             "Fri, 01 Jan 1990 00:00:00 GMT"
@@ -161,17 +161,17 @@
       }
     },
     {
-      "recorded_at": "2026-05-23T18:44:45.222373Z",
+      "recorded_at": "2026-05-23T18:54:57.801424Z",
       "request": {
         "body_json": {
-          "client_id": "cms-793450",
+          "client_id": "cms-793453",
           "events": [
             {
               "name": "registration_email_sent",
               "params": {}
             }
           ],
-          "user_id": "793450"
+          "user_id": "793453"
         },
         "body_type": "json",
         "headers": {
@@ -218,7 +218,7 @@
             "cross-origin"
           ],
           "date": [
-            "Sat, 23 May 2026 18:44:45 GMT"
+            "Sat, 23 May 2026 18:54:57 GMT"
           ],
           "expires": [
             "Fri, 01 Jan 1990 00:00:00 GMT"
@@ -237,99 +237,6 @@
           ]
         },
         "status": 204
-      }
-    },
-    {
-      "recorded_at": "2026-05-23T18:45:45.531997Z",
-      "request": {
-        "body_json": {
-          "dimensionFilter": {
-            "filter": {
-              "fieldName": "eventName",
-              "stringFilter": {
-                "matchType": "EXACT",
-                "value": "sign_up"
-              }
-            }
-          },
-          "dimensions": [
-            {
-              "name": "eventName"
-            }
-          ],
-          "metrics": [
-            {
-              "name": "eventCount"
-            }
-          ]
-        },
-        "body_type": "json",
-        "headers": {
-          "accept": [
-            "application/json"
-          ],
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "POST",
-        "query_string": "",
-        "uri": "https://analyticsdata.googleapis.com/v1beta/properties/508773792:runRealtimeReport"
-      },
-      "response": {
-        "body_json": {
-          "dimensionHeaders": [
-            {
-              "name": "eventName"
-            }
-          ],
-          "kind": "analyticsData#runRealtimeReport",
-          "metricHeaders": [
-            {
-              "name": "eventCount",
-              "type": "TYPE_INTEGER"
-            }
-          ]
-        },
-        "body_type": "json",
-        "headers": {
-          "alt-svc": [
-            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
-          ],
-          "content-type": [
-            "application/json; charset=UTF-8"
-          ],
-          "date": [
-            "Sat, 23 May 2026 18:45:45 GMT"
-          ],
-          "server": [
-            "ESF"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Origin",
-            "X-Origin",
-            "Referer"
-          ],
-          "x-content-type-options": [
-            "nosniff"
-          ],
-          "x-frame-options": [
-            "SAMEORIGIN"
-          ],
-          "x-xss-protection": [
-            "0"
-          ]
-        },
-        "status": 200
       }
     }
   ],

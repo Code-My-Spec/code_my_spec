@@ -37,6 +37,9 @@ defmodule CodeMySpecSpex.GaAssertions do
   alias CodeMySpec.Analytics.GoogleAnalytics.ReportingClient
   alias CodeMySpec.Users.Scope
 
+  @ga_mp_endpoint "https://www.google-analytics.com/mp/collect"
+  @cassette_dir "test/cassettes/analytics"
+
   @doc """
   Asserts that GA's Realtime Report shows at least `min_count` rows
   matching `event_name` (and optionally each `{dimension, value}` in
@@ -91,6 +94,55 @@ defmodule CodeMySpecSpex.GaAssertions do
         property_id: #{inspect(property_id)}
         request: #{inspect(request, pretty: true)}
         """)
+    end
+  end
+
+  @doc """
+  Asserts that the cassette at `cassette_name` recorded at least one
+  POST to `https://www.google-analytics.com/mp/collect` whose event
+  name matches `event_name` (and, optionally, whose params include
+  every key/value in `expected_params`).
+
+  This is the relaxed verification path: instead of querying GA's
+  Reporting API (subject to multi-minute ingest latency), it reads
+  the captured cassette and asserts the right MP payload was POSTed.
+  The cassette IS the contract — if a future change drops or warps
+  the dispatch, the cassette won't contain the expected POST and the
+  assertion fails.
+
+  ## Options
+
+  - `:expected_params` — map of params (or string keys) that must all
+    appear in the captured event's `params` block. Default: `%{}`
+    (only event_name is matched).
+  - `:user_id` — when set, requires the captured payload's top-level
+    `user_id` to match. Default: not asserted.
+  - `:cassette_dir` — defaults to `test/cassettes/analytics`.
+  """
+  @spec assert_cassette_contains_mp_event(String.t(), String.t(), keyword()) ::
+          :ok | no_return()
+  def assert_cassette_contains_mp_event(cassette_name, event_name, opts \\ []) do
+    expected_params = Keyword.get(opts, :expected_params, %{})
+    expected_user_id = Keyword.get(opts, :user_id)
+    cassette_dir = Keyword.get(opts, :cassette_dir, @cassette_dir)
+    path = Path.join(cassette_dir, cassette_name <> ".json")
+
+    interactions = load_interactions(path)
+    mp_events = mp_events(interactions)
+
+    if Enum.any?(mp_events, &event_matches?(&1, event_name, expected_params, expected_user_id)) do
+      :ok
+    else
+      flunk("""
+      Cassette #{path} contains no MP POST matching:
+
+        event:    #{inspect(event_name)}
+        params:   #{inspect(expected_params)}
+        user_id:  #{inspect(expected_user_id)}
+
+      Captured MP events (#{length(mp_events)}):
+      #{format_mp_events(mp_events)}
+      """)
     end
   end
 
@@ -157,6 +209,69 @@ defmodule CodeMySpecSpex.GaAssertions do
         }
       }
     }
+  end
+
+  defp load_interactions(path) do
+    case File.read(path) do
+      {:ok, json} ->
+        case Jason.decode(json) do
+          {:ok, %{"interactions" => interactions}} when is_list(interactions) -> interactions
+          {:ok, _} -> flunk("Cassette #{path} has no `interactions` array")
+          {:error, reason} -> flunk("Cassette #{path} is not valid JSON: #{inspect(reason)}")
+        end
+
+      {:error, :enoent} ->
+        flunk("""
+        Cassette #{path} doesn't exist yet. Record it first:
+
+            GA_TEST_OAUTH_TOKEN=$(mix cms.ga_test_token | tail -n1) \\
+              mix test <this spex file> --include ga_cassette_record
+        """)
+
+      {:error, reason} ->
+        flunk("Cassette #{path} unreadable: #{inspect(reason)}")
+    end
+  end
+
+  defp mp_events(interactions) do
+    Enum.flat_map(interactions, fn interaction ->
+      request = interaction["request"] || %{}
+
+      if request["method"] == "POST" and is_binary(request["uri"]) and
+           String.starts_with?(request["uri"], @ga_mp_endpoint) do
+        body = request["body_json"] || %{}
+        events = body["events"] || []
+        Enum.map(events, fn event -> {event, body["user_id"]} end)
+      else
+        []
+      end
+    end)
+  end
+
+  defp event_matches?({event, user_id}, expected_name, expected_params, expected_user_id) do
+    event["name"] == expected_name and
+      params_match?(event["params"] || %{}, expected_params) and
+      user_id_matches?(user_id, expected_user_id)
+  end
+
+  defp params_match?(_actual, expected) when expected == %{}, do: true
+
+  defp params_match?(actual, expected) do
+    Enum.all?(expected, fn {key, value} ->
+      str_key = to_string(key)
+      Map.get(actual, str_key) == value or Map.get(actual, key) == value
+    end)
+  end
+
+  defp user_id_matches?(_actual, nil), do: true
+  defp user_id_matches?(actual, expected), do: to_string(actual) == to_string(expected)
+
+  defp format_mp_events([]), do: "  (none)"
+
+  defp format_mp_events(events) do
+    Enum.map_join(events, "\n", fn {event, user_id} ->
+      "  - #{event["name"]} user_id=#{inspect(user_id)} params=#{inspect(event["params"])}"
+    end)
   end
 
   defp matching_rows(response, event_name, extra_dims) do
