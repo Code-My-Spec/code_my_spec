@@ -19,9 +19,8 @@ defmodule CodeMySpecSpex.Story811.Criterion6490Spex do
 
   import CodeMySpecSpex.GraphGivens
 
-  alias CodeMySpec.Environments
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,30 +29,34 @@ defmodule CodeMySpecSpex.Story811.Criterion6490Spex do
     scenario "the queue view shows the active task and the upcoming list together" do
       given_ :fully_satisfied_project
 
-      and_ "the component's implementation AND test files are removed",
-           context do
-        # Fully-satisfied baseline returns 0 actionable. Remove the
-        # component's `implementation_file` AND `test_file` artifacts to
-        # regress two independent component-level requirements concurrently
-        # — yields the multi-actionable state the view contract assumes
-        # (active + ≥1 upcoming).
-        impl_path =
-          "lib/some_name/" <> Macro.underscore(context.component.module_name) <> ".ex"
+      and_ "two additional component-linked stories are added", context do
+        # Fully-satisfied baseline returns 0 actionable. Story-level
+        # requirements are gated on `architecture_designed`, so
+        # unlinked stories never surface story-level work. Link the
+        # two new stories to the existing satisfied component — this
+        # keeps architecture green AND surfaces two story-level
+        # `three_amigos_complete` requirements (the next gate after
+        # component_linked) concurrently.
+        StoryHelpers.create_and_link(
+          context.scope,
+          context.component.module_name,
+          title: "Extra A",
+          description: "Story A"
+        )
 
-        test_path =
-          "test/some_name/" <> Macro.underscore(context.component.module_name) <> "_test.exs"
-
-        :ok = Environments.delete_file(context.environment, impl_path)
-        :ok = Environments.delete_file(context.environment, test_path)
-        {:ok, _} = Fixtures.notify_file_changed(context.scope, impl_path)
-        {:ok, _} = Fixtures.notify_file_changed(context.scope, test_path)
+        StoryHelpers.create_and_link(
+          context.scope,
+          context.component.module_name,
+          title: "Extra B",
+          description: "Story B"
+        )
 
         actionable = RequirementGraph.next_actionable(context.scope)
 
         if length(actionable) < 2 do
           flunk("""
-          Fixture should produce ≥2 concurrent actionable requirements for the
-          active+upcoming view contract, got #{length(actionable)}:
+          Fixture should produce ≥2 concurrent actionable for the active+upcoming
+          contract, got #{length(actionable)}:
 
             #{Enum.map_join(actionable, "\n  ", fn r -> "#{r.name}/#{r.entity_type}" end)}
           """)

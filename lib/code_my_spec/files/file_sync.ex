@@ -441,16 +441,27 @@ defmodule CodeMySpec.Files.FileSync do
         # for every individual write — that's catastrophic when the
         # projector lands hundreds of markdown files.
         entry =
-          if owner_bearing_role?(role) do
-            [entry] = resolve_owners(scope, [entry])
-            [entry] = fingerprint_entries(env, [entry])
-            components = Components.list_components(scope)
-            component_by_id = Map.new(components, &{&1.id, &1})
-            strict? = Configurations.require_specs?(scope)
-            validate_entry(entry, env, component_by_id, strict?)
-          else
-            [entry] = fingerprint_entries(env, [entry])
-            entry |> Map.put(:component_id, nil) |> Map.put(:story_id, nil) |> Map.put(:valid, true) |> Map.put(:validation_errors, nil)
+          cond do
+            owner_bearing_role?(role) ->
+              [entry] = resolve_owners(scope, [entry])
+              [entry] = fingerprint_entries(env, [entry])
+              components = Components.list_components(scope)
+              component_by_id = Map.new(components, &{&1.id, &1})
+              strict? = Configurations.require_specs?(scope)
+              validate_entry(entry, env, component_by_id, strict?)
+
+            setup_validated_role?(role) ->
+              # Setup-config-style files (claude_md, mix_exs, credo_exs,
+              # setup_config, test_support) have no component owner but DO
+              # need validate_entry to populate validation_errors — the
+              # Setup.* check/1 functions read those errors directly. Skip
+              # owner resolution (no component) but run validation.
+              [entry] = fingerprint_entries(env, [entry])
+              validate_entry(entry, env, %{}, false)
+
+            true ->
+              [entry] = fingerprint_entries(env, [entry])
+              entry |> Map.put(:component_id, nil) |> Map.put(:story_id, nil) |> Map.put(:valid, true) |> Map.put(:validation_errors, nil)
           end
 
         embedding_changed_entries =
@@ -471,6 +482,18 @@ defmodule CodeMySpec.Files.FileSync do
        do: true
 
   defp owner_bearing_role?(_), do: false
+
+  # Roles that have no component/story owner but DO need validate_entry
+  # to populate validation_errors. The Setup.* `check/1` functions
+  # query these errors directly to decide whether project_setup is
+  # complete; without validation the row gets `validation_errors: nil`
+  # and `Setup.Context.error/4` returns the missing_msg fallback,
+  # leaving the requirement permanently unsatisfied.
+  defp setup_validated_role?(role)
+       when role in [:claude_md, :mix_exs, :credo_exs, :setup_config, :test_support],
+       do: true
+
+  defp setup_validated_role?(_), do: false
 
   defp fingerprint_changed?(_entry, nil), do: true
 
