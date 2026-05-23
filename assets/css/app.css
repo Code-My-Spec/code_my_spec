@@ -672,6 +672,105 @@ html {
     max-width: 100%;
 }
 
+/* Mid-article CTA aside — `<aside class="not-prose" data-cro="cta-mid">`.
+   Originally inline in the_harness_layer.html; extracted here for reuse on
+   any blog post that wants the same brand-themed mid-article punctuation.
+   Uses design tokens so it stays consistent if the brand red shifts. */
+.cro-mid {
+    position: relative;
+    padding: 36px 32px;
+    border-top: 1px solid rgba(255, 56, 56, 0.3);
+    border-bottom: 1px solid rgba(255, 56, 56, 0.3);
+    background: linear-gradient(
+        180deg,
+        transparent,
+        rgba(255, 56, 56, 0.04),
+        transparent
+    );
+    margin: 48px 0;
+}
+.cro-mid::before,
+.cro-mid::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 80px;
+    height: 2px;
+    background: var(--color-cms-red);
+    box-shadow: 0 0 12px var(--color-cms-red);
+}
+.cro-mid::before { top: -1px; }
+.cro-mid::after { bottom: -1px; }
+.cro-mid .cro-mid-term {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-cms-text-mute);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.cro-mid .cro-mid-term .cro-p {
+    color: var(--color-cms-red);
+}
+.cro-mid .cro-mid-h {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 30px;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--color-cms-white);
+    text-transform: uppercase;
+    margin: 0;
+}
+.cro-mid .cro-mid-h .cro-r {
+    color: var(--color-cms-red);
+}
+.cro-mid .cro-mid-sub {
+    font-family: var(--font-body);
+    margin: 14px 0 0;
+    color: rgba(212, 212, 216, 0.7);
+    font-size: 15px;
+}
+.cro-mid .cro-mid-cta {
+    margin-top: 22px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+.cro-mid .cro-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 22px;
+    border: 1.5px solid var(--color-cms-red);
+    background: var(--color-cms-red);
+    color: #000;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    clip-path: polygon(
+        8px 0,
+        100% 0,
+        100% calc(100% - 8px),
+        calc(100% - 8px) 100%,
+        0 100%,
+        0 8px
+    );
+}
+.cro-mid .cro-btn:hover {
+    background: var(--color-cms-white);
+    border-color: var(--color-cms-white);
+    color: #000;
+}
+
 /* Onboarding install panel — story 698. Signal red on black, chamfered
    clip-paths, Space Mono display. Matches the brand_system v0.9 install-panel
    design reference. */

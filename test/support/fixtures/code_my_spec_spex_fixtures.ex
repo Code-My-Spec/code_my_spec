@@ -26,7 +26,6 @@ defmodule CodeMySpecSpex.Fixtures do
     EmbeddingsFixtures,
     EnvironmentFixtures,
     Environments,
-    IntegrationsFixtures,
     IssuesFixtures,
     OauthFixtures,
     Paths,
@@ -49,8 +48,6 @@ defmodule CodeMySpecSpex.Fixtures do
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
   def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)
   def select_active_project(scope, project_id), do: UserPreferences.select_active_project(scope, project_id)
-
-  defdelegate google_integration_fixture(user, attrs \\ %{}), to: IntegrationsFixtures
 
   # -- Environments --
   defdelegate memory_environment_fixture(opts \\ []), to: EnvironmentFixtures
