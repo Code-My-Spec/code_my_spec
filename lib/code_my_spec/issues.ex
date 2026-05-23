@@ -45,6 +45,10 @@ defmodule CodeMySpec.Issues do
 
   def list_by_status(%Scope{} = scope, status), do: IssuesRepository.list_by_status(scope, status)
 
+  def list_by_status_and_min_severity(%Scope{} = scope, status, min_severity) do
+    IssuesRepository.list_by_status_and_min_severity(scope, status, min_severity)
+  end
+
   def list_by_story(%Scope{} = scope, story_id), do: IssuesRepository.list_by_story(scope, story_id)
 
   def get_issue(%Scope{} = scope, id), do: IssuesRepository.get_issue(scope, id)

@@ -7,26 +7,38 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
   alias CodeMySpec.{Issues, Paths}
 
+  # Minimum severity that gates the agent loop. Lows are tracked but
+  # don't block; operator decides whether to action them out-of-band.
+  # Per framework issue 62e2478e and explicit operator direction
+  # ("Lows don't block us. Only medium+").
+  @min_blocking_severity :medium
+
   def orchestrate(_node) do
-    "Resolve every accepted QA issue by reading, fixing, and calling " <>
-      "`resolve_issue` per issue. No severity filter — whatever triage " <>
-      "accepted gets fixed. Use when `issues_triaged` is satisfied and " <>
-      "accepted issues remain."
+    "Resolve every accepted QA issue at severity #{@min_blocking_severity} or " <>
+      "above by reading, fixing, and calling `resolve_issue` per issue. " <>
+      "Lows are tracked but don't gate the pipeline. Use when " <>
+      "`issues_triaged` is satisfied and accepted med+ issues remain."
   end
 
   @doc """
-  Read accepted issues and build a fix prompt. Returns `{:ok, prompt_text}`.
+  Read accepted issues (med+) and build a fix prompt. Returns
+  `{:ok, prompt_text}`.
   """
   def command(scope, _task) do
-    count = scope |> Issues.list_by_status(:accepted) |> length()
+    count =
+      scope
+      |> Issues.list_by_status_and_min_severity(:accepted, @min_blocking_severity)
+      |> length()
+
     {:ok, build_prompt(count)}
   end
 
   @doc """
-  Check that every accepted issue has been resolved.
+  Check that every accepted med+ issue has been resolved. Lows are
+  ignored — they're tracked but don't gate the loop.
   """
   def evaluate(scope, _task) do
-    case Issues.list_by_status(scope, :accepted) do
+    case Issues.list_by_status_and_min_severity(scope, :accepted, @min_blocking_severity) do
       [] ->
         {:ok, :valid}
 
@@ -34,7 +46,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
         names = Enum.map_join(issues, "\n", &"- `#{&1.id}` — #{&1.title}")
 
         {:ok, :invalid,
-         "#{length(issues)} unresolved accepted issue(s):\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
+         "#{length(issues)} unresolved accepted issue(s) at #{@min_blocking_severity}+ severity:\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
     end
   end
 

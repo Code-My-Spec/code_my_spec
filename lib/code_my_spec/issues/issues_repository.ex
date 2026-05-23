@@ -24,6 +24,15 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.all()
   end
 
+  def list_by_status_and_min_severity(%Scope{} = scope, status, min_severity) do
+    Issue
+    |> by_project(scope.active_project.id)
+    |> by_status(status)
+    |> by_min_severity(min_severity)
+    |> ordered_by_severity()
+    |> Repo.all()
+  end
+
   def list_by_story(%Scope{} = scope, story_id) do
     Issue
     |> by_project(scope.active_project.id)
