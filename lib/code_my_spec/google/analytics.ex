@@ -21,7 +21,7 @@ defmodule CodeMySpec.Google.Analytics do
       {:ok, %GoogleApi.AnalyticsAdmin.V1beta.Model.GoogleAnalyticsAdminV1betaListAccountsResponse{}}
   """
 
-  alias CodeMySpec.Integrations
+  alias CodeMySpec.Google.Auth
   alias CodeMySpec.Users.Scope
   alias GoogleApi.AnalyticsAdmin.V1beta.Api.{Accounts, Properties}
   alias GoogleApi.AnalyticsAdmin.V1beta.Connection
@@ -44,10 +44,8 @@ defmodule CodeMySpec.Google.Analytics do
   @spec get_connection(Scope.t()) ::
           {:ok, Tesla.Client.t()} | {:error, :not_found | :token_expired}
   def get_connection(%Scope{} = scope) do
-    with {:ok, integration} <- Integrations.get_integration(scope, :google),
-         {:ok, token} <- get_valid_token(scope, integration) do
-      conn = Connection.new(token)
-      {:ok, conn}
+    with {:ok, token} <- Auth.get_valid_token(scope) do
+      {:ok, Connection.new(token)}
     end
   end
 
@@ -502,20 +500,4 @@ defmodule CodeMySpec.Google.Analytics do
     end
   end
 
-  # Private Functions
-
-  defp get_valid_token(scope, integration) do
-    if integration_expired?(integration) do
-      case Integrations.refresh_token(scope, :google) do
-        {:ok, refreshed} -> {:ok, refreshed.access_token}
-        {:error, _} = error -> error
-      end
-    else
-      {:ok, integration.access_token}
-    end
-  end
-
-  defp integration_expired?(integration) do
-    DateTime.compare(DateTime.utc_now(), integration.expires_at) == :gt
-  end
 end
