@@ -7,20 +7,40 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter do
 
   require Logger
 
-  @spec post(String.t(), map()) :: :ok
-  def post(url, payload) do
+  @spec post(String.t(), map(), keyword()) :: :ok
+  def post(url, payload, log_meta \\ []) do
     req_opts = [json: payload, receive_timeout: 5_000] |> Keyword.merge(plug_opt())
+    event = Keyword.get(log_meta, :event)
+    user_id = Keyword.get(log_meta, :user_id)
 
     case Req.post(url, req_opts) do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
+        Logger.info("GA MP delivery ok",
+          event: event,
+          user_id: user_id,
+          mp_status: status
+        )
+
         :ok
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        Logger.warning("GA Measurement Protocol non-2xx: status=#{status} body=#{inspect(body)}")
+        Logger.warning("GA MP delivery non-2xx",
+          event: event,
+          user_id: user_id,
+          mp_status: status,
+          body: inspect(body)
+        )
+
         :ok
 
       {:error, reason} ->
-        Logger.warning("GA Measurement Protocol HTTP error: #{inspect(reason)}")
+        Logger.warning("GA MP delivery HTTP error",
+          event: event,
+          user_id: user_id,
+          mp_status: :http_error,
+          error: inspect(reason)
+        )
+
         :ok
     end
   end

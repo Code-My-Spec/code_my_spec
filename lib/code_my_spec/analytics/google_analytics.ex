@@ -41,7 +41,15 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
 
   @doc false
   def handle_event(@telemetry_event, _measurements, metadata, _config) do
-    case Map.get(metadata, :origin, :server) do
+    origin = Map.get(metadata, :origin, :server)
+
+    Logger.info("GA MP handler received event",
+      event: metadata.event,
+      user_id: metadata.payload[:user_id] || metadata.payload["user_id"],
+      origin: origin
+    )
+
+    case origin do
       :browser ->
         # Browser-originated events are forwarded to GA by gtag on the
         # client. Skipping MP delivery here avoids double-counting.
@@ -49,7 +57,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
 
       :server ->
         payload = build_payload(metadata.event, metadata.payload)
-        deliver(payload)
+        deliver(payload, metadata.event)
     end
   end
 
@@ -98,9 +106,9 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
 
-  defp deliver(payload) do
+  defp deliver(payload, event) do
     case test_subscriber() do
-      nil -> deliver_via_http(payload)
+      nil -> deliver_via_http(payload, event)
       pid -> send(pid, {:ga_measurement_protocol, payload})
     end
   end
@@ -112,14 +120,20 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
     end
   end
 
-  defp deliver_via_http(payload) do
+  defp deliver_via_http(payload, event) do
     config = Application.get_env(:code_my_spec, __MODULE__, [])
 
     measurement_id = Keyword.get(config, :measurement_id)
     api_secret = Keyword.get(config, :api_secret)
+    user_id = payload[:user_id] || payload["user_id"]
 
     if is_nil(measurement_id) or is_nil(api_secret) do
-      Logger.debug("GA Measurement Protocol skipped: missing measurement_id or api_secret")
+      Logger.warning("GA MP delivery skipped: missing measurement_id or api_secret",
+        event: event,
+        user_id: user_id,
+        mp_status: :missing_config
+      )
+
       :ok
     else
       endpoint =
@@ -133,12 +147,23 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
           URI.encode_query(%{"measurement_id" => measurement_id, "api_secret" => api_secret})
 
       try do
-        adapter.post(url, payload)
+        adapter.post(url, payload, event: event, user_id: user_id)
       rescue
-        err -> Logger.warning("GA Measurement Protocol delivery raised: #{inspect(err)}")
+        err ->
+          Logger.warning("GA MP delivery raised",
+            event: event,
+            user_id: user_id,
+            mp_status: :raised,
+            error: inspect(err)
+          )
       catch
         kind, reason ->
-          Logger.warning("GA Measurement Protocol delivery threw: #{inspect({kind, reason})}")
+          Logger.warning("GA MP delivery threw",
+            event: event,
+            user_id: user_id,
+            mp_status: :threw,
+            error: inspect({kind, reason})
+          )
       end
 
       :ok
