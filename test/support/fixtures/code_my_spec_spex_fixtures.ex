@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Fixtures do
     EmbeddingsFixtures,
     EnvironmentFixtures,
     Environments,
+    IntegrationsFixtures,
     IssuesFixtures,
     OauthFixtures,
     Paths,
@@ -48,6 +49,14 @@ defmodule CodeMySpecSpex.Fixtures do
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
   def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)
   def select_active_project(scope, project_id), do: UserPreferences.select_active_project(scope, project_id)
+
+  defdelegate google_integration_fixture(user, attrs \\ %{}), to: IntegrationsFixtures
+
+  defdelegate find_or_register_oauth_user(provider, attrs), to: Users
+
+  defdelegate dispatch_analytics_event(event, payload), to: CodeMySpec.Analytics, as: :dispatch
+
+  defdelegate mark_cli_first_connected(user), to: UsersFixtures
 
   # -- Environments --
   defdelegate memory_environment_fixture(opts \\ []), to: EnvironmentFixtures

@@ -9,9 +9,10 @@ defmodule CodeMySpec.UsersFixtures do
   import CodeMySpec.ProjectsFixtures
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Users.{Scope, User}
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
   def valid_user_password, do: "hello world!"
@@ -20,6 +21,21 @@ defmodule CodeMySpec.UsersFixtures do
     Enum.into(attrs, %{
       email: unique_user_email()
     })
+  end
+
+  @doc """
+  Marks a user as having already done their first CLI connect — sets
+  `users.cli_first_connected_at`. Used by analytics spex that
+  exercise the "subsequent connect" branch of CliChannel.
+  """
+  def mark_cli_first_connected(%{id: user_id}) do
+    {1, _} =
+      Repo.update_all(
+        from(u in User, where: u.id == ^user_id),
+        set: [cli_first_connected_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+      )
+
+    :ok
   end
 
   def unconfirmed_user_fixture(attrs \\ %{}) do

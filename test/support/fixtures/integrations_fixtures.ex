@@ -64,6 +64,10 @@ defmodule CodeMySpec.IntegrationsFixtures do
     integration_fixture(user, Map.merge(%{provider: :bitbucket}, attrs))
   end
 
+  def google_integration_fixture(user, attrs \\ %{}) do
+    integration_fixture(user, Map.merge(%{provider: :google}, attrs))
+  end
+
   def expired_integration_fixture(user, attrs \\ %{}) do
     integration_fixture(user, expired_integration_attributes(user, attrs))
   end
