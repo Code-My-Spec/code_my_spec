@@ -251,8 +251,17 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     # Layout each tier as a horizontal band, stacking downward.
     # Pass 1: tier-based placement establishes correct x positions for each tree.
+    # Single-component tiers all centre at x=0 by default (place_component_trees
+    # symmetric layout), which produces a tall stack of components on the x=0
+    # axis when many tiers each have one component. To avoid that visual,
+    # stagger single-tree tiers by tier_idx — alternating left/right so the
+    # stack fans out around the centre. Multi-tree tiers keep their default
+    # centred placement.
     {comp_sigma_raw, _tier_bottom} =
-      Enum.reduce(tiers, {[], comp_zone_y}, fn {_depth, tier_components}, {all_nodes, tier_y} ->
+      tiers
+      |> Enum.with_index()
+      |> Enum.reduce({[], comp_zone_y}, fn {{_depth, tier_components}, tier_idx},
+                                           {all_nodes, tier_y} ->
         tree_layouts =
           Enum.map(
             tier_components,
@@ -260,7 +269,14 @@ defmodule CodeMySpec.Requirements.GraphProjector do
           )
 
         {tier_nodes, tier_height} = place_component_trees(tree_layouts, tier_y)
-        {all_nodes ++ tier_nodes, tier_y - tier_height - @row_gap}
+
+        offset_tier_nodes =
+          case tree_layouts do
+            [_single] -> offset_x(tier_nodes, single_tier_x_offset(tier_idx))
+            _ -> tier_nodes
+          end
+
+        {all_nodes ++ offset_tier_nodes, tier_y - tier_height - @row_gap}
       end)
 
     # Pass 2: global-depth y normalization.
@@ -397,29 +413,43 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     end)
   end
 
-  # Second pass: handle cross-entity collisions at the same (x, y) — which
-  # happens when two standalone components (no deps, both at depth 0) get
-  # placed at x=0 by `place_component_trees`. The same-entity pass above
-  # only nudges siblings in one entity's column; nothing was separating
-  # different entities sharing the same coordinate.
+  # Second pass: enforce minimum y separation between nodes that share
+  # the same x column. Per x, sort nodes by y desc, walk down, and push
+  # each next node to at least `spread_step` below the previous one.
+  # Pairwise iteration over a one-pass spread didn't converge because
+  # spreading one group can create new collisions with adjacent groups
+  # at the same x. Per-column packing fixes the column in one shot.
   defp spread_y_for_cross_entity_xy_collisions(nodes) do
-    nodes
-    |> Enum.group_by(fn n -> {n.attributes.x, n.attributes.y} end)
-    |> Enum.flat_map(fn
-      {_, [single]} ->
-        [single]
+    spread_step = div(@ctx_req_gap, 4)
+    {by_x, no_x} = Enum.split_with(nodes, fn n -> is_number(n.attributes.x) end)
 
-      {_, colliders} ->
-        spread_step = div(@ctx_req_gap, 4)
-        sorted = Enum.sort_by(colliders, & &1.key)
+    by_x
+    |> Enum.group_by(fn n -> n.attributes.x end)
+    |> Enum.flat_map(fn {_x, col_nodes} -> pack_column(col_nodes, spread_step) end)
+    |> Kernel.++(no_x)
+  end
 
-        sorted
-        |> Enum.with_index()
-        |> Enum.map(fn {n, idx} ->
-          new_y = n.attributes.y - idx * spread_step
-          %{n | attributes: %{n.attributes | y: new_y}}
-        end)
-    end)
+  defp pack_column([single], _step), do: [single]
+
+  defp pack_column(col_nodes, step) do
+    # Sort top-to-bottom (descending y). Within same y, stable by key.
+    sorted = Enum.sort_by(col_nodes, fn n -> {-n.attributes.y, n.key} end)
+
+    {packed, _last_y} =
+      Enum.reduce(sorted, {[], nil}, fn n, {acc, last_y} ->
+        cur_y = n.attributes.y
+
+        new_y =
+          case last_y do
+            nil -> cur_y
+            ly when cur_y >= ly -> ly - step
+            ly -> min(cur_y, ly - step)
+          end
+
+        {[%{n | attributes: %{n.attributes | y: new_y}} | acc], new_y}
+      end)
+
+    Enum.reverse(packed)
   end
 
   # Source keys of edges whose target is missing from the rendered set.
@@ -678,6 +708,27 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     else
       acc
     end
+  end
+
+  # Stagger pattern for single-tree tiers: 0, +1, -1, +2, -2, +3, -3, ...
+  # Multiplied by @single_tier_x_step. This fans single components around
+  # the centre column instead of stacking them all at x=0.
+  @single_tier_x_step 600
+
+  defp single_tier_x_offset(tier_idx) when tier_idx == 0, do: 0
+
+  defp single_tier_x_offset(tier_idx) do
+    magnitude = div(tier_idx + 1, 2)
+    sign = if rem(tier_idx, 2) == 1, do: 1, else: -1
+    sign * magnitude * @single_tier_x_step
+  end
+
+  defp offset_x(nodes, 0), do: nodes
+
+  defp offset_x(nodes, dx) do
+    Enum.map(nodes, fn n ->
+      %{n | attributes: %{n.attributes | x: n.attributes.x + dx}}
+    end)
   end
 
   # Arrange tree layouts side by side, centered around x=0, offset to comp_zone_y.
