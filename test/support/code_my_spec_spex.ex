@@ -6,6 +6,7 @@ defmodule CodeMySpecSpex do
       CodeMySpec.Environments,
       CodeMySpec.McpServers,
       CodeMySpecSpex.Fixtures,
+      CodeMySpecSpex.GaAssertions,
       CodeMySpecWeb,
       CodeMySpecLocalWeb
     ]

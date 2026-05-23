@@ -64,6 +64,36 @@ defmodule CodeMySpec.IntegrationsFixtures do
     integration_fixture(user, Map.merge(%{provider: :bitbucket}, attrs))
   end
 
+  @doc """
+  Creates a Google integration row. During cassette recording the
+  caller should override `access_token` with a real token via
+  `GA_TEST_OAUTH_TOKEN` env var; during replay the placeholder is
+  fine because the cassette serves the recorded response regardless.
+
+  Scopes match the production OAuth request (`analytics.edit` +
+  `analytics.readonly`) so `Auth.get_valid_token/1` doesn't trip the
+  granted-scopes check.
+  """
+  def google_integration_fixture(user, attrs \\ %{}) do
+    real_token = System.get_env("GA_TEST_OAUTH_TOKEN")
+
+    base = %{
+      provider: :google,
+      access_token: real_token || "test_google_access_token_replay",
+      granted_scopes: [
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/analytics.edit",
+        "https://www.googleapis.com/auth/analytics.readonly"
+      ],
+      provider_metadata: %{
+        "provider_user_id" => "google_test_user_#{System.unique_integer([:positive])}"
+      }
+    }
+
+    integration_fixture(user, Map.merge(base, attrs))
+  end
+
   def expired_integration_fixture(user, attrs \\ %{}) do
     integration_fixture(user, expired_integration_attributes(user, attrs))
   end
