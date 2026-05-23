@@ -6,16 +6,19 @@ defmodule Mix.Tasks.Cms.GaTestToken do
   Reads the `:google` integration from the dev DB for the resolved user,
   routes through `CodeMySpec.Google.Auth.get_valid_token/1` (same refresh
   logic the admin and reporting clients use at runtime), and writes the
-  token to stdout. Nothing else lands on stdout, so the output is safe
-  to capture into an env var:
+  token to stdout as the final line. Mix compile chatter may appear
+  on stdout above it, so capture with `tail -n1`:
 
-      export GA_TEST_OAUTH_TOKEN=$(mix cms.ga_test_token)
+      export GA_TEST_OAUTH_TOKEN=$(mix cms.ga_test_token | tail -n1)
 
   Or inline:
 
-      GA_TEST_OAUTH_TOKEN=$(mix cms.ga_test_token) \\
+      GA_TEST_OAUTH_TOKEN=$(mix cms.ga_test_token | tail -n1) \\
         mix test test/spex/812_.../criterion_6507_*.exs \\
         --include ga_cassette_record
+
+  Tip: run `mix compile` first so compile output doesn't appear on
+  the first call.
 
   ## User resolution
 
@@ -39,6 +42,8 @@ defmodule Mix.Tasks.Cms.GaTestToken do
   use Boundary, classify_to: CodeMySpec
   use Mix.Task
 
+  require Logger
+
   alias CodeMySpec.Google.Auth
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
@@ -46,15 +51,20 @@ defmodule Mix.Tasks.Cms.GaTestToken do
   @shortdoc "Print a valid Google access token (refresh if expired)"
 
   def run(argv) do
+    # Silence Logger so its output (which can land on stdout depending on
+    # backend config) doesn't muddy the `$()` capture. The mix task is
+    # intended for capture; user-facing messages we want them to see go
+    # to stderr explicitly.
+    Logger.configure(level: :error)
     Mix.Task.run("app.start")
 
     email = resolve_email(argv)
 
     with {:ok, user} <- fetch_user(email),
          {:ok, token} <- Auth.get_valid_token(Scope.for_user(user)) do
-      # Only the token lands on stdout — surrounding context goes to stderr
-      # so `$(mix cms.ga_test_token)` captures cleanly.
-      IO.write(token)
+      # The token is the final line of stdout — earlier lines may be
+      # Mix compile output, so callers use `tail -n1` to capture.
+      IO.puts(token)
     else
       {:error, reason} ->
         IO.puts(:stderr, "cms.ga_test_token failed: #{format_error(reason)}")
