@@ -335,10 +335,28 @@ defmodule CodeMySpec.Requirements.Topology do
     end
   end
 
+  # Cyclic nodes (those that never resolved) get sequential depths in
+  # stable key order, starting at max-known + 1. This stops cycles
+  # from collapsing to the same depth band (and the same y in
+  # GraphProjector), at the cost of one back-edge per cycle — the
+  # unavoidable tradeoff for rendering a cycle in a downward-flowing
+  # layout.
   defp finalize_unresolved(depths) do
-    Map.new(depths, fn
-      {k, nil} -> {k, 0}
-      {k, d} -> {k, d}
+    max_known =
+      depths
+      |> Map.values()
+      |> Enum.reject(&is_nil/1)
+      |> Enum.max(fn -> -1 end)
+
+    unresolved =
+      depths
+      |> Enum.filter(fn {_k, d} -> is_nil(d) end)
+      |> Enum.sort_by(fn {k, _} -> k end)
+
+    unresolved
+    |> Enum.with_index()
+    |> Enum.reduce(depths, fn {{k, _}, idx}, acc ->
+      Map.put(acc, k, max_known + 1 + idx)
     end)
   end
 end

@@ -373,6 +373,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       %{n | attributes: %{n.attributes | y: new_y}}
     end)
     |> spread_y_for_same_entity_collisions()
+    |> spread_y_for_cross_entity_xy_collisions()
   end
 
   defp spread_y_for_same_entity_collisions(nodes) do
@@ -386,6 +387,31 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         spread_step = div(@ctx_req_gap, 4)
         # Sort for deterministic ordering — node `key` is unique and stable.
         sorted = Enum.sort_by(siblings, & &1.key)
+
+        sorted
+        |> Enum.with_index()
+        |> Enum.map(fn {n, idx} ->
+          new_y = n.attributes.y - idx * spread_step
+          %{n | attributes: %{n.attributes | y: new_y}}
+        end)
+    end)
+  end
+
+  # Second pass: handle cross-entity collisions at the same (x, y) — which
+  # happens when two standalone components (no deps, both at depth 0) get
+  # placed at x=0 by `place_component_trees`. The same-entity pass above
+  # only nudges siblings in one entity's column; nothing was separating
+  # different entities sharing the same coordinate.
+  defp spread_y_for_cross_entity_xy_collisions(nodes) do
+    nodes
+    |> Enum.group_by(fn n -> {n.attributes.x, n.attributes.y} end)
+    |> Enum.flat_map(fn
+      {_, [single]} ->
+        [single]
+
+      {_, colliders} ->
+        spread_step = div(@ctx_req_gap, 4)
+        sorted = Enum.sort_by(colliders, & &1.key)
 
         sorted
         |> Enum.with_index()
@@ -619,8 +645,24 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     updated = Enum.reduce(depths, depths, &resolve_depth_step(&1, &2, dep_graph))
 
     if updated == depths do
-      # No progress — remaining nils get depth 0 (circular deps or missing)
-      Map.new(updated, fn {id, d} -> {id, d || 0} end)
+      # No progress — remaining nils are cyclic. Break the cycle by
+      # assigning sequential depths (sorted by id for determinism)
+      # starting from the current max + 1. Cycle members no longer
+      # collide on y; one edge of each cycle becomes a back-edge
+      # (source.y < target.y), which is the unavoidable cost of
+      # rendering a cycle in a downward-flowing band.
+      max_known = depths |> Map.values() |> Enum.reject(&is_nil/1) |> Enum.max(fn -> -1 end)
+
+      unresolved =
+        depths
+        |> Enum.filter(fn {_id, d} -> is_nil(d) end)
+        |> Enum.sort_by(fn {id, _} -> id end)
+
+      unresolved
+      |> Enum.with_index()
+      |> Enum.reduce(depths, fn {{id, _}, idx}, acc ->
+        Map.put(acc, id, max_known + 1 + idx)
+      end)
     else
       resolve_depths(updated, dep_graph)
     end
