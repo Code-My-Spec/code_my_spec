@@ -51,16 +51,23 @@ defmodule CodeMySpecSpex.GaAssertions do
     `customEvent:<param_name>` (custom dim must be registered).
     Default: `[]` (only event_name is matched).
   - `:min_count` — minimum count of matching rows. Default: 1.
+  - `:token` — pre-fetched OAuth access token, used instead of looking
+    up the scope's Google integration. Useful during cassette
+    recording where a long sleep between dispatch and assertion can
+    invalidate the Ecto sandbox connection before the DB query for
+    the integration runs.
   """
   @spec assert_event_recorded(Scope.t(), String.t(), keyword()) :: :ok | no_return()
   def assert_event_recorded(%Scope{} = scope, event_name, opts \\ []) do
     property_id = Keyword.fetch!(opts, :property_id)
     extra_dims = Keyword.get(opts, :with_dimensions, [])
     min_count = Keyword.get(opts, :min_count, 1)
+    token = Keyword.get(opts, :token)
 
     request = build_realtime_request(event_name, extra_dims)
+    reporting_opts = if token, do: [token: token], else: []
 
-    case ReportingClient.run_realtime_report(scope, property_id, request) do
+    case ReportingClient.run_realtime_report(scope, property_id, request, reporting_opts) do
       {:ok, response} ->
         matching_rows = matching_rows(response, event_name, extra_dims)
 

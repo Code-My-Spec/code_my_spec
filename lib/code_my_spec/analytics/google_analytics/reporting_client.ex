@@ -53,11 +53,11 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics.ReportingClient do
   `request` is the JSON body documented at
   https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runRealtimeReport
   """
-  @spec run_realtime_report(Scope.t(), String.t(), map()) ::
+  @spec run_realtime_report(Scope.t(), String.t(), map(), keyword()) ::
           {:ok, map()} | {:error, term()}
-  def run_realtime_report(%Scope{} = scope, property_id, request)
+  def run_realtime_report(%Scope{} = scope, property_id, request, opts \\ [])
       when is_binary(property_id) and is_map(request) do
-    post(scope, property_id, ":runRealtimeReport", request)
+    post(scope, property_id, ":runRealtimeReport", request, opts)
   end
 
   @doc """
@@ -74,8 +74,19 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics.ReportingClient do
     post(scope, property_id, ":runReport", request)
   end
 
-  defp post(%Scope{} = scope, property_id, suffix, request) do
-    with {:ok, token} <- Auth.get_valid_token(scope) do
+  defp post(%Scope{} = scope, property_id, suffix, request, opts \\ []) do
+    # Allow the caller to inject a pre-fetched token so the DB query
+    # doesn't need to happen at request time — useful when the request
+    # may run after a long sleep (e.g. cassette recording with GA
+    # Realtime API ingest latency) where the Ecto sandbox connection
+    # could be lost.
+    token_result =
+      case Keyword.get(opts, :token) do
+        nil -> Auth.get_valid_token(scope)
+        token when is_binary(token) -> {:ok, token}
+      end
+
+    with {:ok, token} <- token_result do
       url = endpoint() <> "/properties/" <> property_id <> suffix
 
       req_opts =

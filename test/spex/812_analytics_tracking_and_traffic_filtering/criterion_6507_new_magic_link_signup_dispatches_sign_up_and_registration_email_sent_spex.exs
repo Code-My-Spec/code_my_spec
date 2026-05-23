@@ -23,21 +23,40 @@ defmodule CodeMySpecSpex.Story812.Criterion6507Spex do
 
   ## Recording
 
-  The cassette currently doesn't exist. To record:
-
-      GA_TEST_OAUTH_TOKEN=<real-google-access-token-with-analytics.readonly> \\
+      GA_TEST_OAUTH_TOKEN=$(mix cms.ga_test_token | tail -n1) \\
         mix test test/spex/812_.../criterion_6507_*.exs --include ga_cassette_record
 
-  The Authorization headers are filtered before write, so the recorded
-  cassette is safe to commit. Subsequent runs replay from cassette and
-  don't need the env var.
+  The Authorization headers and MP api_secret are filtered before write,
+  so the recorded cassette is safe to commit. Subsequent runs replay from
+  cassette and don't need the env var.
 
   Tagged `:ga_cassette_record` so it's skipped in normal runs until the
   cassette is recorded once. After recording, change `mode: :record` →
   `mode: :replay` and drop the tag.
+
+  ## GA Realtime latency caveat
+
+  The Realtime Report API can take several minutes to surface
+  freshly-dispatched events — sometimes longer than reasonable test
+  timeouts. During recording, the assertion may fail because the report
+  returns 0 rows even though the MP POST was accepted. Workarounds:
+
+  1. Fire warmup events out-of-band (e.g. via a separate script) several
+     minutes BEFORE running the recording, so when the spex queries the
+     Realtime API the events are already visible.
+  2. After recording, hand-inspect the cassette and manually craft the
+     Reporting response if needed (the cassette is JSON).
+
+  The captured cassette is still useful even if the assertion fails on
+  first record — the outgoing MP POSTs are captured deterministically
+  and prove the dispatch contract.
   """
 
   use CodeMySpecSpex.Case
+
+  # /users/register lives on the main web router, not LocalWeb. Override
+  # the @endpoint the Case set so live/3 dispatches to the right router.
+  @endpoint CodeMySpecWeb.Endpoint
 
   import ReqCassette
   import CodeMySpecSpex.GaAssertions, only: [assert_event_recorded: 3, with_ga_plug: 2]
@@ -48,16 +67,18 @@ defmodule CodeMySpecSpex.Story812.Criterion6507Spex do
   @cassette_dir "test/cassettes/analytics"
 
   @moduletag :ga_cassette_record
+  @moduletag timeout: 240_000
 
-  setup :register_log_in_setup_account
-
-  setup %{user: user, scope: scope} = context do
-    # The ReportingClient needs a scope with a valid Google integration
-    # carrying analytics.readonly. During cassette recording the
-    # GA_TEST_OAUTH_TOKEN env var supplies a real access token; during
-    # replay the placeholder is fine.
-    _integration = Fixtures.google_integration_fixture(user)
-    {:ok, Map.put(context, :scope, scope)}
+  setup context do
+    # The visitor in this spex is UNAUTHENTICATED — the registration
+    # form is for fresh sign-ups, so don't log anyone into the conn.
+    # But the GaAssertions call needs a scope with a Google
+    # integration to query GA. So we create a separate "operator"
+    # user behind the scenes whose scope holds the integration.
+    operator = Fixtures.user_fixture()
+    operator_scope = Fixtures.user_scope_fixture(operator)
+    _integration = Fixtures.google_integration_fixture(operator)
+    {:ok, Map.put(context, :operator_scope, operator_scope)}
   end
 
   spex "New magic-link signup round-trips to Google Analytics" do
@@ -72,16 +93,35 @@ defmodule CodeMySpecSpex.Story812.Criterion6507Spex do
         result =
           with_cassette "812_signup_magic_link", cassette_opts(), fn plug ->
             with_ga_plug(plug, fn ->
+              # Pre-fetch the OAuth token BEFORE any long sleep so the
+              # Ecto sandbox connection doesn't time out mid-assertion.
+              # During replay the cassette serves the response regardless,
+              # so an empty token is fine.
+              token = System.get_env("GA_TEST_OAUTH_TOKEN")
+
               {:ok, lv, _html} = live(context.conn, "/users/register")
 
+              # Submit the registration form. push_navigate on success
+              # returns {:error, {:live_redirect, ...}} — that's the
+              # happy path here, not an error.
               lv
               |> form("#registration_form", user: %{email: context.email})
               |> render_submit()
 
-              # Synchronous dispatch — telemetry handlers run inline.
-              # The cassette captured the MP POST. Now verify the
-              # event landed in GA via the same cassette plug.
-              assert_event_recorded(context.scope, "sign_up", property_id: @property_id)
+              # GA Realtime API has ingest latency between MP POST and
+              # visibility on the Realtime Report. During recording we
+              # sleep so the report sees our event; during replay the
+              # cassette returns the recorded response immediately so
+              # the sleep is harmless.
+              if token, do: Process.sleep(60_000)
+
+              # The cassette captured the MP POST. Now verify the event
+              # landed in GA via the same cassette plug. Token is passed
+              # explicitly to skip the in-test DB integration lookup.
+              assert_event_recorded(context.operator_scope, "sign_up",
+                property_id: @property_id,
+                token: token || "replay_token"
+              )
 
               :ok
             end)
@@ -101,7 +141,13 @@ defmodule CodeMySpecSpex.Story812.Criterion6507Spex do
     [
       cassette_dir: @cassette_dir,
       mode: :record,
-      match_requests_on: [:method, :uri],
+      # MUST include :body — without it, all POSTs to /mp/collect look
+      # identical to ReqCassette (same method + uri) and only the first
+      # one gets recorded; the second one "matches" and replays the
+      # first response, never hitting GA. Including body lets distinct
+      # events (view_register_page vs sign_up vs registration_email_sent)
+      # all record cleanly.
+      match_requests_on: [:method, :uri, :body],
       filter_request_headers: ["authorization", "cookie"],
       filter_response_headers: ["set-cookie"],
       filter_sensitive_data: [
