@@ -17,17 +17,48 @@ defmodule CodeMySpecSpex.Story811.Criterion6490Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.GraphGivens
+
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpecSpex.Fixtures
+
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "Active task and upcoming tasks render on the same screen" do
     scenario "the queue view shows the active task and the upcoming list together" do
-      given_ "the project has an active task and several queued requirements",
-             context do
-        # Sufficient unsatisfied state is implicit on a freshly-set-up
-        # project: project_setup is the first actionable requirement,
-        # personas_complete is queued behind it, etc. No fixture
-        # needed — the requirements graph is fresh.
+      given_ :fully_satisfied_project
+
+      and_ "the component's implementation AND test files are removed",
+           context do
+        # Fully-satisfied baseline returns 0 actionable. Remove the
+        # component's `implementation_file` AND `test_file` artifacts to
+        # regress two independent component-level requirements concurrently
+        # — yields the multi-actionable state the view contract assumes
+        # (active + ≥1 upcoming).
+        impl_path =
+          "lib/some_name/" <> Macro.underscore(context.component.module_name) <> ".ex"
+
+        test_path =
+          "test/some_name/" <> Macro.underscore(context.component.module_name) <> "_test.exs"
+
+        :ok = Environments.delete_file(context.environment, impl_path)
+        :ok = Environments.delete_file(context.environment, test_path)
+        {:ok, _} = Fixtures.notify_file_changed(context.scope, impl_path)
+        {:ok, _} = Fixtures.notify_file_changed(context.scope, test_path)
+
+        actionable = RequirementGraph.next_actionable(context.scope)
+
+        if length(actionable) < 2 do
+          flunk("""
+          Fixture should produce ≥2 concurrent actionable requirements for the
+          active+upcoming view contract, got #{length(actionable)}:
+
+            #{Enum.map_join(actionable, "\n  ", fn r -> "#{r.name}/#{r.entity_type}" end)}
+          """)
+        end
+
         {:ok, context}
       end
 

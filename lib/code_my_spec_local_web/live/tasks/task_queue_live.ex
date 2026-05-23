@@ -73,10 +73,18 @@ defmodule CodeMySpecLocalWeb.Tasks.TaskQueueLive do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  defp subscribe_to_state_changes(%Scope{active_account_id: account_id})
+  defp subscribe_to_state_changes(%Scope{active_account_id: account_id} = scope)
        when is_binary(account_id) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{account_id}:components")
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{account_id}:issues")
+
+    # File-only changes (project_setup satisfaction, spec file edits, etc.)
+    # don't broadcast on the components or issues topics. ProjectSync.Sync
+    # broadcasts on `"project:<id>:watcher"` whenever the file watcher
+    # syncs a file change, which is the broadest signal for "the
+    # requirement graph might have shifted." Subscribing here keeps the
+    # queue live for file-only events too.
+    CodeMySpec.ProjectSync.Sync.subscribe(scope)
   end
 
   defp subscribe_to_state_changes(_scope), do: :ok

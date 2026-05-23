@@ -18,9 +18,7 @@ defmodule CodeMySpecSpex.Story811.Criterion6493Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
-  alias CodeMySpec.Environments
+  alias CodeMySpecSpex.{Fixtures, ProjectStateFixtures}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -49,19 +47,18 @@ defmodule CodeMySpecSpex.Story811.Criterion6493Spex do
 
       when_ "the agent satisfies the active task by completing its underlying requirement",
             context do
-        # Satisfy project_setup (the natural fresh-project head) by
-        # writing the canonical setup files. This re-routes through
-        # the same surface a real agent would use, not a Repo direct
-        # write.
-        :ok =
-          Environments.write_file(
-            context.environment,
-            "CLAUDE.md",
-            "<!-- code_my_spec:start -->\n<!-- code_my_spec:end -->\n"
-          )
+        # The natural fresh-project head is `project_setup` — satisfy it
+        # fully via the same fixture the rest of the test suite uses,
+        # so it ACTUALLY clears the requirement.
+        ProjectStateFixtures.apply_project_setup_steps(context)
 
-        # PubSub fan-out from the file watcher / sync pipeline drives
-        # the LiveView re-render. Wait for it.
+        # `apply_project_setup_steps` writes files + syncs into the
+        # Files table but doesn't fire the watcher event the LiveView
+        # subscribes to. Synthesize one watcher event so the
+        # `"project:<id>:watcher"` broadcast triggers re-render.
+        {:ok, _} = Fixtures.notify_file_changed(context.scope, "CLAUDE.md")
+
+        # PubSub fan-out is async; give the LiveView a beat to process.
         :timer.sleep(50)
 
         {:ok, context}

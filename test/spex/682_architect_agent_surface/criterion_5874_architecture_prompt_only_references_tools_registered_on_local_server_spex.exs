@@ -39,8 +39,15 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
   @non_tool_tokens MapSet.new([
                      # Document type identifier consumed by the proposal validator.
                      "architecture_proposal",
-                     # Config key in `.code_my_spec/config.yml`.
+                     # Legacy config key in `.code_my_spec/config.yml`. The
+                     # config classifier was deleted (commit e1423b91);
+                     # token may still appear in older prompt strings.
                      "infrastructure_paths",
+                     # Type-classifier value written into a context's spec
+                     # `## Type` section — when set to `infrastructure`,
+                     # the orphan-context rule skips the component.
+                     # Domain value, not a tool name.
+                     "infrastructure",
                      # Component type values rendered in the orphan diagnostic
                      # section (e.g. "(type: `liveview`)") — these are domain
                      # values from `Components.Registry`, not tool names. List

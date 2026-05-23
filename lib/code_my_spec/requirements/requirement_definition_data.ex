@@ -944,7 +944,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "qa_journey_wallaby",
         node_scope: :self,
         check_type: :path_exists,
-        config: %{path_prefix: "test/e2e/"},
+        # Matches `Paths.qa_journey_wallaby_dir/0` and the QaJourney
+        # task's @wallaby_dir. The requirement definition previously
+        # had `test/e2e/` (legacy) which silently never matched what
+        # the task actually writes.
+        config: %{path_prefix: "test/journeys/"},
         satisfied_by: AgentTasks.QaJourney,
         artifact_type: :tests,
         description: "Wallaby journey tests exist",

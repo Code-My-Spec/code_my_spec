@@ -87,7 +87,11 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
 
   @impl true
   def list_directory(%Environment{} = env, path) do
-    key = normalize(path, env.cwd)
+    # Strip trailing slash so callers using either `"test/journeys"` or
+    # `"test/journeys/"` (e.g. the requirement-calculator path_prefix)
+    # both resolve to the same key. Production File.ls handles either
+    # form natively; this matches.
+    key = path |> String.trim_trailing("/") |> normalize(env.cwd)
     prefix = if key == "", do: "", else: key <> "/"
 
     children =

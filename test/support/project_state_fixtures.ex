@@ -107,7 +107,12 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_project_setup_steps(map()) :: map()
   def apply_project_setup_steps(context) do
-    Fixtures.satisfy_setup_steps(context.environment, @all_setup_steps)
+    # Pass scope (not env) — the Scope overload of satisfy_setup_steps
+    # also syncs the seeded files into the Files table, which the
+    # individual step checks (e.g. ApplicationInWeb) query directly.
+    # The Environment overload only writes files; the DB lookup then
+    # finds nothing and the step stays incomplete.
+    Fixtures.satisfy_setup_steps(context.scope, @all_setup_steps)
 
     config_path = Path.join([context.scope.cwd, ".code_my_spec", "config.yml"])
     File.mkdir_p!(Path.dirname(config_path))
@@ -200,7 +205,13 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         qa_journey_result_content()
       )
 
-    :ok = Environments.write_file(env, "test/e2e/sample_journey_test.exs", wallaby_content())
+    # `qa_journey_wallaby` checker looks under `Paths.qa_journey_wallaby_dir/0`
+    # which is `test/journeys`, not `test/e2e`. Writing to the wrong dir
+    # was the silent fixture gap that left this requirement unsatisfied
+    # after `:fully_satisfied_project` and broke story 811's empty-queue
+    # spex (criterion 6491).
+    :ok = Environments.write_file(env, "test/journeys/sample_journey_test.exs", wallaby_content())
+
     context
   end
 
