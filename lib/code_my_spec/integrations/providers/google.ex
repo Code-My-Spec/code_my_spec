@@ -23,7 +23,15 @@ defmodule CodeMySpec.Integrations.Providers.Google do
   Requests the following Google OAuth scopes:
   - `email` - Access to user email address
   - `profile` - Access to user profile information
-  - `https://www.googleapis.com/auth/analytics.readonly` - Read-only access to Google Analytics
+  - `https://www.googleapis.com/auth/analytics.edit` - Edit Google Analytics
+    admin entities (custom dimensions, metrics, key events). Required by the
+    `CodeMySpec.Google.Analytics` admin client.
+  - `https://www.googleapis.com/auth/analytics.readonly` - Read GA Data API
+    (Reporting + Realtime Reports). Required by the
+    `CodeMySpec.Analytics.GoogleAnalytics.ReportingClient`.
+
+  Note: existing integrations granted only `analytics.edit` need re-auth
+  (delete + re-link) to pick up `analytics.readonly`.
   """
 
   @behaviour CodeMySpec.Integrations.Providers.Behaviour
@@ -49,7 +57,8 @@ defmodule CodeMySpec.Integrations.Providers.Google do
       token_url: "https://oauth2.googleapis.com/token",
       auth_method: :client_secret_post,
       authorization_params: [
-        scope: "email profile https://www.googleapis.com/auth/analytics.edit",
+        scope:
+          "email profile https://www.googleapis.com/auth/analytics.edit https://www.googleapis.com/auth/analytics.readonly",
         access_type: "offline",
         prompt: "consent"
       ]
