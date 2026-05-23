@@ -304,6 +304,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   defp extract_test_output_files(%{"test_output_files" => files}) when is_map(files) do
     [
       compile_output_file: Map.get(files, "compile"),
+      credo_output_file: Map.get(files, "credo"),
       exunit_output_file: Map.get(files, "exunit"),
       spex_output_file: Map.get(files, "spex")
     ]

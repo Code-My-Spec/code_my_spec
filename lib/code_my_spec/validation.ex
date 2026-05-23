@@ -52,6 +52,7 @@ defmodule CodeMySpec.Validation do
   ## Options
 
   - `:compile_output_file` - pre-recorded diagnostics JSONL (test-only)
+  - `:credo_output_file` - pre-recorded credo JSON (test-only)
   - `:exunit_output_file` - pre-recorded ExUnit JSON (test-only)
   - `:spex_output_file` - pre-recorded spex JSONL (test-only)
   - `:session_id` - external session id; when present, the changed-file
@@ -93,7 +94,7 @@ defmodule CodeMySpec.Validation do
     changed_files =
       scope
       |> resolve_changed_files(task, sync_result)
-      |> filter_by_session_attribution(opts)
+      |> filter_by_session_attribution(cwd, opts)
 
     config = Configurations.get_or_create(scope)
 
@@ -109,25 +110,44 @@ defmodule CodeMySpec.Validation do
   # this filter a parallel session's writes leak into the current stop's
   # block decision. No session → no filter (preserves behaviour for direct
   # callers that don't run inside the hook lifecycle).
-  defp filter_by_session_attribution(files, opts) do
+  defp filter_by_session_attribution(files, cwd, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
-        attributed = attributed_paths(session_id, Keyword.get(opts, :agent_id))
+        # PostToolUse stores whatever Claude passed — typically absolute
+        # paths like `/Users/.../project/lib/foo.ex`. Files.path is
+        # project-relative (`lib/foo.ex`). Normalize attributed paths to
+        # relative against cwd before comparison or every session with a
+        # tracked edit would land empty.
+        attributed =
+          session_id
+          |> attributed_paths(Keyword.get(opts, :agent_id))
+          |> Enum.map(&relativize(&1, cwd))
+          |> MapSet.new()
 
         # An empty attribution set means "this session has not edited
         # anything via PostToolUse yet" — preserve mtime semantics so we
         # don't accidentally suppress blocking problems on a session that
         # simply hasn't fired a tracked edit yet (e.g. direct evaluators
         # that don't go through Claude's Write/Edit pipeline).
-        case attributed do
-          [] -> files
-          _ -> Enum.filter(files, &(&1.path in attributed))
+        case MapSet.size(attributed) do
+          0 -> files
+          _ -> Enum.filter(files, &MapSet.member?(attributed, &1.path))
         end
 
       _ ->
         files
     end
   end
+
+  defp relativize(path, cwd) when is_binary(path) and is_binary(cwd) do
+    cond do
+      Path.type(path) == :relative -> path
+      String.starts_with?(path, cwd <> "/") -> Path.relative_to(path, cwd)
+      true -> Path.relative_to(path, cwd)
+    end
+  end
+
+  defp relativize(path, _cwd), do: path
 
   defp attributed_paths(session_id, nil), do: FileEdits.get_edited_files(session_id)
 
@@ -161,7 +181,7 @@ defmodule CodeMySpec.Validation do
       analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
       {runners, static} = Enum.split_with(analyzers, &(&1 in @runner_analyzers))
       runners = Enum.uniq(runners ++ forced)
-      StaticAnalysis.run_analyzers(scope, static, changed_files, config)
+      StaticAnalysis.run_analyzers(scope, static, changed_files, config, opts)
       run_runner_analyzers(scope, runners, opts)
       :ok
     end

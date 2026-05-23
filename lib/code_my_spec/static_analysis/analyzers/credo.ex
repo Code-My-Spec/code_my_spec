@@ -40,19 +40,46 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   def run(%Scope{} = scope, opts \\ []) do
     cwd = opts[:cwd] || scope.cwd
 
-    if is_nil(cwd) or cwd == "" do
-      {:error, "No working directory available"}
-    else
-      with {:ok, temp_file} <- create_temp_file() do
-        result = execute_and_parse(cwd, temp_file, scope, opts)
-        cleanup_temp_file(temp_file)
-        result
-      end
+    cond do
+      is_nil(cwd) or cwd == "" ->
+        {:error, "No working directory available"}
+
+      opts[:output_file] ->
+        # Spex-only escape hatch — read pre-recorded JSON instead of
+        # running `mix credo`. Used by cassette-backed tests that
+        # exercise the credo block path without losing the race against
+        # FileWatcherServer (see issue 7d956b03). The file is expected
+        # to be in the same JSON shape `mix credo --format json` would
+        # produce.
+        read_from_output_file(opts[:output_file], scope)
+
+      true ->
+        with {:ok, temp_file} <- create_temp_file() do
+          result = execute_and_parse(cwd, temp_file, scope, opts)
+          cleanup_temp_file(temp_file)
+          result
+        end
     end
   rescue
     exception ->
       Logger.error("Credo analyzer crashed: #{inspect(exception)}")
       {:error, "Credo analyzer crashed: #{Exception.message(exception)}"}
+  end
+
+  defp read_from_output_file(path, scope) do
+    with {:ok, raw} <- File.read(path),
+         {:ok, issues} <- parse_json_output(raw) do
+      {:ok, convert_to_problems(issues, scope)}
+    else
+      {:error, %File.Error{} = err} ->
+        {:error, "Failed to read credo output file #{path}: #{Exception.message(err)}"}
+
+      {:error, reason} when is_atom(reason) ->
+        {:error, "Failed to read credo output file #{path}: #{reason}"}
+
+      {:error, reason} ->
+        {:error, "Failed to parse credo output file #{path}: #{inspect(reason)}"}
+    end
   end
 
   # Private functions

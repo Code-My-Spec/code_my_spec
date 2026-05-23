@@ -209,27 +209,27 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   re-insert); other modes and other analyzers stay scoped to the
   changed files of this turn.
   """
-  @spec run_analyzers(Scope.t(), [atom()], [map()], map()) :: :ok
-  def run_analyzers(scope, analyzers, changed_files, config \\ %{})
-  def run_analyzers(_scope, [], _changed_files, _config), do: :ok
+  @spec run_analyzers(Scope.t(), [atom()], [map()], map(), keyword()) :: :ok
+  def run_analyzers(scope, analyzers, changed_files, config \\ %{}, opts \\ [])
+  def run_analyzers(_scope, [], _changed_files, _config, _opts), do: :ok
 
-  def run_analyzers(scope, analyzers, changed_files, config) do
-    run_analyzer_set(scope, analyzers, changed_files, config)
+  def run_analyzers(scope, analyzers, changed_files, config, opts) do
+    run_analyzer_set(scope, analyzers, changed_files, config, opts)
     :ok
   end
 
   # -- Internal analyzer execution --
 
-  defp run_analyzer_set(_scope, [], _files, _config), do: []
+  defp run_analyzer_set(_scope, [], _files, _config, _opts), do: []
 
-  defp run_analyzer_set(scope, analyzers, files, config) do
+  defp run_analyzer_set(scope, analyzers, files, config, opts) do
     component_map = build_component_map(files)
     file_paths = Enum.map(files, & &1.path)
 
     {static_analyzers, validators} = split_analyzers(analyzers)
 
     all_problems =
-      (run_static_analyzers(scope, static_analyzers, file_paths, config) ++
+      (run_static_analyzers(scope, static_analyzers, file_paths, config, opts) ++
          run_validators(scope, validators, files))
       |> Enum.map(&stamp_component_id(&1, component_map))
 
@@ -258,14 +258,15 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     Logger.info("[Pipeline] Persisted #{length(problems)} problem(s) — #{by_source}")
   end
 
-  defp run_static_analyzers(_scope, [], _file_paths, _config), do: []
+  defp run_static_analyzers(_scope, [], _file_paths, _config, _opts), do: []
 
-  defp run_static_analyzers(scope, analyzer_atoms, file_paths, config) do
+  defp run_static_analyzers(scope, analyzer_atoms, file_paths, config, opts) do
     Enum.flat_map(analyzer_atoms, fn atom ->
       analyzer_files = files_for_analyzer(atom, file_paths, config)
+      runner_opts = [files: analyzer_files] |> with_test_output(atom, opts)
       start = System.monotonic_time(:millisecond)
 
-      result = Runner.run(scope, atom, files: analyzer_files)
+      result = Runner.run(scope, atom, runner_opts)
       ms = System.monotonic_time(:millisecond) - start
 
       case result do
@@ -279,6 +280,21 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
       end
     end)
   end
+
+  # Spex-only escape hatch: cassette-backed tests inject a pre-recorded
+  # JSON file at `:credo_output_file` so the analyzer reads it instead of
+  # spawning `mix credo`. Mirrors `compile_output_file` /
+  # `exunit_output_file` / `spex_output_file` already on the runner
+  # analyzers. Lets criterion 5100 etc. exercise the credo block path
+  # without losing the race against FileWatcherServer.
+  defp with_test_output(runner_opts, :credo, validation_opts) do
+    case Keyword.get(validation_opts, :credo_output_file) do
+      nil -> runner_opts
+      path -> Keyword.put(runner_opts, :output_file, path)
+    end
+  end
+
+  defp with_test_output(runner_opts, _atom, _opts), do: runner_opts
 
   defp log_analyzer_success(atom, problems, analyzer_files, ms) do
     file_count = if is_nil(analyzer_files), do: "all", else: Integer.to_string(length(analyzer_files))
