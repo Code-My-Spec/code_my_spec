@@ -17,8 +17,6 @@ defmodule CodeMySpecSpex.Story812.Criterion6508Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import ReqCassette
 
   import CodeMySpecSpex.GaAssertions,

@@ -58,10 +58,8 @@ defmodule CodeMySpecSpex.Story812.Criterion6506Spex do
 
       then_ "the cassette captured install_step_copied with user_id + step", context do
         assert_cassette_contains_mp_event(@cassette_name, "install_step_copied",
-          expected_params: %{
-            "step" => "claude_code_install",
-            "user_id" => context.user.id
-          },
+          expected_params: %{"step" => "claude_code_install"},
+          user_id: context.user.id,
           cassette_dir: @cassette_dir
         )
 

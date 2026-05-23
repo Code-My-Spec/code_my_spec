@@ -53,14 +53,6 @@ const liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
-window.addEventListener("phx:page-loading-stop", (info) => {
-  if (typeof gtag !== "undefined" && window.GA_MEASUREMENT_ID) {
-    gtag("config", window.GA_MEASUREMENT_ID, {
-      page_path: window.location.pathname + window.location.search,
-      page_title: document.title
-    });
-  }
-});
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

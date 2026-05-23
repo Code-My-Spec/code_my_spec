@@ -15,6 +15,7 @@ defmodule CodeMySpecWeb.Router do
       "x-frame-options" => "SAMEORIGIN"
     }
     plug :fetch_current_scope_for_user
+    plug CodeMySpecWeb.Plugs.PageView
   end
 
   pipeline :api do

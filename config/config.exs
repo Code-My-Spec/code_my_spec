@@ -106,7 +106,15 @@ config :logger, :default_formatter,
     :duration_ms,
     :index,
     :changeset_errors,
-    :changeset_changes
+    :changeset_changes,
+    # GA Measurement Protocol structured-trace keys — exposed in the
+    # dev/test formatter so the analytics tracing contract (story 812,
+    # rule 5) is observable in those envs. Prod uses LogfmtFormatter
+    # which emits all metadata regardless.
+    :event,
+    :user_id,
+    :origin,
+    :mp_status
   ]
 
 # Use Jason for JSON parsing in Phoenix

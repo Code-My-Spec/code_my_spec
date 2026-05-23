@@ -37,8 +37,15 @@ defmodule CodeMySpecSpex.Story812.Criterion6519Spex do
 
   spex "page_view originates from a server plug, never from gtag" do
     scenario "GET / fires one page_view MP POST and the response carries no gtag" do
-      given_ "a request to a browser-pipeline page", context do
-        {:ok, context}
+      given_ "a request to a browser-pipeline page with a real-browser UA", context do
+        conn =
+          Plug.Conn.put_req_header(
+            context.conn,
+            "user-agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15"
+          )
+
+        {:ok, Map.put(context, :conn, conn)}
       end
 
       when_ "the visitor GETs /", context do

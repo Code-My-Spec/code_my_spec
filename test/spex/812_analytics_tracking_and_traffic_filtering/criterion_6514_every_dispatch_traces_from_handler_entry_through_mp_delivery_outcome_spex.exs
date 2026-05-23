@@ -15,13 +15,12 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
 
   use CodeMySpecSpex.Case
 
+  require Logger
   import ExUnit.CaptureLog
   import ReqCassette
   import CodeMySpecSpex.GaAssertions, only: [with_ga_plug: 2]
 
   alias CodeMySpecSpex.Fixtures
-
-  @endpoint CodeMySpecWeb.Endpoint
 
   @cassette_name "812_dispatch_log_trace"
   @cassette_dir "test/cassettes/analytics"
@@ -35,17 +34,27 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
       end
 
       when_ "Analytics.dispatch fires and the handler runs end-to-end", context do
+        # Test env runs Logger at :warning; the handler-entry trace is
+        # at :info. Raise the level for the capture window so the info
+        # traces reach the buffer.
+        previous_level = Logger.level()
+        Logger.configure(level: :info)
+
         log =
-          capture_log(fn ->
-            with_cassette @cassette_name, cassette_opts(), fn plug ->
-              with_ga_plug(plug, fn ->
-                Fixtures.dispatch_analytics_event(:sign_up, %{
-                  user_id: context.user_id,
-                  method: "log_trace_test"
-                })
-              end)
-            end
-          end)
+          try do
+            capture_log(fn ->
+              with_cassette @cassette_name, cassette_opts(), fn plug ->
+                with_ga_plug(plug, fn ->
+                  Fixtures.dispatch_analytics_event(:sign_up, %{
+                    user_id: context.user_id,
+                    method: "log_trace_test"
+                  })
+                end)
+              end
+            end)
+          after
+            Logger.configure(level: previous_level)
+          end
 
         {:ok, Map.put(context, :log, log)}
       end
