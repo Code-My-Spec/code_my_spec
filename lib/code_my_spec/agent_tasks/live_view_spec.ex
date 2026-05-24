@@ -65,7 +65,7 @@ defmodule CodeMySpec.AgentTasks.LiveViewSpec do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Write the spec file for a LiveView or LiveComponent — route, params, " <>
       "child components, user interactions, dependencies, and a Design " <>
       "section per the UI spec format. Use when the LiveView has no spec " <>

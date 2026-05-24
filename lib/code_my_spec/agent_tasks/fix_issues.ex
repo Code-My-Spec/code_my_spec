@@ -10,7 +10,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
   alias CodeMySpec.{Configurations, Issues, Paths}
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Resolve every accepted QA issue at or above the project's configured " <>
       "`fix_issues_min_severity` (default `:medium`) by reading, fixing, and " <>
       "calling `resolve_issue` per issue. Issues below the threshold are " <>

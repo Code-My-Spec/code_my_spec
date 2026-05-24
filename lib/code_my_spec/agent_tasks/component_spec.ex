@@ -65,7 +65,7 @@ defmodule CodeMySpec.AgentTasks.ComponentSpec do
     end
   end
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Write the spec file for a component (schema / module / behaviour / json view) " <>
       "based on design rules and document spec for the component's type. Use when " <>
       "the component has no spec or its spec failed validation. Sub-agent: spawn " <>

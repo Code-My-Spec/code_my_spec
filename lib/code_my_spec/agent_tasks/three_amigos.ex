@@ -11,8 +11,8 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
   @spec analyzers() :: [atom()]
   def analyzers, do: []
 
-  @spec orchestrate(map()) :: String.t()
-  def orchestrate(_node) do
+  @spec dispatch(map()) :: String.t()
+  def dispatch(_node) do
     "Run a Three Amigos / Example Mapping session on a story. Agent plays " <>
       "Business / Developer / QA while the PM holds intent; deliverable is " <>
       "rules + scenarios + questions persisted via MCP tools. Use when a " <>

@@ -14,8 +14,11 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   def analyzers, do: [:spex_stale]
 
-  def orchestrate(node) do
-    "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def dispatch(_node) do
+    "Fix the failing BDD spec files for a story — diagnose the failure (test " <>
+      "assertion, missing fixture, surface mismatch), edit the spec or the " <>
+      "underlying implementation, and re-run `mix spex` until green. Use " <>
+      "when a story's BDD spec files exist but one or more criteria fail."
   end
 
   alias CodeMySpec.BddSpecs.Parser

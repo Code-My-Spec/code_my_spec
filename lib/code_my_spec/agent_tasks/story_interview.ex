@@ -11,8 +11,8 @@ defmodule CodeMySpec.AgentTasks.StoryInterview do
   @spec analyzers() :: [atom()]
   def analyzers, do: []
 
-  @spec orchestrate(map()) :: String.t()
-  def orchestrate(_node) do
+  @spec dispatch(map()) :: String.t()
+  def dispatch(_node) do
     "Run a story interview / review session with the PM — capture bare user " <>
       "stories (persona, goal, business value) or evaluate existing stories. " <>
       "Acceptance criteria come later via Three Amigos. Use when " <>

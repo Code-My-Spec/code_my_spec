@@ -98,7 +98,7 @@ defmodule CodeMySpec.AgentTasks.ContextSpec do
     end
   end
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Write the spec file for a Phoenix bounded context — context_spec document " <>
       "with components, dependencies, public interface, based on design rules " <>
       "and linked stories. Use when a context has no spec or its spec failed " <>

@@ -60,7 +60,7 @@ defmodule CodeMySpec.AgentTasks.ControllerSpec do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Write the spec file for a Phoenix controller — actions, params, render " <>
       "targets, dependencies. Use when the controller has no spec yet. " <>
       "Sub-agent: spawn @spec-writer."

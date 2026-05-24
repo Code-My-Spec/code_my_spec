@@ -68,17 +68,11 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     ProblemFeedback.combine(req_feedback, problem_feedback)
   end
 
-  def orchestrate(node) do
-    case node do
-      %{name: name, entity_type: entity_type, entity_id: entity_id, entity_name: entity_name}
-      when is_binary(name) and not is_nil(entity_type) and not is_nil(entity_id) and
-             not is_nil(entity_name) ->
-        {:ok,
-         "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{name}` for #{entity_type} `#{entity_id}` (#{entity_name})"}
-
-      _ ->
-        {:error, :invalid_node}
-    end
+  def dispatch(_node) do
+    "Implement a leaf component (schema, behaviour, module, json view) against " <>
+      "its spec. Use when the component's spec is valid and either its " <>
+      "implementation file is missing or the existing implementation is " <>
+      "failing its tests."
   end
 
   # Private functions

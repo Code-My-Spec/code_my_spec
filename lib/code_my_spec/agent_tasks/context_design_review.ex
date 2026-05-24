@@ -87,7 +87,7 @@ defmodule CodeMySpec.AgentTasks.ContextDesignReview do
     end
   end
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Review the context's design — verify component boundaries, dependency " <>
       "edges, and public interface against the design rules. Produces a " <>
       "context_design_review document. Use when child component specs all " <>

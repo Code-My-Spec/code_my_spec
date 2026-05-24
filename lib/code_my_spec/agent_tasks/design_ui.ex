@@ -7,7 +7,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
 
   alias CodeMySpec.Environments
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Interview the engineer to establish the project's design system. " <>
       "Walks theme / colors / typography / layout / tone with concrete " <>
       "options (no open-ended questions), modifying an HTML template to " <>

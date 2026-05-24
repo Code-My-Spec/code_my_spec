@@ -10,8 +10,8 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
   @spec analyzers() :: [atom()]
   def analyzers, do: []
 
-  @spec orchestrate(map()) :: String.t()
-  def orchestrate(_node) do
+  @spec dispatch(map()) :: String.t()
+  def dispatch(_node) do
     "Run a persona research session with the PM. Produce one persona on " <>
       "the project: DB record (create_persona) + summary.md + sources.md, " <>
       "linked to ≥1 story. Triangulate ≥3 sources per claim. Use when a " <>

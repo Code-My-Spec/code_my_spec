@@ -4,14 +4,18 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
   Criterion 5592 — Orchestrate prompt names the requirement and the
   entity.
 
-  Surface: `get_next_requirement` MCP tool. The mapper groups pending
-  child requirements under their orchestrator and asks each
-  `satisfied_by` module to render its orchestration line. With a
-  context Component whose `implementation_file` is pending,
-  `ComponentCode.orchestrate/1` must produce a line that spawns a
-  `@code-writer` sub-agent and names `start_task` with the
-  requirement, entity_type, and entity_id so the parent agent can
-  fan it out without guessing.
+  Surface: `get_next_requirement` MCP tool. With a context Component
+  whose `implementation_file` is pending, the rendered orchestration
+  line must name the requirement (`implementation_file`), the
+  entity_id (the component id), and `start_task` so the parent agent
+  can fan out the work without guessing. The mapper appends
+  `(sub-agent start_task args: requirement_name=..., entity_type=...,
+  entity_id=...)` based on the requirement's `execution_type`; the
+  `dispatch/1` body itself returns just the work description.
+
+  Sub-agent role naming (`@code-writer`) and entity_name parenthesis
+  were dropped from the body during the orchestrate→dispatch rename
+  (centralization deferred to story 810).
   """
 
   use CodeMySpecSpex.Case
@@ -59,13 +63,10 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
         {:ok, Map.put(context, :prompt, TaskResponseHelpers.response_text(response))}
       end
 
-      then_ "the orchestration prompt directs the parent to spawn a @code-writer for this component",
+      then_ "the orchestration prompt names start_task + the requirement + the entity_id",
             context do
         prompt = context.prompt
         component_id = to_string(context.component.id)
-
-        assert prompt =~ "@code-writer",
-               "expected the orchestration prompt to name the @code-writer sub-agent, got:\n#{prompt}"
 
         assert prompt =~ "start_task",
                "expected the orchestration prompt to name `start_task`, got:\n#{prompt}"
@@ -75,9 +76,6 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
 
         assert prompt =~ component_id,
                "expected the orchestration prompt to name the entity_id #{component_id}, got:\n#{prompt}"
-
-        assert prompt =~ @module_name,
-               "expected the orchestration prompt to name the component module #{@module_name}, got:\n#{prompt}"
 
         {:ok, context}
       end

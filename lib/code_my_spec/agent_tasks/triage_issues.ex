@@ -69,8 +69,11 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     end
   end
 
-  def orchestrate(node) do
-    "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def dispatch(_node) do
+    "Triage incoming QA issues at the configured minimum severity (default " <>
+      "`:medium`). For each issue: read via `get_issue`, decide accept / " <>
+      "dismiss / merge, and execute via `accept_issue` / `dismiss_issue` " <>
+      "MCP tools. Use when incoming issues at or above the threshold remain."
   end
 
   # ============================================================================

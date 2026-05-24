@@ -210,31 +210,14 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
   end
 
   # ============================================================================
-  # orchestrate/1 Tests — defensive contract for malformed graph nodes
+  # dispatch/1 — returns the work description; sub-agent role + start_task args
+  # are appended by the RequirementsMapper based on execution_type. The old
+  # {:ok, prompt} / {:error, :invalid_node} defensive contract was retired
+  # along with the in-body dispatch-directive convention.
   # ============================================================================
 
-  describe "orchestrate/1" do
-    test "missing name yields {:error, :invalid_node}" do
-      node = %{name: nil, entity_type: "component", entity_id: "abc", entity_name: "Foo"}
-      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
-    end
-
-    test "missing entity_type yields {:error, :invalid_node}" do
-      node = %{name: "implementation_file", entity_type: nil, entity_id: "abc", entity_name: "Foo"}
-      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
-    end
-
-    test "missing entity_id yields {:error, :invalid_node}" do
-      node = %{name: "implementation_file", entity_type: "component", entity_id: nil, entity_name: "Foo"}
-      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
-    end
-
-    test "missing entity_name yields {:error, :invalid_node}" do
-      node = %{name: "implementation_file", entity_type: "component", entity_id: "abc", entity_name: nil}
-      assert {:error, :invalid_node} = ComponentCode.orchestrate(node)
-    end
-
-    test "fully-populated node yields {:ok, prompt} naming @code-writer" do
+  describe "dispatch/1" do
+    test "returns a non-empty work description for any graph node" do
       node = %{
         name: "implementation_file",
         entity_type: "component",
@@ -242,11 +225,9 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
         entity_name: "Foo"
       }
 
-      assert {:ok, prompt} = ComponentCode.orchestrate(node)
-      assert prompt =~ "@code-writer"
-      assert prompt =~ "implementation_file"
-      assert prompt =~ "abc"
-      assert prompt =~ "Foo"
+      result = ComponentCode.dispatch(node)
+      assert is_binary(result)
+      assert result =~ "Use when"
     end
   end
 

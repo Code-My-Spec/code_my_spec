@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   require Logger
 
 
-  def orchestrate(node) do
+  def dispatch(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
 

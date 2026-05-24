@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_integration_plan.spec.md`.
   """
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Identify third-party integrations from technical decisions, draft a " <>
       "spec + verify script per integration, gather credentials from the " <>
       "engineer, and run verify until each spec is `status: verified`. " <>

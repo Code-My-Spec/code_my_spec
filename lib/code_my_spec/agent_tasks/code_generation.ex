@@ -32,7 +32,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   One-line description surfaced by the requirement graph when this task is
   the next thing to do.
   """
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Run CodeMySpec generators (phx.gen.auth, cms_gen.*) to scaffold auth, " <>
       "multi-tenancy, OAuth integrations, and the feedback widget for this " <>
       "project. Produces an idempotent bash script at " <>

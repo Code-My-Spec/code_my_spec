@@ -211,8 +211,8 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   end
 
   defp resolve_body(%{satisfied_by: mod} = node) do
-    if Code.ensure_loaded?(mod) and function_exported?(mod, :orchestrate, 1) do
-      unwrap_body(mod.orchestrate(node), node)
+    if Code.ensure_loaded?(mod) and function_exported?(mod, :dispatch, 1) do
+      unwrap_body(mod.dispatch(node), node)
     else
       fallback_body(node)
     end

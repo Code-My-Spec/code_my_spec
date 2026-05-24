@@ -8,7 +8,7 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
   - source line count and heredoc size (proxy for inlined static content)
   - dispatcher registration (@session_type_map and the four dispatch lists)
   - Evaluator registration vs evaluate/2 export
-  - orchestrate/1 surface quality (presence of "Use when")
+  - dispatch/1 surface quality (presence of "Use when")
 
   Usage:
 
@@ -130,7 +130,7 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
     targets = [
       {:command, 2},
       {:evaluate, 2},
-      {:orchestrate, 1},
+      {:dispatch, 1},
       {:before_evaluate, 2},
       {:init_session, 2},
       {:analyzers, 0}
@@ -146,7 +146,7 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
   defp safe_orchestrate(nil), do: nil
 
   defp safe_orchestrate(module) do
-    if Code.ensure_loaded?(module) and function_exported?(module, :orchestrate, 1) do
+    if Code.ensure_loaded?(module) and function_exported?(module, :dispatch, 1) do
       stub = %{
         name: "stub_requirement",
         entity_type: "component",
@@ -156,7 +156,7 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
 
       raw =
         try do
-          module.orchestrate(stub)
+          module.dispatch(stub)
         rescue
           _ -> nil
         catch
@@ -245,15 +245,15 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
     - **#{MapSet.size(custom_eval)}** modules listed in `Evaluator.custom_evaluate_modules/0`
     - **#{eval_export_registered}** modules export `evaluate/2` AND are registered
     - **#{eval_export_unregistered}** modules export `evaluate/2` but are NOT registered (review case-by-case)
-    - **#{no_orchestrate}** modules do not export `orchestrate/1`
-    - **#{no_use_when}** modules export `orchestrate/1` without a "Use when" clause
+    - **#{no_orchestrate}** modules do not export `dispatch/1`
+    - **#{no_use_when}** modules export `dispatch/1` without a "Use when" clause
     """
   end
 
   defp render_task(r) do
     sev = severity_label(r.severity)
     flags = build_flags(r)
-    orchestrate_preview = preview(r.orchestrate)
+    dispatch_preview = preview(r.orchestrate)
 
     """
     ### `#{inspect(r.module)}` — #{sev} (severity #{r.severity})
@@ -270,7 +270,7 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
     | Registered as | #{r.registered_as || "**ORPHAN**"} |
     | Dispatch shape | #{r.dispatch_shape || "—"} |
     | In `custom_evaluate_modules` | #{yes_no(r.in_custom_eval)}#{eval_mismatch_flag(r)} |
-    | `orchestrate/1` preview | #{orchestrate_preview} |
+    | `dispatch/1` preview | #{dispatch_preview} |
     | "Use when" clause | #{yes_no_na(r.has_use_when, :orchestrate in r.exports)} |
     #{flags}
     """

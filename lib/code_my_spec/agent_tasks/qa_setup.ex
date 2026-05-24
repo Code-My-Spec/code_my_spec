@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   # orchestrate — relevance signal for the requirement graph
   # ============================================================================
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Produce the project-wide QA plan at `.code_my_spec/qa/plan.md`. " <>
       "Probes every running endpoint (listening ports, auth pipelines, MCP " <>
       "transports) then writes the plan covering App Overview, Tools Registry, " <>

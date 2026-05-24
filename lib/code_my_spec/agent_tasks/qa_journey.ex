@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   @stories_file Path.join(Paths.qa_dir(), "stories_summary.md")
   @wallaby_dir Paths.qa_journey_wallaby_dir()
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Plan, execute, and codify end-to-end QA journeys: design cross-story " <>
       "user paths, walk them in a browser, then convert passing journeys " <>
       "into Wallaby regression tests under `test/journeys/`. Use when " <>

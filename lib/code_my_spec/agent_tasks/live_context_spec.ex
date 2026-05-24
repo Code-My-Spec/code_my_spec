@@ -89,7 +89,7 @@ defmodule CodeMySpec.AgentTasks.LiveContextSpec do
     end
   end
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Write the spec file for a LiveView context — like context_spec but for " <>
       "the LiveView-component-tree pattern (no parent test/impl gates). Use " <>
       "when the live_context has no spec or its spec failed validation. " <>

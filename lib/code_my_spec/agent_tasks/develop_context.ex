@@ -70,8 +70,12 @@ defmodule CodeMySpec.AgentTasks.DevelopContext do
     end
   end
 
-  def orchestrate(node) do
-    "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def dispatch(_node) do
+    "Implement the public API functions specified in the context's spec — " <>
+      "schemas, repository, the context module's public interface — and a " <>
+      "matching test file. Use when the context's spec is valid and either " <>
+      "its implementation file is missing or the existing implementation " <>
+      "is failing its tests."
   end
 
   defp all_requirements_satisfied?(scope, component) do

@@ -4,7 +4,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
 
   defmodule FakeTaskWithOrchestrate do
-    def orchestrate(node) do
+    def dispatch(node) do
       "Spawn a @test-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
     end
   end
@@ -156,7 +156,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       assert text =~ "component `comp_1` (Accounts)"
     end
 
-    test "modules without orchestrate/1 fall back to generic start_task" do
+    test "modules without dispatch/1 fall back to generic start_task" do
       nodes = [build_node(%{satisfied_by: FakeTaskNoSummary})]
 
       response = RequirementsMapper.next_requirements_response(nodes)

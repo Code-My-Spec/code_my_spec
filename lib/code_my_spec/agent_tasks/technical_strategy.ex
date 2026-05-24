@@ -7,7 +7,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   require Logger
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Identify project-specific technology decisions and write ADRs for each. " <>
       "Pre-made ADRs for the standard CodeMySpec stack (Elixir, Phoenix, " <>
       "LiveView, Tailwind, etc.) are auto-written before the agent sees the " <>

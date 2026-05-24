@@ -28,7 +28,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # orchestrate — relevance signal for the requirement graph
   # ============================================================================
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Run a per-story QA session: write a testing brief, execute it against " <>
       "the running app (MCP browser for UI, curl for API), and produce a " <>
       "pass/fail result with issues filed. Use when a story has passing BDD " <>

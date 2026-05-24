@@ -15,7 +15,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @proposal_path Paths.proposal_path()
   @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Map user stories to application components (surfaces, contexts, children) " <>
       "via the architecture MCP tools (analyze_stories, create_component, " <>
       "validate_dependency_graph, set_story_component, execute_proposal). " <>

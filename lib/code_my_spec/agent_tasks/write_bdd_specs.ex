@@ -19,15 +19,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   def analyzers, do: [:spex_stale]
 
   # ============================================================================
-  # orchestrate — relevance signal for the requirement graph
+  # dispatch — relevance signal for the requirement graph
   # ============================================================================
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Write BDD spec files (`*_spex.exs`) for a story's acceptance criteria, " <>
       "one file per criterion, driving the real interaction surface from " <>
       "Given/When/Then steps. Use when a story has rules and scenarios " <>
-      "(three-amigos complete) but no spec files yet. " <>
-      "Sub-agent: spawn @bdd-spec-writer to call `start_task`."
+      "(three-amigos complete) but no spec files yet."
   end
 
   # ============================================================================

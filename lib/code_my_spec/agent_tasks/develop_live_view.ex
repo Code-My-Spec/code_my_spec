@@ -66,8 +66,11 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveView do
     end
   end
 
-  def orchestrate(node) do
-    "Spawn a @code-writer sub-agent to call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
+  def dispatch(_node) do
+    "Implement a LiveView (or LiveComponent) — mount, handle_params, handle_event, " <>
+      "render — against the spec's route, params, child components, interactions, " <>
+      "and design. Use when the LiveView spec is valid and either its implementation " <>
+      "file is missing or the existing implementation is failing its tests."
   end
 
   defp all_requirements_satisfied?(scope, component) do

@@ -13,7 +13,7 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   # orchestrate — relevance signal for the requirement graph
   # ============================================================================
 
-  def orchestrate(_node) do
+  def dispatch(_node) do
     "Install BDD spec boundary protections: framework Credo checks " <>
       "(function-level denies only), a project-local deny check that fills " <>
       "in whole-module denies (stdlib + app contexts), a curated " <>
