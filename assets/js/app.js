@@ -116,6 +116,64 @@ function fallback(text, done) {
   done();
 }
 
+// --- Marketing chrome: delegated CTA click handler ---
+// Tracks outbound clicks on conversion CTAs across blog posts, landers,
+// and the homepage. Catches two cases:
+//   1. Explicit — any <a data-event-label="...">. Use this when the CTA
+//      surface is rendered from a heex component or inline-HTML block
+//      and you want a stable label (e.g. cta-signature-register).
+//   2. Implicit — any <a href> pointing at /users/register* or
+//      /products/code-my-spec*. Catches markdown-authored anchors
+//      (`[text](/products/code-my-spec?...)`) without requiring
+//      content edits. Markdown posts get tracked for free.
+//
+// Fires `cta_click` server-side via /api/browser/analytics/event.
+// keepalive:true so the request survives the navigation.
+document.addEventListener("click", (ev) => {
+  const a = ev.target.closest("a[href]");
+  if (!a) return;
+  const href = a.getAttribute("href") || "";
+  const explicitLabel = a.getAttribute("data-event-label");
+  if (!explicitLabel && !isImplicitCTA(href)) return;
+
+  const url = parseHref(href);
+  if (!url) return;
+
+  const params = {
+    event_label: explicitLabel || deriveLabel(url),
+    target_path: url.pathname,
+    source_path: window.location.pathname
+  };
+  const campaign = url.searchParams.get("utm_campaign");
+  if (campaign) params.utm_campaign = campaign;
+
+  fetch("/api/browser/analytics/event", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-csrf-token": csrfToken
+    },
+    body: JSON.stringify({ name: "cta_click", params: params }),
+    keepalive: true
+  }).catch(() => {});
+});
+
+function isImplicitCTA(href) {
+  return /^\/users\/register(\?|$|\/)/.test(href) ||
+         /^\/products\/code-my-spec(\?|$|\/)/.test(href);
+}
+
+function parseHref(href) {
+  try { return new URL(href, window.location.origin); }
+  catch (_) { return null; }
+}
+
+function deriveLabel(url) {
+  if (url.pathname.startsWith("/users/register")) return "cta-register-implicit";
+  if (url.pathname.startsWith("/products/code-my-spec")) return "cta-lander-implicit";
+  return "cta-other";
+}
+
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session

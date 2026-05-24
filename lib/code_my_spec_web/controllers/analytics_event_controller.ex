@@ -32,7 +32,8 @@ defmodule CodeMySpecWeb.AnalyticsEventController do
     :registration_form_start,
     :registration_path_chosen,
     :oauth_github_clicked,
-    :oauth_google_clicked
+    :oauth_google_clicked,
+    :cta_click
   ]
   @doc false
   def __browser_event_names__, do: @browser_event_names

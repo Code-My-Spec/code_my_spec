@@ -407,6 +407,7 @@ defmodule CodeMySpecWeb.Layouts do
         I built this with
         <a
           href="/case-studies/market-my-spec?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
+          data-event-label="cta-signature-case-study"
           class="text-base-content underline decoration-primary/60 underline-offset-4 hover:text-primary hover:decoration-primary"
         >CodeMySpec</a> — the harness I work in.
       </p>
@@ -417,6 +418,7 @@ defmodule CodeMySpecWeb.Layouts do
       <div class="mt-4 pl-4 border-l border-primary/20">
         <a
           href="/users/register?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
+          data-event-label="cta-signature-register"
           class="text-base-content underline decoration-primary/60 underline-offset-4 hover:text-primary hover:decoration-primary"
         >
           https://codemyspec.com/users/register
