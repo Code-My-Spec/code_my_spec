@@ -74,13 +74,13 @@ defmodule CodeMySpecWeb.SignupGoogleTest do
   defp run_signup_flow(session) do
     account_name = "Wallaby Google Co"
 
+    email = System.fetch_env!("GOOGLE_TEST_EMAIL")
+
     session
     |> visit("/users/register")
     |> click(link("Continue with Google"))
-    |> fill_in(css("input[type='email']"), with: System.fetch_env!("GOOGLE_TEST_EMAIL"))
-    |> click(css("button#identifierNext"))
-    |> fill_in(css("input[type='password']"), with: System.fetch_env!("GOOGLE_TEST_PASSWORD"))
-    |> click(css("button#passwordNext"))
+    |> pick_or_enter_email(email)
+    |> maybe_enter_password(System.fetch_env!("GOOGLE_TEST_PASSWORD"))
     |> maybe_consent()
     |> assert_has(css("h2", text: "Name your account."))
     |> fill_in(css("input[name='account[name]']"), with: account_name)
@@ -88,11 +88,58 @@ defmodule CodeMySpecWeb.SignupGoogleTest do
     |> assert_has(css("body", text: account_name))
   end
 
+  # The persisted-profile workaround (WALLABY_CHROME_USER_DATA_DIR)
+  # keeps Google's account-chooser cookies, so the first page after
+  # "Continue with Google" can be EITHER the identifier (email) page
+  # OR the account chooser. Branch on what's actually rendered.
+  # After "Continue with Google", the next page can be any of:
+  #   - account chooser (returning user, multiple accounts cached)
+  #   - identifier (email) page (fresh session)
+  #   - OAuth identity confirmation (already auth'd for this app via
+  #     persisted profile — skip straight to consent)
+  # Try each in turn; if none match we're already past the email step.
+  defp pick_or_enter_email(session, email) do
+    :timer.sleep(1_500)
+
+    try_chooser(session, email) ||
+      try_email_form(session, email) ||
+      session
+  end
+
+  defp try_chooser(session, email) do
+    Wallaby.Browser.click(session, css(~s([data-identifier="#{email}"])))
+  rescue
+    _ -> nil
+  end
+
+  defp try_email_form(session, email) do
+    session
+    |> fill_in(css("input[type='email']"), with: email)
+    |> click(css("#identifierNext"))
+  rescue
+    _ -> nil
+  end
+
+  # If the persisted profile already has a fresh Google session, Google
+  # skips the password page entirely and goes straight to OAuth
+  # confirmation. Only enter the password if the field is actually there.
+  defp maybe_enter_password(session, password) do
+    :timer.sleep(2_000)
+
+    session
+    |> fill_in(css("input[type='password']"), with: password)
+    |> click(css("#passwordNext"))
+  rescue
+    _ -> session
+  end
+
+  # OAuth consent / account-confirmation pages render a "Continue"
+  # primary button. Wait briefly for it; if it doesn't appear (already
+  # auto-confirmed and redirected to our callback), skip.
   defp maybe_consent(session) do
-    case Wallaby.Browser.find(session, css("button[jsname]"), count: :any) do
-      [_ | _] -> Wallaby.Browser.click(session, css("button[jsname]"))
-      _ -> session
-    end
+    :timer.sleep(2_000)
+
+    session |> click(Wallaby.Query.button("Continue"))
   rescue
     _ -> session
   end

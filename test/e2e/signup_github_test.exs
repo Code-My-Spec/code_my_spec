@@ -83,9 +83,10 @@ defmodule CodeMySpecWeb.SignupGithubTest do
       session
       |> visit("/users/register")
       |> click(link("Continue with GitHub"))
-      |> fill_in(css("#login_field"), with: System.fetch_env!("GITHUB_TEST_EMAIL"))
-      |> fill_in(css("#password"), with: System.fetch_env!("GITHUB_TEST_PASSWORD"))
-      |> click(css("input[type='submit'][name='commit']"))
+      |> maybe_log_in(
+        System.fetch_env!("GITHUB_TEST_EMAIL"),
+        System.fetch_env!("GITHUB_TEST_PASSWORD")
+      )
       |> maybe_authorize()
       |> assert_has(css("h2", text: "Name your account."))
       |> fill_in(css("input[name='account[name]']"), with: account_name)
@@ -96,6 +97,19 @@ defmodule CodeMySpecWeb.SignupGithubTest do
         debug_dump(session, "github")
         reraise e, __STACKTRACE__
     end
+  end
+
+  # With a persisted Chrome profile (WALLABY_CHROME_USER_DATA_DIR),
+  # GitHub remembers the session and skips the login form entirely —
+  # straight to authorize, or even straight back to our callback. Only
+  # enter creds if the login form is actually rendered.
+  defp maybe_log_in(session, email, password) do
+    session
+    |> fill_in(css("#login_field"), with: email)
+    |> fill_in(css("#password"), with: password)
+    |> click(css("input[type='submit'][name='commit']"))
+  rescue
+    _ -> session
   end
 
   defp maybe_authorize(session) do

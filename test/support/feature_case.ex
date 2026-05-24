@@ -74,9 +74,25 @@ defmodule CodeMySpecWeb.FeatureCase do
   def chrome_capabilities(opts) do
     headless = Keyword.get(opts, :headless, true)
 
+    user_data_args =
+      case System.get_env("WALLABY_CHROME_USER_DATA_DIR") do
+        nil -> []
+        "" -> []
+        dir -> ["--user-data-dir=#{dir}"]
+      end
+
+    # `--disable-blink-features=AutomationControlled` hides the
+    # navigator.webdriver tell that bot detectors (notably Google's
+    # sign-in flow) use to short-circuit to /v3/signin/rejected.
     args =
-      ["--no-sandbox", "window-size=1280,800", "--disable-gpu"] ++
-        if(headless, do: ["--headless=new"], else: [])
+      [
+        "--no-sandbox",
+        "window-size=1280,800",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled"
+      ] ++
+        if(headless, do: ["--headless=new"], else: []) ++
+        user_data_args
 
     %{
       javascriptEnabled: true,
@@ -91,6 +107,11 @@ defmodule CodeMySpecWeb.FeatureCase do
       loggingPrefs: %{browser: "DEBUG"},
       chromeOptions: %{
         args: args,
+        # Excludes the `--enable-automation` switch and disables the
+        # AutomationExtension — together they remove the most reliable
+        # tells Chromedriver leaks to the page.
+        excludeSwitches: ["enable-automation"],
+        useAutomationExtension: false,
         binary:
           System.get_env(
             "WALLABY_CHROME_BINARY",
