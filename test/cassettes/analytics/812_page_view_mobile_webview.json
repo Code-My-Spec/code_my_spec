@@ -1,0 +1,87 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-05-23T20:03:32.023079Z",
+      "request": {
+        "body_json": {
+          "client_id": "anonymous",
+          "events": [
+            {
+              "name": "page_view",
+              "params": {
+                "path": "/",
+                "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 300.0.0.20.108 (iPhone15,3; iOS 17_0; en_US; en-US; scale=3.00; 1290x2796; 519062300)"
+              }
+            }
+          ],
+          "user_id": null
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sat, 23 May 2026 20:03:32 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    }
+  ],
+  "version": "2.0"
+}

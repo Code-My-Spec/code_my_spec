@@ -1,0 +1,896 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-05-23T19:30:22.779193Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-793998",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "793998"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sat, 23 May 2026 19:30:22 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-23T20:11:47.601217Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-794550",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "794550"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sat, 23 May 2026 20:11:47 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-23T20:20:39.321453Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-795101",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "795101"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sat, 23 May 2026 20:20:39 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-23T20:23:46.667202Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-795648",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "795648"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sat, 23 May 2026 20:23:46 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-23T21:09:40.847061Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-796225",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "796225"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sat, 23 May 2026 21:09:40 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-23T21:23:47.607993Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-796777",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "796777"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sat, 23 May 2026 21:23:47 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-24T02:22:21.605205Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-797325",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "797325"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sun, 24 May 2026 02:22:21 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-24T02:25:07.693349Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-797873",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "797873"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sun, 24 May 2026 02:25:07 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-24T02:26:35.786162Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-798420",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "798420"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sun, 24 May 2026 02:26:35 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-24T02:28:20.564809Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-798967",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "798967"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sun, 24 May 2026 02:28:20 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-05-24T02:32:31.118850Z",
+      "request": {
+        "body_json": {
+          "client_id": "cms-799514",
+          "events": [
+            {
+              "name": "sign_up",
+              "params": {
+                "method": "oauth_google"
+              }
+            }
+          ],
+          "user_id": "799514"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "api_secret=<REDACTED>&measurement_id=G-0ZJJ33H10D",
+        "uri": "https://www.google-analytics.com/mp/collect"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "cache-control": [
+            "no-cache, no-store, must-revalidate"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-security-policy-report-only": [
+            "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:66:0"
+          ],
+          "content-type": [
+            "text/plain"
+          ],
+          "cross-origin-opener-policy-report-only": [
+            "same-origin; report-to=ascnsrsggc:66:0"
+          ],
+          "cross-origin-resource-policy": [
+            "cross-origin"
+          ],
+          "date": [
+            "Sun, 24 May 2026 02:32:31 GMT"
+          ],
+          "expires": [
+            "Fri, 01 Jan 1990 00:00:00 GMT"
+          ],
+          "last-modified": [
+            "Sun, 17 May 1998 03:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "report-to": [
+            "{\"group\":\"ascnsrsggc:66:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:66:0\"}],}"
+          ],
+          "server": [
+            "Golfe2"
+          ]
+        },
+        "status": 204
+      }
+    }
+  ],
+  "version": "2.0"
+}

@@ -3,7 +3,9 @@ defmodule CodeMySpecLocalWeb.Application do
   CLI/local application.
 
   Boots with SQLite, local web endpoint, and MCP server.
-  No main web endpoint, no Cloudflare tunnel.
+  No main web endpoint.
+
+  A quick Cloudflare tunnel boots in `:dev_cli` — see `config/dev_cli.exs`.
   """
   use Application
 
@@ -45,7 +47,7 @@ defmodule CodeMySpecLocalWeb.Application do
       CodeMySpecLocalWeb.SocketSupervisor,
       CodeMySpec.Issues.BootSync,
       CodeMySpecCli.PresenceClient
-    ]
+    ] ++ tunnel_children()
 
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
 
@@ -62,6 +64,24 @@ defmodule CodeMySpecLocalWeb.Application do
 
   @impl true
   def stop(_state), do: daemon_call(:remove_pid_file)
+
+  # Quick Cloudflare tunnel — :dev_cli only. Config in config/dev_cli.exs.
+  defp tunnel_children do
+    if Application.get_env(:code_my_spec, :env) == :dev_cli do
+      tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
+
+      tunnel_opts =
+        Keyword.merge(tunnel_config,
+          endpoint: CodeMySpecLocalWeb.Endpoint,
+          otp_app: :code_my_spec,
+          origin_url: tunnel_config[:origin_url] || "http://127.0.0.1:4004"
+        )
+
+      [{ClientUtils.CloudflareTunnel, tunnel_opts}]
+    else
+      []
+    end
+  end
 
   defp cli_argv do
     call_optional(@burrito_args, :argv) || []

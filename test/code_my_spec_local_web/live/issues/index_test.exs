@@ -11,7 +11,12 @@ defmodule CodeMySpecLocalWeb.IssuesLive.IndexTest do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  describe "handle_event \"filter\"" do
+  describe "handle_params filter parsing" do
+    # Filters now live in the URL — `handle_event("filter", ...)` is a
+    # thin push_patch wrapper that re-enters via `handle_params`. The
+    # interesting behavior (parsing query keys, dropping blanks, running
+    # the filtered query) all lives in `handle_params`, so these tests
+    # drive it directly with the same param shape the router would.
     test "combining filters narrows the result set" do
       {project, scope} = setup_local_project()
 
@@ -22,9 +27,13 @@ defmodule CodeMySpecLocalWeb.IssuesLive.IndexTest do
       socket = build_socket(project, scope)
 
       {:noreply, socket} =
-        Index.handle_event(
-          "filter",
-          %{"status" => "", "severity" => "high", "scope" => "app"},
+        Index.handle_params(
+          %{
+            "project_name" => project.name,
+            "severity" => "high",
+            "scope" => "app"
+          },
+          "/",
           socket
         )
 
@@ -34,29 +43,23 @@ defmodule CodeMySpecLocalWeb.IssuesLive.IndexTest do
       assert titles == ["match"]
     end
 
-    test "selecting the blank option clears just that filter" do
+    test "blank query values are filtered out (not stored as nil)" do
       {project, scope} = setup_local_project()
       socket = build_socket(project, scope)
 
       {:noreply, socket} =
-        Index.handle_event(
-          "filter",
-          %{"status" => "accepted", "severity" => "high", "scope" => ""},
+        Index.handle_params(
+          %{
+            "project_name" => project.name,
+            "status" => "accepted",
+            "severity" => "high",
+            "scope" => ""
+          },
+          "/",
           socket
         )
 
       assert socket.assigns.filters == %{status: :accepted, severity: :high}
-
-      # User picks "All severities" — every other select keeps reporting its value
-      # because phx-change fires on the enclosing form.
-      {:noreply, socket} =
-        Index.handle_event(
-          "filter",
-          %{"status" => "accepted", "severity" => "", "scope" => ""},
-          socket
-        )
-
-      assert socket.assigns.filters == %{status: :accepted}
     end
 
     test "empty params yield no filters" do
@@ -64,13 +67,36 @@ defmodule CodeMySpecLocalWeb.IssuesLive.IndexTest do
       socket = build_socket(project, scope)
 
       {:noreply, socket} =
-        Index.handle_event(
-          "filter",
-          %{"status" => "", "severity" => "", "scope" => ""},
-          socket
-        )
+        Index.handle_params(%{"project_name" => project.name}, "/", socket)
 
       assert socket.assigns.filters == %{}
+    end
+  end
+
+  describe "handle_event \"filter\"" do
+    # `handle_event` push_patches to a filter URL — handle_params then
+    # picks up the params on the round-trip. We can't observe the patch
+    # destination from a raw socket struct (no transport), so the
+    # round-trip itself is covered by handle_params tests above. Here
+    # we just confirm the handler returns `{:noreply, _}` without raising
+    # on the param shapes the form emits.
+    test "tolerates the form's full param shape including blanks" do
+      {project, scope} = setup_local_project()
+      socket = build_socket(project, scope)
+
+      assert {:noreply, _socket} =
+               Index.handle_event(
+                 "filter",
+                 %{"status" => "", "severity" => "high", "scope" => "app"},
+                 socket
+               )
+
+      assert {:noreply, _socket} =
+               Index.handle_event(
+                 "filter",
+                 %{"status" => "", "severity" => "", "scope" => ""},
+                 socket
+               )
     end
   end
 
@@ -119,4 +145,5 @@ defmodule CodeMySpecLocalWeb.IssuesLive.IndexTest do
       endpoint: CodeMySpecLocalWeb.Endpoint
     }
   end
+
 end

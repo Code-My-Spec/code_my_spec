@@ -68,3 +68,9 @@ config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
 config :swoosh, :api_client, false
+
+# Cloudflare Tunnel — quick mode. Boots a *.trycloudflare.com URL
+# pointing at the local server on :4004 (no account or DNS required).
+config :code_my_spec, :cloudflare_tunnel,
+  mode: :quick,
+  origin_url: "http://127.0.0.1:4004"
