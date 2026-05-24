@@ -67,4 +67,20 @@ defmodule CodeMySpec.Configurations do
   end
 
   def require_specs?(_), do: true
+
+  @doc """
+  Minimum issue severity the FixIssues loop gates on. Accepted issues
+  at or above this severity block `evaluate_task` for `issues_resolved`;
+  anything below is tracked but ignored by the loop.
+
+  Defaults to `:medium` when no scope/project is in play.
+  """
+  @spec fix_issues_min_severity(Scope.t() | nil) ::
+          :critical | :high | :medium | :low | :info
+  def fix_issues_min_severity(%Scope{active_project_id: project_id} = scope)
+      when not is_nil(project_id) do
+    get_or_create(scope).fix_issues_min_severity || :medium
+  end
+
+  def fix_issues_min_severity(_), do: :medium
 end

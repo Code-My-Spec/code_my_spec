@@ -16,12 +16,14 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
 
   @analyzer_modes [:off, :block_all, :block_changed, :dont_block]
   @compile_modes [:block, :dont_block]
+  @severities [:critical, :high, :medium, :low, :info]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
   @type analyzer_mode :: :off | :block_all | :block_changed | :dont_block
   @type compile_mode :: :block | :dont_block
+  @type severity :: :critical | :high | :medium | :low | :info
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
@@ -35,6 +37,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           spex: analyzer_mode(),
           spec_validation: analyzer_mode(),
           qa_validation: analyzer_mode(),
+          fix_issues_min_severity: severity(),
           subagent_ttl_minutes: pos_integer(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -55,6 +58,14 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     field :spex, Ecto.Enum, values: @analyzer_modes, default: :off
     field :spec_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
     field :qa_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
+
+    # Story 608 — minimum severity for the FixIssues loop. Accepted
+    # issues at or above this gate the requirement; anything strictly
+    # below is tracked but doesn't block. Default `:medium` keeps the
+    # original "lows don't block" contract; operator can raise to
+    # `:high` or `:critical` to tighten, or lower to `:low` / `:info`
+    # to make everything block.
+    field :fix_issues_min_severity, Ecto.Enum, values: @severities, default: :medium
 
     # Story 704 — TTL for sub-agent registrations (Session.active_subagents/2
     # filters out registrations whose last_heartbeat_at exceeds this).
@@ -77,6 +88,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :spex,
       :spec_validation,
       :qa_validation,
+      :fix_issues_min_severity,
       :subagent_ttl_minutes
     ])
     |> validate_required([:project_id])

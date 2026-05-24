@@ -1,44 +1,46 @@
 defmodule CodeMySpec.AgentTasks.FixIssues do
   @moduledoc """
-  Resolve every accepted QA issue.
+  Resolve every accepted QA issue at or above the project's configured
+  minimum blocking severity. The threshold lives on
+  `ProjectConfiguration.fix_issues_min_severity` (default `:medium`);
+  issues strictly below it are tracked but don't gate the pipeline.
 
   See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/fix_issues.spec.md`.
   """
 
-  alias CodeMySpec.{Issues, Paths}
-
-  # Minimum severity that gates the agent loop. Lows are tracked but
-  # don't block; operator decides whether to action them out-of-band.
-  # Per framework issue 62e2478e and explicit operator direction
-  # ("Lows don't block us. Only medium+").
-  @min_blocking_severity :medium
+  alias CodeMySpec.{Configurations, Issues, Paths}
 
   def orchestrate(_node) do
-    "Resolve every accepted QA issue at severity #{@min_blocking_severity} or " <>
-      "above by reading, fixing, and calling `resolve_issue` per issue. " <>
-      "Lows are tracked but don't gate the pipeline. Use when " <>
-      "`issues_triaged` is satisfied and accepted med+ issues remain."
+    "Resolve every accepted QA issue at or above the project's configured " <>
+      "`fix_issues_min_severity` (default `:medium`) by reading, fixing, and " <>
+      "calling `resolve_issue` per issue. Issues below the threshold are " <>
+      "tracked but don't gate the pipeline. Use when `issues_triaged` is " <>
+      "satisfied and accepted issues at or above the threshold remain."
   end
 
   @doc """
-  Read accepted issues (med+) and build a fix prompt. Returns
-  `{:ok, prompt_text}`.
+  Read accepted issues at or above the configured threshold and build a
+  fix prompt. Returns `{:ok, prompt_text}`.
   """
   def command(scope, _task) do
+    threshold = Configurations.fix_issues_min_severity(scope)
+
     count =
       scope
-      |> Issues.list_by_status_and_min_severity(:accepted, @min_blocking_severity)
+      |> Issues.list_by_status_and_min_severity(:accepted, threshold)
       |> length()
 
-    {:ok, build_prompt(count)}
+    {:ok, build_prompt(count, threshold)}
   end
 
   @doc """
-  Check that every accepted med+ issue has been resolved. Lows are
-  ignored — they're tracked but don't gate the loop.
+  Check that every accepted issue at or above the configured threshold
+  has been resolved.
   """
   def evaluate(scope, _task) do
-    case Issues.list_by_status_and_min_severity(scope, :accepted, @min_blocking_severity) do
+    threshold = Configurations.fix_issues_min_severity(scope)
+
+    case Issues.list_by_status_and_min_severity(scope, :accepted, threshold) do
       [] ->
         {:ok, :valid}
 
@@ -46,7 +48,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
         names = Enum.map_join(issues, "\n", &"- `#{&1.id}` — #{&1.title}")
 
         {:ok, :invalid,
-         "#{length(issues)} unresolved accepted issue(s) at #{@min_blocking_severity}+ severity:\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
+         "#{length(issues)} unresolved accepted issue(s) at #{threshold}+ severity:\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
     end
   end
 
@@ -56,7 +58,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
   # pointed at via the playbook section rather than inlined here.
   # ============================================================================
 
-  defp build_prompt(0) do
+  defp build_prompt(0, _threshold) do
     """
     # Fix Issues
 
@@ -64,12 +66,13 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
     """
   end
 
-  defp build_prompt(count) do
+  defp build_prompt(count, threshold) do
     """
     # Fix Issues
 
-    You are fixing every accepted QA issue. The working set is whatever triage
-    promoted to `accepted`; there is no severity filter at this layer.
+    You are fixing every accepted QA issue at or above the project's
+    configured minimum severity (`#{threshold}`). Issues below that
+    threshold are tracked but don't gate the loop.
 
     There are **#{count} accepted issue(s)** to work through. Discover them
     via `list_issues` (status: "accepted") — DO NOT expect the prompt to
