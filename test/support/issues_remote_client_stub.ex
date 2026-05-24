@@ -83,22 +83,6 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
   end
 
   @doc """
-  Pulls all server-side seeded issues into the local DB.
-
-  Delegates to `CodeMySpec.Issues.pull_incoming_from_remote/1` so the
-  same code path triage start exercises is used here. Sets
-  `synced_from_server: true` on each upserted row (via
-  `IssuesRepository.upsert_from_server/2`) so dispositions on these
-  issues route back through `update_issue/4`.
-
-  Returns `{:ok, [%Issue{}]}` on success or `{:error, reason}` when
-  the stub is simulating unreachability.
-  """
-  def pull_to_local(%Scope{} = scope) do
-    CodeMySpec.Issues.pull_incoming_from_remote(scope)
-  end
-
-  @doc """
   Returns all recorded remote `update_issue` calls for the given issue ID.
 
   Each entry is a map with at least `:issue_id` and `:attrs`.
@@ -146,6 +130,60 @@ defmodule CodeMySpec.Issues.RemoteClientStub do
       {:ok, issues}
     end
   end
+
+  @doc """
+  Mimics `RemoteClient.list_issues/3`. Filters by `:status` and
+  `:story_id` if supplied; ignores other filter keys.
+  """
+  def list_issues(%Scope{} = _scope, filters \\ %{}, _opts \\ []) do
+    if unreachable?() do
+      {:error, :server_unreachable}
+    else
+      table = ensure_remote_table()
+      filters_map = normalize_filters(filters)
+
+      issues =
+        table
+        |> :ets.tab2list()
+        |> Enum.map(fn {_id, issue} -> issue end)
+        |> Enum.filter(&matches_filters?(&1, filters_map))
+
+      {:ok, issues}
+    end
+  end
+
+  @doc """
+  Mimics `RemoteClient.get_issue/3`. Returns `{:ok, issue}` or
+  `{:error, :not_found}`.
+  """
+  def get_issue(%Scope{} = _scope, issue_id, _opts \\ []) do
+    if unreachable?() do
+      {:error, :server_unreachable}
+    else
+      table = ensure_remote_table()
+
+      case :ets.lookup(table, issue_id) do
+        [{^issue_id, issue}] -> {:ok, issue}
+        [] -> {:error, :not_found}
+      end
+    end
+  end
+
+  defp normalize_filters(filters) when is_map(filters), do: filters
+  defp normalize_filters(filters) when is_list(filters), do: Map.new(filters)
+
+  defp matches_filters?(issue, filters) do
+    Enum.all?(filters, fn {k, v} ->
+      k_atom = if is_binary(k), do: String.to_atom(k), else: k
+      issue_val = Map.get(issue, k_atom)
+      compare_filter(issue_val, v)
+    end)
+  end
+
+  defp compare_filter(actual, expected) when is_atom(actual) and is_binary(expected),
+    do: Atom.to_string(actual) == expected
+
+  defp compare_filter(actual, expected), do: actual == expected
 
   @doc """
   Mimics `RemoteClient.create_issue/3`.

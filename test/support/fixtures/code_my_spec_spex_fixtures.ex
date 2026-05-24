@@ -468,16 +468,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Drives `Issues.pull_incoming_from_remote/1` through the bridge so
-  spex can stage the "after triage-start pull" state without calling
-  `start_task` end-to-end (used by 709's disposition spex to focus on
-  the sync-back rule, not the pull rule).
-  """
-  def sync_server_issues_to_local(scope) do
-    CodeMySpec.Issues.RemoteClientStub.pull_to_local(scope)
-  end
-
-  @doc """
   Returns the recorded `update_issue` calls the stub captured for a
   given issue id. Lets `then_` steps assert "the local disposition
   round-tripped to the server" through the approved bridge.

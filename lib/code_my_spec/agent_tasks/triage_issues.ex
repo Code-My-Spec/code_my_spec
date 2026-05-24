@@ -31,16 +31,14 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   `list_issues` MCP tool. This keeps the prompt stable regardless of how
   many issues exist and forces the agent to use the canonical tool surface.
 
-  Returns `{:ok, prompt_text}` or `{:error, {:server_unreachable, message}}`.
+  Returns `{:ok, prompt_text}`.
   """
   def command(scope, task) do
-    with :ok <- pull_from_remote(scope) do
-      min_severity = get_min_severity(task)
-      issues = list_incoming_at_severity(scope, min_severity)
+    min_severity = get_min_severity(task)
+    issues = list_incoming_at_severity(scope, min_severity)
 
-      prompt = build_prompt(issues, min_severity)
-      {:ok, prompt}
-    end
+    prompt = build_prompt(issues, min_severity)
+    {:ok, prompt}
   end
 
   @doc """
@@ -73,28 +71,6 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
   def orchestrate(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
-  end
-
-  # ============================================================================
-  # Remote Pull
-  # ============================================================================
-
-  defp pull_from_remote(scope) do
-    case Issues.pull_incoming_from_remote(scope) do
-      {:ok, _issues} ->
-        :ok
-
-      {:error, reason} ->
-        {:error, {:server_unreachable, format_unreachable_error(reason)}}
-    end
-  end
-
-  defp format_unreachable_error(:server_unreachable) do
-    "Cannot reach the CodeMySpec server. Check your network connection and authentication."
-  end
-
-  defp format_unreachable_error(reason) do
-    "Cannot reach the CodeMySpec server: #{inspect(reason)}"
   end
 
   # ============================================================================

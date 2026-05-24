@@ -9,12 +9,10 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
-  alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Issues.RemoteSync, as: IssuesRemoteSync
   alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
@@ -134,8 +132,6 @@ defmodule CodeMySpecLocalWeb.FilesLive do
     embed? = Keyword.get(opts, :embed, false)
     socket = assign(socket, sync_status: :running, sync_result: nil)
 
-    remote_lines = run_remote_syncs(scope)
-
     with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd, embed: embed?),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       result =
@@ -149,14 +145,12 @@ defmodule CodeMySpecLocalWeb.FilesLive do
        assign(socket,
          result: result,
          sync_status: :done,
-         sync_result:
-           remote_lines ++
-             [
-               {"Files", file_result.total_files},
-               {"Changed files", length(file_result.changed_paths)},
-               {"Components", length(comp_result.all_components)},
-               {"Changed components", length(comp_result.changed_component_ids)}
-             ]
+         sync_result: [
+           {"Files", file_result.total_files},
+           {"Changed files", length(file_result.changed_paths)},
+           {"Components", length(comp_result.all_components)},
+           {"Changed components", length(comp_result.changed_component_ids)}
+         ]
        )}
     else
       {:error, reason} ->
@@ -181,26 +175,6 @@ defmodule CodeMySpecLocalWeb.FilesLive do
          {"Elapsed", "#{result.elapsed_ms}ms"}
        ]
      )}
-  end
-
-  defp run_remote_syncs(scope) do
-    if OAuthClient.authenticated?() do
-      [
-        safe_remote_sync("Issues", fn -> IssuesRemoteSync.sync(scope) end)
-      ]
-    else
-      [
-        {"Issues", "skipped — not authenticated"}
-      ]
-    end
-  end
-
-  defp safe_remote_sync(label, fun) do
-    case fun.() do
-      :ok -> {label, "synced from remote"}
-      {:ok, _} -> {label, "synced from remote"}
-      {:error, reason} -> {label, "sync failed: #{inspect(reason)}"}
-    end
   end
 
   @impl true

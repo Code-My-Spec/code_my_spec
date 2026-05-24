@@ -45,7 +45,6 @@ defmodule CodeMySpecLocalWeb.Application do
       CodeMySpecLocalWeb.Endpoint,
       CodeMySpec.ProjectSync.FileWatcherServer,
       CodeMySpecLocalWeb.SocketSupervisor,
-      CodeMySpec.Issues.BootSync,
       CodeMySpecCli.PresenceClient
     ] ++ tunnel_children()
 

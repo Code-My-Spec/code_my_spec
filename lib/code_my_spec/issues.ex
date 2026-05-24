@@ -2,9 +2,14 @@ defmodule CodeMySpec.Issues do
   @moduledoc """
   The Issues context.
 
-  Database is the source of truth. Markdown files in `.code_my_spec/issues/`
-  are read-only projections for agent consumption. Issues are created by evaluate
-  hooks (from QA results and braindump triage), never by agents directly.
+  Issues are homed on the server (`:dev` / `:prod` Phoenix endpoints,
+  backed by Postgres). The CLI envs (`:dev_cli` / `:prod_cli`) never
+  read or write the local SQLite issues table — every public function
+  dispatches by env and routes CLI calls through `RemoteClient` HTTP
+  to the server. The server stays the single source of truth.
+
+  Test (`:test`) keeps the local Repo path so fixtures and spex can
+  drive issues through the in-memory DB without a network round-trip.
   """
 
   alias CodeMySpec.Documents.QaIssue
@@ -16,53 +21,97 @@ defmodule CodeMySpec.Issues do
   @doc """
   Returns the configured remote-issues client module.
 
-  In production this is `CodeMySpec.Issues.RemoteClient` (real HTTP to
-  the CodeMySpec server). In tests it is swapped via
-  `:code_my_spec, :issues_remote_client` to the in-process stub so
-  spex can drive framework-scope operations without outbound HTTP.
-
-  The MCP Issues tools call this when routing `scope: framework`
-  operations — framework issues live on the server, never in the
-  local CLI's DB.
+  Production binds `CodeMySpec.Issues.RemoteClient`. Tests swap via
+  `:code_my_spec, :issues_remote_client` to drive against a stub — but
+  tests run in `:test` env which uses the local Repo path, so the stub
+  is only exercised for the small set of tests that explicitly hit
+  remote-client code (validation_error / network-error branches).
   """
   def remote_client do
     Application.get_env(:code_my_spec, :issues_remote_client, RemoteClient)
   end
 
-  # The server (env: :dev or :prod) IS the source of truth for issues.
-  # Only CLI envs (:dev_cli, :prod_cli) push dispositions/updates to a
-  # remote. Without this guard, the server controller's resolve/dismiss
-  # path would recursively try to push to its own remote_client, fail
-  # auth, and surface a string error tuple the FallbackController can't
-  # translate (→ 500 FunctionClauseError).
-  defp authoritative_mode? do
-    Application.get_env(:code_my_spec, :env) in [:dev, :prod]
+  # Routing predicate. true → use the local Repo (server is the source
+  # of truth and we ARE the server, OR we're in test); false → use
+  # RemoteClient HTTP to the server.
+  defp local_repo_env? do
+    Application.get_env(:code_my_spec, :env) in [:dev, :prod, :test]
   end
 
   # -- Reads ------------------------------------------------------------------
 
-  def list_issues(%Scope{} = scope), do: IssuesRepository.list_issues(scope)
-
-  def list_by_status(%Scope{} = scope, status), do: IssuesRepository.list_by_status(scope, status)
-
-  def list_by_status_and_min_severity(%Scope{} = scope, status, min_severity) do
-    IssuesRepository.list_by_status_and_min_severity(scope, status, min_severity)
+  def list_issues(%Scope{} = scope) do
+    if local_repo_env?(),
+      do: IssuesRepository.list_issues(scope),
+      else: remote_list!(scope, %{})
   end
 
-  def list_by_story(%Scope{} = scope, story_id), do: IssuesRepository.list_by_story(scope, story_id)
+  def list_by_status(%Scope{} = scope, status) do
+    if local_repo_env?(),
+      do: IssuesRepository.list_by_status(scope, status),
+      else: remote_list!(scope, %{status: status})
+  end
 
-  def get_issue(%Scope{} = scope, id), do: IssuesRepository.get_issue(scope, id)
+  def list_by_status_and_min_severity(%Scope{} = scope, status, min_severity) do
+    if local_repo_env?() do
+      IssuesRepository.list_by_status_and_min_severity(scope, status, min_severity)
+    else
+      # Server's IssuesController.build_filters/1 doesn't expose
+      # min_severity directly. Fetch by status and filter client-side.
+      scope
+      |> remote_list!(%{status: status})
+      |> Enum.filter(&(severity_rank(&1.severity) >= severity_rank(min_severity)))
+    end
+  end
 
-  def get_issue!(%Scope{} = scope, id), do: IssuesRepository.get_issue!(scope, id)
+  def list_by_story(%Scope{} = scope, story_id) do
+    if local_repo_env?(),
+      do: IssuesRepository.list_by_story(scope, story_id),
+      else: remote_list!(scope, %{story_id: story_id})
+  end
 
-  def list_filtered(%Scope{} = scope, filters), do: IssuesRepository.list_filtered(scope, filters)
+  def get_issue(%Scope{} = scope, id) do
+    if local_repo_env?() do
+      IssuesRepository.get_issue(scope, id)
+    else
+      case remote_client().get_issue(scope, id) do
+        {:ok, issue} -> issue
+        {:error, :not_found} -> nil
+        {:error, _} -> nil
+      end
+    end
+  end
+
+  def get_issue!(%Scope{} = scope, id) do
+    if local_repo_env?() do
+      IssuesRepository.get_issue!(scope, id)
+    else
+      case remote_client().get_issue(scope, id) do
+        {:ok, issue} -> issue
+        {:error, reason} -> raise "Issues.get_issue!: #{inspect(reason)}"
+      end
+    end
+  end
+
+  def list_filtered(%Scope{} = scope, filters) do
+    if local_repo_env?(),
+      do: IssuesRepository.list_filtered(scope, filters),
+      else: remote_list!(scope, filters)
+  end
 
   # -- Create -----------------------------------------------------------------
 
   def create_issue(%Scope{} = scope, attrs) do
-    with {:ok, issue} <- IssuesRepository.create_issue(scope, attrs) do
-      broadcast(scope, {:created, issue})
-      {:ok, issue}
+    if local_repo_env?() do
+      with {:ok, issue} <- IssuesRepository.create_issue(scope, attrs) do
+        broadcast(scope, {:created, issue})
+        {:ok, issue}
+      end
+    else
+      with {:ok, issue} <- remote_client().create_issue(scope, attrs) do
+        broadcast(scope, {:created, issue})
+        {:ok, issue}
+      end
     end
   end
 
@@ -88,8 +137,8 @@ defmodule CodeMySpec.Issues do
           source_path: ".code_my_spec/qa/#{story_id}/result.md"
         }
 
-        case IssuesRepository.upsert_issue(scope, attrs) do
-          {:ok, issue, _status} -> issue
+        case upsert_or_create(scope, attrs) do
+          {:ok, issue} -> issue
           {:error, _} -> nil
         end
       end)
@@ -118,36 +167,67 @@ defmodule CodeMySpec.Issues do
         attrs
       )
 
-    IssuesRepository.create_issue(scope, merged)
+    if local_repo_env?() do
+      IssuesRepository.create_issue(scope, merged)
+    else
+      remote_client().create_issue(scope, merged)
+    end
   end
 
   # -- Status transitions -----------------------------------------------------
 
   def accept_issue(%Scope{} = scope, %Issue{} = issue, opts \\ []) do
-    with :ok <- sync_disposition_to_remote(scope, issue, :accepted, opts),
-         {:ok, issue} <- IssuesRepository.update_status(issue, :accepted, nil, opts) do
-      broadcast(scope, {:accepted, issue})
-      {:ok, issue}
+    if local_repo_env?() do
+      with {:ok, issue} <- IssuesRepository.update_status(issue, :accepted, nil, opts) do
+        broadcast(scope, {:accepted, issue})
+        {:ok, issue}
+      end
+    else
+      attrs =
+        %{status: "accepted"}
+        |> maybe_put_attr(:category, Keyword.get(opts, :category))
+        |> maybe_put_attr(:story_id, Keyword.get(opts, :story_id))
+
+      with {:ok, issue} <- remote_client().update_issue(scope, issue.id, attrs) do
+        broadcast(scope, {:accepted, issue})
+        {:ok, issue}
+      end
     end
   end
 
   def dismiss_issue(%Scope{} = scope, %Issue{} = issue, reason) do
-    opts = [resolution: reason]
-
-    with :ok <- sync_disposition_to_remote(scope, issue, :dismissed, opts),
-         {:ok, issue} <- IssuesRepository.update_status(issue, :dismissed, reason) do
-      broadcast(scope, {:dismissed, issue})
-      {:ok, issue}
+    if local_repo_env?() do
+      with {:ok, issue} <- IssuesRepository.update_status(issue, :dismissed, reason) do
+        broadcast(scope, {:dismissed, issue})
+        {:ok, issue}
+      end
+    else
+      with {:ok, issue} <-
+             remote_client().update_issue(scope, issue.id, %{
+               status: "dismissed",
+               resolution: reason
+             }) do
+        broadcast(scope, {:dismissed, issue})
+        {:ok, issue}
+      end
     end
   end
 
   def resolve_issue(%Scope{} = scope, %Issue{} = issue, resolution) do
-    opts = [resolution: resolution]
-
-    with :ok <- sync_disposition_to_remote(scope, issue, :resolved, opts),
-         {:ok, issue} <- IssuesRepository.update_status(issue, :resolved, resolution) do
-      broadcast(scope, {:resolved, issue})
-      {:ok, issue}
+    if local_repo_env?() do
+      with {:ok, issue} <- IssuesRepository.update_status(issue, :resolved, resolution) do
+        broadcast(scope, {:resolved, issue})
+        {:ok, issue}
+      end
+    else
+      with {:ok, issue} <-
+             remote_client().update_issue(scope, issue.id, %{
+               status: "resolved",
+               resolution: resolution
+             }) do
+        broadcast(scope, {:resolved, issue})
+        {:ok, issue}
+      end
     end
   end
 
@@ -156,84 +236,68 @@ defmodule CodeMySpec.Issues do
   category, source_path). Status transitions go through
   `accept_issue` / `dismiss_issue` / `resolve_issue` — this is the
   catch-all for everything else.
-
-  Pushes to the remote server first when the issue is mirrored
-  (same fail-loud pattern as the disposition flow), then updates
-  local. Local-only issues (`synced_from_server == false`) bypass
-  the remote push.
   """
   def update_issue(%Scope{} = scope, %Issue{} = issue, attrs) do
-    with :ok <- sync_update_to_remote(scope, issue, attrs),
-         {:ok, updated} <- IssuesRepository.update_attributes(issue, attrs) do
-      broadcast(scope, {:updated, updated})
-      {:ok, updated}
-    end
-  end
-
-  defp sync_update_to_remote(_scope, %Issue{synced_from_server: false}, _attrs), do: :ok
-
-  defp sync_update_to_remote(scope, %Issue{} = issue, attrs) do
-    if authoritative_mode?() do
-      :ok
+    if local_repo_env?() do
+      with {:ok, updated} <- IssuesRepository.update_attributes(issue, attrs) do
+        broadcast(scope, {:updated, updated})
+        {:ok, updated}
+      end
     else
-      do_sync_update_to_remote(scope, issue, attrs)
-    end
-  end
-
-  defp do_sync_update_to_remote(scope, %Issue{} = issue, attrs) do
-    case remote_client().update_issue(scope, issue.id, attrs) do
-      {:ok, _} ->
-        :ok
-
-      {:error, :not_authenticated} ->
-        {:error,
-         "Cannot reach the issues server: not authenticated. Sign in and retry the update."}
-
-      {:error, reason} ->
-        {:error,
-         "Cannot reach the issues server: #{inspect(reason)}. Retry when connectivity is restored."}
-    end
-  end
-
-  @doc """
-  Pulls all incoming issues from the remote server and upserts them
-  into the local DB.
-
-  Called at the start of every triage task so the local view reflects
-  the server's current incoming set across every scope. Failure to
-  reach the server returns `{:error, reason}` — triage callers fail
-  loudly rather than degrading to local-only.
-  """
-  def pull_incoming_from_remote(%Scope{} = scope) do
-    if authoritative_mode?() do
-      {:ok, []}
-    else
-      do_pull_incoming_from_remote(scope)
-    end
-  end
-
-  defp do_pull_incoming_from_remote(%Scope{} = scope) do
-    case remote_client().list_incoming_issues(scope) do
-      {:ok, issues} ->
-        Enum.each(issues, fn issue -> IssuesRepository.upsert_from_server(scope, issue) end)
-        {:ok, issues}
-
-      {:error, reason} ->
-        {:error, reason}
+      with {:ok, updated} <- remote_client().update_issue(scope, issue.id, attrs) do
+        broadcast(scope, {:updated, updated})
+        {:ok, updated}
+      end
     end
   end
 
   # -- Query helpers ----------------------------------------------------------
 
   def has_unresolved_issues?(%Scope{} = scope, min_severity \\ :medium) do
-    IssuesRepository.count_by_status_and_min_severity(scope, :accepted, min_severity) > 0
+    if local_repo_env?() do
+      IssuesRepository.count_by_status_and_min_severity(scope, :accepted, min_severity) > 0
+    else
+      list_by_status_and_min_severity(scope, :accepted, min_severity) != []
+    end
   end
 
   def has_untriaged_issues?(%Scope{} = scope, min_severity \\ :medium) do
-    IssuesRepository.count_by_status_and_min_severity(scope, :incoming, min_severity) > 0
+    if local_repo_env?() do
+      IssuesRepository.count_by_status_and_min_severity(scope, :incoming, min_severity) > 0
+    else
+      list_by_status_and_min_severity(scope, :incoming, min_severity) != []
+    end
   end
 
   # -- Private ----------------------------------------------------------------
+
+  defp remote_list!(scope, filters) do
+    case remote_client().list_issues(scope, filters) do
+      {:ok, issues} -> issues
+      {:error, _} -> []
+    end
+  end
+
+  defp upsert_or_create(scope, attrs) do
+    if local_repo_env?() do
+      case IssuesRepository.upsert_issue(scope, attrs) do
+        {:ok, issue, _status} -> {:ok, issue}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      # No upsert endpoint on the server — fall through to create_issue;
+      # the server's create handles its own dedup if any.
+      remote_client().create_issue(scope, attrs)
+    end
+  end
+
+  defp severity_rank(:critical), do: 4
+  defp severity_rank(:high), do: 3
+  defp severity_rank(:medium), do: 2
+  defp severity_rank(:low), do: 1
+  defp severity_rank(:info), do: 0
+  defp severity_rank(s) when is_binary(s), do: severity_rank(String.to_existing_atom(s))
+  defp severity_rank(_), do: 0
 
   defp parse_severity(s) when is_atom(s), do: s
 
@@ -289,66 +353,6 @@ defmodule CodeMySpec.Issues do
   end
 
   defp broadcast(_scope, _message), do: :ok
-
-  # Synchronously sync a local disposition (accept/dismiss/resolve)
-  # back to the remote server when the issue is mirrored. Failure is
-  # surfaced as `{:error, message}` so the caller can refuse to flip
-  # the local state, keeping local and remote in lockstep.
-  #
-  # Only locally-created issues (`synced_from_server == false`,
-  # explicit) bypass the sync. NULL means legacy — the `synced_from_server`
-  # column was added in 20260518024054 without a backfill, so every row
-  # that predates the migration shows NULL even though it was originally
-  # pulled from the server. Treating NULL as "skip" silently dropped
-  # every disposition on legacy rows; the next remote sync then
-  # overwrote the local change. NULL now falls through to the remote
-  # push.
-  defp sync_disposition_to_remote(_scope, %Issue{synced_from_server: false}, _status, _opts) do
-    :ok
-  end
-
-  defp sync_disposition_to_remote(scope, %Issue{} = issue, status, opts) do
-    if authoritative_mode?() do
-      :ok
-    else
-      do_sync_disposition_to_remote(scope, issue, status, opts)
-    end
-  end
-
-  defp do_sync_disposition_to_remote(scope, %Issue{} = issue, status, opts) do
-    attrs = build_remote_attrs(status, opts)
-
-    case remote_client().update_issue(scope, issue.id, attrs) do
-      {:ok, _} ->
-        :ok
-
-      {:error, :not_authenticated} ->
-        # The local CLI is unauthenticated against the remote. Treat
-        # this as a hard failure rather than silently degrading — the
-        # rule says fail loudly so the operator knows their local
-        # disposition did NOT round-trip.
-        {:error,
-         "Cannot reach the issues server: not authenticated. Sign in and retry the disposition."}
-
-      {:error, reason} ->
-        {:error,
-         "Cannot reach the issues server: #{inspect(reason)}. Retry when connectivity is restored."}
-    end
-  end
-
-  defp build_remote_attrs(:accepted, opts) do
-    %{status: "accepted"}
-    |> maybe_put_attr(:category, Keyword.get(opts, :category))
-    |> maybe_put_attr(:story_id, Keyword.get(opts, :story_id))
-  end
-
-  defp build_remote_attrs(:dismissed, opts) do
-    %{status: "dismissed", resolution: Keyword.get(opts, :resolution)}
-  end
-
-  defp build_remote_attrs(:resolved, opts) do
-    %{status: "resolved", resolution: Keyword.get(opts, :resolution)}
-  end
 
   defp maybe_put_attr(map, _key, nil), do: map
   defp maybe_put_attr(map, key, value), do: Map.put(map, key, value)

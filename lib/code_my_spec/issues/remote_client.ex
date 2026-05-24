@@ -45,26 +45,33 @@ defmodule CodeMySpec.Issues.RemoteClient do
   # Read operations
   # ---------------------------------------------------------------------------
 
-  def list_accepted_issues(%Scope{} = scope, opts \\ []) do
+  @doc """
+  Generic list with arbitrary filters. Filters is a map or keyword list
+  whose keys/values are URL-encoded as query params. Recognized keys:
+  `:status`, `:severity`, `:scope`, `:source`, `:story_id` (server
+  controller honors these via `IssuesController.build_filters/1`).
+  """
+  def list_issues(%Scope{} = scope, filters \\ %{}, opts \\ []) do
     with {:ok, client} <- new(scope, opts),
-         {:ok, response} <- Req.get(client, url: "/api/issues", params: [status: "accepted"]) do
+         {:ok, response} <- Req.get(client, url: "/api/issues", params: encode_filters(filters)) do
       handle_list_response(response)
     end
   end
 
-  @doc """
-  Lists incoming issues across all scopes for the active project.
+  def list_accepted_issues(%Scope{} = scope, opts \\ []),
+    do: list_issues(scope, %{status: "accepted"}, opts)
 
-  Used by `Issues.pull_incoming_from_remote/1` at the start of every
-  triage task to ensure the local DB reflects the server's current
-  incoming-issue view before the agent begins triage. The server
-  honors per-project access via the `x-project-id` header set in
-  `build_headers/2`, so the response is naturally project-scoped.
+  def list_incoming_issues(%Scope{} = scope, opts \\ []),
+    do: list_issues(scope, %{status: "incoming"}, opts)
+
+  @doc """
+  Fetches a single issue by id. Returns `{:ok, %Issue{}}`, `{:error, :not_found}`,
+  or `{:error, reason}`.
   """
-  def list_incoming_issues(%Scope{} = scope, opts \\ []) do
+  def get_issue(%Scope{} = scope, issue_id, opts \\ []) do
     with {:ok, client} <- new(scope, opts),
-         {:ok, response} <- Req.get(client, url: "/api/issues", params: [status: "incoming"]) do
-      handle_list_response(response)
+         {:ok, response} <- Req.get(client, url: "/api/issues/#{issue_id}") do
+      handle_show_response(response)
     end
   end
 
@@ -73,6 +80,24 @@ defmodule CodeMySpec.Issues.RemoteClient do
 
   defp handle_list_response(%{status: status, body: body}),
     do: {:error, {:unexpected_status, status, body}}
+
+  defp handle_show_response(%{status: 200, body: body}),
+    do: {:ok, deserialize_issue(body["data"])}
+
+  defp handle_show_response(%{status: 404}), do: {:error, :not_found}
+
+  defp handle_show_response(%{status: status, body: body}),
+    do: {:error, {:unexpected_status, status, body}}
+
+  defp encode_filters(filters) when is_map(filters), do: encode_filters(Map.to_list(filters))
+
+  defp encode_filters(filters) when is_list(filters) do
+    Enum.flat_map(filters, fn
+      {_k, nil} -> []
+      {k, v} when is_atom(v) -> [{k, Atom.to_string(v)}]
+      {k, v} -> [{k, to_string(v)}]
+    end)
+  end
 
   # ---------------------------------------------------------------------------
   # Mutation operations
