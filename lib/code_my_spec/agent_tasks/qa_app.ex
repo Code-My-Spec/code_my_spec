@@ -143,8 +143,6 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
   defp list_stories(scope) do
     Stories.list_stories(scope)
-  rescue
-    _ -> []
   end
 
   defp list_existing_issues(scope) do

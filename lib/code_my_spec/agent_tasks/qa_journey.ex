@@ -51,8 +51,6 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
 
   defp list_stories(scope) do
     Stories.list_stories(scope)
-  rescue
-    _ -> []
   end
 
   defp list_wallaby_tests(env) do

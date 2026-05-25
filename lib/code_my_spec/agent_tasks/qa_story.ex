@@ -427,28 +427,22 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   defp build_component_section(scope, story) do
-    case story.component_id do
-      nil ->
-        nil
+    with component_id when not is_nil(component_id) <- story.component_id,
+         %{} = component <- Components.get_component(scope, component_id) do
+      files = Utils.component_files(component, scope.active_project)
+      file_list = format_component_files(files)
 
-      component_id ->
-        try do
-          component = Components.get_component!(scope, component_id)
-          files = Utils.component_files(component, scope.active_project)
-          file_list = format_component_files(files)
+      """
+      ## Linked component: #{component.name}
 
-          """
-          ## Linked component: #{component.name}
+      This story is implemented by `#{component.module_name}` (#{component.type}).
+      Reading the source code and spec will help you understand what to
+      test and how the feature works.
 
-          This story is implemented by `#{component.module_name}` (#{component.type}).
-          Reading the source code and spec will help you understand what to
-          test and how the feature works.
-
-          #{file_list}\
-          """
-        rescue
-          _ -> nil
-        end
+      #{file_list}\
+      """
+    else
+      _ -> nil
     end
   end
 

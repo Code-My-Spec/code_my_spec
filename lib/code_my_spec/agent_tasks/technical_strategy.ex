@@ -257,10 +257,9 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   end
 
   defp list_story_titles(scope) do
-    Stories.list_story_titles(scope)
+    scope
+    |> Stories.list_story_titles()
     |> Enum.map(& &1.title)
-  rescue
-    _ -> []
   end
 
   defp decisions_index_exists?(env) do
