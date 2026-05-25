@@ -31,38 +31,6 @@ so you always know what to work on next and in what order.
 - Specs live in `.code_my_spec/spec/`, rules in `.code_my_spec/rules/`, architecture in `.code_my_spec/architecture/`.
 <!-- code_my_spec:end -->
 
-## Agent Teams (experimental)
-
-This project opts into Claude Code's experimental
-[agent teams](https://code.claude.com/docs/en/agent-teams) so spawned
-sub-agents can `SendMessage` each other directly instead of only
-reporting back to the orchestrator. Required for story 810's
-SendMessage-aware dispatch path.
-
-The flag is set in `.envrc` at the project root:
-
-```
-export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-```
-
-Run `direnv allow` once after pulling. Claude Code inherits the var
-from shell env, so it's active when your shell is cwd'd into this
-project tree and unset outside it. No global `~/.claude/settings.json`
-change required.
-
-The sub-agent definitions are project-local at `CodeMySpec/agents/`
-— `qa.md`, `code-writer.md`, `spec-writer.md`, `bdd-spec-writer.md`,
-`test-writer.md`. When agent teams is enabled, spawning any of these
-yields a teammate (not just a subagent); teammates auto-load their
-project-defined tools and instructions and gain SendMessage between
-each other.
-
-Caveats:
-- Teammates do not inherit MCP servers or skills from sub-agent
-  definitions — those come from project + user settings.
-- No nested teams.
-- `/resume` loses teammates in in-process mode.
-
 ## Logs
 
 The `cms` server and `cms` CLI both write structured logs to disk. They use a
