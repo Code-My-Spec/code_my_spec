@@ -789,6 +789,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       validation_type: definition.validation_type || :automatic,
       orchestrated_by: definition.orchestrated_by,
       render_command_always?: definition.render_command_always? || false,
+      subagent_role: definition.subagent_role,
       parent_entity_id: parent_id,
       parent_entity_name: parent_name,
       prerequisites: [],
@@ -831,6 +832,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             validation_type: definition.validation_type || :automatic,
             orchestrated_by: definition.orchestrated_by,
             render_command_always?: definition.render_command_always? || false,
+            subagent_role: definition.subagent_role,
             parent_entity_id: project && project.id,
             parent_entity_name: project && project.name,
             prerequisites: [],
@@ -869,6 +871,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         validation_type: definition.validation_type || :automatic,
         orchestrated_by: definition.orchestrated_by,
         render_command_always?: definition.render_command_always? || false,
+        subagent_role: definition.subagent_role,
         prerequisites: [],
         details: result.details
       }

@@ -19,10 +19,9 @@ defmodule CodeMySpecSpex.Story810.Criterion6533Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -32,6 +31,10 @@ defmodule CodeMySpecSpex.Story810.Criterion6533Spex do
     scenario "qa_complete requirement → directive surfaces role: :qa explicitly" do
       given_ "a session exists with a pending qa_complete requirement on a story",
              context do
+        # Advance project to qa_complete frontier: all prereqs satisfied through
+        # bdd_specs_passing, leaving qa_complete open as the next actionable
+        # requirement so the dispatch directive surfaces the :qa role.
+        context = FullSatisfactionFixtures.apply_without_qa_story(context)
         session_id = "spex-#{System.unique_integer([:positive])}"
 
         post(

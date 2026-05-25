@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story811.Criterion6490Spex do
 
   import CodeMySpecSpex.GraphGivens
 
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story811.Criterion6490Spex do
           description: "Story B"
         )
 
-        actionable = RequirementGraph.next_actionable(context.scope)
+        actionable = Fixtures.next_actionable_requirements(context.scope)
 
         if length(actionable) < 2 do
           flunk("""

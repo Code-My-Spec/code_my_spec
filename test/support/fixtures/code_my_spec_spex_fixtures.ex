@@ -45,6 +45,8 @@ defmodule CodeMySpecSpex.Fixtures do
   }
 
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Configurations
+  alias CodeMySpec.Requirements.RequirementGraph
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
   def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)
@@ -474,5 +476,30 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def server_update_calls_for(issue_id) when is_binary(issue_id) do
     CodeMySpec.Issues.RemoteClientStub.update_calls_for(issue_id)
+  end
+
+  # -- Project configuration (Stories 608, etc.) --
+
+  @doc """
+  Updates the active project's configuration. Spex use this to
+  change operator-configurable settings (e.g. fix_issues_min_severity)
+  without reaching directly into CodeMySpec.Configurations.
+  """
+  @spec update_project_configuration(Scope.t(), map()) ::
+          {:ok, term()} | {:error, term()}
+  def update_project_configuration(%Scope{} = scope, attrs) when is_map(attrs) do
+    Configurations.update(scope, attrs)
+  end
+
+  # -- Requirements graph (Stories 811, etc.) --
+
+  @doc """
+  Returns the list of next-actionable requirements for the active
+  project scope. Spex use this to assert graph state without
+  reaching directly into CodeMySpec.Requirements.RequirementGraph.
+  """
+  @spec next_actionable_requirements(Scope.t()) :: list()
+  def next_actionable_requirements(%Scope{} = scope) do
+    RequirementGraph.next_actionable(scope)
   end
 end

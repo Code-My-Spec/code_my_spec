@@ -28,7 +28,6 @@ defmodule CodeMySpecSpex.Story608.Criterion6524Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
@@ -41,7 +40,7 @@ defmodule CodeMySpecSpex.Story608.Criterion6524Spex do
       given_ "the project's fix_issues_min_severity is set to :high",
              context do
         {:ok, _config} =
-          Configurations.update(context.scope, %{fix_issues_min_severity: :high})
+          Fixtures.update_project_configuration(context.scope, %{fix_issues_min_severity: :high})
 
         {:ok, context}
       end

@@ -13,11 +13,14 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   use Anubis.Server.Component, type: :tool
 
   alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Sessions
+  alias CodeMySpec.Sessions.Session
 
   schema do
   end
@@ -38,9 +41,14 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
           FileComponentSync.sync_from_files(scope, base_dir: scope.cwd)
         end
 
+        # Resolve active sub-agents from the most recent session for this
+        # project so the mapper can produce role-aware dispatch directives
+        # (SendMessage to a live sub-agent vs. fresh Agent spawn).
+        active_subagents = resolve_active_subagents(scope)
+
         case RequirementGraph.next_actionable(scope) do
           [] -> {:reply, empty_response(scope), frame}
-          nodes -> {:reply, RequirementsMapper.next_requirements_response(nodes), frame}
+          nodes -> {:reply, RequirementsMapper.next_requirements_response(nodes, active_subagents), frame}
         end
 
       {:error, _reason} ->
@@ -48,6 +56,24 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         scope = build_init_scope(frame)
         {:ok, prompt} = Init.command(scope, %{})
         {:reply, RequirementsMapper.init_required_response(prompt), frame}
+    end
+  end
+
+  # Resolves the currently-active sub-agents for the most recent session
+  # on this project. Returns a map of role string → agent_id, e.g.
+  # %{"qa" => "a-qa-spex-1"}. Used by the mapper to choose between
+  # SendMessage (live agent) and Agent spawn (no live agent for role).
+  defp resolve_active_subagents(scope) do
+    ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
+
+    case Sessions.list_active_sessions(scope) do
+      [] ->
+        %{}
+
+      [session | _] ->
+        session
+        |> Session.active_subagents(ttl)
+        |> Map.new(fn subagent -> {subagent.agent_name, subagent.agent_id} end)
     end
   end
 

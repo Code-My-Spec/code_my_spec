@@ -27,7 +27,6 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.TaskResponseHelpers
 
-  @module_name "ExampleContext"
   @impl_path "lib/example_context.ex"
   @review_path ".code_my_spec/spec/example_context/design_review.md"
 

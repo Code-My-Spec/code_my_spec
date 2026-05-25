@@ -29,10 +29,14 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # ============================================================================
 
   def dispatch(_node) do
-    "Run a per-story QA session: write a testing brief, execute it against " <>
-      "the running app (MCP browser for UI, curl for API), and produce a " <>
-      "pass/fail result with issues filed. Use when a story has passing BDD " <>
-      "specs and is ready for QA. Sub-agent: spawn @qa to call `start_task`."
+    %{
+      role: :qa,
+      prompt:
+        "Run a per-story QA session: write a testing brief, execute it against " <>
+          "the running app (MCP browser for UI, curl for API), and produce a " <>
+          "pass/fail result with issues filed. Use when a story has passing BDD " <>
+          "specs and is ready for `qa_complete`."
+    }
   end
 
   # ============================================================================

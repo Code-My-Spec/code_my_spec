@@ -755,7 +755,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :review,
         description: "QA complete: at least one valid DB-backed pass attempt exists",
         prerequisites: [3],
-        execution_type: :sub_agent
+        execution_type: :sub_agent,
+        subagent_role: :qa
       })
     ]
   end

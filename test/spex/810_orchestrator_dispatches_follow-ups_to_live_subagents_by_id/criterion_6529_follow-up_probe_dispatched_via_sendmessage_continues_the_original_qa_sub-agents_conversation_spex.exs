@@ -20,10 +20,9 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @qa_agent_id "a-qa-spex-1"
@@ -34,13 +33,11 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
   spex "Dispatch directive names SendMessage when a live QA sub-agent is registered" do
     scenario "qa_complete requirement + registered QA sub-agent → directive says SendMessage(to: <agent_id>)" do
       given_ "a story exists with a passing-spec'd qa_complete requirement pending",
-             _context do
-        # The graph's exact shape isn't the focus — any pending qa_complete
-        # node should trip the SendMessage-aware dispatch. We rely on
-        # `setup_active_project` planting a project with at least one
-        # actionable qa_complete requirement; if not, the dispatch logic
-        # still needs to pick the right wording for the role.
-        :ok
+             context do
+        # Advance the project to the qa_complete frontier: all prereqs satisfied
+        # (project chain + story chain through bdd_specs_passing) but qa_complete
+        # itself left open so it appears as the next actionable requirement.
+        {:ok, FullSatisfactionFixtures.apply_without_qa_story(context)}
       end
 
       and_ "the session has a live QA sub-agent registered with a known agent_id",

@@ -9,13 +9,13 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   # Public — response builders
   # ---------------------------------------------------------------------------
 
-  def next_requirements_response(nodes) do
+  def next_requirements_response(nodes, active_subagents \\ %{}) do
     nodes
-    |> format_next_requirements()
+    |> format_next_requirements(active_subagents)
     |> tool_text()
   end
 
-  def format_next_requirements(nodes) do
+  def format_next_requirements(nodes, active_subagents \\ %{}) do
     {orchestrated, standalone} = Enum.split_with(nodes, & &1.orchestrated_by)
 
     # Only show the first (highest-priority) orchestration group,
@@ -34,7 +34,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
           orchestrator = first.orchestrated_by
           parent_name = first.parent_entity_name || "unknown"
           header = orchestration_prompt(orchestrator)
-          inner = format_satisfied_by_groups(group_nodes)
+          inner = format_satisfied_by_groups(group_nodes, active_subagents)
 
           "## #{parent_name}\n\n#{header}\n\n#{inner}"
       end
@@ -43,7 +43,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     # unrelated standalone items that distract from the current context.
     standalone_sections =
       if orchestrated_section == "" do
-        format_satisfied_by_groups(standalone)
+        format_satisfied_by_groups(standalone, active_subagents)
       else
         ""
       end
@@ -156,12 +156,12 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   # Actionable requirements — grouped by task module
   # ---------------------------------------------------------------------------
 
-  defp format_satisfied_by_groups(nodes) do
+  defp format_satisfied_by_groups(nodes, active_subagents) do
     nodes
     |> group_by_preserving_order(& &1.satisfied_by)
     |> Enum.map_join("\n\n", fn {mod, group_nodes} ->
       name = short_module_name(mod)
-      items = Enum.map_join(group_nodes, "\n", &orchestrate_node/1)
+      items = Enum.map_join(group_nodes, "\n", &orchestrate_node(&1, active_subagents))
 
       "### #{name}\n\n#{items}"
     end)
@@ -205,9 +205,9 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     "#{other}"
   end
 
-  defp orchestrate_node(node) do
+  defp orchestrate_node(node, active_subagents) do
     body = resolve_body(node)
-    render_directive(node, body)
+    render_directive(node, body, active_subagents)
   end
 
   defp resolve_body(%{satisfied_by: mod} = node) do
@@ -218,21 +218,43 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
     end
   end
 
+  # Structured dispatch — `%{role: :qa, prompt: "..."}` — returned by task
+  # modules whose sub-agent dispatch is role-keyed (story 810). Pass through
+  # as a tagged tuple so `render_directive` can choose SendMessage vs spawn.
+  defp unwrap_body(%{role: role, prompt: text}, _node) when is_atom(role) and is_binary(text) do
+    %{role: role, prompt: text}
+  end
+
   defp unwrap_body({:ok, text}, _node) when is_binary(text), do: text
   defp unwrap_body({:error, _reason}, node), do: fallback_body(node)
   defp unwrap_body(text, _node) when is_binary(text), do: text
 
   defp fallback_body(node), do: node.description || to_string(node.name)
 
-  # Sub-agent tasks: include identifiers as parenthetical metadata so the
-  # main agent can pass them to the sub-agent verbatim — but never as an
-  # imperative "— call start_task" footer, which would mislead the main
-  # agent into calling start_task directly and bypassing the sub-agent.
-  defp render_directive(%{execution_type: :sub_agent} = node, body) do
+  # Structured dispatch for sub-agent requirements: choose SendMessage to a
+  # live sub-agent or fresh Agent spawn depending on the registry.
+  defp render_directive(%{execution_type: :sub_agent} = node, %{role: role, prompt: text}, active_subagents) do
+    role_key = to_string(role)
+
+    case Map.get(active_subagents, role_key) do
+      nil ->
+        # No live sub-agent for this role — instruct a fresh Agent spawn.
+        "- #{text} — Spawn Agent with role: :#{role} to call `start_task` with #{sig(node)}."
+
+      agent_id ->
+        # Live sub-agent registered — continue the existing conversation.
+        "- #{text} — **SendMessage(to: #{agent_id})** role: :#{role}, `start_task` args: #{sig(node)}."
+    end
+  end
+
+  # Plain-string or fallback dispatch for sub-agent tasks: parenthetical
+  # metadata so the main agent can pass args to the sub-agent verbatim.
+  defp render_directive(%{execution_type: :sub_agent} = node, body, _active_subagents)
+       when is_binary(body) do
     "- #{body} (sub-agent start_task args: #{sig(node)})"
   end
 
-  defp render_directive(node, body) do
+  defp render_directive(node, body, _active_subagents) when is_binary(body) do
     if String.contains?(body, "requirement_name") do
       "- #{body}"
     else

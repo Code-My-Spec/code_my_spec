@@ -51,7 +51,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           validation_type: validation_type(),
           execution_type: execution_type(),
           orchestrated_by: atom() | nil,
-          render_command_always?: boolean()
+          render_command_always?: boolean(),
+          subagent_role: atom() | nil
         }
 
   @artifact_types [
@@ -100,6 +101,16 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     # Defaults to false — most requirements show their command only
     # while unsatisfied (the prompt for the next agent step).
     field :render_command_always?, :boolean, default: false
+
+    # The role atom identifying which sub-agent class owns this requirement
+    # (e.g. `:qa`, `:coding`, `:spec_writer`). Set on sub_agent requirements
+    # whose `dispatch/1` emits a structured `%{role: atom, prompt: String}`.
+    # Used by the mapper to route dispatch: SendMessage to a live sub-agent
+    # for this role, or Agent spawn if none is registered.
+    # Nil means no role-based dispatch — use the default rendering path.
+    field :subagent_role, Ecto.Enum,
+      values: [:qa, :coding, :spec_writer],
+      default: nil
   end
 
   @doc """
@@ -160,7 +171,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
       :validation_type,
       :execution_type,
       :orchestrated_by,
-      :render_command_always?
+      :render_command_always?,
+      :subagent_role
     ])
     |> validate_required([
       :name,

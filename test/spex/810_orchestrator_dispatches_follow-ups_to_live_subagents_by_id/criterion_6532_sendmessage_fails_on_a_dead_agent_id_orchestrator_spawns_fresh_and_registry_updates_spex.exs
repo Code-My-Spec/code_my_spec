@@ -19,10 +19,9 @@ defmodule CodeMySpecSpex.Story810.Criterion6532Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -32,6 +31,10 @@ defmodule CodeMySpecSpex.Story810.Criterion6532Spex do
     scenario "No registered QA sub-agent — directive says Agent spawn, no SendMessage to a stale id" do
       given_ "a session exists with NO registered sub-agents for any role",
              context do
+        # Advance project to qa_complete frontier so the dispatch directive
+        # is for a sub-agent role (not project_setup), then create a session
+        # with no registered sub-agents to exercise the fresh-spawn fallback.
+        context = FullSatisfactionFixtures.apply_without_qa_story(context)
         session_id = "spex-#{System.unique_integer([:positive])}"
 
         post(
