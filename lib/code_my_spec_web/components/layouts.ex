@@ -226,7 +226,7 @@ defmodule CodeMySpecWeb.Layouts do
 
   def marketing(assigns) do
     ~H"""
-    <div class="drawer">
+    <div class="drawer" data-theme="codemyspec">
       <input id="marketing-drawer-toggle" type="checkbox" class="drawer-toggle" />
 
       <div class="drawer-content min-h-screen flex flex-col">

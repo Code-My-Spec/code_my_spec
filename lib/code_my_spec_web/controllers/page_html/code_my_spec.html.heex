@@ -1,5 +1,5 @@
 <Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
-<div class="product-page-zone hair-grid">
+<div class="product-page-zone hair-grid" data-theme="codemyspec">
   <%!-- ───────────── HERO ───────────── --%>
   <section class="border-b border-base-300 signal-top">
     <div class="max-w-7xl mx-auto px-6 py-20 lg:py-28 grid lg:grid-cols-[1.05fr_1fr] gap-16 items-center">
@@ -9,7 +9,7 @@
           Lovable for engineers <span class="text-primary">who care about the code.</span>
         </h1>
         <p class="text-lg text-base-content/70 mt-6 max-w-[52ch] leading-relaxed">
-          Specs, code, tests, verification — end to end, Elixir-first. CodeMySpec is the harness that sits around your AI coding agent so the code you ship still makes sense in two years.
+          End-to-end specs, code, tests, and verification, Phoenix-native. CodeMySpec is the harness around your AI coding agent, so the code you ship still makes sense in two years.
         </p>
 
         <div class="mt-8 flex flex-wrap items-center gap-4">
@@ -136,7 +136,7 @@
           more duplication, a three-month wall where velocity drops off a cliff.
         </p>
         <p class="text-lg leading-relaxed">
-          Efficient technical debt machines. The problem isn't the model. It's the missing harness — no specs, no architecture, no verification, no lifecycle. Prompting is praying.
+          Efficient technical debt machines. The problem isn't the model. It's the missing harness: no specs, no architecture, no verification, no lifecycle. Prompting is praying.
           <em class="not-italic text-primary">That's the gap CodeMySpec fills.</em>
         </p>
       </div>
@@ -151,7 +151,7 @@
         One requirement graph.<br />Six subagents. <span class="text-primary">Full lifecycle.</span>
       </h2>
       <p class="text-lg text-base-content/70 mt-5 max-w-[62ch] leading-relaxed">
-        CodeMySpec tracks every artifact your Phoenix app needs — specs, tests, implementations, BDD scenarios, QA results — on a single dependency graph. Call
+        CodeMySpec tracks every artifact your Phoenix app needs (specs, tests, implementations, BDD scenarios, QA results) on a single dependency graph. Call
         <code class="font-mono text-base-content bg-base-200 px-1.5 py-0.5 border border-base-300 text-sm">
           get_next_requirement
         </code>
@@ -163,7 +163,7 @@
           %{n: "01", agent: "pm", title: "Product", token: "pm", body: "Story interview. The Product Manager agent asks what you want and writes it as markdown with acceptance criteria."},
           %{n: "02", agent: "arch", title: "Architecture", token: "arch", body: "Map stories to Phoenix contexts. Validate the graph. No cycles, no cross-context leaks."},
           %{n: "03", agent: "spec", title: "Spec & Test", token: "spec", body: "spec-writer drafts component specs. test-writer generates ExUnit from assertions. TDD, the way you know it."},
-          %{n: "04", agent: "impl", title: "Implement", token: "code", body: "code-writer writes to pass the tests. Continuous mode walks the graph until every requirement is satisfied."},
+          %{n: "04", agent: "impl", title: "Implement", token: "code", body: "code-writer writes to pass the tests. Continuous mode walks the graph until it satisfies every requirement."},
           %{n: "05", agent: "bdd", title: "BDD specs", token: "bdd", body: "User-facing behavior captured as BDD scenarios in the Spex DSL, generated from acceptance criteria."},
           %{n: "06", agent: "qa", title: "Verification", token: "qa", body: "QA agent opens a real browser via Vibium, drives the app, takes screenshots, files issues when reality diverges."}
         ] do %>
@@ -186,7 +186,7 @@
 
       <div class="mt-16 pt-8 border-t border-base-300 flex flex-wrap justify-between items-baseline gap-6">
         <p class="text-base text-base-content/70 italic max-w-[60ch] m-0">
-          It's the harness OpenAI spent six months building for Codex — productized, for teams that don't have OpenAI's infrastructure team.
+          It's the harness OpenAI spent six months building for Codex, productized for teams that don't have OpenAI's infrastructure team.
         </p>
         <a
           href={~p"/methodology"}
@@ -225,7 +225,7 @@
             Bring your own agent. Bring your own model. Bring your own keys.
           </h3>
           <p class="text-base text-base-content/70 leading-relaxed max-w-[50ch]">
-            Specs are plain markdown. Tests are standard ExUnit. The plugin works with Claude Code today and whatever agent wins next year. You pay Anthropic or OpenAI directly — CodeMySpec doesn't arbitrage your token spend.
+            Specs are plain markdown. Tests are standard ExUnit. The plugin works with Claude Code today and whatever agent wins next year. You pay Anthropic or OpenAI directly. CodeMySpec doesn't arbitrage your token spend.
           </p>
         </article>
 
@@ -236,7 +236,7 @@
             Elixir-native by design.
           </h3>
           <p class="text-base text-base-content/70 leading-relaxed max-w-[50ch]">
-            Phoenix contexts, LiveView components, Ecto schemas, OTP supervision — first-class primitives the platform understands. Cursor doesn't know what a context is. CodeMySpec does.
+            Generic AI tools blow through Phoenix contexts. They generate Ruby syntax in Elixir files, regress 1.7 codebases to 1.6 templates, and write defensive code that fights let-it-crash. CodeMySpec treats contexts, LiveView, Ecto, and OTP as first-class primitives, and respects how Phoenix is built.
           </p>
         </article>
 
@@ -259,7 +259,7 @@
           </h3>
           <p class="text-lg text-base-content/70 leading-relaxed max-w-[70ch]">
             <em class="not-italic text-primary">"The agent is commodity. The harness is the differentiator."</em>
-            CodeMySpec is the harness — ready to use, purpose-built for Phoenix.
+            CodeMySpec is the harness, ready to use, purpose-built for Phoenix.
           </p>
         </article>
       </div>
@@ -478,7 +478,7 @@
           >
             John Davenport
           </a>
-          — a working Phoenix engineer, not a tourist. Six years on r/elixir. Real code, in production, right now.
+          who's a working Phoenix engineer, not a tourist. Six years on r/elixir. Real code, in production, right now.
         </div>
       </div>
     </div>
@@ -495,22 +495,22 @@
       <div class="mt-12 border-t border-base-300">
         <%= for {q, a, open?} <- [
           {"\"I already use Claude Code / Cursor. Why do I need this?\"",
-           "You still do. CodeMySpec runs inside Claude Code as a plugin. It adds the lifecycle layer those tools don't have — specs that survive code changes, a requirement graph that keeps the agent on-rails, and browser-based verification after the tests pass.",
+           "You still do. CodeMySpec runs inside Claude Code as a plugin. It adds the lifecycle layer those tools don't have: specs that survive code changes, a requirement graph that keeps the agent on-rails, and browser-based verification after the tests pass.",
            true},
           {"\"Isn't this just writing more docs?\"",
-           "Specs aren't docs. They generate tests, constrain the agent, and survive when the code changes. The doc-writing version of this is why nobody did it before. Agents changed the economics — twenty minutes on a spec now saves two hours of prompt iteration.",
+           "Specs aren't docs. They generate tests, constrain the agent, and survive when the code changes. The doc-writing version of this is why nobody did it before. Agents changed the economics: twenty minutes on a spec now saves two hours of prompt iteration.",
            false},
           {"\"Am I paying twice — once for Claude and once for you?\"",
-           "No. CodeMySpec doesn't mark up model tokens. You keep your own provider, your own keys, your own bill. We charge for the platform — server, specs, verification, team features. Not for agent use.",
+           "No. CodeMySpec doesn't mark up model tokens. You keep your own provider, your own keys, your own bill. We charge for the platform: server, specs, verification, team features. Not for agent use.",
            false},
           {"\"What happens if CodeMySpec shuts down?\"",
            "Specs are markdown in your repo. Tests are standard Elixir. You own the artifacts. No lock-in.",
            false},
           {"\"Looks over-engineered for my project.\"",
-           "Use the lightweight path — one spec per feature, generated tests, no ceremony. The graph scales up if the project does.",
+           "Use the lightweight path: one spec per feature, generated tests, no ceremony. The graph scales up if the project does.",
            false},
           {"\"I'm not on Elixir. Should I care?\"",
-           "The core lifecycle — plugin, MCP servers, requirement graph — works on any stack today. The Elixir-native features are the deepest integration. Broader stack support is on the roadmap once the Elixir beachhead is won.",
+           "Honest answer: the deepest value is Phoenix-native today. The lifecycle scaffolding (plugin, MCP servers, requirement graph) runs on any stack, but the verification magic is in the Phoenix integration. If you're not on Elixir yet, star the repo and wait for broader stack support, on the roadmap once we win the Phoenix beachhead.",
            false}
         ] do %>
           <details class="border-b border-base-300 group" open={open?}>
@@ -542,10 +542,10 @@
         </span>
         <h3 class="font-heading text-2xl font-bold tracking-tight mb-4">$0 / month</h3>
         <p class="text-base text-base-content/70 leading-relaxed mb-2">
-          CodeMySpec is free during early access. Server-side platform features will be priced per-seat once we hit 1.0.
+          CodeMySpec is free during early access. We'll price server-side platform features per-seat once we hit 1.0.
         </p>
         <p class="text-base text-base-content/70 leading-relaxed">
-          You bring your own model provider and keys — we never charge a markup on your tokens.
+          You bring your own model provider and keys. We never charge a markup on your tokens.
         </p>
         <ul class="mt-6 pt-6 border-t border-base-300 grid gap-2.5 list-none p-0">
           <%= for item <- [
