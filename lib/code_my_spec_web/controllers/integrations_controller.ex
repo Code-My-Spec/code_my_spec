@@ -121,11 +121,17 @@ defmodule CodeMySpecWeb.IntegrationsController do
   # Login flow — find or create user, persist integration, log in
 
   defp handle_login_callback(conn, provider, params, session_params) do
+    # Thread the visitor's gtag stitch ids (written to the session by the
+    # GaClientId plug from the _ga / _ga_<container> cookies, which the browser
+    # carries through the OAuth round-trip) so a new-user sign_up MP conversion
+    # stitches to the same GA4 session as the browser pageviews (rule f9b2c751).
+    ga_opts = ga_stitch_opts(conn)
+
     with :ok <- check_oauth_error(params),
          {:ok, %{user: normalized_user, token: token}} <-
            Integrations.handle_login_callback(provider, params, session_params),
          {:ok, user, status} <-
-           Users.find_or_register_oauth_user(provider, normalized_user) do
+           Users.find_or_register_oauth_user(provider, normalized_user, ga_opts) do
       scope = Scope.for_user(user)
 
       Integrations.save_integration(scope, provider, token, normalized_user)
@@ -160,6 +166,16 @@ defmodule CodeMySpecWeb.IntegrationsController do
         |> put_flash(:error, format_oauth_error(params, reason))
         |> redirect(to: ~p"/users/log-in")
     end
+  end
+
+  # gtag stitch ids from the session (set by GaClientId plug), dropping any the
+  # visitor's browser didn't carry on the _ga / _ga_<container> cookies.
+  defp ga_stitch_opts(conn) do
+    [
+      ga_client_id: get_session(conn, "ga_client_id"),
+      ga_session_id: get_session(conn, "ga_session_id")
+    ]
+    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
   end
 
   # Integration flow — persist integration for existing authenticated user

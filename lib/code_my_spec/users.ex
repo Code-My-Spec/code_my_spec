@@ -136,7 +136,7 @@ defmodule CodeMySpec.Users do
 
   Returns `{:ok, user, :existing | :new}`.
   """
-  def find_or_register_oauth_user(provider, %{provider_user_id: provider_user_id, email: email}) do
+  def find_or_register_oauth_user(provider, %{provider_user_id: provider_user_id, email: email}, opts \\ []) do
     alias CodeMySpec.Integrations.IntegrationRepository
 
     result =
@@ -149,10 +149,11 @@ defmodule CodeMySpec.Users do
       end
 
     with {:ok, user, :new} <- result do
-      CodeMySpec.Analytics.dispatch(:sign_up, %{
-        user_id: user.id,
-        method: "oauth_#{provider}"
-      })
+      payload =
+        %{user_id: user.id, method: "oauth_#{provider}"}
+        |> put_ga_stitch(opts)
+
+      CodeMySpec.Analytics.dispatch(:sign_up, payload)
     end
 
     result
