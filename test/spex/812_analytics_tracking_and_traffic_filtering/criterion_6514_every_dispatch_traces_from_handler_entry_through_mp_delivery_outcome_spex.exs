@@ -4,28 +4,33 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
   Criterion 6514 — Rule 5: Every dispatch traces from handler entry
   through MP delivery outcome.
 
-  Log-capture pattern: drive a real dispatch and assert the structured
-  log lines fire at handler entry and MP delivery. Uses ExUnit's
-  `capture_log/1` to grab the Logger output and matches against the
-  structured-field shape — `event=`, `user_id=`, `mp_status=`.
+  Log-capture pattern: drive a real dispatch WITHOUT attaching the GA test
+  subscriber so the event flows through `deliver_via_http/2`, which is where
+  the `mp_status=` delivery-outcome log is emitted. The test environment
+  has `api_secret: nil` (GA4_MP_API_SECRET unset), so the delivery path
+  reaches the missing-config branch and logs `mp_status: :missing_config`
+  at `:warning` — no real HTTP call is made and no real GA key is needed.
 
-  Cassette captures the MP POST (so the success path actually reaches
-  the HTTPAdapter, which is where `mp_status=` logs).
+  We use `ExUnit.CaptureLog` to capture both log lines:
+  1. Handler-entry: "GA MP handler received event" (`:info`) — carries `event=` and `user_id=`.
+  2. Delivery outcome: "GA MP delivery skipped: missing measurement_id or api_secret"
+     (`:warning`) — carries `mp_status=`.
+
+  Since the handler-entry log is at `:info` and the test runtime Logger level
+  is `:warning`, we temporarily lower the Logger level to `:info` for the
+  capture window — the same approach the original cassette spex used.
+
+  IMPORTANT: do NOT attach the GA test subscriber in this spex — the subscriber
+  short-circuits `deliver/2` before `deliver_via_http/2` is reached, which
+  means the `mp_status=` delivery-outcome log would never fire.
   """
 
   use CodeMySpecSpex.Case
 
   require Logger
   import ExUnit.CaptureLog
-  import ReqCassette
-  import CodeMySpecSpex.GaAssertions, only: [with_ga_plug: 2]
 
   alias CodeMySpecSpex.Fixtures
-
-  @cassette_name "812_dispatch_log_trace"
-  @cassette_dir "test/cassettes/analytics"
-
-  @moduletag :ga_cassette_record
 
   spex "Every dispatch traces from handler entry through MP delivery outcome" do
     scenario "logs include event=, user_id=, mp_status= for one sign_up dispatch" do
@@ -34,23 +39,18 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
       end
 
       when_ "Analytics.dispatch fires and the handler runs end-to-end", context do
-        # Test env runs Logger at :warning; the handler-entry trace is
-        # at :info. Raise the level for the capture window so the info
-        # traces reach the buffer.
+        # Lower Logger level to :info for the capture window so the
+        # handler-entry trace (logged at :info) reaches the buffer.
         previous_level = Logger.level()
         Logger.configure(level: :info)
 
         log =
           try do
             capture_log(fn ->
-              with_cassette @cassette_name, cassette_opts(), fn plug ->
-                with_ga_plug(plug, fn ->
-                  Fixtures.dispatch_analytics_event(:sign_up, %{
-                    user_id: context.user_id,
-                    method: "log_trace_test"
-                  })
-                end)
-              end
+              Fixtures.dispatch_analytics_event(:sign_up, %{
+                user_id: context.user_id,
+                method: "log_trace_test"
+              })
             end)
           after
             Logger.configure(level: previous_level)
@@ -63,9 +63,6 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
         assert context.log =~ "GA MP handler received event",
                "expected handler-entry log line"
 
-        # logfmt keys can land in different formats; structured metadata is
-        # attached, so substring matching on `event=` and `user_id=` is the
-        # cheapest reliable check.
         assert context.log =~ "event=",
                "expected event= metadata key in handler-entry log"
 
@@ -76,27 +73,13 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
       end
 
       then_ "an MP-delivery log line carries mp_status=", context do
-        # On success we log "GA MP delivery ok" with mp_status=2xx.
-        # On any non-success we log a warning with mp_status=<error tag>.
-        # Either way, an mp_status= field must appear.
+        # In test, api_secret is nil so the delivery path logs
+        # "GA MP delivery skipped" with mp_status: :missing_config.
         assert context.log =~ "mp_status=",
                "expected mp_status= in MP delivery log"
 
         {:ok, context}
       end
     end
-  end
-
-  defp cassette_opts do
-    [
-      cassette_dir: @cassette_dir,
-      mode: :record,
-      match_requests_on: [:method, :uri, :body],
-      filter_request_headers: ["authorization", "cookie"],
-      filter_response_headers: ["set-cookie"],
-      filter_sensitive_data: [
-        {~r/api_secret=[^&\s"]+/, "api_secret=<REDACTED>"}
-      ]
-    ]
   end
 end

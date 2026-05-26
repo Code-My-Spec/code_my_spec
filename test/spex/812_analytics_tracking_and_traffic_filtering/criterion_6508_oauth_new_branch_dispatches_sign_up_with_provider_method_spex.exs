@@ -2,86 +2,58 @@ defmodule CodeMySpecSpex.Story812.Criterion6508Spex do
   @moduledoc """
   Story 812 — Analytics Tracking and Traffic Filtering.
   Criterion 6508 — Rule 3: OAuth :new branch dispatches sign_up with
-  provider method.
+  provider method (e.g. "oauth_github").
 
-  Nested-cassette pattern: the OAuth callback drives Assent through
-  its own pre-recorded cassette (`google_812_oauth_new_<n>.json`)
-  while the GA MP POST is captured in our cassette
-  (`812_oauth_signup_new.json`). The two HTTP clients use different
-  Application env settings, so the plug-config doesn't conflict.
+  Test-subscriber pattern: `Fixtures.attach_ga_test_subscriber/1` registers
+  this test process to receive every GA Measurement Protocol payload as
+  `{:ga_measurement_protocol, payload}`. We drive `Users.find_or_register_oauth_user/2`
+  directly — the same code path the OAuth callback controller invokes — and
+  assert the MP payload arrives with the correct method param.
 
-  ## Recording
-
-      mix test test/spex/812_.../criterion_6508_*.exs --include ga_cassette_record
+  The OAuth Assent HTTP exchange is not involved here; we call the domain
+  function directly so the test is focused on the analytics dispatch contract.
+  No cassette, no real GA round-trip.
   """
 
   use CodeMySpecSpex.Case
 
-  import ReqCassette
+  alias CodeMySpecSpex.Fixtures
 
-  import CodeMySpecSpex.GaAssertions,
-    only: [assert_cassette_contains_mp_event: 3, with_ga_plug: 2]
-
-  alias CodeMySpecSpex.OAuthHelpers
-
-  @cassette_name "812_oauth_signup_new"
-  @cassette_dir "test/cassettes/analytics"
-
-  @moduletag :ga_cassette_record
+  setup do
+    :ok = Fixtures.attach_ga_test_subscriber(self())
+    on_exit(fn -> Fixtures.detach_ga_test_subscriber(self()) end)
+    :ok
+  end
 
   spex "OAuth :new branch dispatches sign_up with provider method" do
-    scenario "a brand-new Google OAuth signup fires sign_up with method=oauth_google" do
-      given_ "a Google OAuth cassette for a brand-new email", context do
+    scenario "a brand-new GitHub OAuth signup fires sign_up with method=oauth_github" do
+      given_ "a unique provider identity not yet in the database", context do
         unique = System.unique_integer([:positive])
 
-        user_claims = %{
-          "sub" => "google-sub-812-#{unique}",
-          "email" => "google-812-#{unique}@example.com",
-          "email_verified" => true,
-          "name" => "OAuth Analytics New User"
+        attrs = %{
+          provider_user_id: "gh-812-#{unique}",
+          email: "github-812-#{unique}@example.com"
         }
 
-        oauth_cassette = "google_812_oauth_new_#{unique}"
-        OAuthHelpers.build_google_cassette!(oauth_cassette, user_claims)
-
-        {:ok, Map.put(context, :oauth_cassette, oauth_cassette)}
+        {:ok, Map.put(context, :oauth_attrs, attrs)}
       end
 
-      when_ "the Google OAuth callback completes", context do
-        with_cassette @cassette_name, cassette_opts(), fn ga_plug ->
-          with_ga_plug(ga_plug, fn ->
-            OAuthHelpers.do_google_callback(
-              Phoenix.ConnTest.build_conn(),
-              context.oauth_cassette,
-              "state-812-#{System.unique_integer([:positive])}"
-            )
-          end)
-        end
-
-        {:ok, context}
+      when_ "Users.find_or_register_oauth_user creates a new user for that identity",
+            context do
+        {:ok, user, :new} = Fixtures.find_or_register_oauth_user(:github, context.oauth_attrs)
+        {:ok, Map.put(context, :user, user)}
       end
 
-      then_ "the cassette captured sign_up with method=oauth_google", context do
-        assert_cassette_contains_mp_event(@cassette_name, "sign_up",
-          expected_params: %{"method" => "oauth_google"},
-          cassette_dir: @cassette_dir
-        )
+      then_ "a sign_up MP payload arrives with method=oauth_github", context do
+        assert_receive {:ga_measurement_protocol,
+                        %{events: [%{name: "sign_up", params: params} | _]}},
+                       1_000
+
+        assert params["method"] == "oauth_github",
+               "Expected sign_up MP event params to carry method=\"oauth_github\", got: #{inspect(params["method"])}"
 
         {:ok, context}
       end
     end
-  end
-
-  defp cassette_opts do
-    [
-      cassette_dir: @cassette_dir,
-      mode: :record,
-      match_requests_on: [:method, :uri, :body],
-      filter_request_headers: ["authorization", "cookie"],
-      filter_response_headers: ["set-cookie"],
-      filter_sensitive_data: [
-        {~r/api_secret=[^&\s"]+/, "api_secret=<REDACTED>"}
-      ]
-    ]
   end
 end
