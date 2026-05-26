@@ -211,25 +211,21 @@ defmodule CodeMySpecWeb.UserLive.Registration do
     changeset = Users.change_user_email(%User{})
 
     # view_register_page fires browser-side via the .ViewRegisterPage gtag hook.
-    # Read the _ga client_id from the session (written by GaClientId plug) so
-    # the sign_up MP conversion stitches to the browser's GA4 session.
-    ga_client_id = Map.get(session, "ga_client_id")
-
+    # Read the gtag stitch ids (client_id + session_id) from the session
+    # (written by GaClientId plug) so the sign_up + registration_email_sent MP
+    # conversions stitch to the browser's GA4 session (rule f9b2c751).
     {:ok,
      socket
-     |> assign(:ga_client_id, ga_client_id)
+     |> assign(:ga_client_id, Map.get(session, "ga_client_id"))
+     |> assign(:ga_session_id, Map.get(session, "ga_session_id"))
      |> assign_form(changeset), temporary_assigns: [form: nil]}
   end
 
   def handle_event("save", %{"user" => user_params}, socket) do
-    # Pass the _ga client_id (read from the session at mount) into the
-    # registration call so the sign_up MP conversion stitches to the
-    # browser's GA4 session without Process-dict side channels.
-    ga_opts =
-      case socket.assigns[:ga_client_id] do
-        nil -> []
-        id -> [ga_client_id: id]
-      end
+    # Thread the gtag stitch ids (read at mount) into both conversion
+    # dispatches so they stitch to the browser's GA4 session without
+    # Process-dict side channels.
+    ga_opts = ga_stitch_opts(socket)
 
     case Users.register_user(user_params, ga_opts) do
       {:ok, user} ->
@@ -242,7 +238,10 @@ defmodule CodeMySpecWeb.UserLive.Registration do
             &url(socket, ~p"/users/log-in/#{&1}")
           )
 
-        CodeMySpec.Analytics.dispatch(:registration_email_sent, %{user_id: user.id})
+        CodeMySpec.Analytics.dispatch(
+          :registration_email_sent,
+          Enum.into(ga_opts, %{user_id: user.id})
+        )
 
         {:noreply, push_navigate(socket, to: ~p"/users/check-email?email=#{user.email}")}
 
@@ -254,6 +253,15 @@ defmodule CodeMySpecWeb.UserLive.Registration do
   def handle_event("validate", %{"user" => user_params}, socket) do
     changeset = Users.change_user_email(%User{}, user_params)
     {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+  end
+
+  # gtag stitch ids as dispatch opts, dropping any that weren't on the _ga cookies.
+  defp ga_stitch_opts(socket) do
+    [
+      ga_client_id: socket.assigns[:ga_client_id],
+      ga_session_id: socket.assigns[:ga_session_id]
+    ]
+    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
   end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do

@@ -103,7 +103,7 @@ defmodule CodeMySpec.Users do
       {:ok, user} = ok ->
         payload =
           %{user_id: user.id, method: "magic_link"}
-          |> maybe_put_ga_client_id(opts)
+          |> put_ga_stitch(opts)
 
         CodeMySpec.Analytics.dispatch(:sign_up, payload)
         ok
@@ -113,13 +113,18 @@ defmodule CodeMySpec.Users do
     end
   end
 
-  defp maybe_put_ga_client_id(payload, opts) do
-    case Keyword.get(opts, :ga_client_id) do
-      nil -> payload
-      "" -> payload
-      id -> Map.put(payload, :ga_client_id, id)
-    end
+  # Thread the visitor's gtag stitch identifiers (read from the _ga / _ga_<id>
+  # cookies via GaClientId plug → session → registration.ex opts) into the MP
+  # conversion payload so it attaches to the same GA4 session (rule f9b2c751).
+  defp put_ga_stitch(payload, opts) do
+    payload
+    |> maybe_put(:ga_client_id, Keyword.get(opts, :ga_client_id))
+    |> maybe_put(:ga_session_id, Keyword.get(opts, :ga_session_id))
   end
+
+  defp maybe_put(payload, _key, nil), do: payload
+  defp maybe_put(payload, _key, ""), do: payload
+  defp maybe_put(payload, key, value), do: Map.put(payload, key, value)
 
   @doc """
   Finds an existing user by OAuth provider identity or email, or registers a new one.

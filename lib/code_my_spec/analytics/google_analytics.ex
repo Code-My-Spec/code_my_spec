@@ -87,10 +87,26 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
       events: [
         %{
           name: to_string(event_name),
-          params: stringify_params(payload)
+          params: event_params(payload)
         }
       ]
     }
+  end
+
+  # GA4 event params. session_id (when threaded from the _ga_<container> cookie)
+  # belongs inside the event params, not at the payload root — that's what
+  # stitches the conversion to the browser's gtag session (rule f9b2c751).
+  defp event_params(payload) do
+    payload
+    |> stringify_params()
+    |> maybe_put_session_id(payload)
+  end
+
+  defp maybe_put_session_id(params, payload) do
+    case payload[:ga_session_id] || payload["ga_session_id"] do
+      sid when is_binary(sid) and sid != "" -> Map.put(params, "session_id", sid)
+      _ -> params
+    end
   end
 
   # client_id resolution order:
@@ -134,6 +150,8 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
     |> Map.delete("user_id")
     |> Map.delete(:ga_client_id)
     |> Map.delete("ga_client_id")
+    |> Map.delete(:ga_session_id)
+    |> Map.delete("ga_session_id")
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
 
