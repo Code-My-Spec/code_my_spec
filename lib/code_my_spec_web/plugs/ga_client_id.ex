@@ -47,14 +47,40 @@ defmodule CodeMySpecWeb.Plugs.GaClientId do
     end
   end
 
-  # _ga_<container>: GS1.<domain_depth>.<session_id>.<...> — session_id is field 3.
+  # _ga_<container> holds GA4's ga_session_id (session-start unix timestamp).
+  # Two formats are live in the wild:
+  #   GS1.<depth>.<session_id>.<...>             (legacy)
+  #   GS2.<depth>.s<session_id>$o..$g..$t..$..   (current gtag.js, e.g.
+  #     GS2.1.s1779821354$o1$g0$t1779821354$j60$l0$h0)
   defp parse_ga_session_cookie(conn) do
     with name when is_binary(name) <- ga_session_cookie_name(),
-         value when is_binary(value) <- conn.req_cookies[name],
-         ["GS1", _domain_depth, session_id | _] <- String.split(value, "."),
-         true <- session_id != "" do
-      session_id
+         value when is_binary(value) <- conn.req_cookies[name] do
+      extract_session_id(value)
     else
+      _ -> nil
+    end
+  end
+
+  defp extract_session_id(value) do
+    case String.split(value, ".", parts: 3) do
+      ["GS1", _depth, rest] -> gs1_session_id(rest)
+      ["GS2", _depth, rest] -> gs2_session_id(rest)
+      _ -> nil
+    end
+  end
+
+  # rest = "<session_id>.<session_count>.<...>"
+  defp gs1_session_id(rest) do
+    case String.split(rest, ".", parts: 2) do
+      [session_id | _] when session_id != "" -> session_id
+      _ -> nil
+    end
+  end
+
+  # rest = "s<session_id>$o..$g..$..." — session_id is the digits after the s.
+  defp gs2_session_id(rest) do
+    case Regex.run(~r/^s(\d+)/, rest) do
+      [_, session_id] -> session_id
       _ -> nil
     end
   end
