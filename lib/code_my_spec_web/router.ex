@@ -15,19 +15,11 @@ defmodule CodeMySpecWeb.Router do
       "x-frame-options" => "SAMEORIGIN"
     }
     plug :fetch_current_scope_for_user
-    plug CodeMySpecWeb.Plugs.PageView
+    plug CodeMySpecWeb.Plugs.GaClientId
   end
 
   pipeline :api do
     plug :accepts, ["json"]
-  end
-
-  # JSON endpoints that need browser session + CSRF protection (e.g. anonymous
-  # marketing-page POSTs from JS using the meta-tag CSRF token).
-  pipeline :browser_json do
-    plug :accepts, ["json"]
-    plug :fetch_session
-    plug :protect_from_forgery
   end
 
   pipeline :mcp do
@@ -170,14 +162,7 @@ defmodule CodeMySpecWeb.Router do
     post "/sync", ContentSyncController, :sync
   end
 
-  # Browser-originated analytics events forwarded to GA4 via the
-  # Measurement Protocol. CSRF-protected; no auth required so anonymous
-  # marketing-page visitors can fire content/copy events.
-  scope "/api/browser", CodeMySpecWeb do
-    pipe_through :browser_json
-
-    post "/analytics/event", AnalyticsEventController, :create
-  end
+  # (analytics/event route removed — browser events fire via gtag.js directly)
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:code_my_spec, :dev_routes) do

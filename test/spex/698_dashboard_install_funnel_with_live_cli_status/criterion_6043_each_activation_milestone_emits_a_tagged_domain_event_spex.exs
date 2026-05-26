@@ -1,19 +1,24 @@
 defmodule CodeMySpecSpex.Story698.Criterion6043Spex do
   @moduledoc """
   Story 698 — Dashboard install funnel with live CLI status.
-  Criterion 6043 — Rule: Activation milestones emit domain events:
-  onboarding panel viewed, each install step copied, and first CLI
-  connect.
+  Criterion 6043 — Rule: Activation milestones emit domain events.
 
-  Each milestone is its own scenario so a regression in one path
-  doesn't mask the others.
+  Narrowed to first_cli_connect only. The browser milestones
+  (onboarding_panel_viewed, install_step_copied) moved to client-side
+  gtag in the story-812 hybrid migration — they no longer fire as server
+  domain events and are covered by story 812's criteria. Criterion 6044
+  (browser-via-MP) was deleted for the same reason.
+
+  first_cli_connect remains a server-side domain event: the CLI channel
+  join triggers it through CodeMySpec.Analytics when the user connects for
+  the first time. GA forwarding via MP is covered by criterion_6048.
 
   Forward-looking surface: events flow through `CodeMySpec.Analytics`,
   the project's domain-event dispatcher. The spex bridge
   (`CodeMySpecSpex.Fixtures.attach_analytics_test_subscriber/1`)
   registers the test process to receive each dispatched event as
   `{:analytics_event, name, payload}`. GA forwarding is out of scope
-  here — criteria 6044/6048 cover that path.
+  here — criterion 6048 covers that path.
   """
 
   use CodeMySpecSpex.Case
@@ -33,46 +38,6 @@ defmodule CodeMySpecSpex.Story698.Criterion6043Spex do
   end
 
   spex "Activation milestones each emit a tagged domain event" do
-    scenario "Mounting /app emits an onboarding_panel_viewed event" do
-      when_ "the user mounts /app", context do
-        {:ok, view, _html} = live(context.conn, "/app")
-        {:ok, Map.put(context, :view, view)}
-      end
-
-      then_ "an onboarding_panel_viewed event is emitted for that user", context do
-        user_id = context.user.id
-
-        assert_receive {:analytics_event, :onboarding_panel_viewed, %{user_id: ^user_id}}, 500
-
-        {:ok, context}
-      end
-    end
-
-    scenario "Clicking a copy button emits an install_step_copied event" do
-      given_ "the user is on /app with the onboarding component expanded", context do
-        {:ok, view, _html} = live(context.conn, "/app")
-        {:ok, Map.put(context, :view, view)}
-      end
-
-      when_ "the user clicks the copy button on step 2", context do
-        context.view
-        |> element("[data-test='copy-step-2']")
-        |> render_click()
-
-        {:ok, context}
-      end
-
-      then_ "an install_step_copied event is emitted carrying the step number", context do
-        user_id = context.user.id
-
-        assert_receive {:analytics_event, :install_step_copied,
-                        %{user_id: ^user_id, step: 2}},
-                       500
-
-        {:ok, context}
-      end
-    end
-
     scenario "First CLI Presence join emits a first_cli_connect event" do
       when_ "the user's CLI joins Presence for the first time", context do
         {:ok, _reply, channel_socket} =

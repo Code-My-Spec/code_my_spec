@@ -80,6 +80,23 @@
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
 
+    <%
+      ga_measurement_id =
+        Application.get_env(:code_my_spec, CodeMySpec.Analytics.GoogleAnalytics, [])
+        |> Keyword.get(:measurement_id)
+    %>
+    <%= if ga_measurement_id do %>
+      <%!-- gtag.js: browser pageviews, sessions, engagement, bot exclusion, referrer attribution --%>
+      <script async="async" src={"https://www.googletagmanager.com/gtag/js?id=#{ga_measurement_id}"}>
+      </script>
+      <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '<%= ga_measurement_id %>');
+      </script>
+    <% end %>
+
     <script>
       (() => {
         const setTheme = (theme) => {

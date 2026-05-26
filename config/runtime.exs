@@ -156,6 +156,13 @@ end
 # come from envs/<env>.env (gitignored) via Dotenvy above.
 # If GA4_MP_API_SECRET is unset the handler logs "skipped" and no-ops —
 # signups still work without it.
+#
+# In test: use GA4_MEASUREMENT_ID from env if set, otherwise fall back to
+# a stub value so the gtag snippet renders in test HTML without hitting GA.
+ga_measurement_id =
+  env!("GA4_MEASUREMENT_ID", :string, nil) ||
+    if config_env() == :test, do: "G-TEST000000"
+
 config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics,
-  measurement_id: env!("GA4_MEASUREMENT_ID", :string, nil),
+  measurement_id: ga_measurement_id,
   api_secret: env!("GA4_MP_API_SECRET", :string, nil)

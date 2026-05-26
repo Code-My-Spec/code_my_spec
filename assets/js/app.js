@@ -63,11 +63,11 @@ liveSocket.connect()
 // pages. Delegation on document handles initial render, LiveView patches,
 // and pages added later — no per-page rebinding needed.
 //
-// GA4: if the button has `data-event-name`, POST that event to
-// /api/browser/analytics/event on successful copy. Any other
-// `data-event-*` attributes become event params (kebab → snake).
+// GA4 (hybrid): if the button has `data-event-name`, fire that event via
+// gtag('event', ...) directly. Any other `data-event-*` attributes become
+// event params (kebab → snake). gtag handles sessions, engagement, and
+// attribution natively — no server round-trip needed for behavior events.
 // Example: `data-event-name="install_command_copy" data-event-location="homepage_hero"`
-// dispatches the event server-side via the Measurement Protocol.
 document.addEventListener("click", (ev) => {
   const btn = ev.target.closest(".copy-btn[data-copy]");
   if (!btn) return;
@@ -88,22 +88,14 @@ document.addEventListener("click", (ev) => {
 
 function fireCopyEvent(btn) {
   const name = btn.getAttribute("data-event-name");
-  if (!name) return;
+  if (!name || typeof gtag !== "function") return;
   const params = {};
   for (const attr of btn.attributes) {
     if (attr.name.startsWith("data-event-") && attr.name !== "data-event-name") {
       params[attr.name.replace("data-event-", "").replace(/-/g, "_")] = attr.value;
     }
   }
-  fetch("/api/browser/analytics/event", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-csrf-token": csrfToken
-    },
-    body: JSON.stringify({ name: name, params: params }),
-    keepalive: true
-  }).catch(() => {});
+  gtag('event', name, params);
 }
 
 function fallback(text, done) {
@@ -127,8 +119,7 @@ function fallback(text, done) {
 //      (`[text](/products/code-my-spec?...)`) without requiring
 //      content edits. Markdown posts get tracked for free.
 //
-// Fires `cta_click` server-side via /api/browser/analytics/event.
-// keepalive:true so the request survives the navigation.
+// GA4 (hybrid): fires cta_click via gtag('event', ...) directly.
 document.addEventListener("click", (ev) => {
   const a = ev.target.closest("a[href]");
   if (!a) return;
@@ -139,6 +130,8 @@ document.addEventListener("click", (ev) => {
   const url = parseHref(href);
   if (!url) return;
 
+  if (typeof gtag !== "function") return;
+
   const params = {
     event_label: explicitLabel || deriveLabel(url),
     target_path: url.pathname,
@@ -147,15 +140,7 @@ document.addEventListener("click", (ev) => {
   const campaign = url.searchParams.get("utm_campaign");
   if (campaign) params.utm_campaign = campaign;
 
-  fetch("/api/browser/analytics/event", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-csrf-token": csrfToken
-    },
-    body: JSON.stringify({ name: "cta_click", params: params }),
-    keepalive: true
-  }).catch(() => {});
+  gtag('event', 'cta_click', params);
 });
 
 function isImplicitCTA(href) {

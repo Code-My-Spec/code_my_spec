@@ -3,7 +3,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Analytics
   alias CodeMySpec.Events
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
@@ -26,7 +25,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       socket
       |> assign(page_title: "Overview")
       |> assign_onboarding_state(scope.user)
-      |> dispatch_onboarding_view(scope.user)
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(CodeMySpec.PubSub, presence_topic(scope.user))
@@ -188,10 +186,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   def handle_event("copy_step", %{"step" => step_str}, socket) do
     case Integer.parse(step_str) do
       # step 0 == prereq (`mix phx.new`), steps 1..3 == plugin install commands.
+      # install_step_copied fires browser-side via the .SignUpTracking gtag hook.
       {step, ""} when step in 0..3 ->
-        user = socket.assigns.current_scope.user
-        Analytics.dispatch(:install_step_copied, %{user_id: user.id, step: step}, :server)
-        {:noreply, socket}
+        {:noreply, push_event(socket, "install_step_copied", %{step: step})}
 
       _ ->
         {:noreply, socket}
@@ -282,14 +279,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     |> assign(:install_steps, @install_steps)
   end
 
-  defp dispatch_onboarding_view(socket, user) do
-    if connected?(socket) and not Users.cli_ever_connected?(user) do
-      Analytics.dispatch(:onboarding_panel_viewed, %{user_id: user.id}, :server)
-    end
-
-    socket
-  end
-
   defp current_session_count(user) do
     presence_topic(user)
     |> Presence.list()
@@ -368,6 +357,26 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           />
         </div>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".SignUpTracking">
+        // Hybrid analytics: onboarding behavior events fire via gtag directly.
+        // onboarding_panel_viewed fires on mount (once, for new users).
+        // install_step_copied fires when the server pushes the "install_step_copied"
+        // event in response to a copy_step click.
+        export default {
+          mounted() {
+            if (typeof gtag === "function") {
+              gtag('event', 'onboarding_panel_viewed');
+            }
+
+            this.handleEvent("install_step_copied", ({ step }) => {
+              if (typeof gtag === "function") {
+                gtag('event', 'install_step_copied', { step: step });
+              }
+            });
+          }
+        }
+      </script>
     </Layouts.app>
     """
   end

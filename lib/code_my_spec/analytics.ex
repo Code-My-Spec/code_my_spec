@@ -9,18 +9,16 @@ defmodule CodeMySpec.Analytics do
     * Test subscribers attached via `attach_test_subscriber/1`, which
       receive `{:analytics_event, name, payload}` messages.
 
-  Browser-originated events (e.g. `:install_step_copied`,
-  `:deep_content_read`) are delivered server-side via the GA4
-  Measurement Protocol — LiveViews call `dispatch/3` directly with
-  `origin: :server`, and dead views POST to
-  `/api/browser/analytics/event`, which in turn calls `dispatch/3`.
-  The historical `:browser` origin is preserved for callers that
-  still pair a server dispatch with a `push_event` to gtag, but
-  there are no such callers in this codebase today.
+  Conversion events (`:sign_up`, `:registration_email_sent`,
+  `:first_cli_connect`) are dispatched server-side and delivered to
+  GA4 via the Measurement Protocol. Browser behavior events
+  (page_view, install_command_copy, view_register_page,
+  onboarding_panel_viewed, install_step_copied) are handled by gtag.js
+  in the browser — those events do not flow through this module.
 
   ## Usage
 
-      Analytics.dispatch(:onboarding_panel_viewed, %{user_id: user.id})
+      Analytics.dispatch(:sign_up, %{user_id: user.id})
 
       # In tests:
       :ok = Analytics.attach_test_subscriber(self())

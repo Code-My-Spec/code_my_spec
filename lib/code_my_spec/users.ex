@@ -96,16 +96,28 @@ defmodule CodeMySpec.Users do
       {:error, %Ecto.Changeset{}}
 
   """
-  def register_user(attrs) do
+  def register_user(attrs, opts \\ []) do
     case %User{}
          |> User.email_changeset(attrs)
          |> Repo.insert() do
       {:ok, user} = ok ->
-        CodeMySpec.Analytics.dispatch(:sign_up, %{user_id: user.id, method: "magic_link"})
+        payload =
+          %{user_id: user.id, method: "magic_link"}
+          |> maybe_put_ga_client_id(opts)
+
+        CodeMySpec.Analytics.dispatch(:sign_up, payload)
         ok
 
       {:error, _} = err ->
         err
+    end
+  end
+
+  defp maybe_put_ga_client_id(payload, opts) do
+    case Keyword.get(opts, :ga_client_id) do
+      nil -> payload
+      "" -> payload
+      id -> Map.put(payload, :ga_client_id, id)
     end
   end
 

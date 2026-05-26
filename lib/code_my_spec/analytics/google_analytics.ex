@@ -82,7 +82,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
       payload[:user_id] || payload["user_id"]
 
     %{
-      client_id: client_id(user_id),
+      client_id: client_id(payload),
       user_id: to_string_or_nil(user_id),
       events: [
         %{
@@ -93,8 +93,37 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
     }
   end
 
-  defp client_id(nil), do: "anonymous"
-  defp client_id(user_id), do: "cms-" <> to_string(user_id)
+  # client_id resolution order:
+  #   1. Explicit `ga_client_id` in the payload — the _ga cookie value threaded
+  #      by registration.ex (plug → session → socket assign → dispatch arg).
+  #      This stitches the server-side conversion to the browser's GA4 session.
+  #   2. Stable per-user fallback: "cms-" <> first 16 hex chars of SHA-256(user_id).
+  #      Same user always gets the same id even without a _ga cookie (first_cli_connect).
+  #   3. Last resort: UUID. Should not happen for conversion events in practice.
+  defp client_id(payload) do
+    explicit = payload[:ga_client_id] || payload["ga_client_id"]
+    user_id = payload[:user_id] || payload["user_id"]
+
+    cond do
+      is_binary(explicit) and explicit != "" ->
+        explicit
+
+      not is_nil(user_id) ->
+        # Deterministic per-user id for conversions without a _ga cookie
+        # (e.g. first_cli_connect — no browser session in that flow).
+        hash =
+          :crypto.hash(:sha256, to_string(user_id))
+          |> Base.encode16(case: :lower)
+          |> String.slice(0, 16)
+
+        "cms-" <> hash
+
+      true ->
+        # Last resort: random UUID. Avoids all events collapsing into one
+        # GA profile but won't stitch to any browser session.
+        Ecto.UUID.generate()
+    end
+  end
 
   defp to_string_or_nil(nil), do: nil
   defp to_string_or_nil(value), do: to_string(value)
@@ -103,6 +132,8 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
     payload
     |> Map.delete(:user_id)
     |> Map.delete("user_id")
+    |> Map.delete(:ga_client_id)
+    |> Map.delete("ga_client_id")
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
 

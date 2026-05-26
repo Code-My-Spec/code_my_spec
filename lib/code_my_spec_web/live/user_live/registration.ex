@@ -157,46 +157,42 @@ defmodule CodeMySpecWeb.UserLive.Registration do
       </div>
 
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ViewRegisterPage">
-        // view_register_page fires server-side from the LV mount/3
-        // (see `dispatch_view_event/1` below). The form/oauth events
-        // here POST to /api/browser/analytics/event so the GA4
-        // measurement_id + API secret stay on the server.
+        // Hybrid analytics: behavior events fire via gtag directly.
+        // view_register_page fires on mount; form/oauth interaction
+        // events fire on user action. No server round-trip needed —
+        // gtag handles sessions, engagement, and attribution natively.
         export default {
           mounted() {
-            const csrf = document.querySelector("meta[name='csrf-token']")?.getAttribute("content");
-
-            const track = (name, params) => {
-              fetch("/api/browser/analytics/event", {
-                method: "POST",
-                headers: {
-                  "content-type": "application/json",
-                  "x-csrf-token": csrf
-                },
-                body: JSON.stringify({ name: name, params: params || {} }),
-                keepalive: true
-              }).catch(() => {});
-            };
+            if (typeof gtag === "function") {
+              gtag('event', 'view_register_page');
+            }
 
             const emailField = this.el.querySelector('input[type="email"]');
             if (emailField) {
               emailField.addEventListener("focus", () => {
-                track("registration_form_start", { method: "email" });
-                track("registration_path_chosen", { method: "email" });
+                if (typeof gtag === "function") {
+                  gtag('event', 'registration_form_start', { method: "email" });
+                  gtag('event', 'registration_path_chosen', { method: "email" });
+                }
               }, { once: true });
             }
 
             const form = this.el.querySelector('#registration_form');
             if (form) {
               form.addEventListener("submit", () => {
-                track("registration_path_chosen", { method: "email" });
+                if (typeof gtag === "function") {
+                  gtag('event', 'registration_path_chosen', { method: "email" });
+                }
               }, { once: true });
             }
 
             this.el.querySelectorAll('[data-registration-method]').forEach((link) => {
               link.addEventListener("click", () => {
                 const method = link.dataset.registrationMethod;
-                track("registration_path_chosen", { method: method });
-                track("oauth_" + method + "_clicked");
+                if (typeof gtag === "function") {
+                  gtag('event', 'registration_path_chosen', { method: method });
+                  gtag('event', 'oauth_' + method + '_clicked');
+                }
               }, { once: true });
             });
           }
@@ -211,16 +207,31 @@ defmodule CodeMySpecWeb.UserLive.Registration do
     {:ok, redirect(socket, to: CodeMySpecWeb.UserAuth.signed_in_path(socket))}
   end
 
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     changeset = Users.change_user_email(%User{})
 
-    if connected?(socket), do: CodeMySpec.Analytics.dispatch(:view_register_page, %{}, :server)
+    # view_register_page fires browser-side via the .ViewRegisterPage gtag hook.
+    # Read the _ga client_id from the session (written by GaClientId plug) so
+    # the sign_up MP conversion stitches to the browser's GA4 session.
+    ga_client_id = Map.get(session, "ga_client_id")
 
-    {:ok, assign_form(socket, changeset), temporary_assigns: [form: nil]}
+    {:ok,
+     socket
+     |> assign(:ga_client_id, ga_client_id)
+     |> assign_form(changeset), temporary_assigns: [form: nil]}
   end
 
   def handle_event("save", %{"user" => user_params}, socket) do
-    case Users.register_user(user_params) do
+    # Pass the _ga client_id (read from the session at mount) into the
+    # registration call so the sign_up MP conversion stitches to the
+    # browser's GA4 session without Process-dict side channels.
+    ga_opts =
+      case socket.assigns[:ga_client_id] do
+        nil -> []
+        id -> [ga_client_id: id]
+      end
+
+    case Users.register_user(user_params, ga_opts) do
       {:ok, user} ->
         # Pass the socket so the URL resolves against the request's
         # actual host (e.g. http://localhost:4000 in dev) instead of
