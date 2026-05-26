@@ -762,14 +762,15 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
          * so the failure-path border + label disappeared. Derive a muted red
          * from primary instead — distinct from HAPPY but still red-family. */
         --wall-secondary: color-mix(in oklch, var(--color-primary) 55%, var(--color-base-content));
-        --wall-aqua: var(--color-info);
+        --wall-aqua: var(--color-accent);
         --wall-sand: var(--color-warning);
         --wall-q: var(--color-warning);
         --wall-q-soft: color-mix(in oklch, var(--color-warning) 18%, transparent);
         --wall-ok: var(--color-success);
-        --wall-serif: var(--font-sans, system-ui, sans-serif);
-        --wall-sans: var(--font-sans, system-ui, sans-serif);
-        --wall-mono: var(--font-mono, ui-monospace, monospace);
+        --wall-display: var(--font-display, "Space Mono", ui-monospace, monospace);
+        --wall-serif: var(--font-body, "IBM Plex Sans", system-ui, sans-serif);
+        --wall-sans: var(--font-body, "IBM Plex Sans", system-ui, sans-serif);
+        --wall-mono: var(--font-mono, "JetBrains Mono", ui-monospace, monospace);
         font-family: var(--wall-sans);
         color: var(--wall-ink);
         background: var(--wall-bg);
@@ -791,7 +792,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
       }
       .wv4-canvas { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; padding: 1.5rem; align-content: start; }
       .wv4-rule-column { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-      .wv4-card { position: relative; background: var(--wall-card); border: 1.5px solid var(--wall-line); border-radius: 0.5rem; box-shadow: 0 1px 2px color-mix(in oklch, var(--color-base-content) 8%, transparent); transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; min-width: 0; }
+      .wv4-card { position: relative; background: var(--wall-card); border: 1.5px solid var(--wall-line); border-radius: 0; box-shadow: 0 1px 2px color-mix(in oklch, var(--color-base-content) 8%, transparent); transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease; min-width: 0; }
       .wv4-card:hover { border-color: var(--wall-line-hi); background: var(--wall-card-hi); box-shadow: 0 4px 14px color-mix(in oklch, var(--color-base-content) 15%, transparent); transform: translateY(-1px); }
       .wv4-rule { padding: 16px 18px 14px; }
       .wv4-rule-id { font-family: var(--wall-mono); font-size: 10px; color: var(--wall-aqua); letter-spacing: 0.08em; text-transform: uppercase; }
@@ -801,25 +802,25 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
       .wv4-example-id { font-family: var(--wall-mono); font-size: 9.5px; color: var(--wall-accent); letter-spacing: 0.1em; text-transform: uppercase; }
       .wv4-example-failure_path .wv4-example-id { color: var(--wall-secondary); }
       .wv4-example-text { font-size: 12px; line-height: 1.45; color: var(--wall-ink); margin-top: 4px; }
-      .wv4-card-menu { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .12s; cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 3px; color: var(--wall-ink-dim); background: transparent; border: 0; }
+      .wv4-card-menu { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .12s; cursor: pointer; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 0; color: var(--wall-ink-dim); background: transparent; border: 0; }
       .wv4-card:hover .wv4-card-menu, .wv4-q:hover .wv4-card-menu { opacity: 1; }
       .wv4-card-menu:hover { background: var(--wall-line-hi); color: var(--wall-accent); }
       .wv4-header { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1.5px solid var(--wall-line); background: var(--wall-bg-2); }
       .wv4-feature-id { font-family: var(--wall-mono); font-size: 10px; color: var(--wall-ink-dim); letter-spacing: 0.08em; }
-      .wv4-feature-title { font-family: var(--wall-serif); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+      .wv4-feature-title { font-family: var(--wall-display); font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
       .wv4-feature-sub { font-size: 12px; color: var(--wall-ink-mid); }
       .wv4-counts { display: flex; gap: 14px; font-family: var(--wall-mono); font-size: 10.5px; color: var(--wall-ink-dim); letter-spacing: 0.04em; }
       .wv4-counts strong { color: var(--wall-ink); font-weight: 600; margin-right: 4px; }
-      .wv4-session-state { font-family: var(--wall-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 5px 10px; border: 1.5px solid var(--wall-line-hi); border-radius: 0.25rem; color: var(--wall-ink-mid); display: inline-flex; align-items: center; gap: 7px; }
+      .wv4-session-state { font-family: var(--wall-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 5px 10px; border: 1.5px solid var(--wall-line-hi); border-radius: 0; color: var(--wall-ink-mid); display: inline-flex; align-items: center; gap: 7px; }
       .wv4-session-state .wv4-pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--wall-accent); animation: wv4-pulse 1.6s ease-in-out infinite; }
       @keyframes wv4-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.1); } }
       .wv4-rail { width: 300px; flex-shrink: 0; border-left: 1.5px solid var(--wall-line); background: var(--wall-bg-2); display: flex; flex-direction: column; }
       .wv4-rail-head { padding: 14px 18px 10px; border-bottom: 1.5px solid var(--wall-line); }
-      .wv4-rail-title { font-family: var(--wall-serif); font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
+      .wv4-rail-title { font-family: var(--wall-display); font-size: 14px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
       .wv4-rail-sub { font-family: var(--wall-mono); font-size: 10px; color: var(--wall-ink-dim); letter-spacing: 0.06em; margin-top: 3px; }
       .wv4-rail-body { flex: 1; overflow: auto; padding: 12px 14px; }
       .wv4-rail-empty { font-family: var(--wall-serif); font-style: italic; font-size: 12.5px; color: var(--wall-ink-dim); text-align: center; padding: 20px 0; }
-      .wv4-q { padding: 11px 12px; margin-bottom: 10px; border-radius: 0.25rem; border: 1.5px solid var(--wall-line); background: var(--wall-card); position: relative; }
+      .wv4-q { padding: 11px 12px; margin-bottom: 10px; border-radius: 0; border: 1.5px solid var(--wall-line); background: var(--wall-card); position: relative; }
       .wv4-q.open { border-left: 2px solid var(--wall-q); background: var(--wall-q-soft); }
       .wv4-q.resolved { opacity: 0.6; }
       .wv4-q.deferred { opacity: 0.7; }
@@ -836,19 +837,19 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
       .wv4-ribbon-target { font-family: var(--wall-mono); color: var(--wall-accent); }
       .wv4-ribbon-detail { color: var(--wall-ink-dim); font-style: italic; }
       .wv4-ribbon-chev { margin-left: auto; font-family: var(--wall-mono); font-size: 10px; color: var(--wall-ink-dim); }
-      .wv4-sealed-stamp { position: absolute; top: 20px; right: 20px; border: 2px solid var(--wall-ok); color: var(--wall-ok); padding: 7px 14px; font-family: var(--wall-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; transform: rotate(-4deg); background: color-mix(in oklch, var(--color-success) 18%, transparent); border-radius: 0.25rem; z-index: 5; font-weight: 600; }
+      .wv4-sealed-stamp { position: absolute; top: 20px; right: 20px; border: 2px solid var(--wall-ok); color: var(--wall-ok); padding: 7px 14px; font-family: var(--wall-mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; transform: rotate(-4deg); background: color-mix(in oklch, var(--color-success) 18%, transparent); border-radius: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); z-index: 5; font-weight: 600; }
       .wv4-listening { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; pointer-events: none; }
       .wv4-listening-text { font-family: var(--wall-serif); font-style: italic; font-size: 16px; color: var(--wall-ink-dim); letter-spacing: 0.01em; }
       .wv4-listening-sub { font-family: var(--wall-mono); font-size: 10.5px; color: var(--wall-ink-dim); letter-spacing: 0.12em; text-transform: uppercase; }
-      .wv4-menu { position: absolute; top: 28px; right: 6px; background: var(--wall-card-hi); border: 1.5px solid var(--wall-line-hi); border-radius: 0.25rem; box-shadow: 0 4px 18px color-mix(in oklch, var(--color-base-content) 20%, transparent); z-index: 10; padding: 4px; display: flex; flex-direction: column; min-width: 110px; }
-      .wv4-menu-item { background: transparent; border: 0; color: var(--wall-ink-mid); font-family: var(--wall-sans); font-size: 12px; padding: 6px 10px; text-align: left; cursor: pointer; border-radius: 0.2rem; transition: background-color .12s, color .12s; }
+      .wv4-menu { position: absolute; top: 28px; right: 6px; background: var(--wall-card-hi); border: 1.5px solid var(--wall-line-hi); border-radius: 0; box-shadow: 0 4px 18px color-mix(in oklch, var(--color-base-content) 20%, transparent); z-index: 10; padding: 4px; display: flex; flex-direction: column; min-width: 110px; }
+      .wv4-menu-item { background: transparent; border: 0; color: var(--wall-ink-mid); font-family: var(--wall-sans); font-size: 12px; padding: 6px 10px; text-align: left; cursor: pointer; border-radius: 0; transition: background-color .12s, color .12s; }
       .wv4-menu-item:hover { background: var(--wall-line); color: var(--wall-ink); }
       .wv4-menu-danger { color: var(--color-error); }
       .wv4-menu-danger:hover { background: color-mix(in oklch, var(--color-error) 25%, transparent); color: var(--color-error-content, var(--color-error)); }
-      .wv4-edit-input, .wv4-edit-textarea { width: 100%; background: var(--wall-bg); border: 1.5px solid var(--wall-line-hi); border-radius: 0.25rem; color: var(--wall-ink); font-family: var(--wall-sans); font-size: 13px; line-height: 1.4; padding: 6px 8px; margin-top: 6px; resize: vertical; }
+      .wv4-edit-input, .wv4-edit-textarea { width: 100%; background: var(--wall-bg); border: 1.5px solid var(--wall-line-hi); border-radius: 0; color: var(--wall-ink); font-family: var(--wall-sans); font-size: 13px; line-height: 1.4; padding: 6px 8px; margin-top: 6px; resize: vertical; }
       .wv4-edit-input:focus, .wv4-edit-textarea:focus { outline: none; border-color: var(--wall-accent); }
       .wv4-edit-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
-      .wv4-btn { font-family: var(--wall-sans); font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 0.25rem; border: 1.5px solid var(--wall-line-hi); background: transparent; color: var(--wall-ink-mid); cursor: pointer; transition: background-color .12s, color .12s, border-color .12s; }
+      .wv4-btn { font-family: var(--wall-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 14px; border-radius: 0; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); border: 1.5px solid var(--wall-line-hi); background: transparent; color: var(--wall-ink-mid); cursor: pointer; transition: background-color .12s, color .12s, border-color .12s; }
       .wv4-btn:hover { border-color: var(--wall-ink-mid); color: var(--wall-ink); }
       .wv4-btn-primary { background: var(--wall-accent); border-color: var(--wall-accent); color: var(--color-primary-content); font-weight: 600; }
       .wv4-btn-primary:hover { filter: brightness(1.1); }
@@ -857,17 +858,17 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
       .wv4-btn-ghost { background: transparent; }
 
       .wv4-modal-backdrop {
-        position: fixed; inset: 0; background: oklch(0% 0 0 / 0.6);
+        position: fixed; inset: 0; background: color-mix(in oklch, var(--color-base-100) 60%, transparent);
         display: flex; align-items: center; justify-content: center;
         z-index: 50; backdrop-filter: blur(2px);
       }
       .wv4-modal {
         background: var(--wall-card); border: 1.5px solid var(--wall-line-hi);
-        border-radius: 0.5rem; padding: 22px 24px; min-width: 380px; max-width: 460px;
-        box-shadow: 0 12px 40px oklch(0% 0 0 / 0.6);
+        border-radius: 0; padding: 22px 24px; min-width: 380px; max-width: 460px;
+        box-shadow: 0 12px 40px color-mix(in oklch, var(--color-base-100) 60%, transparent);
       }
       .wv4-modal-title {
-        font-family: var(--wall-serif); font-size: 17px; font-weight: 600;
+        font-family: var(--wall-display); font-size: 16px; font-weight: 700;
         color: var(--wall-ink); margin-bottom: 8px;
       }
       .wv4-modal-body {
