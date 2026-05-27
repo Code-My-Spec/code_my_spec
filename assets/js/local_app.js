@@ -66,7 +66,23 @@ function remapColor(hex, t) {
 let Hooks = {}
 
 Hooks.SigmaGraph = {
-  mounted() { this.loadAndRender() },
+  mounted() {
+    // Register server-push handlers once (not in loadAndRender, which also
+    // runs on updated()). graph:ready = full (re)render on load;
+    // graph:update = targeted merge from a watcher-triggered recompute;
+    // graph:error = surface a failure.
+    this.handleEvent("graph:ready", ({ data, metrics }) => {
+      this.lastMetrics = metrics
+      this.updateLoaderText(`Rendering ${data.nodes.length} nodes…`)
+      requestAnimationFrame(() => {
+        this.clearLoader()
+        this.renderGraph(data)
+      })
+    })
+    this.handleEvent("graph:update", ({ data }) => this.applyGraph(data))
+    this.handleEvent("graph:error", ({ message }) => this.showError({ message }))
+    this.loadAndRender()
+  },
   updated() {
     if (this.sigma) { this.sigma.kill(); this.sigma = null }
     this.loadAndRender()
@@ -83,19 +99,7 @@ Hooks.SigmaGraph = {
       this.renderGraph(JSON.parse(raw))
       return
     }
-
     this.showLoader("Computing requirements graph…")
-    this.handleEvent("graph:ready", ({ data, metrics }) => {
-      this.lastMetrics = metrics
-      this.updateLoaderText(`Rendering ${data.nodes.length} nodes…`)
-      requestAnimationFrame(() => {
-        this.clearLoader()
-        this.renderGraph(data)
-      })
-    })
-    this.handleEvent("graph:error", ({ message }) => {
-      this.showError({ message })
-    })
   },
   showLoader(message) {
     const t = themeColors()
@@ -141,7 +145,11 @@ Hooks.SigmaGraph = {
   },
   renderGraph(data) {
     const t = themeColors()
+    // Full render: tear down any prior instance (the graph:update path reuses
+    // the live instance instead — see applyGraph).
+    if (this.sigma) { this.sigma.kill(); this.sigma = null }
     const graph = new window.graphology.Graph()
+    this.graph = graph
 
     // Add nodes with theme-remapped colors
     data.nodes.forEach(n => {
@@ -158,7 +166,7 @@ Hooks.SigmaGraph = {
       if (!seenEdges.has(e.key) && graph.hasNode(e.source) && graph.hasNode(e.target)) {
         seenEdges.add(e.key)
         const attrs = { ...e.attributes, color: t.baseContent }
-        graph.addEdge(e.source, e.target, attrs)
+        graph.addEdgeWithKey(e.key, e.source, e.target, attrs)
       }
     })
 
@@ -272,6 +280,57 @@ ${outHtml || "  (none)"}`
     this.sigma.on("leaveNode", () => { container.style.cursor = "default" })
     this.sigma.on("enterEdge", () => { container.style.cursor = "pointer" })
     this.sigma.on("leaveEdge", () => { container.style.cursor = "default" })
+  },
+  // Targeted merge from a watcher-triggered recompute. Mutates the live
+  // graphology graph in place so existing node positions survive — only
+  // changed attributes (status/color) update, new nodes are slotted in near
+  // their neighbors, and removed nodes/edges drop. No global relayout.
+  applyGraph(data) {
+    if (!this.graph || !this.sigma) return this.renderGraph(data)
+    const t = themeColors()
+    const g = this.graph
+
+    const nextNodes = new Set(data.nodes.map(n => n.key))
+    const nextEdges = new Set(data.edges.map(e => e.key))
+
+    // Drop what's gone (snapshot keys first; dropNode also drops its edges).
+    g.edges().forEach(key => { if (!nextEdges.has(key) && g.hasEdge(key)) g.dropEdge(key) })
+    g.nodes().forEach(key => { if (!nextNodes.has(key)) g.dropNode(key) })
+
+    // Upsert nodes: existing -> merge attrs but NOT x/y (keep layout); new ->
+    // place near already-positioned neighbors.
+    data.nodes.forEach(n => {
+      const { x, y, ...rest } = n.attributes
+      const attrs = { ...rest, color: remapColor(n.attributes.color, t) }
+      if (g.hasNode(n.key)) {
+        g.mergeNodeAttributes(n.key, attrs)
+      } else {
+        g.addNode(n.key, { ...attrs, ...this.placeNewNode(g, n.key, data.edges) })
+      }
+    })
+
+    // Add new edges once both endpoints exist.
+    const seen = new Set()
+    data.edges.forEach(e => {
+      if (seen.has(e.key)) return
+      seen.add(e.key)
+      if (!g.hasEdge(e.key) && g.hasNode(e.source) && g.hasNode(e.target)) {
+        g.addEdgeWithKey(e.key, e.source, e.target, { ...e.attributes, color: t.baseContent })
+      }
+    })
+
+    this.sigma.refresh()
+  },
+  placeNewNode(g, key, edges) {
+    const placed = []
+    edges.forEach(e => {
+      if (e.source === key && g.hasNode(e.target)) placed.push(e.target)
+      if (e.target === key && g.hasNode(e.source)) placed.push(e.source)
+    })
+    if (placed.length === 0) return { x: (Math.random() - 0.5) * 10, y: (Math.random() - 0.5) * 10 }
+    let x = 0, y = 0
+    placed.forEach(n => { const a = g.getNodeAttributes(n); x += a.x || 0; y += a.y || 0 })
+    return { x: x / placed.length + (Math.random() - 0.5) * 2, y: y / placed.length + (Math.random() - 0.5) * 2 }
   },
   runForceLayout(graph) {
     const iterations = 300

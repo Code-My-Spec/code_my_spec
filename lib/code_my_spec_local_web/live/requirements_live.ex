@@ -10,7 +10,12 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   require Logger
 
+  # Coalesce a burst of file-watcher events into one graph recompute — the
+  # trailing edge fires once the developer stops saving for this long.
+  @graph_debounce_ms 750
+
   alias CodeMySpec.AgentTasks.ProjectSetup
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Components
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
@@ -30,6 +35,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
        scope: nil,
        markdown: nil,
        graph_data: nil,
+       watching?: false,
+       graph_timer: nil,
        error: nil,
        setup_error: nil
      )}
@@ -252,6 +259,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   def handle_params(%{"project_name" => name} = params, _uri, %{assigns: %{live_action: :graph}} = socket) do
     case load_project_and_scope(name) do
       {:ok, project, scope} ->
+        socket = maybe_watch(socket, scope)
+
         base =
           assign(socket, project: project, scope: scope, markdown: nil, error: nil)
 
@@ -303,6 +312,70 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
      socket
      |> assign(graph_data: :error)
      |> push_event("graph:error", %{message: "Graph computation failed: #{inspect(reason)}"})}
+  end
+
+  # Watcher-triggered recompute pushes a merge update (NOT graph:ready), so the
+  # client preserves existing node positions and only restyles/places what
+  # actually changed.
+  def handle_async(:recompute_graph, {:ok, {graph_data, _metrics}}, socket) do
+    {:noreply,
+     socket
+     |> assign(graph_data: graph_data)
+     |> push_event("graph:update", %{data: graph_data})}
+  end
+
+  def handle_async(:recompute_graph, {:exit, reason}, socket) do
+    # Keep the last good graph on screen; just log the failed refresh.
+    Logger.warning("[RequirementsLive] graph refresh crashed: #{inspect(reason)}")
+    {:noreply, socket}
+  end
+
+  # --- Live updates ---
+
+  # File watcher fired for this project. Debounce on the trailing edge so a
+  # burst of saves coalesces into a single recompute once edits settle.
+  @impl true
+  def handle_info({:watcher_synced, _info}, %{assigns: %{live_action: :graph}} = socket) do
+    if ref = socket.assigns.graph_timer, do: Process.cancel_timer(ref)
+    timer = Process.send_after(self(), :graph_recompute, @graph_debounce_ms)
+    {:noreply, assign(socket, graph_timer: timer)}
+  end
+
+  def handle_info({:watcher_synced, _info}, socket), do: {:noreply, socket}
+
+  def handle_info(:graph_recompute, %{assigns: %{scope: scope}} = socket)
+      when not is_nil(scope) do
+    socket = assign(socket, graph_timer: nil)
+
+    # Only refresh once the graph has actually rendered (is_map); a delta
+    # update has nothing to merge into before the first full render.
+    socket =
+      if connected?(socket) and is_map(socket.assigns.graph_data) do
+        start_async(socket, :recompute_graph, fn ->
+          GraphProjector.project_graph_with_metrics(scope)
+        end)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:graph_recompute, socket), do: {:noreply, assign(socket, graph_timer: nil)}
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # Subscribe once to this project's watcher topic (idempotent across repeated
+  # handle_params on the :graph action).
+  defp maybe_watch(%{assigns: %{watching?: true}} = socket, _scope), do: socket
+
+  defp maybe_watch(socket, scope) do
+    if connected?(socket) do
+      ProjectSync.subscribe(scope)
+      assign(socket, watching?: true)
+    else
+      socket
+    end
   end
 
   defp maybe_start_graph_compute(socket, scope) do
