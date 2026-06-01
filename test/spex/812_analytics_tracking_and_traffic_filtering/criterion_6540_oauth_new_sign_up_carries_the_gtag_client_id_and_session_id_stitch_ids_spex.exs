@@ -26,8 +26,6 @@ defmodule CodeMySpecSpex.Story812.Criterion6540Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpecSpex.{Fixtures, OAuthHelpers}
 

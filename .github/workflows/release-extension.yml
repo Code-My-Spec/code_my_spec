@@ -27,6 +27,19 @@ jobs:
             target: macos_m1
             binary: cms-darwin-arm64
             zig_archive: zig-aarch64-macos-0.15.2.tar.xz
+          - name: Windows x64
+            runner: windows-latest
+            target: windows
+            binary: cms-windows-x64.exe
+            zig_archive: zig-x86_64-windows-0.15.2.zip
+
+    # Force bash on Windows runners so curl/tar/cp/`>> "$GITHUB_PATH"` and
+    # the install-zig script work identically across platforms. Git Bash is
+    # preinstalled on windows-latest; mix/elixir/zig are added to PATH by
+    # setup-beam and the Install Zig step.
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -39,9 +52,10 @@ jobs:
 
       - name: Install Zig 0.15.2
         run: |
-          curl -fSL "https://ziglang.org/download/0.15.2/${{ matrix.zig_archive }}" -o zig.tar.xz
+          archive="${{ matrix.zig_archive }}"
+          curl -fSL "https://ziglang.org/download/0.15.2/${archive}" -o "${archive}"
           mkdir -p "$HOME/zig"
-          tar -xf zig.tar.xz -C "$HOME/zig" --strip-components=1
+          tar -xf "${archive}" -C "$HOME/zig" --strip-components=1
           echo "$HOME/zig" >> "$GITHUB_PATH"
 
       - name: Install xz (Linux)

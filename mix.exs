@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "1.5.1",
+      version: "1.5.2",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
@@ -28,7 +28,7 @@ defmodule CodeMySpec.MixProject do
   def application do
     [
       mod: app_module(),
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :inets]
     ]
   end
 
@@ -188,6 +188,7 @@ defmodule CodeMySpec.MixProject do
       "macos" -> [macos: [os: :darwin, cpu: :x86_64]]
       "linux" -> [linux: [os: :linux, cpu: :x86_64]]
       "linux_aarch64" -> [linux_aarch64: [os: :linux, cpu: :aarch64]]
+      "windows" -> [windows: [os: :windows, cpu: :x86_64]]
       _ -> [macos_m1: [os: :darwin, cpu: :aarch64]]
     end
   end
