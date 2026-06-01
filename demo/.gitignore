@@ -1,0 +1,6 @@
+# Working copies of session transcripts (large; copied from ~/.claude/projects
+# on startup so the originals are never mutated). Regenerable — not committed.
+sessions/*.jsonl
+# Anything the replay writes into a scratch project lives outside the repo
+# (e.g. /tmp/cms_demo_mms), but ignore a local one too if present.
+scratch/
