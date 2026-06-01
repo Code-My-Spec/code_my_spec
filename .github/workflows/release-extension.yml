@@ -181,8 +181,9 @@ jobs:
           mkdir -p plugins
           cp -R ../artifacts/extension/plugins/codemyspec plugins/codemyspec
 
-          # Root-level codemyspec assets (install.sh, README) we own.
+          # Root-level codemyspec assets (install.sh, install.ps1, README) we own.
           cp ../artifacts/extension/install.sh install.sh
+          [ -f ../artifacts/extension/install.ps1 ] && cp ../artifacts/extension/install.ps1 install.ps1
           cp ../artifacts/extension/README.md README.md
 
           # One-time cleanup: codemyspec used to live at the repo root

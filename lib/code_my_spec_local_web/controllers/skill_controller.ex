@@ -53,8 +53,14 @@ defmodule CodeMySpecLocalWeb.SkillController do
   # ── Skill routing (POST /api/skills/start) ──────────────────────
 
   def start_skill(conn, %{"skill" => skill} = params) do
-    subcommand = params["subcommand"]
-    module_name = params["module_name"]
+    # Skill markdown invokes us via inline curl with one positional argument
+    # string (`arguments`). Split it into subcommand + module_name here so
+    # callers don't have to do that in bash. The explicit `subcommand` /
+    # `module_name` fields still win when set (used by direct API callers).
+    {arg_subcommand, arg_module_name} = split_arguments(params["arguments"])
+
+    subcommand = params["subcommand"] || arg_subcommand
+    module_name = params["module_name"] || arg_module_name
     external_id = params["external_id"]
 
     case resolve_route(skill, subcommand) do
@@ -90,6 +96,19 @@ defmodule CodeMySpecLocalWeb.SkillController do
 
   def start_task(conn, params) do
     run_task(conn, params["external_id"], params["session_type"], params["module_name"])
+  end
+
+  # Splits `"ui"` → {"ui", nil}, `"context Foo.Bar"` → {"context", "Foo.Bar"},
+  # `nil`/`""` → {nil, nil}. Mirrors the old `bin/skill` script's split
+  # semantics so callers stay simple.
+  defp split_arguments(nil), do: {nil, nil}
+
+  defp split_arguments(args) when is_binary(args) do
+    case String.split(String.trim(args), ~r/\s+/, parts: 2) do
+      [""] -> {nil, nil}
+      [sub] -> {sub, nil}
+      [sub, rest] -> {sub, rest}
+    end
   end
 
   # ── Route resolution ────────────────────────────────────────────

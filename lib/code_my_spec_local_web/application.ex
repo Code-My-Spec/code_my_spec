@@ -13,6 +13,7 @@ defmodule CodeMySpecLocalWeb.Application do
   # the CLI binary. The web build compiles this same source without it.
   # Resolving the module through an atom at runtime keeps both builds clean.
   @daemon :"Elixir.CodeMySpecCli.Daemon"
+  @self_update :"Elixir.CodeMySpecCli.SelfUpdate"
 
   # Burrito.Util.Args is Burrito-release-only — the bare web build doesn't
   # include it. Same atom trick.
@@ -25,28 +26,28 @@ defmodule CodeMySpecLocalWeb.Application do
     ensure_directories()
     maybe_install_file_logger()
 
-    children = [
-      CodeMySpec.Vault,
-      CodeMySpec.Repo,
-      CodeMySpec.Environments.registry_child_spec(),
-      CodeMySpecLocalWeb.Migrator,
-      {Phoenix.PubSub, name: CodeMySpec.PubSub},
-      {Task.Supervisor, name: CodeMySpec.Permissions.TaskSupervisor},
-      CodeMySpec.Auth.AuthState,
-      CodeMySpec.Embeddings.Serving,
-      # session_idle_timeout: 4h — agent workflow has long gaps between MCP
-      # calls (writing code, running tests, browser automation). The Anubis
-      # default of 30 min was dropping the session ~8-10 times per multi-hour
-      # session, forcing manual `/mcp` reconnects (-32603 "No active session").
-      # 4h covers a normal working block; supervisor restarts re-arm the timer.
-      {CodeMySpec.McpServers.LocalServer,
-       transport: {:streamable_http, start: true},
-       session_idle_timeout: to_timeout(hour: 4)},
-      CodeMySpecLocalWeb.Endpoint,
-      CodeMySpec.ProjectSync.FileWatcherServer,
-      CodeMySpecLocalWeb.SocketSupervisor,
-      CodeMySpecCli.PresenceClient
-    ] ++ tunnel_children()
+    children =
+      [
+        CodeMySpec.Vault,
+        CodeMySpec.Repo,
+        CodeMySpec.Environments.registry_child_spec(),
+        CodeMySpecLocalWeb.Migrator,
+        {Phoenix.PubSub, name: CodeMySpec.PubSub},
+        {Task.Supervisor, name: CodeMySpec.Permissions.TaskSupervisor},
+        CodeMySpec.Auth.AuthState,
+        CodeMySpec.Embeddings.Serving,
+        # session_idle_timeout: 4h — agent workflow has long gaps between MCP
+        # calls (writing code, running tests, browser automation). The Anubis
+        # default of 30 min was dropping the session ~8-10 times per multi-hour
+        # session, forcing manual `/mcp` reconnects (-32603 "No active session").
+        # 4h covers a normal working block; supervisor restarts re-arm the timer.
+        {CodeMySpec.McpServers.LocalServer,
+         transport: {:streamable_http, start: true}, session_idle_timeout: to_timeout(hour: 4)},
+        CodeMySpecLocalWeb.Endpoint,
+        CodeMySpec.ProjectSync.FileWatcherServer,
+        CodeMySpecLocalWeb.SocketSupervisor,
+        CodeMySpecCli.PresenceClient
+      ] ++ tunnel_children()
 
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
 
@@ -105,7 +106,7 @@ defmodule CodeMySpecLocalWeb.Application do
   defp help_flag?(args), do: "--help" in args or "-h" in args
 
   defp find_subcommand(args) do
-    Enum.find(["status", "stop", "logs", "start", "server"], &(&1 in args))
+    Enum.find(["status", "stop", "logs", "start", "server", "self-update"], &(&1 in args))
   end
 
   defp run_subcommand("status", _args), do: System.halt(daemon_call(:print_status))
@@ -113,6 +114,9 @@ defmodule CodeMySpecLocalWeb.Application do
   defp run_subcommand("logs", args), do: System.halt(daemon_call(:logs, [follow?(args)]))
   defp run_subcommand("start", _args), do: System.halt(daemon_call(:start, [self_path()]))
   defp run_subcommand("server", _args), do: :ok
+
+  defp run_subcommand("self-update", args),
+    do: System.halt(call_optional(@self_update, :run, [args]) || 0)
 
   defp follow?(args), do: "-f" in args or "--follow" in args
 
@@ -155,6 +159,7 @@ defmodule CodeMySpecLocalWeb.Application do
       cms logs         Print the server log.
       cms logs -f      Follow the server log.
       cms server       Run the server in the foreground (ctrl-C to stop).
+      cms self-update  Check GitHub for a newer release; swap binary + restart.
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
@@ -168,9 +173,7 @@ defmodule CodeMySpecLocalWeb.Application do
       pid = System.pid()
       log = daemon_call(:log_file) || Path.expand("~/.codemyspec/server.log")
 
-      IO.puts(
-        "cms v#{version}  ·  pid #{pid}  ·  http://localhost:4003  ·  log #{log}"
-      )
+      IO.puts("cms v#{version}  ·  pid #{pid}  ·  http://localhost:4003  ·  log #{log}")
     end
   end
 
