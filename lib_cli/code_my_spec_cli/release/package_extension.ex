@@ -27,8 +27,10 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     release_name = Atom.to_string(context.mix_release.name)
     target_name = Atom.to_string(context.target.alias)
 
-    # Source paths
-    source_binary = Path.join([app_path, "burrito_out", "#{release_name}_#{target_name}"])
+    # Source paths. Burrito appends `.exe` to Windows binaries; mirror that
+    # here so the copy step finds the file regardless of target OS.
+    source_basename = "#{release_name}_#{target_name}" <> source_ext(context.target)
+    source_binary = Path.join([app_path, "burrito_out", source_basename])
     source_extension = Path.join(app_path, "CodeMySpec")
 
     # Output paths
@@ -245,6 +247,9 @@ defmodule CodeMySpecCli.Release.PackageExtension do
       end
     end)
   end
+
+  defp source_ext(%{os: :windows}), do: ".exe"
+  defp source_ext(_), do: ""
 
   defp binary_name_for_target(target) do
     os =
