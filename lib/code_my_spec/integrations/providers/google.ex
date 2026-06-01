@@ -23,9 +23,16 @@ defmodule CodeMySpec.Integrations.Providers.Google do
   Requests the following Google OAuth scopes:
   - `email` - Access to user email address
   - `profile` - Access to user profile information
-  - `https://www.googleapis.com/auth/analytics.edit` - Edit Google Analytics
-    admin entities (custom dimensions, metrics, key events). Required by the
-    `CodeMySpec.Google.Analytics` admin client.
+
+  These are non-sensitive scopes, so the OAuth consent screen does not
+  require Google app verification.
+
+  NOTE: The `https://www.googleapis.com/auth/analytics.edit` scope was
+  removed because it is a sensitive scope that forces the app through
+  Google's verification process (the "Google hasn't verified this app"
+  warning). The `CodeMySpec.Google.Analytics` admin client and its
+  MCP surface remain in the codebase but are inert without this scope;
+  re-add it here and re-verify the app before relying on them again.
   """
 
   @behaviour CodeMySpec.Integrations.Providers.Behaviour
@@ -51,7 +58,7 @@ defmodule CodeMySpec.Integrations.Providers.Google do
       token_url: "https://oauth2.googleapis.com/token",
       auth_method: :client_secret_post,
       authorization_params: [
-        scope: "email profile https://www.googleapis.com/auth/analytics.edit",
+        scope: "email profile",
         access_type: "offline",
         prompt: "consent"
       ]
