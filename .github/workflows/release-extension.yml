@@ -55,7 +55,19 @@ jobs:
           archive="${{ matrix.zig_archive }}"
           curl -fSL "https://ziglang.org/download/0.15.2/${archive}" -o "${archive}"
           mkdir -p "$HOME/zig"
-          tar -xf "${archive}" -C "$HOME/zig" --strip-components=1
+          # Git Bash on windows-latest ships GNU tar, which can't read .zip.
+          # bsdtar (Windows's native tar.exe) would, but it's not first in
+          # PATH. Branch on extension and use unzip for Zig's Windows zip.
+          case "$archive" in
+            *.zip)
+              unzip -q "$archive"
+              inner="${archive%.zip}"
+              cp -r "$inner"/. "$HOME/zig/"
+              ;;
+            *)
+              tar -xf "$archive" -C "$HOME/zig" --strip-components=1
+              ;;
+          esac
           echo "$HOME/zig" >> "$GITHUB_PATH"
 
       - name: Install xz (Linux)
