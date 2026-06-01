@@ -43,9 +43,18 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/components", RequirementsLive, :components
       live "/projects/:project_name/components/graph", RequirementsLive, :components_graph
       live "/projects/:project_name/components/:component_id", RequirementsLive, :component_show
-      live "/projects/:project_name/components/:component_id/graph", RequirementsLive, :component_graph
-      live "/projects/:project_name/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
-      live "/projects/:project_name/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
+
+      live "/projects/:project_name/components/:component_id/graph",
+           RequirementsLive,
+           :component_graph
+
+      live "/projects/:project_name/components/:component_id/requirements/:name",
+           RequirementsLive,
+           :component_req_show
+
+      live "/projects/:project_name/components/:component_id/requirements/:name/prompt",
+           RequirementsLive,
+           :component_req_prompt
 
       # Stories admin — static segments first so they win over `:id`
       live "/projects/:project_name/stories", StoryLive.Index, :index
@@ -57,7 +66,9 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/stories/:id/three-amigos", StoryLive.ThreeAmigos
       live "/projects/:project_name/stories/:id/gherkin", StoryLive.Gherkin
       # Requirements view of a story (graph projection — distinct from admin Show)
-      live "/projects/:project_name/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+      live "/projects/:project_name/stories/:story_id/requirements/:name",
+           RequirementsLive,
+           :story_req_show
 
       live "/projects/:project_name/personas", PersonasLive.Index, :index
       live "/projects/:project_name/personas/new", PersonasLive.Index, :new
@@ -143,7 +154,6 @@ defmodule CodeMySpecLocalWeb.Router do
   scope "/api/permissions", CodeMySpecLocalWeb do
     pipe_through :bootstrap
 
-    get "/:id/stream", PermissionController, :stream
     post "/:id/respond", PermissionController, :respond
   end
 
@@ -162,7 +172,10 @@ defmodule CodeMySpecLocalWeb.Router do
 
     get "/components", ComponentsRequirementsController, :index
     get "/components/:component_id", ComponentsRequirementsController, :show
-    get "/components/:component_id/requirements/:name", ComponentsRequirementsController, :show_requirement
+
+    get "/components/:component_id/requirements/:name",
+        ComponentsRequirementsController,
+        :show_requirement
 
     get "/stories", StoriesRequirementsController, :index
     get "/stories/:story_id", StoriesRequirementsController, :show

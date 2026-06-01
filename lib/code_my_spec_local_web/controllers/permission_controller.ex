@@ -2,13 +2,24 @@ defmodule CodeMySpecLocalWeb.PermissionController do
   @moduledoc """
   Proxy for remote permission approval via the production server.
 
-  1. `create` — forwards the permission request to production (stores + Web Push)
-  2. `stream` — SSE endpoint held open by hook script, waits for decision via channel
-  3. `respond` — forwards approval/denial to production
+  One long-polling endpoint:
+
+  - `create` — forwards the permission request to production, opens a
+    WebSocket to listen for the user's decision, and blocks until either
+    a decision arrives or the timeout fires. Returns the Claude Code
+    PermissionRequest hook response directly in the HTTP body.
+
+  Plus the response forwarder used by the production-side UI:
+
+  - `respond` — forwards approve/deny to production.
+
+  The previous design split the flow across `create` (returns request id)
+  and `stream` (SSE-waits for decision), with the bash `approve` script
+  bridging them and formatting the final hook response. Collapsing both
+  halves into `create` lets the shell shim be a single curl invocation —
+  no jq, no SSE parsing, no second hop.
   """
   use CodeMySpecLocalWeb, :controller
-
-  import Plug.Conn
 
   require Logger
 
@@ -16,35 +27,32 @@ defmodule CodeMySpecLocalWeb.PermissionController do
   alias CodeMySpec.Permissions.PermissionSocket
 
   @default_timeout_s 120
+  @hook_event_name "PermissionRequest"
 
   def create(conn, params) do
     tool_name = Map.get(params, "tool_name")
     tool_input = Map.get(params, "tool_input", %{})
+    timeout_ms = parse_timeout(params["timeout"]) * 1000
 
     if is_nil(tool_name) do
       conn |> put_status(400) |> json(%{error: "Missing required field: tool_name"})
     else
       case forward_create(tool_name, tool_input) do
-        {:ok, %{"id" => id}} ->
-          conn |> put_status(201) |> json(%{id: id})
+        {:ok, %{"id" => request_id}} ->
+          json(conn, hook_response(await_decision(request_id, timeout_ms)))
+
+        {:ok, body} ->
+          Logger.warning("[PermissionController] Unexpected create response: #{inspect(body)}")
+          json(conn, hook_response("ask"))
 
         {:error, reason} ->
-          Logger.warning("[PermissionController] Failed to create on production: #{inspect(reason)}")
-          conn |> put_status(502) |> json(%{error: "Failed to reach production server"})
+          Logger.warning(
+            "[PermissionController] Failed to create on production: #{inspect(reason)}"
+          )
+
+          json(conn, hook_response("ask"))
       end
     end
-  end
-
-  def stream(conn, %{"id" => request_id} = params) do
-    timeout_s = parse_timeout(params["timeout"])
-    timeout_ms = timeout_s * 1000
-
-    conn
-    |> put_resp_content_type("text/event-stream")
-    |> put_resp_header("cache-control", "no-cache")
-    |> put_resp_header("connection", "keep-alive")
-    |> send_chunked(200)
-    |> await_decision_via_channel(request_id, timeout_ms)
   end
 
   def respond(conn, %{"id" => request_id} = params) do
@@ -56,7 +64,9 @@ defmodule CodeMySpecLocalWeb.PermissionController do
           json(conn, %{status: "ok"})
 
         {:error, reason} ->
-          conn |> put_status(502) |> json(%{error: "Failed to forward to production: #{inspect(reason)}"})
+          conn
+          |> put_status(502)
+          |> json(%{error: "Failed to forward to production: #{inspect(reason)}"})
       end
     else
       conn |> put_status(400) |> json(%{error: "Invalid decision. Must be 'allow' or 'deny'"})
@@ -93,9 +103,13 @@ defmodule CodeMySpecLocalWeb.PermissionController do
     end
   end
 
-  # -- Channel-based decision waiting -----------------------------------------
+  # -- Decision wait -----------------------------------------------------------
 
-  defp await_decision_via_channel(conn, request_id, timeout_ms) do
+  # Opens a WebSocket against production for `request_id` and blocks until
+  # the user clicks (or timeout). Returns the hook `decision.behavior` value:
+  # "allow", "deny", or "ask". Any error path resolves to "ask" so the agent
+  # falls back to Claude Code's built-in prompt.
+  defp await_decision(request_id, timeout_ms) do
     case build_ws_url() do
       {:ok, ws_url} ->
         {:ok, pid} =
@@ -110,25 +124,25 @@ defmodule CodeMySpecLocalWeb.PermissionController do
         receive do
           {:permission_decision, decision} ->
             Process.demonitor(ref, [:flush])
-            send_sse_event(conn, %{decision: decision})
+            decision
 
           {:permission_error, reason} ->
             Process.demonitor(ref, [:flush])
             Logger.warning("[PermissionController] Channel error: #{inspect(reason)}")
-            send_sse_event(conn, %{decision: "ask", reason: "channel_error"})
+            "ask"
 
           {:DOWN, ^ref, :process, ^pid, reason} ->
             Logger.warning("[PermissionController] Socket process exited: #{inspect(reason)}")
-            send_sse_event(conn, %{decision: "ask", reason: "socket_exit"})
+            "ask"
         after
           timeout_ms ->
             Process.demonitor(ref, [:flush])
             Process.exit(pid, :shutdown)
-            send_sse_event(conn, %{decision: "ask", reason: "timeout"})
+            "ask"
         end
 
       {:error, _reason} ->
-        send_sse_event(conn, %{decision: "ask", reason: "no_token"})
+        "ask"
     end
   end
 
@@ -146,9 +160,15 @@ defmodule CodeMySpecLocalWeb.PermissionController do
     end
   end
 
-  defp send_sse_event(conn, data) do
-    chunk(conn, "data: #{Jason.encode!(data)}\n\n")
-    conn
+  # -- Helpers -----------------------------------------------------------------
+
+  defp hook_response(behavior) do
+    %{
+      "hookSpecificOutput" => %{
+        "hookEventName" => @hook_event_name,
+        "decision" => %{"behavior" => behavior}
+      }
+    }
   end
 
   defp parse_timeout(nil), do: @default_timeout_s
@@ -160,5 +180,6 @@ defmodule CodeMySpecLocalWeb.PermissionController do
     end
   end
 
+  defp parse_timeout(val) when is_integer(val) and val > 0, do: val
   defp parse_timeout(_), do: @default_timeout_s
 end
