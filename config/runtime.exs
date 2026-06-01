@@ -39,7 +39,7 @@ if tunnel_config[:mode] == :named do
 end
 
 # CLI mode — minimal runtime config
-if config_env() in [:dev_cli, :prod_cli] do
+if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
   # api_base_url / oauth_base_url / base_url are now set per-env in
   # dev_cli.exs and prod_cli.exs at compile time so the shipped binary
   # is statically wired to prod and the in-repo build is wired to dev.
@@ -54,16 +54,34 @@ if config_env() in [:dev_cli, :prod_cli] do
     case config_env() do
       :prod_cli -> "cli.db"
       :dev_cli -> "cli_dev.db"
+      :cli_demo -> "cli_demo.db"
     end
 
   repo_config = Application.get_env(:code_my_spec, CodeMySpec.Repo, [])
 
   repo_config =
     repo_config
-    |> Keyword.put(:database, Path.expand("~/.codemyspec/#{cli_db_filename}"))
+    |> Keyword.put(
+      :database,
+      System.get_env("CMS_DB_PATH") || Path.expand("~/.codemyspec/#{cli_db_filename}")
+    )
     |> Keyword.put(:load_extensions, [SqliteVec.path()])
 
   config :code_my_spec, CodeMySpec.Repo, repo_config
+
+  # Demo/sandbox overrides — env-var gated, no effect on a normal dev_cli boot.
+  # CMS_PORT runs the local web on another port so a replay instance can
+  # coexist with the real dev_cli app on :4004.
+  if demo_port = System.get_env("CMS_PORT") do
+    config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
+      http: [ip: {127, 0, 0, 1}, port: String.to_integer(demo_port)]
+  end
+
+  # CMS_API_BASE_URL repoints sync/auth at a local demo server instead of
+  # dev.codemyspec.com, so a replay never touches real dev/prod data.
+  if api = System.get_env("CMS_API_BASE_URL") do
+    config :code_my_spec, api_base_url: api, oauth_base_url: api, base_url: api
+  end
 
   # Allow seed scripts to run while the local app already occupies port 4003.
   # Set NO_SERVER=true to skip the HTTP listener (Repo is still available).
@@ -74,7 +92,7 @@ if config_env() in [:dev_cli, :prod_cli] do
 end
 
 # Web app mode
-if config_env() not in [:dev_cli, :prod_cli] do
+if config_env() not in [:dev_cli, :prod_cli, :cli_demo] do
   config :code_my_spec,
     github_client_id: env!("GITHUB_CLIENT_ID"),
     github_client_secret: env!("GITHUB_CLIENT_SECRET"),

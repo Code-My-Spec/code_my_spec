@@ -33,7 +33,7 @@ defmodule CodeMySpec.MixProject do
   end
 
   defp app_module do
-    if Mix.env() in [:dev_cli, :prod_cli],
+    if Mix.env() in [:dev_cli, :prod_cli, :cli_demo],
       do: {CodeMySpecLocalWeb.Application, []},
       else: {CodeMySpecWeb.Application, []}
   end
@@ -43,6 +43,7 @@ defmodule CodeMySpec.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
   defp elixirc_paths(:dev_cli), do: ["lib", "lib_cli"]
   defp elixirc_paths(:prod_cli), do: ["lib", "lib_cli"]
+  defp elixirc_paths(:cli_demo), do: ["lib", "lib_cli"]
   defp elixirc_paths(_), do: ["lib"]
 
   # :spex compiler only needed in test (compiles BDD spec files for Boundary)
@@ -64,12 +65,12 @@ defmodule CodeMySpec.MixProject do
       {:ecto_sqlite3, "~> 0.18"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
-      {:phoenix_live_reload, "~> 1.2", only: [:dev, :dev_cli]},
+      {:phoenix_live_reload, "~> 1.2", only: [:dev, :dev_cli, :cli_demo, :demo]},
       {:phoenix_live_view, "~> 1.1"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
-      {:esbuild, "~> 0.10", runtime: Mix.env() in [:dev, :dev_cli]},
-      {:tailwind, "~> 0.3", runtime: Mix.env() in [:dev, :dev_cli]},
+      {:esbuild, "~> 0.10", runtime: Mix.env() in [:dev, :dev_cli, :cli_demo, :demo]},
+      {:tailwind, "~> 0.3", runtime: Mix.env() in [:dev, :dev_cli, :cli_demo, :demo]},
       {:heroicons,
        github: "tailwindlabs/heroicons",
        tag: "v2.2.0",
@@ -135,19 +136,19 @@ defmodule CodeMySpec.MixProject do
       {:sweet_xml, "~> 0.7"},
 
       # Embeddings
-      {:ortex, "~> 0.1", only: [:dev_cli, :prod_cli]},
-      {:tokenizers, "~> 0.5", only: [:dev_cli, :prod_cli]},
-      {:nx, "~> 0.9", only: [:dev_cli, :prod_cli]},
-      {:sqlite_vec, "~> 0.1.0", only: [:dev_cli, :prod_cli]},
+      {:ortex, "~> 0.1", only: [:dev_cli, :prod_cli, :cli_demo]},
+      {:tokenizers, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo]},
+      {:nx, "~> 0.9", only: [:dev_cli, :prod_cli, :cli_demo]},
+      {:sqlite_vec, "~> 0.1.0", only: [:dev_cli, :prod_cli, :cli_demo]},
 
       # CLI release
       {:burrito,
        github: "Code-My-Spec/burrito",
        ref: "d44eb28befa146f1c12f6b7b4a2cbc598b3c9686",
-       only: [:dev_cli, :prod_cli],
+       only: [:dev_cli, :prod_cli, :cli_demo],
        runtime: false,
        override: true},
-      {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli]}
+      {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo]}
     ]
   end
 
