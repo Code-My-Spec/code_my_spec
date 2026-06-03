@@ -672,6 +672,12 @@ html {
     max-width: 100%;
 }
 
+/* Bare long URLs (e.g. in Sources lists) are unbreakable strings that can
+   push the page wider than the viewport on mobile. Let prose links wrap. */
+.prose a {
+    overflow-wrap: anywhere;
+}
+
 /* Onboarding install panel — story 698. Signal red on black, chamfered
    clip-paths, Space Mono display. Matches the brand_system v0.9 install-panel
    design reference. */
