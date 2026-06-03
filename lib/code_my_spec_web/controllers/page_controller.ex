@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.PageController do
 
   def home(conn, _params) do
     meta = %{
-      page_title: "CodeMySpec — AI Development for Engineers Who Care About the Codebase",
+      page_title: "CodeMySpec: Phoenix-Native AI Development Harness",
       meta_description:
         "Phoenix-native AI development harness for engineer-founders and Elixir agencies. Specs, code, tests, verification — end to end. BYO model, BYO keys, no token markup.",
       og_title: "CodeMySpec — AI Development for Engineers Who Care About the Codebase",

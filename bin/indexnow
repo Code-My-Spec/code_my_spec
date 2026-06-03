@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Submit URLs to IndexNow (notifies Bing, Yandex, and other IndexNow engines).
+# The key file is already hosted at https://codemyspec.com/<KEY>.txt and is in
+# CodeMySpecWeb.static_paths/0.
+#
+# Usage:
+#   bin/indexnow                       # submit every URL in the live sitemap
+#   bin/indexnow <url> [url ...]       # submit specific URLs
+#
+# Run this AFTER a content sync so engines recrawl the freshly published pages.
+set -euo pipefail
+
+KEY="2b3072f808084089a59fa6ee3a6555b3"
+HOST="codemyspec.com"
+KEYLOC="https://${HOST}/${KEY}.txt"
+
+urls=("$@")
+if [ ${#urls[@]} -eq 0 ]; then
+  echo "No URLs given; pulling the live sitemap..."
+  while IFS= read -r u; do urls+=("$u"); done < <(curl -s "https://${HOST}/sitemap.xml" | grep -oE '<loc>[^<]+' | sed 's/<loc>//')
+fi
+
+if [ ${#urls[@]} -eq 0 ]; then
+  echo "error: no URLs to submit" >&2
+  exit 1
+fi
+
+payload=$(printf '%s\n' "${urls[@]}" | jq -R . | jq -s \
+  --arg host "$HOST" --arg key "$KEY" --arg loc "$KEYLOC" \
+  '{host:$host, key:$key, keyLocation:$loc, urlList:.}')
+
+echo "Submitting ${#urls[@]} URLs to IndexNow..."
+curl -s -X POST "https://api.indexnow.org/indexnow" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d "$payload" -w "\nHTTP %{http_code}\n"
+echo "(200 or 202 = accepted)"

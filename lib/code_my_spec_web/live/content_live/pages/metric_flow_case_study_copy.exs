@@ -1,6 +1,6 @@
 %{
   metadata: %{
-    meta_title: "MetricFlow Case Study: 13 Days, 51 Stories, One Honest Teardown",
+    meta_title: "MetricFlow Case Study: 13 Days, 51 Stories",
     meta_description:
       "How CodeMySpec built MetricFlow — a Phoenix LiveView analytics platform with OAuth integrations and multi-tenant accounts. Specs, code, tests, verification. Here's what worked and what broke.",
     og_title: "MetricFlow Case Study — The Harness Built This App",

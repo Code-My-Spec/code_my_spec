@@ -18,4 +18,7 @@ if [ ! -d "$SRC" ]; then
 fi
 
 echo "syncing $SRC -> s3://$BUCKET/"
-aws s3 sync "$SRC" "s3://$BUCKET/" "$@"
+# Default 30-day cache (overridable via "$@"). Effective edge TTL also depends on
+# Cloudflare's Browser Cache TTL / "Respect Existing Headers" setting. Slug-named
+# images (hero-/og-) are replaceable, so run bin/purge-cdn when overwriting one.
+aws s3 sync "$SRC" "s3://$BUCKET/" --cache-control "public, max-age=2592000" "$@"

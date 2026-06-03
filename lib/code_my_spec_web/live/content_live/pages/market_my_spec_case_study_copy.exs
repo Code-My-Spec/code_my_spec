@@ -1,6 +1,6 @@
 %{
   metadata: %{
-    meta_title: "Market My Spec Case Study: Ten Working Days, Zero Prompts From Me",
+    meta_title: "Market My Spec Case Study: 10 Days, Zero Prompts",
     meta_description:
       "How CodeMySpec built Market My Spec across ten working days of build activity between April 19 and May 17. Configurable per-component workflow, Three Amigos as an agent task, BDD-spec boundary protection, and a full engagement-finder loop. Here's what worked and what didn't.",
     og_title: "Market My Spec Case Study — The Harness Built This Too",
