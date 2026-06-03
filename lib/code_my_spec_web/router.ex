@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.Router do
     }
     plug :fetch_current_scope_for_user
     plug CodeMySpecWeb.Plugs.GaClientId
+    plug CodeMySpecWeb.Plugs.CSPReportOnly
   end
 
   pipeline :api do

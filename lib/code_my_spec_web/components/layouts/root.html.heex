@@ -43,11 +43,11 @@
     <meta name="twitter:image" content={assigns[:og_image] || CodeMySpecWeb.ImageUrl.image_url("og-default.png", CodeMySpecWeb.Endpoint.url())} />
     <%= if assigns[:json_ld_list] do %>
       <%= for item <- assigns[:json_ld_list] do %>
-        <script type="application/ld+json"><%= raw(item) %></script>
+        <script type="application/ld+json" nonce={assigns[:csp_nonce]}><%= raw(item) %></script>
       <% end %>
     <% else %>
       <%= if assigns[:json_ld] do %>
-        <script type="application/ld+json"><%= raw(assigns[:json_ld]) %></script>
+        <script type="application/ld+json" nonce={assigns[:csp_nonce]}><%= raw(assigns[:json_ld]) %></script>
       <% end %>
     <% end %>
 
@@ -89,7 +89,7 @@
       <%!-- gtag.js: browser pageviews, sessions, engagement, bot exclusion, referrer attribution --%>
       <script async="async" src={"https://www.googletagmanager.com/gtag/js?id=#{ga_measurement_id}"}>
       </script>
-      <script>
+      <script nonce={assigns[:csp_nonce]}>
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
@@ -97,7 +97,7 @@
       </script>
     <% end %>
 
-    <script>
+    <script nonce={assigns[:csp_nonce]}>
       (() => {
         const setTheme = (theme) => {
           if (theme === "system") {
