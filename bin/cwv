@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Core Web Vitals via PageSpeed Insights (lab Lighthouse + CrUX field data).
+
+Auth, in order of preference:
+  1. PAGESPEED_API_KEY (env or code_my_spec/.env) -> ?key=...   [needs the key's
+     API-restrictions to allow PageSpeed Insights; the Gemini keys are blocked]
+  2. gcloud OAuth access token + x-goog-user-project=$GOOGLE_CLOUD_PROJECT
+     (default "code-my-spec", where the PageSpeed Insights API is enabled).
+
+Usage:
+  bin/cwv                                   # default URL set, mobile
+  bin/cwv https://codemyspec.com/ <url2>... # specific URLs
+  STRATEGY=desktop bin/cwv <url>            # desktop instead of mobile
+
+Thresholds (Google "good"): LCP < 2.5s, INP < 200ms, CLS < 0.1.
+Field data (CrUX) is the source of truth for ranking; lab is synthetic/diagnostic.
+"""
+import os, sys, json, subprocess, urllib.request, urllib.error, urllib.parse
+
+DEFAULT = [
+    "https://codemyspec.com/",
+    "https://codemyspec.com/blog",
+    "https://codemyspec.com/blog/spec-driven-development",
+    "https://codemyspec.com/products/code-my-spec",
+]
+
+
+def api_key():
+    k = os.environ.get("PAGESPEED_API_KEY")
+    if k:
+        return k
+    envf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env")
+    if os.path.exists(envf):
+        for line in open(envf):
+            if line.startswith("PAGESPEED_API_KEY="):
+                return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def auth():
+    """Return (query_suffix, headers)."""
+    k = api_key()
+    if k:
+        return "&key=" + k, {}
+    try:
+        tok = subprocess.check_output(["gcloud", "auth", "print-access-token"],
+                                      text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        sys.exit("error: no PAGESPEED_API_KEY and gcloud token unavailable")
+    proj = os.environ.get("GOOGLE_CLOUD_PROJECT", "code-my-spec")
+    return "", {"Authorization": "Bearer " + tok, "x-goog-user-project": proj}
+
+
+def field(d, src, label):
+    le = d.get(src) or {}
+    ov = le.get("overall_category")
+    if not ov:
+        print(f"  {label}: no field data")
+        return
+    m = le.get("metrics", {})
+
+    def g(k):
+        x = m.get(k)
+        return f"{x['percentile']} ({x['category']})" if x else "n/a"
+
+    print(f"  {label} [{ov}]: LCP {g('LARGEST_CONTENTFUL_PAINT_MS')} | "
+          f"INP {g('INTERACTION_TO_NEXT_PAINT')} | CLS {g('CUMULATIVE_LAYOUT_SHIFT_SCORE')} | "
+          f"TTFB {g('EXPERIMENTAL_TIME_TO_FIRST_BYTE')}")
+
+
+def run(url, strat, suffix, headers):
+    q = urllib.parse.urlencode({"url": url, "strategy": strat, "category": "performance"})
+    req = urllib.request.Request(
+        "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?" + q + suffix,
+        headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            d = json.load(r)
+    except urllib.error.HTTPError as e:
+        d = json.load(e)
+    if "error" in d:
+        print(f"== {url} [{strat}] ==  ERROR {d['error']['code']}: {d['error']['message'][:140]}")
+        return
+    lr = d.get("lighthouseResult", {})
+    a = lr.get("audits", {})
+    score = round((lr.get("categories", {}).get("performance", {}).get("score") or 0) * 100)
+
+    def lab(k):
+        return a.get(k, {}).get("displayValue", "-")
+
+    print(f"== {url} [{strat}] ==")
+    print(f"  LAB score {score}: LCP {lab('largest-contentful-paint')} | "
+          f"CLS {lab('cumulative-layout-shift')} | TBT {lab('total-blocking-time')} | "
+          f"FCP {lab('first-contentful-paint')}")
+    field(d, "loadingExperience", "FIELD url ")
+    field(d, "originLoadingExperience", "FIELD orig")
+
+
+if __name__ == "__main__":
+    suffix, headers = auth()
+    strategy = os.environ.get("STRATEGY", "mobile")
+    for u in (sys.argv[1:] or DEFAULT):
+        run(u, strategy, suffix, headers)
