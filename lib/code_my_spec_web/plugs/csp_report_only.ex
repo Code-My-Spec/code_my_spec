@@ -29,9 +29,9 @@ defmodule CodeMySpecWeb.Plugs.CSPReportOnly do
   defp policy(nonce) do
     [
       "default-src 'self'",
-      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com",
-      "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com",
-      "img-src 'self' data: https://images.codemyspec.com https://www.google-analytics.com https://www.googletagmanager.com",
+      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com",
+      "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com",
+      "img-src 'self' data: https://images.codemyspec.com https://www.google-analytics.com https://www.googletagmanager.com https://img.shields.io",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self'",
       "object-src 'none'",
