@@ -1,16 +1,17 @@
 defmodule CodeMySpecWeb.Plugs.CSPReportOnly do
   @moduledoc """
-  Adds a `Content-Security-Policy-Report-Only` header in monitor mode.
-
-  Report-only blocks NOTHING: it only makes the browser report what *would* be
-  blocked (to the devtools console, and to `report-uri` if configured). This lets
-  us validate the policy against real traffic before enforcing it.
+  Sets an ENFORCING `Content-Security-Policy` header (validated in report-only
+  first, flipped to enforce 2026-06-03 after a clean cross-site validation).
 
   A fresh nonce is generated per request and assigned as `:csp_nonce` so the inline
-  `<script>` tags in the root layout can carry `nonce={assigns[:csp_nonce]}`. Once
-  the violation reports are clean, promote this to enforcement by renaming the
-  header to `content-security-policy` (and fold the `base-uri`/`frame-ancestors`
-  directives currently set via `put_secure_browser_headers` into it).
+  `<script>` tags in the root layout carry `nonce={assigns[:csp_nonce]}`. This plug
+  runs last in the `:browser` pipeline, so `put_resp_header/3` replaces Phoenix's
+  default `base-uri`/`frame-ancestors` CSP with this fuller policy (which already
+  includes both directives).
+
+  To revert to monitor mode, change the header name back to
+  `content-security-policy-report-only`. (Module name is historical; it now
+  enforces.)
   """
   import Plug.Conn
 
@@ -23,7 +24,7 @@ defmodule CodeMySpecWeb.Plugs.CSPReportOnly do
 
     conn
     |> assign(:csp_nonce, nonce)
-    |> put_resp_header("content-security-policy-report-only", policy(nonce))
+    |> put_resp_header("content-security-policy", policy(nonce))
   end
 
   defp policy(nonce) do
