@@ -11,7 +11,7 @@ defmodule CodeMySpecWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers, %{
       "strict-transport-security" => "max-age=63072000; includeSubDomains; preload",
-      "permissions-policy" => "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+      "permissions-policy" => "camera=(), microphone=(), geolocation=()",
       "x-frame-options" => "SAMEORIGIN"
     }
     plug :fetch_current_scope_for_user
