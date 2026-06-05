@@ -235,12 +235,16 @@ defmodule CodeMySpecCli.Release.PackageExtension do
   # the published binary on 4003). Walk the whole plugin tree and swap every
   # `4004` token to `4003` so the shipped plugin lands on the prod port.
   # Originally limited to `.claude-plugin/`, but skill markdown files (under
-  # `skills/`) now contain inline curl invocations that also need rewriting.
+  # `skills/`) now contain server calls that also need rewriting.
+  # NOTE: `match_dot: true` is REQUIRED. `.claude-plugin/` is a dotdir, and
+  # `Path.wildcard/1` skips dot entries by default — without it, plugin.json and
+  # the bin/hook,approve scripts (carrying `${CODEMYSPEC_PORT:-4004}`) silently
+  # keep the dev port, shipping a prod plugin whose MCP server points at 4004.
   # sobelow_skip ["Traversal"]
   defp rewrite_dev_port(plugin_dest) do
     plugin_dest
     |> Path.join("**/*")
-    |> Path.wildcard()
+    |> Path.wildcard(match_dot: true)
     |> Enum.filter(&File.regular?/1)
     |> Enum.each(fn path ->
       content = File.read!(path)
