@@ -1,16 +1,20 @@
-# Hetzner + Docker Compose Deployment
+# Hetzner + Kamal Deployment
 
-Reference for provisioning Hetzner Cloud servers, running multi-environment Docker Compose stacks, and managing the full production lifecycle for a Phoenix/Elixir application.
+Reference for provisioning Hetzner Cloud servers and deploying a Phoenix/Elixir app with **Kamal 2**. Images are built in CI and pushed to GHCR; Kamal pulls them onto the host and **kamal-proxy** terminates TLS and routes by hostname. App secrets come from AWS SSM at boot.
 
-**Stack:** Hetzner cax11 (ARM64, 4GB), Ubuntu 24.04, Docker Compose, Caddy 2, Postgres 17, Phoenix release.
+**Stack:** Hetzner cax11 (ARM64) / shared-vCPU (amd64), Ubuntu 24.04, Kamal 2 + kamal-proxy, Postgres 17 (shared `infra-postgres-1` container on a `db_net` network), GHCR for images, AWS SSM Parameter Store for secrets.
+
+> **History:** this project deployed with Docker Compose + Caddy + rsync until early 2026. Both `market_my_spec` and `get_ai_traffic` migrated to the Kamal stack below. If you find a `docker-compose.prod.yml` + `Caddyfile` in a repo, it's vestigial — the live path is `scripts/deploy` → Kamal.
+
+Companion playbooks:
+- `ci-image-build.md` — the GitHub Actions multi-arch build that produces the GHCR image this deploy pulls.
+- `secrets-ssm.md` — Varlock (local) → SSM Parameter Store (prod) secret lifecycle that `.kamal/secrets-common` and `Secrets.load!/1` depend on.
+- `aws-s3-iam.md` — the IAM user (S3 + SSM) the running container uses.
 
 Sources:
-- [Hetzner hcloud CLI how-to](https://community.hetzner.com/tutorials/howto-hcloud-cli/)
-- [hcloud CLI releases](https://github.com/hetznercloud/cli/releases)
-- [Caddy reverse_proxy directive](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
-- [Docker Compose production docs](https://docs.docker.com/compose/how-tos/production/)
-- [docker-rollout](https://github.com/wowu/docker-rollout)
-- [Docker Compose pre-defined env vars](https://docs.docker.com/compose/how-tos/environment-variables/envvars/)
+- [Kamal docs](https://kamal-deploy.org/)
+- [kamal-proxy](https://github.com/basecamp/kamal-proxy)
+- [hcloud CLI](https://github.com/hetznercloud/cli/releases)
 - [Phoenix releases guide](https://hexdocs.pm/phoenix/releases.html)
 
 ---
@@ -34,26 +38,19 @@ hcloud context create myproject
 ### SSH Key Management
 
 ```bash
-# Upload your local public key
 hcloud ssh-key create --name my-key --public-key-from-file ~/.ssh/id_ed25519.pub
-
-# List keys
 hcloud ssh-key list
-
-# Delete a key
 hcloud ssh-key delete my-key
 ```
 
 ### Server Provisioning
 
-The cax11 is an ARM64 (Ampere Altra) shared-vCPU plan: 2 vCPU, 4 GB RAM, 40 GB SSD, ~3.79 EUR/month. Available in EU regions only (fsn1, nbg1, hel1).
+cax11 is an ARM64 (Ampere Altra) shared-vCPU plan: 2 vCPU, 4 GB RAM, 40 GB SSD, ~3.79 EUR/month, EU regions only (fsn1, nbg1, hel1). A `cx`/`cpx` amd64 plan works too — match the box arch to the image arch you build in CI (`builder.arch` in `config/deploy.yml`).
 
 ```bash
-# List available server types and images
 hcloud server-type list
 hcloud image list --type system | grep ubuntu
 
-# Create server with SSH key and firewall
 hcloud server create \
   --name myproject-prod \
   --type cax11 \
@@ -62,568 +59,308 @@ hcloud server create \
   --ssh-key my-key \
   --firewall myproject-fw
 
-# Get server IP
 hcloud server describe myproject-prod | grep "Public Net"
-
-# SSH in
 ssh root@<IP>
 ```
 
 ### Firewall Rules
 
+kamal-proxy listens on 80/443. Open those plus SSH.
+
 ```bash
 hcloud firewall create --name myproject-fw
 
-# Allow SSH from your IP only
+# SSH from your IP only
 hcloud firewall add-rule myproject-fw \
   --direction in --source-ips YOUR_IP/32 --protocol tcp --port 22
 
-# Allow HTTP (Let's Encrypt ACME challenge)
-hcloud firewall add-rule myproject-fw \
-  --direction in --source-ips 0.0.0.0/0 --source-ips ::/0 --protocol tcp --port 80
-
-# Allow HTTPS
-hcloud firewall add-rule myproject-fw \
-  --direction in --source-ips 0.0.0.0/0 --source-ips ::/0 --protocol tcp --port 443
-
-# Allow HTTPS/UDP for HTTP/3 (QUIC)
-hcloud firewall add-rule myproject-fw \
-  --direction in --source-ips 0.0.0.0/0 --source-ips ::/0 --protocol udp --port 443
+# HTTP (ACME HTTP-01 challenge) + HTTPS + HTTP/3
+hcloud firewall add-rule myproject-fw --direction in --source-ips 0.0.0.0/0 --source-ips ::/0 --protocol tcp --port 80
+hcloud firewall add-rule myproject-fw --direction in --source-ips 0.0.0.0/0 --source-ips ::/0 --protocol tcp --port 443
+hcloud firewall add-rule myproject-fw --direction in --source-ips 0.0.0.0/0 --source-ips ::/0 --protocol udp --port 443
 ```
 
 ### Snapshots
 
-Take a snapshot before risky operations (OS upgrades, major migrations). Cost ~0.01 EUR/GB/month.
+Take a snapshot before risky operations (OS upgrades, major migrations). ~0.01 EUR/GB/month.
 
 ```bash
-# Create snapshot
-hcloud server create-image myproject-prod \
-  --type snapshot \
+hcloud server create-image myproject-prod --type snapshot \
   --description "Before Postgres 17 upgrade $(date +%Y-%m-%d)"
-
-# List snapshots
 hcloud image list --type snapshot
-
-# Restore: create server from snapshot
-hcloud server create \
-  --name myproject-restored \
-  --type cax11 \
-  --image <snapshot-id> \
-  --ssh-key my-key
 ```
 
 ---
 
 ## 2. Server Bootstrap (one-time)
 
+Kamal installs Docker itself on first deploy (`kamal server bootstrap`), but for a shared box you provision the Postgres container and the shared network once.
+
 ```bash
-# Update system
+# Update + Docker (kamal will also do this; harmless if pre-installed)
 apt-get update && apt-get upgrade -y
-
-# Install Docker
 curl -fsSL https://get.docker.com | sh
-
-# Verify Docker Compose plugin
 docker compose version
 
-# Create deploy user
-useradd -m -s /bin/bash deploy
-usermod -aG docker deploy
+# Shared app network — every app's container attaches here to reach Postgres.
+docker network create db_net
 
-# Copy SSH key for deploy user
-mkdir -p /home/deploy/.ssh
-cp /root/.ssh/authorized_keys /home/deploy/.ssh/
-chown -R deploy:deploy /home/deploy/.ssh
-chmod 700 /home/deploy/.ssh
-chmod 600 /home/deploy/.ssh/authorized_keys
-
-# Create app directories
-mkdir -p /opt/myproject/{app,uat}
-chown -R deploy:deploy /opt/myproject
+# Shared Postgres (one per host, all apps use their own DB + per-app user).
+docker run -d --name infra-postgres-1 --restart unless-stopped \
+  --network db_net \
+  -e POSTGRES_PASSWORD=<superuser-pw> \
+  -v pgdata:/var/lib/postgresql/data \
+  postgres:17
 ```
+
+Kamal connects over SSH as `root` (`ssh: { user: root }` in `config/deploy.yml`). Hardening (key-only SSH, fail2ban, unattended-upgrades) is in §9; in practice these and the Postgres provisioning live in a shared **`devops/` monorepo**, not in each app repo.
 
 ---
 
-## 3. Multi-Environment Stack (prod + UAT on same host)
+## 3. The Kamal Deploy Model
 
-### The COMPOSE_PROJECT_NAME Approach
-
-Docker Compose prefixes all resource names with the project name. Two separate project names give fully isolated environments sharing no volumes or networks.
-
-```
-prod project:  myproject-prod-app-1, myproject-prod-db-1, myproject-prod-pgdata
-uat project:   myproject-uat-app-1,  myproject-uat-db-1,  myproject-uat-pgdata
-```
-
-Both stacks share one Caddy reverse proxy that routes by hostname.
-
-### Directory Layout on Server
-
-```
-/opt/myproject/
-├── app/                     # prod — rsync target
-│   ├── docker-compose.yml
-│   ├── Dockerfile
-│   ├── Caddyfile            # shared (mounted by Caddy service)
-│   └── ...
-├── uat/                     # uat — rsync target
-│   ├── docker-compose.yml
-│   ├── Dockerfile
-│   └── ...
-├── prod.env                 # prod secrets — never in git
-└── uat.env                  # uat secrets — never in git
-```
-
-### Shared External Network for Caddy
-
-Caddy only lives in one Compose project (prod). Both app services must be on a shared network.
-
-```bash
-docker network create caddy_proxy
-```
-
-### docker-compose.yml (prod)
+One `config/deploy.yml` per environment. kamal-proxy (started automatically) owns :80/:443, terminates TLS via Let's Encrypt, and routes by `Host` — so multiple apps coexist on one box with no shared Caddy and no `COMPOSE_PROJECT_NAME`.
 
 ```yaml
-# Run with: docker compose -p myproject-prod --env-file /opt/myproject/prod.env up -d
+# config/deploy.yml (prod)
+service: myapp
+image: code-my-spec/myapp           # GHCR repo (registry.server prepended)
 
-services:
-  db:
-    image: postgres:17
-    restart: unless-stopped
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    environment:
-      POSTGRES_USER: myproject
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: myproject_prod
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myproject"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
+servers:
+  web:
+    hosts:
+      - <PROD_IP>
+    options:
+      network: db_net               # pre-attach so the container can reach infra-postgres-1 at boot
 
-  app:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    expose:
-      - "4000"
-    environment:
-      DATABASE_URL: ecto://myproject:${POSTGRES_PASSWORD}@db/myproject_prod
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
-      PHX_HOST: ${PHX_HOST}
-      PHX_SERVER: "true"
-      # ... additional app-specific env vars
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:4000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    networks:
-      - internal
-      - caddy_proxy
+proxy:
+  ssl: true                         # kamal-proxy gets a Let's Encrypt cert for `host`
+  host: myapp.com
+  app_port: 4000
+  healthcheck:
+    path: /health                   # gates the traffic swap (see §6)
 
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - caddy_proxy
+registry:
+  server: ghcr.io
+  username: johns10
+  password:
+    - KAMAL_REGISTRY_PASSWORD       # = `gh auth token`, exported by scripts/deploy
 
-volumes:
-  pgdata:
-  caddy_data:
-  caddy_config:
+builder:
+  arch: amd64                       # match the host arch; arm64 for cax11 boxes
+  local: true                      # not actually invoked — deploys use --skip-push (CI built the image)
 
-networks:
-  internal:
-  caddy_proxy:
-    external: true
+env:
+  clear:
+    APP_ENV: prod                   # runtime env discriminator (see secrets-ssm.md)
+    AWS_REGION: us-east-1
+  secret:
+    - AWS_ACCESS_KEY_ID             # bootstrap creds only — app secrets come from SSM at boot
+    - AWS_SECRET_ACCESS_KEY
+
+ssh:
+  user: root
 ```
 
-### docker-compose.yml (uat)
+Key facts:
+- **No Caddy, no Compose.** kamal-proxy is the reverse proxy. A `Caddyfile` in the repo is reference-only.
+- **`options.network: db_net`** attaches the container to the shared network at create time so `DATABASE_URL=ecto://...@infra-postgres-1/myapp_prod` resolves.
+- **`env.secret` carries only AWS bootstrap creds** (+ the GHCR token). Every other secret is fetched from SSM at boot — see `secrets-ssm.md`.
+- **`APP_ENV`** (not `MIX_ENV`) selects prod vs uat at runtime, so one `MIX_ENV=prod` image serves both.
 
-Same structure, no Caddy service (prod Caddy routes to UAT too).
+### Multi-environment
 
-```yaml
-# Run with: docker compose -p myproject-uat --env-file /opt/myproject/uat.env up -d
-
-services:
-  db:
-    image: postgres:17
-    restart: unless-stopped
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    environment:
-      POSTGRES_USER: myproject
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: myproject_uat
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U myproject"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
-
-  app:
-    build: .
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    expose:
-      - "4000"
-    environment:
-      DATABASE_URL: ecto://myproject:${POSTGRES_PASSWORD}@db/myproject_uat
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
-      PHX_HOST: ${PHX_HOST}
-      PHX_SERVER: "true"
-    networks:
-      - internal
-      - caddy_proxy
-
-volumes:
-  pgdata:
-
-networks:
-  internal:
-  caddy_proxy:
-    external: true
-```
-
-Key isolation facts:
-- `-p myproject-prod` vs `-p myproject-uat` means all named volumes are separate.
-- Each stack has its own `internal` network — the two databases cannot reach each other.
-- Both `app` services join `caddy_proxy` so Caddy can reach them by Docker DNS names.
-
-### How Docker DNS Works Across Projects
-
-Within `caddy_proxy`, Docker resolves container names as `<project>-<service>-<replica>`:
-
-```
-myproject-prod-app-1   # prod app container
-myproject-uat-app-1    # uat app container
-```
+Separate boxes, one `config/deploy.<env>.yml` each (e.g. `config/deploy.uat.yml` → `<UAT_IP>`, `host: uat.myapp.com`, `APP_ENV: uat`, often `arch: arm64`). This replaces the old single-host `COMPOSE_PROJECT_NAME` split — isolation is physical, and each box can co-host unrelated apps (prod box also runs `market_my_spec`; uat box also runs `fuellytics`).
 
 ---
 
-## 4. Caddy Configuration
+## 4. Image Build (CI)
 
-### Caddyfile — Multi-Domain Routing
-
-```caddy
-myapp.com {
-    reverse_proxy myproject-prod-app-1:4000 {
-        health_uri /health
-        health_interval 10s
-        health_timeout 5s
-        health_status 2xx
-    }
-}
-
-uat.myapp.com {
-    reverse_proxy myproject-uat-app-1:4000 {
-        health_uri /health
-        health_interval 10s
-        health_timeout 5s
-        health_status 2xx
-    }
-}
-```
-
-Auto-TLS notes:
-- Caddy obtains Let's Encrypt certificates automatically for every named site block.
-- DNS must point to the server's public IP before first deployment.
-- Caddy stores certificates in the `caddy_data` volume — must persist across redeploys.
-- Port 80 must be reachable (ACME HTTP-01 challenge).
-
-### Reloading Caddy Config
-
-```bash
-docker exec myproject-prod-caddy-1 caddy validate --config /etc/caddy/Caddyfile
-docker exec myproject-prod-caddy-1 caddy reload --config /etc/caddy/Caddyfile
-```
+Images are **not** built on the deploy machine. GitHub Actions builds a multi-arch image on push to `master` and pushes it to GHCR tagged with the commit SHA. `scripts/deploy` waits for that build, then `kamal deploy --skip-push --version=<sha>` pulls it. Full detail: **`ci-image-build.md`**.
 
 ---
 
 ## 5. Deployment Workflow
 
-### Deploy Script Pattern
+`scripts/deploy` is the only supported entry point — never run `kamal deploy` directly (the bootstrap creds must be rendered from SSM first).
 
 ```bash
 #!/usr/bin/env bash
 # scripts/deploy — deploy prod
 set -euo pipefail
+REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd); cd "$REPO_ROOT"
+DEVOPS_DIR="${DEVOPS_DIR:-$HOME/Documents/github/devops}"
 
-SERVER="deploy@<SERVER_IP>"
-APP_DIR="/opt/myproject/app"
-ENV_FILE="/opt/myproject/prod.env"
-PROJECT="myproject-prod"
+# 1. Clean tree (Kamal versions by commit SHA)
+[[ -z "$(git status --porcelain)" ]] || { echo "commit/stash first" >&2; git status --short >&2; exit 1; }
+SHA=$(git rev-parse HEAD); BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-echo "==> Syncing code to server..."
-rsync -az --delete \
-  --exclude='.git' \
-  --exclude='_build' \
-  --exclude='deps' \
-  --exclude='assets/node_modules' \
-  --exclude='.code_my_spec' \
-  --exclude='test' \
-  --exclude='envs' \
-  ./ "$SERVER:$APP_DIR/"
+# 2. Push and wait for the CI build to land in GHCR
+git push origin "$BRANCH"
+sleep 5
+RUN_ID=$(gh run list --workflow=build.yml --branch="$BRANCH" --limit=1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$RUN_ID" --exit-status --interval 10
 
-echo "==> Building and restarting containers..."
-ssh "$SERVER" "cd $APP_DIR && \
-  docker compose -p $PROJECT --env-file $ENV_FILE up -d --build"
+# 3. GHCR pull token + render AWS bootstrap creds from SSM into a temp file
+export KAMAL_REGISTRY_PASSWORD; KAMAL_REGISTRY_PASSWORD=$(gh auth token)
+ENV_FILE=$(mktemp); trap 'rm -f "$ENV_FILE"' EXIT
+"$DEVOPS_DIR/scripts/render-env" myapp prod --out "$ENV_FILE" || { echo "render-env failed; run 'aws sso login'" >&2; exit 1; }
+set -a; source "$ENV_FILE"; set +a
+unset AWS_SESSION_TOKEN AWS_SECURITY_TOKEN AWS_PROFILE     # container needs the long-term IAM pair, not your SSO STS token
+for r in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+  [[ -n "${!r:-}" ]] || { echo "ERROR: $r empty after render-env; refusing to deploy" >&2; exit 1; }
+done
 
-echo "==> Running migrations..."
-ssh "$SERVER" "cd $APP_DIR && \
-  docker compose -p $PROJECT --env-file $ENV_FILE exec app /app/bin/migrate"
+# 4. Migrate against the NEW image BEFORE swapping traffic
+kamal app exec --version="$SHA" "/app/bin/migrate"
 
-echo "==> Done: https://myapp.com"
+# 5. Swap traffic
+kamal deploy --skip-push --version="$SHA" "$@"
 ```
 
-### Build Performance Notes
+> **Why the temp-file + hard-fail guard (steps 3):** `source <(render-env ...)` (process substitution) swallows `render-env`'s exit code. If SSO is stale it prints nothing, `source` consumes nothing, and the deploy proceeds with **empty** AWS keys — Kamal then pushes an empty env-file to the host that survives across every later `kamal app exec`, bricking prod secrets. Render to a temp file, check the exit code, and refuse to deploy on empty creds.
 
-cax11 has 4 GB RAM. Elixir builds are memory-intensive. If Docker build OOMs:
-- Add swap: `fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`
-- Or build locally and push to a registry (GHCR, Docker Hub).
+### First deploy per environment (bootstrap)
 
-### Zero-Downtime Deployments with docker-rollout
-
-[docker-rollout](https://github.com/wowu/docker-rollout) scales app to 2 replicas, waits for health, removes old one.
-
-Requirements:
-- No `container_name` set on the service
-- No `ports` mapped (use `expose` — Caddy proxies internally)
-- A `healthcheck` must be defined
+The migrate-before-swap order assumes Kamal's per-host env-file already exists. On a brand-new env it doesn't, so the very first deploy is manual:
 
 ```bash
-# Install on server (one-time)
-mkdir -p /home/deploy/.docker/cli-plugins
-curl -fsSL https://raw.githubusercontent.com/wowu/docker-rollout/main/docker-rollout \
-  -o /home/deploy/.docker/cli-plugins/docker-rollout
-chmod +x /home/deploy/.docker/cli-plugins/docker-rollout
-
-# In deploy script, replace `up -d --build` with:
-docker compose -p $PROJECT --env-file $ENV_FILE build
-docker compose -p $PROJECT --env-file $ENV_FILE up -d db
-docker -p $PROJECT rollout app
+kamal deploy --skip-push --version=<sha> -c config/deploy.yml
+kamal app exec --version=<sha> -c config/deploy.yml /app/bin/migrate
 ```
+
+Thereafter use `scripts/deploy`.
 
 ---
 
-## 6. Phoenix Migrations in Docker
+## 6. Migrations & Health
 
-Phoenix releases include a `bin/migrate` script that runs `MyApp.Release.migrate()`.
+### Migrate before traffic swap
+
+`kamal app exec --version=<sha> /app/bin/migrate` boots a one-off container from the **new** image, runs migrations, and exits. The currently-serving (old) container keeps handling traffic against the now-migrated schema until `kamal deploy` swaps it in.
+
+`bin/migrate` is a release overlay (`rel/overlays/bin/migrate`):
+
+```sh
+#!/bin/sh
+set -eu
+cd -P -- "$(dirname -- "$0")"
+exec ./myapp eval MyApp.Release.migrate
+```
+
+> **Additive-only constraint:** during the migrate-then-swap window the **old** code runs against the **new** schema. A destructive migration (drop column the old code still reads) breaks the old container in that gap. Two-phase it: deploy code that stops reading the column, then a later deploy that drops it.
+
+### Health endpoint
+
+kamal-proxy gates the swap on `proxy.healthcheck.path`. Define it **outside all router pipelines** (no session, CSRF, auth, or DB):
 
 ```elixir
-defmodule MyApp.Release do
-  @app :myapp
-
-  def migrate do
-    load_app()
-    for repo <- repos() do
-      {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
-    end
-  end
-
-  def rollback(repo, version) do
-    load_app()
-    {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
-  end
-
-  defp repos, do: Application.fetch_env!(@app, :ecto_repos)
-  defp load_app, do: Application.load(@app)
+# router.ex
+scope "/", MyAppWeb do
+  get "/health", PageController, :health   # no :browser / :api pipeline
 end
+# page_controller.ex
+def health(conn, _params), do: send_resp(conn, 200, "ok")
 ```
 
-Commands:
+**`force_ssl` gotcha:** kamal-proxy's internal health probe hits the app port directly (plain HTTP, no `X-Forwarded-Proto`). If you use `force_ssl`, exclude the health path or it 301s and the probe fails:
 
-```bash
-# Run all pending migrations
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env \
-  exec app /app/bin/migrate
-
-# Rollback one version
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env \
-  exec app /app/bin/myapp eval \
-  'MyApp.Release.rollback(MyApp.Repo, 20260101000000)'
-
-# Interactive shell
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env \
-  exec app /app/bin/myapp remote
+```elixir
+config :myapp, MyAppWeb.Endpoint,
+  force_ssl: [rewrite_on: [:x_forwarded_proto], exclude: ["/up", "localhost", "127.0.0.1"]]
 ```
+
+(`get_ai_traffic` uses `/health` and reports no exclusion needed; `market_my_spec` uses `/up` and excludes it. Match the path to your proxy config and test the probe.)
 
 ---
 
-## 7. Database Management
+## 7. Secrets
 
-### Backup
-
-```bash
-# Manual dump
-docker exec myproject-prod-db-1 \
-  pg_dump -U myproject myproject_prod \
-  | gzip > /opt/myproject/backups/prod-$(date +%Y%m%d-%H%M%S).sql.gz
-```
-
-### Automated Backups via Cron
-
-```
-# Prod backup at 3:00 AM daily
-0 3 * * * docker exec myproject-prod-db-1 pg_dump -U myproject myproject_prod | gzip > /opt/myproject/backups/prod-$(date +\%Y\%m\%d-\%H\%M\%S).sql.gz
-
-# Purge backups older than 14 days
-0 4 * * * find /opt/myproject/backups -name "*.sql.gz" -mtime +14 -delete
-```
-
-### Restore
+`.kamal/secrets-common` is a Dotenv file Kamal reads; `${VAR}` tokens are interpolated from the deploy shell (populated by `scripts/deploy`). **It carries only bootstrap creds — never app secrets:**
 
 ```bash
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env stop app
-docker exec myproject-prod-db-1 psql -U myproject -c "DROP DATABASE myproject_prod;"
-docker exec myproject-prod-db-1 psql -U myproject -c "CREATE DATABASE myproject_prod;"
-gunzip -c /opt/myproject/backups/prod-YYYYMMDD.sql.gz \
-  | docker exec -i myproject-prod-db-1 psql -U myproject myproject_prod
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env start app
+# .kamal/secrets-common
+KAMAL_REGISTRY_PASSWORD=${KAMAL_REGISTRY_PASSWORD}
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 ```
+
+At container boot, `MyApp.Secrets.load!/1` pulls everything under `/myapp/<APP_ENV>/` from SSM into the OS env before `runtime.exs` reads it. Full lifecycle (Varlock locally, SSM in prod, seeding, rotation): **`secrets-ssm.md`**.
 
 ---
 
-## 8. Secrets Management
+## 8. Database Management
 
-### Env Files on Server
-
-Secrets live at `/opt/myproject/{prod,uat}.env`. These files are:
-- Never committed to the repo
-- Owned by `deploy` user with mode `600`
-- Passed via `--env-file`
-
-### Env File Format
+DB is the shared `infra-postgres-1` container on `db_net`, with a per-app database and per-app user (e.g. `myapp_prod_app`). `DATABASE_URL` is an SSM param.
 
 ```bash
-# /opt/myproject/prod.env
-POSTGRES_PASSWORD=<openssl-rand-hex-16>
-SECRET_KEY_BASE=<mix-phx-gen-secret>
-PHX_HOST=myapp.com
-# ... service-specific keys
+# Manual dump (run on the host)
+docker exec infra-postgres-1 pg_dump -U myapp_prod_app myapp_prod | gzip > /opt/backups/myapp-prod-$(date +%Y%m%d-%H%M%S).sql.gz
+
+# Restore
+gunzip -c backup.sql.gz | docker exec -i infra-postgres-1 psql -U myapp_prod_app myapp_prod
 ```
 
-### Runtime Config and Dotenvy
-
-Phoenix apps using Dotenvy in `config/runtime.exs` load env files from `$RELEASE_ROOT/envs/`. In Docker, all secrets come as container env vars (via `--env-file`). The `envs/` dir in the Docker image is intentionally empty:
-
-```dockerfile
-# Prevents Dotenvy crash on missing file
-RUN mkdir -p envs && touch envs/.env envs/prod.env
-```
+In practice, scheduled `pg_dump` cron + retention purge live in the shared **`devops/` monorepo** (one backup job for the shared Postgres), not per-app.
 
 ---
 
 ## 9. Server Hardening
 
-### SSH: Key-Only Auth
+Typically applied once per host from the shared `devops/` monorepo.
 
 ```bash
-# /etc/ssh/sshd_config
-PermitRootLogin no
+# /etc/ssh/sshd_config — key-only
+PermitRootLogin prohibit-password
 PasswordAuthentication no
 PubkeyAuthentication yes
-AllowUsers deploy
 ```
 
-Test with `sshd -t` before restarting. Keep current session open while testing in a second terminal.
-
-### Firewall Notes
-
-Docker bypasses UFW by writing its own iptables rules. The Hetzner cloud firewall (network edge) is more reliable for controlling inbound access to Docker-published ports.
-
-### fail2ban
-
 ```bash
+# fail2ban
 apt-get install -y fail2ban
-cat > /etc/fail2ban/jail.local << 'EOF'
-[DEFAULT]
-bantime  = 3600
-findtime = 600
-maxretry = 5
+printf '[sshd]\nenabled = true\nbantime = 3600\nfindtime = 600\nmaxretry = 5\n' > /etc/fail2ban/jail.local
+systemctl enable --now fail2ban
 
-[sshd]
-enabled  = true
-EOF
-
-systemctl enable fail2ban && systemctl start fail2ban
+# unattended upgrades
+apt-get install -y unattended-upgrades && dpkg-reconfigure -plow unattended-upgrades
 ```
 
-### Unattended Upgrades
-
-```bash
-apt-get install -y unattended-upgrades
-dpkg-reconfigure -plow unattended-upgrades
-```
+> Docker bypasses UFW by writing its own iptables rules. The **Hetzner cloud firewall** (network edge, §1) is the reliable control for inbound access. kamal-proxy publishes 80/443; nothing else should be exposed.
 
 ---
 
 ## 10. Operational Runbook
 
-### Check Status
+Kamal is the primary tool — most ops don't need a raw SSH session.
 
 ```bash
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-docker logs myproject-prod-app-1 --tail 50 -f
-docker inspect myproject-prod-app-1 | jq '.[0].State.Health'
-```
+# Status / logs
+kamal app details
+kamal app logs -f
+kamal app logs --grep ERROR
 
-### Restart
+# Shell / IEx in the running container
+kamal app exec -i --reuse "/app/bin/myapp remote"
 
-```bash
-# Without rebuild
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env restart app
+# One-off command against current version
+kamal app exec "/app/bin/myapp eval ':ok'"
 
-# With rebuild
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env up -d --build app
-```
+# Rollback to a previous SHA (image still in GHCR)
+kamal rollback <old-sha>
 
-### Disk Usage
-
-```bash
-docker system df
-docker image prune -f
-docker builder prune -f
+# kamal-proxy state (routes, certs)
+kamal proxy details
 ```
 
 ### Common Issues
 
-**Build OOMs on cax11:** Add swap or build locally and push image to registry.
+**Every request 500s right after a "successful" deploy** — migrations didn't run before the swap. Confirm `scripts/deploy` ran `kamal app exec --version=$SHA /app/bin/migrate` *before* `kamal deploy`.
 
-**Container exits immediately:** Run interactively to see the error:
-```bash
-docker compose -p myproject-prod --env-file /opt/myproject/prod.env \
-  run --rm app /app/bin/myapp eval ":ok"
-```
+**Container boots then exits / "No SSM parameters found"** — bootstrap AWS creds are empty or the IAM user can't read `/myapp/<env>/*`. Check `secrets-ssm.md` and the IAM policy in `aws-s3-iam.md`. Re-run `aws sso login`.
 
-**Caddy not routing to UAT:** Ensure UAT app is on the `caddy_proxy` network:
-```bash
-docker network inspect caddy_proxy | jq '.[0].Containers | keys'
-```
+**kamal-proxy health probe fails / endless redirect** — `force_ssl` is 301-ing the health path. Exclude it (§6).
 
-**POSTGRES_PASSWORD changed but DB rejects it:** The password env var only takes effect on first volume creation. Either `ALTER USER` in psql or nuke the volume and re-migrate.
+**`DATABASE_URL`/host unreachable** — the container isn't on `db_net`. Confirm `servers.web.options.network: db_net` and that `infra-postgres-1` is running on the same network.
 
-**Containers created with wrong names:** You forgot `-p myproject-prod`. Docker compose used the directory name as the project, creating duplicate containers. Stop the bad ones with `docker compose -p <wrong-name> down`.
+**Deploy proceeds with empty AWS keys** — you bypassed `scripts/deploy` or used process substitution for `render-env`. Always go through the script (§5).

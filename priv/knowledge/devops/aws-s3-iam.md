@@ -143,6 +143,91 @@ aws iam delete-access-key --user-name myproject-app-prod --access-key-id AKIAOLD
 
 ---
 
+## 2b. Combined S3 + SSM IAM user (Kamal deploys)
+
+For apps deployed with Kamal (see `hetzner-docker-deploy.md`), the running container needs **both** S3 (file storage) **and** SSM Parameter Store (boot-time secrets — see `secrets-ssm.md`). Use **one IAM user per app+env** with a single policy covering both, plus `kms:Decrypt` scoped to SSM (SecureString params are KMS-encrypted).
+
+### Policy template
+
+Commit a templated policy (`deploy/aws/<app>-app-policy.json`) with `{{PLACEHOLDER}}` tokens so account IDs aren't hardcoded:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "SsmReadAppParams", "Effect": "Allow",
+      "Action": ["ssm:GetParametersByPath", "ssm:GetParameters", "ssm:GetParameter"],
+      "Resource": "arn:aws:ssm:{{REGION}}:{{ACCOUNT_ID}}:parameter/myapp/*" },
+    { "Sid": "KmsDecryptViaSsm", "Effect": "Allow",
+      "Action": "kms:Decrypt", "Resource": "*",
+      "Condition": { "StringEquals": { "kms:ViaService": "ssm.{{REGION}}.amazonaws.com" } } },
+    { "Sid": "S3BucketList", "Effect": "Allow",
+      "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::{{S3_BUCKET}}" },
+    { "Sid": "S3ObjectRW", "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::{{S3_BUCKET}}/*" }
+  ]
+}
+```
+
+The `kms:Decrypt` is scoped by `kms:ViaService: ssm.<region>.amazonaws.com` — the user can only decrypt *through SSM*, not arbitrary KMS keys. Required, or SecureString reads fail with AccessDenied.
+
+### Idempotent setup script
+
+`deploy/aws/setup.sh` renders the template and creates-or-updates everything. Run once with an admin/bootstrap profile:
+
+```bash
+AWS_REGION=us-east-1 S3_BUCKET=myapp-prod-files bash deploy/aws/setup.sh
+```
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+: "${AWS_REGION:?}"; : "${S3_BUCKET:?}"
+USER_NAME="${USER_NAME:-myapp-prod-app}"; POLICY_NAME="${POLICY_NAME:-myapp-prod-app}"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${POLICY_NAME}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+# 1. Render policy from {{TOKENS}}
+sed -e "s/{{REGION}}/${AWS_REGION}/g" -e "s/{{ACCOUNT_ID}}/${ACCOUNT_ID}/g" \
+    -e "s/{{S3_BUCKET}}/${S3_BUCKET}/g" "${HERE}/myapp-app-policy.json" > /tmp/app-policy.json
+
+# 2. Create-or-update the managed policy (new version if it exists)
+if aws iam get-policy --policy-arn "${POLICY_ARN}" >/dev/null 2>&1; then
+  aws iam create-policy-version --policy-arn "${POLICY_ARN}" \
+    --policy-document file:///tmp/app-policy.json --set-as-default >/dev/null
+else
+  aws iam create-policy --policy-name "${POLICY_NAME}" \
+    --policy-document file:///tmp/app-policy.json >/dev/null
+fi
+
+# 3. User + attach
+aws iam get-user --user-name "${USER_NAME}" >/dev/null 2>&1 || aws iam create-user --user-name "${USER_NAME}" >/dev/null
+aws iam attach-user-policy --user-name "${USER_NAME}" --policy-arn "${POLICY_ARN}"
+
+# 4. Private bucket (us-east-1 special-cases LocationConstraint)
+if ! aws s3api head-bucket --bucket "${S3_BUCKET}" 2>/dev/null; then
+  if [ "${AWS_REGION}" = "us-east-1" ]; then
+    aws s3api create-bucket --bucket "${S3_BUCKET}" --region "${AWS_REGION}" >/dev/null
+  else
+    aws s3api create-bucket --bucket "${S3_BUCKET}" --region "${AWS_REGION}" \
+      --create-bucket-configuration "LocationConstraint=${AWS_REGION}" >/dev/null
+  fi
+  aws s3api put-public-access-block --bucket "${S3_BUCKET}" \
+    --public-access-block-configuration \
+    BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+fi
+
+# 5. Mint a key — encrypt into Varlock (secrets-ssm.md), never commit
+aws iam create-access-key --user-name "${USER_NAME}" \
+  --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text
+```
+
+The minted access key becomes the app's `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` — store it in Varlock locally and seed it into SSM/Kamal bootstrap per `secrets-ssm.md`. (Optional hardening, when relevant: bucket versioning + a noncurrent-version expiry lifecycle rule + SSE-S3 `AES256` default encryption — `market_my_spec`'s bucket bootstrap enables all three.)
+
+---
+
 ## 3. ExAws Integration
 
 ### Dependencies
@@ -159,6 +244,8 @@ ExAws resolves credentials in order:
 1. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars
 2. EKS Pod Identity
 3. EC2/ECS instance role
+
+> **Hetzner (off-EC2):** there is no instance role available, so the long-lived IAM user key pair (#1) is the only option — set `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` via Kamal's `env.secret` (the same pair that bootstraps SSM at boot). The container then uses that one identity for both S3 and SSM.
 
 For local dev with `~/.aws/credentials` profiles, add `{:configparser_ex, "~> 4.0"}` and:
 ```elixir
