@@ -67,6 +67,17 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
           Sessions.clear_eval_feedback(scope, session)
           {:ok, :valid}
 
+        {:ok, :valid, advisory} ->
+          # Satisfied with a non-blocking advisory (e.g. ArchitectureDesign's
+          # "component preserved in DB" warnings). Complete the task exactly
+          # like {:ok, :valid} — the advisory already surfaced during the run
+          # (execute_proposal output). The MCP `evaluate_task` tool returns it
+          # to the agent; the stop hook just logs it and passes.
+          Logger.info("[TaskEvaluator] Task #{task.id} valid with advisory: #{advisory}")
+          Sessions.complete_task(scope, session, task.id, :completed)
+          Sessions.clear_eval_feedback(scope, session)
+          {:ok, :valid}
+
         {:ok, :invalid, feedback} ->
           # R8: hash the feedback and bump (or reset) the session-level
           # repeat counter so stop_controller can detect a stuck loop

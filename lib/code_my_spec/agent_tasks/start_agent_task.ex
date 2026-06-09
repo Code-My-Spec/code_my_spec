@@ -404,9 +404,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       # `embed: false` — `start_task` is on the request hot path. The
       # framework-knowledge re-embed + hex doc re-projection belong to
       # boot / mix.lock-poll / explicit `sync_project`, not every task
-      # start. Skipping them here also dodges the BEAM-introspection
-      # crash chain (Cloak / AWSAuth / Sobelow `Code.fetch_docs`) that
-      # the read path was tripping on.
+      # start.
       with {:ok, _file_result} <- FileSync.sync(scope, base_dir: base_dir, embed: false),
            {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: base_dir) do
         {:ok,

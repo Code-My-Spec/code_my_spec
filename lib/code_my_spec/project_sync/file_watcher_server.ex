@@ -11,15 +11,16 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   1. **File-event subscription** for the project subtrees in
      `@watched_subdirs` (specs, rules, code, etc). Events drive
      `FileSync.sync_path/3` for fingerprint-diff'd embedding refresh.
-  2. **`mix.lock` polling.** Watching `_build/<env>/lib/*/ebin/*.beam`
-     events flooded the watcher under normal `mix compile` activity —
-     every BEAM gets rewritten on recompile even when source is
-     unchanged. `mix.lock` only changes on real dep events
-     (`mix deps.get`/`update`/`unlock`), so polling its mtime is the
-     causally correct signal at zero event volume. On detected change
-     we debounce a settle window (`@lock_settle_delay_ms`) for any
-     follow-up `mix deps.compile` to finish, then run the hex doc
-     projector for that project.
+  2. **`mix.lock` polling.** The hex doc projector reads dependency
+     source from `deps/<package>/lib/**/*.ex`. That source only changes
+     on real dep events (`mix deps.get`/`update`/`unlock`), which are
+     exactly the events that rewrite `mix.lock` — so polling the lock's
+     mtime is the causally correct signal at zero event volume. (We do
+     NOT watch `deps/` via filesystem events: routing dep source through
+     `FileSync.sync_path/3` would try to embed each dep file directly
+     instead of projecting it.) On detected change we debounce a short
+     settle window (`@lock_settle_delay_ms`) for the `mix deps.get`
+     unpack to finish writing source, then run the projector.
   """
   use GenServer
   require Logger
@@ -54,11 +55,12 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   @lock_poll_interval_ms 30_000
 
   # After detecting a lock change, wait this long before running the
-  # projector. Lets a `mix deps.compile` chain settle so we read
-  # already-built BEAMs rather than mid-write ones. Mid-write reads
-  # gracefully no-op (`Code.fetch_docs` returns `{:error, _}`), but
-  # waiting avoids spurious empty projections.
-  @lock_settle_delay_ms 90_000
+  # projector. Lets the `mix deps.get` unpack finish writing source into
+  # `deps/<package>/lib/` before we read it. No `mix deps.compile` wait
+  # is needed anymore — projection reads source, not compiled BEAMs — so
+  # this is far shorter than the old beam-era 90s. Mid-write reads still
+  # no-op gracefully (unparseable source yields no module).
+  @lock_settle_delay_ms 10_000
 
   # --- Client API ---
 

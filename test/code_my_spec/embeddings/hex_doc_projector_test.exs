@@ -1,7 +1,4 @@
 defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
-  # async: false because we toggle the global `Code.put_compiler_option(:docs)`
-  # to keep EEP-48 docs in the fixture BEAMs (mix test strips them by default).
-  # Concurrent flips would race.
   use ExUnit.Case, async: false
 
   import CodeMySpec.UsersFixtures
@@ -15,12 +12,15 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  describe "project_package/2" do
+  describe "project_package/3" do
     test "writes module markdown for an installed package" do
       {scope, tmp_dir} = setup_project()
 
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix",
-        "Phoenix is a productive web framework that does not compromise speed or maintainability.")
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "Phoenix is a productive web framework that does not compromise speed."
+      end
+      """)
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
@@ -32,11 +32,20 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
       assert markdown =~ "productive web framework"
     end
 
-    test "writes one markdown file per beam in the package" do
+    test "writes one markdown file per module, named by the module" do
       {scope, tmp_dir} = setup_project()
 
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix.Endpoint", "Phoenix endpoint module.")
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix.Router", "Phoenix router DSL.")
+      write_dep_source(tmp_dir, "phoenix", "endpoint.ex", """
+      defmodule Phoenix.Endpoint do
+        @moduledoc "Phoenix endpoint module."
+      end
+      """)
+
+      write_dep_source(tmp_dir, "phoenix", "router.ex", """
+      defmodule Phoenix.Router do
+        @moduledoc "Phoenix router DSL."
+      end
+      """)
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
@@ -45,17 +54,124 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
       assert File.exists?(Path.join(base, "Phoenix.Router.md"))
     end
 
-    test "drops a package's projected markdown when the package's ebin no longer exists" do
+    test "nested modules get fully-qualified names" do
       {scope, tmp_dir} = setup_project()
 
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix", "Phoenix v1.")
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "Top-level Phoenix."
+
+        defmodule Token do
+          @moduledoc "Nested token helper."
+        end
+      end
+      """)
+
+      :ok = HexDocProjector.project_package(scope, "phoenix")
+
+      base = Path.join(tmp_dir, ".code_my_spec/hex_docs/phoenix")
+      assert File.exists?(Path.join(base, "Phoenix.md"))
+
+      nested = Path.join(base, "Phoenix.Token.md")
+      assert File.exists?(nested)
+      assert File.read!(nested) =~ "# Phoenix.Token"
+      assert File.read!(nested) =~ "Nested token helper"
+    end
+
+    test "renders @doc'd public functions as ## fun/arity sections" do
+      {scope, tmp_dir} = setup_project()
+
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "Phoenix module."
+
+        @doc "Starts the endpoint with opts."
+        def start(opts), do: opts
+
+        @doc "Returns a child spec."
+        def child_spec, do: :ok
+
+        @doc "Handles an integer."
+        def handle(x) when is_integer(x), do: x
+      end
+      """)
+
+      :ok = HexDocProjector.project_package(scope, "phoenix")
+
+      md = File.read!(Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"]))
+      assert md =~ "## start/1"
+      assert md =~ "Starts the endpoint with opts."
+      assert md =~ "## child_spec/0"
+      assert md =~ "## handle/1", "expected `when` guard to be unwrapped to arity 1"
+    end
+
+    test "@doc on a private def does not render (and is not mis-attached)" do
+      {scope, tmp_dir} = setup_project()
+
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "Phoenix module."
+
+        @doc "this doc sits above a private function"
+        defp secret(x), do: x
+
+        def public(x), do: x
+      end
+      """)
+
+      :ok = HexDocProjector.project_package(scope, "phoenix")
+
+      md = File.read!(Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"]))
+      assert md =~ "# Phoenix"
+      refute md =~ "##", "expected no function sections — the @doc was on a private def"
+      refute md =~ "secret"
+    end
+
+    test "skips a module with @moduledoc false" do
+      {scope, tmp_dir} = setup_project()
+
+      write_dep_source(tmp_dir, "phoenix", "secret.ex", """
+      defmodule Phoenix.Secret do
+        @moduledoc false
+        def x, do: 1
+      end
+      """)
+
+      :ok = HexDocProjector.project_package(scope, "phoenix")
+
+      refute File.exists?(Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.Secret.md"]))
+    end
+
+    test "skips a module with no docs at all" do
+      {scope, tmp_dir} = setup_project()
+
+      write_dep_source(tmp_dir, "phoenix", "bare.ex", """
+      defmodule Phoenix.Bare do
+        def x, do: 1
+      end
+      """)
+
+      :ok = HexDocProjector.project_package(scope, "phoenix")
+
+      refute File.exists?(Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.Bare.md"]))
+    end
+
+    test "drops a package's projected markdown when deps/<pkg> no longer exists" do
+      {scope, tmp_dir} = setup_project()
+
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "Phoenix v1."
+      end
+      """)
+
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
       target_path = Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"])
       assert File.exists?(target_path)
 
-      # Simulate uninstall: remove the package's compiled artifacts.
-      File.rm_rf!(Path.join([tmp_dir, "_build/dev/lib/phoenix"]))
+      # Simulate uninstall: remove the package's source tree.
+      File.rm_rf!(Path.join([tmp_dir, "deps/phoenix"]))
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
@@ -66,23 +182,83 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
     test "drops orphan modules when a package is upgraded and sheds modules" do
       {scope, tmp_dir} = setup_project()
 
-      # v1: two modules
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix.A", "v1 module A.")
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix.B", "v1 module B.")
+      write_dep_source(tmp_dir, "phoenix", "a.ex", """
+      defmodule Phoenix.A do
+        @moduledoc "v1 module A."
+      end
+      """)
+
+      write_dep_source(tmp_dir, "phoenix", "b.ex", """
+      defmodule Phoenix.B do
+        @moduledoc "v1 module B."
+      end
+      """)
+
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
       base = Path.join(tmp_dir, ".code_my_spec/hex_docs/phoenix")
       assert File.exists?(Path.join(base, "Phoenix.A.md"))
       assert File.exists?(Path.join(base, "Phoenix.B.md"))
 
-      # v2: only one module remains
-      File.rm!(Path.join([tmp_dir, "_build/dev/lib/phoenix/ebin/Elixir.Phoenix.B.beam"]))
+      # v2: module B is gone from source.
+      File.rm!(Path.join([tmp_dir, "deps/phoenix/lib/b.ex"]))
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
       assert File.exists?(Path.join(base, "Phoenix.A.md"))
+
       refute File.exists?(Path.join(base, "Phoenix.B.md")),
-             "Expected Phoenix.B markdown to be dropped after the v2 BEAM was removed"
+             "Expected Phoenix.B markdown to be dropped after its source was removed"
+    end
+  end
+
+  describe "resilience to unparseable / non-literal source" do
+    test "a syntactically invalid file is skipped without aborting sibling modules" do
+      {scope, tmp_dir} = setup_project()
+
+      write_dep_source(tmp_dir, "phoenix", "good.ex", """
+      defmodule Phoenix.Good do
+        @moduledoc "Good module."
+      end
+      """)
+
+      # Garbage that Code.string_to_quoted/1 rejects.
+      write_dep_source(tmp_dir, "phoenix", "bad.ex", """
+      defmodule Phoenix.Bad do
+        @moduledoc "oops
+        def (((
+      """)
+
+      # Must not raise — this is the root-cause regression (a single bad
+      # source file used to take down the whole projection via a raise).
+      assert :ok = HexDocProjector.project_package(scope, "phoenix")
+
+      base = Path.join(tmp_dir, ".code_my_spec/hex_docs/phoenix")
+      assert File.exists?(Path.join(base, "Phoenix.Good.md")),
+             "expected the valid sibling module to still project"
+    end
+
+    test "a non-literal @moduledoc is skipped without crashing" do
+      {scope, tmp_dir} = setup_project()
+
+      write_dep_source(tmp_dir, "phoenix", "dyn.ex", """
+      defmodule Phoenix.Dyn do
+        @moduledoc File.read!("README.md")
+
+        @doc "still documented"
+        def f(opts), do: opts
+      end
+      """)
+
+      :ok = HexDocProjector.project_package(scope, "phoenix")
+
+      # The module still projects (it has a function doc), but the
+      # non-literal moduledoc expression is not captured.
+      target = Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.Dyn.md"])
+      assert File.exists?(target)
+      md = File.read!(target)
+      assert md =~ "## f/1"
+      refute md =~ "File.read!"
     end
   end
 
@@ -90,16 +266,19 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
     test "skips re-writing markdown when content matches the existing file" do
       {scope, tmp_dir} = setup_project()
 
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix",
-        "Phoenix is the productive web framework.")
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "Phoenix is the productive web framework."
+      end
+      """)
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
       target = Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"])
       first_mtime = File.stat!(target, time: :posix).mtime
 
-      # Must guarantee at least 1s of clock movement so a fresh
-      # File.write would visibly bump the mtime.
+      # Guarantee at least 1s of clock movement so a fresh write would
+      # visibly bump the mtime.
       Process.sleep(1_100)
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
@@ -113,15 +292,19 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
     test "writes when the on-disk content differs from the rendered markdown" do
       {scope, tmp_dir} = setup_project()
 
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix", "v1 docs")
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "v1 docs"
+      end
+      """)
+
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
       target = Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"])
       assert File.read!(target) =~ "v1 docs"
 
-      # Externally clobber the projected file with stale content so
-      # the projector's needs_write? check has something to disagree
-      # with.
+      # Externally clobber the projected file with stale content so the
+      # projector's needs_write? check has something to disagree with.
       File.write!(target, "stale content that does not match")
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
@@ -135,8 +318,17 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
     test "projects every installed package and drops markdown for uninstalled packages" do
       {scope, tmp_dir} = setup_project()
 
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix", "Phoenix doc.")
-      install_fixture_beam(tmp_dir, "ecto", "Ecto", "Ecto doc.")
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "Phoenix doc."
+      end
+      """)
+
+      write_dep_source(tmp_dir, "ecto", "ecto.ex", """
+      defmodule Ecto do
+        @moduledoc "Ecto doc."
+      end
+      """)
 
       :ok = HexDocProjector.project(scope)
 
@@ -144,14 +336,14 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
       assert File.exists?(Path.join(tmp_dir, ".code_my_spec/hex_docs/ecto/Ecto.md"))
 
       # Uninstall ecto and re-project — its markdown should disappear.
-      File.rm_rf!(Path.join([tmp_dir, "_build/dev/lib/ecto"]))
+      File.rm_rf!(Path.join([tmp_dir, "deps/ecto"]))
       :ok = HexDocProjector.project(scope)
 
       assert File.exists?(Path.join(tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"))
       refute File.exists?(Path.join(tmp_dir, ".code_my_spec/hex_docs/ecto/Ecto.md"))
     end
 
-    test "is a no-op when `_build/dev/lib` does not exist" do
+    test "is a no-op when `deps/` does not exist" do
       {scope, _tmp_dir} = setup_project()
 
       assert :ok = HexDocProjector.project(scope)
@@ -175,41 +367,14 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
     {scope, tmp_dir}
   end
 
-  # Compile a fixture module with the given docstring and write its
-  # BEAM into `<tmp_dir>/_build/dev/lib/<package>/ebin/Elixir.<module_filename>.beam`.
-  # The actual Elixir module name (inside the BEAM) is unique per call
-  # so repeated installs in the same test don't collide; the filename
-  # (and thus the markdown filename produced by the projector) is what
-  # the caller controls.
-  defp install_fixture_beam(tmp_dir, package, module_filename, docstring) do
-    beam_path =
-      Path.join([tmp_dir, "_build/dev/lib", package, "ebin", "Elixir.#{module_filename}.beam"])
-
-    File.mkdir_p!(Path.dirname(beam_path))
-
-    # Mark the package as a real hex dep so the projector doesn't
-    # skip it. Production check: `<cwd>/deps/<package>` exists for
-    # hex deps but not for the user's own app.
-    File.mkdir_p!(Path.join([tmp_dir, "deps", package]))
-
-    source = """
-    defmodule TestHexDocFixture#{System.unique_integer([:positive])} do
-      @moduledoc #{inspect(docstring)}
-    end
-    """
-
-    # `mix test` strips docs by default for compile speed, which would
-    # leave the BEAM without an EEP-48 `Docs` chunk and the projector
-    # with nothing to extract. Force docs on for the duration of the
-    # compile.
-    prior = Code.get_compiler_option(:docs)
-    Code.put_compiler_option(:docs, true)
-    ExUnit.Callbacks.on_exit(fn -> Code.put_compiler_option(:docs, prior) end)
-
-    [{_mod, binary}] = Code.compile_string(source)
-
-    File.write!(beam_path, binary)
-
-    beam_path
+  # Write a dependency's Elixir source under
+  # `<tmp_dir>/deps/<package>/lib/<rel_path>`. The presence of
+  # `deps/<package>` is what marks it as a projectable dependency
+  # (the user's own app never lives under `deps/`).
+  defp write_dep_source(tmp_dir, package, rel_path, source) do
+    path = Path.join([tmp_dir, "deps", package, "lib", rel_path])
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, source)
+    path
   end
 end

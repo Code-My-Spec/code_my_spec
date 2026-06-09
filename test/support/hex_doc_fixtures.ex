@@ -1,53 +1,51 @@
 defmodule CodeMySpecSpex.HexDocFixtures do
   @moduledoc """
-  Helpers for spec scenarios that need real compiled BEAM files with
-  EEP-48 docs sitting under `<stub_cwd>/_build/dev/lib/<package>/ebin/`.
+  Helpers for spec scenarios that need real dependency source sitting
+  under `<stub_cwd>/deps/<package>/lib/` for the hex doc projector to
+  read.
 
-  Hex doc projection reads real BEAMs from real disk (BEAMs aren't a
-  memfs concept), so spex that exercise the projector → FileSync →
-  Embeddings chain need to produce real BEAM files. This module
-  compiles tiny fixture modules at test time and writes their binary
-  output to the stub working directory so the projector can find
-  them on the next sync click.
+  Hex doc projection reads `@moduledoc`/`@doc` directly from dependency
+  source (`deps/<package>/lib/**/*.ex`), so spex that exercise the
+  projector → FileSync → Embeddings chain just need to drop a real `.ex`
+  file on disk. No compilation, no BEAMs, no OTP coupling.
   """
 
   @doc """
-  Install a fixture BEAM under `cwd/_build/dev/lib/<package>/ebin/Elixir.<module_filename>.beam`
-  whose embedded `@moduledoc` is `docstring`.
+  Install a fixture dependency module under
+  `cwd/deps/<package>/lib/<module>.ex` whose `@moduledoc` is `docstring`.
 
-  The actual Elixir module name inside the BEAM is unique per call
-  (so re-installing doesn't collide with prior compilations), but the
-  *filename* is what the projector uses to derive the module label
-  in markdown — that's `module_filename`.
+  `module` is the fully-qualified Elixir module name (e.g.
+  `"Phoenix.Endpoint"`) — it's both the `defmodule` name and the label
+  the projector uses to name the markdown file (`<module>.md`).
 
-  Returns the absolute beam path.
+  Returns the absolute source path.
   """
-  def install_beam(cwd, package, module_filename, docstring)
-      when is_binary(cwd) and is_binary(package) and is_binary(module_filename) and
-             is_binary(docstring) do
-    beam_path =
-      Path.join([cwd, "_build/dev/lib", package, "ebin", "Elixir.#{module_filename}.beam"])
+  def install_source(cwd, package, module, docstring)
+      when is_binary(cwd) and is_binary(package) and is_binary(module) and is_binary(docstring) do
+    filename = module |> String.replace(".", "_") |> Macro.underscore()
 
-    File.mkdir_p!(Path.dirname(beam_path))
+    source_path =
+      Path.join([cwd, "deps", package, "lib", "#{filename}.ex"])
+
+    File.mkdir_p!(Path.dirname(source_path))
 
     source = """
-    defmodule TestHexDocFixture#{System.unique_integer([:positive])} do
+    defmodule #{module} do
       @moduledoc #{inspect(docstring)}
     end
     """
 
-    [{_mod, binary}] = Code.compile_string(source)
-    File.write!(beam_path, binary)
+    File.write!(source_path, source)
 
-    beam_path
+    source_path
   end
 
   @doc """
-  Remove an installed fixture BEAM (simulates uninstall by deleting
-  the package's compiled artifacts from `_build`).
+  Remove an installed fixture dependency (simulates uninstall by
+  deleting the package's source tree from `deps/`).
   """
   def uninstall_package(cwd, package) when is_binary(cwd) and is_binary(package) do
-    pkg_dir = Path.join([cwd, "_build/dev/lib", package])
+    pkg_dir = Path.join([cwd, "deps", package])
     File.rm_rf!(pkg_dir)
     :ok
   end

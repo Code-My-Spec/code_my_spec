@@ -190,6 +190,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp normalize_delegate_result({true, details}), do: {true, details}
   defp normalize_delegate_result({false, details}), do: {false, details}
   defp normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
+  defp normalize_delegate_result({:ok, :valid, advisory}), do: {true, %{advisory: advisory}}
   defp normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
   defp normalize_delegate_result(_), do: {false, %{reason: "delegate check returned unexpected result"}}
 

@@ -80,11 +80,11 @@ defmodule CodeMySpec.Files.FileSync do
       # syncs cheap.
       Embeddings.sync_framework_knowledge(scope)
 
-      # Project hex docs from compiled BEAMs into the working tree before
-      # walking files. Newly-installed/updated/removed packages produce
-      # markdown changes the walker then catches via fingerprint diff,
-      # routing them through the same embedding hook every other doc
-      # role uses.
+      # Project dependency docs from `deps/<pkg>` source into the working
+      # tree before walking files. Newly-installed/updated/removed
+      # packages produce markdown changes the walker then catches via
+      # fingerprint diff, routing them through the same embedding hook
+      # every other doc role uses.
       HexDocProjector.project(scope)
     end
 
@@ -186,7 +186,7 @@ defmodule CodeMySpec.Files.FileSync do
 
     * `Embeddings.sync_framework_knowledge/1` — push bundled `priv/knowledge/`
       into the embedding store.
-    * `HexDocProjector.project/1` — project hex docs from compiled BEAMs
+    * `HexDocProjector.project/1` — project hex docs from `deps/` source
       into the working tree.
     * Embed every currently-tracked file whose role belongs to the doc corpus.
 
@@ -288,11 +288,11 @@ defmodule CodeMySpec.Files.FileSync do
     start = System.monotonic_time(:millisecond)
 
     # Note: framework_knowledge sync and hex doc projection are NOT
-    # pre-passes here. Both walk every file/BEAM and would re-embed
-    # (or re-render markdown) on every stop hook even when nothing
-    # changed — the chunk-hash dedup downstream prevents inference
-    # but the surrounding DB queries and `Code.fetch_docs` work still
-    # runs. Stop hooks fire often; we don't want that overhead each
+    # pre-passes here. Both walk every file/dep-source file and would
+    # re-embed (or re-render markdown) on every stop hook even when
+    # nothing changed — the chunk-hash dedup downstream prevents
+    # inference but the surrounding DB queries and source-parsing work
+    # still runs. Stop hooks fire often; we don't want that overhead each
     # time. Triggers that actually need them:
     #   * Manual full sync — `FileSync.sync/2` (e.g. /files page button)
     #   * App boot — `FileWatcherServer.handle_continue/2`

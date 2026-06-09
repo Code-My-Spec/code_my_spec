@@ -216,7 +216,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
       server_pid: pid,
       tmp_dir: tmp_dir
     } do
-      install_fixture_beam(tmp_dir, "phoenix", "Phoenix",
+      install_fixture_source(tmp_dir, "phoenix", "Phoenix",
         "Phoenix is a productive web framework.")
 
       ensure_watching_sync(scope, name)
@@ -339,33 +339,23 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     do_wait_until(deadline, check_fn)
   end
 
-  # Compile a tiny fixture module with EEP-48 docs and write its BEAM
-  # under `<tmp_dir>/_build/dev/lib/<package>/ebin/Elixir.<module>.beam`.
-  # Mirrors the helper in `hex_doc_projector_test.exs`. mix test strips
-  # the docs chunk by default, so we force `:docs` on for the duration
-  # of the compile.
-  defp install_fixture_beam(tmp_dir, package, module_filename, docstring) do
-    beam_path =
-      Path.join([tmp_dir, "_build/dev/lib", package, "ebin", "Elixir.#{module_filename}.beam"])
+  # Write a tiny fixture dependency module's source under
+  # `<tmp_dir>/deps/<package>/lib/<module>.ex`. The hex doc projector
+  # reads `@moduledoc`/`@doc` straight from source — no compilation, no
+  # BEAMs. Mirrors the helper in `hex_doc_projector_test.exs`.
+  defp install_fixture_source(tmp_dir, package, module, docstring) do
+    source_path =
+      Path.join([tmp_dir, "deps", package, "lib", "#{Macro.underscore(module)}.ex"])
 
-    File.mkdir_p!(Path.dirname(beam_path))
-
-    # Mark as a real hex dep so the projector doesn't skip it.
-    File.mkdir_p!(Path.join([tmp_dir, "deps", package]))
+    File.mkdir_p!(Path.dirname(source_path))
 
     source = """
-    defmodule TestFixtureFwBeam#{System.unique_integer([:positive])} do
+    defmodule #{module} do
       @moduledoc #{inspect(docstring)}
     end
     """
 
-    prior = Code.get_compiler_option(:docs)
-    Code.put_compiler_option(:docs, true)
-    ExUnit.Callbacks.on_exit(fn -> Code.put_compiler_option(:docs, prior) end)
-
-    [{_mod, binary}] = Code.compile_string(source)
-
-    File.write!(beam_path, binary)
-    beam_path
+    File.write!(source_path, source)
+    source_path
   end
 end
