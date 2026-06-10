@@ -44,6 +44,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # windows-latest's image now reports ImageOS=win25-vs2026, which
+      # setup-beam can't map to a target OS. Pin it to the base label so
+      # setup-beam resolves the Windows build. Windows-only: macOS keeps
+      # auto-detecting its own (working) ImageOS.
+      - name: Pin ImageOS for setup-beam (Windows)
+        if: runner.os == 'Windows'
+        run: echo "ImageOS=win25" >> "$GITHUB_ENV"
+
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
