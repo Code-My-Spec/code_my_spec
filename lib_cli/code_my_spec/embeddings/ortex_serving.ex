@@ -4,8 +4,9 @@ defmodule CodeMySpec.Embeddings.OrtexServing do
   sentence-transformers/all-MiniLM-L6-v2.
 
   Produces 384-dimensional L2-normalized embeddings.
-  Model file ships with the app at priv/models/all-MiniLM-L6-v2.onnx.
-  Tokenizer downloaded from HuggingFace on first use, then cached.
+  Model and tokenizer both ship with the app under priv/models/ — nothing is
+  fetched at runtime, so the pipeline works fully offline regardless of the
+  host's TLS/CA configuration.
   """
 
   @behaviour CodeMySpec.Embeddings.Serving
@@ -13,7 +14,7 @@ defmodule CodeMySpec.Embeddings.OrtexServing do
   use GenServer
 
   @model_path "priv/models/all-MiniLM-L6-v2.onnx"
-  @tokenizer_id "sentence-transformers/all-MiniLM-L6-v2"
+  @tokenizer_path "priv/models/all-MiniLM-L6-v2.tokenizer.json"
   @max_length 256
 
   @impl CodeMySpec.Embeddings.Serving
@@ -51,21 +52,27 @@ defmodule CodeMySpec.Embeddings.OrtexServing do
   # -- Pipeline --
 
   defp load_pipeline do
-    model_path = resolve_model_path()
+    model_path = resolve_priv_path(@model_path)
+    tokenizer_path = resolve_priv_path(@tokenizer_path)
 
-    unless File.exists?(model_path) do
-      {:error, "Model not found at #{model_path}"}
-    else
-      model = Ortex.load(model_path)
-      {:ok, tokenizer} = Tokenizers.Tokenizer.from_pretrained(@tokenizer_id)
-      {:ok, model, tokenizer}
+    cond do
+      not File.exists?(model_path) ->
+        {:error, "Model not found at #{model_path}"}
+
+      not File.exists?(tokenizer_path) ->
+        {:error, "Tokenizer not found at #{tokenizer_path}"}
+
+      true ->
+        model = Ortex.load(model_path)
+        {:ok, tokenizer} = Tokenizers.Tokenizer.from_file(tokenizer_path)
+        {:ok, model, tokenizer}
     end
   end
 
-  defp resolve_model_path do
+  defp resolve_priv_path(relative_path) do
     case :code.priv_dir(:code_my_spec) do
-      {:error, _} -> @model_path
-      priv_dir -> Path.join(priv_dir, "models/all-MiniLM-L6-v2.onnx")
+      {:error, _} -> relative_path
+      priv_dir -> Path.join(priv_dir, Path.relative_to(relative_path, "priv"))
     end
   end
 
