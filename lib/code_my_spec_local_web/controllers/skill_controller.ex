@@ -69,9 +69,6 @@ defmodule CodeMySpecLocalWeb.SkillController do
       {:ok, session_type} ->
         run_task(conn, external_id, session_type, module_name)
 
-      {:error, :auth} ->
-        json(conn, %{auth: true})
-
       {:error, :stopped} ->
         json(conn, %{stopped: true})
 
