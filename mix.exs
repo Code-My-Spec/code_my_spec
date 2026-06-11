@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "1.5.10",
+      version: "1.5.11",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
@@ -89,7 +89,7 @@ defmodule CodeMySpec.MixProject do
 
       # Added by codemyspec
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
-      {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :test]},
+      {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :dev_cli, :test]},
       {:client_utils, "~> 0.1.19"},
       {:credo, "~> 1.7.13"},
       {:sobelow, "~> 0.14.1"},
