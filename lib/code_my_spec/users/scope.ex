@@ -132,6 +132,34 @@ defmodule CodeMySpec.Users.Scope do
      }}
   end
 
+  @doc """
+  Builds a minimal local scope carrying only the working directory — no
+  linked project.
+
+  Used by bootstrap flows like `/codemyspec:init` that need a cwd and
+  environment but must run *before* any project is linked. Project-scoped
+  code paths see `active_project: nil` and fail with a clean "no project"
+  error instead of being blocked at the router.
+  """
+  @spec for_local_cwd(String.t() | nil) :: {:ok, t()} | {:error, :no_working_dir}
+  def for_local_cwd(nil), do: {:error, :no_working_dir}
+
+  def for_local_cwd(working_dir) when is_binary(working_dir) do
+    user = default_local_user()
+
+    {:ok,
+     %__MODULE__{
+       user: user,
+       user_id: user.id,
+       active_account: nil,
+       active_account_id: nil,
+       active_project: nil,
+       active_project_id: nil,
+       cwd: working_dir,
+       environment: Environment.new(:local, working_dir)
+     }}
+  end
+
   # Consult the environment registry first — spex tests register an
   # in-memory env per project so the LiveView (which rebuilds scope from
   # the project record) gets the same env the test set up. Production

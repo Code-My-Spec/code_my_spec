@@ -121,6 +121,13 @@ defmodule CodeMySpecLocalWeb.Router do
     plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
 
+  # Bootstrap endpoints — cwd-only scope, runnable before a project is linked
+  pipeline :init do
+    plug CodeMySpecLocalWeb.Plugs.LocalOnly
+    plug CodeMySpecLocalWeb.Plugs.WorkingDir
+    plug CodeMySpecLocalWeb.Plugs.WorkingDirCwdScope
+  end
+
   scope "/api/hooks", CodeMySpecLocalWeb.Hooks do
     pipe_through :hook
 
@@ -140,6 +147,14 @@ defmodule CodeMySpecLocalWeb.Router do
 
     post "/agent-tasks/start", SkillController, :start_task
     post "/skills/start", SkillController, :start_skill
+  end
+
+  # Init runs before a project is linked, so it gets the cwd-only :init
+  # pipeline instead of the project-required :hook pipeline.
+  scope "/api", CodeMySpecLocalWeb do
+    pipe_through :init
+
+    post "/skills/init", InitController, :start
   end
 
   # ── External integrations (notifications, permissions) ──────────

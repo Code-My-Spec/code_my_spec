@@ -24,7 +24,7 @@
       "type": "http",
       "url": "http://localhost:4004/mcp",
       "headers": {
-        "X-Working-Dir": "${PWD}"
+        "X-Working-Dir": "${CLAUDE_PROJECT_DIR}"
       }
     },
     "vibium": {

@@ -22,10 +22,6 @@ defmodule CodeMySpecLocalWeb.SkillController do
       "review" => "story_review",
       "three-amigos" => "three_amigos"
     },
-    "init" => %{
-      nil => "init"
-      # "auth" and "sync" handled as special routes
-    },
     "design" => %{
       "architecture" => "architecture_design",
       "ui" => "design_ui",
@@ -113,8 +109,6 @@ defmodule CodeMySpecLocalWeb.SkillController do
 
   # ── Route resolution ────────────────────────────────────────────
 
-  defp resolve_route("init", "auth"), do: {:error, :auth}
-  defp resolve_route("init", "sync"), do: {:ok, :sync}
   defp resolve_route("sync", nil), do: {:ok, :sync}
   defp resolve_route("implement", "stop"), do: {:error, :stopped}
   defp resolve_route("next", _), do: {:ok, :next}
