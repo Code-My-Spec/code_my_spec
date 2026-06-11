@@ -42,10 +42,14 @@ defmodule CodeMySpec.Tests do
     command = "mix " <> Enum.join(test_args, " ")
     file_path = extract_file_path(args)
 
-    env = [
-      {"MIX_ENV", "test"},
-      {"EXUNIT_JSON_OUTPUT_FILE", temp_file}
-    ]
+    # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_* so
+    # the child `mix`/`erl` boots from the user's installed OTP, not our
+    # extracted ERTS ("cannot get bootfile"). Appended last so it wins.
+    env =
+      [
+        {"MIX_ENV", "test"},
+        {"EXUNIT_JSON_OUTPUT_FILE", temp_file}
+      ] ++ CodeMySpec.Environments.clean_otp_env()
 
     Logger.info("[Tests] Running: #{command}")
 

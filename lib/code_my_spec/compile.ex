@@ -40,10 +40,14 @@ defmodule CodeMySpec.Compile do
 
     cmd_opts = [
       stderr_to_stdout: true,
-      env: [
-        {"MIX_ENV", "test"},
-        {"DIAGNOSTICS_OUTPUT", output_file}
-      ]
+      # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_*
+      # so the child `mix`/`erl` boots from the user's installed OTP, not our
+      # extracted ERTS (which otherwise crashes with "cannot get bootfile").
+      env:
+        [
+          {"MIX_ENV", "test"},
+          {"DIAGNOSTICS_OUTPUT", output_file}
+        ] ++ CodeMySpec.Environments.clean_otp_env()
     ]
 
     cmd_opts = if cwd, do: Keyword.put(cmd_opts, :cd, cwd), else: cmd_opts

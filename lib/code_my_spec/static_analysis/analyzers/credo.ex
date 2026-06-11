@@ -108,7 +108,13 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   defp execute_credo(code_repo, temp_file, opts) do
     args = build_credo_args(opts, code_repo)
 
-    case System.cmd("mix", args, cd: code_repo, stderr_to_stdout: true) do
+    # clean_otp_env: keep the child `mix` off our Burrito ERTS (see
+    # CodeMySpec.Environments.clean_otp_env/0).
+    case System.cmd("mix", args,
+           cd: code_repo,
+           stderr_to_stdout: true,
+           env: CodeMySpec.Environments.clean_otp_env()
+         ) do
       {output, exit_code} when exit_code in 0..127 ->
         handle_credo_output(output, exit_code, temp_file)
 

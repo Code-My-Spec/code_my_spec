@@ -156,6 +156,17 @@ defmodule CodeMySpec.Environments.Local do
   end
 
   def cmd(command, args, opts) do
+    # Append clean_otp_env LAST so it wins: clears the Burrito release's
+    # ROOTDIR/BINDIR/RELEASE_* that would otherwise make a child mix/erl boot
+    # from our extracted ERTS ("cannot get bootfile") instead of the user's OTP.
+    opts =
+      Keyword.update(
+        opts,
+        :env,
+        CodeMySpec.Environments.clean_otp_env(),
+        &(&1 ++ CodeMySpec.Environments.clean_otp_env())
+      )
+
     case System.cmd(command, args, opts) do
       {output, 0} -> {clean_terminal_output(output), 0}
       {output, exit_code} -> {clean_terminal_output(output), exit_code}

@@ -30,6 +30,30 @@ defmodule CodeMySpec.Environments do
     {Registry, keys: :unique, name: @registry}
   end
 
+  # OTP/release env vars that, if inherited by a child process, point its
+  # `erl` at the parent release's ERTS. The cms CLI ships as a Burrito binary
+  # (a self-extracting OTP release) whose `erl` exports these into the OS
+  # environment; a child `mix`/`erl` launched against a user's project then
+  # resolves its boot files to OUR extracted ERTS
+  # (`…/.burrito/code_my_spec_cli_erts-<v>/bin/start.boot`) instead of the
+  # user's installed OTP and dies with "cannot get bootfile".
+  @otp_release_vars ~w(
+    ROOTDIR BINDIR EMU PROGNAME ERL_LIBS
+    RELEASE_ROOT RELEASE_SYS_CONFIG RELEASE_TMP RELEASE_NODE RELEASE_VSN
+    RELEASE_COOKIE RELEASE_MODE RELEASE_DISTRIBUTION RELEASE_BOOT_SCRIPT
+    RELEASE_BOOT_SCRIPT_CLEAN RELEASE_COMMAND RELEASE_PROG RELEASE_NAME
+  )
+
+  @doc """
+  Env entries (`{var, nil}`) that clear the inherited BEAM/release variables,
+  for the `:env` option of `System.cmd/3` when shelling out to host tools
+  (`mix`, `git`, …) from inside the packaged binary. Clearing lets the child
+  derive its own OTP from PATH. Safe off Burrito — clearing an unset var is a
+  no-op.
+  """
+  @spec clean_otp_env() :: [{String.t(), nil}]
+  def clean_otp_env, do: Enum.map(@otp_release_vars, fn var -> {var, nil} end)
+
   @doc """
   Register an environment override for a project.
 

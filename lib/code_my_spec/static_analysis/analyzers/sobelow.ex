@@ -74,8 +74,13 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
   defp execute_sobelow(code_repo, temp_file, opts) do
     args = build_sobelow_args(opts)
 
-    # Build System.cmd options
-    cmd_opts = [cd: code_repo, stderr_to_stdout: true]
+    # Build System.cmd options. clean_otp_env keeps the child `mix` off our
+    # Burrito ERTS (see CodeMySpec.Environments.clean_otp_env/0).
+    cmd_opts = [
+      cd: code_repo,
+      stderr_to_stdout: true,
+      env: CodeMySpec.Environments.clean_otp_env()
+    ]
 
     # Note: System.cmd in Elixir 1.19 doesn't support :timeout option directly
     # It will timeout after a default period. For custom timeouts, use Port or Task

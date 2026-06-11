@@ -52,7 +52,9 @@ defmodule CodeMySpec.BddSpecs.Spex do
     spex_args = build_args(args, temp_file, quiet)
     command = "mix " <> Enum.join(spex_args, " ")
 
-    env = [{"MIX_ENV", "test"}]
+    # clean_otp_env keeps the child `mix`/`erl` off our Burrito ERTS (see
+    # CodeMySpec.Environments.clean_otp_env/0).
+    env = [{"MIX_ENV", "test"}] ++ CodeMySpec.Environments.clean_otp_env()
 
     Logger.info("[Spex] Running: #{command}")
 
