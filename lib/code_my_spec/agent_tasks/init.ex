@@ -13,9 +13,6 @@ defmodule CodeMySpec.AgentTasks.Init do
 
   @steps [
     Init.Auth,
-    Init.Elixir,
-    Init.PhoenixInstaller,
-    Init.Postgresql,
     Init.PhoenixProject,
     Init.CliConfig
   ]

@@ -5,9 +5,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
   the incomplete step's prompt at its per-step page.
 
   When the engineer opens `/projects/:project_name/init` with a scope where
-  five of the six init sub-steps are :valid and Init.Auth is :invalid
+  two of the three init sub-steps are :valid and Init.Auth is :invalid
   (no OAuth credentials seeded), the rendered checklist:
-    1. Shows `(5/6)` progress in the page header.
+    1. Shows `(2/3)` progress in the page header.
     2. Lists every sub-step name in the menu.
     3. Marks the five done steps with the success badge (`✓`) and the Auth
        step with the ghost badge (`○`).
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
       end
 
       and_ "every sub-step name appears in the checklist", context do
-        for name <- ["Auth", "Elixir", "Phoenix installer", "Postgresql", "Phoenix project", "Cli config"] do
+        for name <- ["Auth", "Phoenix project", "Cli config"] do
           assert context.checklist_html =~ name,
                  "expected `#{name}` in checklist HTML, got:\n#{context.checklist_html}"
         end
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
         assert auth_row =~ "badge-ghost",
                "expected Auth row to show the ghost (not-done) badge, got:\n#{auth_row}"
 
-        for name <- ["Elixir", "Phoenix installer", "Postgresql", "Phoenix project", "Cli config"] do
+        for name <- ["Phoenix project", "Cli config"] do
           row =
             context.checklist_view
             |> element("li", name)
