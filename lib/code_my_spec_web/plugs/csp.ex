@@ -1,4 +1,4 @@
-defmodule CodeMySpecWeb.Plugs.CSPReportOnly do
+defmodule CodeMySpecWeb.Plugs.CSP do
   @moduledoc """
   Sets an ENFORCING `Content-Security-Policy` header (validated in report-only
   first, flipped to enforce 2026-06-03 after a clean cross-site validation).
@@ -10,8 +10,7 @@ defmodule CodeMySpecWeb.Plugs.CSPReportOnly do
   includes both directives).
 
   To revert to monitor mode, change the header name back to
-  `content-security-policy-report-only`. (Module name is historical; it now
-  enforces.)
+  `content-security-policy-report-only`.
   """
   import Plug.Conn
 
