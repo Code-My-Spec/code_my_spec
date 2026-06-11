@@ -188,8 +188,17 @@ defmodule CodeMySpecCli.SelfUpdate do
   # Stop server, swap binary, start. On Windows you can rename a running
   # .exe but not overwrite it — rename-aside first, then rename-into-place.
   # Same dance works fine on Unix.
-  defp swap_binary(bin_path, tmp, _log) do
-    Daemon.stop()
+  #
+  # When the binary runs as a Windows Shawl service we drive the swap through
+  # the service control manager: `sc stop` (Shawl tears down without
+  # restarting, since the service is stopping), swap, `sc start` (Shawl
+  # relaunches from the same path — now the new binary). Going through
+  # Daemon.stop/start here would taskkill the process out from under Shawl,
+  # which would just restart the OLD binary and spawn a competing detached
+  # copy on the same port.
+  defp swap_binary(bin_path, tmp, log) do
+    service? = service_managed?()
+    stop_server(service?, log)
 
     aside = bin_path <> ".old"
     File.rm(aside)
@@ -202,7 +211,45 @@ defmodule CodeMySpecCli.SelfUpdate do
     end
 
     File.rm(aside)
-    Daemon.start(bin_path)
+    start_server(service?, bin_path, log)
+  end
+
+  defp service_managed? do
+    match?({:win32, _}, :os.type()) and CodeMySpecCli.WindowsService.installed?()
+  end
+
+  defp stop_server(true, log) do
+    log.("Stopping Windows service before swap")
+    System.cmd("sc", ["stop", CodeMySpecCli.WindowsService.service_name()], stderr_to_stdout: true)
+    wait_service_stopped(60)
+  end
+
+  defp stop_server(false, _log), do: Daemon.stop()
+
+  defp start_server(true, _bin_path, log) do
+    log.("Starting Windows service after swap")
+    System.cmd("sc", ["start", CodeMySpecCli.WindowsService.service_name()], stderr_to_stdout: true)
+  end
+
+  defp start_server(false, bin_path, _log), do: Daemon.start(bin_path)
+
+  defp wait_service_stopped(0), do: :ok
+
+  defp wait_service_stopped(n) do
+    case System.cmd("sc", ["query", CodeMySpecCli.WindowsService.service_name()],
+           stderr_to_stdout: true
+         ) do
+      {out, 0} ->
+        if String.contains?(out, "STOPPED") do
+          :ok
+        else
+          Process.sleep(1000)
+          wait_service_stopped(n - 1)
+        end
+
+      _ ->
+        :ok
+    end
   end
 
   defp find_asset_url(%{"assets" => assets}, name) when is_list(assets) do

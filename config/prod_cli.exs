@@ -24,6 +24,10 @@ config :code_my_spec, questions_implementation: CodeMySpec.Questions.QuestionsRe
 config :code_my_spec,
   acceptance_criteria_implementation: CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository
 
+# Use the Req-backed Swoosh client (Req is already a dep). Without this, Swoosh
+# defaults to Swoosh.ApiClient.Hackney — hackney isn't a dep, so boot crashes.
+config :swoosh, api_client: Swoosh.ApiClient.Req
+
 # SQLite adapter for CLI mode
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 
