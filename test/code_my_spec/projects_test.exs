@@ -1,13 +1,7 @@
 defmodule CodeMySpec.ProjectsTest do
   use CodeMySpecTest.DataCase
-  use ExVCR.Mock, adapter: ExVCR.Adapter.Hackney
 
   alias CodeMySpec.Projects
-
-  setup do
-    ExVCR.Config.cassette_library_dir("test/fixtures/vcr_cassettes")
-    :ok
-  end
 
   describe "projects" do
     alias CodeMySpec.Projects.Project
@@ -155,44 +149,6 @@ defmodule CodeMySpec.ProjectsTest do
       project = project_fixture(scope)
       assert %Ecto.Changeset{} = Projects.change_project(scope, project)
     end
-
-    # We have to set up login and shit
-    # test "create_github_repo/4 creates a GitHub repository and returns URL" do
-    #   use_cassette "github_create_repo_success" do
-    #     user = user_fixture()
-    #     account = account_with_owner_fixture(user)
-    #     scope = user_scope_fixture(user, account)
-
-    #     project =
-    #       project_fixture(scope, %{
-    #         name: "Test Project",
-    #         description: "A test project"
-    #       })
-
-    #     assert {:ok, url} = Projects.create_github_repo(scope, project, :code_repo, "-code")
-    #     assert is_binary(url)
-    #     assert String.contains?(url, "test-project-code")
-    #   end
-    # end
-
-    # test "create_github_repo/4 sanitizes project names" do
-    #   use_cassette "github_create_repo_sanitized_name" do
-    #     user = user_fixture()
-    #     account = account_with_owner_fixture(user)
-    #     scope = user_scope_fixture(user, account)
-
-    #     project =
-    #       project_fixture(scope, %{
-    #         name: "My Cool Project!!!",
-    #         description: "Testing name sanitization"
-    #       })
-
-    #     # The repo name should be sanitized to: my-cool-project-code
-    #     assert {:ok, url} = Projects.create_github_repo(scope, project, :code_repo, "-code")
-    #     assert is_binary(url)
-    #     assert String.contains?(url, "my-cool-project-code")
-    #   end
-    # end
 
     test "create_github_repo/4 returns error when GitHub not connected" do
       user = user_fixture()

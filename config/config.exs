@@ -146,10 +146,6 @@ config :code_my_spec, CodeMySpec.Vault,
     }
   ]
 
-config :oapi_github,
-  app_name: "CodeMySpec",
-  default_auth: {"client_id", "client_secret"}
-
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

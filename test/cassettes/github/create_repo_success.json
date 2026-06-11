@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "uri": "https://api.github.com/user/repos",
+        "query_string": "",
+        "headers": {
+          "accept": ["application/vnd.github+json"],
+          "content-type": ["application/json"],
+          "x-github-api-version": ["2022-11-28"]
+        },
+        "body_type": "json",
+        "body_json": {
+          "name": "req-client-test",
+          "description": "A test project",
+          "private": true
+        }
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "content-type": ["application/json; charset=utf-8"]
+        },
+        "body_type": "json",
+        "body_json": {
+          "id": 1126409663,
+          "name": "req-client-test",
+          "full_name": "testuser/req-client-test",
+          "private": true,
+          "html_url": "https://github.com/testuser/req-client-test",
+          "description": "A test project",
+          "default_branch": "main",
+          "visibility": "private"
+        }
+      },
+      "recorded_at": "2026-06-11T00:00:00Z"
+    }
+  ]
+}

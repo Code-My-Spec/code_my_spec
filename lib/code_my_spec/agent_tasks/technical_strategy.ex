@@ -66,12 +66,12 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
         "Use `mix phx.gen.auth` to generate authentication. It provides a well-tested, customizable authentication system that lives in the project's codebase rather than behind an opaque library."
     },
     %{
-      topic: "exvcr",
-      title: "Use ExVCR for HTTP recording in tests",
+      topic: "req_cassette",
+      title: "Hand-write Req clients for external APIs, test with ReqCassette",
       context:
-        "We need to test code that makes external HTTP calls without hitting real services in CI.",
+        "We need to integrate with external HTTP APIs and test that code without hitting real services in CI.",
       decision:
-        "Use ExVCR to record and replay all external HTTP interactions. Record all external calls regardless of the HTTP client used. This ensures deterministic tests and documents the exact API interactions the system depends on."
+        "Strongly prefer hand-written `Req` clients over third-party API-wrapper libraries. A thin module that builds the request and pattern-matches the response is easier to read, owns its own error handling, adds no transitive dependencies, and never drifts from the API behind a generated abstraction. Test these clients with ReqCassette: inject the cassette plug via `Application.get_env` so production code stays unaware of tests, filter authorization headers out of cassettes, and replay in CI. This yields deterministic, async-safe, offline tests that document the exact API interactions the system depends on. Only reach for a wrapper library when the surface is genuinely large and the library is first-party and well-maintained."
     },
     %{
       topic: "wallaby",
@@ -296,7 +296,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
     Identify the technology decisions this project still needs to make and
     write an ADR for each. ADRs for the standard CodeMySpec stack (Elixir,
-    Phoenix, LiveView, Tailwind, DaisyUI, ExVCR, Wallaby, SexySpex BDD,
+    Phoenix, LiveView, Tailwind, DaisyUI, ReqCassette, Wallaby, SexySpex BDD,
     Dotenvy, Resend, Hetzner deployment, PowAssent) have already been
     auto-written before this prompt — they show up in the Existing Decisions
     section below. Focus on project-specific topics the pre-made set doesn't

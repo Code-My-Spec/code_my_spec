@@ -255,7 +255,7 @@ defmodule CodeMySpec.CodeGenerationFixtures do
             {:dotenvy, "~> 1.0"},
             {:sexy_spex, "~> 0.1"},
             {:wallaby, "~> 0.30", only: :test},
-            {:exvcr, "~> 0.15", only: :test},
+            {:req_cassette, "~> 0.6", only: :test},
             {:credo, "~> 1.7", only: [:dev, :test]}
           ]
         end

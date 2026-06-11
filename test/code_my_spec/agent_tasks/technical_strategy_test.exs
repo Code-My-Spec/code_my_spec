@@ -112,7 +112,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       assert "tailwind" in topics
       assert "daisyui" in topics
       assert "phx-gen-auth" in topics
-      assert "exvcr" in topics
+      assert "req_cassette" in topics
       assert "bdd-testing" in topics
       assert "dotenvy" in topics
     end

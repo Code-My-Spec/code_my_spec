@@ -245,7 +245,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
     - **Maintenance** — actively maintained? Releases in last 6 months?
     - **Community** — good docs? Responsive maintainer? Adoption level?
     - **Complexity** — setup burden? Ongoing maintenance cost?
-    - **Testing** — how does it affect the test suite? ExVCR compatible?
+    - **Testing** — how does it affect the test suite? ReqCassette compatible?
     """
   end
 

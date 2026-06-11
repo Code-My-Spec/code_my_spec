@@ -127,11 +127,11 @@ The following topics already have decision records in `.code_my_spec/architectur
 - `daisyui`
 - `dotenvy`
 - `elixir`
-- `exvcr`
 - `liveview`
 - `ngrok`
 - `phoenix`
 - `phx-gen-auth`
+- `req_cassette`
 - `tailwind`
 
 Review these to avoid duplicating work. You can update existing decisions if needed.

@@ -426,7 +426,7 @@ defmodule CodeMySpec.Projects do
     }
 
     case CodeMySpec.GitHub.create_repository(scope, repo_attrs) do
-      {:ok, %{html_url: url}} ->
+      {:ok, %{"html_url" => url}} ->
         {:ok, url}
 
       {:error, :github_not_connected} ->
