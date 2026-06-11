@@ -17,14 +17,6 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
   # ===========================================================================
 
   describe "special routes" do
-    test "init auth returns auth signal", %{scope: scope} do
-      conn = build_post(scope, %{"skill" => "init", "subcommand" => "auth"})
-      conn = SkillController.start_skill(conn, conn.body_params)
-
-      assert conn.status == 200
-      assert %{"auth" => true} = Jason.decode!(conn.resp_body)
-    end
-
     test "sync routes correctly (requires cwd)", %{scope: scope} do
       # Sync needs a real cwd — verify it doesn't fail with a routing error
       conn = build_post(scope, %{"skill" => "sync"})
@@ -32,14 +24,6 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
 
       body = Jason.decode!(conn.resp_body)
       # Should fail on sync execution (no cwd), not on routing
-      refute body["error"] && body["error"] =~ "Unknown"
-    end
-
-    test "init sync routes correctly (requires cwd)", %{scope: scope} do
-      conn = build_post(scope, %{"skill" => "init", "subcommand" => "sync"})
-      conn = SkillController.start_skill(conn, conn.body_params)
-
-      body = Jason.decode!(conn.resp_body)
       refute body["error"] && body["error"] =~ "Unknown"
     end
 
@@ -121,8 +105,6 @@ defmodule CodeMySpecLocalWeb.SkillControllerTest do
     @expected_routes [
       {"product", "interview", 200},
       {"product", "review", 200},
-      {"init", nil, 200},
-      {"init", "auth", 200},
       {"design", "architecture", 200},
       {"design", "ui", 200},
       {"design", "strategy", 200},

@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
   (no OAuth credentials seeded), the rendered checklist:
     1. Shows `(2/3)` progress in the page header.
     2. Lists every sub-step name in the menu.
-    3. Marks the five done steps with the success badge (`✓`) and the Auth
+    3. Marks the two done steps with the success badge (`✓`) and the Auth
        step with the ghost badge (`○`).
     4. Links the Auth row to `/projects/:project_name/init/auth`, which —
        on its own per-step page — exposes the Auth sub-step's prompt
@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
   setup :setup_active_project
 
   spex "Init aggregates sub-steps into one checklist with progress and per-step prompts" do
-    scenario "Init checklist shows 5/6 with Auth as the incomplete step, and the Auth page exposes the auth prompt" do
+    scenario "Init checklist shows 2/3 with Auth as the incomplete step, and the Auth page exposes the auth prompt" do
       given_ "the working directory has the full Phoenix project shape (mix.exs, lib/, config/)",
              context do
         File.mkdir_p!(Path.join(context.scope.cwd, "config"))
@@ -57,9 +57,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
          })}
       end
 
-      then_ "the header reports 5/6 progress", context do
-        assert context.checklist_html =~ ~r/Project Init\s*<[^>]*>\s*\(\s*5\s*\/\s*6\s*\)/,
-               "expected `Project Init (5/6)` in the header, got:\n#{context.checklist_html}"
+      then_ "the header reports 2/3 progress", context do
+        assert context.checklist_html =~ ~r/Project Init\s*<[^>]*>\s*\(\s*2\s*\/\s*3\s*\)/,
+               "expected `Project Init (2/3)` in the header, got:\n#{context.checklist_html}"
 
         {:ok, context}
       end
