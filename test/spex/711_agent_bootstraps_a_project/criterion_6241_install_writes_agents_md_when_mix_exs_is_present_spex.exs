@@ -8,13 +8,15 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
   `.code_my_spec/AGENTS.md` and the file body references the extracted
   app name.
 
-  Surface: `InstallAgentsMd` MCP tool. The tool reads `mix.exs` directly
-  and writes AGENTS.md to the real filesystem under `context.scope.cwd`.
+  Surface: `InstallAgentsMd` MCP tool. The tool reads `mix.exs` and writes
+  AGENTS.md through `scope.environment`, so the spec seeds mix.exs and
+  observes AGENTS.md via `CodeMySpec.Environments`.
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd
 
   setup :register_log_in_setup_account
@@ -25,16 +27,16 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
   spex "install_agents_md writes .code_my_spec/AGENTS.md derived from the project's mix.exs app name" do
     scenario "Install writes AGENTS.md when mix.exs is present" do
       given_ "the working directory has a mix.exs declaring an app name", context do
-        mix_exs = Path.join(context.scope.cwd, "mix.exs")
-
-        File.write!(mix_exs, """
+        mix_exs = """
         defmodule SpexBootstrapApp.MixProject do
           use Mix.Project
           def project, do: [app: :#{@app_name_atom}, version: "0.0.1"]
         end
-        """)
+        """
 
-        {:ok, Map.put(context, :mix_exs, mix_exs)}
+        :ok = Environments.write_file(context.environment, "mix.exs", mix_exs)
+
+        {:ok, context}
       end
 
       when_ "the agent calls install_agents_md", context do
@@ -44,9 +46,11 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
       end
 
       then_ ".code_my_spec/AGENTS.md exists", context do
-        agents_md = Path.join([context.scope.cwd, ".code_my_spec", "AGENTS.md"])
-        assert File.exists?(agents_md), "expected AGENTS.md at `#{agents_md}` after install"
-        {:ok, Map.put(context, :agents_md_contents, File.read!(agents_md))}
+        assert {:ok, contents} =
+                 Environments.read_file(context.environment, ".code_my_spec/AGENTS.md"),
+               "expected AGENTS.md to exist after install"
+
+        {:ok, Map.put(context, :agents_md_contents, contents)}
       end
 
       and_ "the file contents reference the app name extracted from mix.exs", context do

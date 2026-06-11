@@ -11,5 +11,8 @@ defmodule CodeMySpec.McpServers do
   particular call MCP tool modules directly because that's the agent's
   surface — the same code path the agent harness invokes.
   """
-  use Boundary, top_level?: true, deps: [CodeMySpec, CodeMySpec.Repo], exports: :all
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Repo],
+    exports: :all
 end

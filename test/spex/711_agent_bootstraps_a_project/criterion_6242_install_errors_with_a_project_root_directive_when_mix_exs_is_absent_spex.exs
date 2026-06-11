@@ -7,13 +7,16 @@ defmodule CodeMySpecSpex.Story711.Criterion6242Spex do
   `install_agents_md`, the response is an error that names `mix.exs`
   and instructs the agent to run the tool from the project root.
 
-  Surface: `InstallAgentsMd` MCP tool. Error text is rendered into the
-  response body via `BootstrapMapper.error/1`.
+  Surface: `InstallAgentsMd` MCP tool. The tool reads `mix.exs` through
+  `scope.environment`; the freshly-seeded in-memory environment has none,
+  so the error path is exercised. Error text is rendered into the response
+  body via `BootstrapMapper.error/1`.
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd
 
   setup :register_log_in_setup_account
@@ -22,9 +25,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6242Spex do
   spex "install_agents_md writes .code_my_spec/AGENTS.md derived from the project's mix.exs app name" do
     scenario "Install errors with a project-root directive when mix.exs is absent" do
       given_ "the working directory has no mix.exs", context do
-        mix_exs = Path.join(context.scope.cwd, "mix.exs")
-        File.rm(mix_exs)
-        refute File.exists?(mix_exs), "expected mix.exs to be absent before install"
+        refute Environments.file_exists?(context.environment, "mix.exs"),
+               "expected mix.exs to be absent before install"
+
         {:ok, context}
       end
 

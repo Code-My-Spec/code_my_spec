@@ -66,6 +66,21 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate register_environment(project_id, env), to: Environments, as: :register
   defdelegate unregister_environment(project_id), to: Environments, as: :unregister
 
+  @doc """
+  Returns the framework rule filenames the harness ships in `priv/rules/`.
+
+  Bridges the real package directory so install spex can assert "every
+  framework rule was copied" without reaching into `File` themselves.
+  """
+  @spec framework_rule_files() :: [String.t()]
+  def framework_rule_files do
+    :code_my_spec
+    |> Application.app_dir("priv/rules")
+    |> File.ls!()
+    |> Enum.filter(&String.ends_with?(&1, ".md"))
+    |> Enum.sort()
+  end
+
   # -- Paths (conventional project resource paths) --
   defdelegate base_dir(), to: Paths
   defdelegate proposal_path(), to: Paths

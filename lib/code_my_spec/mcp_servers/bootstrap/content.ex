@@ -240,14 +240,22 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
   """
   def extract_app_name(mix_exs_path) do
     case File.read(mix_exs_path) do
-      {:ok, content} ->
-        case Regex.run(~r/app:\s*:(\w+)/, content) do
-          [_, app_name] -> app_name
-          _ -> nil
-        end
+      {:ok, content} -> extract_app_name_from_source(content)
+      _ -> nil
+    end
+  end
 
-      _ ->
-        nil
+  @doc """
+  Extract app name from already-read mix.exs source.
+
+  Lets callers read `mix.exs` through `CodeMySpec.Environments` (so the
+  in-memory environment works in specs) and pass the content here instead
+  of a filesystem path.
+  """
+  def extract_app_name_from_source(content) when is_binary(content) do
+    case Regex.run(~r/app:\s*:(\w+)/, content) do
+      [_, app_name] -> app_name
+      _ -> nil
     end
   end
 end

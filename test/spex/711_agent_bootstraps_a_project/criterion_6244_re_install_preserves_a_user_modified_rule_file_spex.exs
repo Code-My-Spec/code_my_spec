@@ -9,38 +9,35 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
   leaves the user-modified file untouched while still copying other
   framework rules that were absent.
 
-  Surface: `InstallRules` MCP tool. Assertions read rule file bytes back
-  from `context.scope.cwd`.
+  Surface: `InstallRules` MCP tool. The tool writes through
+  `scope.environment`, so the spec seeds and reads rule files via
+  `CodeMySpec.Environments`.
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallRules
+  alias CodeMySpecSpex.Fixtures
+
+  @rules_dir ".code_my_spec/rules"
+  @user_marker "# USER-MODIFIED — do not overwrite\n"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
-
-  @user_marker "# USER-MODIFIED — do not overwrite\n"
 
   spex "install_rules copies framework rule files from priv/rules/ into .code_my_spec/rules/" do
     scenario "Re-install preserves a user-modified rule file" do
       given_ "elixir.md in the project's rules dir holds user-written content distinct from the framework default",
              context do
-        rules_dir = Path.join([context.scope.cwd, ".code_my_spec", "rules"])
-        File.mkdir_p!(rules_dir)
-
-        user_rule_path = Path.join(rules_dir, "elixir.md")
-        File.write!(user_rule_path, @user_marker)
+        user_rule_path = Path.join(@rules_dir, "elixir.md")
+        :ok = Environments.write_file(context.environment, user_rule_path, @user_marker)
 
         # Pick a framework rule we expect to land on this re-install. Any
         # .md file in priv/rules other than elixir.md will do.
-        source_dir = Application.app_dir(:code_my_spec, "priv/rules")
-
         other_framework_rule =
-          source_dir
-          |> File.ls!()
-          |> Enum.filter(&String.ends_with?(&1, ".md"))
+          Fixtures.framework_rule_files()
           |> Enum.reject(&(&1 == "elixir.md"))
           |> List.first()
 
@@ -49,7 +46,6 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
 
         {:ok,
          Map.merge(context, %{
-           rules_dir: rules_dir,
            user_rule_path: user_rule_path,
            other_framework_rule: other_framework_rule
          })}
@@ -62,7 +58,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
       end
 
       then_ "elixir.md still holds the user-written content", context do
-        contents = File.read!(context.user_rule_path)
+        assert {:ok, contents} = Environments.read_file(context.environment, context.user_rule_path)
 
         assert contents == @user_marker,
                "expected user-modified elixir.md to be preserved, got:\n#{contents}"
@@ -71,9 +67,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
       end
 
       and_ "other framework rules absent before the call are now present", context do
-        other_path = Path.join(context.rules_dir, context.other_framework_rule)
+        other_path = Path.join(@rules_dir, context.other_framework_rule)
 
-        assert File.exists?(other_path),
+        assert Environments.file_exists?(context.environment, other_path),
                "expected framework rule `#{context.other_framework_rule}` at `#{other_path}` after install"
 
         {:ok, context}

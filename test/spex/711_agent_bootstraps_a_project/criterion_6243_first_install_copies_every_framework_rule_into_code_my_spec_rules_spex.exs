@@ -8,14 +8,19 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
   `.md` file from `priv/rules/` into it.
 
   Surface: `InstallRules` MCP tool. The tool reads from `priv/rules/`
-  (via `Application.app_dir/2`) and writes to the real filesystem under
-  `context.scope.cwd`.
+  (via `Application.app_dir/2`) and writes through `scope.environment`, so
+  the spec observes the in-memory environment via `CodeMySpec.Environments`.
+  The canonical framework rule list comes from `Fixtures.framework_rule_files/0`.
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallRules
+  alias CodeMySpecSpex.Fixtures
+
+  @rules_dir ".code_my_spec/rules"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,20 +28,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
   spex "install_rules copies framework rule files from priv/rules/ into .code_my_spec/rules/" do
     scenario "First install copies every framework rule into .code_my_spec/rules/" do
       given_ "the working directory has no .code_my_spec/rules/ directory", context do
-        rules_dir = Path.join([context.scope.cwd, ".code_my_spec", "rules"])
-        File.rm_rf!(rules_dir)
-        refute File.exists?(rules_dir), "expected rules dir to be absent before install"
+        assert {:ok, []} = Environments.list_directory(context.environment, @rules_dir),
+               "expected rules dir to be empty before install"
 
-        source_dir = Application.app_dir(:code_my_spec, "priv/rules")
-
-        framework_rules =
-          source_dir
-          |> File.ls!()
-          |> Enum.filter(&String.ends_with?(&1, ".md"))
+        framework_rules = Fixtures.framework_rule_files()
 
         assert framework_rules != [], "expected priv/rules to contain at least one .md file"
 
-        {:ok, Map.merge(context, %{rules_dir: rules_dir, framework_rules: framework_rules})}
+        {:ok, Map.put(context, :framework_rules, framework_rules)}
       end
 
       when_ "the agent calls install_rules", context do
@@ -45,9 +44,10 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
         {:ok, Map.put(context, :install_response, response)}
       end
 
-      then_ ".code_my_spec/rules/ exists", context do
-        assert File.dir?(context.rules_dir),
-               "expected rules dir at `#{context.rules_dir}` after install"
+      then_ ".code_my_spec/rules/ now contains rule files", context do
+        assert {:ok, entries} = Environments.list_directory(context.environment, @rules_dir)
+
+        assert entries != [], "expected rules dir to contain files after install"
 
         {:ok, context}
       end
@@ -55,9 +55,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
       and_ "every .md file from priv/rules is present in the project's rules directory",
            context do
         for rule_file <- context.framework_rules do
-          path = Path.join(context.rules_dir, rule_file)
+          path = Path.join(@rules_dir, rule_file)
 
-          assert File.exists?(path),
+          assert Environments.file_exists?(context.environment, path),
                  "expected framework rule `#{rule_file}` at `#{path}` after install"
         end
 

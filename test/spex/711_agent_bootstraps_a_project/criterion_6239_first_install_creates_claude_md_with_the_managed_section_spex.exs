@@ -7,14 +7,15 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
   no existing CLAUDE.md, the tool writes a new file at the project root
   whose contents include the managed-section start and end markers.
 
-  Surface: `InstallClaudeMd` MCP tool. The tool writes to the real
-  filesystem under `context.scope.cwd`, so assertions read back via
-  `File`.
+  Surface: `InstallClaudeMd` MCP tool. The tool reads and writes through
+  `scope.environment`, so the spec observes the in-memory environment via
+  `CodeMySpec.Environments`.
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Content
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd
 
@@ -24,8 +25,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
   spex "install_claude_md writes the managed CLAUDE.md section between explicit markers" do
     scenario "First install creates CLAUDE.md with the managed section" do
       given_ "the working directory has no CLAUDE.md", context do
-        claude_md = Path.join(context.scope.cwd, "CLAUDE.md")
-        refute File.exists?(claude_md), "expected `#{claude_md}` to not exist before install"
+        refute Environments.file_exists?(context.environment, "CLAUDE.md"),
+               "expected CLAUDE.md to not exist before install"
+
         {:ok, context}
       end
 
@@ -36,9 +38,10 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
       end
 
       then_ "CLAUDE.md exists at the project root", context do
-        claude_md = Path.join(context.scope.cwd, "CLAUDE.md")
-        assert File.exists?(claude_md), "expected CLAUDE.md at `#{claude_md}` after install"
-        {:ok, Map.put(context, :claude_md_contents, File.read!(claude_md))}
+        assert {:ok, contents} = Environments.read_file(context.environment, "CLAUDE.md"),
+               "expected CLAUDE.md to exist after install"
+
+        {:ok, Map.put(context, :claude_md_contents, contents)}
       end
 
       and_ "its contents include the managed-section start and end markers", context do

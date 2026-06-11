@@ -12,15 +12,21 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
   check files (`spex_denied_calls.ex` and `no_direct_send_in_spex.ex`)
   from `priv/credo_checks/` into the project's framework directory.
 
-  Surface: `InstallCredoChecks` MCP tool. The tool writes to the real
-  filesystem under `context.scope.cwd`, so assertions read back via
-  `File` rather than the in-memory environment.
+  Surface: `InstallCredoChecks` MCP tool. The tool writes through
+  `scope.environment`, so the spec observes the in-memory environment via
+  `CodeMySpec.Environments`. The in-memory store tracks files, not empty
+  directories, so the "local/ is empty" expectation is observed as "no
+  framework files leaked into local/".
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks
+
+  @framework_dir ".code_my_spec/credo_checks/framework"
+  @local_dir ".code_my_spec/credo_checks/local"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,10 +35,9 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
     scenario "no .code_my_spec/credo_checks/ directory exists → install creates and populates it" do
       given_ "the project has no .code_my_spec/credo_checks/ directory under the working directory",
              context do
-        credo_dir = Path.join(context.scope.cwd, ".code_my_spec/credo_checks")
-
-        refute File.exists?(credo_dir),
-               "expected `#{credo_dir}` to not exist before install"
+        assert {:ok, []} =
+                 Environments.list_directory(context.environment, ".code_my_spec/credo_checks"),
+               "expected credo_checks to be empty before install"
 
         {:ok, context}
       end
@@ -44,35 +49,26 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
       end
 
       then_ "spex_denied_calls.ex exists under credo_checks/framework/", context do
-        path = Path.join(context.scope.cwd, ".code_my_spec/credo_checks/framework/spex_denied_calls.ex")
+        path = Path.join(@framework_dir, "spex_denied_calls.ex")
 
-        assert File.exists?(path),
+        assert Environments.file_exists?(context.environment, path),
                "expected framework check at `#{path}` after install"
 
         {:ok, context}
       end
 
       and_ "no_direct_send_in_spex.ex exists under credo_checks/framework/", context do
-        path =
-          Path.join(
-            context.scope.cwd,
-            ".code_my_spec/credo_checks/framework/no_direct_send_in_spex.ex"
-          )
+        path = Path.join(@framework_dir, "no_direct_send_in_spex.ex")
 
-        assert File.exists?(path),
+        assert Environments.file_exists?(context.environment, path),
                "expected framework check at `#{path}` after install"
 
         {:ok, context}
       end
 
-      and_ "credo_checks/local/ exists as an empty directory", context do
-        local_dir = Path.join(context.scope.cwd, ".code_my_spec/credo_checks/local")
-
-        assert File.dir?(local_dir),
-               "expected `#{local_dir}/` to exist after install"
-
-        assert File.ls!(local_dir) == [],
-               "expected `#{local_dir}/` to be empty"
+      and_ "no framework files leak into credo_checks/local/", context do
+        assert {:ok, []} = Environments.list_directory(context.environment, @local_dir),
+               "expected `#{@local_dir}/` to stay empty"
 
         {:ok, context}
       end

@@ -8,13 +8,15 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
   only the content between the markers — user-written content above and
   below survives untouched.
 
-  Surface: `InstallClaudeMd` MCP tool. Assertions read CLAUDE.md back
-  from the real filesystem under `context.scope.cwd`.
+  Surface: `InstallClaudeMd` MCP tool. The tool reads and writes through
+  `scope.environment`, so the spec seeds and observes CLAUDE.md via
+  `CodeMySpec.Environments`.
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Content
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd
 
@@ -36,10 +38,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
           @user_above <>
             start_marker <> "\n" <> @stale_managed <> "\n" <> end_marker <> @user_below
 
-        claude_md = Path.join(context.scope.cwd, "CLAUDE.md")
-        File.write!(claude_md, existing)
+        :ok = Environments.write_file(context.environment, "CLAUDE.md", existing)
 
-        {:ok, Map.put(context, :claude_md_path, claude_md)}
+        {:ok, context}
       end
 
       when_ "the agent calls install_claude_md again", context do
@@ -49,7 +50,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
       end
 
       then_ "the user-written content above and below the markers is unchanged", context do
-        contents = File.read!(context.claude_md_path)
+        assert {:ok, contents} = Environments.read_file(context.environment, "CLAUDE.md")
 
         assert String.contains?(contents, @user_above),
                "expected user-written content above the managed section to survive, got:\n#{contents}"

@@ -14,15 +14,18 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
   install only — once a file is on disk in the project, the project
   owns it.
 
-  Surface: `InstallCredoChecks` MCP tool. The tool writes to the real
-  filesystem under `context.scope.cwd`.
+  Surface: `InstallCredoChecks` MCP tool. The tool writes through
+  `scope.environment`, so the spec seeds and reads the framework file via
+  `CodeMySpec.Environments`.
   """
 
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks
 
+  @framework_check ".code_my_spec/credo_checks/framework/spex_denied_calls.ex"
   @custom_marker "# PROJECT EDIT — do not overwrite\n"
 
   setup :register_log_in_setup_account
@@ -32,13 +35,9 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
     scenario "framework file already present with project-specific content → re-install leaves content untouched" do
       given_ "the framework directory exists with a locally-modified spex_denied_calls.ex",
              context do
-        framework_dir = Path.join(context.scope.cwd, ".code_my_spec/credo_checks/framework")
-        :ok = File.mkdir_p!(framework_dir)
+        :ok = Environments.write_file(context.environment, @framework_check, @custom_marker)
 
-        path = Path.join(framework_dir, "spex_denied_calls.ex")
-        :ok = File.write!(path, @custom_marker)
-
-        {:ok, Map.put(context, :spex_denied_calls_path, path)}
+        {:ok, context}
       end
 
       when_ "the agent calls install_credo_checks again", context do
@@ -48,7 +47,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
       end
 
       then_ "spex_denied_calls.ex still contains the project-specific edit", context do
-        content = File.read!(context.spex_denied_calls_path)
+        assert {:ok, content} = Environments.read_file(context.environment, @framework_check)
 
         assert content == @custom_marker,
                "expected file content to be preserved as `#{inspect(@custom_marker)}`, got: #{inspect(content)}"

@@ -100,4 +100,27 @@ defmodule CodeMySpec.McpServers.Validators do
   def mcp_working_dir do
     Application.get_env(:code_my_spec, :mcp_working_dir, File.cwd!())
   end
+
+  @doc """
+  Resolve the execution environment for a local MCP tool.
+
+  Prefers the environment already attached to the current scope — in
+  production that is the `:local` environment built from the project's
+  `local_path`; in specs it is the in-memory environment seeded by
+  `setup_active_project`. Falls back to a `:local` environment rooted at
+  the resolved working dir for early bootstrap, where no project scope is
+  resolved yet. Mirrors the `scope.environment || Environment.new(...)`
+  pattern in `StartAgentTask` and `ArchitectureDesign`.
+  """
+  def mcp_environment(frame) do
+    alias CodeMySpec.Environments.Environment
+
+    case frame.assigns[:current_scope] do
+      %{environment: %Environment{} = env} ->
+        env
+
+      _ ->
+        Environment.new(:local, mcp_working_dir(frame))
+    end
+  end
 end
