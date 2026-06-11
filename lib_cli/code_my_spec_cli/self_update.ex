@@ -2,17 +2,22 @@ defmodule CodeMySpecCli.SelfUpdate do
   @moduledoc """
   Self-update the cms binary from GitHub releases.
 
-  Compares the running binary's version against the latest published release.
-  If a newer version exists, stops the server, downloads the binary, swaps it
-  into place, and restarts the server.
+  Two entry points, both comparing the running version against the latest
+  published release and swapping the on-disk binary (rename-aside) when newer:
 
-  Replaces the bash `auto-update` script. The SessionStart hook fires
-  `cms self-update` in the background and we log progress to
-  `~/.codemyspec/auto-update.log` for backwards-compatible debugging.
+    * `run/1` — the `cms self-update` CLI command (unix / manual). Stops the
+      detached server, swaps, and restarts it via `Daemon`.
+    * `update_in_place/0` — for the server supervising itself. Swaps the
+      binary and returns `:updated`; the caller exits nonzero so its
+      supervisor relaunches the new binary. On Windows that supervisor is the
+      Shawl-wrapped service (default restart-on-nonzero), so a single exit
+      picks up the new binary — no service control, no detached respawn.
 
-  First-install (no binary on disk) is *not* handled here — the SessionStart
-  hook or the platform install script (`install.sh` / `install.ps1`) handles
-  that. There's an obvious chicken-and-egg with `cms` self-installing.
+  Progress is logged to `~/.codemyspec/auto-update.log`.
+
+  First-install (no binary on disk) is *not* handled here — the platform
+  install script handles that. There's an obvious chicken-and-egg with `cms`
+  self-installing.
   """
 
   alias CodeMySpecCli.Daemon
@@ -49,6 +54,62 @@ defmodule CodeMySpecCli.SelfUpdate do
       :held ->
         0
     end
+  end
+
+  @doc """
+  In-process update path for a server that is restarted by its supervisor on
+  nonzero exit (the Windows Shawl service). Checks the latest release against
+  the *running* version; if newer, downloads and swaps the on-disk binary and
+  returns `:updated` so the caller can `System.halt/1` nonzero — the
+  supervisor then relaunches the new binary. Returns `:current` or `:error`
+  otherwise, and never restarts the server itself.
+  """
+  def update_in_place do
+    {:ok, _} = Application.ensure_all_started(:inets)
+    {:ok, _} = Application.ensure_all_started(:ssl)
+
+    cms_home = Daemon.cms_home()
+    File.mkdir_p!(bin_dir(cms_home))
+    lock = Path.join(cms_home, "auto-update.lock")
+    log = log_fn(Path.join(cms_home, "auto-update.log"))
+
+    case acquire_lock(lock) do
+      :ok ->
+        try do
+          do_update_in_place(cms_home, log)
+        after
+          File.rm(lock)
+        end
+
+      :held ->
+        :current
+    end
+  end
+
+  defp do_update_in_place(cms_home, log) do
+    bin_path = Path.join(bin_dir(cms_home), binary_filename())
+    local = running_version()
+    log.("Running version: #{local}")
+
+    with {:ok, remote} <- remote_version(log),
+         true <- version_gt?(remote, local),
+         true <- File.exists?(bin_path),
+         {:ok, tmp} <- download_version(remote, log) do
+      swap_files(bin_path, tmp)
+      log.("Swapped to v#{remote}; exiting for supervisor restart")
+      :updated
+    else
+      false ->
+        log.("No update for running version #{local}")
+        :current
+
+      :error ->
+        :error
+    end
+  end
+
+  defp running_version do
+    Application.spec(:code_my_spec, :vsn) |> to_string()
   end
 
   defp do_update(cms_home, log) do
@@ -159,47 +220,55 @@ defmodule CodeMySpecCli.SelfUpdate do
   # --- install --------------------------------------------------------------
 
   defp install_version(remote, bin_path, log) do
+    case download_version(remote, log) do
+      {:ok, tmp} ->
+        swap_binary(bin_path, tmp)
+        log.("Updated to v#{remote}")
+        0
+
+      :error ->
+        0
+    end
+  end
+
+  # Download the release binary for `remote` to a tmp path. {:ok, tmp} | :error.
+  defp download_version(remote, log) do
     tag = "v#{remote}"
     asset = asset_name()
 
     with {:ok, release} <- http_json("#{@releases_api}/tags/#{tag}"),
          {:ok, url} <- find_asset_url(release, asset) do
-      tmp =
-        Path.join(System.tmp_dir!(), "cms_self_update_#{System.unique_integer([:positive])}")
+      tmp = Path.join(System.tmp_dir!(), "cms_self_update_#{System.unique_integer([:positive])}")
 
       case http_download(url, tmp) do
         :ok ->
-          swap_binary(bin_path, tmp, log)
-          log.("Updated to #{tag}")
-          0
+          {:ok, tmp}
 
         {:error, reason} ->
           File.rm(tmp)
           log.("Download failed: #{inspect(reason)}")
-          0
+          :error
       end
     else
       _ ->
         log.("No asset #{asset} in #{tag}")
-        0
+        :error
     end
   end
 
-  # Stop server, swap binary, start. On Windows you can rename a running
-  # .exe but not overwrite it — rename-aside first, then rename-into-place.
-  # Same dance works fine on Unix.
-  #
-  # When the binary runs as a Windows Shawl service we drive the swap through
-  # the service control manager: `sc stop` (Shawl tears down without
-  # restarting, since the service is stopping), swap, `sc start` (Shawl
-  # relaunches from the same path — now the new binary). Going through
-  # Daemon.stop/start here would taskkill the process out from under Shawl,
-  # which would just restart the OLD binary and spawn a competing detached
-  # copy on the same port.
-  defp swap_binary(bin_path, tmp, log) do
-    service? = service_managed?()
-    stop_server(service?, log)
+  # CLI / manual path (unix): stop the detached server, swap, restart it.
+  defp swap_binary(bin_path, tmp) do
+    Daemon.stop()
+    swap_files(bin_path, tmp)
+    Daemon.start(bin_path)
+  end
 
+  # Move the new binary into place. On Windows a running .exe can be renamed
+  # but not overwritten, so rename-aside first, then rename-into-place — works
+  # the same on unix. Crucially this does NOT restart anything: under the
+  # Windows Shawl service the caller halts with a nonzero code and Shawl
+  # relaunches from this path, now holding the new binary.
+  defp swap_files(bin_path, tmp) do
     aside = bin_path <> ".old"
     File.rm(aside)
     if File.exists?(bin_path), do: File.rename!(bin_path, aside)
@@ -211,45 +280,6 @@ defmodule CodeMySpecCli.SelfUpdate do
     end
 
     File.rm(aside)
-    start_server(service?, bin_path, log)
-  end
-
-  defp service_managed? do
-    match?({:win32, _}, :os.type()) and CodeMySpecCli.WindowsService.installed?()
-  end
-
-  defp stop_server(true, log) do
-    log.("Stopping Windows service before swap")
-    System.cmd("sc", ["stop", CodeMySpecCli.WindowsService.service_name()], stderr_to_stdout: true)
-    wait_service_stopped(60)
-  end
-
-  defp stop_server(false, _log), do: Daemon.stop()
-
-  defp start_server(true, _bin_path, log) do
-    log.("Starting Windows service after swap")
-    System.cmd("sc", ["start", CodeMySpecCli.WindowsService.service_name()], stderr_to_stdout: true)
-  end
-
-  defp start_server(false, bin_path, _log), do: Daemon.start(bin_path)
-
-  defp wait_service_stopped(0), do: :ok
-
-  defp wait_service_stopped(n) do
-    case System.cmd("sc", ["query", CodeMySpecCli.WindowsService.service_name()],
-           stderr_to_stdout: true
-         ) do
-      {out, 0} ->
-        if String.contains?(out, "STOPPED") do
-          :ok
-        else
-          Process.sleep(1000)
-          wait_service_stopped(n - 1)
-        end
-
-      _ ->
-        :ok
-    end
   end
 
   defp find_asset_url(%{"assets" => assets}, name) when is_list(assets) do

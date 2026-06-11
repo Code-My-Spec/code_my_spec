@@ -19,22 +19,16 @@ defmodule CodeMySpecCli.Daemon do
   @start_timeout_s 60
   @stop_timeout_s 20
 
-  # Data dir for db/logs/pid/binary. Honors CMS_HOME — the Windows Shawl
-  # service is launched with `--env CMS_HOME` so the LocalSystem account
-  # writes to a shared machine path instead of its own system profile.
-  # Falls back to ProgramData on Windows, ~/.codemyspec elsewhere.
+  # Data dir for db/logs/pid/binary. Honors CMS_HOME so the Windows Shawl
+  # service can be launched with an explicit `--env CMS_HOME=<user>\.codemyspec`
+  # (service profile loading isn't guaranteed, so we don't rely on `~`).
+  # Defaults to ~/.codemyspec — the service runs as the logged-in user, so
+  # this is the same dir whether resolved by the service or a user shell.
   def cms_home do
     case System.get_env("CMS_HOME") do
-      nil -> default_cms_home()
-      "" -> default_cms_home()
+      nil -> Path.expand("~/.codemyspec")
+      "" -> Path.expand("~/.codemyspec")
       dir -> dir
-    end
-  end
-
-  defp default_cms_home do
-    case :os.type() do
-      {:win32, _} -> "C:\\ProgramData\\CodeMySpec"
-      _ -> Path.expand("~/.codemyspec")
     end
   end
   def pid_file, do: Path.join(cms_home(), "cms.pid")
@@ -224,8 +218,7 @@ defmodule CodeMySpecCli.Daemon do
 
   # --- health probe ---------------------------------------------------------
 
-  @doc "True if the local server answers /health. Used by WindowsService too."
-  def health_ok? do
+  defp health_ok? do
     # :inets is in extra_applications so :httpc is ready, but ensure_all_started
     # is cheap and idempotent — keeps this function self-contained for tests.
     {:ok, _} = Application.ensure_all_started(:inets)

@@ -14,7 +14,6 @@ defmodule CodeMySpecLocalWeb.Application do
   # Resolving the module through an atom at runtime keeps both builds clean.
   @daemon :"Elixir.CodeMySpecCli.Daemon"
   @self_update :"Elixir.CodeMySpecCli.SelfUpdate"
-  @windows_service :"Elixir.CodeMySpecCli.WindowsService"
 
   # Burrito.Util.Args is Burrito-release-only — the bare web build doesn't
   # include it. Same atom trick.
@@ -48,7 +47,7 @@ defmodule CodeMySpecLocalWeb.Application do
         CodeMySpec.ProjectSync.FileWatcherServer,
         CodeMySpecLocalWeb.SocketSupervisor,
         CodeMySpecCli.PresenceClient
-      ] ++ tunnel_children()
+      ] ++ tunnel_children() ++ updater_children()
 
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
 
@@ -84,6 +83,17 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
+  # In-process self-update loop — only under the Windows Shawl service, which
+  # sets CMS_SERVICE=1 and restarts the binary on nonzero exit. The updater
+  # swaps the on-disk binary and halts nonzero; Shawl relaunches the new one.
+  defp updater_children do
+    if System.get_env("CMS_SERVICE") == "1" do
+      [CodeMySpecCli.Updater]
+    else
+      []
+    end
+  end
+
   defp cli_argv do
     call_optional(@burrito_args, :argv) || []
   rescue
@@ -97,30 +107,10 @@ defmodule CodeMySpecLocalWeb.Application do
     cond do
       version_flag?(args) -> print_and_halt(version_string(), 0)
       help_flag?(args) -> print_and_halt(help_text(), 0)
-      "service" in args -> run_service(service_action(args))
       subcommand = find_subcommand(args) -> run_subcommand(subcommand, args)
       args == [] -> :ok
       true -> unknown_command(args)
     end
-  end
-
-  # `cms service <action>` — Windows-only, manages the Shawl-wrapped service.
-  @service_actions ~w(install uninstall start stop restart status)
-
-  defp service_action(args) do
-    Enum.find(@service_actions, &(&1 in args))
-  end
-
-  defp run_service(nil) do
-    IO.puts(:stderr, "cms service: expected one of #{Enum.join(@service_actions, ", ")}")
-    System.halt(2)
-  end
-
-  defp run_service("status"),
-    do: System.halt(call_optional(@windows_service, :print_status, []) || 0)
-
-  defp run_service(action) do
-    System.halt(call_optional(@windows_service, String.to_atom(action), []) || 0)
   end
 
   defp version_flag?(args), do: "--version" in args or "-v" in args
@@ -184,15 +174,10 @@ defmodule CodeMySpecLocalWeb.Application do
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
-    Windows service (run from an elevated shell):
-      cms service install    Register + start the Shawl-wrapped service.
-      cms service uninstall  Stop + remove the service.
-      cms service start      Start the service.
-      cms service stop       Stop the service.
-      cms service restart    Stop then start.
-      cms service status     Print `sc query` for the service.
+    On Windows, cms runs as a Shawl-wrapped service installed out-of-band by
+    installers/windows/install.ps1; it auto-updates itself in place.
 
-    Logs and pid file live in ~/.codemyspec/ (C:\\ProgramData\\CodeMySpec on Windows).
+    Logs and pid file live in ~/.codemyspec/.
     """
   end
 

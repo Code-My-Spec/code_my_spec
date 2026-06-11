@@ -101,8 +101,8 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     log("Created install script")
 
     # No Windows install.ps1 here anymore: Windows installs are a standalone,
-    # plugin-decoupled Shawl service (installers/windows/install.ps1 +
-    # `cms service install`). The plugin only talks to the running server.
+    # plugin-decoupled Shawl service (installers/windows/install.ps1). The
+    # plugin only talks to the running server on its port.
 
     create_readme(extension_dir)
     log("Created README")
