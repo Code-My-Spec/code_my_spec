@@ -36,6 +36,7 @@ defmodule Mix.Tasks.Demo.Play do
     no_mcp: :boolean,
     source_cwd: :string,
     delay: :integer,
+    pacing: :string,
     from: :integer,
     to: :integer
   ]
@@ -59,6 +60,7 @@ defmodule Mix.Tasks.Demo.Play do
       |> put_opt(:source_cwd, opts[:source_cwd])
       |> put_opt(:from, opts[:from])
       |> put_opt(:to, opts[:to])
+      |> put_opt(:pacing, opts[:pacing])
 
     Player.play(path, play_opts)
   end

@@ -255,7 +255,21 @@ defmodule CodeMySpec.Transcripts.Replayer do
   # -- Path rewriting -------------------------------------------------------
 
   defp rewrite_path(nil, _ctx), do: raise(ArgumentError, "nil file_path")
-  defp rewrite_path(path, ctx), do: String.replace(path, ctx.source_cwd, ctx.target_dir)
+
+  defp rewrite_path(path, ctx) do
+    rewritten = String.replace(path, ctx.source_cwd, ctx.target_dir)
+
+    # SAFETY: if the substitution didn't take (path was from a different cwd
+    # than the recording's source_cwd), the rewritten path is still absolute
+    # and pointing OUTSIDE target_dir — writing it would leak into other
+    # repos. Refuse. safe_apply rescues and tallies as :error.
+    unless String.starts_with?(rewritten, ctx.target_dir) do
+      raise ArgumentError,
+            "path #{path} does not remap into target_dir #{ctx.target_dir} — refusing to leak"
+    end
+
+    rewritten
+  end
 
   defp resolve_cwd(transcript, opts) do
     case Keyword.get(opts, :source_cwd) do
