@@ -140,6 +140,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # Need the source tree for tracked, non-artifact files we publish to the
+      # marketplace repo (installers/windows/install.ps1). Artifacts alone
+      # don't include it.
+      - name: Checkout source
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -159,6 +165,16 @@ jobs:
               chmod +x "release-assets/$binary"
             fi
           done
+
+          # Bundle Shawl (the Windows service wrapper) as a release asset so
+          # the Windows installer pulls it from our release, not upstream.
+          # Shawl IS the service entry point that runs cms.exe server.
+          SHAWL_VERSION="v1.9.0"
+          curl -fsSL -o /tmp/shawl.zip \
+            "https://github.com/mtkennerly/shawl/releases/download/${SHAWL_VERSION}/shawl-${SHAWL_VERSION}-win64.zip"
+          unzip -o /tmp/shawl.zip -d /tmp/shawl
+          cp "$(find /tmp/shawl -name 'shawl.exe' | head -1)" release-assets/shawl-windows-x64.exe
+
           ls -la release-assets/
 
       - name: Fix extension script permissions
