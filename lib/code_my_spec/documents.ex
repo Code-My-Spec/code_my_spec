@@ -125,6 +125,13 @@ defmodule CodeMySpec.Documents do
   def create_dynamic_document(markdown_content, document_type, opts \\ []) do
     strict? = Keyword.get(opts, :strict, true)
 
+    # Normalize CRLF → LF. Specs written/edited on Windows carry `\r\n`, and
+    # the `$`-anchored H1 and section extractors otherwise fail to match
+    # because the `\r` sits between the value and the line end — so a
+    # perfectly valid spec is rejected ("Missing or invalid H1 title", wrong
+    # section set). Same class as the ComponentSync CRLF fix.
+    markdown_content = String.replace(markdown_content, "\r\n", "\n")
+
     with :ok <- validate_document_type(document_type),
          doc_def = CodeMySpec.Documents.Registry.get_definition(document_type),
          {required, optional} = effective_section_requirements(doc_def, strict?),

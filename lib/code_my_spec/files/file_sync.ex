@@ -863,9 +863,15 @@ defmodule CodeMySpec.Files.FileSync do
 
   # Extract document type from spec content's ## Type section.
   # Maps component types to document types via the registry.
+  #
+  # CRLF → LF first: a Windows-written spec has `## Type\r`, and `^## Type$`
+  # won't match (the `\r` is before the line end), so the type silently
+  # resolves to the default "spec" definition and the wrong section set is
+  # enforced. Same class as the ComponentSync CRLF fix.
   defp document_type_from_content(content) do
     type_section =
       content
+      |> String.replace("\r\n", "\n")
       |> String.split("\n")
       |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
       |> Enum.drop(1)

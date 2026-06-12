@@ -235,6 +235,88 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert spec_file.validation_errors != nil
     end
 
+    # Regression: a spec authored/edited on Windows carries CRLF line endings.
+    # The `## Type` extraction (and the H1 validator) are `$`-anchored, so a
+    # `## Type\r` line failed to match, the document type silently resolved to
+    # the default "spec" definition, and the WRONG section set was enforced —
+    # a context spec was rejected for "Disallowed sections found: components"
+    # and a schema spec for "Missing required sections". Both must validate.
+    test "validates a CRLF context spec (type resolves to context_spec, Components allowed)" do
+      {scope, tmp_dir} = setup_project()
+
+      content =
+        Enum.join(
+          [
+            "# MyApp.Tasks",
+            "",
+            "## Type",
+            "",
+            "context",
+            "",
+            "## Functions",
+            "",
+            "### create_task/1",
+            "",
+            "Creates a task.",
+            "",
+            "## Dependencies",
+            "",
+            "- MyApp.Repo",
+            "",
+            "## Components",
+            "",
+            "### MyApp.Tasks.Task",
+            "",
+            "The task schema.",
+            ""
+          ],
+          "\r\n"
+        )
+
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/tasks.spec.md", content)
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/tasks.spec.md")
+      assert spec_file.valid == true, "CRLF context spec invalid: #{inspect(spec_file.validation_errors)}"
+      assert spec_file.validation_errors == nil
+    end
+
+    test "validates a CRLF schema spec (type resolves to schema, not default spec)" do
+      {scope, tmp_dir} = setup_project()
+
+      content =
+        Enum.join(
+          [
+            "# MyApp.Tasks.Task",
+            "",
+            "## Type",
+            "",
+            "schema",
+            "",
+            "## Fields",
+            "",
+            "| Field | Type | Required | Description | Constraints |",
+            "|-------|------|----------|-------------|-------------|",
+            "| title | string | Yes | Task title | Max: 255 |",
+            "",
+            "## Dependencies",
+            "",
+            "- MyApp.Repo",
+            ""
+          ],
+          "\r\n"
+        )
+
+      write_file(tmp_dir, ".code_my_spec/spec/my_app/task.spec.md", content)
+
+      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/task.spec.md")
+      assert spec_file.valid == true, "CRLF schema spec invalid: #{inspect(spec_file.validation_errors)}"
+      assert spec_file.validation_errors == nil
+    end
+
     test "validates test files against spec test assertions" do
       {scope, tmp_dir} = setup_project()
 

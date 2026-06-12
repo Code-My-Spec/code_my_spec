@@ -415,9 +415,13 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   defp qa_document_type(%{role: :qa_result}, _content), do: "qa_result"
 
   # Mirrors FileSync.document_type_from_content/1 (kept private there).
+  # CRLF → LF first so a Windows-written `## Type\r` still matches; otherwise
+  # the type resolves to the default "spec" definition and the wrong section
+  # set is enforced.
   defp document_type_from_content(content) do
     type_section =
       content
+      |> String.replace("\r\n", "\n")
       |> String.split("\n")
       |> Enum.drop_while(&(!String.match?(&1, ~r/^## Type$/)))
       |> Enum.drop(1)
