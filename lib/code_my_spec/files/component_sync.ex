@@ -161,6 +161,17 @@ defmodule CodeMySpec.Files.ComponentSync do
 
         case extract_h1_module(content) do
           nil ->
+            # A spec file is present on disk but yields no module name. The
+            # component it should describe will be ABSENT from `merged`, and a
+            # full sync's `cleanup_removed/3` will then DELETE that component —
+            # silently destroying architecture state (this is exactly how a CRLF
+            # H1 regression manifested: the `$`-anchored extractor matched
+            # nothing). Never let this pass unlogged.
+            Logger.warning(
+              "[Files.ComponentSync] spec file #{path} has no extractable H1 module heading; " <>
+                "its component will not be synced and may be pruned. Check the `# Module.Name` line."
+            )
+
             nil
 
           name ->
@@ -172,7 +183,12 @@ defmodule CodeMySpec.Files.ComponentSync do
             }
         end
 
-      {:error, _} ->
+      {:error, reason} ->
+        Logger.warning(
+          "[Files.ComponentSync] could not read spec file #{path} (#{inspect(reason)}); " <>
+            "its component will not be synced and may be pruned."
+        )
+
         nil
     end
   end
