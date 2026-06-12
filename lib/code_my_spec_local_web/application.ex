@@ -144,10 +144,25 @@ defmodule CodeMySpecLocalWeb.Application do
 
   # Path of the running binary — passed to `start` so the detached child
   # is exactly this binary (Burrito launcher + embedded payload).
+  #
+  # Burrito's launcher exports `__BURRITO_BIN_PATH`; `get_bin_path/0` reads it
+  # and is the only reliable source on Windows. The `$_` / init-args fallbacks
+  # are unix shell-isms that yield nothing under the Windows launcher, so
+  # without this `self_path` fell back to "cms" — and `cms start` then tried to
+  # `Start-Process -FilePath cms` (not on PATH), spawning nothing and timing
+  # out on the health check.
   defp self_path do
-    System.get_env("_") ||
+    burrito_bin_path() ||
+      System.get_env("_") ||
       List.first(:init.get_plain_arguments() |> Enum.map(&to_string/1)) ||
       "cms"
+  end
+
+  defp burrito_bin_path do
+    case call_optional(@burrito_args, :get_bin_path) do
+      path when is_binary(path) -> path
+      _ -> nil
+    end
   end
 
   defp version_string do
