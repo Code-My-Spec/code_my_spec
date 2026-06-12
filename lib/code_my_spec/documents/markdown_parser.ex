@@ -8,10 +8,16 @@ defmodule CodeMySpec.Documents.MarkdownParser do
 
   ## Implementation note
 
-  Parsing is done by `MDEx` (Rust-backed) for speed, then converted to the
-  Earmark-style tuple AST (`{tag, attrs, content, meta}`) that the section
-  parsers and `extract_text/1` were written against. The converter keeps the
-  per-parse cost at MDEx's ~1ms rather than Earmark's ~160ms.
+  Parsing is done by `Earmark` (pure Elixir), which yields the
+  `{tag, attrs, content, meta}` AST that `extract_sections/1` and the section
+  parsers consume directly.
+
+  A prior MDEx (Rust/comrak NIF) fast path was removed: the precompiled NIF
+  hard-crashes the whole BEAM — exit `0xC0000409` (STATUS_STACK_BUFFER_OVERRUN)
+  on *any* parse — when the x86_64 BEAM runs under ARM64→x64 emulation (Windows
+  hosts). A NIF crash can't be caught with try/rescue, so the only safe option
+  is to not call it. MDEx was only ever converting its AST *back* to Earmark's
+  shape, so dropping it just removes that round-trip.
   """
 
   @doc """
@@ -35,145 +41,17 @@ defmodule CodeMySpec.Documents.MarkdownParser do
       iex> MarkdownParser.parse(markdown)
       {:ok, %{"purpose" => "This is the purpose.", "fields" => [%Field{...}]}}
   """
-  # GFM-equivalent extensions — matches what Earmark enabled by default.
-  @mdex_opts [
-    extension: [
-      table: true,
-      strikethrough: true,
-      autolink: true,
-      tasklist: true,
-      superscript: true
-    ]
-  ]
-
   def parse(markdown_content) do
-    # NOTE: Reverted from MDEx (comrak Rust NIF) back to Earmark (pure Elixir).
-    # The precompiled MDEx NIF hard-crashes the whole BEAM — exit 0xC0000409
-    # (STATUS_STACK_BUFFER_OVERRUN) on *any* parse, even `MDEx.parse_document("a")` —
-    # when the x86_64 BEAM runs under ARM64→x64 emulation (this Windows host).
-    # A NIF segfault can't be caught with try/rescue, so the only safe option is
-    # to not call it. Earmark yields the same `{tag, attrs, content, meta}` AST
-    # that `extract_sections/1` and the section parsers were originally written
-    # against (the MDEx path existed only to convert *back* to this shape).
+    # Earmark.as_ast returns {:error, ast, messages} for recoverable warnings
+    # (e.g. unknown inline syntax) alongside a usable partial AST — treat both
+    # the clean and recoverable cases as success.
     case Earmark.as_ast(markdown_content) do
-      {:ok, ast, _messages} ->
-        {:ok, extract_sections(ast)}
-
-      # Earmark returns a usable partial AST alongside recoverable warnings.
-      {:error, ast, _messages} ->
-        {:ok, extract_sections(ast)}
+      {:ok, ast, _messages} -> {:ok, extract_sections(ast)}
+      {:error, ast, _messages} -> {:ok, extract_sections(ast)}
     end
   end
 
-  # -- MDEx → Earmark-tuple AST conversion --------------------------------
-  #
-  # Earmark's AST shape is `{tag, attrs, content, meta}` where tag is a
-  # string, attrs is a list, content is a list of children (strings or
-  # nested tuples), and meta is `%{}`. The section parsers match this
-  # shape literally, so we preserve it.
-
-  defp to_earmark(%MDEx.Heading{level: level, nodes: children}) do
-    {"h#{level}", [], convert_children(children), %{}}
-  end
-
-  defp to_earmark(%MDEx.Paragraph{nodes: children}) do
-    {"p", [], convert_children(children), %{}}
-  end
-
-  defp to_earmark(%MDEx.Text{literal: text}), do: text
-
-  defp to_earmark(%MDEx.List{list_type: :bullet, nodes: items}) do
-    {"ul", [], Enum.map(items, &to_earmark/1), %{}}
-  end
-
-  defp to_earmark(%MDEx.List{list_type: :ordered, nodes: items}) do
-    {"ol", [], Enum.map(items, &to_earmark/1), %{}}
-  end
-
-  defp to_earmark(%MDEx.ListItem{nodes: children}) do
-    {"li", [], convert_children(children), %{}}
-  end
-
-  defp to_earmark(%MDEx.Table{nodes: rows}) do
-    {header_rows, body_rows} = split_table_rows(rows)
-
-    parts =
-      []
-      |> maybe_add_thead(header_rows)
-      |> maybe_add_tbody(body_rows)
-
-    {"table", [], parts, %{}}
-  end
-
-  defp to_earmark(%MDEx.TableRow{nodes: cells}) do
-    {"tr", [], Enum.map(cells, &to_earmark/1), %{}}
-  end
-
-  defp to_earmark(%MDEx.TableCell{nodes: children}) do
-    # Earmark doesn't distinguish th/td at cell level — the surrounding
-    # thead/tbody wrapper does that. We emit td here and override to th
-    # when the cell lives in a header row (see split_table_rows/1).
-    {"td", [], convert_children(children), %{}}
-  end
-
-  defp to_earmark(%MDEx.Strong{nodes: children}),
-    do: {"strong", [], convert_children(children), %{}}
-
-  defp to_earmark(%MDEx.Emph{nodes: children}),
-    do: {"em", [], convert_children(children), %{}}
-
-  defp to_earmark(%MDEx.Code{literal: text}), do: {"code", [], [text], %{}}
-
-  defp to_earmark(%MDEx.CodeBlock{literal: text, info: info}) do
-    code_attrs = if info && info != "", do: [{"class", info}], else: []
-    {"pre", [], [{"code", code_attrs, [String.trim_trailing(text, "\n")], %{}}], %{}}
-  end
-
-  defp to_earmark(%MDEx.Link{url: url, nodes: children}),
-    do: {"a", [{"href", url}], convert_children(children), %{}}
-
-  defp to_earmark(%MDEx.SoftBreak{}), do: " "
-  defp to_earmark(%MDEx.LineBreak{}), do: {"br", [], [], %{}}
-  defp to_earmark(%MDEx.HtmlInline{literal: text}), do: text
-  defp to_earmark(%MDEx.HtmlBlock{literal: text}), do: text
-  defp to_earmark(%MDEx.ThematicBreak{}), do: {"hr", [], [], %{}}
-
-  defp to_earmark(%MDEx.BlockQuote{nodes: children}),
-    do: {"blockquote", [], convert_children(children), %{}}
-
-  defp to_earmark(%{nodes: children}), do: convert_children(children) |> wrap_unknown()
-  defp to_earmark(_other), do: ""
-
-  defp convert_children(children) when is_list(children) do
-    Enum.map(children, &to_earmark/1)
-  end
-
-  defp wrap_unknown([single]) when is_binary(single), do: single
-  defp wrap_unknown(list), do: {"div", [], list, %{}}
-
-  defp split_table_rows(rows) do
-    Enum.split_with(rows, fn
-      %MDEx.TableRow{header: true} -> true
-      _ -> false
-    end)
-  end
-
-  defp maybe_add_thead(parts, []), do: parts
-
-  defp maybe_add_thead(parts, [row | _]) do
-    # Earmark emits a single thead containing one tr of th cells.
-    {"tr", [], cells, %{}} = to_earmark(row)
-    th_cells = Enum.map(cells, fn {"td", attrs, content, meta} -> {"th", attrs, content, meta} end)
-    parts ++ [{"thead", [], [{"tr", [], th_cells, %{}}], %{}}]
-  end
-
-  defp maybe_add_tbody(parts, []), do: parts
-
-  defp maybe_add_tbody(parts, rows) do
-    parts ++ [{"tbody", [], Enum.map(rows, &to_earmark/1), %{}}]
-  end
-
-  # -- Section extraction (unchanged) -------------------------------------
+  # -- Section extraction -------------------------------------------------
 
   defp extract_sections(ast) do
     {sections, current} =

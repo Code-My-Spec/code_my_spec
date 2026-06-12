@@ -125,9 +125,10 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
         <span>{@error}</span>
       </div>
 
-      <article :if={@markdown} class="prose max-w-none">
-        {raw(CodeMySpecLocalWeb.markdown_to_html(@markdown))}
-      </article>
+      <pre
+        :if={@markdown}
+        class="whitespace-pre-wrap font-mono text-sm bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
+      >{@markdown}</pre>
     </Layouts.app>
     """
   end
