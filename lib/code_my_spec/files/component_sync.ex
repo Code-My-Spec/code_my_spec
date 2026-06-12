@@ -151,7 +151,14 @@ defmodule CodeMySpec.Files.ComponentSync do
   # can live anywhere; the H1 inside is what names it.
   defp parse_spec_file(%File{path: path} = _file, env) do
     case Environments.read_file(env, path) do
-      {:ok, content} ->
+      {:ok, raw_content} ->
+        # Normalize CRLF → LF before regex extraction. Spec files written
+        # or edited on Windows carry `\r\n`; the `$`-anchored extractors
+        # (extract_h1_module, extract_type_section, …) otherwise fail to
+        # match because the `\r` sits between the value and the line end,
+        # so the component silently never materializes from its spec.
+        content = String.replace(raw_content, "\r\n", "\n")
+
         case extract_h1_module(content) do
           nil ->
             nil

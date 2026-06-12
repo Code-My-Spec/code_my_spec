@@ -47,14 +47,21 @@ defmodule CodeMySpec.Documents.MarkdownParser do
   ]
 
   def parse(markdown_content) do
-    case MDEx.parse_document(markdown_content, @mdex_opts) do
-      {:ok, document} ->
-        ast = document.nodes |> Enum.map(&to_earmark/1)
-        sections = extract_sections(ast)
-        {:ok, sections}
+    # NOTE: Reverted from MDEx (comrak Rust NIF) back to Earmark (pure Elixir).
+    # The precompiled MDEx NIF hard-crashes the whole BEAM — exit 0xC0000409
+    # (STATUS_STACK_BUFFER_OVERRUN) on *any* parse, even `MDEx.parse_document("a")` —
+    # when the x86_64 BEAM runs under ARM64→x64 emulation (this Windows host).
+    # A NIF segfault can't be caught with try/rescue, so the only safe option is
+    # to not call it. Earmark yields the same `{tag, attrs, content, meta}` AST
+    # that `extract_sections/1` and the section parsers were originally written
+    # against (the MDEx path existed only to convert *back* to this shape).
+    case Earmark.as_ast(markdown_content) do
+      {:ok, ast, _messages} ->
+        {:ok, extract_sections(ast)}
 
-      {:error, reason} ->
-        {:error, "Failed to parse markdown: #{inspect(reason)}"}
+      # Earmark returns a usable partial AST alongside recoverable warnings.
+      {:error, ast, _messages} ->
+        {:ok, extract_sections(ast)}
     end
   end
 

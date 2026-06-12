@@ -290,28 +290,38 @@ defmodule CodeMySpecCli.Daemon do
     )
   end
 
-  # `cmd /c start "" /B …` is the Windows analogue of nohup+disown: `start`
-  # returns immediately and the spawned process keeps running after cmd
-  # exits. The empty `""` is the window title `start` insists on consuming
-  # before the program path. Redirection works because `/B` runs the child
-  # in the same console and inherits the redirected handles.
+  # PowerShell `Start-Process` is the Windows analogue of nohup+disown: it
+  # launches the child detached (it keeps running after we exit) and writes
+  # its raw stdout/stderr to the boot logs.
+  #
+  # We deliberately do NOT use `cmd /c start "" /B …` here. That path builds
+  # a single command string with embedded double-quotes around the (space-
+  # containing) binary path, and `System.cmd` then escapes those quotes
+  # C-runtime style (`\"`) — which `cmd.exe`'s `start` builtin does not
+  # understand. The result on a normal Windows account (e.g.
+  # `C:\Users\First Last\…`) is "The filename, directory name, or volume
+  # label syntax is incorrect" and the server never starts. Start-Process
+  # with PowerShell SINGLE-quoted paths keeps the command free of any double
+  # quotes, so there is nothing for the two quoting layers to disagree on.
+  #
+  # Start-Process requires distinct files for stdout and stderr, so stderr
+  # goes to `<boot_log>.err` rather than being merged via `2>&1`.
   defp spawn_detached_windows(cms_bin) do
-    line =
-      ~s(start "" /B ) <>
-        win_quote(cms_bin) <>
-        " server >> " <>
-        win_quote(boot_log_file()) <>
-        " 2>&1"
+    command =
+      "Start-Process -FilePath #{ps_quote(cms_bin)} " <>
+        "-ArgumentList 'server' -WindowStyle Hidden " <>
+        "-RedirectStandardOutput #{ps_quote(boot_log_file())} " <>
+        "-RedirectStandardError #{ps_quote(boot_log_file() <> ".err")}"
 
-    System.cmd("cmd", ["/c", line])
+    System.cmd("powershell", ["-NoProfile", "-Command", command])
   end
 
   defp shell_quote(s), do: "'" <> String.replace(s, "'", "'\\''") <> "'"
 
-  # cmd.exe quoting: wrap in double quotes, escape embedded quotes by
-  # doubling. Paths under ~/.codemyspec never contain quotes in practice,
-  # but the escape keeps us safe if the user's home does.
-  defp win_quote(s), do: ~s(") <> String.replace(s, ~s("), ~s("")) <> ~s(")
+  # PowerShell single-quote literal: wrap in single quotes, escape embedded
+  # single quotes by doubling. No double quotes are produced, so this is
+  # immune to the `System.cmd`/`cmd.exe` quote-escaping collision above.
+  defp ps_quote(s), do: "'" <> String.replace(s, "'", "''") <> "'"
 
   # --- kill -----------------------------------------------------------------
 
@@ -430,7 +440,7 @@ defmodule CodeMySpecCli.Daemon do
       args: [
         "-NoProfile",
         "-Command",
-        "Get-Content -Wait -Tail 0 -Path " <> win_quote(path)
+        "Get-Content -Wait -Tail 0 -Path " <> ps_quote(path)
       ]
     ])
     |> stream_port()
