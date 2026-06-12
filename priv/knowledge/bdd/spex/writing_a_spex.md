@@ -40,7 +40,7 @@ defmodule <App>Spex.Story<id>.Criterion<id>Spex do
 
       then_ "<observable assertion through the public surface>", context do
         # observe via rendered HTML, HTTP response body, or LiveView element
-        :ok
+        {:ok, context}
       end
     end
   end
@@ -62,9 +62,12 @@ end
 
 ## DSL: `given_`, `when_`, `then_`
 
-Each step returns either `:ok` or `{:ok, context}`. Returning
-`{:ok, context}` merges keys into the shared scenario context so
-later steps can read them.
+Every step — `given_`, `when_`, `then_`, `and_`, and registered
+givens — **must** return `{:ok, context}`. A bare `:ok` is rejected at
+runtime (`SexySpex.Runtime` raises `must return {:ok, context}`).
+Returning `{:ok, context}` (optionally with new keys merged into the
+map) makes those keys visible to every later step. A `then_` that only
+asserts and changes nothing still returns `{:ok, context}` unchanged.
 
 ### `given_ :name` — shared given
 
