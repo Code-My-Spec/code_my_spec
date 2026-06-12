@@ -31,11 +31,16 @@ defmodule CodeMySpecCli.Release.PatchLauncherStep do
         # Patched:      "-extra",
         #               "--",  // Added by PatchLauncherStep
 
+        # Match the end of the erlang_cli array tolerant of line endings: the
+        # zig source is checked out with CRLF on Windows, so a literal "\n"
+        # pattern silently fails to match (leaving args unseparated). Capture the
+        # whitespace/newline between "-extra", and the closing "};" and reuse it
+        # so the inserted line keeps the file's existing line endings.
         patched_content =
           String.replace(
             content,
-            ~s|"-extra",\n    };|,
-            ~s|"-extra",\n        "--",  // Added by PatchLauncherStep\n    };|
+            ~r/"-extra",(\s*)\};/,
+            ~s|"-extra",\\g{1}    "--",  // Added by PatchLauncherStep\\g{1}};|
           )
 
         if patched_content != content do

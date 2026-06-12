@@ -88,7 +88,7 @@ defmodule CodeMySpec.MixProject do
       {:bandit, "~> 1.5"},
 
       # Added by codemyspec
-      {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main"},
+      {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main", only: [:test]},
       {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :dev_cli, :test]},
       {:client_utils, "~> 0.1.19"},
       {:credo, "~> 1.7.13"},
@@ -99,7 +99,7 @@ defmodule CodeMySpec.MixProject do
       # Normal deps
       {:file_system, "~> 1.0"},
       {:mox, "~> 1.2"},
-      {:meck, "~> 0.9"},
+      {:meck, "~> 0.9", only: [:test]},
       {:req_cassette, "~> 0.6.0", only: :test},
       {:paper_trail, "~> 1.1"},
       {:anubis_mcp, github: "zoedsoupe/anubis-mcp", branch: "main"},
@@ -113,7 +113,7 @@ defmodule CodeMySpec.MixProject do
       {:floki, "~> 0.38"},
       {:wallaby, "~> 0.30", runtime: false, only: :test},
       {:yaml_elixir, "~> 2.11"},
-      {:faker, "~> 0.18"},
+      {:faker, "~> 0.18", only: [:test]},
       {:dir_walker, "~> 0.0.8"},
       {:assent, "~> 0.3.1"},
       {:cloak_ecto, "~> 1.3.0"},
