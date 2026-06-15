@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CodeMySpec Windows installer (WiX v4/v5).
+
+  Installs the Burrito-packaged `cms.exe` plus `shawl.exe` into
+  %ProgramFiles%\CodeMySpec, and registers a Windows service named
+  "CodeMySpec" whose entry point is Shawl wrapping `cms.exe server`.
+
+  - Shawl is the service binary; it supervises the BEAM child, forwards the
+    service stop into a ctrl-C, and (default policy) restarts on a nonzero
+    exit. `--kill-process-tree` tears the BEAM child down on stop.
+  - Runs as LocalSystem (no password). LocalSystem has no user profile, so the
+    data dir is machine-wide C:\ProgramData\CodeMySpec, passed via
+    `--env CMS_HOME=...` and also published as a machine env var so a user-run
+    `cms` resolves the same directory.
+  - Updates are delivered by re-running a newer MSI (MajorUpgrade). The binary
+    no longer self-updates — so it is never swapped under a running process,
+    which is what raced Burrito's ERTS re-extract and broke start.boot.
+
+  Version is injected at build time (CI seds __CMS_VERSION__ → x.y.z).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="CodeMySpec"
+    Manufacturer="CodeMySpec"
+    Version="__CMS_VERSION__"
+    UpgradeCode="835D3096-67DE-44CC-B879-04AEFAA1D771"
+    Scope="perMachine"
+    Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of CodeMySpec is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Binaries: %ProgramFiles%\CodeMySpec\ -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="CodeMySpec" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="Binaries" Directory="INSTALLFOLDER">
+      <Component Id="CmsExe">
+        <File Id="cms.exe" Source="cms.exe" KeyPath="yes" />
+      </Component>
+
+      <Component Id="ShawlExe">
+        <File Id="shawl.exe" Source="shawl.exe" KeyPath="yes" />
+
+        <ServiceInstall
+          Id="CodeMySpecService"
+          Name="CodeMySpec"
+          DisplayName="CodeMySpec Local Server"
+          Description="CodeMySpec local server (Phoenix + MCP) on port 4003, supervised by Shawl."
+          Type="ownProcess"
+          Start="auto"
+          ErrorControl="normal"
+          Vital="yes"
+          Arguments="run --name CodeMySpec --kill-process-tree --stop-timeout 20000 --cwd &quot;C:\ProgramData\CodeMySpec&quot; --log-dir &quot;C:\ProgramData\CodeMySpec\shawl&quot; --env CMS_HOME=C:\ProgramData\CodeMySpec -- &quot;[INSTALLFOLDER]cms.exe&quot; server" />
+
+        <ServiceControl
+          Id="CodeMySpecServiceControl"
+          Name="CodeMySpec"
+          Start="install"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Data dir + machine CMS_HOME so a user-run `cms` matches the service. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataFolder" Name="CodeMySpec" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="DataDir" Directory="DataFolder">
+      <Component Id="DataFolderComponent">
+        <CreateFolder />
+        <Environment
+          Id="CmsHomeEnv"
+          Name="CMS_HOME"
+          Value="C:\ProgramData\CodeMySpec"
+          System="yes"
+          Action="set"
+          Part="all" />
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\CodeMySpec"
+          Name="installed"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="CodeMySpec" Level="1">
+      <ComponentGroupRef Id="Binaries" />
+      <ComponentGroupRef Id="DataDir" />
+    </Feature>
+  </Package>
+</Wix>

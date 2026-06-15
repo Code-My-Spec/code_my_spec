@@ -187,6 +187,24 @@ jobs:
         id: version
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      # Build the Windows MSI (cms.exe + shawl.exe → CodeMySpec service via
+      # Shawl). WiX is a cross-platform .NET tool, so the MSI builds here on
+      # ubuntu where the binaries are already staged. continue-on-error: this
+      # is new and unverified on a real install — a WiX hiccup must not block
+      # the rest of the release (binaries + shawl still publish).
+      - name: Build Windows MSI (WiX)
+        continue-on-error: true
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          VERSION="${VERSION#v}"
+          dotnet tool install --global wix || dotnet tool update --global wix
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          cp release-assets/cms-windows-x64.exe installers/windows/cms.exe
+          cp release-assets/shawl-windows-x64.exe installers/windows/shawl.exe
+          sed -i "s/__CMS_VERSION__/${VERSION}/" installers/windows/cms.wxs
+          wix build installers/windows/cms.wxs -b installers/windows -o release-assets/cms-setup-x64.msi
+          ls -la release-assets/
+
       - name: Push files + tag to extension repo
         env:
           GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}

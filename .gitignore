@@ -80,3 +80,8 @@ test/cassettes/oauth/google_login_new_user.json
 .env
 .env.local
 
+
+# CI-staged binaries for MSI build (not committed)
+installers/windows/cms.exe
+installers/windows/shawl.exe
+installers/windows/*.msi

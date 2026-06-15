@@ -13,7 +13,6 @@ defmodule CodeMySpecLocalWeb.Application do
   # the CLI binary. The web build compiles this same source without it.
   # Resolving the module through an atom at runtime keeps both builds clean.
   @daemon :"Elixir.CodeMySpecCli.Daemon"
-  @self_update :"Elixir.CodeMySpecCli.SelfUpdate"
 
   # Burrito.Util.Args is Burrito-release-only — the bare web build doesn't
   # include it. Same atom trick.
@@ -47,7 +46,7 @@ defmodule CodeMySpecLocalWeb.Application do
         CodeMySpec.ProjectSync.FileWatcherServer,
         CodeMySpecLocalWeb.SocketSupervisor,
         CodeMySpecCli.PresenceClient
-      ] ++ tunnel_children() ++ updater_children()
+      ] ++ tunnel_children()
 
     opts = [strategy: :one_for_one, name: CodeMySpec.Supervisor]
 
@@ -83,17 +82,6 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
-  # In-process self-update loop — only under the Windows Shawl service, which
-  # sets CMS_SERVICE=1 and restarts the binary on nonzero exit. The updater
-  # swaps the on-disk binary and halts nonzero; Shawl relaunches the new one.
-  defp updater_children do
-    if System.get_env("CMS_SERVICE") == "1" do
-      [CodeMySpecCli.Updater]
-    else
-      []
-    end
-  end
-
   defp cli_argv do
     call_optional(@burrito_args, :argv) || []
   rescue
@@ -117,7 +105,7 @@ defmodule CodeMySpecLocalWeb.Application do
   defp help_flag?(args), do: "--help" in args or "-h" in args
 
   defp find_subcommand(args) do
-    Enum.find(["status", "stop", "logs", "start", "server", "self-update"], &(&1 in args))
+    Enum.find(["status", "stop", "logs", "start", "server"], &(&1 in args))
   end
 
   defp run_subcommand("status", _args), do: System.halt(daemon_call(:print_status))
@@ -125,9 +113,6 @@ defmodule CodeMySpecLocalWeb.Application do
   defp run_subcommand("logs", args), do: System.halt(daemon_call(:logs, [follow?(args)]))
   defp run_subcommand("start", _args), do: System.halt(daemon_call(:start, [self_path()]))
   defp run_subcommand("server", _args), do: :ok
-
-  defp run_subcommand("self-update", args),
-    do: System.halt(call_optional(@self_update, :run, [args]) || 0)
 
   defp follow?(args), do: "-f" in args or "--follow" in args
 
@@ -185,12 +170,12 @@ defmodule CodeMySpecLocalWeb.Application do
       cms logs         Print the server log.
       cms logs -f      Follow the server log.
       cms server       Run the server in the foreground (ctrl-C to stop).
-      cms self-update  Check GitHub for a newer release; swap binary + restart.
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
     On Windows, cms runs as a Shawl-wrapped service installed out-of-band by
-    installers/windows/install.ps1; it auto-updates itself in place.
+    installers/windows/install.ps1. Updates are delivered by re-running the
+    installer (or the platform install script), not by the binary itself.
 
     Logs and pid file live in ~/.codemyspec/.
     """
