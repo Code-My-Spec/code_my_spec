@@ -8,10 +8,10 @@
 
   - Shawl is the service binary; it supervises the BEAM child, forwards the
     service stop into a ctrl-C, and (default policy) restarts on a nonzero
-    exit. `--kill-process-tree` tears the BEAM child down on stop.
+    exit. The kill-process-tree flag tears the BEAM child down on stop.
   - Runs as LocalSystem (no password). LocalSystem has no user profile, so the
-    data dir is machine-wide C:\ProgramData\CodeMySpec, passed via
-    `--env CMS_HOME=...` and also published as a machine env var so a user-run
+    data dir is machine-wide C:\ProgramData\CodeMySpec, passed via the
+    CMS_HOME env and also published as a machine env var so a user-run
     `cms` resolves the same directory.
   - Updates are delivered by re-running a newer MSI (MajorUpgrade). The binary
     no longer self-updates — so it is never swapped under a running process,
