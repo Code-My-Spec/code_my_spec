@@ -1,23 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  CodeMySpec Windows installer (WiX v4/v5).
+  CodeMySpec Windows installer (WiX v5).
 
-  Installs the Burrito-packaged `cms.exe` plus `shawl.exe` into
-  %ProgramFiles%\CodeMySpec, and registers a Windows service named
-  "CodeMySpec" whose entry point is Shawl wrapping `cms.exe server`.
+  Installs the plain `mix release` folder (ERTS + start.boot on disk, no
+  runtime self-extraction) into %ProgramFiles%\CodeMySpec, plus shawl.exe, and
+  registers a "CodeMySpec" Windows service: Shawl wrapping the release launcher
+  `cmd /c bin\code_my_spec_cli.bat start`.
 
-  - Shawl is the service binary; it supervises the BEAM child, forwards the
-    service stop into a ctrl-C, and (default policy) restarts on a nonzero
-    exit. The kill-process-tree flag tears the BEAM child down on stop.
-  - Runs as LocalSystem (no password). LocalSystem has no user profile, so the
-    data dir is machine-wide C:\ProgramData\CodeMySpec, passed via the
-    CMS_HOME env and also published as a machine env var so a user-run
-    `cms` resolves the same directory.
-  - Updates are delivered by re-running a newer MSI (MajorUpgrade). The binary
-    no longer self-updates — so it is never swapped under a running process,
-    which is what raced Burrito's ERTS re-extract and broke start.boot.
+  - Shawl is the service binary; it supervises the BEAM, forwards the service
+    stop into a ctrl-C, restarts on nonzero exit. kill-process-tree tears the
+    cmd to launcher to erl child chain down on stop.
+  - LocalSystem (no password). Data dir is machine-wide C:\ProgramData\CodeMySpec
+    (LocalSystem has no user profile), passed via the CMS_HOME env and also set
+    as a machine env var so a user-run cms resolves the same directory.
+  - Updates: a newer MSI (MajorUpgrade). The release no longer self-updates.
 
-  Version is injected at build time (CI seds __CMS_VERSION__ → x.y.z).
+  CI builds this from inside the release folder (so Include="**" harvests the
+  tree), with shawl.exe copied in alongside. Version templated: __CMS_VERSION__.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
@@ -31,19 +30,20 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of CodeMySpec is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- Binaries: %ProgramFiles%\CodeMySpec\ -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="CodeMySpec" />
     </StandardDirectory>
 
-    <ComponentGroup Id="Binaries" Directory="INSTALLFOLDER">
-      <Component Id="CmsExe">
-        <File Id="cms.exe" Source="cms.exe" KeyPath="yes" />
-      </Component>
+    <!-- Harvest the whole release tree, minus shawl.exe (own component below)
+         and the wxs itself. Build runs from inside the release folder, so the
+         glob is relative to it. -->
+    <ComponentGroup Id="ReleaseTree" Directory="INSTALLFOLDER">
+      <Files Include="**" Exclude="shawl.exe;cms.wxs" />
+    </ComponentGroup>
 
-      <Component Id="ShawlExe">
+    <ComponentGroup Id="ServiceComponent" Directory="INSTALLFOLDER">
+      <Component Id="ShawlService">
         <File Id="shawl.exe" Source="shawl.exe" KeyPath="yes" />
-
         <ServiceInstall
           Id="CodeMySpecService"
           Name="CodeMySpec"
@@ -53,8 +53,7 @@
           Start="auto"
           ErrorControl="normal"
           Vital="yes"
-          Arguments="run --name CodeMySpec --kill-process-tree --stop-timeout 20000 --cwd &quot;C:\ProgramData\CodeMySpec&quot; --log-dir &quot;C:\ProgramData\CodeMySpec\shawl&quot; --env CMS_HOME=C:\ProgramData\CodeMySpec -- &quot;[INSTALLFOLDER]cms.exe&quot; server" />
-
+          Arguments="run --name CodeMySpec --kill-process-tree --stop-timeout 20000 --cwd &quot;C:\ProgramData\CodeMySpec&quot; --log-dir &quot;C:\ProgramData\CodeMySpec\shawl&quot; --env CMS_HOME=C:\ProgramData\CodeMySpec -- cmd /c &quot;[INSTALLFOLDER]bin\code_my_spec_cli.bat&quot; start" />
         <ServiceControl
           Id="CodeMySpecServiceControl"
           Name="CodeMySpec"
@@ -65,11 +64,9 @@
       </Component>
     </ComponentGroup>
 
-    <!-- Data dir + machine CMS_HOME so a user-run `cms` matches the service. -->
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="DataFolder" Name="CodeMySpec" />
     </StandardDirectory>
-
     <ComponentGroup Id="DataDir" Directory="DataFolder">
       <Component Id="DataFolderComponent">
         <CreateFolder />
@@ -91,7 +88,8 @@
     </ComponentGroup>
 
     <Feature Id="Main" Title="CodeMySpec" Level="1">
-      <ComponentGroupRef Id="Binaries" />
+      <ComponentGroupRef Id="ReleaseTree" />
+      <ComponentGroupRef Id="ServiceComponent" />
       <ComponentGroupRef Id="DataDir" />
     </Feature>
   </Package>

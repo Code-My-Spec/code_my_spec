@@ -24,19 +24,13 @@ jobs:
         include:
           - name: macOS ARM64
             runner: macos-latest
-            target: macos_m1
-            binary: cms-darwin-arm64
-            zig_archive: zig-aarch64-macos-0.15.2.tar.xz
+            asset: cms-darwin-arm64.tar.gz
           - name: Windows x64
             runner: windows-latest
-            target: windows
-            binary: cms-windows-x64.exe
-            zig_archive: zig-x86_64-windows-0.15.2.zip
+            asset: cms-windows-x64.tar.gz
 
-    # Force bash on Windows runners so curl/tar/cp/`>> "$GITHUB_PATH"` and
-    # the install-zig script work identically across platforms. Git Bash is
-    # preinstalled on windows-latest; mix/elixir/zig are added to PATH by
-    # setup-beam and the Install Zig step.
+    # Force bash on Windows runners so curl/tar/cp/`>> "$GITHUB_PATH"` work
+    # identically across platforms. Git Bash is preinstalled on windows-latest.
     defaults:
       run:
         shell: bash
@@ -44,10 +38,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # windows-latest's image now reports ImageOS=win25-vs2026, which
-      # setup-beam can't map to a target OS. Pin it to the base label so
-      # setup-beam resolves the Windows build. Windows-only: macOS keeps
-      # auto-detecting its own (working) ImageOS.
+      # windows-latest's image reports ImageOS=win25-vs2026, which setup-beam
+      # can't map. Pin it to the base label so it resolves the Windows build.
       - name: Pin ImageOS for setup-beam (Windows)
         if: runner.os == 'Windows'
         run: echo "ImageOS=win25" >> "$GITHUB_ENV"
@@ -57,34 +49,6 @@ jobs:
         with:
           elixir-version: ${{ env.ELIXIR_VERSION }}
           otp-version: ${{ env.OTP_VERSION }}
-
-      - name: Install Zig 0.15.2
-        run: |
-          archive="${{ matrix.zig_archive }}"
-          curl -fSL "https://ziglang.org/download/0.15.2/${archive}" -o "${archive}"
-          mkdir -p "$HOME/zig"
-          # Git Bash on windows-latest ships GNU tar, which can't read .zip.
-          # bsdtar (Windows's native tar.exe) would, but it's not first in
-          # PATH. Branch on extension and use unzip for Zig's Windows zip.
-          case "$archive" in
-            *.zip)
-              unzip -q "$archive"
-              inner="${archive%.zip}"
-              cp -r "$inner"/. "$HOME/zig/"
-              ;;
-            *)
-              tar -xf "$archive" -C "$HOME/zig" --strip-components=1
-              ;;
-          esac
-          echo "$HOME/zig" >> "$GITHUB_PATH"
-
-      - name: Install xz (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xz-utils
-
-      - name: Install xz (macOS)
-        if: runner.os == 'macOS'
-        run: brew install xz || true
 
       - name: Cache deps
         uses: actions/cache@v4
@@ -98,51 +62,61 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
+      # Plain `mix release` — a self-contained OTP release (ERTS + start.boot +
+      # NIFs on disk), built natively on each runner. No Burrito, no zig, no
+      # runtime self-extraction. The tarball is what every packager consumes.
       - name: Build release
         run: |
-          # Wipe the full prod_cli _build tree — `mix compile --force` alone
-          # kept shipping stale binaries across v1.4.13, v1.4.15, v1.4.22.
-          # Likely cause: cache restore preserves beam mtimes that confuse
-          # the compile/assemble chain. Full wipe is boringly reliable and
-          # only costs ~60s of extra compile time.
           rm -rf _build/prod_cli release/
-          # --warnings-as-errors locks in the boundary compiler — any new
-          # Web→Repo / lib→Web / spex→internals violation fails the release
-          # build instead of shipping a binary with the violation in it.
           mix compile --warnings-as-errors
           mix release code_my_spec_cli
-        env:
-          BURRITO_TARGET: ${{ matrix.target }}
+          cp _build/prod_cli/code_my_spec_cli-*.tar.gz "${{ matrix.asset }}"
+          ls -la "${{ matrix.asset }}"
 
-      - name: Upload binary artifact
+      - name: Upload release tarball
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}
-          path: release/binaries/${{ matrix.binary }}
-          # Only needed long enough for the release + publish-extension
-          # jobs to download. Release assets are stored separately.
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
           retention-days: 1
 
-      # Build the Windows MSI on the Windows runner — WiX only validates
-      # correctly on Windows (cross-platform builds are "undefined"). Pinned to
-      # v5: v6/v7 are Windows-locked AND gate on the OSMF EULA. The MSI wraps
-      # cms.exe + shawl.exe into the LocalSystem CodeMySpec service.
-      # continue-on-error: unverified on a real install — must not block the
-      # release (binaries + shawl still publish).
+      # Package the Claude Code extension once (burrito-free, file-shuffle only).
+      - name: Package extension
+        if: runner.os == 'macOS'
+        run: mix cms.package_plugin release/codemyspec-extension
+
+      - name: Upload extension artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: release/codemyspec-extension/
+          include-hidden-files: true
+          retention-days: 1
+
+      # Windows MSI: WiX harvests the release FOLDER and registers the
+      # CodeMySpec service (Shawl wrapping the release launcher). WiX only
+      # validates on Windows; pinned to v5 (v6/v7 are Windows-locked + gate on
+      # the OSMF EULA). continue-on-error: the folder-harvest MSI is the one
+      # piece not validated on a real install — it must not block the tarball
+      # release (Mac/brew is proven, Windows tarball still publishes).
       - name: Build Windows MSI (WiX v5)
         if: runner.os == 'Windows'
         continue-on-error: true
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"; VERSION="${VERSION#v}"
+          REL="_build/prod_cli/rel/code_my_spec_cli"
           dotnet tool install --global wix --version 5.0.2
           export PATH="$PATH:$HOME/.dotnet/tools"
-          cp "release/binaries/${{ matrix.binary }}" installers/windows/cms.exe
+          # Bundle Shawl into the release folder and build the MSI from inside
+          # it, so the wxs Include="**" glob harvests the release tree.
           curl -fsSL -o shawl.zip \
             "https://github.com/mtkennerly/shawl/releases/download/v1.9.0/shawl-v1.9.0-win64.zip"
           unzip -o shawl.zip -d shawl_tmp
-          cp "$(find shawl_tmp -name 'shawl.exe' | head -1)" installers/windows/shawl.exe
-          sed -i "s/__CMS_VERSION__/${VERSION}/" installers/windows/cms.wxs
-          wix build installers/windows/cms.wxs -b installers/windows -o cms-setup-x64.msi
+          cp "$(find shawl_tmp -name 'shawl.exe' | head -1)" "$REL/shawl.exe"
+          cp installers/windows/cms.wxs "$REL/cms.wxs"
+          sed -i "s/__CMS_VERSION__/${VERSION}/" "$REL/cms.wxs"
+          (cd "$REL" && wix build cms.wxs -o "$GITHUB_WORKSPACE/cms-setup-x64.msi")
           ls -la cms-setup-x64.msi
 
       - name: Upload MSI artifact
@@ -154,26 +128,11 @@ jobs:
           path: cms-setup-x64.msi
           retention-days: 1
 
-      - name: Upload extension artifact
-        if: matrix.target == 'macos_m1'
-        uses: actions/upload-artifact@v4
-        with:
-          name: extension
-          # PackageExtension rebuilds this dir into the marketplace layout
-          # (.claude-plugin/marketplace.json + plugins/codemyspec/...).
-          # The raw source CodeMySpec/ is the pre-marketplace flat shape.
-          path: release/codemyspec-extension/
-          include-hidden-files: true
-          retention-days: 1
-
   publish-extension:
     name: Publish Extension & Release
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # Need the source tree for tracked, non-artifact files we publish to the
-      # marketplace repo (installers/windows/install.ps1). Artifacts alone
-      # don't include it.
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -182,94 +141,68 @@ jobs:
         with:
           path: artifacts
 
-      - name: Prepare binary release assets
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release assets
         run: |
           mkdir -p release-assets
           echo "Artifact structure:"
-          find artifacts -type f | head -20
-          for dir in artifacts/cms-*; do
+          find artifacts -type f | head -40
+
+          # Per-OS release tarballs.
+          for dir in artifacts/cms-*.tar.gz; do
             [ -d "$dir" ] || continue
-            binary=$(basename "$dir")
-            file=$(find "$dir" -type f | head -1)
-            if [ -n "$file" ]; then
-              cp "$file" "release-assets/$binary"
-              chmod +x "release-assets/$binary"
-            fi
+            name=$(basename "$dir")
+            file=$(find "$dir" -type f -name '*.tar.gz' | head -1)
+            [ -n "$file" ] && cp "$file" "release-assets/$name"
           done
 
-          # Bundle Shawl (the Windows service wrapper) as a release asset so
-          # the Windows installer pulls it from our release, not upstream.
-          # Shawl IS the service entry point that runs cms.exe server.
-          SHAWL_VERSION="v1.9.0"
-          curl -fsSL -o /tmp/shawl.zip \
-            "https://github.com/mtkennerly/shawl/releases/download/${SHAWL_VERSION}/shawl-${SHAWL_VERSION}-win64.zip"
-          unzip -o /tmp/shawl.zip -d /tmp/shawl
-          cp "$(find /tmp/shawl -name 'shawl.exe' | head -1)" release-assets/shawl-windows-x64.exe
+          # MSI (if the Windows MSI step succeeded).
+          msi=$(find artifacts -name 'cms-setup-x64.msi' -type f | head -1)
+          [ -n "$msi" ] && cp "$msi" release-assets/cms-setup-x64.msi
+
+          # Compute + inject the darwin tarball sha256 into the brew formula so
+          # `brew install` from the published formula matches the release asset.
+          DARWIN="release-assets/cms-darwin-arm64.tar.gz"
+          if [ -f "$DARWIN" ]; then
+            SHA=$(shasum -a 256 "$DARWIN" | cut -d' ' -f1)
+            TAG="${{ steps.version.outputs.tag }}"; VER="${TAG#v}"
+            sed -e "s/__CMS_TAG__/${TAG}/g; s/__CMS_VERSION__/${VER}/g; s/__DARWIN_SHA256__/${SHA}/" \
+              installers/macos/codemyspec.rb > release-assets/codemyspec.rb
+          fi
 
           ls -la release-assets/
 
       - name: Fix extension script permissions
         run: |
-          # Marketplace layout: bin scripts live under plugins/codemyspec/.
-          chmod +x artifacts/extension/plugins/codemyspec/.claude-plugin/bin/*
+          chmod +x artifacts/extension/plugins/codemyspec/.claude-plugin/bin/* || true
           [ -f artifacts/extension/install.sh ] && chmod +x artifacts/extension/install.sh || true
-
-      - name: Get version from tag
-        id: version
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      # The MSI is built on the Windows runner (WiX only validates correctly on
-      # Windows) and arrives here as the `cms-setup-x64.msi` artifact. Stage it
-      # into release-assets if present.
-      - name: Stage MSI (if built)
-        run: |
-          msi=$(find artifacts -name 'cms-setup-x64.msi' -type f | head -1)
-          if [ -n "$msi" ]; then
-            cp "$msi" release-assets/cms-setup-x64.msi
-            echo "Staged MSI: $(ls -la release-assets/cms-setup-x64.msi)"
-          else
-            echo "No MSI artifact found — skipping."
-          fi
 
       - name: Push files + tag to extension repo
         env:
           GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
         run: |
-          # Clone the existing marketplace repo so we only update our own
-          # slice — other plugins (e.g. plugins/market-my-spec/) must not
-          # be wiped. Previous approach was git init + force-push, which
-          # clobbered everything.
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${EXTENSION_REPO}.git" target-repo
           cd target-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Replace our plugin slice with the freshly packaged one.
           rm -rf plugins/codemyspec
           mkdir -p plugins
           cp -R ../artifacts/extension/plugins/codemyspec plugins/codemyspec
 
-          # Root-level codemyspec assets (install.sh, install.ps1, README) we own.
+          # Root-level installers we own.
           cp ../artifacts/extension/install.sh install.sh
-          # Windows installs are a standalone Shawl service, decoupled from the
-          # plugin — the installer is a tracked file in the main repo, not a
-          # generated artifact. Publish it to the marketplace repo root so
-          # `iwr -useb …/main/install.ps1 | iex` works.
           cp ../installers/windows/install.ps1 install.ps1
           cp ../artifacts/extension/README.md README.md
 
-          # One-time cleanup: codemyspec used to live at the repo root
-          # (flat layout, pre-marketplace restructure). Remove leftover
-          # codemyspec-specific root paths so they don't double up with
-          # the new plugins/codemyspec/ content. Idempotent — rm -f
-          # doesn't fail if already gone on subsequent releases.
           rm -rf .claude-plugin/bin
           rm -f .claude-plugin/plugin.json
           rm -rf agents skills hooks
           rm -f AGENTS.md
 
-          # Merge codemyspec into the repo's marketplace.json: replace the
-          # codemyspec entry, keep everything else (market-my-spec, etc).
           OUR_ENTRY=$(jq '.plugins[] | select(.name == "codemyspec")' \
             ../artifacts/extension/.claude-plugin/marketplace.json)
           mkdir -p .claude-plugin
@@ -312,9 +245,15 @@ jobs:
           body: |
             ## Installation
 
+            macOS (Homebrew):
+            ```bash
+            brew install Code-My-Spec/tap/codemyspec
+            ```
+
+            Windows: download `cms-setup-x64.msi` and run it.
+
+            Claude Code plugin:
             ```bash
             /plugin marketplace add Code-My-Spec/plugins
             /plugin install codemyspec@codemyspec
             ```
-
-            The CLI binary auto-installs on first SessionStart.

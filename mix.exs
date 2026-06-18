@@ -161,32 +161,11 @@ defmodule CodeMySpec.MixProject do
     if Mix.env() == :prod_cli do
       [
         code_my_spec_cli: [
-          steps: [:assemble, &Burrito.wrap/1],
-          burrito: [
-            targets: burrito_targets(),
-            prod_envs: [:prod_cli],
-            extra_steps: [
-              fetch: [pre: [CodeMySpecCli.Release.PatchLauncherStep]],
-              build: [post: [CodeMySpecCli.Release.PackageExtension]]
-            ]
-          ]
+          steps: [:assemble, :tar]
         ]
       ]
     else
       []
-    end
-  end
-
-  # When BURRITO_TARGET is set (CI), build only that target.
-  # Otherwise build all targets for local dev.
-  defp burrito_targets do
-    case System.get_env("BURRITO_TARGET") do
-      "macos_m1" -> [macos_m1: [os: :darwin, cpu: :aarch64]]
-      "macos" -> [macos: [os: :darwin, cpu: :x86_64]]
-      "linux" -> [linux: [os: :linux, cpu: :x86_64]]
-      "linux_aarch64" -> [linux_aarch64: [os: :linux, cpu: :aarch64]]
-      "windows" -> [windows: [os: :windows, cpu: :x86_64]]
-      _ -> [macos_m1: [os: :darwin, cpu: :aarch64]]
     end
   end
 
