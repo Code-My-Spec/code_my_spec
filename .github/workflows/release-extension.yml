@@ -110,6 +110,10 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"; VERSION="${VERSION#v}"
           REL="$GITHUB_WORKSPACE/_build/prod_cli/rel/code_my_spec_cli"
+          # GITHUB_WORKSPACE is D:\a\... on Windows; backslashes in a sed
+          # replacement get escape-interpreted (\a -> BEL 0x07) and corrupt the
+          # path. Forward slashes are valid in WiX globs and sed-safe.
+          REL="${REL//\\//}"
           dotnet tool install --global wix --version 5.0.2
           export PATH="$PATH:$HOME/.dotnet/tools"
           # Shawl lives in the workspace (NOT inside $REL) so the release-tree
