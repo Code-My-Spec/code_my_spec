@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual build of the artifacts (tarballs + MSI) for testing, WITHOUT
+  # publishing to the marketplace or cutting a release. The publish job is
+  # gated to tag pushes only.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -131,6 +135,8 @@ jobs:
   publish-extension:
     name: Publish Extension & Release
     needs: build
+    # Tag pushes only — a manual workflow_dispatch just builds artifacts.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -179,6 +185,30 @@ jobs:
         run: |
           chmod +x artifacts/extension/plugins/codemyspec/.claude-plugin/bin/* || true
           [ -f artifacts/extension/install.sh ] && chmod +x artifacts/extension/install.sh || true
+
+      # Publish the filled brew formula to the tap so
+      # `brew install Code-My-Spec/tap/codemyspec` resolves this release.
+      - name: Publish brew formula to tap
+        env:
+          GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
+        run: |
+          if [ ! -f release-assets/codemyspec.rb ]; then
+            echo "No formula (no darwin tarball) — skipping tap publish."
+            exit 0
+          fi
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/Code-My-Spec/homebrew-tap.git" tap-repo
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p Formula
+          cp ../release-assets/codemyspec.rb Formula/codemyspec.rb
+          git add Formula/codemyspec.rb
+          if git diff --cached --quiet; then
+            echo "Formula unchanged."
+          else
+            git commit -m "codemyspec ${{ steps.version.outputs.tag }}"
+            git push origin HEAD
+          fi
 
       - name: Push files + tag to extension repo
         env:
