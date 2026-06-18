@@ -109,18 +109,18 @@ jobs:
         continue-on-error: true
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"; VERSION="${VERSION#v}"
-          REL="_build/prod_cli/rel/code_my_spec_cli"
+          REL="$GITHUB_WORKSPACE/_build/prod_cli/rel/code_my_spec_cli"
           dotnet tool install --global wix --version 5.0.2
           export PATH="$PATH:$HOME/.dotnet/tools"
-          # Bundle Shawl into the release folder and build the MSI from inside
-          # it, so the wxs Include="**" glob harvests the release tree.
+          # Shawl lives in the workspace (NOT inside $REL) so the release-tree
+          # harvest doesn't pick it up; its own component sources it via -b.
           curl -fsSL -o shawl.zip \
             "https://github.com/mtkennerly/shawl/releases/download/v1.9.0/shawl-v1.9.0-win64.zip"
           unzip -o shawl.zip -d shawl_tmp
-          cp "$(find shawl_tmp -name 'shawl.exe' | head -1)" "$REL/shawl.exe"
-          cp installers/windows/cms.wxs "$REL/cms.wxs"
-          sed -i "s/__CMS_VERSION__/${VERSION}/" "$REL/cms.wxs"
-          (cd "$REL" && wix build cms.wxs -o "$GITHUB_WORKSPACE/cms-setup-x64.msi")
+          cp "$(find shawl_tmp -name 'shawl.exe' | head -1)" shawl.exe
+          sed -e "s/__CMS_VERSION__/${VERSION}/" -e "s|__REL_GLOB__|${REL}/**|" \
+            installers/windows/cms.wxs > cms_build.wxs
+          wix build cms_build.wxs -b . -o cms-setup-x64.msi
           ls -la cms-setup-x64.msi
 
       - name: Upload MSI artifact
@@ -188,7 +188,10 @@ jobs:
 
       # Publish the filled brew formula to the tap so
       # `brew install Code-My-Spec/tap/codemyspec` resolves this release.
+      # continue-on-error: a tap-token hiccup must never block the release
+      # (the gh release + marketplace push are what matter most).
       - name: Publish brew formula to tap
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
         run: |

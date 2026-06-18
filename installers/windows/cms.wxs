@@ -34,11 +34,11 @@
       <Directory Id="INSTALLFOLDER" Name="CodeMySpec" />
     </StandardDirectory>
 
-    <!-- Harvest the whole release tree, minus shawl.exe (own component below)
-         and the wxs itself. Build runs from inside the release folder, so the
-         glob is relative to it. -->
+    <!-- Harvest the whole release tree. CI templates __REL_GLOB__ to the
+         absolute path of the release folder + "/**". shawl.exe is kept OUTSIDE
+         that folder (its own component below), so no exclude is needed. -->
     <ComponentGroup Id="ReleaseTree" Directory="INSTALLFOLDER">
-      <Files Include="**" Exclude="shawl.exe;cms.wxs" />
+      <Files Include="__REL_GLOB__" />
     </ComponentGroup>
 
     <ComponentGroup Id="ServiceComponent" Directory="INSTALLFOLDER">
