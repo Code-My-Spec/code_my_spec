@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "1.5.24",
+      version: "1.5.25",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
@@ -161,12 +161,30 @@ defmodule CodeMySpec.MixProject do
     if Mix.env() == :prod_cli do
       [
         code_my_spec_cli: [
-          steps: [:assemble, :tar]
+          steps: [:assemble, &copy_bcrypt_nif_dll/1, :tar]
         ]
       ]
     else
       []
     end
+  end
+
+  # bcrypt_elixir's Makefile names its NIF `bcrypt_nif.so` on every OS, but the
+  # Windows BEAM appends `.dll` when loading a NIF — so on Windows it never finds
+  # the lib, bcrypt's `on_load` aborts, and the whole app fails to boot. Every
+  # other NIF in the release is correctly `.dll`. Copy the (already-PE) `.so` to
+  # `.dll` alongside it. Runs before `:tar`, so both the tarball and the
+  # MSI-harvested release folder pick it up. Windows-only; on macOS/Linux the
+  # `.so` name is already correct.
+  defp copy_bcrypt_nif_dll(release) do
+    if match?({:win32, _}, :os.type()) do
+      release.path
+      |> Path.join("lib/bcrypt_elixir-*/priv/bcrypt_nif.so")
+      |> Path.wildcard()
+      |> Enum.each(fn so -> File.cp!(so, Path.rootname(so) <> ".dll") end)
+    end
+
+    release
   end
 
   # Aliases are shortcuts or tasks specific to the current project.

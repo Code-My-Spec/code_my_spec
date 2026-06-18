@@ -126,7 +126,12 @@ jobs:
           cp "$(find shawl_tmp -name 'shawl.exe' | head -1)" shawl.exe
           sed -e "s/__CMS_VERSION__/${VERSION}/" -e "s|__REL_GLOB__|${REL}/**|" \
             installers/windows/cms.wxs > cms_build.wxs
-          wix build cms_build.wxs -b . -o cms-setup-x64.msi
+          # -arch x64 is REQUIRED: WiX defaults to x86, which makes
+          # ProgramFiles64Folder resolve to "C:\Program Files (x86)\CodeMySpec".
+          # The "(x86)" parens break the Elixir release .bat launcher (an
+          # unquoted path expanded inside a cmd `if (...)` block), so the BEAM
+          # never boots under the service. x64 installs to "C:\Program Files".
+          wix build cms_build.wxs -arch x64 -b . -o cms-setup-x64.msi
           ls -la cms-setup-x64.msi
 
       - name: Upload MSI artifact

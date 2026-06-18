@@ -17,6 +17,11 @@
 
   CI builds this from inside the release folder (so Include="**" harvests the
   tree), with shawl.exe copied in alongside. Version templated: __CMS_VERSION__.
+
+  IMPORTANT: build with `wix build -arch x64`. Without it WiX defaults to x86,
+  ProgramFiles64Folder resolves to "C:\Program Files (x86)\CodeMySpec", and the
+  "(x86)" parens break the Elixir release .bat launcher (unquoted path inside a
+  cmd `if (...)` block) so the BEAM never boots under the service.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
