@@ -115,6 +115,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Lives under BddRules namespace to disambiguate from CodeMySpec.Rules
   # (the coding-convention markdown rules consumed by agent task prompts).
   component(CodeMySpec.McpServers.BddRules.Tools.AddRule)
+  component(CodeMySpec.McpServers.BddRules.Tools.UpdateRule)
   component(CodeMySpec.McpServers.BddRules.Tools.DeleteRule)
   component(CodeMySpec.McpServers.BddRules.Tools.ListRules)
   component(CodeMySpec.McpServers.BddRules.Tools.AddScenario)

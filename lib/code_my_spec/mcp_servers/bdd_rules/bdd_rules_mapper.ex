@@ -20,6 +20,14 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
     |> Response.text(String.trim(summary))
   end
 
+  def rule_updated_response(rule) do
+    summary =
+      "Rule updated: \"#{rule.statement}\" (id: `#{rule.id}`, story_id: `#{rule.story_id}`)."
+
+    Response.tool()
+    |> Response.text(summary)
+  end
+
   def rule_deleted_response(rule) do
     summary =
       "Rule deleted: \"#{rule.statement}\" (id: `#{rule.id}`, story_id: `#{rule.story_id}`). All linked scenarios were removed by cascade."
