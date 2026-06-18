@@ -108,7 +108,9 @@ jobs:
         if: runner.os == 'Windows'
         continue-on-error: true
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"; VERSION="${VERSION#v}"
+          # Read from mix.exs (robust for both tag pushes and workflow_dispatch,
+          # where GITHUB_REF is a branch and would inject slashes into sed).
+          VERSION=$(grep -m1 'version:' mix.exs | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           REL="$GITHUB_WORKSPACE/_build/prod_cli/rel/code_my_spec_cli"
           # GITHUB_WORKSPACE is D:\a\... on Windows; backslashes in a sed
           # replacement get escape-interpreted (\a -> BEL 0x07) and corrupt the
