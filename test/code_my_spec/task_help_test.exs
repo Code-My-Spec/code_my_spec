@@ -1,5 +1,6 @@
 defmodule CodeMySpec.TaskHelpTest do
-  use ExUnit.Case, async: true
+  # async: false — these tests set the global :task_help_dir app env.
+  use ExUnit.Case, async: false
 
   import CodeMySpec.EnvironmentFixtures
 
@@ -8,81 +9,69 @@ defmodule CodeMySpec.TaskHelpTest do
   alias CodeMySpec.TaskHelp.Help
   alias CodeMySpec.Users.Scope
 
-  @video_url "https://videos.example.com/architecture-design.mp4"
+  @arch CodeMySpec.AgentTasks.ArchitectureDesign
 
   setup do
     env = memory_environment_fixture()
-    %{scope: %Scope{environment: env}, env: env}
+    dir = Path.join(System.tmp_dir!(), "task_help_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    Application.put_env(:code_my_spec, :task_help_dir, dir)
+
+    on_exit(fn ->
+      Application.delete_env(:code_my_spec, :task_help_dir)
+      File.rm_rf(dir)
+    end)
+
+    %{scope: %Scope{environment: env}, env: env, dir: dir}
   end
 
-  describe "fetch/2" do
-    test "returns curated help with the sidecar video for a task type with content",
-         %{scope: scope, env: env} do
-      :ok =
-        Environments.write_file(
-          env,
-          ".code_my_spec/content/architecture_design.md",
-          "# Designing your architecture\n\nMaps stories to modules.\n"
-        )
+  describe "fetch/2 — framework default (priv)" do
+    test "returns the shipped explainer + sidecar video", %{scope: scope, dir: dir} do
+      File.write!(Path.join(dir, "architecture_design.md"), "# Architecture\n\nMapping stories to modules.")
 
-      :ok =
-        Environments.write_file(
-          env,
-          ".code_my_spec/content/architecture_design.yaml",
-          """
-          title: "Designing your architecture"
-          slug: "architecture-design"
-          type: "documentation"
-          video_url: "#{@video_url}"
-          """
-        )
+      File.write!(
+        Path.join(dir, "architecture_design.yaml"),
+        ~s(video_url: "https://videos.example.com/arch.mp4"\n)
+      )
 
-      assert {:ok, %Help{task_type: CodeMySpec.AgentTasks.ArchitectureDesign} = help} =
-               TaskHelp.fetch(scope, CodeMySpec.AgentTasks.ArchitectureDesign)
+      assert {:ok, %Help{task_type: @arch, body: body, video_url: url}} =
+               TaskHelp.fetch(scope, @arch)
 
-      assert help.body =~ "Designing your architecture"
-      assert help.video_url == @video_url
+      assert body =~ "Mapping stories to modules"
+      assert url == "https://videos.example.com/arch.mp4"
     end
 
-    test "returns curated help with nil video when the sidecar has no video_url",
-         %{scope: scope, env: env} do
-      :ok =
-        Environments.write_file(
-          env,
-          ".code_my_spec/content/architecture_design.md",
-          "# Designing your architecture\n"
-        )
-
-      :ok =
-        Environments.write_file(
-          env,
-          ".code_my_spec/content/architecture_design.yaml",
-          """
-          title: "Designing your architecture"
-          slug: "architecture-design"
-          type: "documentation"
-          """
-        )
-
-      assert {:ok, %Help{video_url: nil}} =
-               TaskHelp.fetch(scope, CodeMySpec.AgentTasks.ArchitectureDesign)
+    test "video_url is nil when the default has no sidecar", %{scope: scope, dir: dir} do
+      File.write!(Path.join(dir, "architecture_design.md"), "# Architecture\n")
+      assert {:ok, %Help{video_url: nil}} = TaskHelp.fetch(scope, @arch)
     end
+  end
 
-    test "returns curated help with nil video when the sidecar is missing entirely",
-         %{scope: scope, env: env} do
+  describe "fetch/2 — project override" do
+    test "a project override wins over the framework default", %{scope: scope, env: env, dir: dir} do
+      File.write!(Path.join(dir, "architecture_design.md"), "FRAMEWORK DEFAULT")
+
       :ok =
         Environments.write_file(
           env,
-          ".code_my_spec/content/architecture_design.md",
-          "# Designing your architecture\n"
+          ".code_my_spec/content/help/architecture_design.md",
+          "PROJECT OVERRIDE"
         )
 
-      assert {:ok, %Help{video_url: nil}} =
-               TaskHelp.fetch(scope, CodeMySpec.AgentTasks.ArchitectureDesign)
-    end
+      :ok =
+        Environments.write_file(
+          env,
+          ".code_my_spec/content/help/architecture_design.yaml",
+          ~s(video_url: "https://videos.example.com/override.mp4"\n)
+        )
 
-    test "falls back to :generic when no content document exists for the task type",
-         %{scope: scope} do
+      assert {:ok, %Help{body: "PROJECT OVERRIDE", video_url: "https://videos.example.com/override.mp4"}} =
+               TaskHelp.fetch(scope, @arch)
+    end
+  end
+
+  describe "fetch/2 — generic fallback" do
+    test "returns :generic when neither override nor default exists", %{scope: scope} do
       assert :generic = TaskHelp.fetch(scope, CodeMySpec.AgentTasks.ContextSpec)
     end
   end

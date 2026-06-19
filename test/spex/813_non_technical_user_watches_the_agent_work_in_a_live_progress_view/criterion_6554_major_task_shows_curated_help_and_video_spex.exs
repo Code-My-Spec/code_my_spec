@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story813.Criterion6554Spex do
         :ok =
           Environments.write_file(
             context.environment,
-            ".code_my_spec/content/architecture_design.md",
+            ".code_my_spec/content/help/architecture_design.md",
             """
             # Designing your architecture
 
@@ -43,11 +43,8 @@ defmodule CodeMySpecSpex.Story813.Criterion6554Spex do
         :ok =
           Environments.write_file(
             context.environment,
-            ".code_my_spec/content/architecture_design.yaml",
+            ".code_my_spec/content/help/architecture_design.yaml",
             """
-            title: "Designing your architecture"
-            slug: "architecture-design"
-            type: "documentation"
             video_url: "#{@video_url}"
             """
           )

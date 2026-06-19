@@ -393,7 +393,7 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
         </section>
 
         <%!-- Right pane — instrumentation + help (grows to hold per-step help/video) --%>
-        <aside class="lg:sticky lg:top-4 self-start bg-cms-ink-1 border border-cms-hair-w p-5 space-y-4">
+        <aside class="lg:sticky lg:top-4 self-start lg:max-h-[calc(100vh-7rem)] overflow-y-auto bg-cms-ink-1 border border-cms-hair-w p-5 space-y-4">
           <div class="flex items-center justify-between gap-3">
             <div class="cms-spec-eyebrow">// what's happening</div>
             <span class="cms-spec-readonly inline-flex">read-only</span>
@@ -428,7 +428,7 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
     ~H"""
     <div class="space-y-3">
       <div data-test="task-help-body" class="cms-help-body prose prose-sm prose-invert max-w-none">
-        {@help.body}
+        {CodeMySpecLocalWeb.Markdown.md_html(@help.body)}
       </div>
       <a :if={@help.video_url} data-test="task-help-video" href={@help.video_url} class="cms-help-video">
         <span class="text-2xl leading-none pl-1">▶</span>

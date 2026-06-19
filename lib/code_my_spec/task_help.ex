@@ -1,59 +1,96 @@
 defmodule CodeMySpec.TaskHelp do
   @moduledoc """
-  Resolves per-task help content for the agent progress view.
+  Resolves per-task-type educational help for the agent progress view.
 
-  Maps an agent task type to a curated help document on disk
-  (`.code_my_spec/content/<task_type>.md`) plus its `.yaml` sidecar
-  (carrying an optional `video_url`). Major task types that have a
-  curated document return `{:ok, %Help{}}`; every other task type falls
-  back to `:generic`, leaving the surface to render a generic
-  explanation.
+  Help teaches a non-engineer what a task type means — a markdown explainer
+  plus an optional video — keyed by the task's session-type slug (e.g.
+  `CodeMySpec.AgentTasks.ArchitectureDesign` → `architecture_design`).
 
-  All reads go through the scope's environment, so the same lookup works
-  against the real filesystem in production and the in-memory environment
-  under test.
+  Resolution order:
 
-  Contract source of truth: the BDD spex suite at `test/spex/813_*`.
+    1. **Project override** — `<cwd>/.code_my_spec/content/help/<slug>.md`
+       (+ `.yaml` sidecar), read through the scope environment. Lets a
+       project ship its own explainer for a task type.
+    2. **Framework default** — `priv/task_help/<slug>.md` (+ `.yaml`),
+       shipped with the harness, so every project gets explainers without
+       authoring any. The base dir is configurable via
+       `config :code_my_spec, :task_help_dir` (used by tests).
+    3. `:generic` — no curated content; the surface renders a generic line.
+
+  The explainer body is markdown; the surface renders it to HTML. Content
+  is intentionally NOT the marketing/docs corpus — it's standalone
+  educational material for non-engineers.
+
+  Contract source of truth: the BDD spex suite at `test/spex/813_*` and
+  `test/code_my_spec/task_help_test.exs`.
   """
 
   alias CodeMySpec.Environments
   alias CodeMySpec.TaskHelp.Help
   alias CodeMySpec.Users.Scope
 
-  @content_dir ".code_my_spec/content"
+  @override_dir ".code_my_spec/content/help"
 
   @doc """
-  Fetch the curated help for `task_type`, or `:generic` when no curated
-  document exists for it.
-
-  `task_type` is the task's session-type module (e.g.
-  `CodeMySpec.AgentTasks.ArchitectureDesign`); its final segment, snake
-  cased, is the content document's slug (`architecture_design`).
+  Fetch the educational help for `task_type`, or `:generic` when no curated
+  content exists (project override, then framework default).
   """
   @spec fetch(Scope.t(), module()) :: {:ok, Help.t()} | :generic
-  def fetch(%Scope{environment: environment}, task_type) do
+  def fetch(%Scope{} = scope, task_type) do
     slug = slug_for(task_type)
 
-    case Environments.read_file(environment, content_path(slug, "md")) do
-      {:ok, body} ->
-        {:ok, %Help{task_type: task_type, body: body, video_url: video_url(environment, slug)}}
-
-      {:error, _reason} ->
-        :generic
+    with :error <- project_override(scope, slug),
+         :error <- framework_default(slug) do
+      :generic
+    else
+      {:ok, body, video_url} ->
+        {:ok, %Help{task_type: task_type, body: body, video_url: video_url}}
     end
   end
 
-  defp video_url(environment, slug) do
-    with {:ok, content} <- Environments.read_file(environment, content_path(slug, "yaml")),
-         {:ok, %{"video_url" => url}} when is_binary(url) <-
-           YamlElixir.read_from_string(content) do
-      url
-    else
+  # 1. Project-shipped override, read through the scope's environment.
+  defp project_override(%Scope{environment: %_{} = env}, slug) do
+    case Environments.read_file(env, Path.join(@override_dir, "#{slug}.md")) do
+      {:ok, body} -> {:ok, body, env_video_url(env, slug)}
+      _ -> :error
+    end
+  end
+
+  defp project_override(_scope, _slug), do: :error
+
+  # 2. Framework default shipped in priv (or the configured dir under test).
+  defp framework_default(slug) do
+    case File.read(Path.join(task_help_dir(), "#{slug}.md")) do
+      {:ok, body} -> {:ok, body, priv_video_url(slug)}
+      _ -> :error
+    end
+  end
+
+  defp env_video_url(env, slug) do
+    case Environments.read_file(env, Path.join(@override_dir, "#{slug}.yaml")) do
+      {:ok, content} -> video_url_from_yaml(content)
       _ -> nil
     end
   end
 
-  defp content_path(slug, extension), do: Path.join(@content_dir, "#{slug}.#{extension}")
+  defp priv_video_url(slug) do
+    case File.read(Path.join(task_help_dir(), "#{slug}.yaml")) do
+      {:ok, content} -> video_url_from_yaml(content)
+      _ -> nil
+    end
+  end
+
+  defp video_url_from_yaml(content) do
+    case YamlElixir.read_from_string(content) do
+      {:ok, %{"video_url" => url}} when is_binary(url) -> url
+      _ -> nil
+    end
+  end
+
+  defp task_help_dir do
+    Application.get_env(:code_my_spec, :task_help_dir) ||
+      Application.app_dir(:code_my_spec, "priv/task_help")
+  end
 
   defp slug_for(task_type) do
     task_type
