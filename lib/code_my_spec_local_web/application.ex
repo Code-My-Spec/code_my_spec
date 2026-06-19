@@ -137,13 +137,14 @@ defmodule CodeMySpecLocalWeb.Application do
     cms just needs to be running.
 
     Usage:
-      cms server       Run the server in the foreground (ctrl-C to stop).
+      cms start        Run the server in the foreground (ctrl-C to stop).
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
     Lifecycle is managed by the service supervisor — `brew services` (launchd)
     on macOS, a Shawl-wrapped service on Windows (installed by
-    installers/windows/install.ps1). Use those to start/stop/restart and to
+    installers/windows/install.ps1). Both run `cms start`, the release
+    launcher's foreground boot command. Use those to start/stop/restart and to
     read the service log. Application logs are written to ~/.codemyspec/server.log.
     """
   end

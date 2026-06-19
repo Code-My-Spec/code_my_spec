@@ -26,11 +26,12 @@ class Codemyspec < Formula
   end
 
   service do
-    # Run the BEAM in the foreground; launchd (via `brew services`) is the
-    # supervisor — keep_alive restarts it on exit. No `cms start` daemon
-    # double-fork: that exited immediately and left launchd respawning a
-    # process that wasn't the real server.
-    run [opt_bin/"cms", "server"]
+    # `cms start` is the mix-release launcher's foreground boot command — it
+    # runs the OTP app in the foreground for launchd (via `brew services`) to
+    # supervise; keep_alive restarts it on exit. (`server` is NOT a release
+    # launcher command, only a dev/`mix` alias.) The old `cms start` daemon
+    # double-fork was already inert on the plain release and has been removed.
+    run [opt_bin/"cms", "start"]
     keep_alive true
     log_path var/"log/codemyspec.log"
     error_log_path var/"log/codemyspec.log"
