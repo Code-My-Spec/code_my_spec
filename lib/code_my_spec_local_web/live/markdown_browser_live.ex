@@ -2,13 +2,14 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   @moduledoc """
   Generic browser for directories of markdown files.
 
-  Reusable across multiple directories — each `live_action` maps to a
-  filesystem root and display title. Roots can be:
+  Reusable across multiple libraries — each `live_action` maps to a
+  filesystem root (priv content) or a project-relative path resolved
+  through the scope's environment. All root resolution and path-traversal
+  protection lives in `CodeMySpec.Knowledge`; this LiveView is the display
+  surface only.
 
-    - A static string path (app-level, e.g. `priv/knowledge/`)
-    - `{:project, "relative/path"}` — resolved from the project's `local_path` at runtime
-
-  To add a new library, add an entry to `@libraries` and two routes in the router.
+  Directory listings are structured data and render as a list of links;
+  a `.md` file's contents are markdown and render through `md_html/1`.
   """
   use CodeMySpecLocalWeb, :live_view
 
@@ -16,100 +17,50 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
 
-  # Library config + path resolution rules live in CodeMySpec.Knowledge —
-  # the LiveView is the display surface, the lib module is the contract.
+  # Library config (titles) lives in CodeMySpec.Knowledge.
   @libraries Knowledge.libraries()
 
   @impl true
   def mount(_params, _session, socket) do
     projects = Projects.list_local_projects()
-    {:ok, assign(socket, projects: projects, project: nil, markdown: nil, error: nil)}
+    {:ok, assign(socket, projects: projects, project: nil, view: nil, error: nil)}
   end
 
   @impl true
   def handle_params(%{"project_name" => project_name} = params, _uri, socket)
       when not is_map_key(params, "path") do
+    load_view(socket, project_name, [])
+  end
+
+  def handle_params(%{"project_name" => project_name, "path" => path_segments}, _uri, socket) do
+    load_view(socket, project_name, path_segments)
+  end
+
+  defp load_view(socket, project_name, path_segments) do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
+    base_url = "/projects/#{project_name}/#{library_path(library)}"
 
     with {:ok, project} <- Projects.get_project_by_name(project_name),
-         {:ok, root} <- resolve_root(config.root, project_name) do
-      resolved_config = Map.put(config, :root, root)
-      base_url = "/projects/#{project_name}/#{library_path(library)}"
-      markdown = build_index(resolved_config, root, base_url)
+         {:ok, scope} <- Scope.for_local_project(project),
+         {:ok, result} <- Knowledge.browse(scope, library, path_segments) do
+      view = build_view(result, config, base_url, path_segments)
 
       {:noreply,
        assign(socket,
          project: project,
-         markdown: markdown,
          library: library,
-         page_title: config.title,
+         view: view,
+         page_title: elem(view, 1).title,
          error: nil
        )}
     else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
+      {:error, reason} ->
+        {:noreply, assign(socket, library: library, view: nil, error: error_message(reason))}
     end
   end
 
-  def handle_params(%{"project_name" => project_name, "path" => path_segments}, _uri, socket) do
-    library = socket.assigns.live_action
-    config = Map.fetch!(@libraries, library)
-
-    with {:ok, project} <- Projects.get_project_by_name(project_name),
-         {:ok, root} <- resolve_root(config.root, project_name) do
-      resolved_config = Map.put(config, :root, root)
-      base_url = "/projects/#{project_name}/#{library_path(library)}"
-      relative_path = Path.join(path_segments)
-      full_path = Path.join(root, relative_path)
-
-      cond do
-        not safe_path?(root, full_path) ->
-          {:noreply, assign(socket, project: project, library: library, error: "Invalid path")}
-
-        not File.exists?(full_path) ->
-          {:noreply,
-           assign(socket,
-             project: project,
-             library: library,
-             error: "Not found: #{relative_path}"
-           )}
-
-        File.dir?(full_path) ->
-          markdown = build_index(resolved_config, full_path, base_url)
-
-          {:noreply,
-           assign(socket,
-             project: project,
-             library: library,
-             markdown: markdown,
-             page_title: Path.basename(full_path) |> humanize(),
-             error: nil
-           )}
-
-        String.ends_with?(full_path, ".md") ->
-          markdown = build_file_view(resolved_config, full_path, base_url, relative_path)
-
-          {:noreply,
-           assign(socket,
-             project: project,
-             library: library,
-             markdown: markdown,
-             page_title: Path.basename(full_path, ".md") |> humanize(),
-             error: nil
-           )}
-
-        true ->
-          {:noreply,
-           assign(socket,
-             project: project,
-             library: library,
-             error: "Not found: #{relative_path}"
-           )}
-      end
-    else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
-    end
-  end
+  # --- Render ---
 
   @impl true
   def render(assigns) do
@@ -125,82 +76,103 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
         <span>{@error}</span>
       </div>
 
-      <div
-        :if={@markdown}
-        class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
-      >
-        {md_html(@markdown)}
-      </div>
+      <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
+      <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
     </Layouts.app>
     """
   end
 
-  # Resolves a root spec ({:priv, _} | {:project, _}) for the given project_name.
-  # Mirrors MarkdownBrowserController.resolve_scope/1 + Knowledge.resolve_root/2
-  # so the LiveView and the API agree on path resolution. The previous
-  # `defdelegate resolve_root(root, project_name), to: Knowledge` passed args
-  # in the wrong order (and the wrong type for the scope arg), crashing every
-  # knowledge route with a FunctionClauseError.
-  defp resolve_root(root_spec, project_name) do
-    with {:ok, project} <- Projects.get_project_by_name(project_name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      Knowledge.resolve_root(scope, root_spec)
+  attr :dir, :map, required: true
+
+  defp dir_view(assigns) do
+    ~H"""
+    <div>
+      <.back_link :if={@dir.back_url} url={@dir.back_url} />
+      <h1 class="text-2xl font-bold mb-4">{@dir.title}</h1>
+
+      <ul class="space-y-1.5">
+        <li
+          :for={entry <- @dir.entries}
+          class="flex items-center gap-2 rounded-box border border-base-300 bg-base-200 p-3"
+        >
+          <span class="flex-none text-base-content/50">{if entry.type == :dir, do: "▸", else: "·"}</span>
+          <.link navigate={entry.url} class="link link-hover flex-1 truncate">{entry.label}</.link>
+        </li>
+      </ul>
+
+      <p :if={@dir.entries == []} class="text-base-content/50">Empty.</p>
+    </div>
+    """
+  end
+
+  attr :file, :map, required: true
+
+  defp file_view(assigns) do
+    ~H"""
+    <div>
+      <.back_link :if={@file.back_url} url={@file.back_url} />
+      <div class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">
+        {md_html(@file.content)}
+      </div>
+    </div>
+    """
+  end
+
+  attr :url, :string, required: true
+
+  defp back_link(assigns) do
+    ~H"""
+    <div class="mb-4">
+      <.link navigate={@url} class="btn btn-ghost btn-sm gap-1">← Back</.link>
+    </div>
+    """
+  end
+
+  # --- View builders ---
+
+  defp build_view({:dir, entries}, config, base_url, path_segments) do
+    {:dir,
+     %{
+       title: dir_title(config, path_segments),
+       back_url: parent_url(base_url, path_segments),
+       entries:
+         Enum.map(entries, fn {name, type, rel} ->
+           label = if type == :dir, do: "#{humanize(name)}/", else: humanize_filename(name)
+           %{label: label, type: type, url: "#{base_url}/#{rel}"}
+         end)
+     }}
+  end
+
+  defp build_view({:file, content}, _config, base_url, path_segments) do
+    {:file,
+     %{
+       title: file_title(path_segments),
+       back_url: parent_url(base_url, path_segments),
+       content: content
+     }}
+  end
+
+  defp dir_title(config, []), do: config.title
+  defp dir_title(_config, segments), do: segments |> List.last() |> humanize()
+
+  defp file_title(segments), do: segments |> List.last() |> humanize_filename()
+
+  defp parent_url(_base_url, []), do: nil
+
+  defp parent_url(base_url, segments) do
+    case Enum.drop(segments, -1) do
+      [] -> base_url
+      parent -> "#{base_url}/#{Enum.join(parent, "/")}"
     end
   end
 
-  defp build_index(config, dir_path, base_url) do
-    back =
-      if dir_path == config.root do
-        ""
-      else
-        parent =
-          dir_path
-          |> Path.relative_to(config.root)
-          |> Path.dirname()
+  defp error_message(:not_found), do: "Not found"
+  defp error_message(:invalid_path), do: "Invalid path"
+  defp error_message(:unknown_library), do: "Unknown library"
+  defp error_message(reason) when is_binary(reason), do: reason
+  defp error_message(reason), do: inspect(reason)
 
-        parent_url = if parent == ".", do: base_url, else: "#{base_url}/#{parent}"
-        "[← Back](#{parent_url})\n\n"
-      end
-
-    title =
-      if dir_path == config.root do
-        config.title
-      else
-        dir_path |> Path.basename() |> humanize()
-      end
-
-    entries = list_entries(dir_path)
-
-    lines =
-      Enum.map_join(entries, "\n", fn {name, type} ->
-        relative = Path.relative_to(Path.join(dir_path, name), config.root)
-
-        case type do
-          :dir -> "- [#{humanize(name)}/](#{base_url}/#{relative})"
-          :file -> "- [#{humanize_filename(name)}](#{base_url}/#{relative})"
-        end
-      end)
-
-    description =
-      if dir_path == config.root and config[:description] do
-        "\n#{config.description}\n"
-      else
-        ""
-      end
-
-    "#{back}# #{title}\n#{description}\n#{lines}\n"
-  end
-
-  defp build_file_view(_config, full_path, base_url, relative_path) do
-    parent_dir = Path.dirname(relative_path)
-    parent_url = if parent_dir == ".", do: base_url, else: "#{base_url}/#{parent_dir}"
-    content = File.read!(full_path)
-
-    "[← Back](#{parent_url})\n\n#{content}"
-  end
-
-  defdelegate list_entries(dir_path), to: Knowledge
-  defdelegate safe_path?(root, path), to: Knowledge
+  # --- Helpers ---
 
   defp humanize(name) do
     name
@@ -218,5 +190,4 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   defp library_path(library) when is_atom(library) do
     library |> Atom.to_string() |> String.replace("_", "-")
   end
-
 end

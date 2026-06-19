@@ -125,6 +125,66 @@ defmodule CodeMySpec.Knowledge do
     end
   end
 
+  @doc """
+  Browse a library for the display surface (LiveView).
+
+  Unlike `resolve/3` — which renders a markdown string for the agent —
+  this returns structured data so the UI can render a directory as a
+  list of links and a file as its raw markdown content:
+
+    - `{:ok, {:dir, [{name, :dir | :file, rel_path}]}}` — `rel_path` is
+      relative to the library root, for building browser URLs.
+    - `{:ok, {:file, content}}` — raw markdown for a `.md` file.
+
+  Works across both backends (`:priv_path` real files, `:env` projects)
+  via the same resolved-root abstraction as `resolve/3`.
+  """
+  @spec browse(Scope.t(), atom(), [String.t()]) ::
+          {:ok, {:dir, [{String.t(), :dir | :file, String.t()}]}}
+          | {:ok, {:file, String.t()}}
+          | {:error, atom() | String.t()}
+  def browse(%Scope{} = scope, library, path_segments) do
+    with {:ok, config} <- Map.fetch(@libraries, library),
+         {:ok, root} <- resolve_root(scope, config.root) do
+      base = root_path(root)
+
+      case path_segments do
+        [] ->
+          {:ok, {:dir, browse_entries(root, base)}}
+
+        segments ->
+          full_path = Path.join([base | segments])
+
+          case locate(root, full_path) do
+            :invalid_path -> {:error, :invalid_path}
+            :not_found -> {:error, :not_found}
+            :dir -> {:ok, {:dir, browse_entries(with_path(root, full_path), base)}}
+            :file -> browse_file(root, full_path)
+          end
+      end
+    else
+      :error -> {:error, :unknown_library}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp browse_entries(dir_root, base) do
+    dir_root
+    |> list_entries()
+    |> Enum.map(fn {name, type} ->
+      full = Path.join(root_path(dir_root), name)
+      {name, type, Path.relative_to(full, base)}
+    end)
+  end
+
+  defp browse_file(root, full_path) do
+    if String.ends_with?(full_path, ".md") do
+      with {:ok, content} <- read_file(root, full_path), do: {:ok, {:file, content}}
+    else
+      {:error, :not_found}
+    end
+  end
+
   defp locate({:priv_path, root_path}, full_path) do
     cond do
       not safe_path?(root_path, full_path) -> :invalid_path
