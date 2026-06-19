@@ -200,17 +200,26 @@ jobs:
       # Publish the filled brew formula to the tap so
       # `brew install Code-My-Spec/tap/codemyspec` resolves this release.
       # continue-on-error: a tap-token hiccup must never block the release
-      # (the gh release + marketplace push are what matter most).
+      # (the gh release + marketplace push are what matter most) — but on
+      # failure we emit a ::error:: annotation so it can't fail SILENTLY: a
+      # swallowed push is exactly how the tap drifted a release behind before.
+      #
+      # TAP_TOKEN (preferred) must have write to Code-My-Spec/homebrew-tap.
+      # Falls back to EXTENSION_REPO_TOKEN, which is scoped to the plugins repo
+      # and will 403 against the tap unless homebrew-tap is added to its repos.
       - name: Publish brew formula to tap
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.EXTENSION_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.TAP_TOKEN || secrets.EXTENSION_REPO_TOKEN }}
         run: |
           if [ ! -f release-assets/codemyspec.rb ]; then
             echo "No formula (no darwin tarball) — skipping tap publish."
             exit 0
           fi
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/Code-My-Spec/homebrew-tap.git" tap-repo
+          if ! git clone "https://x-access-token:${GH_TOKEN}@github.com/Code-My-Spec/homebrew-tap.git" tap-repo; then
+            echo "::error::tap publish: cannot clone homebrew-tap — token lacks access. Add homebrew-tap to the PAT's repositories (or set TAP_TOKEN)."
+            exit 1
+          fi
           cd tap-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -219,9 +228,21 @@ jobs:
           git add Formula/codemyspec.rb
           if git diff --cached --quiet; then
             echo "Formula unchanged."
+            exit 0
+          fi
+          git commit -m "codemyspec ${{ steps.version.outputs.tag }}"
+          if ! git push origin HEAD; then
+            echo "::error::tap publish: push to homebrew-tap rejected — token lacks write. Add homebrew-tap to the PAT's repositories (or set TAP_TOKEN)."
+            exit 1
+          fi
+          # Confirm the formula version actually landed on the remote default branch.
+          TAG="${{ steps.version.outputs.tag }}"; VER="${TAG#v}"
+          git fetch origin
+          if git show "origin/HEAD:Formula/codemyspec.rb" | grep -q "version \"${VER}\""; then
+            echo "tap publish: homebrew-tap now serves ${TAG}."
           else
-            git commit -m "codemyspec ${{ steps.version.outputs.tag }}"
-            git push origin HEAD
+            echo "::error::tap publish: push reported success but origin does not show this version."
+            exit 1
           fi
 
       - name: Push files + tag to extension repo
