@@ -41,13 +41,14 @@ parser handles both sources.
 
 - `~/.codemyspec/server.log` — application logs from the `cms server` binary.
   Rotated at 10 MB × 3 by `:logger_std_h`.
-- `~/.codemyspec/server.boot.log` — raw stdout/stderr from the daemonized cms
-  binary (BEAM startup messages, `IO.puts`). Not rotated. Useful when the
-  server fails before the logger handler installs.
+- The service supervisor captures raw stdout/stderr (BEAM startup messages,
+  `IO.puts` before the logger handler installs): `/opt/homebrew/var/log/codemyspec.log`
+  on macOS (`brew services`), `C:\ProgramData\CodeMySpec\shawl\` on Windows.
 - `~/.codemyspec/cli.log` — application logs from the `cms` CLI binary.
   Rotated at 10 MB × 3.
 
-`cms logs` / `cms logs -f` print and follow `server.log` from any shell.
+Read `server.log` directly (`tail -f ~/.codemyspec/server.log`); lifecycle and
+the service log are managed by `brew services` / the Windows Shawl service.
 
 ### Format
 

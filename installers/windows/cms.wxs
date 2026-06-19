@@ -5,11 +5,12 @@
   Installs the plain `mix release` folder (ERTS + start.boot on disk, no
   runtime self-extraction) into %ProgramFiles%\CodeMySpec, plus shawl.exe, and
   registers a "CodeMySpec" Windows service: Shawl wrapping the release launcher
-  `cmd /c bin\code_my_spec_cli.bat start`.
+  `cmd /c bin\code_my_spec_cli.bat server`.
 
-  - Shawl is the service binary; it supervises the BEAM, forwards the service
-    stop into a ctrl-C, restarts on nonzero exit. kill-process-tree tears the
-    cmd to launcher to erl child chain down on stop.
+  - Shawl is the service binary; it supervises the BEAM (run in the foreground
+    by `cms server`), forwards the service stop into a ctrl-C, restarts on
+    nonzero exit. kill-process-tree tears the cmd to launcher to erl child
+    chain down on stop.
   - LocalSystem (no password). Data dir is machine-wide C:\ProgramData\CodeMySpec
     (LocalSystem has no user profile), passed via the CMS_HOME env and also set
     as a machine env var so a user-run cms resolves the same directory.
@@ -58,7 +59,7 @@
           Start="auto"
           ErrorControl="normal"
           Vital="yes"
-          Arguments="run --name CodeMySpec --kill-process-tree --stop-timeout 20000 --cwd &quot;C:\ProgramData\CodeMySpec&quot; --log-dir &quot;C:\ProgramData\CodeMySpec\shawl&quot; --env CMS_HOME=C:\ProgramData\CodeMySpec -- cmd /c &quot;[INSTALLFOLDER]bin\code_my_spec_cli.bat&quot; start" />
+          Arguments="run --name CodeMySpec --kill-process-tree --stop-timeout 20000 --cwd &quot;C:\ProgramData\CodeMySpec&quot; --log-dir &quot;C:\ProgramData\CodeMySpec\shawl&quot; --env CMS_HOME=C:\ProgramData\CodeMySpec -- cmd /c &quot;[INSTALLFOLDER]bin\code_my_spec_cli.bat&quot; server" />
         <ServiceControl
           Id="CodeMySpecServiceControl"
           Name="CodeMySpec"

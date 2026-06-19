@@ -26,7 +26,11 @@ class Codemyspec < Formula
   end
 
   service do
-    run [opt_bin/"cms", "start"]
+    # Run the BEAM in the foreground; launchd (via `brew services`) is the
+    # supervisor — keep_alive restarts it on exit. No `cms start` daemon
+    # double-fork: that exited immediately and left launchd respawning a
+    # process that wasn't the real server.
+    run [opt_bin/"cms", "server"]
     keep_alive true
     log_path var/"log/codemyspec.log"
     error_log_path var/"log/codemyspec.log"

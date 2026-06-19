@@ -9,13 +9,9 @@ defmodule CodeMySpecLocalWeb.Application do
   """
   use Application
 
-  # CodeMySpecCli.Daemon lives in the sibling CLI project and only links into
-  # the CLI binary. The web build compiles this same source without it.
-  # Resolving the module through an atom at runtime keeps both builds clean.
-  @daemon :"Elixir.CodeMySpecCli.Daemon"
-
   # Burrito.Util.Args is Burrito-release-only — the bare web build doesn't
-  # include it. Same atom trick.
+  # include it. Resolving the module through an atom at runtime keeps both
+  # builds clean.
   @burrito_args :"Elixir.Burrito.Util.Args"
 
   @impl true
@@ -53,7 +49,6 @@ defmodule CodeMySpecLocalWeb.Application do
 
     case Supervisor.start_link(children, opts) do
       {:ok, pid} ->
-        daemon_call(:write_pid_file)
         print_server_banner()
         {:ok, pid}
 
@@ -63,7 +58,7 @@ defmodule CodeMySpecLocalWeb.Application do
   end
 
   @impl true
-  def stop(_state), do: daemon_call(:remove_pid_file)
+  def stop(_state), do: :ok
 
   # Quick Cloudflare tunnel — :dev_cli only. Config in config/dev_cli.exs.
   defp tunnel_children do
@@ -105,17 +100,17 @@ defmodule CodeMySpecLocalWeb.Application do
   defp version_flag?(args), do: "--version" in args or "-v" in args
   defp help_flag?(args), do: "--help" in args or "-h" in args
 
+  # Lifecycle (start/stop/restart, logs) is owned by the service supervisor —
+  # `brew services` (launchd) on macOS, Shawl on Windows. `cms server` runs the
+  # BEAM in the foreground for the supervisor to manage; `start` is kept as a
+  # back-compat alias so a service definition still pointing at `cms start`
+  # (e.g. an in-flight upgrade with a stale launchd plist) keeps working.
   defp find_subcommand(args) do
-    Enum.find(["status", "stop", "logs", "start", "server"], &(&1 in args))
+    Enum.find(["start", "server"], &(&1 in args))
   end
 
-  defp run_subcommand("status", _args), do: System.halt(daemon_call(:print_status))
-  defp run_subcommand("stop", _args), do: System.halt(daemon_call(:stop))
-  defp run_subcommand("logs", args), do: System.halt(daemon_call(:logs, [follow?(args)]))
-  defp run_subcommand("start", _args), do: System.halt(daemon_call(:start, [self_path()]))
+  defp run_subcommand("start", _args), do: :ok
   defp run_subcommand("server", _args), do: :ok
-
-  defp follow?(args), do: "-f" in args or "--follow" in args
 
   defp print_and_halt(text, code) do
     IO.puts(text)
@@ -126,29 +121,6 @@ defmodule CodeMySpecLocalWeb.Application do
     IO.puts(:stderr, "cms: unknown command #{inspect(hd(args))}\n")
     IO.puts(:stderr, help_text())
     System.halt(2)
-  end
-
-  # Path of the running binary — passed to `start` so the detached child
-  # is exactly this binary (Burrito launcher + embedded payload).
-  #
-  # Burrito's launcher exports `__BURRITO_BIN_PATH`; `get_bin_path/0` reads it
-  # and is the only reliable source on Windows. The `$_` / init-args fallbacks
-  # are unix shell-isms that yield nothing under the Windows launcher, so
-  # without this `self_path` fell back to "cms" — and `cms start` then tried to
-  # `Start-Process -FilePath cms` (not on PATH), spawning nothing and timing
-  # out on the health check.
-  defp self_path do
-    burrito_bin_path() ||
-      System.get_env("_") ||
-      List.first(:init.get_plain_arguments() |> Enum.map(&to_string/1)) ||
-      "cms"
-  end
-
-  defp burrito_bin_path do
-    case call_optional(@burrito_args, :get_bin_path) do
-      path when is_binary(path) -> path
-      _ -> nil
-    end
   end
 
   defp version_string do
@@ -165,20 +137,14 @@ defmodule CodeMySpecLocalWeb.Application do
     cms just needs to be running.
 
     Usage:
-      cms start        Start the server in the background, wait for /health.
-      cms stop         Stop the running server (SIGTERM, then SIGKILL).
-      cms status       Print version/pid/port/log of the running server.
-      cms logs         Print the server log.
-      cms logs -f      Follow the server log.
       cms server       Run the server in the foreground (ctrl-C to stop).
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
-    On Windows, cms runs as a Shawl-wrapped service installed out-of-band by
-    installers/windows/install.ps1. Updates are delivered by re-running the
-    installer (or the platform install script), not by the binary itself.
-
-    Logs and pid file live in ~/.codemyspec/.
+    Lifecycle is managed by the service supervisor — `brew services` (launchd)
+    on macOS, a Shawl-wrapped service on Windows (installed by
+    installers/windows/install.ps1). Use those to start/stop/restart and to
+    read the service log. Application logs are written to ~/.codemyspec/server.log.
     """
   end
 
@@ -186,7 +152,7 @@ defmodule CodeMySpecLocalWeb.Application do
     unless silent?() do
       version = Application.spec(:code_my_spec, :vsn)
       pid = System.pid()
-      log = daemon_call(:log_file) || Path.expand("~/.codemyspec/server.log")
+      log = Path.expand("~/.codemyspec/server.log")
 
       IO.puts("cms v#{version}  ·  pid #{pid}  ·  http://localhost:4003  ·  log #{log}")
     end
@@ -273,12 +239,9 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
-  defp daemon_call(fun, args \\ []), do: call_optional(@daemon, fun, args)
-
-  # Dispatch to a module only when it's loaded. Used for cross-project
-  # references (CodeMySpecCli.Daemon, Burrito.Util.Args) that don't link
-  # into every build of this app. Missing module or missing function both
-  # resolve to nil.
+  # Dispatch to a module only when it's loaded. Used for the Burrito.Util.Args
+  # reference, which doesn't link into every build of this app. Missing module
+  # or missing function both resolve to nil.
   defp call_optional(mod, fun, args \\ []) do
     if Code.ensure_loaded?(mod) and function_exported?(mod, fun, length(args)) do
       apply(mod, fun, args)
