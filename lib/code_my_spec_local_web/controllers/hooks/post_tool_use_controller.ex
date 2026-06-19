@@ -18,13 +18,30 @@ defmodule CodeMySpecLocalWeb.Hooks.PostToolUseController do
   require Logger
 
   alias CodeMySpec.FileEdits
+  alias CodeMySpec.Sessions
+  alias CodeMySpec.Users.Scope
 
   @edit_tools ~w(Write Edit MultiEdit NotebookEdit)
 
   def handle(conn, params) do
     track_edit(params)
+    mark_active(conn, params)
     json(conn, %{})
   end
+
+  # Every tool call means this session is doing work: touch its updated_at
+  # so the agent-progress view can derive "active" by recency on load (and
+  # refresh open pages live). Fire-and-forget.
+  defp mark_active(conn, %{"session_id" => session_id}) when is_binary(session_id) do
+    with %Scope{} = scope <- conn.assigns[:current_scope],
+         session when not is_nil(session) <- Sessions.get_by_external_id(scope, session_id) do
+      Sessions.touch_session(scope, session)
+    else
+      _ -> :ok
+    end
+  end
+
+  defp mark_active(_conn, _params), do: :ok
 
   defp track_edit(%{
          "tool_name" => tool,

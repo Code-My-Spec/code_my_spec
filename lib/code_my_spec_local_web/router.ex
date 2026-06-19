@@ -28,6 +28,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/projects/:project_name/problems", ProblemsLive
       live "/projects/:project_name/next-task", Tasks.NextTaskLive
       live "/projects/:project_name/tasks", Tasks.TaskQueueLive
+      live "/projects/:project_name/progress", AgentProgressLive
       live "/projects/:project_name/requirements", RequirementsLive, :index
       live "/projects/:project_name/requirements/graph", RequirementsLive, :graph
       # Requirements view of stories (graph projection — distinct from admin).

@@ -16,6 +16,53 @@ defmodule CodeMySpec.Sessions do
   alias CodeMySpec.Users.Scope
 
   # ============================================================================
+  # PubSub — session/task lifecycle broadcasts (story 813)
+  # ============================================================================
+
+  @doc """
+  Subscribe the caller to session-change broadcasts for the scope's
+  active project. The agent progress view re-renders live off these.
+  """
+  @spec subscribe_sessions(Scope.t()) :: :ok | {:error, term()}
+  def subscribe_sessions(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, sessions_topic(project_id))
+  end
+
+  def subscribe_sessions(_scope), do: :ok
+
+  defp sessions_topic(project_id), do: "project:#{project_id}:sessions"
+
+  defp broadcast_change({:ok, %Session{project_id: project_id} = session} = result)
+       when is_binary(project_id) do
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      sessions_topic(project_id),
+      {:session_changed, session}
+    )
+
+    result
+  end
+
+  defp broadcast_change(result), do: result
+
+  @doc """
+  Mark a session as just-active by bumping its `updated_at`, then
+  broadcasting the change. Called from the PostToolUse hook on every tool
+  call so the agent-progress view can derive "active" by simple recency
+  (updated within a few minutes) on load, while open pages refresh live.
+  """
+  @spec touch_session(Scope.t(), Session.t()) :: :ok
+  def touch_session(%Scope{}, %Session{} = session) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    from(s in Session, where: s.id == ^session.id)
+    |> Repo.update_all(set: [updated_at: now])
+
+    broadcast_change({:ok, %Session{session | updated_at: now}})
+    :ok
+  end
+
+  # ============================================================================
   # Session CRUD
   # ============================================================================
 
@@ -24,6 +71,7 @@ defmodule CodeMySpec.Sessions do
     %Session{}
     |> Session.scoped_changeset(attrs, scope)
     |> Repo.insert()
+    |> broadcast_change()
   end
 
   @doc "Get a session by ID, scoped to project."
@@ -121,6 +169,7 @@ defmodule CodeMySpec.Sessions do
     session
     |> Session.changeset(attrs)
     |> Repo.update()
+    |> broadcast_change()
   end
 
   @doc """
@@ -195,6 +244,7 @@ defmodule CodeMySpec.Sessions do
       session
       |> Session.add_task(attrs)
       |> Repo.update()
+      |> broadcast_change()
     end
   end
 
@@ -218,6 +268,7 @@ defmodule CodeMySpec.Sessions do
     session
     |> Session.update_task(task_id, updates)
     |> Repo.update()
+    |> broadcast_change()
   end
 
   @doc """
@@ -232,6 +283,7 @@ defmodule CodeMySpec.Sessions do
     session
     |> Session.update_task(task_id, %{status: result, completed_at: now})
     |> Repo.update()
+    |> broadcast_change()
   end
 
   @doc "Assign an agent_id to an active task."

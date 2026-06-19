@@ -547,6 +547,447 @@
     }
 }
 
+/* ─── Agent progress spectator (story 813) ──────────────────────────────
+   Read-only "watch the build" surface. Brand-system app zone: red signals
+   state, grid is a whisper, no scanlines. Agent color is passed per element
+   via the `--ac` custom property (set inline from the agent palette) so one
+   set of classes serves arch/spec/code/qa. */
+/* Agent palette — session/task surfaces. Defined on :root (not @theme)
+   because they're consumed only via var() in component CSS and inline --ac;
+   Tailwind v4 tree-shakes @theme tokens that aren't used as utility classes. */
+:root {
+    --color-cms-agent-arch: #60a5fa;
+    --color-cms-agent-spec: #22d3ee;
+    --color-cms-agent-bdd: #f472b6;
+    --color-cms-agent-code: #fde047;
+    --color-cms-agent-pm: #a78bfa;
+    --color-cms-agent-qa: #ff3838;
+}
+
+@keyframes cms-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 56, 56, 0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(255, 56, 56, 0); }
+}
+@keyframes cms-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+@keyframes cms-breath {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.85; }
+}
+
+@layer components {
+    /* ── Top bar — live/idle status ── */
+    .cms-spec-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--color-cms-text);
+    }
+    .cms-spec-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    .cms-spec-status[data-live="true"] .cms-spec-dot {
+        background: var(--color-cms-red);
+        animation: cms-pulse 2s infinite;
+    }
+    .cms-spec-status[data-live="false"] {
+        color: var(--color-cms-text-dim);
+    }
+    .cms-spec-status[data-live="false"] .cms-spec-dot {
+        background: var(--color-cms-text-mute);
+        animation: cms-breath 3s infinite;
+    }
+    .cms-spec-meta {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--color-cms-text-mute);
+    }
+    .cms-spec-readonly {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-cms-text-dim);
+        border: 1px solid var(--color-cms-hair-w);
+        padding: 5px 10px;
+        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    }
+
+    /* ── Section eyebrow (// requirements, // sessions, // what's happening) ── */
+    .cms-spec-eyebrow {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--color-cms-text-dim);
+    }
+
+    /* ── Requirement rail ── */
+    .cms-rail-count-num {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 26px;
+        color: var(--color-cms-white);
+    }
+    .cms-rail-count-meta {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--color-cms-text-mute);
+    }
+    .cms-rail-bar {
+        height: 4px;
+        background: var(--color-cms-ink-3);
+        display: flex;
+    }
+    .cms-rail-bar-done {
+        background: var(--color-cms-white);
+    }
+    .cms-rail-bar-active {
+        background: var(--color-cms-red);
+        animation: cms-blink 1.8s infinite;
+    }
+    .cms-rail-item {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 9px 20px;
+    }
+    .cms-rail-item-label {
+        font-size: 13px;
+        flex: 1;
+        min-width: 0;
+    }
+    .cms-rail-item[data-status="done"] .cms-rail-item-label {
+        color: var(--color-cms-text-dim);
+    }
+    .cms-rail-item[data-status="in progress"] .cms-rail-item-label {
+        color: var(--color-cms-white);
+    }
+    .cms-rail-item[data-status="not started"] .cms-rail-item-label {
+        color: var(--color-cms-text-mute);
+    }
+    /* Focus-linked row — the requirement the active task is working on. */
+    .cms-rail-item.is-focus {
+        background: rgba(255, 56, 56, 0.07);
+        border-left: 2px solid var(--color-cms-red);
+        padding-left: 18px;
+    }
+    .cms-rail-inview {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--color-cms-red);
+    }
+    /* status glyphs */
+    .cms-status {
+        width: 14px;
+        flex: none;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .cms-status-done {
+        color: var(--color-cms-white);
+        font-size: 13px;
+    }
+    .cms-status-active {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--color-cms-red);
+        box-shadow: 0 0 8px var(--color-cms-red);
+        animation: cms-blink 1.6s infinite;
+    }
+    .cms-status-todo {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1px solid var(--color-cms-text-mute);
+    }
+
+    /* ── Timeline / sessions ── */
+    .cms-following {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-cms-red);
+        border: 1px solid rgba(255, 56, 56, 0.3);
+        padding: 6px 12px;
+        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    }
+    .cms-following .cms-spec-dot {
+        width: 6px;
+        height: 6px;
+        background: var(--color-cms-red);
+        animation: cms-blink 1.4s infinite;
+    }
+
+    /* Agent badge — chamfered square, colored by --ac. */
+    .cms-agent-badge {
+        width: 36px;
+        height: 36px;
+        flex: none;
+        background: #000;
+        border: 1.5px solid var(--ac, var(--color-cms-red));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 12px;
+        color: var(--ac, var(--color-cms-red));
+        clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+    }
+    .cms-agent-badge.is-active {
+        box-shadow: 0 0 14px color-mix(in oklab, var(--ac, var(--color-cms-red)) 30%, transparent);
+    }
+    .cms-agent-tag {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--ac, var(--color-cms-red));
+        border: 1px solid color-mix(in oklab, var(--ac, var(--color-cms-red)) 40%, transparent);
+        padding: 2px 7px;
+    }
+    .cms-session-title {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--color-cms-white);
+        font-weight: 600;
+    }
+    .cms-session-time {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-cms-text-mute);
+    }
+    .cms-session.is-idle {
+        opacity: 0.72;
+    }
+    .cms-session-marker {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--color-cms-text-mute);
+    }
+    .cms-session-marker.is-active {
+        background: var(--color-cms-red);
+        box-shadow: 0 0 8px var(--color-cms-red);
+    }
+    .cms-session-live {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--color-cms-red);
+    }
+
+    /* Nested per-session task box — colored left border via --ac. */
+    .cms-session-tasks {
+        margin-top: 12px;
+        border: 1px solid var(--color-cms-hair-w);
+        border-left: 2px solid color-mix(in oklab, var(--ac, var(--color-cms-red)) 45%, transparent);
+        background: rgba(255, 255, 255, 0.012);
+        padding: 12px 14px;
+    }
+    .cms-session-tasks-eyebrow {
+        font-family: var(--font-mono);
+        font-size: 9px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--ac, var(--color-cms-red));
+        margin-bottom: 6px;
+    }
+    .cms-task-row {
+        display: flex;
+        gap: 11px;
+        align-items: center;
+        padding: 5px 0;
+    }
+    .cms-task-glyph {
+        width: 30px;
+        flex: none;
+        display: flex;
+        justify-content: center;
+    }
+    .cms-task-dot-done {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--color-cms-ink-1);
+        border: 1px solid rgba(245, 245, 247, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-cms-white);
+        font-size: 9px;
+    }
+    .cms-task-dot-todo {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid var(--color-cms-text-mute);
+    }
+    .cms-task-dot-active {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid var(--color-cms-red);
+        background: rgba(255, 56, 56, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 10px rgba(255, 56, 56, 0.4);
+    }
+    .cms-task-dot-active::after {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-cms-red);
+        animation: cms-blink 1.5s infinite;
+    }
+    .cms-task-label {
+        font-size: 12.5px;
+        color: var(--color-cms-text-dim);
+    }
+    .cms-task-label.is-todo {
+        color: var(--color-cms-text-mute);
+    }
+
+    /* ── Focused task artifact card ── */
+    .cms-artifact {
+        border: 1px solid rgba(255, 56, 56, 0.4);
+        background: var(--color-cms-ink-1);
+        clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+        overflow: hidden;
+    }
+    .cms-artifact-bar {
+        height: 2px;
+        background: linear-gradient(90deg, var(--color-cms-red), transparent);
+    }
+    .cms-artifact-head {
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--color-cms-hair-w);
+    }
+    .cms-artifact-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--color-cms-white);
+        letter-spacing: -0.01em;
+    }
+    .cms-artifact-active {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-cms-red);
+        letter-spacing: 0.12em;
+        white-space: nowrap;
+    }
+    .cms-artifact-body {
+        padding: 16px 18px;
+    }
+    .cms-artifact-eyebrow {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--ac, var(--color-cms-agent-spec));
+        margin-bottom: 12px;
+    }
+    .cms-artifact-mono {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--color-cms-text);
+        word-break: break-all;
+    }
+    /* Help body + "why this matters" note */
+    .cms-help-body {
+        font-size: 13px;
+        line-height: 1.65;
+        color: var(--color-cms-text);
+    }
+    .cms-help-note {
+        font-size: 12.5px;
+        color: var(--color-cms-text-dim);
+        line-height: 1.55;
+        border-left: 2px solid rgba(255, 56, 56, 0.3);
+        padding-left: 12px;
+    }
+    .cms-help-video {
+        aspect-ratio: 16 / 9;
+        border: 1px solid var(--color-cms-hair-w);
+        background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0 9px, transparent 9px 18px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        color: var(--color-cms-red);
+        text-decoration: none;
+    }
+    .cms-help-generic {
+        font-size: 13px;
+        color: var(--color-cms-text-dim);
+        line-height: 1.6;
+    }
+
+    /* ── Idle state ── */
+    .cms-idle {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        text-align: center;
+        padding: 64px 24px;
+    }
+    .cms-idle-glyph {
+        width: 64px;
+        height: 64px;
+        border: 1px solid rgba(255, 56, 56, 0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+    }
+    .cms-idle-glyph span {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--color-cms-text-mute);
+        animation: cms-breath 3s infinite;
+    }
+    .cms-idle-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 18px;
+        color: var(--color-cms-text);
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    /* Whisper grid for the timeline column (app-zone intensity). */
+    .cms-grid-bg {
+        background:
+            linear-gradient(rgba(255, 56, 56, 0.04) 1px, transparent 1px) 0 0 / 100% 64px,
+            linear-gradient(90deg, rgba(255, 56, 56, 0.04) 1px, transparent 1px) 0 0 / 64px 100%;
+    }
+}
+
 /* Phoenix LiveView variants */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);

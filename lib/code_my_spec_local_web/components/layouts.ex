@@ -21,6 +21,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
   attr :projects, :list, default: [], doc: "list of all local projects for the picker"
   attr :section, :atom, default: nil, doc: "which sidebar section is active"
   attr :page_title, :string, default: "CodeMySpec Local"
+  attr :full_width, :boolean, default: false, doc: "drop the centered max-width cap (app-style surfaces)"
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -50,7 +51,10 @@ defmodule CodeMySpecLocalWeb.Layouts do
           </div>
         </header>
 
-        <main class="flex-1 overflow-auto px-6 lg:px-8 py-8 max-w-6xl w-full mx-auto">
+        <main class={[
+          "flex-1 overflow-auto px-6 lg:px-8 py-8 w-full",
+          !@full_width && "max-w-6xl mx-auto"
+        ]}>
           {render_slot(@inner_block)}
         </main>
       </div>

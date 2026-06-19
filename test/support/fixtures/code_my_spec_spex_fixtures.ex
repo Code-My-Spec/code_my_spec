@@ -34,6 +34,7 @@ defmodule CodeMySpecSpex.Fixtures do
     ProjectsFixtures,
     ProjectSync,
     QaFixtures,
+    SessionsFixtures,
     QaIntegrationPlanFixtures,
     Sessions,
     SetupFixtures,
@@ -307,6 +308,18 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, story} = Stories.create_story(scope, attrs)
     story
   end
+
+  # -- Sessions (timeline spex fixture setup, Story 813) --
+  @doc """
+  Creates a session (with optional embedded tasks and controllable
+  `inserted_at`/`updated_at`) for timeline spex that assert on session
+  ordering, extent, and per-task focus. Sessions originate from the
+  agent's hook lifecycle in production; the bridge surfaces direct
+  creation so spex can stage specific timeline states without driving a
+  full agent run.
+  """
+  defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
+
 
   # -- Sessions (QA spex fixture setup, Stories 726/727) --
   @doc """
