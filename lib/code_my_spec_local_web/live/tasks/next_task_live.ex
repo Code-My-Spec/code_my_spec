@@ -115,10 +115,12 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
           <span>Sync failed: <code class="font-mono text-xs">{@sync_error}</code></span>
         </div>
 
-        <pre
+        <div
           :if={@markdown}
-          class="whitespace-pre-wrap font-mono text-sm bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
-        >{@markdown}</pre>
+          class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
+        >
+          {md_html(@markdown)}
+        </div>
 
         <div :if={!@markdown} class="text-base-content/50">Loading…</div>
       </div>

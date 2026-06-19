@@ -66,6 +66,7 @@ defmodule CodeMySpecLocalWeb do
     quote do
       import Phoenix.HTML
       import CodeMySpecLocalWeb.CoreComponents
+      import CodeMySpecLocalWeb.Markdown, only: [md_html: 1]
 
       alias CodeMySpecLocalWeb.Layouts
       alias Phoenix.LiveView.JS

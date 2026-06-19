@@ -114,7 +114,9 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
         </div>
 
         <div :if={match?({:overview, _}, @view)}>
-          <pre class="whitespace-pre-wrap font-mono text-sm bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">{elem(@view, 1)}</pre>
+          <div class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">
+            {md_html(elem(@view, 1))}
+          </div>
         </div>
 
         <div :if={match?({:namespaces, _}, @view)}>

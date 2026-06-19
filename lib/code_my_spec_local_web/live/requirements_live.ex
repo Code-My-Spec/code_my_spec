@@ -614,7 +614,9 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
       <div :if={@page.command} class="mb-4">
         <h2 class="text-base font-semibold mb-1.5">Command</h2>
-        <pre class="whitespace-pre-wrap font-mono text-sm bg-base-200 border border-base-300 rounded-box p-4 overflow-x-auto">{@page.command}</pre>
+        <div class="prose prose-sm max-w-none bg-base-200 border border-base-300 rounded-box p-4 overflow-x-auto">
+          {md_html(@page.command)}
+        </div>
       </div>
 
       <div :if={@node.details != %{}} class="mb-4">
@@ -642,7 +644,9 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     <div>
       <.back_link back={@page.back} />
       <h1 class="text-2xl font-bold mb-4 break-all">{@page.title}</h1>
-      <pre class="whitespace-pre-wrap font-mono text-sm bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">{@page.command}</pre>
+      <div class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">
+        {md_html(@page.command)}
+      </div>
     </div>
     """
   end
