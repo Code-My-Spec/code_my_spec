@@ -22,6 +22,7 @@ defmodule CodeMySpecLocalWeb.Application do
   def start(_type, _args) do
     handle_cli_args(cli_argv())
 
+    ensure_server_path()
     ensure_directories()
     maybe_install_file_logger()
 
@@ -198,6 +199,72 @@ defmodule CodeMySpecLocalWeb.Application do
   # sobelow_skip ["Traversal.FileModule"]
   defp ensure_directories do
     File.mkdir_p!(Path.expand("~/.codemyspec"))
+  end
+
+  # Under a service supervisor (macOS launchd via brew, Windows Shawl) the
+  # server inherits a bare environment — cwd `/` and a minimal PATH that lacks
+  # the user's `mix`/`elixir`. Compile/credo/spex validation then shells out
+  # via `System.cmd("mix", ...)` and crashes with :enoent, breaking the
+  # stop/subagent-stop hooks. Recover the user's real toolchain PATH at boot
+  # and set it on the server process so those lookups resolve. `System.cmd`
+  # resolves the executable against the process PATH, so put_env here is what
+  # makes every downstream "mix" call work, no matter how cms was launched.
+  #
+  # Windows services already run with the machine PATH (system-wide Elixir
+  # installs land there), so we only do the recovery dance on unix.
+  defp ensure_server_path do
+    case :os.type() do
+      {:unix, _} ->
+        case unix_toolchain_path() do
+          nil -> :ok
+          path -> System.put_env("PATH", path)
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  # Priority order: the user's login-shell PATH (their real, working
+  # toolchain), the inherited PATH, then common version-manager / Homebrew
+  # shim dirs as a last resort. Dedup, preserving order.
+  defp unix_toolchain_path do
+    segments =
+      [login_shell_path(), System.get_env("PATH") | unix_fallback_dirs()]
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.flat_map(&String.split(&1, ":", trim: true))
+      |> Enum.uniq()
+
+    case segments do
+      [] -> nil
+      segs -> Enum.join(segs, ":")
+    end
+  end
+
+  # `-lc` (login, non-interactive) loads profile-level config without the
+  # job-control/prompt hazards of an interactive `-i` shell, so it can't hang
+  # when spawned without a tty. `printf %s "$PATH"` is portable across shells.
+  defp login_shell_path do
+    shell = System.get_env("SHELL") || "/bin/sh"
+
+    case System.cmd(shell, ["-lc", "printf %s \"$PATH\""], stderr_to_stdout: false) do
+      {out, 0} -> String.trim(out)
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp unix_fallback_dirs do
+    home = System.user_home() || ""
+
+    [
+      Path.join(home, ".asdf/shims"),
+      Path.join(home, ".local/share/mise/shims"),
+      Path.join(home, ".mise/shims"),
+      "/opt/homebrew/bin",
+      "/usr/local/bin"
+    ]
   end
 
   defp maybe_install_file_logger do
