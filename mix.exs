@@ -12,6 +12,10 @@ defmodule CodeMySpec.MixProject do
       deps: deps(),
       compilers: compilers(Mix.env()),
       spex: [pattern: "test/spex/**/*_spex.exs", boundary: CodeMySpecSpex],
+      # _spex.exs files are a separate suite run by `mix spex` (which loads
+      # them via Path.wildcard, not these filters). Declare them ignored so
+      # `mix test` doesn't flag them as stray/mistyped test files.
+      test_ignore_filters: [~r/_spex\.exs$/],
       listeners: [Phoenix.CodeReloader],
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
