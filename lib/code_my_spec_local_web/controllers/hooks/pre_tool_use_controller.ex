@@ -81,14 +81,12 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
     command = get_in(params, ["tool_input", "command"]) || ""
     agent_id = Map.get(params, "agent_id")
 
-    cond do
-      is_binary(agent_id) and agent_id != "" and git_command?(command) ->
-        {:deny,
-         "Subagents have no git access. Commits stay with the engineer; propose " <>
-           "changes via file edits only. Blocked command: #{String.slice(command, 0, 200)}"}
-
-      true ->
-        :pass_through
+    if is_binary(agent_id) and agent_id != "" and git_command?(command) do
+      {:deny,
+       "Subagents have no git access. Commits stay with the engineer; propose " <>
+         "changes via file edits only. Blocked command: #{String.slice(command, 0, 200)}"}
+    else
+      :pass_through
     end
   end
 

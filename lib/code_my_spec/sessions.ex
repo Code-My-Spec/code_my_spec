@@ -142,8 +142,7 @@ defmodule CodeMySpec.Sessions do
 
   defp orphan_summary(orphans) do
     orphans
-    |> Enum.map(fn t -> "#{t.id}=#{inspect(t.session_type)}" end)
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", fn t -> "#{t.id}=#{inspect(t.session_type)}" end)
   end
 
   defp persist_pruned_tasks(%Session{} = session, valid_tasks) do

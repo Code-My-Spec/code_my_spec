@@ -156,20 +156,18 @@ defmodule CodeMySpec.AgentTasks.Init do
   defp render_checklist(evaluated) do
     {_, checklist} =
       Enum.reduce(evaluated, {false, []}, fn {mod, status}, {seen_incomplete, acc} ->
-        line =
-          case status do
-            :done ->
-              "- [x] #{step_name(mod)}"
-
-            {:not_done, _} ->
-              marker = if seen_incomplete, do: "", else: " <- next"
-              "- [ ] #{step_name(mod)}#{marker}"
-          end
-
+        line = checklist_line(mod, status, seen_incomplete)
         {seen_incomplete || match?({:not_done, _}, status), [line | acc]}
       end)
 
     checklist |> Enum.reverse() |> Enum.join("\n")
+  end
+
+  defp checklist_line(mod, :done, _seen_incomplete), do: "- [x] #{step_name(mod)}"
+
+  defp checklist_line(mod, {:not_done, _}, seen_incomplete) do
+    marker = if seen_incomplete, do: "", else: " <- next"
+    "- [ ] #{step_name(mod)}#{marker}"
   end
 
   defp humanize(camel) do

@@ -179,17 +179,15 @@ defmodule CodeMySpecLocalWeb.SkillController do
   defp run_next(conn) do
     scope = conn.assigns.current_scope
 
-    cond do
-      scope == nil or scope.active_project == nil ->
-        json(conn, %{
-          prompt: """
-          No active project linked locally. Run `/codemyspec:init` to bootstrap, \
-          or visit http://localhost:4003 to pick a project.
-          """
-        })
-
-      true ->
-        next_prompt(conn, scope)
+    if scope == nil or scope.active_project == nil do
+      json(conn, %{
+        prompt: """
+        No active project linked locally. Run `/codemyspec:init` to bootstrap, \
+        or visit http://localhost:4003 to pick a project.
+        """
+      })
+    else
+      next_prompt(conn, scope)
     end
   end
 

@@ -150,8 +150,7 @@ defmodule CodeMySpec.Transcripts.Player do
   defp args(input) when is_map(input) do
     input
     |> Map.take(["story_id", "title", "statement", "requirement_name", "path", "name", "component_name"])
-    |> Enum.map(fn {k, v} -> "#{k}: #{cap(to_string(v), 48)}" end)
-    |> Enum.join(", ")
+    |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{cap(to_string(v), 48)}" end)
   end
 
   defp args(_), do: ""

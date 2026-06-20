@@ -127,26 +127,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       slug = project_slug(project)
       node = find_entity_node(scope, "component", component.id, req_name)
 
-      if node do
-        prompt_to =
-          if node.satisfied_by,
-            do: "/projects/#{slug}/components/#{component_id}/requirements/#{req_name}/prompt",
-            else: nil
-
-        page = %{
-          kind: :requirement,
-          node: node,
-          back: %{label: "← Back to #{component.module_name}", to: "/projects/#{slug}/components/#{component_id}"},
-          prereqs: [],
-          dependents: [],
-          command: nil,
-          prompt_to: prompt_to
-        }
-
-        assign_page(socket, project, scope, page)
-      else
-        {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
-      end
+      assign_component_req(socket, project, scope, component, slug, req_name, node)
     end)
   end
 
@@ -869,6 +850,29 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
        error: nil,
        setup_error: nil
      )}
+  end
+
+  defp assign_component_req(socket, _project, _scope, _component, _slug, req_name, nil) do
+    {:noreply, assign(socket, error: "Requirement not found: #{req_name}")}
+  end
+
+  defp assign_component_req(socket, project, scope, component, slug, req_name, node) do
+    prompt_to =
+      if node.satisfied_by,
+        do: "/projects/#{slug}/components/#{component.id}/requirements/#{req_name}/prompt",
+        else: nil
+
+    page = %{
+      kind: :requirement,
+      node: node,
+      back: %{label: "← Back to #{component.module_name}", to: "/projects/#{slug}/components/#{component.id}"},
+      prereqs: [],
+      dependents: [],
+      command: nil,
+      prompt_to: prompt_to
+    }
+
+    assign_page(socket, project, scope, page)
   end
 
   defp assign_graph(socket, project, scope, graph_data) do

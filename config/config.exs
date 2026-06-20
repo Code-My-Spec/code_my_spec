@@ -114,7 +114,9 @@ config :logger, :default_formatter,
     :event,
     :user_id,
     :origin,
-    :mp_status
+    :mp_status,
+    :error,
+    :body
   ]
 
 # Use Jason for JSON parsing in Phoenix

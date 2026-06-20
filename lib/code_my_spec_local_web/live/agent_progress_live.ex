@@ -164,8 +164,7 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
     sessions =
       scope
       |> Sessions.list_sessions()
-      |> Enum.reject(&no_activity?/1)
-      |> Enum.reject(&empty?/1)
+      |> Enum.reject(fn session -> no_activity?(session) or empty?(session) end)
       |> Enum.sort_by(& &1.updated_at, {:desc, DateTime})
       |> Enum.take(@session_cap)
 

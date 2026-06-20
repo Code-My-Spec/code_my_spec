@@ -1,4 +1,6 @@
 defmodule CodeMySpec.AccountsFixtures do
+  @moduledoc false
+
   alias CodeMySpec.Accounts.{Account, Member}
   alias CodeMySpec.Repo
 
