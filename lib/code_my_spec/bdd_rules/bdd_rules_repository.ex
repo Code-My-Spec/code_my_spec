@@ -12,6 +12,7 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Personas
   alias CodeMySpec.Repo
@@ -113,13 +114,30 @@ defmodule CodeMySpec.BddRules.BddRulesRepository do
   def delete_rule(%Scope{active_account_id: account_id}, %Rule{} = rule)
       when not is_nil(account_id) do
     if rule.account_id == account_id do
-      Repo.delete(rule)
+      cascade_delete_rule(rule)
     else
       {:error, :cross_account}
     end
   end
 
   def delete_rule(%Scope{}, _rule), do: {:error, :missing_active_account}
+
+  # Scenarios are Criteria linked via `rule_id`. The criteria→rule FK is
+  # `on_delete: :nilify_all`, so a bare `Repo.delete(rule)` orphans them —
+  # they survive with a dangling `rule_id` and keep inflating the story's
+  # acceptance-criteria count. Delete them with the rule in one transaction
+  # so the cascade the API advertises actually happens. DB-agnostic
+  # (`delete_all` works on both SQLite and Postgres), so no FK migration.
+  defp cascade_delete_rule(%Rule{id: rule_id} = rule) do
+    Repo.transaction(fn ->
+      Repo.delete_all(from c in Criterion, where: c.rule_id == ^rule_id)
+
+      case Repo.delete(rule) do
+        {:ok, deleted} -> deleted
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
 
   defp coerce_story_id(id) when is_integer(id), do: id
   defp coerce_story_id(id) when is_binary(id), do: String.to_integer(id)

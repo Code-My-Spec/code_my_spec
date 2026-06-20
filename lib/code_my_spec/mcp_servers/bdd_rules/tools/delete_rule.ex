@@ -1,8 +1,8 @@
 defmodule CodeMySpec.McpServers.BddRules.Tools.DeleteRule do
   @moduledoc """
   Deletes a Rule (blue card) from a Three Amigos story. Cascade-removes any
-  linked scenarios via the schema's `:delete_all` association. Use this for
-  PM-side cleanup of bogus or superseded rules.
+  linked scenarios (Criteria linked via `rule_id`) in the same transaction.
+  Use this for PM-side cleanup of bogus or superseded rules.
   """
 
   use Anubis.Server.Component, type: :tool
