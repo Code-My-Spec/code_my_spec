@@ -51,13 +51,10 @@ defmodule CodeMySpec.GitHubTest do
   end
 
   defp with_plug(plug, fun) do
+    # The `setup` block resets the plug via on_exit after every test, so
+    # this only needs to install it for the duration of the test body.
     Application.put_env(:code_my_spec, GitHub, plug: plug)
-
-    try do
-      fun.()
-    after
-      Application.put_env(:code_my_spec, GitHub, plug: nil)
-    end
+    fun.()
   end
 
   defp cassette_opts do
