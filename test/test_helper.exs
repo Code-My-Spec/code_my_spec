@@ -17,9 +17,9 @@ if File.exists?("envs/test.env") do
   end
 end
 
-# Wallaby for browser-driven e2e tests. Cheap to start — chromedriver only
-# spins up when a feature actually requests a session.
-{:ok, _} = Application.ensure_all_started(:wallaby)
+# Wallaby is NOT started here — it ran a chromedriver version probe on every
+# `mix test`, fragile and pointless for the non-browser suite. The browser
+# e2e tests (test/e2e/*) get their own case that starts Wallaby on demand.
 
 case System.get_env("LOG_LEVEL") do
   nil -> :warning
