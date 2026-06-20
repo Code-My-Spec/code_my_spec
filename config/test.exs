@@ -56,33 +56,3 @@ config :code_my_spec,
   environment: CodeMySpec.Support.RecordingEnvironment,
   embeddings_backend: CodeMySpec.Embeddings.TestBackend,
   issues_remote_client: CodeMySpec.Issues.RemoteClientStub
-
-# Wallaby: drive Chromium via chromedriver. Tests must be tagged
-# `@moduletag :e2e` (excluded by default in test_helper.exs); opt in with
-# `mix test --only e2e`.
-#
-# chromedriver must match the locally-installed Chrome's major version. The brew
-# cask auto-updates ahead of Chrome and then refuses sessions ("only supports
-# Chrome version N"), so prefer a version-matched binary checked out under
-# priv/chromedriver/ (gitignored — grab one from
-# https://googlechromelabs.github.io/chrome-for-testing/ matching `Google Chrome
-# --version`); else $WALLABY_CHROMEDRIVER_PATH; else the brew chromedriver.
-wallaby_chromedriver_path =
-  System.get_env("WALLABY_CHROMEDRIVER_PATH") ||
-    (File.exists?("priv/chromedriver/chromedriver") &&
-       Path.expand("priv/chromedriver/chromedriver")) ||
-    "/opt/homebrew/bin/chromedriver"
-
-config :wallaby,
-  driver: Wallaby.Chrome,
-  chromedriver: [
-    path: wallaby_chromedriver_path,
-    binary:
-      System.get_env(
-        "WALLABY_CHROME_BINARY",
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-      ),
-    headless: System.get_env("WALLABY_HEADLESS", "true") == "true"
-  ],
-  otp_app: :code_my_spec,
-  base_url: "http://localhost:4002"
