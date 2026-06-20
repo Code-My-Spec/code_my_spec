@@ -113,9 +113,66 @@ defmodule CodeMySpec.Issues.RemoteClientTest do
     end
   end
 
+  describe "create_issue/3 framework routing" do
+    setup do
+      prev = Application.get_env(:code_my_spec, :code_my_spec_project_id)
+      Application.put_env(:code_my_spec, :code_my_spec_project_id, "cms-project-id")
+
+      on_exit(fn ->
+        if prev do
+          Application.put_env(:code_my_spec, :code_my_spec_project_id, prev)
+        else
+          Application.delete_env(:code_my_spec, :code_my_spec_project_id)
+        end
+      end)
+
+      :ok
+    end
+
+    test "framework-scoped issue posts with the configured CodeMySpec project id", %{scope: scope} do
+      plug = capturing_plug(self(), 201, %{"data" => issue_payload(%{"scope" => "framework"})})
+
+      assert {:ok, %Issue{}} =
+               RemoteClient.create_issue(
+                 scope,
+                 %{title: "Looping hook", scope: :framework, severity: :high, description: "..."},
+                 plug: plug,
+                 token: "test"
+               )
+
+      assert_received {:project_header, "cms-project-id"}
+    end
+
+    test "app-scoped issue keeps the user's active project id", %{scope: scope} do
+      plug = capturing_plug(self(), 201, %{"data" => issue_payload(%{})})
+
+      assert {:ok, %Issue{}} =
+               RemoteClient.create_issue(
+                 scope,
+                 %{title: "Bug", scope: :app, severity: :low, description: "..."},
+                 plug: plug,
+                 token: "test"
+               )
+
+      assert_received {:project_header, header}
+      assert header == scope.active_project_id
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
+
+  defp capturing_plug(test_pid, status, body) do
+    fn conn ->
+      header = conn |> Plug.Conn.get_req_header("x-project-id") |> List.first()
+      send(test_pid, {:project_header, header})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.resp(status, Jason.encode!(body))
+    end
+  end
 
   defp stub_response(status, body) do
     fn conn ->

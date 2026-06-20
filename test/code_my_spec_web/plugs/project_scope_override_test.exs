@@ -103,4 +103,88 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverrideTest do
       refute Map.has_key?(result.assigns, :current_scope)
     end
   end
+
+  describe "framework issue create bypass" do
+    setup %{user: user} do
+      # The CodeMySpec project lives under an account the user is NOT a member of.
+      cms_owner = user_fixture()
+      cms_account = account_fixture()
+      member_fixture(cms_owner, cms_account)
+      cms_scope = user_scope_fixture(cms_owner, cms_account)
+      cms_project = project_fixture(cms_scope)
+
+      # Sanity: the filing user really has no access to the CodeMySpec account.
+      refute CodeMySpec.Accounts.user_has_account_access?(
+               user_scope_fixture(user, account_fixture()),
+               cms_account.id
+             )
+
+      prev = Application.get_env(:code_my_spec, :code_my_spec_project_id)
+      Application.put_env(:code_my_spec, :code_my_spec_project_id, cms_project.id)
+
+      on_exit(fn ->
+        if prev,
+          do: Application.put_env(:code_my_spec, :code_my_spec_project_id, prev),
+          else: Application.delete_env(:code_my_spec, :code_my_spec_project_id)
+      end)
+
+      %{cms_project: cms_project, cms_account: cms_account}
+    end
+
+    test "allows a framework issue create for a user without account access", %{
+      conn: conn,
+      cms_project: cms_project,
+      cms_account: cms_account
+    } do
+      result =
+        %{
+          conn
+          | method: "POST",
+            path_info: ["api", "issues"],
+            params: %{"issue" => %{"scope" => "framework"}}
+        }
+        |> put_req_header("x-project-id", cms_project.id)
+        |> ProjectScopeOverride.call([])
+
+      refute result.halted
+      assert result.assigns.current_scope.active_project_id == cms_project.id
+      assert result.assigns.current_scope.active_account_id == cms_account.id
+    end
+
+    test "still 403s for a non-framework issue create on the CodeMySpec project", %{
+      conn: conn,
+      cms_project: cms_project
+    } do
+      result =
+        %{
+          conn
+          | method: "POST",
+            path_info: ["api", "issues"],
+            params: %{"issue" => %{"scope" => "app"}}
+        }
+        |> put_req_header("x-project-id", cms_project.id)
+        |> ProjectScopeOverride.call([])
+
+      assert result.halted
+      assert result.status == 403
+    end
+
+    test "still 403s for framework scope on a different resource path", %{
+      conn: conn,
+      cms_project: cms_project
+    } do
+      result =
+        %{
+          conn
+          | method: "POST",
+            path_info: ["api", "stories"],
+            params: %{"issue" => %{"scope" => "framework"}}
+        }
+        |> put_req_header("x-project-id", cms_project.id)
+        |> ProjectScopeOverride.call([])
+
+      assert result.halted
+      assert result.status == 403
+    end
+  end
 end

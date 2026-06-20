@@ -2,6 +2,11 @@ import Config
 
 config :code_my_spec, env: :dev
 
+# The CodeMySpec project on the dev server. Framework-scoped issues (friction
+# with CodeMySpec itself, filed by any authenticated user) are attributed here,
+# and ProjectScopeOverride relaxes account-access checks for that narrow path.
+config :code_my_spec, code_my_spec_project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
+
 # Configure your database
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",

@@ -11,6 +11,11 @@ config :code_my_spec,
   oauth_base_url: "https://codemyspec.com",
   base_url: "https://codemyspec.com"
 
+# Framework-scoped issues (friction with CodeMySpec itself) route to the
+# CodeMySpec project on the server, not the user's active project. Sent via the
+# `x-project-id` header by Issues.RemoteClient.create_issue/3.
+config :code_my_spec, code_my_spec_project_id: "a3158f01-3008-4394-b9d1-669236a358c8"
+
 # PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
 # Disable on the local CLI deployment; versions are still recorded but
 # `first_version_id` / `current_version_id` columns stay nil.

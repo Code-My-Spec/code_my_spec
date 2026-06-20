@@ -48,7 +48,8 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
         |> halt()
 
       %Project{} = project ->
-        if Accounts.user_has_account_access?(scope, project.account_id) do
+        if Accounts.user_has_account_access?(scope, project.account_id) or
+             framework_issue_create?(conn, project) do
           account = Accounts.get_account_by_id(project.account_id)
 
           updated_scope = %{
@@ -67,5 +68,25 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
           |> halt()
         end
     end
+  end
+
+  # Framework-scoped issues are friction with CodeMySpec itself — any
+  # authenticated user may file one, even without access to the CodeMySpec
+  # account. This relaxation is deliberately narrow: it applies ONLY to a POST
+  # that creates a framework-scoped issue against the configured CodeMySpec
+  # project. It does NOT grant the user access to that project for any other
+  # resource served by this pipeline (stories, uploads, permissions, etc.).
+  defp framework_issue_create?(conn, %Project{id: project_id}) do
+    conn.method == "POST" and
+      conn.path_info == ["api", "issues"] and
+      project_id == code_my_spec_project_id() and
+      framework_scoped?(conn.params)
+  end
+
+  defp framework_scoped?(%{"issue" => %{"scope" => "framework"}}), do: true
+  defp framework_scoped?(_), do: false
+
+  defp code_my_spec_project_id do
+    Application.get_env(:code_my_spec, :code_my_spec_project_id)
   end
 end

@@ -115,11 +115,36 @@ defmodule CodeMySpec.Issues.RemoteClient do
   or `{:error, reason}` otherwise.
   """
   def create_issue(%Scope{} = scope, attrs, opts \\ []) do
+    scope = route_framework_scope(scope, attrs)
+
     with {:ok, client} <- new(scope, opts),
          {:ok, response} <-
            Req.post(client, url: "/api/issues", json: %{issue: stringify_attrs(attrs)}) do
       handle_create_response(response)
     end
+  end
+
+  # Framework-scoped issues are friction with CodeMySpec itself, so they must
+  # land on the CodeMySpec project on the server — not the user's active
+  # project. Override the project the request is scoped to (sent via the
+  # `x-project-id` header) with the per-environment `:code_my_spec_project_id`.
+  # If unconfigured, fall through unchanged.
+  defp route_framework_scope(%Scope{} = scope, attrs) do
+    case {framework?(attrs[:scope]), code_my_spec_project_id()} do
+      {true, project_id} when is_binary(project_id) ->
+        %{scope | active_project_id: project_id}
+
+      _ ->
+        scope
+    end
+  end
+
+  defp framework?(:framework), do: true
+  defp framework?("framework"), do: true
+  defp framework?(_), do: false
+
+  defp code_my_spec_project_id do
+    Application.get_env(:code_my_spec, :code_my_spec_project_id)
   end
 
   defp handle_create_response(%{status: status, body: body}) when status in [200, 201],
