@@ -85,3 +85,4 @@ test/cassettes/oauth/google_login_new_user.json
 installers/windows/cms.exe
 installers/windows/shawl.exe
 installers/windows/*.msi
+/priv/chromedriver/

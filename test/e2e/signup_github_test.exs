@@ -33,7 +33,7 @@ defmodule CodeMySpecWeb.SignupGithubTest do
   Test is skipped if any required env var is missing.
   """
 
-  use CodeMySpecWeb.FeatureCase, async: false
+  use CodeMySpecWeb.EndToEndCase, async: false
 
   @moduletag :e2e
   @moduletag :e2e_github

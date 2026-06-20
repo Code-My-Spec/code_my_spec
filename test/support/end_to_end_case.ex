@@ -1,9 +1,15 @@
-defmodule CodeMySpecWeb.FeatureCase do
+defmodule CodeMySpecWeb.EndToEndCase do
   @moduledoc """
   Case template for browser-driven end-to-end tests via Wallaby.
 
   Always tag the module with `@moduletag :e2e` so it's excluded by default.
   Opt in with `mix test --only e2e`.
+
+  Wallaby is started here in `setup_all` rather than the global test_helper:
+  test/support is compiled on every `mix test`, but `setup_all` only fires
+  when an `:e2e` module is actually selected — so a normal suite never boots
+  Wallaby (and never runs its chromedriver probe). The browser e2e suite
+  shares one started Wallaby app.
 
   The Endpoint runs with `server: true` in test (see `config/test.exs`) and
   shares the SQL sandbox with Wallaby sessions via
@@ -45,12 +51,20 @@ defmodule CodeMySpecWeb.FeatureCase do
       @sessions [
         [
           capabilities:
-            CodeMySpecWeb.FeatureCase.chrome_capabilities(
+            CodeMySpecWeb.EndToEndCase.chrome_capabilities(
               headless: System.get_env("WALLABY_HEADLESS", "true") == "true"
             )
         ]
       ]
     end
+  end
+
+  # Start Wallaby once for the e2e suite. Only runs when an :e2e module is
+  # selected (setup_all is skipped for excluded modules), so a normal
+  # `mix test` never starts Wallaby or probes chromedriver.
+  setup_all do
+    {:ok, _} = Application.ensure_all_started(:wallaby)
+    :ok
   end
 
   setup _tags do

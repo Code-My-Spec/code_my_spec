@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.SignupEmailTest do
   render that blew up in compiled releases.
   """
 
-  use CodeMySpecWeb.FeatureCase, async: false
+  use CodeMySpecWeb.EndToEndCase, async: false
 
   @moduletag :e2e
 

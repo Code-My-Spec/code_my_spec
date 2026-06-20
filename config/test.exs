@@ -60,10 +60,23 @@ config :code_my_spec,
 # Wallaby: drive Chromium via chromedriver. Tests must be tagged
 # `@moduletag :e2e` (excluded by default in test_helper.exs); opt in with
 # `mix test --only e2e`.
+#
+# chromedriver must match the locally-installed Chrome's major version. The brew
+# cask auto-updates ahead of Chrome and then refuses sessions ("only supports
+# Chrome version N"), so prefer a version-matched binary checked out under
+# priv/chromedriver/ (gitignored — grab one from
+# https://googlechromelabs.github.io/chrome-for-testing/ matching `Google Chrome
+# --version`); else $WALLABY_CHROMEDRIVER_PATH; else the brew chromedriver.
+wallaby_chromedriver_path =
+  System.get_env("WALLABY_CHROMEDRIVER_PATH") ||
+    (File.exists?("priv/chromedriver/chromedriver") &&
+       Path.expand("priv/chromedriver/chromedriver")) ||
+    "/opt/homebrew/bin/chromedriver"
+
 config :wallaby,
   driver: Wallaby.Chrome,
   chromedriver: [
-    path: System.get_env("WALLABY_CHROMEDRIVER_PATH", "/opt/homebrew/bin/chromedriver"),
+    path: wallaby_chromedriver_path,
     binary:
       System.get_env(
         "WALLABY_CHROME_BINARY",
