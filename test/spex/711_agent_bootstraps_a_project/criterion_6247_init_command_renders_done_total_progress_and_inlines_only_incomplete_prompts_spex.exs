@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
     scenario "Init checklist shows 2/3 with Auth as the incomplete step, and the Auth page exposes the auth prompt" do
       given_ "the working directory has the full Phoenix project shape (mix.exs, lib/, config/)",
              context do
-        File.mkdir_p!(Path.join(context.scope.cwd, "config"))
+        CodeMySpecSpex.Fixtures.add_phoenix_config_dir(context.scope.cwd)
         {:ok, context}
       end
 

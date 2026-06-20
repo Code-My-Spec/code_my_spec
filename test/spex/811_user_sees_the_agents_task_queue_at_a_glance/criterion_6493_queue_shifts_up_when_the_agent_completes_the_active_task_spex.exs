@@ -31,16 +31,15 @@ defmodule CodeMySpecSpex.Story811.Criterion6493Spex do
       end
 
       and_ "the initial active task is captured", context do
-        # Pull the displayed active-task identifier out of the
-        # rendered HTML so we can later assert it's no longer the
-        # head.
-        initial_active =
-          case Regex.run(~r/data-test="active-task"[^>]*data-requirement="([^"]+)"/,
-                 context.initial_html
-               ) do
-            [_, name] -> name
-            nil -> nil
-          end
+        # Pull the displayed active-task identifier out of the rendered
+        # HTML so we can later assert it's no longer the head. There is
+        # always an active task at the head on a fresh queue — match it
+        # directly so a missing head fails the spec here.
+        [_, initial_active] =
+          Regex.run(
+            ~r/data-test="active-task"[^>]*data-requirement="([^"]+)"/,
+            context.initial_html
+          )
 
         {:ok, Map.put(context, :initial_active, initial_active)}
       end
@@ -74,11 +73,9 @@ defmodule CodeMySpecSpex.Story811.Criterion6493Spex do
       end
 
       then_ "the previously active task is no longer the head", context do
-        if context.initial_active do
-          refute context.rerendered =~
-                   ~r/data-test="active-task"[^>]*data-requirement="#{Regex.escape(context.initial_active)}"/,
-                 "expected the previously active task (#{context.initial_active}) to no longer be at the head"
-        end
+        refute context.rerendered =~
+                 ~r/data-test="active-task"[^>]*data-requirement="#{Regex.escape(context.initial_active)}"/,
+               "expected the previously active task (#{context.initial_active}) to no longer be at the head"
 
         {:ok, context}
       end

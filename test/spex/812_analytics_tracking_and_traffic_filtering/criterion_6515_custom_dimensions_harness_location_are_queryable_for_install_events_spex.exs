@@ -5,83 +5,44 @@ defmodule CodeMySpecSpex.Story812.Criterion6515Spex do
   are queryable for install events.
 
   The actual GA-admin registration of these custom dimensions is
-  operator state (Admin → Custom Definitions → Custom Dimensions
-  in the GA console). What we CAN assert in code: every
-  install_command_copy dispatch site sets `harness` + `location`,
-  so once the GA admin registration lands, the slice queries find
-  data.
+  operator state (Admin → Custom Definitions → Custom Dimensions in
+  the GA console), validated by the daily analytics snapshot.
 
-  Codebase-grep + dispatch-call pattern: scans the four install-card
-  callsites for `data-event-name="install_command_copy"` and the
-  matching `data-event-location` + `data-event-harness` attributes.
+  What the surface guarantees: the rendered install-card buttons
+  (`data-event-name="install_command_copy"`) declare both the `harness`
+  and `location` dimensions via `data-event-harness` and
+  `data-event-location`, so once the GA admin registration lands the
+  slice queries find populated dimensions.
 
-  Driving spec — fails if any install-card callsite drops a param.
-  GA admin state itself is operator-validated via the daily
-  analytics snapshot.
+  Driven through the marketing surface — renders the homepage and the
+  product page and asserts the dimension attributes the browser receives.
   """
 
   use CodeMySpecSpex.Case
 
-  @callsite_paths [
-    "lib/code_my_spec_web/components/marketing_components.ex",
-    "lib/code_my_spec_web/controllers/page_html/home.html.heex",
-    "lib/code_my_spec_web/controllers/page_html/code_my_spec.html.heex"
-  ]
+  @endpoint CodeMySpecWeb.Endpoint
 
-  spex "install_command_copy callsites carry harness + location attributes" do
-    scenario "every data-event-name=install_command_copy site sets both data-event-* params" do
-      given_ "the four install-card placements", context do
+  spex "install_command_copy buttons carry harness + location dimensions" do
+    scenario "rendered install-card buttons declare the harness and location dimensions" do
+      given_ "the rendered marketing pages that host install cards", context do
+        home = html_response(get(context.conn, "/"), 200)
+        product = html_response(get(context.conn, "/products/code-my-spec"), 200)
+        {:ok, Map.put(context, :html, home <> product)}
+      end
+
+      then_ "install-card buttons fire install_command_copy with the harness dimension", context do
+        assert context.html =~ ~s(data-event-name="install_command_copy")
+        assert context.html =~ ~s(data-event-harness="codemyspec")
         {:ok, context}
       end
 
-      when_ "we scan the templates for install_command_copy callsites", context do
-        sites =
-          Enum.flat_map(@callsite_paths, fn path ->
-            case File.read(path) do
-              {:ok, content} -> [{path, content}]
-              _ -> []
-            end
-          end)
-
-        {:ok, Map.put(context, :sites, sites)}
-      end
-
-      then_ "every install_command_copy block carries data-event-location and data-event-harness",
-            context do
-        assert context.sites != [], "expected install-card callsites to exist"
-
-        offenders =
-          Enum.flat_map(context.sites, fn {path, content} ->
-            blocks = Regex.scan(~r/data-event-name="install_command_copy"[^>]*/, content)
-
-            Enum.flat_map(blocks, fn [block] ->
-              missing =
-                [
-                  {"data-event-location", "location"},
-                  {"data-event-harness", "harness"}
-                ]
-                |> Enum.reject(fn {attr, _} -> String.contains?(block, attr) end)
-
-              if missing == [] do
-                []
-              else
-                [{path, block, Enum.map(missing, &elem(&1, 1))}]
-              end
-            end)
-          end)
-
-        assert offenders == [], format_offenders(offenders)
-
+      then_ "the location dimension is set for every install-card placement", context do
+        assert context.html =~ ~s(data-event-location="homepage_hero")
+        assert context.html =~ ~s(data-event-location="homepage_final_cta")
+        assert context.html =~ ~s(data-event-location="product_page_top")
+        assert context.html =~ ~s(data-event-location="product_page_final")
         {:ok, context}
       end
     end
-  end
-
-  defp format_offenders(offenders) do
-    """
-    install_command_copy callsites missing required data-event-* attributes:
-
-    #{Enum.map_join(offenders, "\n\n", fn {path, block, missing} -> "  #{path}\n    block: #{block}\n    missing: #{inspect(missing)}" end)}
-    """
   end
 end

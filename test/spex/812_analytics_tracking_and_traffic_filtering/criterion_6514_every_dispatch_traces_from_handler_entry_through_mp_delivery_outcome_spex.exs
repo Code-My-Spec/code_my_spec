@@ -27,9 +27,6 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
 
   use CodeMySpecSpex.Case
 
-  require Logger
-  import ExUnit.CaptureLog
-
   alias CodeMySpecSpex.Fixtures
 
   spex "Every dispatch traces from handler entry through MP delivery outcome" do
@@ -39,22 +36,16 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
       end
 
       when_ "Analytics.dispatch fires and the handler runs end-to-end", context do
-        # Lower Logger level to :info for the capture window so the
-        # handler-entry trace (logged at :info) reaches the buffer.
-        previous_level = Logger.level()
-        Logger.configure(level: :info)
-
+        # capture_log_at_info lowers the Logger level to :info for the
+        # capture window (and restores it after) so the handler-entry
+        # trace, logged at :info, reaches the buffer.
         log =
-          try do
-            capture_log(fn ->
-              Fixtures.dispatch_analytics_event(:sign_up, %{
-                user_id: context.user_id,
-                method: "log_trace_test"
-              })
-            end)
-          after
-            Logger.configure(level: previous_level)
-          end
+          Fixtures.capture_log_at_info(fn ->
+            Fixtures.dispatch_analytics_event(:sign_up, %{
+              user_id: context.user_id,
+              method: "log_trace_test"
+            })
+          end)
 
         {:ok, Map.put(context, :log, log)}
       end

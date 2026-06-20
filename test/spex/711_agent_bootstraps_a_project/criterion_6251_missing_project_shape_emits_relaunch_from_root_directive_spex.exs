@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6251Spex do
   spex "Init.PhoenixProject requires mix.exs + lib/ + config/ in cwd; otherwise emits relaunch guidance" do
     scenario "Missing project shape emits relaunch-from-root directive on the per-step page" do
       given_ "the working directory has no mix.exs", context do
-        File.rm!(Path.join(context.scope.cwd, "mix.exs"))
+        CodeMySpecSpex.Fixtures.remove_mix_exs(context.scope.cwd)
         {:ok, context}
       end
 

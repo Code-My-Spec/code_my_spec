@@ -291,6 +291,67 @@ defmodule CodeMySpecSpex.Fixtures do
     ProjectsFixtures.project_fixture(scope, attrs)
   end
 
+  @doc """
+  Creates a fresh working directory carrying the full Phoenix project
+  shape (`mix.exs`, `lib/`, `config/`) that no project row points at, and
+  registers cleanup. Returns the path.
+
+  Story 711 specs drive the bootstrap surface from a directory the
+  `WorkingDir` plug resolves by hitting `File.*` directly, so the shape
+  must exist on disk — hence this lives in the Fixtures bridge rather
+  than the spec.
+  """
+  @spec phoenix_shape_working_dir() :: String.t()
+  def phoenix_shape_working_dir do
+    dir = Path.join(System.tmp_dir!(), "unlinked-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(Path.join(dir, "lib"))
+    File.mkdir_p!(Path.join(dir, "config"))
+    File.write!(Path.join(dir, "mix.exs"), "# stub for PhoenixProject.evaluate\n")
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(dir) end)
+    dir
+  end
+
+  @doc """
+  Adds the `config/` directory to an existing working dir, completing the
+  Phoenix-project shape the `init_phoenix_project` probe checks for.
+  """
+  @spec add_phoenix_config_dir(String.t()) :: :ok
+  def add_phoenix_config_dir(dir) do
+    File.mkdir_p!(Path.join(dir, "config"))
+    :ok
+  end
+
+  @doc """
+  Removes `mix.exs` from a working dir so the Phoenix-project shape check
+  fails (Story 711 / criterion 6251 — missing shape emits the
+  relaunch-from-root directive).
+  """
+  @spec remove_mix_exs(String.t()) :: :ok
+  def remove_mix_exs(dir) do
+    File.rm!(Path.join(dir, "mix.exs"))
+    :ok
+  end
+
+  @doc """
+  Captures log output while the primary Logger level is temporarily
+  lowered to `:info`, restoring it afterward. Lets specs assert on
+  `:info`-level trace lines that the test runtime's `:warning` level would
+  otherwise filter before they reach any handler. (Specs themselves can't
+  juggle the Logger level — that's `try/after` plumbing that belongs in
+  the bridge.)
+  """
+  @spec capture_log_at_info((-> any())) :: String.t()
+  def capture_log_at_info(fun) when is_function(fun, 0) do
+    previous_level = Logger.level()
+    Logger.configure(level: :info)
+
+    try do
+      ExUnit.CaptureLog.capture_log(fun)
+    after
+      Logger.configure(level: previous_level)
+    end
+  end
+
   # -- Stories (QA spex fixture setup, Stories 726/727) --
   @doc """
   Creates a story directly through the Stories context for use in QA

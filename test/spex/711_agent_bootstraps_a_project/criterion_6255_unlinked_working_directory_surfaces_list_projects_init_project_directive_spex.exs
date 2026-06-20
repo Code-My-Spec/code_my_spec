@@ -30,16 +30,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6255Spex do
     scenario "Unlinked working directory surfaces list_projects→init_project directive" do
       given_ "a working directory that satisfies the Phoenix shape but no project row points at it",
              context do
-        unlinked_dir =
-          Path.join(System.tmp_dir!(), "unlinked-#{System.unique_integer([:positive])}")
-
-        File.mkdir_p!(unlinked_dir)
-        File.write!(Path.join(unlinked_dir, "mix.exs"), "# stub for PhoenixProject.evaluate\n")
-        File.mkdir_p!(Path.join(unlinked_dir, "lib"))
-        File.mkdir_p!(Path.join(unlinked_dir, "config"))
-        ExUnit.Callbacks.on_exit(fn -> File.rm_rf(unlinked_dir) end)
-
-        {:ok, Map.put(context, :unlinked_dir, unlinked_dir)}
+        {:ok, Map.put(context, :unlinked_dir, Fixtures.phoenix_shape_working_dir())}
       end
 
       given_ "the DB does have a project linked elsewhere (so list_projects has something to return)",

@@ -53,14 +53,13 @@ defmodule CodeMySpecSpex.Story811.Criterion6490Spex do
 
         actionable = Fixtures.next_actionable_requirements(context.scope)
 
-        if length(actionable) < 2 do
-          flunk("""
-          Fixture should produce ≥2 concurrent actionable for the active+upcoming
-          contract, got #{length(actionable)}:
+        assert length(actionable) >= 2,
+               """
+               Fixture should produce ≥2 concurrent actionable for the active+upcoming
+               contract, got #{length(actionable)}:
 
-            #{Enum.map_join(actionable, "\n  ", fn r -> "#{r.name}/#{r.entity_type}" end)}
-          """)
-        end
+                 #{Enum.map_join(actionable, "\n  ", fn r -> "#{r.name}/#{r.entity_type}" end)}
+               """
 
         {:ok, context}
       end

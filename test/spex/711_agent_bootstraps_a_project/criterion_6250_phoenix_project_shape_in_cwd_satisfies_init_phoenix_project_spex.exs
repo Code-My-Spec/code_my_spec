@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6250Spex do
     scenario "Phoenix project shape in cwd is rendered as Done on the per-step page" do
       given_ "the working directory contains mix.exs, lib/, and config/",
              context do
-        File.mkdir_p!(Path.join(context.scope.cwd, "config"))
+        CodeMySpecSpex.Fixtures.add_phoenix_config_dir(context.scope.cwd)
         # setup_active_project already seeded mix.exs and lib/
         {:ok, context}
       end

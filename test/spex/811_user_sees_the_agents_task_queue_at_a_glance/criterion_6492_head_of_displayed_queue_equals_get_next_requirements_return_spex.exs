@@ -49,18 +49,12 @@ defmodule CodeMySpecSpex.Story811.Criterion6492Spex do
 
       then_ "the head of the displayed queue references the same requirement",
             context do
-        # Extract requirement_name from the MCP response (the tool
-        # always includes `requirement_name=\`...\`` in its directive).
-        case Regex.run(~r/requirement_name=`([^`]+)`/, context.next_requirement_text) do
-          [_, name] ->
-            assert context.html =~ name,
-                   "expected the displayed queue head to reference requirement_name=#{name}; rendered: #{String.slice(context.html, 0, 500)}"
+        # The get_next_requirement tool always includes
+        # `requirement_name=\`...\`` in its directive — match it directly.
+        [_, name] = Regex.run(~r/requirement_name=`([^`]+)`/, context.next_requirement_text)
 
-          nil ->
-            flunk(
-              "get_next_requirement response had no requirement_name= signature: #{String.slice(context.next_requirement_text, 0, 500)}"
-            )
-        end
+        assert context.html =~ name,
+               "expected the displayed queue head to reference requirement_name=#{name}; rendered: #{String.slice(context.html, 0, 500)}"
 
         {:ok, context}
       end

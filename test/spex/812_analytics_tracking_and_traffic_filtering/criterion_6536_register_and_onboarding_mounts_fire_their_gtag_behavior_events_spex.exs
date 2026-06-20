@@ -5,120 +5,86 @@ defmodule CodeMySpecSpex.Story812.Criterion6536Spex do
   their gtag behavior events.
 
   Hybrid design: view_register_page, onboarding_panel_viewed, and
-  install_step_copied are browser behavior events fired by gtag, not
-  dispatched server-side via Analytics.dispatch/3. The relevant
-  LiveViews must push a `gtag` JS command to the browser on mount
-  (or via a client-side hook) rather than calling Analytics.dispatch
-  in the Elixir mount/handle_event.
+  install_step_copied are browser behavior events fired by gtag colocated
+  hooks — not dispatched server-side via Analytics.dispatch/3. The surface
+  contract this spec guards:
 
-  Three assertions:
-  1. The registration LiveView does NOT call Analytics.dispatch(:view_register_page, ...).
-  2. The app overview LiveView does NOT call Analytics.dispatch for
-     :onboarding_panel_viewed or :install_step_copied.
-  3. The JS layer (app.js or a LiveView hook) contains gtag calls for
-     these events — confirming the browser-side path exists.
+  1. The registration LiveView renders with its `.ViewRegisterPage` gtag
+     hook attached, so `view_register_page` fires on mount.
+  2. The app overview LiveView renders with its `.SignUpTracking` gtag
+     hook attached, so `onboarding_panel_viewed` fires on mount.
+  3. Copying an install step pushes `install_step_copied` from the server
+     to the browser, where the `.SignUpTracking` hook forwards it to gtag.
 
-  Codebase-grep pattern. Fails if old server-side dispatch calls remain
-  or if the gtag calls are absent from the JS layer.
+  Driven through the LiveView surface — the hooks render into the DOM the
+  browser receives, and the step-copy event is pushed by the server. The
+  gtag call itself is browser JS, exercised by browser QA. Fails if a hook
+  stops rendering or the server stops pushing the step-copy event.
   """
 
   use CodeMySpecSpex.Case
 
-  @registration_live_path "lib/code_my_spec_web/live/user_live/registration.ex"
-  @overview_live_path "lib/code_my_spec_web/live/app_live/overview.ex"
+  @endpoint CodeMySpecWeb.Endpoint
 
   spex "Register and onboarding mounts fire their gtag behavior events" do
-    scenario "registration LiveView does not dispatch view_register_page server-side" do
-      given_ "the registration LiveView source", context do
-        content = File.read!(@registration_live_path)
-        {:ok, Map.put(context, :source, content)}
-      end
-
-      when_ "we scan for server-side dispatch of view_register_page", context do
+    scenario "the registration page wires the ViewRegisterPage gtag hook on mount" do
+      given_ "an unauthenticated visitor", context do
         {:ok, context}
       end
 
-      then_ "no Analytics.dispatch(:view_register_page, ...) call remains", context do
-        refute context.source =~ ~r/Analytics\.dispatch\(\s*:view_register_page/,
-               """
-               Registration LiveView still calls Analytics.dispatch(:view_register_page, ...) server-side.
-               In the hybrid design this event is a gtag browser event — remove the Analytics.dispatch call.
-               """
-
-        {:ok, context}
-      end
-    end
-
-    scenario "app overview LiveView does not dispatch onboarding_panel_viewed or install_step_copied server-side" do
-      given_ "the app overview LiveView source", context do
-        content = File.read!(@overview_live_path)
-        {:ok, Map.put(context, :source, content)}
+      when_ "the registration page is rendered", context do
+        {:ok, _lv, html} = live(context.conn, "/users/register")
+        {:ok, Map.put(context, :html, html)}
       end
 
-      when_ "we scan for server-side dispatch of the two onboarding behavior events", context do
-        {:ok, context}
-      end
+      then_ "the page carries the .ViewRegisterPage colocated hook", context do
+        assert context.html =~ "phx-hook=",
+               "expected the registration page to attach a colocated hook"
 
-      then_ "no Analytics.dispatch(:onboarding_panel_viewed, ...) call remains", context do
-        refute context.source =~ ~r/Analytics\.dispatch\(\s*:onboarding_panel_viewed/,
-               """
-               App overview LiveView still calls Analytics.dispatch(:onboarding_panel_viewed, ...) server-side.
-               In the hybrid design this event is a gtag browser event — remove the Analytics.dispatch call.
-               """
-
-        {:ok, context}
-      end
-
-      then_ "no Analytics.dispatch(:install_step_copied, ...) call remains", context do
-        refute context.source =~ ~r/Analytics\.dispatch\(\s*:install_step_copied/,
-               """
-               App overview LiveView still calls Analytics.dispatch(:install_step_copied, ...) server-side.
-               In the hybrid design this event is a gtag browser event — remove the Analytics.dispatch call.
-               """
+        assert context.html =~ "ViewRegisterPage",
+               "expected the registration page to wire the .ViewRegisterPage gtag hook (fires view_register_page on mount)"
 
         {:ok, context}
       end
     end
 
-    scenario "the registration LiveView colocated hook fires gtag for view_register_page" do
-      given_ "the registration LiveView source", context do
-        content = File.read!(@registration_live_path)
-        {:ok, Map.put(context, :source, content)}
+    scenario "the app overview wires the SignUpTracking gtag hook on mount" do
+      given_ "a logged-in user", context do
+        user = CodeMySpecSpex.Fixtures.user_fixture()
+        {:ok, Map.put(context, :conn, log_in_user(context.conn, user))}
       end
 
-      when_ "we scan for gtag('event', 'view_register_page', ...) in the colocated hook", context do
-        {:ok, context}
+      when_ "the app overview is rendered", context do
+        {:ok, _lv, html} = live(context.conn, "/app")
+        {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "the .ViewRegisterPage hook calls gtag for view_register_page on mount", context do
-        assert context.source =~ ~r/gtag\(\s*['"]event['"]\s*,\s*['"]view_register_page['"]/,
-               "expected the .ViewRegisterPage colocated hook in registration.ex to call gtag('event', 'view_register_page', ...) on mount"
+      then_ "the page carries the .SignUpTracking colocated hook", context do
+        assert context.html =~ "phx-hook=",
+               "expected the app overview to attach a colocated hook"
+
+        assert context.html =~ "SignUpTracking",
+               "expected the app overview to wire the .SignUpTracking gtag hook (fires onboarding_panel_viewed on mount)"
 
         {:ok, context}
       end
     end
 
-    scenario "the app overview LiveView colocated hook fires gtag for onboarding and install events" do
-      given_ "the app overview LiveView source", context do
-        content = File.read!(@overview_live_path)
-        {:ok, Map.put(context, :source, content)}
+    scenario "copying an install step pushes install_step_copied to the browser" do
+      given_ "a logged-in user on the app overview", context do
+        user = CodeMySpecSpex.Fixtures.user_fixture()
+        conn = log_in_user(context.conn, user)
+        {:ok, lv, _html} = live(conn, "/app")
+        {:ok, Map.put(context, :lv, lv)}
       end
 
-      when_ "we scan for gtag calls for the onboarding behavior events", context do
+      when_ "an install step is copied", context do
+        render_hook(context.lv, "copy_step", %{"step" => "1"})
         {:ok, context}
       end
 
-      then_ "the .SignUpTracking hook calls gtag for onboarding_panel_viewed on mount", context do
-        assert context.source =~ ~r/gtag\(\s*['"]event['"]\s*,\s*['"]onboarding_panel_viewed['"]/,
-               "expected the .SignUpTracking colocated hook in overview.ex to call gtag('event', 'onboarding_panel_viewed', ...) on mount"
-
-        {:ok, context}
-      end
-
-      then_ "the .SignUpTracking hook calls gtag for install_step_copied on step copy", context do
-        assert context.source =~ ~r/gtag\(\s*['"]event['"]\s*,\s*['"]install_step_copied['"]/,
-               "expected the .SignUpTracking colocated hook in overview.ex to call gtag('event', 'install_step_copied', ...) on step copy"
-
+      then_ "the server pushes install_step_copied for the gtag hook to forward", context do
+        assert_push_event(context.lv, "install_step_copied", %{step: 1})
         {:ok, context}
       end
     end

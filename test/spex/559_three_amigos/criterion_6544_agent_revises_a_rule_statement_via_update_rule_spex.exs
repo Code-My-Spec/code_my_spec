@@ -93,14 +93,8 @@ defmodule CodeMySpecSpex.Story559.Criterion6544Spex do
   end
 
   defp extract_rule_id(response) do
-    response
-    |> response_text()
-    |> then(fn text ->
-      case Regex.run(~r/id: `([^`]+)`/, text) do
-        [_, id] -> id
-        _ -> flunk("could not extract rule id from add_rule response: #{inspect(text)}")
-      end
-    end)
+    [_, id] = Regex.run(~r/id: `([^`]+)`/, response_text(response))
+    id
   end
 
   defp response_text(%{content: parts}) when is_list(parts) do
