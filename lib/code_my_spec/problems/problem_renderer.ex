@@ -6,6 +6,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   """
 
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Utils.Utf8
 
   @severity_order [:error, :warning, :info]
 
@@ -219,7 +220,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     if byte_size(message) <= max do
       message
     else
-      binary_part(message, 0, max - 3) <> "..."
+      Utf8.valid_prefix(message, max - 3) <> "..."
     end
   end
 
@@ -291,7 +292,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp truncate_at_newline(text, budget) when byte_size(text) <= budget, do: text
 
   defp truncate_at_newline(text, budget) do
-    chunk = binary_part(text, 0, budget)
+    chunk = Utf8.valid_prefix(text, budget)
 
     case :binary.matches(chunk, "\n") do
       [] ->
@@ -347,7 +348,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     if byte_size(text) <= max do
       text
     else
-      binary_part(text, 0, max - 3) <> "..."
+      Utf8.valid_prefix(text, max - 3) <> "..."
     end
   end
 

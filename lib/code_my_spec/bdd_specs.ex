@@ -17,6 +17,7 @@ defmodule CodeMySpec.BddSpecs do
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.Utf8
 
   @doc """
   Returns all BDD specs for the project as parsed summaries.
@@ -267,7 +268,7 @@ defmodule CodeMySpec.BddSpecs do
   defp truncate_slug(slug, max) when byte_size(slug) <= max, do: slug
 
   defp truncate_slug(slug, max) do
-    chunk = binary_part(slug, 0, max)
+    chunk = Utf8.valid_prefix(slug, max)
 
     case :binary.matches(chunk, "_") do
       [] -> chunk
