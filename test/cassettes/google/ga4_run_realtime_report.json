@@ -1,0 +1,105 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:09:11.296093Z",
+      "request": {
+        "body_json": {
+          "dimensions": [
+            {
+              "name": "country"
+            }
+          ],
+          "metrics": [
+            {
+              "name": "activeUsers"
+            }
+          ],
+          "returnPropertyQuota": false
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://analyticsdata.googleapis.com/v1beta/properties/508773792:runRealtimeReport"
+      },
+      "response": {
+        "body_json": {
+          "dimensionHeaders": [
+            {
+              "name": "country"
+            }
+          ],
+          "kind": "analyticsData#runRealtimeReport",
+          "metricHeaders": [
+            {
+              "name": "activeUsers",
+              "type": "TYPE_INTEGER"
+            }
+          ],
+          "rowCount": 1,
+          "rows": [
+            {
+              "dimensionValues": [
+                {
+                  "value": "Canada"
+                }
+              ],
+              "metricValues": [
+                {
+                  "value": "1"
+                }
+              ]
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:09:11 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

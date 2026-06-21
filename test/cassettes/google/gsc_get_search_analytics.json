@@ -1,0 +1,257 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:06:54.446810Z",
+      "request": {
+        "body_json": {
+          "dataState": "all",
+          "dimensions": [
+            "query"
+          ],
+          "endDate": "2026-06-21",
+          "rowLimit": 20,
+          "startDate": "2026-05-24"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Acodemyspec.com/searchAnalytics/query"
+      },
+      "response": {
+        "body_json": {
+          "responseAggregationType": "byProperty",
+          "rows": [
+            {
+              "clicks": 11,
+              "ctr": 0.4583333333333333,
+              "impressions": 24,
+              "keys": [
+                "codemyspec"
+              ],
+              "position": 1.5
+            },
+            {
+              "clicks": 2,
+              "ctr": 0.05,
+              "impressions": 40,
+              "keys": [
+                "open spec vs spec kit"
+              ],
+              "position": 6.225
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "aider vs claude code vs codex"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.3333333333333333,
+              "impressions": 3,
+              "keys": [
+                "bmad kiro"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.2,
+              "impressions": 5,
+              "keys": [
+                "ears kiro"
+              ],
+              "position": 6.4
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "kiro bmad"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.05,
+              "impressions": 20,
+              "keys": [
+                "kiro vs spec kit"
+              ],
+              "position": 7.05
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "kiro vs speckit"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.04,
+              "impressions": 25,
+              "keys": [
+                "kiro vs zed"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.25,
+              "impressions": 4,
+              "keys": [
+                "openspec speckit"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.1111111111111111,
+              "impressions": 9,
+              "keys": [
+                "spec-kit vs kiro"
+              ],
+              "position": 6.444444444444445
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.09090909090909091,
+              "impressions": 11,
+              "keys": [
+                "tessl valuation"
+              ],
+              "position": 6.090909090909091
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.07142857142857142,
+              "impressions": 14,
+              "keys": [
+                "zed vs kiro"
+              ],
+              "position": 6.642857142857143
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 18,
+              "keys": [
+                "\"agents aren't hard; the harness is hard\""
+              ],
+              "position": 8.944444444444445
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 36,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench verified\""
+              ],
+              "position": 8.13888888888889
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 74,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench\""
+              ],
+              "position": 8.121621621621621
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "\"codex cli\" \"aider\" review"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"cursor 3\""
+              ],
+              "position": 32
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 14,
+              "keys": [
+                "\"skill.md\" \"name\" \"description\" \"paths\" \"disable-model-invocation\""
+              ],
+              "position": 10.571428571428571
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 9,
+              "keys": [
+                "\"skill.md\" frontmatter \"name\" \"description\" \"paths\" \"disable-model-invocation\""
+              ],
+              "position": 11.11111111111111
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:06:54 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

@@ -1,0 +1,408 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:07:14.338337Z",
+      "request": {
+        "body_json": {
+          "dataState": "all",
+          "dimensions": [],
+          "endDate": "2026-06-21",
+          "rowLimit": 1,
+          "startDate": "2026-05-24"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Acodemyspec.com/searchAnalytics/query"
+      },
+      "response": {
+        "body_json": {
+          "responseAggregationType": "byProperty",
+          "rows": [
+            {
+              "clicks": 75,
+              "ctr": 0.0020117486118934576,
+              "impressions": 37281,
+              "position": 18.927818459805263
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:07:14 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-06-21T03:07:14.513247Z",
+      "request": {
+        "body_json": {
+          "dataState": "all",
+          "dimensions": [
+            "date"
+          ],
+          "endDate": "2026-06-21",
+          "rowLimit": 28,
+          "startDate": "2026-05-24"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Acodemyspec.com/searchAnalytics/query"
+      },
+      "response": {
+        "body_json": {
+          "metadata": {
+            "firstIncompleteDate": "2026-06-19"
+          },
+          "responseAggregationType": "byProperty",
+          "rows": [
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 252,
+              "keys": [
+                "2026-05-24"
+              ],
+              "position": 8.908730158730158
+            },
+            {
+              "clicks": 4,
+              "ctr": 0.016260162601626018,
+              "impressions": 246,
+              "keys": [
+                "2026-05-25"
+              ],
+              "position": 9.475609756097562
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.003205128205128205,
+              "impressions": 312,
+              "keys": [
+                "2026-05-26"
+              ],
+              "position": 8.830128205128204
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 313,
+              "keys": [
+                "2026-05-27"
+              ],
+              "position": 9.651757188498403
+            },
+            {
+              "clicks": 3,
+              "ctr": 0.008902077151335312,
+              "impressions": 337,
+              "keys": [
+                "2026-05-28"
+              ],
+              "position": 9.55192878338279
+            },
+            {
+              "clicks": 3,
+              "ctr": 0.006172839506172839,
+              "impressions": 486,
+              "keys": [
+                "2026-05-29"
+              ],
+              "position": 7.87037037037037
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1101,
+              "keys": [
+                "2026-05-30"
+              ],
+              "position": 7.1498637602179835
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1240,
+              "keys": [
+                "2026-05-31"
+              ],
+              "position": 7.226612903225806
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.0010362694300518134,
+              "impressions": 965,
+              "keys": [
+                "2026-06-01"
+              ],
+              "position": 7.601036269430052
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.0023094688221709007,
+              "impressions": 433,
+              "keys": [
+                "2026-06-02"
+              ],
+              "position": 8.053117782909931
+            },
+            {
+              "clicks": 2,
+              "ctr": 0.003968253968253968,
+              "impressions": 504,
+              "keys": [
+                "2026-06-03"
+              ],
+              "position": 7.902777777777778
+            },
+            {
+              "clicks": 2,
+              "ctr": 0.0038240917782026767,
+              "impressions": 523,
+              "keys": [
+                "2026-06-04"
+              ],
+              "position": 8.504780114722752
+            },
+            {
+              "clicks": 3,
+              "ctr": 0.006521739130434782,
+              "impressions": 460,
+              "keys": [
+                "2026-06-05"
+              ],
+              "position": 8.319565217391304
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.00234192037470726,
+              "impressions": 427,
+              "keys": [
+                "2026-06-06"
+              ],
+              "position": 7.693208430913349
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 596,
+              "keys": [
+                "2026-06-07"
+              ],
+              "position": 7.706375838926174
+            },
+            {
+              "clicks": 5,
+              "ctr": 0.006009615384615385,
+              "impressions": 832,
+              "keys": [
+                "2026-06-08"
+              ],
+              "position": 8.030048076923077
+            },
+            {
+              "clicks": 10,
+              "ctr": 0.009765625,
+              "impressions": 1024,
+              "keys": [
+                "2026-06-09"
+              ],
+              "position": 8.01171875
+            },
+            {
+              "clicks": 2,
+              "ctr": 0.001834862385321101,
+              "impressions": 1090,
+              "keys": [
+                "2026-06-10"
+              ],
+              "position": 8.20091743119266
+            },
+            {
+              "clicks": 4,
+              "ctr": 0.003940886699507389,
+              "impressions": 1015,
+              "keys": [
+                "2026-06-11"
+              ],
+              "position": 8.005911330049262
+            },
+            {
+              "clicks": 5,
+              "ctr": 0.00585480093676815,
+              "impressions": 854,
+              "keys": [
+                "2026-06-12"
+              ],
+              "position": 8.13583138173302
+            },
+            {
+              "clicks": 2,
+              "ctr": 0.0018796992481203006,
+              "impressions": 1064,
+              "keys": [
+                "2026-06-13"
+              ],
+              "position": 7.964285714285714
+            },
+            {
+              "clicks": 4,
+              "ctr": 0.0037488284910965324,
+              "impressions": 1067,
+              "keys": [
+                "2026-06-14"
+              ],
+              "position": 7.955014058106841
+            },
+            {
+              "clicks": 3,
+              "ctr": 0.0025929127052722557,
+              "impressions": 1157,
+              "keys": [
+                "2026-06-15"
+              ],
+              "position": 8.130509939498705
+            },
+            {
+              "clicks": 7,
+              "ctr": 0.005046863734679163,
+              "impressions": 1387,
+              "keys": [
+                "2026-06-16"
+              ],
+              "position": 8.10814708002884
+            },
+            {
+              "clicks": 2,
+              "ctr": 9.090909090909091e-4,
+              "impressions": 2200,
+              "keys": [
+                "2026-06-17"
+              ],
+              "position": 16.80818181818182
+            },
+            {
+              "clicks": 2,
+              "ctr": 4.73260766682442e-4,
+              "impressions": 4226,
+              "keys": [
+                "2026-06-18"
+              ],
+              "position": 27.39777567439659
+            },
+            {
+              "clicks": 7,
+              "ctr": 0.0027269185820023374,
+              "impressions": 2567,
+              "keys": [
+                "2026-06-19"
+              ],
+              "position": 26.47409427347098
+            },
+            {
+              "clicks": 1,
+              "ctr": 9.45000945000945e-5,
+              "impressions": 10582,
+              "keys": [
+                "2026-06-20"
+              ],
+              "position": 32.41825741825742
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:07:14 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

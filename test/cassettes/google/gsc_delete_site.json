@@ -1,0 +1,62 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:34:54.919529Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fcodemyspec.com%2F__cms_test_delete_me%2F"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:34:54 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 204
+      }
+    }
+  ],
+  "version": "2.0"
+}

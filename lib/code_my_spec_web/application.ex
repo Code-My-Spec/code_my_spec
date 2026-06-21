@@ -22,6 +22,8 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpecWeb.Presence,
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
         {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},
+        {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
+        {CodeMySpec.McpServers.Ga4Server, transport: :streamable_http},
         CodeMySpecWeb.Endpoint
       ]
       |> children(env)

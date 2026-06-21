@@ -121,6 +121,12 @@ defmodule CodeMySpecWeb.Router do
 
     forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer
+
+    forward "/gsc", Anubis.Server.Transport.StreamableHTTP.Plug,
+      server: CodeMySpec.McpServers.GscServer
+
+    forward "/ga4", Anubis.Server.Transport.StreamableHTTP.Plug,
+      server: CodeMySpec.McpServers.Ga4Server
   end
 
   # API routes
