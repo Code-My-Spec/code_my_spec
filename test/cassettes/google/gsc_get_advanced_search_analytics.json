@@ -1,0 +1,1086 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:06:53.794967Z",
+      "request": {
+        "body_json": {
+          "dataState": "all",
+          "dimensions": [
+            "query",
+            "page"
+          ],
+          "endDate": "2026-06-21",
+          "orderBy": [
+            {
+              "direction": "descending",
+              "metric": "CLICK_COUNT"
+            }
+          ],
+          "rowLimit": 100,
+          "searchType": "WEB",
+          "startDate": "2026-05-24",
+          "startRow": 0
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Acodemyspec.com/searchAnalytics/query"
+      },
+      "response": {
+        "body_json": {
+          "responseAggregationType": "byPage",
+          "rows": [
+            {
+              "clicks": 11,
+              "ctr": 0.4583333333333333,
+              "impressions": 24,
+              "keys": [
+                "codemyspec",
+                "https://codemyspec.com/"
+              ],
+              "position": 1.5
+            },
+            {
+              "clicks": 2,
+              "ctr": 0.05,
+              "impressions": 40,
+              "keys": [
+                "open spec vs spec kit",
+                "https://codemyspec.com/blog/openspec-vs-spec-kit"
+              ],
+              "position": 6.225
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "aider vs claude code vs codex",
+                "https://codemyspec.com/blog/cli-agents-compared-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.3333333333333333,
+              "impressions": 3,
+              "keys": [
+                "bmad kiro",
+                "https://codemyspec.com/blog/bmad-method-explained"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "ears kiro",
+                "https://codemyspec.com/blog/kiro-specs-explained"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "kiro bmad",
+                "https://codemyspec.com/blog/bmad-method-explained"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.05,
+              "impressions": 20,
+              "keys": [
+                "kiro vs spec kit",
+                "https://codemyspec.com/blog/spec-kit-vs-kiro"
+              ],
+              "position": 7.05
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "kiro vs speckit",
+                "https://codemyspec.com/blog/spec-kit-vs-kiro"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.04,
+              "impressions": 25,
+              "keys": [
+                "kiro vs zed",
+                "https://codemyspec.com/blog/ai-ides-compared-2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.25,
+              "impressions": 4,
+              "keys": [
+                "openspec speckit",
+                "https://codemyspec.com/blog/openspec-vs-spec-kit"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.1111111111111111,
+              "impressions": 9,
+              "keys": [
+                "spec-kit vs kiro",
+                "https://codemyspec.com/blog/spec-kit-vs-kiro"
+              ],
+              "position": 6.444444444444445
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.09090909090909091,
+              "impressions": 11,
+              "keys": [
+                "tessl valuation",
+                "https://codemyspec.com/blog/tessl-review"
+              ],
+              "position": 6.090909090909091
+            },
+            {
+              "clicks": 1,
+              "ctr": 0.07142857142857142,
+              "impressions": 14,
+              "keys": [
+                "zed vs kiro",
+                "https://codemyspec.com/blog/ai-ides-compared-2026"
+              ],
+              "position": 6.642857142857143
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 18,
+              "keys": [
+                "\"agents aren't hard; the harness is hard\"",
+                "https://codemyspec.com/blog/the-harness-layer"
+              ],
+              "position": 8.944444444444445
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 7,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench verified\"",
+                "https://codemyspec.com/blog/the-model-layer"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 29,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench verified\"",
+                "https://codemyspec.com/pages/the-model-layer"
+              ],
+              "position": 8.655172413793103
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 14,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench\"",
+                "https://codemyspec.com/blog/the-model-layer"
+              ],
+              "position": 6.071428571428571
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 60,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench\"",
+                "https://codemyspec.com/pages/the-model-layer"
+              ],
+              "position": 8.6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "\"codex cli\" \"aider\" review",
+                "https://codemyspec.com/blog/cli-agents-compared-2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"cursor 3\"",
+                "https://codemyspec.com/blog/cursor-3-agent-first"
+              ],
+              "position": 32
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 14,
+              "keys": [
+                "\"skill.md\" \"name\" \"description\" \"paths\" \"disable-model-invocation\"",
+                "https://codemyspec.com/blog/skill-portability"
+              ],
+              "position": 10.571428571428571
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 9,
+              "keys": [
+                "\"skill.md\" frontmatter \"name\" \"description\" \"paths\" \"disable-model-invocation\"",
+                "https://codemyspec.com/blog/skill-portability"
+              ],
+              "position": 11.11111111111111
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"skill.md\" frontmatter fields \"name\" \"description\" \"paths\" \"disable-model-invocation\"",
+                "https://codemyspec.com/blog/skill-portability"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "\"skill.md\" yaml \"name\" \"description\" \"paths\" \"disable-model-invocation\"",
+                "https://codemyspec.com/blog/skill-portability"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"speckit\" spec.md plan.md tasks.md 2026",
+                "https://codemyspec.com/blog/github-spec-kit-guide"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "5 levels of ai coding",
+                "https://codemyspec.com/blog/five-levels-of-ai-coding"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "8 levels of ai",
+                "https://codemyspec.com/blog/five-levels-of-ai-coding"
+              ],
+              "position": 44
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "agentic code maintenance",
+                "https://codemyspec.com/blog/agentic-maintenance"
+              ],
+              "position": 9.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "agentic coding systems",
+                "https://codemyspec.com/blog/five-layers-of-agentic-coding"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 17,
+              "keys": [
+                "ai coding tools 2026 free paid",
+                "https://codemyspec.com/blog/free-open-source-ai-coding-tools-2026"
+              ],
+              "position": 8.823529411764707
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "ai ide cursor copilot windsurf kiro zed 뉴스",
+                "https://codemyspec.com/blog/ai-ides-compared-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "ai native development using bdd framework",
+                "https://codemyspec.com/blog/bdd-specs-for-ai-generated-code"
+              ],
+              "position": 85
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 7,
+              "keys": [
+                "aider 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9.142857142857142
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider agents.md support 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai coding agent 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding agent 2026 review",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding agent capabilities 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding agent features 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding agent github 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding agent github stars 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai coding agent official 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 6.666666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai coding agent pricing 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 5.666666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "aider ai coding agent review 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 5.2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding agent review 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding assistant 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider ai coding assistant features 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 11,
+              "keys": [
+                "aider ai coding assistant official 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8.181818181818182
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding assistant official 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai coding assistant pricing 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8.666666666666668
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant pricing 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding assistant pricing 2026 official",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding assistant pricing features 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant pricing official",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 12,
+              "keys": [
+                "aider ai coding assistant pricing official 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8.25
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant pricing official 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "aider ai coding assistant pricing open source 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 7.4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant review 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding cli review 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 18,
+              "keys": [
+                "aider ai coding tool 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9.88888888888889
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool 2026 features",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool 2026 features",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "aider ai coding tool 2026 review",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool explained 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 18
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool features 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool features pricing 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool latest features 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool latest updates 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool pricing",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool pricing 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool review 2025 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool review 2025 or 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 18,
+              "keys": [
+                "aider ai coding tool review 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 4.722222222222222
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool review 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 14.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool reviews 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 4.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool status 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool updates 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai features 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai features 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai latest release 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai pair programming official 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 9.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai pair programming terminal official 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai pricing",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 37
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai pricing 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 6.333333333333333
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai pricing official 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 5.666666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 8,
+              "keys": [
+                "aider benchmark",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 18.875
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider benchmark ai coding 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider benchmark coding models 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 3.3333333333333335
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider benchmark leaderboard 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 5.75
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider benchmark llm coding 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider benchmark llm coding 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider benchmarks",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 36
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider best model 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider changelog 2026",
+                "https://codemyspec.com/pages/aider-review-2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider chat pricing",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider cli ai coding tool 2026",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider cli pricing",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 8.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider code",
+                "https://codemyspec.com/blog/aider-review-2026"
+              ],
+              "position": 42
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:06:53 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

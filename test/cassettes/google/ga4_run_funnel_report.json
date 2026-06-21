@@ -1,0 +1,225 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:09:11.649819Z",
+      "request": {
+        "body_json": {
+          "dateRanges": [
+            {
+              "endDate": "today",
+              "startDate": "28daysAgo"
+            }
+          ],
+          "funnel": {
+            "steps": [
+              {
+                "filterExpression": {
+                  "funnelEventFilter": {
+                    "eventName": "session_start"
+                  }
+                },
+                "name": "Start"
+              },
+              {
+                "filterExpression": {
+                  "funnelEventFilter": {
+                    "eventName": "first_visit"
+                  }
+                },
+                "name": "First visit"
+              }
+            ]
+          },
+          "returnPropertyQuota": false
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://analyticsdata.googleapis.com/v1alpha/properties/508773792:runFunnelReport"
+      },
+      "response": {
+        "body_json": {
+          "funnelTable": {
+            "dimensionHeaders": [
+              {
+                "name": "funnelStepName"
+              }
+            ],
+            "metadata": {},
+            "metricHeaders": [
+              {
+                "name": "activeUsers",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "funnelStepCompletionRate",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "funnelStepAbandonments",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "funnelStepAbandonmentRate",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "activeUsers",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "funnelStepCompletionRate",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "funnelStepAbandonments",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "funnelStepAbandonmentRate",
+                "type": "TYPE_INTEGER"
+              }
+            ],
+            "rows": [
+              {
+                "dimensionValues": [
+                  {
+                    "value": "1. Start"
+                  }
+                ],
+                "metricValues": [
+                  {
+                    "value": "1253"
+                  },
+                  {
+                    "value": "0.014365522745411013"
+                  },
+                  {
+                    "value": "1235"
+                  },
+                  {
+                    "value": "0.985634477254589"
+                  }
+                ]
+              },
+              {
+                "dimensionValues": [
+                  {
+                    "value": "2. First visit"
+                  }
+                ],
+                "metricValues": [
+                  {
+                    "value": "18"
+                  },
+                  {
+                    "value": "1"
+                  },
+                  {
+                    "value": "0"
+                  },
+                  {
+                    "value": "0"
+                  }
+                ]
+              }
+            ]
+          },
+          "funnelVisualization": {
+            "dimensionHeaders": [
+              {
+                "name": "funnelStepName"
+              }
+            ],
+            "metadata": {},
+            "metricHeaders": [
+              {
+                "name": "activeUsers",
+                "type": "TYPE_INTEGER"
+              },
+              {
+                "name": "activeUsers",
+                "type": "TYPE_INTEGER"
+              }
+            ],
+            "rows": [
+              {
+                "dimensionValues": [
+                  {
+                    "value": "1. Start"
+                  }
+                ],
+                "metricValues": [
+                  {
+                    "value": "1253"
+                  }
+                ]
+              },
+              {
+                "dimensionValues": [
+                  {
+                    "value": "2. First visit"
+                  }
+                ],
+                "metricValues": [
+                  {
+                    "value": "18"
+                  }
+                ]
+              }
+            ]
+          },
+          "kind": "analyticsData#runFunnelReport"
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:09:11 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

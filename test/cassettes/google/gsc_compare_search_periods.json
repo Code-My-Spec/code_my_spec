@@ -1,0 +1,2696 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:07:15.492132Z",
+      "request": {
+        "body_json": {
+          "dataState": "all",
+          "dimensions": [
+            "query"
+          ],
+          "endDate": "2026-04-30",
+          "rowLimit": 1000,
+          "startDate": "2026-04-01"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Acodemyspec.com/searchAnalytics/query"
+      },
+      "response": {
+        "body_json": {
+          "responseAggregationType": "byProperty",
+          "rows": [
+            {
+              "clicks": 2,
+              "ctr": 0.3333333333333333,
+              "impressions": 6,
+              "keys": [
+                "codemyspec"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"harness aida\""
+              ],
+              "position": 42
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "\"ox security\""
+              ],
+              "position": 12.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "5 levels of ai coding"
+              ],
+              "position": 16
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "claude skill md example"
+              ],
+              "position": 117
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "clawz skill.md capability schema runtime mapping yaml frontmatter"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "cursor 3.0"
+              ],
+              "position": 27.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "how to use cursor 3.0"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "openspec vs kiro"
+              ],
+              "position": 42
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "qa verification"
+              ],
+              "position": 37
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "spawn_agents_on_csv"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "the 5 levels of ai coding"
+              ],
+              "position": 21.666666666666668
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:07:15 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-06-21T03:07:15.625435Z",
+      "request": {
+        "body_json": {
+          "dataState": "all",
+          "dimensions": [
+            "query"
+          ],
+          "endDate": "2026-05-31",
+          "rowLimit": 1000,
+          "startDate": "2026-05-01"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Acodemyspec.com/searchAnalytics/query"
+      },
+      "response": {
+        "body_json": {
+          "responseAggregationType": "byProperty",
+          "rows": [
+            {
+              "clicks": 9,
+              "ctr": 0.375,
+              "impressions": 24,
+              "keys": [
+                "codemyspec"
+              ],
+              "position": 1
+            },
+            {
+              "clicks": 1,
+              "ctr": 1,
+              "impressions": 1,
+              "keys": [
+                "code spec"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "\"agents aren't hard; the harness is hard\""
+              ],
+              "position": 9.333333333333334
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench verified\""
+              ],
+              "position": 8.833333333333332
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 16,
+              "keys": [
+                "\"claude 4.5 opus\" \"76.80\" \"swe-bench\""
+              ],
+              "position": 7.8125
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "\"codex cli\" \"aider\" review"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"codex plus\" chatgpt"
+              ],
+              "position": 81
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"cursor 3\""
+              ],
+              "position": 32
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "\"environment engineering\" ai agents"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "agentic code maintenance"
+              ],
+              "position": 9.666666666666666
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "agentic software development process"
+              ],
+              "position": 9.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "ai native development using bdd framework"
+              ],
+              "position": 85
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider agents.md support 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding 2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding agent 2026"
+              ],
+              "position": 10.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding agent 2026 review"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding agent capabilities 2026"
+              ],
+              "position": 8.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding agent features 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding agent pricing 2026"
+              ],
+              "position": 2.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "aider ai coding agent review 2026"
+              ],
+              "position": 5.2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai coding assistant features 2026"
+              ],
+              "position": 7.666666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant official 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant pricing 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding assistant pricing features 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider ai coding assistant pricing official 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding assistant review 2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding cli review 2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 14,
+              "keys": [
+                "aider ai coding tool 2026"
+              ],
+              "position": 10.214285714285714
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool 2026 features"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "aider ai coding tool 2026 review"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool features 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool features pricing 2026"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool latest updates 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool pricing 2026"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai coding tool review 2025 or 2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 15,
+              "keys": [
+                "aider ai coding tool review 2026"
+              ],
+              "position": 3.8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool reviews 2026"
+              ],
+              "position": 4.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai coding tool updates 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai features 2026"
+              ],
+              "position": 9.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider ai latest release 2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai pair programming official 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ai pair programming terminal official 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider benchmark coding models 2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider benchmark leaderboard 2026"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider benchmark llm coding 2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider best model 2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider changelog 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider cli ai coding tool 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider code"
+              ],
+              "position": 42
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider coding agent 2026"
+              ],
+              "position": 8.666666666666668
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider coding agent pricing 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider coding agent review 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider coding assistant 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider coding benchmark leaderboard 2026"
+              ],
+              "position": 3.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider coding leaderboard 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider current version 2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider features 2026"
+              ],
+              "position": 6.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider git integration review 2026"
+              ],
+              "position": 5.333333333333333
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "aider github stars 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider latest release 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider latest version 2026"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider latest version features 2026"
+              ],
+              "position": 8.666666666666668
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider leaderboard 2026"
+              ],
+              "position": 6.666666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider leaderboard 2026 coding models"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider leaderboard ai coding models 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider leaderboard coding 2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 9,
+              "keys": [
+                "aider leaderboard coding models 2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider leaderboard local coding models 2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider leaderboard local models 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider llm leaderboard 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider llm leaderboard code editing 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider llm leaderboard code editing benchmark 2026"
+              ],
+              "position": 6.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider llm leaderboard coding benchmark 2026"
+              ],
+              "position": 10.333333333333334
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider llm leaderboard coding models 2026"
+              ],
+              "position": 11.25
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider local coding agent 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "aider mcp support 2026"
+              ],
+              "position": 3.8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider ollama integration 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider polyglot benchmark 2026 coding models"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider polyglot benchmark ai coding models 2026"
+              ],
+              "position": 6.333333333333333
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 7,
+              "keys": [
+                "aider polyglot benchmark claude code codex 2026"
+              ],
+              "position": 6.571428571428571
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot benchmark coding agent official"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider polyglot benchmark leaderboard 2026"
+              ],
+              "position": 2.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 9,
+              "keys": [
+                "aider polyglot benchmark leaderboard 2026 ai coding models"
+              ],
+              "position": 8.444444444444445
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot benchmark leaderboard 2026 coding llm"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 9,
+              "keys": [
+                "aider polyglot benchmark leaderboard 2026 coding models"
+              ],
+              "position": 7.444444444444445
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider polyglot benchmark leaderboard 2026 llm coding"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 19,
+              "keys": [
+                "aider polyglot benchmark leaderboard ai coding models 2026"
+              ],
+              "position": 7.368421052631579
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot benchmark leaderboard coding agents 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider polyglot benchmark leaderboard coding llm 2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 17,
+              "keys": [
+                "aider polyglot benchmark leaderboard coding models 2026"
+              ],
+              "position": 5.235294117647059
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot benchmark leaderboard latest ai coding models 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider polyglot benchmark leaderboard latest coding models 2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider polyglot benchmark leaderboard llm coding 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "aider polyglot benchmark leaderboard open source coding models 2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot benchmark leaderboard open source models 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot benchmark official 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider polyglot benchmark open source coding models 2026"
+              ],
+              "position": 3.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider polyglot coding benchmark 2026"
+              ],
+              "position": 3
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider polyglot coding benchmark leaderboard 2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider polyglot coding leaderboard 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot leaderboard 2026"
+              ],
+              "position": 1
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "aider polyglot leaderboard 2026 ai coding models"
+              ],
+              "position": 8.333333333333332
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 7,
+              "keys": [
+                "aider polyglot leaderboard 2026 coding models"
+              ],
+              "position": 7.428571428571429
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot leaderboard 2026 top models"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 17,
+              "keys": [
+                "aider polyglot leaderboard ai coding models 2026"
+              ],
+              "position": 6.705882352941177
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot leaderboard claude gpt gemini 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot leaderboard coding llm 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider polyglot leaderboard coding model 2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 16,
+              "keys": [
+                "aider polyglot leaderboard coding models 2026"
+              ],
+              "position": 6.75
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider polyglot leaderboard latest ai coding models 2026"
+              ],
+              "position": 8.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider polyglot leaderboard latest coding models 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot leaderboard may 2026 ai coding models"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot leaderboard official 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider polyglot leaderboard open source coding model 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider pricing"
+              ],
+              "position": 15.75
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 21,
+              "keys": [
+                "aider pricing 2026"
+              ],
+              "position": 6.523809523809524
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider vs cline 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "aider vs code integration 2026"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider vs codex"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider vs codex cli"
+              ],
+              "position": 1
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider vs gemini cli"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "aider-chat latest version 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider-chat python version requirements 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "aider-chat supported python versions 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "best free open source ai cli tools 2026"
+              ],
+              "position": 15.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "claude code vs aider vs codex cli 2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "clawz skill.md capability schema runtime mapping"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "clawz skill.md capability schema runtime mapping yaml frontmatter"
+              ],
+              "position": 12
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "cline pricing free open source 2026"
+              ],
+              "position": 8.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cline vs code extension pricing free open source 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "codemiz"
+              ],
+              "position": 41.333333333333336
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "codex cli price"
+              ],
+              "position": 10.666666666666666
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "codex cli spawn_agents_on_csv"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "codex spawn_agents_on_csv"
+              ],
+              "position": 6.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "codex vs aider"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "codex-auto-review price"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "consensus codex"
+              ],
+              "position": 1
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "coursor 3"
+              ],
+              "position": 24
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "curosr 3"
+              ],
+              "position": 26
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "curser 3"
+              ],
+              "position": 29
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "cursor 3"
+              ],
+              "position": 24.333333333333332
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor 3 vs"
+              ],
+              "position": 23
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 14,
+              "keys": [
+                "cursor 3.0"
+              ],
+              "position": 22.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor 3.0 features"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor v3"
+              ],
+              "position": 22
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor vs kiro ai ide comparison 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor vs windsurf ai ide 2026"
+              ],
+              "position": 18
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor vs windsurf ai ide comparison 2026"
+              ],
+              "position": 18
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor vs windsurf vs kiro"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor vs windsurf vs zed 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor vs windsurf vs zed ai ide comparison 2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursor-3"
+              ],
+              "position": 22
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cursur 3"
+              ],
+              "position": 22
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "cusor 3.0"
+              ],
+              "position": 23
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "devspec"
+              ],
+              "position": 93
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "free open source ai coding tools 2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli agent features 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli agentic capabilities 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli available models 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli benchmark"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli capabilities 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli coding agent features 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli coding agent pricing 2026"
+              ],
+              "position": 6.666666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli current models 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "gemini cli features 2026"
+              ],
+              "position": 5.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli free 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli free pricing 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli free requests per day 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "gemini cli free tier 1000 requests per day 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "gemini cli free tier 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli free tier details 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "gemini cli free tier features 2026"
+              ],
+              "position": 5.75
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli free tier limits 2026"
+              ],
+              "position": 20
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "gemini cli free tier pricing 2026"
+              ],
+              "position": 9.8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli free tier quota 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli free usage 2026"
+              ],
+              "position": 9.333333333333334
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli github stars 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli google features pricing 2026"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli google free tier 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "gemini cli google pricing 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "gemini cli google pricing free tier 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli latest model 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli mcp support 2026"
+              ],
+              "position": 12
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli model list 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli models list 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli official pricing 2026"
+              ],
+              "position": 10.333333333333334
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "gemini cli pricing"
+              ],
+              "position": 41.833333333333336
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 18,
+              "keys": [
+                "gemini cli pricing 2026"
+              ],
+              "position": 5.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "gemini cli pricing 2026 official"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli pricing and free tier 2026"
+              ],
+              "position": 7.333333333333333
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli pricing cost 2026"
+              ],
+              "position": 14
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli pricing features 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "gemini cli pricing free 2026"
+              ],
+              "position": 6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli pricing free quota official 2026"
+              ],
+              "position": 12
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 10,
+              "keys": [
+                "gemini cli pricing free tier 2026"
+              ],
+              "position": 8.6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "gemini cli pricing official 2026"
+              ],
+              "position": 5.6
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "gemini cli pricing official google 2026"
+              ],
+              "position": 7.666666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "gemini cli pricing plans 2026"
+              ],
+              "position": 19.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli pricing usage limits 2026 official"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli review"
+              ],
+              "position": 49
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "gemini cli review 2026"
+              ],
+              "position": 5.2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli speed review 2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli subscription"
+              ],
+              "position": 53
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli supported models 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli tool 2026"
+              ],
+              "position": 16
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "gemini cli vs aider"
+              ],
+              "position": 8.4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "gemini cli vs code extension 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "github copilot system requirements 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "google gemini cli available models 2026"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "google gemini cli coding agent 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "google gemini cli features pricing"
+              ],
+              "position": 18
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "google gemini cli features pricing 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "google gemini cli pricing 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "google gemini cli pricing 2026 official"
+              ],
+              "position": 12
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "google gemini cli pricing free tier 2026"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "google gemini cli pricing official 2026"
+              ],
+              "position": 9.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "google gemini cli status 2026"
+              ],
+              "position": 19
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "goose vs codex"
+              ],
+              "position": 26
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 6,
+              "keys": [
+                "harness layer"
+              ],
+              "position": 5.166666666666667
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 11,
+              "keys": [
+                "harness vs wrapper"
+              ],
+              "position": 8.818181818181818
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "how to switch to cursor 3"
+              ],
+              "position": 16
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "kiro byok"
+              ],
+              "position": 19
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "kiro ears"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "kiro ears notation requirements generation"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "kiro ide vs cursor 2026"
+              ],
+              "position": 10.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "kiro spec"
+              ],
+              "position": 64.25
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "kiro specs"
+              ],
+              "position": 58
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "kiro vs codex"
+              ],
+              "position": 27
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "kiro vs cursor ai ide comparison 2026"
+              ],
+              "position": 11.4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "kiro vs cursor comparison 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "kiro vs cursor vs windsurf 2026"
+              ],
+              "position": 2
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "kiro vs windsurf"
+              ],
+              "position": 26
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "kiro vs windsurf vs cursor"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 13,
+              "keys": [
+                "kiro vs zed"
+              ],
+              "position": 8.384615384615385
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "my spec"
+              ],
+              "position": 36.75
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "open source ai code editor free"
+              ],
+              "position": 99
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 5,
+              "keys": [
+                "opencode go alternatives 2026"
+              ],
+              "position": 17.4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "opencode vs aider 2026"
+              ],
+              "position": 14
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "openspec kiro"
+              ],
+              "position": 46
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "simon willison claude code codex comparison 2026"
+              ],
+              "position": 5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "skill.md format"
+              ],
+              "position": 46
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "spawn_agents_on_csv"
+              ],
+              "position": 11
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "spec discover"
+              ],
+              "position": 56
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "start implementation"
+              ],
+              "position": 7
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "switchboard claude"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "terminal-bench leaderboard coding agents 2026 claude code codex"
+              ],
+              "position": 7.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "terminal-bench leaderboard coding agents claude code codex 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "the 5 levels of ai coding"
+              ],
+              "position": 41
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "what is ears notation and why does kiro use it for requirements generation?"
+              ],
+              "position": 7.333333333333333
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "when was cursor 3 released"
+              ],
+              "position": 11.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 17,
+              "keys": [
+                "why is 'gemini cli' trending 2026"
+              ],
+              "position": 4.647058823529411
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "why the context layer is the foundation of harness engineering"
+              ],
+              "position": 12
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf ai editor news 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "windsurf ai ide features 2026"
+              ],
+              "position": 10.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf ai ide official agent 2026"
+              ],
+              "position": 10
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "windsurf ai ide official features 2026"
+              ],
+              "position": 10.666666666666666
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf local vs worktree"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf vs cursor 2026"
+              ],
+              "position": 47
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf vs cursor ai ide 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf vs cursor ai ide comparison 2025 2026"
+              ],
+              "position": 19
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf vs cursor reddit 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "windsurf vs cursor vs kiro"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "wrapper vs harness"
+              ],
+              "position": 4
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "your spec"
+              ],
+              "position": 47
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "zed ide ai features 2026"
+              ],
+              "position": 8
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 9,
+              "keys": [
+                "zed kiro"
+              ],
+              "position": 10.11111111111111
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "zed vs cursor 2026"
+              ],
+              "position": 10.333333333333334
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 4,
+              "keys": [
+                "zed vs cursor ide comparison 2026"
+              ],
+              "position": 9
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "zed vs cursor vs windsurf"
+              ],
+              "position": 12
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 8,
+              "keys": [
+                "zed vs kiro"
+              ],
+              "position": 7.375
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:07:15 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

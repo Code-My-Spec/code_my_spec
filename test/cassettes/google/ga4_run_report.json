@@ -1,0 +1,164 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:09:10.928216Z",
+      "request": {
+        "body_json": {
+          "dateRanges": [
+            {
+              "endDate": "today",
+              "startDate": "28daysAgo"
+            }
+          ],
+          "dimensions": [
+            {
+              "name": "country"
+            }
+          ],
+          "limit": 5,
+          "metrics": [
+            {
+              "name": "activeUsers"
+            }
+          ],
+          "returnPropertyQuota": false
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://analyticsdata.googleapis.com/v1beta/properties/508773792:runReport"
+      },
+      "response": {
+        "body_json": {
+          "dimensionHeaders": [
+            {
+              "name": "country"
+            }
+          ],
+          "kind": "analyticsData#runReport",
+          "metadata": {
+            "currencyCode": "USD",
+            "timeZone": "America/Los_Angeles"
+          },
+          "metricHeaders": [
+            {
+              "name": "activeUsers",
+              "type": "TYPE_INTEGER"
+            }
+          ],
+          "rowCount": 89,
+          "rows": [
+            {
+              "dimensionValues": [
+                {
+                  "value": "United States"
+                }
+              ],
+              "metricValues": [
+                {
+                  "value": "415"
+                }
+              ]
+            },
+            {
+              "dimensionValues": [
+                {
+                  "value": "India"
+                }
+              ],
+              "metricValues": [
+                {
+                  "value": "77"
+                }
+              ]
+            },
+            {
+              "dimensionValues": [
+                {
+                  "value": "Germany"
+                }
+              ],
+              "metricValues": [
+                {
+                  "value": "59"
+                }
+              ]
+            },
+            {
+              "dimensionValues": [
+                {
+                  "value": "Canada"
+                }
+              ],
+              "metricValues": [
+                {
+                  "value": "57"
+                }
+              ]
+            },
+            {
+              "dimensionValues": [
+                {
+                  "value": "United Kingdom"
+                }
+              ],
+              "metricValues": [
+                {
+                  "value": "47"
+                }
+              ]
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:09:10 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

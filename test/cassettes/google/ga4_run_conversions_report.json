@@ -1,0 +1,105 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:09:09.604000Z",
+      "request": {
+        "body_json": {
+          "conversionSpec": {
+            "conversionActions": []
+          },
+          "dateRanges": [
+            {
+              "endDate": "today",
+              "startDate": "28daysAgo"
+            }
+          ],
+          "dimensions": [
+            {
+              "name": "sourceMedium"
+            }
+          ],
+          "limit": 5,
+          "metrics": [
+            {
+              "name": "allConversionsByConversionDate"
+            }
+          ],
+          "returnPropertyQuota": false
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://analyticsdata.googleapis.com/v1alpha/properties/508773792:runReport"
+      },
+      "response": {
+        "body_json": {
+          "dimensionHeaders": [
+            {
+              "name": "sourceMedium"
+            }
+          ],
+          "kind": "analyticsData#runReport",
+          "metadata": {
+            "currencyCode": "USD",
+            "section": "SECTION_ADVERTISING",
+            "timeZone": "America/Los_Angeles"
+          },
+          "metricHeaders": [
+            {
+              "name": "allConversionsByConversionDate",
+              "type": "TYPE_FLOAT"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:09:09 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

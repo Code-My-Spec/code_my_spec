@@ -1,0 +1,180 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:09:11.812634Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://analyticsadmin.googleapis.com/v1beta/accountSummaries"
+      },
+      "response": {
+        "body_json": {
+          "accountSummaries": [
+            {
+              "account": "accounts/210363387",
+              "displayName": "UserDocs",
+              "name": "accountSummaries/210363387",
+              "propertySummaries": [
+                {
+                  "canEdit": true,
+                  "displayName": "Website",
+                  "parent": "accounts/210363387",
+                  "property": "properties/290122935",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                },
+                {
+                  "canEdit": true,
+                  "displayName": "user-docs.com - GA4",
+                  "parent": "accounts/210363387",
+                  "property": "properties/370830887",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                }
+              ]
+            },
+            {
+              "account": "accounts/250214975",
+              "displayName": "desertfirstcleaning.com",
+              "name": "accountSummaries/250214975",
+              "propertySummaries": [
+                {
+                  "canEdit": true,
+                  "displayName": "website",
+                  "parent": "accounts/250214975",
+                  "property": "properties/343881087",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                },
+                {
+                  "canEdit": true,
+                  "displayName": "desertfirstcleaning.com - GA4",
+                  "parent": "accounts/250214975",
+                  "property": "properties/361351170",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                }
+              ]
+            },
+            {
+              "account": "accounts/306260830",
+              "displayName": "Installation Boxing",
+              "name": "accountSummaries/306260830",
+              "propertySummaries": [
+                {
+                  "canEdit": true,
+                  "displayName": "Installation Boxing",
+                  "parent": "accounts/306260830",
+                  "property": "properties/432004356",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                }
+              ]
+            },
+            {
+              "account": "accounts/307311928",
+              "displayName": "Installation Boxing",
+              "name": "accountSummaries/307311928",
+              "propertySummaries": [
+                {
+                  "canEdit": true,
+                  "displayName": "website",
+                  "parent": "accounts/307311928",
+                  "property": "properties/433196683",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                }
+              ]
+            },
+            {
+              "account": "accounts/357837751",
+              "displayName": "John Davenport",
+              "name": "accountSummaries/357837751",
+              "propertySummaries": [
+                {
+                  "canEdit": true,
+                  "displayName": "Personal Site",
+                  "parent": "accounts/357837751",
+                  "property": "properties/492315358",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                }
+              ]
+            },
+            {
+              "account": "accounts/371474828",
+              "displayName": "Code My Spec",
+              "name": "accountSummaries/371474828",
+              "propertySummaries": [
+                {
+                  "canEdit": true,
+                  "displayName": "Website",
+                  "parent": "accounts/371474828",
+                  "property": "properties/508773792",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                },
+                {
+                  "canEdit": true,
+                  "displayName": "Code My Spec Dev",
+                  "parent": "accounts/371474828",
+                  "property": "properties/538388946",
+                  "propertyType": "PROPERTY_TYPE_ORDINARY"
+                }
+              ]
+            },
+            {
+              "account": "accounts/39203868",
+              "displayName": "johns10davenport",
+              "name": "accountSummaries/39203868"
+            },
+            {
+              "account": "accounts/84532120",
+              "displayName": "Local Lead Generation",
+              "name": "accountSummaries/84532120"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:09:11 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

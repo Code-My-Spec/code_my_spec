@@ -1,0 +1,166 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:06:53.022106Z",
+      "request": {
+        "body_json": {
+          "dataState": "all",
+          "dimensionFilterGroups": [
+            {
+              "filters": [
+                {
+                  "dimension": "page",
+                  "expression": "https://codemyspec.com/",
+                  "operator": "equals"
+                }
+              ]
+            }
+          ],
+          "dimensions": [
+            "query"
+          ],
+          "endDate": "2026-06-21",
+          "orderBy": [
+            {
+              "direction": "descending",
+              "metric": "CLICK_COUNT"
+            }
+          ],
+          "rowLimit": 20,
+          "startDate": "2026-05-24"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/webmasters/v3/sites/sc-domain%3Acodemyspec.com/searchAnalytics/query"
+      },
+      "response": {
+        "body_json": {
+          "responseAggregationType": "byPage",
+          "rows": [
+            {
+              "clicks": 11,
+              "ctr": 0.4583333333333333,
+              "impressions": 24,
+              "keys": [
+                "codemyspec"
+              ],
+              "position": 1.5
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 2,
+              "keys": [
+                "code spec"
+              ],
+              "position": 25
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "codemiz"
+              ],
+              "position": 41.333333333333336
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "devspec"
+              ],
+              "position": 73
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 3,
+              "keys": [
+                "my spec"
+              ],
+              "position": 44.666666666666664
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "myspec"
+              ],
+              "position": 18
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "myspecs"
+              ],
+              "position": 73
+            },
+            {
+              "clicks": 0,
+              "ctr": 0,
+              "impressions": 1,
+              "keys": [
+                "spec discover"
+              ],
+              "position": 56
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:06:53 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

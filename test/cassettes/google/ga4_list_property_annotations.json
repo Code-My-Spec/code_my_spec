@@ -1,0 +1,77 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:09:09.020497Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://analyticsadmin.googleapis.com/v1alpha/properties/508773792/reportingDataAnnotations"
+      },
+      "response": {
+        "body_json": {
+          "reportingDataAnnotations": [
+            {
+              "annotationDate": {
+                "day": 16,
+                "month": 6,
+                "year": 2026
+              },
+              "color": "ORANGE",
+              "description": "Consolidated to better reflect publishers. Traffic is marked (unlabeled) when data is organic or imported data is missing a \"paid\" medium. To add a medium, update UTM parameters.",
+              "name": "properties/508773792/reportingDataAnnotations/15098060108",
+              "systemGenerated": true,
+              "title": "Source Platform dimension update"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:09:09 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

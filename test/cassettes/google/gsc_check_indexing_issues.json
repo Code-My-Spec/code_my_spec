@@ -1,0 +1,194 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T03:07:22.009863Z",
+      "request": {
+        "body_json": {
+          "inspectionUrl": "https://codemyspec.com/",
+          "siteUrl": "sc-domain:codemyspec.com"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect"
+      },
+      "response": {
+        "body_json": {
+          "inspectionResult": {
+            "indexStatusResult": {
+              "coverageState": "Submitted and indexed",
+              "crawledAs": "MOBILE",
+              "googleCanonical": "https://codemyspec.com/",
+              "indexingState": "INDEXING_ALLOWED",
+              "lastCrawlTime": "2026-06-19T10:42:23Z",
+              "pageFetchState": "SUCCESSFUL",
+              "referringUrls": [
+                "https://codemyspec.com/projects",
+                "https://codemyspec.com/stories",
+                "https://8coint.com/list.php?part=2025/07/19/160"
+              ],
+              "robotsTxtState": "ALLOWED",
+              "sitemap": [
+                "https://codemyspec.com/sitemap.xml"
+              ],
+              "userCanonical": "https://codemyspec.com/",
+              "verdict": "PASS"
+            },
+            "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:codemyspec.com&id=uaO9-sCy7DJra52n2Jud2g&utm_medium=link&utm_source=api",
+            "mobileUsabilityResult": {
+              "verdict": "VERDICT_UNSPECIFIED"
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:07:21 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-06-21T03:07:28.194540Z",
+      "request": {
+        "body_json": {
+          "inspectionUrl": "https://codemyspec.com/blog/spec-kit-vs-kiro",
+          "siteUrl": "sc-domain:codemyspec.com"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect"
+      },
+      "response": {
+        "body_json": {
+          "inspectionResult": {
+            "indexStatusResult": {
+              "coverageState": "Submitted and indexed",
+              "crawledAs": "MOBILE",
+              "googleCanonical": "https://codemyspec.com/blog/spec-kit-vs-kiro",
+              "indexingState": "INDEXING_ALLOWED",
+              "lastCrawlTime": "2026-06-08T01:56:47Z",
+              "pageFetchState": "SUCCESSFUL",
+              "referringUrls": [
+                "https://codemyspec.com/author/john-davenport"
+              ],
+              "robotsTxtState": "ALLOWED",
+              "sitemap": [
+                "https://codemyspec.com/sitemap.xml"
+              ],
+              "userCanonical": "https://codemyspec.com/blog/spec-kit-vs-kiro",
+              "verdict": "PASS"
+            },
+            "inspectionResultLink": "https://search.google.com/search-console/inspect?resource_id=sc-domain:codemyspec.com&id=eARUe-8F9PH6TCa2AyRf_g&utm_medium=link&utm_source=api",
+            "mobileUsabilityResult": {
+              "verdict": "VERDICT_UNSPECIFIED"
+            },
+            "richResultsResult": {
+              "detectedItems": [
+                {
+                  "items": [
+                    {
+                      "name": "Unnamed item"
+                    }
+                  ],
+                  "richResultType": "Breadcrumbs"
+                }
+              ],
+              "verdict": "PASS"
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Sun, 21 Jun 2026 03:07:28 GMT"
+          ],
+          "server": [
+            "ESF"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "X-Origin",
+            "Referer"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}
