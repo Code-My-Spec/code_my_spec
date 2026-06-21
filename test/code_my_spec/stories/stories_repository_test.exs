@@ -82,7 +82,7 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       valid_attrs = %{
         status: :in_progress,
         description: "some description",
-        title: title = Faker.Lorem.word(),
+        title: title = random_word(),
         criteria: [%{description: "option1"}, %{description: "option2"}],
         locked_at: ~U[2025-07-17 12:48:00Z],
         lock_expires_at: ~U[2025-07-17 12:48:00Z]
@@ -108,7 +108,7 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
     test "update_story/3 with valid data updates the story" do
       scope = full_scope_fixture()
       story = story_fixture(scope)
-      title = Faker.Lorem.word()
+      title = random_word()
 
       update_attrs = %{
         status: :completed,

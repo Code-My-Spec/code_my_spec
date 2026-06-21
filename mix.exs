@@ -116,7 +116,6 @@ defmodule CodeMySpec.MixProject do
       {:mdex_mermaid, "~> 0.3"},
       {:floki, "~> 0.38"},
       {:yaml_elixir, "~> 2.11"},
-      {:faker, "~> 0.18", only: [:test]},
       {:dir_walker, "~> 0.0.8"},
       {:assent, "~> 0.3.1"},
       {:cloak_ecto, "~> 1.3.0"},
