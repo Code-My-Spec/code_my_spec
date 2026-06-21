@@ -28,7 +28,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
-  require Logger
 
   @doc """
   Read failing spex problems and build a fix prompt.

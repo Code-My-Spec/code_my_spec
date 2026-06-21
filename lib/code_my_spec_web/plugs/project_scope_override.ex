@@ -9,7 +9,6 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   """
 
   import Plug.Conn
-  require Logger
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects

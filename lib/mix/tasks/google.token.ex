@@ -36,6 +36,7 @@ defmodule Mix.Tasks.Google.Token do
       GOOGLE_RECORD=1 GOOGLE_REFRESH_TOKEN="1//0..." mix test test/code_my_spec/google/
   """
 
+  use Boundary, classify_to: CodeMySpec
   use Mix.Task
 
   @default_scope "email https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/analytics.readonly"
@@ -205,6 +206,7 @@ defmodule Mix.Tasks.Google.Token do
 
   defmodule CapturePlug do
     @moduledoc false
+    use Boundary, classify_to: CodeMySpec
     import Plug.Conn
 
     def init(opts), do: opts

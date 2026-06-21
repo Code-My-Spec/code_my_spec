@@ -24,7 +24,6 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   with instructions to continue.
   """
 
-  require Logger
 
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions

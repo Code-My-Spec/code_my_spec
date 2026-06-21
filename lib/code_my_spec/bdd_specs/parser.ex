@@ -7,7 +7,6 @@ defmodule CodeMySpec.BddSpecs.Parser do
   and steps populated. Does not execute specs - only extracts structure for analysis and rendering.
   """
 
-  require Logger
 
   alias CodeMySpec.BddSpecs.Scenario
   alias CodeMySpec.BddSpecs.Spec

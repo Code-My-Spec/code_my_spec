@@ -8,7 +8,6 @@ defmodule CodeMySpecLocalWeb.Plugs.WorkingDir do
   """
 
   import Plug.Conn
-  require Logger
 
   @behaviour Plug
 

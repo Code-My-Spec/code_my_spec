@@ -43,7 +43,6 @@ defmodule Mix.Tasks.ProdIssues.Pull do
   use Boundary, classify_to: CodeMySpec
   use Mix.Task
 
-  require Logger
 
   @prod_url "https://codemyspec.com"
   @token_path "~/.codemyspec/prod_token"

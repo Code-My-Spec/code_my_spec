@@ -14,7 +14,6 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
-  require Logger
 
 
   def dispatch(node) do

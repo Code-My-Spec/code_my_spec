@@ -8,7 +8,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
 
   use Anubis.Server.Component, type: :tool
 
-  require Logger
 
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.McpServers.Bootstrap.BootstrapMapper

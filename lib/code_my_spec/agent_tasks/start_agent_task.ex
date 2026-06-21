@@ -16,7 +16,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   Returns `{:ok, prompt}` on success or `{:error, reason}` on failure.
   """
 
-  require Logger
 
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Components

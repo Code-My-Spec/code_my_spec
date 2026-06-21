@@ -29,7 +29,6 @@ defmodule CodeMySpec.Google.Gsc do
   route `Req` through a `ReqCassette` plug.
   """
 
-  require Logger
 
   @base "https://searchconsole.googleapis.com"
   @webmasters @base <> "/webmasters/v3"

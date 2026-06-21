@@ -11,7 +11,6 @@ defmodule CodeMySpec.Components do
   }
 
   alias CodeMySpec.Users.Scope
-  require Logger
 
   @doc """
   Subscribes to scoped notifications about any component changes.

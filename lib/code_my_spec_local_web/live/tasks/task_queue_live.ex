@@ -16,7 +16,6 @@ defmodule CodeMySpecLocalWeb.Tasks.TaskQueueLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
-  require Logger
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.RequirementGraph

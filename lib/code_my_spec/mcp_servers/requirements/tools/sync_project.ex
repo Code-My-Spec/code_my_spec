@@ -9,7 +9,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
   use Anubis.Server.Component, type: :tool
 
-  require Logger
 
   alias Anubis.Server.Response
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync

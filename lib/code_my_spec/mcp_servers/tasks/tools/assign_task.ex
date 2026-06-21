@@ -11,7 +11,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignTask do
 
   use Anubis.Server.Component, type: :tool
 
-  require Logger
 
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators

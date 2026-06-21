@@ -38,7 +38,6 @@ defmodule Mix.Tasks.GenerateDemo do
   """
 
   use Mix.Task
-  require Logger
 
   @shortdoc "Generate demo contexts with router injection"
 
