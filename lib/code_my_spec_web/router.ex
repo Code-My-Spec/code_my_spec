@@ -249,6 +249,9 @@ defmodule CodeMySpecWeb.Router do
       live "/issues/:id", IssuesLive.Show, :show
 
       live "/users", ProjectUsersLive.Index, :index
+
+      live "/inbox", InboxLive, :index
+      live "/inbox/:id", InboxLive, :show
     end
 
     post "/users/update-password", UserSessionController, :update_password

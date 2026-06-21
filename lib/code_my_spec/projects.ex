@@ -159,6 +159,18 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
+  Looks up a project by its deploy key via the deterministic hash blind index.
+  Lets the chat widget authenticate with only the deploy key — no project id.
+  """
+  @spec get_project_by_deploy_key(String.t()) :: Project.t() | nil
+  def get_project_by_deploy_key(deploy_key) when is_binary(deploy_key) do
+    case Project.hash_deploy_key(deploy_key) do
+      nil -> nil
+      hash -> Repo.get_by(Project, deploy_key_hash: hash)
+    end
+  end
+
+  @doc """
   Returns the distinct `account_id` for every project that has a
   `local_path` set. Used by `CodeMySpecLocalWeb.SocketSupervisor` at
   boot to start one socket per local-tracked account.

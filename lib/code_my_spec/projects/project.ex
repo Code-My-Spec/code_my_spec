@@ -43,6 +43,11 @@ defmodule CodeMySpec.Projects.Project do
     field :docs_repo, :string
     field :client_api_url, :string
     field :deploy_key, CodeMySpec.Encrypted.Binary
+    # Deterministic SHA-256 of the deploy key (the encrypted column can't be
+    # searched), letting the widget authenticate with only the key — no
+    # project id. Deploy keys are 64 bytes of random, so an unsalted hash is
+    # safe from brute force.
+    field :deploy_key_hash, :string
     field :google_analytics_property_id, :string
     field :setup_error, :string
     field :local_path, :string
@@ -93,6 +98,24 @@ defmodule CodeMySpec.Projects.Project do
     )
     |> validate_client_api_url()
     |> put_change(:account_id, user_scope.active_account_id)
+    |> put_deploy_key_hash()
+  end
+
+  @doc """
+  Deterministic hash of a deploy key, used as a blind index so a project can be
+  looked up by its (encrypted-at-rest) deploy key. Returns nil for a blank key.
+  """
+  def hash_deploy_key(key) when is_binary(key) and key != "" do
+    :crypto.hash(:sha256, key) |> Base.encode16(case: :lower)
+  end
+
+  def hash_deploy_key(_), do: nil
+
+  defp put_deploy_key_hash(changeset) do
+    case fetch_change(changeset, :deploy_key) do
+      {:ok, key} -> put_change(changeset, :deploy_key_hash, hash_deploy_key(key))
+      :error -> changeset
+    end
   end
 
   @doc """
