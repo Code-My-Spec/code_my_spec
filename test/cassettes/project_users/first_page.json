@@ -1,0 +1,30 @@
+{
+  "version": "2.0",
+  "interactions": [
+    {
+      "recorded_at": "2026-06-21T00:00:00Z",
+      "request": {
+        "method": "GET",
+        "uri": "https://dev.get-ai-traffic.com/api/cms/users",
+        "query_string": "page=1&page_size=10",
+        "headers": {
+          "authorization": [
+            "Bearer <REDACTED>"
+          ]
+        },
+        "body_type": "text",
+        "body": ""
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": [
+            "application/json; charset=utf-8"
+          ]
+        },
+        "body_type": "text",
+        "body": "{\"data\":[{\"email\":\"qa@example.com\",\"registered_at\":\"2026-06-06T18:57:10Z\"},{\"email\":\"qa-member@example.com\",\"registered_at\":\"2026-06-06T18:57:10Z\"},{\"email\":\"qa-second@example.com\",\"registered_at\":\"2026-06-06T20:58:44Z\"},{\"email\":\"other-qa@example.com\",\"registered_at\":\"2026-06-06T21:30:45Z\"},{\"email\":\"cff@example.com\",\"registered_at\":\"2026-06-07T03:29:24Z\"},{\"email\":\"johns10@gmail.com\",\"registered_at\":\"2026-06-07T03:51:24Z\"},{\"email\":\"qa-onboard-756@example.com\",\"registered_at\":\"2026-06-09T15:16:39Z\"},{\"email\":\"qa-test-stripe-20260616@example.com\",\"registered_at\":\"2026-06-16T20:25:39Z\"},{\"email\":\"johns10davenport@gmail.com\",\"registered_at\":\"2026-06-17T19:06:06Z\"},{\"email\":\"johns10davenport+1234@gmail.com\",\"registered_at\":\"2026-06-17T20:41:21Z\"}],\"total\":24,\"page\":1,\"page_size\":10}"
+      }
+    }
+  ]
+}

@@ -55,4 +55,7 @@ config :code_my_spec,
   git_impl_module: CodeMySpec.Support.TestAdapter,
   environment: CodeMySpec.Support.RecordingEnvironment,
   embeddings_backend: CodeMySpec.Embeddings.TestBackend,
-  issues_remote_client: CodeMySpec.Issues.RemoteClientStub
+  issues_remote_client: CodeMySpec.Issues.RemoteClientStub,
+  # Route ProjectUsers' outbound Req through Req.Test so specs/tests can stub
+  # the target app's users endpoint without hitting the network.
+  project_users_req_plug: {Req.Test, CodeMySpec.ProjectUsers}

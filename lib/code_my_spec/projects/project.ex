@@ -91,7 +91,7 @@ defmodule CodeMySpec.Projects.Project do
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,
       message: "must be a valid Elixir module name"
     )
-    |> maybe_validate_url(:client_api_url)
+    |> validate_client_api_url()
     |> put_change(:account_id, user_scope.active_account_id)
   end
 
@@ -119,16 +119,13 @@ defmodule CodeMySpec.Projects.Project do
     |> validate_required([:id, :name, :account_id])
   end
 
-  defp maybe_validate_url(changeset, field) do
-    case get_field(changeset, field) do
-      nil ->
-        changeset
-
-      "" ->
-        changeset
-
-      _url ->
-        validate_format(changeset, field, ~r/^https?:\/\/.+/, message: "must be a valid URL")
+  # The client API URL carries the deploy key (and, through it, the target app's
+  # user PII) — so it must be https, never plaintext http.
+  defp validate_client_api_url(changeset) do
+    case get_field(changeset, :client_api_url) do
+      nil -> changeset
+      "" -> changeset
+      _url -> validate_format(changeset, :client_api_url, ~r/^https:\/\/.+/, message: "must use https")
     end
   end
 end
