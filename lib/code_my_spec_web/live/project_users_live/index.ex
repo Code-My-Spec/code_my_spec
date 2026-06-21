@@ -8,7 +8,6 @@ defmodule CodeMySpecWeb.ProjectUsersLive.Index do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.ProjectUsers
-  alias CodeMySpec.Projects
 
   @impl true
   def render(assigns) do
@@ -89,8 +88,8 @@ defmodule CodeMySpecWeb.ProjectUsersLive.Index do
   end
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
-    project = Projects.get_project!(socket.assigns.current_scope, id)
+  def mount(_params, _session, socket) do
+    project = socket.assigns.current_scope.active_project
 
     {:ok,
      socket

@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story814.Criterion6566Spex do
       end
 
       when_ "Sam opens the Users view", context do
-        {:ok, _view, html} = live(context.conn, "/app/projects/#{context.project.id}/users")
+        {:ok, _view, html} = live(context.conn, "/app/users")
         {:ok, Map.put(context, :html, html)}
       end
 

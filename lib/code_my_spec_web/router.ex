@@ -163,6 +163,14 @@ defmodule CodeMySpecWeb.Router do
     post "/sync", ContentSyncController, :sync
   end
 
+  # Registered-users endpoint — CodeMySpec dogfoods its own ProjectUsers feature
+  # by exposing its users (deploy-key Bearer auth, same as content sync).
+  scope "/api/cms", CodeMySpecWeb do
+    pipe_through :api
+
+    get "/users", CmsUsersController, :index
+  end
+
   # (analytics/event route removed — browser events fire via gtag.js directly)
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
@@ -217,7 +225,6 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/new", ProjectLive.Form, :new
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
-      live "/projects/:id/users", ProjectUsersLive.Index, :index
     end
 
     live_session :require_active_project,
@@ -234,6 +241,8 @@ defmodule CodeMySpecWeb.Router do
 
       live "/issues", IssuesLive.Index, :index
       live "/issues/:id", IssuesLive.Show, :show
+
+      live "/users", ProjectUsersLive.Index, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password

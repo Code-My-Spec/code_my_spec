@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story814.Criterion6562Spex do
       end
 
       when_ "CodeMySpec requests the user list from the target app", context do
-        {:ok, _view, _html} = live(context.conn, "/app/projects/#{context.project.id}/users")
+        {:ok, _view, _html} = live(context.conn, "/app/users")
         {:ok, context}
       end
 
