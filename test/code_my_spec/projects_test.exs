@@ -19,6 +19,28 @@ defmodule CodeMySpec.ProjectsTest do
       setup_error: nil
     }
 
+    test "deploy_key is encrypted at rest" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      plaintext = "plaintext-deploy-key-secret"
+      project = project_fixture(scope, %{deploy_key: plaintext})
+
+      %{rows: [[stored]]} =
+        CodeMySpec.Repo.query!("SELECT deploy_key FROM projects WHERE id = $1", [
+          Ecto.UUID.dump!(project.id)
+        ])
+
+      assert is_binary(stored)
+
+      assert :binary.match(stored, plaintext) == :nomatch,
+             "deploy_key must be stored as ciphertext, not plaintext"
+
+      # Reading back through the schema decrypts transparently.
+      assert Projects.get_project!(scope, project.id).deploy_key == plaintext
+    end
+
     test "list_projects/1 returns all scoped projects" do
       user = user_fixture()
       other_user = user_fixture()

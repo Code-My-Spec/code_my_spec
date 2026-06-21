@@ -42,7 +42,7 @@ defmodule CodeMySpec.Projects.Project do
     field :code_repo, :string
     field :docs_repo, :string
     field :client_api_url, :string
-    field :deploy_key, :string
+    field :deploy_key, CodeMySpec.Encrypted.Binary
     field :google_analytics_property_id, :string
     field :setup_error, :string
     field :local_path, :string
