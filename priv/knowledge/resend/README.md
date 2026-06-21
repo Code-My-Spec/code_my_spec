@@ -10,6 +10,7 @@ How to find the right file when working with email in this project.
 | Calling the Resend REST API directly (not via Swoosh) | `api.md` |
 | Sending transactional email from Elixir, writing email modules, testing | `swoosh.md` |
 | Receiving delivery events, bounce notifications, open/click tracking | `webhooks.md` |
+| Receiving inbound email on your own domain (mailboxes, threading, querying history) | `receiving.md` |
 | Using Resend-hosted templates with variable substitution | `templates.md` |
 | Debugging send failures, 422 errors, rate limits, test-mode quirks | `gotchas.md` |
 | DNS setup and domain verification | `../devops/cloudflare-resend-email-setup.md` |
