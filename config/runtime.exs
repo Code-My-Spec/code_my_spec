@@ -176,6 +176,10 @@ end
 config :code_my_spec, CodeMySpec.Mail.ResendClient,
   api_key: env!("RESEND_API_KEY", :string, "")
 
+# Svix signing secret for the inbound Resend webhook (`whsec_…`). When unset
+# (e.g. tests, dev without inbound) signature verification is skipped.
+config :code_my_spec, :resend_webhook_secret, env!("RESEND_WEBHOOK_SECRET", :string, "")
+
 # GA4 Measurement Protocol — server-side delivery of activation events.
 # Applies to dev + prod (test overrides http_adapter to a no-op so unit
 # tests can't accidentally POST to real GA). measurement_id + api_secret
