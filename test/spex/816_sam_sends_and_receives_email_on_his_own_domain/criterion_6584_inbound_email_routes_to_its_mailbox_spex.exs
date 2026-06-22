@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6584Spex do
   Surfaces (forward-looking — red until built):
     * Inbound provider webhook at "/webhooks/resend" — an `email.received`
       event is routed by its To-address to the matching mailbox and persisted.
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — the operator opens the
+    * `CodeMySpecWeb.MailLive` at "/app/mail" — the operator opens the
       mailbox and sees the received email.
   """
 
@@ -27,12 +27,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6584Spex do
     scenario "Inbound email routes to its mailbox" do
       given_ "a verified domain with a support mailbox", context do
         Fixtures.verify_project_domain(context.project, @domain)
-
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
-
-        view
-        |> form("[data-test='new-mailbox-form']", mailbox: %{address: "support@#{@domain}"})
-        |> render_submit()
+        Fixtures.mailbox_fixture(context.project, %{address: "support@#{@domain}"})
 
         {:ok, context}
       end
@@ -55,7 +50,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6584Spex do
       end
 
       then_ "the email appears in the support mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/mail")
 
         {:ok, _show_view, thread_html} =
           view

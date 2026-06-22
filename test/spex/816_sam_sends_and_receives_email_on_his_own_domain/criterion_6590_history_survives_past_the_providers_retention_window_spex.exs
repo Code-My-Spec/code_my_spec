@@ -6,10 +6,10 @@ defmodule CodeMySpecSpex.Story816.Criterion6590Spex do
   Rule: A mailbox retains its full email history independent of the
   provider's retention window.
 
-  Surface (forward-looking — red until built):
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — an email persisted
-      longer ago than the provider's (~30-day) retention window is still
-      shown, because CMS persists its own copy.
+  Surface:
+    * `CodeMySpecWeb.MailLive` at "/app/mail" — an email persisted longer ago
+      than the provider's (~30-day) retention window is still shown, because
+      CMS persists its own copy.
   """
 
   use CodeMySpecSpex.Case
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6590Spex do
       end
 
       when_ "Sam opens the mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/mail")
 
         {:ok, _show_view, thread_html} =
           view

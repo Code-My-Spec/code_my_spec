@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6589Spex do
   Surfaces (forward-looking — red until built):
     * Inbound webhook "/webhooks/resend" delivers two emails from the same
       correspondent to the same mailbox.
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — both show in one
+    * `CodeMySpecWeb.MailLive` at "/app/mail" — both show in one
       per-correspondent thread.
   """
 
@@ -27,12 +27,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6589Spex do
     scenario "Replies thread with the original" do
       given_ "an inbound email from a correspondent in the support mailbox", context do
         Fixtures.verify_project_domain(context.project, @domain)
-
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
-
-        view
-        |> form("[data-test='new-mailbox-form']", mailbox: %{address: "support@#{@domain}"})
-        |> render_submit()
+        Fixtures.mailbox_fixture(context.project, %{address: "support@#{@domain}"})
 
         Phoenix.ConnTest.build_conn()
         |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -69,7 +64,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6589Spex do
       end
 
       then_ "both messages appear in one continuous thread", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/mail")
 
         {:ok, _show_view, thread_html} =
           view

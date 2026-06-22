@@ -6,10 +6,10 @@ defmodule CodeMySpecSpex.Story816.Criterion6581Spex do
   Rule: A project must have a verified domain before its mailboxes can
   send or receive email.
 
-  Surface (forward-looking — red until built):
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — when the project's
-      domain is not yet verified, the mail surface gates sending/receiving
-      behind verification rather than letting mail flow.
+  Surface:
+    * `CodeMySpecWeb.MailLive` at "/app/mail" — when the project's domain is
+      not yet verified, the mail inbox gates sending/receiving behind
+      verification rather than letting mail flow.
   """
 
   use CodeMySpecSpex.Case
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6581Spex do
       end
 
       when_ "Sam opens the mail surface", context do
-        {:ok, view, html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, html} = live(context.conn, "/app/mail")
 
         {:ok, Map.merge(context, %{view: view, html: html})}
       end

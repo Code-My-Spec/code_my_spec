@@ -6,10 +6,10 @@ defmodule CodeMySpecSpex.Story816.Criterion6586Spex do
   Rule: A member sees the project's shared mailboxes plus any mailbox
   assigned to them.
 
-  Surface (forward-looking — red until built):
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — scoped to the current
-      member: shared mailboxes plus the member's own assigned mailbox, never
-      another member's assigned mailbox.
+  Surface:
+    * `CodeMySpecWeb.MailLive` at "/app/mail" — the inbox sidebar is scoped to
+      the current member: shared mailboxes plus the member's own assigned
+      mailbox, never another member's assigned mailbox.
   """
 
   use CodeMySpecSpex.Case
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6586Spex do
       end
 
       when_ "the member opens the mail surface", context do
-        {:ok, _view, html} = live(context.alice_conn, "/app/mailboxes")
+        {:ok, _view, html} = live(context.alice_conn, "/app/mail")
 
         {:ok, Map.put(context, :html, html)}
       end

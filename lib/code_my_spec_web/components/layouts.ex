@@ -125,7 +125,8 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/content_admin"}>Content</a></li>
               <li><a href={~p"/app/users"}>Users</a></li>
               <li><a href={~p"/app/inbox"}>Chats</a></li>
-              <li><a href={~p"/app/mailboxes"}>Mail</a></li>
+              <li><a href={~p"/app/mail"}>Mail</a></li>
+              <li :if={can_manage_mailboxes?(@current_scope)}><a href={~p"/app/mailboxes"}>Mailboxes</a></li>
               <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
               <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <% end %>
@@ -162,6 +163,14 @@ defmodule CodeMySpecWeb.Layouts do
        do: true
 
   defp onboarding_complete?(_), do: false
+
+  # Only owners/admins administer mailboxes, so the Mailboxes nav item is
+  # theirs alone. Guarded on an active account so it never raises for a
+  # half-onboarded scope.
+  defp can_manage_mailboxes?(%{active_account_id: account_id} = scope) when is_binary(account_id),
+    do: CodeMySpec.Mail.can_administer?(scope)
+
+  defp can_manage_mailboxes?(_), do: false
 
   @doc """
   Shows the flash group with standard titles and content.

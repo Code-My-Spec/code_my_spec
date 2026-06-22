@@ -6,8 +6,8 @@ defmodule CodeMySpecSpex.Story816.Criterion6587Spex do
   Rule: Account owners and admins see all of the project's mailboxes.
 
   Surface (forward-looking — red until built):
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — for an account owner,
-      the list shows every mailbox regardless of assignment.
+    * `CodeMySpecWeb.MailLive` at "/app/mail" — for an account owner, the inbox
+      sidebar shows every mailbox regardless of assignment.
   """
 
   use CodeMySpecSpex.Case
@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6587Spex do
       end
 
       when_ "the account owner opens the mail surface", context do
-        {:ok, _view, html} = live(context.conn, "/app/mailboxes")
+        {:ok, _view, html} = live(context.conn, "/app/mail")
 
         {:ok, Map.put(context, :html, html)}
       end

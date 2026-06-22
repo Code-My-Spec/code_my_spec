@@ -248,13 +248,30 @@ defmodule CodeMySpec.Mail do
     )
   end
 
-  @doc "Emails grouped into per-correspondent threads."
+  @doc """
+  Emails grouped into per-correspondent threads, most-recently-active first.
+  Each thread carries its `emails` (oldest-first), the `subject` of its latest
+  message, and `last_at` (the latest message's timestamp).
+  """
   def list_threads(%Mailbox{} = mailbox) do
     mailbox
     |> list_emails()
     |> Enum.group_by(& &1.correspondent)
-    |> Enum.map(fn {correspondent, emails} -> %{correspondent: correspondent, emails: emails} end)
+    |> Enum.map(fn {correspondent, emails} ->
+      latest = List.last(emails)
+
+      %{
+        correspondent: correspondent,
+        emails: emails,
+        subject: latest && latest.subject,
+        last_at: latest && latest.inserted_at
+      }
+    end)
+    |> Enum.sort_by(& &1.last_at, {:desc, DateTime})
   end
+
+  @doc "True when the scope's user may create and administer mailboxes (owner/admin)."
+  def can_administer?(%Scope{} = scope), do: owner_or_admin?(scope)
 
   # --- private ---
 

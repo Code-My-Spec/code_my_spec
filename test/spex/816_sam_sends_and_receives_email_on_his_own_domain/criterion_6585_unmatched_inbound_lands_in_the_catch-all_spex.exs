@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6585Spex do
     * Inbound provider webhook at "/webhooks/resend" — an `email.received`
       event addressed to an address with no specific mailbox is routed to the
       project's catch-all mailbox.
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes".
+    * `CodeMySpecWeb.MailLive` at "/app/mail".
   """
 
   use CodeMySpecSpex.Case
@@ -28,14 +28,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6585Spex do
     scenario "Unmatched inbound lands in the catch-all" do
       given_ "a catch-all mailbox and no mailbox for the target address", context do
         Fixtures.verify_project_domain(context.project, @domain)
-
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
-
-        view
-        |> form("[data-test='new-mailbox-form']",
-          mailbox: %{address: "inbox@#{@domain}", catch_all: "true"}
-        )
-        |> render_submit()
+        Fixtures.mailbox_fixture(context.project, %{address: "inbox@#{@domain}", catch_all: true})
 
         {:ok, context}
       end
@@ -58,7 +51,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6585Spex do
       end
 
       then_ "the email appears in the catch-all mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/mail")
 
         {:ok, _show_view, thread_html} =
           view

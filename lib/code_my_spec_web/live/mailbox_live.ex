@@ -1,15 +1,13 @@
 defmodule CodeMySpecWeb.MailboxLive do
   @moduledoc """
-  The operator's mail surface for a project's verified domain. `:index` lists
-  the mailboxes the current member may see (role-scoped) and offers a
-  new-mailbox form; `:show` opens one mailbox as per-correspondent threads the
-  operator can compose into or reply from.
+  Mailbox administration for a project — **owners and admins only**. Here an
+  operator sets up the project's sending domain (register → publish DNS →
+  verify) and creates/administers the mailboxes (assigned to a user, or shared,
+  or the catch-all). Reading and sending mail lives on the separate Mail inbox
+  (`CodeMySpecWeb.MailLive`); this surface is purely administrative.
 
-  Mail only flows on a verified domain: until the project's sending domain is
-  verified, the index shows a verification notice and no compose surface.
-
-  Styling mirrors the vetted `CodeMySpecWeb.InboxLive` patterns (table index,
-  chat-bubble threads), rendered in CodeMySpec's own DaisyUI theme.
+  Members are redirected to the inbox — they use mailboxes, they don't manage
+  them.
   """
 
   use CodeMySpecWeb, :live_view
@@ -20,78 +18,46 @@ defmodule CodeMySpecWeb.MailboxLive do
   @impl true
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
-    project = scope.active_project
 
-    {:ok,
-     socket
-     |> assign(:project, project)
-     |> assign(:domain_verified?, Project.domain_verified?(project))
-     |> assign(:domain, project && project.domain)
-     |> assign(:assignable_users, assignable_users(scope))
-     |> assign(:mailbox, nil)
-     |> assign(:threads, [])
-     |> assign(:dns_records, [])
-     |> assign(:domain_status, nil)
-     |> assign(:domain_error, nil)
-     |> assign(:mailboxes, Mail.list_mailboxes(scope))
-     |> maybe_load_domain_state()}
+    if Mail.can_administer?(scope) do
+      project = scope.active_project
+
+      {:ok,
+       socket
+       |> assign(:page_title, "Mailboxes")
+       |> assign(:project, project)
+       |> assign(:domain_verified?, Project.domain_verified?(project))
+       |> assign(:domain, project && project.domain)
+       |> assign(:assignable_users, assignable_users(scope))
+       |> assign(:dns_records, [])
+       |> assign(:domain_status, nil)
+       |> assign(:domain_error, nil)
+       |> assign(:mailboxes, Mail.list_mailboxes(scope))
+       |> maybe_load_domain_state()}
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "Only account owners and admins can administer mailboxes.")
+       |> redirect(to: ~p"/app/mail")}
+    end
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :show}} = socket) do
-    mailbox = Mail.get_mailbox(socket.assigns.current_scope, id)
-
-    {:noreply,
-     socket
-     |> assign(:mailbox, mailbox)
-     |> assign(:page_title, mailbox && mailbox.address)
-     |> load_threads()}
-  end
-
-  def handle_params(_params, _uri, socket) do
-    {:noreply,
-     socket
-     |> assign(:mailbox, nil)
-     |> assign(:page_title, "Mailboxes")
-     |> assign(:mailboxes, Mail.list_mailboxes(socket.assigns.current_scope))}
-  end
-
-  @impl true
-  def handle_event("open_mailbox", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/app/mailboxes/#{id}")}
-  end
-
   def handle_event("create_mailbox", %{"mailbox" => params}, socket) do
     scope = socket.assigns.current_scope
 
     socket =
       case Mail.create_mailbox(scope, params) do
         {:ok, _mailbox} ->
-          assign(socket, :mailboxes, Mail.list_mailboxes(scope))
+          socket
+          |> assign(:mailboxes, Mail.list_mailboxes(scope))
+          |> put_flash(:info, "Mailbox created.")
 
         {:error, _changeset} ->
-          put_flash(socket, :error, "Could not create mailbox")
+          put_flash(socket, :error, "Could not create mailbox — check the address.")
       end
 
     {:noreply, socket}
-  end
-
-  def handle_event("compose", %{"email" => %{"to" => to, "subject" => subject, "body" => body}}, socket) do
-    {:ok, _email} =
-      Mail.send_outbound(socket.assigns.mailbox, %{to: to, subject: subject, body: body})
-
-    {:noreply, load_threads(socket)}
-  end
-
-  def handle_event("reply", %{"email" => %{"to" => to, "body" => body}}, socket) do
-    {:ok, _email} =
-      Mail.send_outbound(socket.assigns.mailbox, %{
-        to: to,
-        subject: "Re:",
-        body: body
-      })
-
-    {:noreply, load_threads(socket)}
   end
 
   def handle_event("setup_domain", %{"project" => %{"domain" => domain}}, socket) do
@@ -103,8 +69,9 @@ defmodule CodeMySpecWeb.MailboxLive do
          socket
          |> assign(:project, project)
          |> assign(:domain, project.domain)
+         |> assign(:domain_verified?, Project.domain_verified?(project))
          |> assign(:dns_records, records)
-         |> assign(:domain_status, "pending")
+         |> assign(:domain_status, if(Project.domain_verified?(project), do: "verified", else: "pending"))
          |> assign(:domain_error, nil)
          |> put_flash(:info, "Domain added — publish the DNS records below, then verify.")}
 
@@ -123,17 +90,13 @@ defmodule CodeMySpecWeb.MailboxLive do
          |> assign(:project, project)
          |> assign(:domain_verified?, true)
          |> assign(:domain_error, nil)
-         |> assign(:mailboxes, Mail.list_mailboxes(scope))
          |> put_flash(:info, "Domain verified — mail is now enabled.")}
 
       {:ok, _project, status} ->
         {:noreply,
          socket
          |> assign(:domain_status, status)
-         |> put_flash(
-           :error,
-           "Domain not verified yet (status: #{status}). Add the DNS records and try again."
-         )}
+         |> put_flash(:error, "Domain not verified yet (status: #{status}). Add the DNS records and try again.")}
 
       {:error, reason} ->
         {:noreply, assign(socket, :domain_error, domain_error_message(reason))}
@@ -180,12 +143,6 @@ defmodule CodeMySpecWeb.MailboxLive do
   defp resend_message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
   defp resend_message(_body), do: nil
 
-  defp load_threads(%{assigns: %{mailbox: nil}} = socket), do: assign(socket, :threads, [])
-
-  defp load_threads(%{assigns: %{mailbox: mailbox}} = socket) do
-    assign(socket, :threads, Mail.list_threads(mailbox))
-  end
-
   defp assignable_users(scope) do
     scope
     |> Accounts.list_account_members(scope.active_account_id)
@@ -193,21 +150,24 @@ defmodule CodeMySpecWeb.MailboxLive do
     |> Enum.reject(&is_nil/1)
   end
 
+  defp assigned_label(%{user: %{email: email}}) when is_binary(email), do: email
+  defp assigned_label(_mailbox), do: "Shared"
+
   # -- Render -----------------------------------------------------------------
 
   @impl true
-  def render(%{live_action: :show} = assigns), do: render_show(assigns)
-  def render(assigns), do: render_index(assigns)
-
-  defp render_index(assigns) do
+  def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="mx-auto w-full max-w-4xl">
         <header class="flex items-center justify-between gap-3 pb-4">
           <h1 class="text-2xl font-semibold">Mailboxes</h1>
+          <.link navigate={~p"/app/mail"} class="btn btn-ghost btn-sm">
+            <.icon name="hero-envelope" class="size-4" /> Go to Mail
+          </.link>
         </header>
 
-        <div :if={not @domain_verified?} data-test="domain-setup" class="space-y-4">
+        <section :if={not @domain_verified?} data-test="domain-setup" class="space-y-4">
           <div data-test="verify-notice" class="alert alert-warning">
             <.icon name="hero-exclamation-triangle" class="size-5" />
             <span>Verify your sending domain before mail can be sent or received.</span>
@@ -276,9 +236,9 @@ defmodule CodeMySpecWeb.MailboxLive do
               Verify domain
             </button>
           </div>
-        </div>
+        </section>
 
-        <div :if={@domain_verified?}>
+        <section :if={@domain_verified?}>
           <form
             phx-submit="create_mailbox"
             data-test="new-mailbox-form"
@@ -322,13 +282,7 @@ defmodule CodeMySpecWeb.MailboxLive do
                 <tr :if={@mailboxes == []} data-test="mailboxes-empty">
                   <td colspan="2" class="text-center opacity-60">No mailboxes yet</td>
                 </tr>
-                <tr
-                  :for={mailbox <- @mailboxes}
-                  data-test="mailbox"
-                  phx-click="open_mailbox"
-                  phx-value-id={mailbox.id}
-                  class="cursor-pointer hover"
-                >
+                <tr :for={mailbox <- @mailboxes} data-test="mailbox">
                   <td class="break-all font-medium">
                     {mailbox.address}
                     <span :if={mailbox.catch_all} class="badge badge-ghost badge-sm">catch-all</span>
@@ -338,95 +292,9 @@ defmodule CodeMySpecWeb.MailboxLive do
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
       </div>
     </Layouts.app>
     """
   end
-
-  defp render_show(assigns) do
-    ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto w-full max-w-3xl">
-        <header class="flex items-center gap-2 border-b border-base-300 pb-3">
-          <.link navigate={~p"/app/mailboxes"} data-test="back-to-mailboxes" class="btn btn-ghost btn-xs">
-            <.icon name="hero-arrow-left" class="size-4" /> Mailboxes
-          </.link>
-          <h1 class="truncate text-lg font-semibold">{@mailbox && @mailbox.address}</h1>
-        </header>
-
-        <div :if={@domain_verified? && @mailbox} class="space-y-6 py-4">
-          <section data-test="compose" class="rounded-box bg-base-200 p-4">
-            <h2 class="mb-2 font-semibold">New email</h2>
-            <form phx-submit="compose" data-test="compose-form" class="flex flex-col gap-2">
-              <input
-                type="text"
-                name="email[to]"
-                placeholder="recipient@example.com"
-                class="input input-bordered input-sm"
-              />
-              <input
-                type="text"
-                name="email[subject]"
-                placeholder="Subject"
-                class="input input-bordered input-sm"
-              />
-              <textarea name="email[body]" placeholder="Message" class="textarea textarea-bordered"></textarea>
-              <button type="submit" class="btn btn-primary btn-sm self-start">Send from {@mailbox.address}</button>
-            </form>
-          </section>
-
-          <section
-            :for={thread <- @threads}
-            data-test="thread"
-            data-correspondent={thread.correspondent}
-            class="rounded-box border border-base-300 p-4"
-          >
-            <h3 class="mb-3 font-medium opacity-70">{thread.correspondent}</h3>
-
-            <div class="space-y-2">
-              <div
-                :for={email <- thread.emails}
-                data-test="email"
-                data-direction={email.direction}
-                class={["chat", chat_side(email.direction)]}
-              >
-                <div class="chat-header text-xs opacity-60">
-                  {email.from_address}
-                  <span :if={email.subject} class="font-medium">· {email.subject}</span>
-                </div>
-                <div class={["chat-bubble whitespace-pre-wrap break-words", chat_bubble(email.direction)]}>
-                  {email.body_text}
-                </div>
-              </div>
-            </div>
-
-            <form phx-submit="reply" data-test="reply-form" class="mt-3 flex gap-2">
-              <input type="hidden" name="email[to]" value={thread.correspondent} />
-              <input
-                type="text"
-                name="email[body]"
-                placeholder={"Reply from #{@mailbox.address}"}
-                autocomplete="off"
-                class="input input-bordered input-sm flex-1"
-              />
-              <button type="submit" class="btn btn-primary btn-sm">Reply</button>
-            </form>
-          </section>
-        </div>
-      </div>
-    </Layouts.app>
-    """
-  end
-
-  # -- Helpers ----------------------------------------------------------------
-
-  defp assigned_label(%{user: %{email: email}}) when is_binary(email), do: email
-  defp assigned_label(_mailbox), do: "Shared"
-
-  defp chat_side(:outbound), do: "chat-end"
-  defp chat_side(_direction), do: "chat-start"
-
-  defp chat_bubble(:outbound), do: "chat-bubble-primary"
-  defp chat_bubble(_direction), do: "bg-base-200 text-base-content"
 end

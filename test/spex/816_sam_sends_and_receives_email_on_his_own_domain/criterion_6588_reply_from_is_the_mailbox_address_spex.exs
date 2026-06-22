@@ -7,8 +7,8 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
 
   Surfaces (forward-looking — red until built):
     * Inbound webhook "/webhooks/resend" seeds a received email.
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — replying from the
-      mailbox sends with the mailbox address as the From.
+    * `CodeMySpecWeb.MailLive` at "/app/mail" — replying from the mailbox
+      sends with the mailbox address as the From.
   """
 
   use CodeMySpecSpex.Case
@@ -26,12 +26,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
     scenario "Reply From is the mailbox address" do
       given_ "an email received in the support mailbox", context do
         Fixtures.verify_project_domain(context.project, @domain)
-
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
-
-        view
-        |> form("[data-test='new-mailbox-form']", mailbox: %{address: "support@#{@domain}"})
-        |> render_submit()
+        Fixtures.mailbox_fixture(context.project, %{address: "support@#{@domain}"})
 
         Phoenix.ConnTest.build_conn()
         |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -50,7 +45,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
       end
 
       when_ "Sam replies from the support mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/mail")
 
         {:ok, show_view, _html} =
           view
