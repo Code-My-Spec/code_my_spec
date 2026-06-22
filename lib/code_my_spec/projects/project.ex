@@ -59,6 +59,9 @@ defmodule CodeMySpec.Projects.Project do
     # mailboxes can only send/receive on a verified domain.
     field :domain, :string
     field :domain_verified_at, :utc_datetime
+    # Resend's domain id, captured when the domain is registered with the
+    # provider; used to fetch DNS records and trigger verification.
+    field :resend_domain_id, :string
 
     belongs_to :oauth_application, CodeMySpec.Oauth.Application, type: :id
 
@@ -98,7 +101,8 @@ defmodule CodeMySpec.Projects.Project do
       :client_user_id,
       :oauth_application_id,
       :domain,
-      :domain_verified_at
+      :domain_verified_at,
+      :resend_domain_id
     ])
     |> validate_required([:name])
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,

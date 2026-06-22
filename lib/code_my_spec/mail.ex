@@ -17,8 +17,9 @@ defmodule CodeMySpec.Mail do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Mail.{Mailbox, Email}
+  alias CodeMySpec.Mail.{Mailbox, Email, ResendClient}
   alias CodeMySpec.Users.Scope
 
   # --- Mailboxes ---
@@ -47,6 +48,68 @@ defmodule CodeMySpec.Mail do
   end
 
   def get_project_by_domain(_), do: nil
+
+  # --- Domain onboarding (Resend) ---
+
+  @doc """
+  Register the project's sending domain with Resend and persist the domain name
+  plus Resend's domain id. Returns `{:ok, project, records}` where `records` are
+  the DNS records the operator must publish, or `{:error, reason}`.
+  """
+  def setup_domain(%Scope{} = scope, %Project{} = project, domain_name)
+      when is_binary(domain_name) do
+    domain_name = String.trim(domain_name)
+
+    with {:ok, body} <- ResendClient.create_domain(domain_name),
+         {:ok, project} <-
+           Projects.update_project(scope, project, %{
+             domain: domain_name,
+             resend_domain_id: body["id"],
+             domain_verified_at: nil
+           }) do
+      {:ok, project, records(body)}
+    end
+  end
+
+  @doc """
+  Read the current DNS records and provider status for the project's domain.
+  Returns `{:ok, records, status}` or `{:error, reason}`.
+  """
+  def domain_dns_records(%Project{resend_domain_id: id}) when is_binary(id) do
+    case ResendClient.get_domain(id) do
+      {:ok, body} -> {:ok, records(body), body["status"]}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def domain_dns_records(_project), do: {:error, :no_domain}
+
+  @doc """
+  Ask Resend to (re-)verify the project's domain. When Resend reports the domain
+  as `"verified"`, stamps `domain_verified_at` so mail can flow. Returns
+  `{:ok, project, status}` (status is `:verified` or the provider's raw status)
+  or `{:error, reason}`.
+  """
+  def verify_domain(%Scope{} = scope, %Project{resend_domain_id: id} = project)
+      when is_binary(id) do
+    with {:ok, _} <- ResendClient.verify_domain(id),
+         {:ok, body} <- ResendClient.get_domain(id) do
+      case body["status"] do
+        "verified" ->
+          now = DateTime.utc_now() |> DateTime.truncate(:second)
+          {:ok, project} = Projects.update_project(scope, project, %{domain_verified_at: now})
+          {:ok, project, :verified}
+
+        status ->
+          {:ok, project, status}
+      end
+    end
+  end
+
+  def verify_domain(_scope, _project), do: {:error, :no_domain}
+
+  defp records(%{"records" => records}) when is_list(records), do: records
+  defp records(_body), do: []
 
   def get_mailbox(%Scope{} = scope, id) do
     Repo.get_by(Mailbox, id: id, project_id: scope.active_project_id)
