@@ -151,7 +151,7 @@ defmodule CodeMySpecWeb.MailLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto w-full max-w-6xl">
+      <div class="w-full">
         <header class="flex items-center justify-between gap-3 pb-4">
           <h1 class="text-2xl font-semibold">Mail</h1>
           <.link :if={@can_administer?} navigate={~p"/app/mailboxes"} class="btn btn-ghost btn-sm">
