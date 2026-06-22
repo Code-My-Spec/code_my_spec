@@ -1,11 +1,12 @@
 defmodule CodeMySpecWeb.MailLive do
   @moduledoc """
-  The operator's mail inbox — a three-pane email client over the project's
-  mailboxes. The left sidebar lists the mailboxes the current member may see
-  (role-scoped: owners/admins see all, members see shared + their own); the
-  middle pane lists a mailbox's per-correspondent threads; the reading pane
-  renders the selected thread as email (headers + subject + full body, not a
-  chat transcript). Composing and replying happen in modal dialogs.
+  The operator's mail inbox — a Gmail-style two-pane client over the project's
+  mailboxes. The left rail lists the mailboxes the current member may see
+  (role-scoped: owners/admins see all, members see shared + their own). The
+  main area shows either the **conversation list** for the open mailbox (one
+  row per thread: correspondent, subject + snippet, time) or, when a row is
+  opened, the **conversation** itself (stacked messages with a Reply action).
+  Composing and replying happen in modal dialogs.
 
   Administering mailboxes (creating them, domain setup) lives on the separate
   owner/admin-only `CodeMySpecWeb.MailboxLive`.
@@ -41,6 +42,8 @@ defmodule CodeMySpecWeb.MailLive do
      socket
      |> assign(:mailbox, mailbox)
      |> assign(:page_title, (mailbox && mailbox.address) || "Mail")
+     |> assign(:selected, nil)
+     |> assign(:current_thread, nil)
      |> load_threads()}
   end
 
@@ -58,11 +61,15 @@ defmodule CodeMySpecWeb.MailLive do
     {:noreply, push_navigate(socket, to: ~p"/app/mail/#{id}")}
   end
 
-  def handle_event("select_thread", %{"key" => key}, socket) do
+  def handle_event("open_thread", %{"key" => key}, socket) do
     {:noreply,
      socket
      |> assign(:selected, key)
      |> assign(:current_thread, thread_by_key(socket.assigns.threads, key))}
+  end
+
+  def handle_event("close_thread", _params, socket) do
+    {:noreply, socket |> assign(:selected, nil) |> assign(:current_thread, nil)}
   end
 
   def handle_event("open_modal", %{"modal" => modal}, socket) do
@@ -97,13 +104,14 @@ defmodule CodeMySpecWeb.MailLive do
 
   defp load_threads(%{assigns: %{mailbox: mailbox}} = socket, opts) do
     threads = Mail.list_threads(mailbox)
-    first_key = threads |> List.first() |> then(&(&1 && &1.key))
 
+    # Default: stay in the list (no thread auto-opened). compose/reply open the
+    # just-touched thread; an explicit selection is kept if it still exists.
     selected =
       cond do
-        opts[:select] == :latest -> first_key
+        opts[:select] == :latest -> threads |> List.first() |> then(&(&1 && &1.key))
         socket.assigns.selected && Enum.any?(threads, &(&1.key == socket.assigns.selected)) -> socket.assigns.selected
-        true -> first_key
+        true -> nil
       end
 
     socket
@@ -127,7 +135,24 @@ defmodule CodeMySpecWeb.MailLive do
   defp sender_label(_direction), do: "Them"
 
   defp format_at(nil), do: ""
-  defp format_at(%DateTime{} = at), do: Calendar.strftime(at, "%Y-%m-%d %H:%M")
+  defp format_at(%DateTime{} = at), do: Calendar.strftime(at, "%b %-d, %-I:%M %p")
+
+  # First line of the thread's latest message, for the list-row preview.
+  defp snippet(%{emails: emails}) do
+    case List.last(emails) do
+      %{body_text: body} when is_binary(body) ->
+        body |> String.split("\n", parts: 2) |> List.first() |> String.slice(0, 140)
+
+      _ ->
+        ""
+    end
+  end
+
+  defp avatar_initial(address) when is_binary(address) do
+    address |> String.first() |> to_string() |> String.upcase()
+  end
+
+  defp avatar_initial(_), do: "?"
 
   # -- Render -----------------------------------------------------------------
 
@@ -153,26 +178,38 @@ defmodule CodeMySpecWeb.MailLive do
 
         <div
           :if={@domain_verified?}
-          class="grid grid-cols-1 gap-4 md:grid-cols-[14rem_18rem_1fr]"
-          style="min-height: calc(100dvh - 12rem)"
+          class="grid grid-cols-1 overflow-hidden rounded-box border border-base-300 md:grid-cols-[15rem_1fr]"
+          style="min-height: calc(100dvh - 11rem)"
         >
-          <%!-- Pane 1: mailboxes --%>
-          <aside class="rounded-box border border-base-300 p-2" data-test="mailboxes">
+          <%!-- Left rail: mailboxes (folders) --%>
+          <aside class="border-b border-base-300 bg-base-200/40 p-2 md:border-b-0 md:border-r" data-test="mailboxes">
+            <button
+              :if={@mailbox}
+              type="button"
+              data-test="compose-button"
+              phx-click="open_modal"
+              phx-value-modal="compose"
+              class="btn btn-primary mb-3 w-full justify-start gap-2"
+            >
+              <.icon name="hero-pencil-square" class="size-4" /> Compose
+            </button>
+
             <p class="px-2 py-1 text-xs font-semibold uppercase opacity-60">Mailboxes</p>
             <p :if={@mailboxes == []} data-test="mailboxes-empty" class="px-2 py-2 text-sm opacity-60">
               No mailboxes yet
             </p>
-            <ul class="menu menu-sm w-full">
+            <ul class="menu menu-sm w-full gap-0.5">
               <li :for={mailbox <- @mailboxes}>
                 <button
                   type="button"
                   data-test="mailbox"
                   phx-click="open_mailbox"
                   phx-value-id={mailbox.id}
-                  class={[@mailbox && @mailbox.id == mailbox.id && "menu-active"]}
+                  class={["gap-2", @mailbox && @mailbox.id == mailbox.id && "menu-active font-medium"]}
                 >
-                  <span class="flex flex-col items-start">
-                    <span class="break-all font-medium">{mailbox.address}</span>
+                  <.icon name="hero-inbox" class="size-4 shrink-0" />
+                  <span class="flex min-w-0 flex-col items-start">
+                    <span class="w-full truncate">{mailbox.address}</span>
                     <span class="text-xs opacity-60">{assigned_label(mailbox)}</span>
                   </span>
                 </button>
@@ -180,88 +217,94 @@ defmodule CodeMySpecWeb.MailLive do
             </ul>
           </aside>
 
-          <%!-- Pane 2: threads --%>
-          <section class="rounded-box border border-base-300" data-test="threads">
-            <div :if={is_nil(@mailbox)} class="p-4 text-sm opacity-60">Select a mailbox.</div>
+          <%!-- Main: conversation list, or an opened conversation --%>
+          <main class="min-w-0 bg-base-100">
+            <div :if={is_nil(@mailbox)} class="p-6 text-sm opacity-60">
+              Select a mailbox to read and send mail.
+            </div>
 
-            <div :if={@mailbox}>
-              <div class="flex items-center justify-between border-b border-base-300 p-2">
-                <span class="px-1 text-xs font-semibold uppercase opacity-60">Conversations</span>
-                <button type="button" data-test="compose-button" phx-click="open_modal" phx-value-modal="compose" class="btn btn-primary btn-xs">
-                  <.icon name="hero-pencil-square" class="size-3" /> New
-                </button>
+            <%!-- List view --%>
+            <div :if={@mailbox && is_nil(@current_thread)} data-test="thread-list">
+              <div class="flex items-center gap-2 border-b border-base-300 px-3 py-2">
+                <span class="font-medium break-all">{@mailbox.address}</span>
+                <span class="badge badge-ghost badge-sm">{length(@threads)}</span>
               </div>
 
-              <p :if={@threads == []} data-test="threads-empty" class="p-4 text-sm opacity-60">
-                No conversations yet — start one with “New”.
+              <p :if={@threads == []} data-test="threads-empty" class="p-6 text-sm opacity-60">
+                No conversations yet — press Compose to start one.
               </p>
 
-              <ul class="menu menu-sm w-full">
-                <li :for={thread <- @threads}>
-                  <button
-                    type="button"
-                    data-test="thread"
-                    phx-click="select_thread"
-                    phx-value-key={thread.key}
-                    class={[@selected == thread.key && "menu-active"]}
-                  >
-                    <span class="flex w-full flex-col items-start">
-                      <span class="break-all font-medium">{thread.correspondent}</span>
-                      <span class="w-full truncate text-xs opacity-60">{thread.subject}</span>
-                      <span class="text-[0.65rem] opacity-50">{format_at(thread.last_at)}</span>
-                    </span>
-                  </button>
+              <ul class="divide-y divide-base-200">
+                <li
+                  :for={thread <- @threads}
+                  data-test="thread"
+                  phx-click="open_thread"
+                  phx-value-key={thread.key}
+                  class="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-base-200/60"
+                >
+                  <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                    {avatar_initial(thread.correspondent)}
+                  </div>
+                  <span class="w-44 shrink-0 truncate font-medium">{thread.correspondent}</span>
+                  <span class="min-w-0 flex-1 truncate">
+                    <span class="font-medium">{thread.subject}</span>
+                    <span class="opacity-60">— {snippet(thread)}</span>
+                  </span>
+                  <span class="shrink-0 text-xs opacity-60">{format_at(thread.last_at)}</span>
                 </li>
               </ul>
             </div>
-          </section>
 
-          <%!-- Pane 3: reading --%>
-          <section class="rounded-box border border-base-300 p-4" data-test="reading-pane">
-            <div :if={is_nil(@mailbox)} class="text-sm opacity-60">
-              Choose a mailbox to read and send mail.
-            </div>
+            <%!-- Conversation view --%>
+            <div :if={@current_thread} data-test="conversation" class="flex h-full flex-col">
+              <div class="flex items-center gap-2 border-b border-base-300 px-3 py-2">
+                <button type="button" data-test="back-to-list" phx-click="close_thread" class="btn btn-ghost btn-sm btn-square">
+                  <.icon name="hero-arrow-left" class="size-4" />
+                </button>
+                <h2 class="truncate text-lg font-semibold">{@current_thread.subject}</h2>
+              </div>
 
-            <div :if={@mailbox && is_nil(@current_thread)} class="text-sm opacity-60">
-              Select a conversation, or press “New” to compose.
-            </div>
+              <div class="flex-1 space-y-3 overflow-y-auto p-4">
+                <article
+                  :for={email <- @current_thread.emails}
+                  data-test="email"
+                  data-direction={email.direction}
+                  class="rounded-box border border-base-200 p-3"
+                >
+                  <div class="flex items-start gap-3">
+                    <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-base-300 text-sm font-semibold">
+                      {avatar_initial(email.from_address)}
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+                        <span class="font-medium break-all">{email.from_address}</span>
+                        <span class="flex items-center gap-1 text-xs opacity-60">
+                          <span
+                            :if={email.direction == :outbound and not is_nil(email.provider_id)}
+                            data-test="email-sent"
+                            class="badge badge-success badge-xs"
+                          >
+                            Sent
+                          </span>
+                          {format_at(email.inserted_at)}
+                        </span>
+                      </div>
+                      <div class="text-xs opacity-60 break-all">
+                        to {email.to_address} · {sender_label(email.direction)}
+                      </div>
+                      <div class="mt-2 whitespace-pre-wrap break-words text-sm">{email.body_text}</div>
+                    </div>
+                  </div>
+                </article>
+              </div>
 
-            <div :if={@current_thread} class="space-y-4">
-              <header class="flex items-start justify-between gap-3 border-b border-base-300 pb-2">
-                <div class="min-w-0">
-                  <h2 class="text-lg font-semibold break-all">{@current_thread.subject}</h2>
-                  <p class="text-sm opacity-60">with {@current_thread.correspondent}</p>
-                </div>
-                <button type="button" data-test="reply-button" phx-click="open_modal" phx-value-modal="reply" class="btn btn-primary btn-sm shrink-0">
+              <div class="border-t border-base-300 p-3">
+                <button type="button" data-test="reply-button" phx-click="open_modal" phx-value-modal="reply" class="btn btn-primary btn-sm gap-2">
                   <.icon name="hero-arrow-uturn-left" class="size-4" /> Reply
                 </button>
-              </header>
-
-              <article
-                :for={email <- @current_thread.emails}
-                data-test="email"
-                data-direction={email.direction}
-                class="rounded-box border border-base-200 bg-base-100 p-3"
-              >
-                <div class="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-                  <span class="font-medium break-all">{email.from_address}</span>
-                  <span class="text-xs opacity-50">{format_at(email.inserted_at)}</span>
-                </div>
-                <div class="flex items-center gap-1 text-xs opacity-60 break-all">
-                  to {email.to_address} · <span class="badge badge-ghost badge-xs">{sender_label(email.direction)}</span>
-                  <span
-                    :if={email.direction == :outbound and not is_nil(email.provider_id)}
-                    data-test="email-sent"
-                    class="badge badge-success badge-xs"
-                  >
-                    Sent
-                  </span>
-                </div>
-                <div :if={email.subject} class="mt-1 text-sm font-medium">{email.subject}</div>
-                <div class="mt-2 whitespace-pre-wrap break-words text-sm">{email.body_text}</div>
-              </article>
+              </div>
             </div>
-          </section>
+          </main>
         </div>
       </div>
 

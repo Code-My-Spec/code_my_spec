@@ -66,11 +66,14 @@ defmodule CodeMySpecSpex.Story816.Criterion6589Spex do
       then_ "both messages appear in one continuous thread", context do
         {:ok, view, _html} = live(context.conn, "/app/mail")
 
-        {:ok, _show_view, thread_html} =
+        {:ok, show_view, _html} =
           view
           |> element("[data-test='mailbox']", "support@#{@domain}")
           |> render_click()
           |> follow_redirect(context.conn)
+
+        # Open the conversation to read its messages.
+        thread_html = show_view |> element("[data-test='thread']") |> render_click()
 
         assert thread_html =~ "What are your hours?",
                "expected the original message in the correspondent's thread"

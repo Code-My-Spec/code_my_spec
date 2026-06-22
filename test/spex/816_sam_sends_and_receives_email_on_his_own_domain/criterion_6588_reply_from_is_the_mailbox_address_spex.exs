@@ -53,6 +53,9 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
           |> render_click()
           |> follow_redirect(context.conn)
 
+        # Open the conversation, then reply from within it.
+        show_view |> element("[data-test='thread']") |> render_click()
+
         show_view
         |> form("[data-test='reply-form']", email: %{body: "Happy to help — what's up?"})
         |> render_submit()
