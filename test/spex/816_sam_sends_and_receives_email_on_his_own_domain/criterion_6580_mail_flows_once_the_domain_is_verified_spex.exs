@@ -1,0 +1,69 @@
+defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
+  @moduledoc """
+  Story 816 — Sam sends and receives email on his own domain.
+  Criterion 6580 — Mail flows once the domain is verified.
+
+  Rule: A project must have a verified domain before its mailboxes can
+  send or receive email.
+
+  Surface (forward-looking — red until built):
+    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — the operator's mail
+      surface. With a verified project domain and a mailbox, composing and
+      sending delivers the email from the mailbox address.
+  """
+
+  use CodeMySpecSpex.Case
+
+  alias CodeMySpecSpex.Fixtures
+
+  @endpoint CodeMySpecWeb.Endpoint
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  @domain "sam-ships.com"
+
+  spex "A mailbox on a verified domain can send" do
+    scenario "Mail flows once the domain is verified" do
+      given_ "the project's domain is verified and a mailbox exists", context do
+        Fixtures.verify_project_domain(context.project, @domain)
+
+        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+
+        view
+        |> form("[data-test='new-mailbox-form']", mailbox: %{address: "support@#{@domain}"})
+        |> render_submit()
+
+        {:ok, Map.put(context, :view, view)}
+      end
+
+      when_ "Sam opens the mailbox and sends an email", context do
+        {:ok, show_view, _html} =
+          context.view
+          |> element("[data-test='mailbox']", "support@#{@domain}")
+          |> render_click()
+          |> follow_redirect(context.conn)
+
+        show_view
+        |> form("[data-test='compose-form']",
+          email: %{to: "lead@example.com", subject: "Welcome aboard", body: "Thanks for signing up!"}
+        )
+        |> render_submit()
+
+        {:ok, Map.put(context, :show_view, show_view)}
+      end
+
+      then_ "the email is delivered from the mailbox", context do
+        html = render(context.show_view)
+
+        assert html =~ "Welcome aboard",
+               "expected the sent email to appear in the mailbox thread"
+
+        assert html =~ "support@#{@domain}",
+               "expected the email to be sent from the mailbox address"
+
+        {:ok, context}
+      end
+    end
+  end
+end

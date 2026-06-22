@@ -34,8 +34,19 @@ defmodule CodeMySpec.Mail do
 
   @doc "Mailboxes the scope's member is allowed to see, by account role."
   def list_mailboxes(%Scope{} = scope) do
-    scope |> visible_query() |> order_by([m], asc: m.address) |> Repo.all()
+    scope
+    |> visible_query()
+    |> order_by([m], asc: m.address)
+    |> Repo.all()
+    |> Repo.preload(:user)
   end
+
+  @doc "The project whose sending domain matches `domain`, or nil."
+  def get_project_by_domain(domain) when is_binary(domain) do
+    Repo.one(from p in Project, where: p.domain == ^domain, limit: 1)
+  end
+
+  def get_project_by_domain(_), do: nil
 
   def get_mailbox(%Scope{} = scope, id) do
     Repo.get_by(Mailbox, id: id, project_id: scope.active_project_id)
@@ -91,6 +102,32 @@ defmodule CodeMySpec.Mail do
       body_text: Map.get(attrs, :body)
     })
     |> Repo.insert()
+  end
+
+  @doc """
+  Send an outbound email from a mailbox: persist it (From = the mailbox
+  address) and hand it to the mail provider. Delivery is best-effort — the
+  persisted copy is the source of truth for the mailbox's history.
+  """
+  def send_outbound(%Mailbox{} = mailbox, attrs) do
+    with {:ok, email} <- record_outbound(mailbox, attrs) do
+      _ = deliver(mailbox, attrs)
+      {:ok, email}
+    end
+  end
+
+  defp deliver(%Mailbox{} = mailbox, attrs) do
+    swoosh_email =
+      Swoosh.Email.new()
+      |> Swoosh.Email.from(mailbox.address)
+      |> Swoosh.Email.to(Map.get(attrs, :to) || "")
+      |> Swoosh.Email.subject(Map.get(attrs, :subject) || "")
+      |> Swoosh.Email.text_body(Map.get(attrs, :body) || "")
+
+    case CodeMySpec.Mailer.deliver(swoosh_email) do
+      {:ok, meta} -> {:ok, meta}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # --- Emails / threads ---

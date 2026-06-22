@@ -162,6 +162,14 @@ defmodule CodeMySpecWeb.Router do
     delete "/push-subscriptions", PushSubscriptionController, :delete
   end
 
+  # Inbound mail webhook (Resend Receiving API). Public; signature
+  # verification deferred for v1 (see priv/knowledge/resend/receiving.md).
+  scope "/webhooks", CodeMySpecWeb do
+    pipe_through :api
+
+    post "/resend", ResendWebhookController, :inbound
+  end
+
   # Content sync endpoint (authenticated via deployment key, not OAuth)
   scope "/api/content", CodeMySpecWeb do
     pipe_through :api
@@ -252,6 +260,9 @@ defmodule CodeMySpecWeb.Router do
 
       live "/inbox", InboxLive, :index
       live "/inbox/:id", InboxLive, :show
+
+      live "/mailboxes", MailboxLive, :index
+      live "/mailboxes/:id", MailboxLive, :show
     end
 
     post "/users/update-password", UserSessionController, :update_password
