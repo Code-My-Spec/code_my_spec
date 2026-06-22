@@ -66,6 +66,16 @@ defmodule CodeMySpec.Mail.ResendClient do
     request(:post, "/emails", json: payload)
   end
 
+  @doc """
+  Fetch a received email's full content (`text`, `html`, headers) by its Resend
+  receiving id. The `email.received` webhook is metadata-only, so this is how
+  the body is retrieved. `GET /emails/receiving/{id}`.
+  """
+  @spec get_received_email(String.t()) :: {:ok, body()} | error()
+  def get_received_email(id) when is_binary(id) do
+    request(:get, "/emails/receiving/#{id}", [])
+  end
+
   @spec list_domains() :: {:ok, [map()]} | error()
   def list_domains do
     case request(:get, "/domains", []) do

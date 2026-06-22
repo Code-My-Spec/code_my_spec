@@ -229,4 +229,56 @@ defmodule CodeMySpec.MailDomainTest do
       assert length(Mail.list_threads(ctx.mailbox)) == 2
     end
   end
+
+  describe "route_inbound/2 fetches the body (metadata-only webhook)" do
+    setup do
+      scope = full_scope_fixture()
+
+      project =
+        scope.active_project
+        |> Ecto.Changeset.change(domain: "fetch.example.com")
+        |> CodeMySpec.Repo.update!()
+
+      {:ok, _mailbox} = Mail.create_mailbox(scope, %{address: "support@fetch.example.com"})
+      %{project: project}
+    end
+
+    test "pulls text/html from the Receiving API when the event carries none", ctx do
+      plug = fn conn ->
+        case {conn.method, conn.request_path} do
+          {"GET", "/emails/receiving/" <> _} ->
+            Req.Test.json(conn, %{"text" => "Fetched body", "html" => "<p>Fetched body</p>"})
+        end
+      end
+
+      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test", plug: plug)
+
+      {:ok, email} =
+        Mail.route_inbound(ctx.project, %{
+          from: "lead@example.com",
+          to: ["support@fetch.example.com"],
+          subject: "No body in the event",
+          provider_email_id: "rcv_123"
+        })
+
+      assert email.body_text == "Fetched body"
+      assert email.body_html == "<p>Fetched body</p>"
+      assert email.provider_id == "rcv_123"
+    end
+
+    test "uses the event body when present (no fetch)", ctx do
+      Application.put_env(:code_my_spec, ResendClient, api_key: "", plug: nil)
+
+      {:ok, email} =
+        Mail.route_inbound(ctx.project, %{
+          from: "lead@example.com",
+          to: ["support@fetch.example.com"],
+          subject: "Inline",
+          text: "Inline body",
+          provider_email_id: "rcv_x"
+        })
+
+      assert email.body_text == "Inline body"
+    end
+  end
 end

@@ -149,17 +149,23 @@ defmodule CodeMySpec.Mail do
   @doc """
   Route an inbound provider event to a mailbox and persist it. Matches the To
   address to a mailbox on the project, falling back to the project's catch-all.
+
+  The `email.received` webhook is metadata-only, so when the body isn't carried
+  in the event we fetch it from the Receiving API using the provider's email id.
   Returns `{:ok, %Email{}}` or `{:error, :no_mailbox}` when nothing matches.
   """
   def route_inbound(%Project{} = project, attrs) do
     to = attrs |> Map.get(:to) |> List.wrap() |> List.first()
     from = Map.get(attrs, :from)
+    provider_email_id = Map.get(attrs, :provider_email_id)
 
     case match_mailbox(project.id, to) do
       nil ->
         {:error, :no_mailbox}
 
       %Mailbox{} = mailbox ->
+        {text, html} = resolve_inbound_body(attrs, provider_email_id)
+
         %Email{}
         |> Email.changeset(%{
           direction: :inbound,
@@ -168,12 +174,33 @@ defmodule CodeMySpec.Mail do
           to_address: to,
           correspondent: from,
           subject: Map.get(attrs, :subject),
-          body_text: Map.get(attrs, :text),
-          body_html: Map.get(attrs, :html),
+          body_text: text,
+          body_html: html,
+          provider_id: provider_email_id,
           message_id: Map.get(attrs, :message_id),
           in_reply_to: Map.get(attrs, :in_reply_to)
         })
         |> Repo.insert()
+    end
+  end
+
+  # Use the body carried in the event when present (tests / future inline
+  # payloads); otherwise fetch it from the Receiving API by id.
+  defp resolve_inbound_body(attrs, provider_email_id) do
+    text = Map.get(attrs, :text)
+    html = Map.get(attrs, :html)
+
+    if is_nil(text) and is_nil(html) and is_binary(provider_email_id) do
+      case ResendClient.get_received_email(provider_email_id) do
+        {:ok, body} ->
+          {body["text"], body["html"]}
+
+        {:error, reason} ->
+          Logger.warning("Mail.route_inbound: could not fetch body for #{provider_email_id}: #{inspect(reason)}")
+          {nil, nil}
+      end
+    else
+      {text, html}
     end
   end
 

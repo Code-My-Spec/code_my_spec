@@ -50,6 +50,7 @@ defmodule CodeMySpecWeb.ResendWebhookController do
         subject: Map.get(data, "subject"),
         text: Map.get(data, "text"),
         html: Map.get(data, "html"),
+        provider_email_id: Map.get(data, "email_id"),
         message_id: Map.get(data, "message_id"),
         in_reply_to: Map.get(data, "in_reply_to")
       })
