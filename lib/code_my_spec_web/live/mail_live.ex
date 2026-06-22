@@ -58,13 +58,11 @@ defmodule CodeMySpecWeb.MailLive do
     {:noreply, push_navigate(socket, to: ~p"/app/mail/#{id}")}
   end
 
-  def handle_event("select_thread", %{"correspondent" => correspondent}, socket) do
-    current = correspondent != "" && selected_thread(socket.assigns.threads, correspondent)
-
+  def handle_event("select_thread", %{"key" => key}, socket) do
     {:noreply,
      socket
-     |> assign(:selected, correspondent)
-     |> assign(:current_thread, current || nil)}
+     |> assign(:selected, key)
+     |> assign(:current_thread, thread_by_key(socket.assigns.threads, key))}
   end
 
   def handle_event("open_modal", %{"modal" => modal}, socket) do
@@ -79,16 +77,16 @@ defmodule CodeMySpecWeb.MailLive do
     {:ok, _email} =
       Mail.send_outbound(socket.assigns.mailbox, %{to: to, subject: subject, body: body})
 
-    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: to)}
+    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: :latest)}
   end
 
   def handle_event("reply", %{"email" => %{"to" => to, "body" => body}}, socket) do
-    subject = reply_subject(socket.assigns.threads, to)
+    subject = reply_subject(socket.assigns.current_thread)
 
     {:ok, _email} =
       Mail.send_outbound(socket.assigns.mailbox, %{to: to, subject: subject, body: body})
 
-    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: to)}
+    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: :latest)}
   end
 
   defp load_threads(socket, opts \\ [])
@@ -99,42 +97,28 @@ defmodule CodeMySpecWeb.MailLive do
 
   defp load_threads(%{assigns: %{mailbox: mailbox}} = socket, opts) do
     threads = Mail.list_threads(mailbox)
+    first_key = threads |> List.first() |> then(&(&1 && &1.key))
 
     selected =
       cond do
-        opts[:select] ->
-          opts[:select]
-
-        socket.assigns.selected && Enum.any?(threads, &(&1.correspondent == socket.assigns.selected)) ->
-          socket.assigns.selected
-
-        true ->
-          case threads do
-            [first | _] -> first.correspondent
-            [] -> nil
-          end
+        opts[:select] == :latest -> first_key
+        socket.assigns.selected && Enum.any?(threads, &(&1.key == socket.assigns.selected)) -> socket.assigns.selected
+        true -> first_key
       end
-
-    current = selected && selected_thread(threads, selected)
 
     socket
     |> assign(:threads, threads)
     |> assign(:selected, selected)
-    |> assign(:current_thread, current)
+    |> assign(:current_thread, selected && thread_by_key(threads, selected))
   end
 
-  defp reply_subject(threads, correspondent) do
-    case Enum.find(threads, &(&1.correspondent == correspondent)) do
-      %{subject: subject} when is_binary(subject) -> prefix_re(subject)
-      _ -> "Re:"
-    end
-  end
+  defp reply_subject(%{subject: subject}) when is_binary(subject), do: prefix_re(subject)
+  defp reply_subject(_), do: "Re:"
 
   defp prefix_re("Re:" <> _ = subject), do: subject
   defp prefix_re(subject), do: "Re: #{subject}"
 
-  defp selected_thread(threads, correspondent),
-    do: Enum.find(threads, &(&1.correspondent == correspondent))
+  defp thread_by_key(threads, key), do: Enum.find(threads, &(&1.key == key))
 
   defp assigned_label(%{user: %{email: email}}) when is_binary(email), do: email
   defp assigned_label(_mailbox), do: "Shared"
@@ -218,8 +202,8 @@ defmodule CodeMySpecWeb.MailLive do
                     type="button"
                     data-test="thread"
                     phx-click="select_thread"
-                    phx-value-correspondent={thread.correspondent}
-                    class={[@selected == thread.correspondent && "menu-active"]}
+                    phx-value-key={thread.key}
+                    class={[@selected == thread.key && "menu-active"]}
                   >
                     <span class="flex w-full flex-col items-start">
                       <span class="break-all font-medium">{thread.correspondent}</span>

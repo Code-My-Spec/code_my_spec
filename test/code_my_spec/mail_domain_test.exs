@@ -180,4 +180,53 @@ defmodule CodeMySpec.MailDomainTest do
       assert records == @records
     end
   end
+
+  describe "list_threads/1 (address + subject threading)" do
+    setup do
+      scope = full_scope_fixture()
+
+      project =
+        scope.active_project
+        |> Ecto.Changeset.change(domain: "threads.example.com")
+        |> CodeMySpec.Repo.update!()
+
+      {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@threads.example.com"})
+      %{project: project, mailbox: mailbox}
+    end
+
+    defp inbound(project, from, subject) do
+      {:ok, _} =
+        Mail.route_inbound(project, %{
+          from: from,
+          to: ["support@threads.example.com"],
+          subject: subject,
+          text: subject
+        })
+    end
+
+    test "different subjects from the same correspondent are separate threads", ctx do
+      inbound(ctx.project, "a@x.com", "Invoice question")
+      inbound(ctx.project, "a@x.com", "Refund request")
+
+      threads = Mail.list_threads(ctx.mailbox)
+      assert length(threads) == 2
+      assert Enum.map(threads, & &1.correspondent) |> Enum.uniq() == ["a@x.com"]
+    end
+
+    test "a Re: reply threads with the original subject", ctx do
+      inbound(ctx.project, "a@x.com", "Pricing")
+      inbound(ctx.project, "a@x.com", "Re: Pricing")
+
+      assert [thread] = Mail.list_threads(ctx.mailbox)
+      assert length(thread.emails) == 2
+      assert thread.subject == "Pricing"
+    end
+
+    test "same subject from different correspondents are separate threads", ctx do
+      inbound(ctx.project, "a@x.com", "Hello")
+      inbound(ctx.project, "b@y.com", "Hello")
+
+      assert length(Mail.list_threads(ctx.mailbox)) == 2
+    end
+  end
 end

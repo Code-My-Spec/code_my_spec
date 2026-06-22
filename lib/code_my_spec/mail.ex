@@ -249,25 +249,40 @@ defmodule CodeMySpec.Mail do
   end
 
   @doc """
-  Emails grouped into per-correspondent threads, most-recently-active first.
-  Each thread carries its `emails` (oldest-first), the `subject` of its latest
-  message, and `last_at` (the latest message's timestamp).
+  Emails grouped into threads keyed by **correspondent + normalized subject**,
+  most-recently-active first. `Re:`/`Fwd:` prefixes are stripped when keying so
+  replies thread with their original, but two different subjects with the same
+  correspondent are distinct threads. Each thread carries a stable `key` (for
+  selection), the `correspondent`, the original `subject`, its `emails`
+  (oldest-first), and `last_at`.
   """
   def list_threads(%Mailbox{} = mailbox) do
     mailbox
     |> list_emails()
-    |> Enum.group_by(& &1.correspondent)
-    |> Enum.map(fn {correspondent, emails} ->
+    |> Enum.group_by(fn email -> {email.correspondent, base_subject(email.subject)} end)
+    |> Enum.map(fn {{correspondent, base}, emails} ->
+      first = List.first(emails)
       latest = List.last(emails)
 
       %{
+        key: Integer.to_string(:erlang.phash2({correspondent, base})),
         correspondent: correspondent,
+        subject: (first && first.subject) || (latest && latest.subject),
         emails: emails,
-        subject: latest && latest.subject,
         last_at: latest && latest.inserted_at
       }
     end)
     |> Enum.sort_by(& &1.last_at, {:desc, DateTime})
+  end
+
+  @doc "Normalizes a subject for threading: strips Re:/Fwd: prefixes, trims, downcases."
+  def base_subject(nil), do: ""
+
+  def base_subject(subject) when is_binary(subject) do
+    subject
+    |> String.replace(~r/^(\s*(re|fwd|fw)\s*:\s*)+/i, "")
+    |> String.trim()
+    |> String.downcase()
   end
 
   @doc "True when the scope's user may create and administer mailboxes (owner/admin)."
