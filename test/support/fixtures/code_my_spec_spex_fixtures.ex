@@ -14,7 +14,9 @@ defmodule CodeMySpecSpex.Fixtures do
   (ProjectConfiguration, etc.) must be set up through the UI like
   any other user action.
   """
-  use Boundary, top_level?: true, deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpecTest]
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpecTest]
 
   alias CodeMySpec.{
     AccountsFixtures,
@@ -591,5 +593,63 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec next_actionable_requirements(Scope.t()) :: list()
   def next_actionable_requirements(%Scope{} = scope) do
     RequirementGraph.next_actionable(scope)
+  end
+
+  # --- Mail (story 816) ---
+
+  @doc "Set and verify a project's sending domain."
+  def verify_project_domain(project, domain) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    project
+    |> Ecto.Changeset.change(domain: domain, domain_verified_at: now)
+    |> CodeMySpec.Repo.update!()
+  end
+
+  @doc "Set a project's sending domain without verifying it."
+  def set_project_domain(project, domain) do
+    project
+    |> Ecto.Changeset.change(domain: domain, domain_verified_at: nil)
+    |> CodeMySpec.Repo.update!()
+  end
+
+  @doc "Create a mailbox on a project (assigned via `:user_id`, or shared)."
+  def mailbox_fixture(project, attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Map.new()
+      |> Map.put(:project_id, project.id)
+      |> Map.put_new(:address, "mailbox#{System.unique_integer([:positive])}@example.com")
+
+    {:ok, mailbox} =
+      %CodeMySpec.Mail.Mailbox{}
+      |> CodeMySpec.Mail.Mailbox.changeset(attrs)
+      |> CodeMySpec.Repo.insert()
+
+    mailbox
+  end
+
+  @doc "Persist an email directly in a mailbox (for history/retention setup)."
+  def persisted_email(mailbox, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    email_attrs = %{
+      direction: Map.get(attrs, :direction, :inbound),
+      mailbox_id: mailbox.id,
+      from_address: attrs[:from],
+      to_address: mailbox.address,
+      correspondent: attrs[:from] || attrs[:correspondent] || "someone@example.com",
+      subject: attrs[:subject],
+      body_text: attrs[:body],
+      message_id: attrs[:message_id],
+      inserted_at: attrs[:inserted_at]
+    }
+
+    {:ok, email} =
+      %CodeMySpec.Mail.Email{}
+      |> CodeMySpec.Mail.Email.changeset(email_attrs)
+      |> CodeMySpec.Repo.insert()
+
+    email
   end
 end

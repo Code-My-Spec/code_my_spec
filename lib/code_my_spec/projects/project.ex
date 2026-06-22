@@ -54,6 +54,12 @@ defmodule CodeMySpec.Projects.Project do
     field :client_user_id, :integer
     field :account_id, :binary_id
 
+    # Email-on-your-domain (Mail context). `domain` is the project's sending
+    # domain; `domain_verified_at` is set once the provider confirms DNS, and
+    # mailboxes can only send/receive on a verified domain.
+    field :domain, :string
+    field :domain_verified_at, :utc_datetime
+
     belongs_to :oauth_application, CodeMySpec.Oauth.Application, type: :id
 
     field :status, Ecto.Enum,
@@ -90,7 +96,9 @@ defmodule CodeMySpec.Projects.Project do
       :setup_error,
       :local_path,
       :client_user_id,
-      :oauth_application_id
+      :oauth_application_id,
+      :domain,
+      :domain_verified_at
     ])
     |> validate_required([:name])
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,
@@ -110,6 +118,11 @@ defmodule CodeMySpec.Projects.Project do
   end
 
   def hash_deploy_key(_), do: nil
+
+  @doc "True once the project's sending domain has been verified."
+  def domain_verified?(%__MODULE__{domain_verified_at: nil}), do: false
+  def domain_verified?(%__MODULE__{domain_verified_at: %DateTime{}}), do: true
+  def domain_verified?(_), do: false
 
   defp put_deploy_key_hash(changeset) do
     case fetch_change(changeset, :deploy_key) do
