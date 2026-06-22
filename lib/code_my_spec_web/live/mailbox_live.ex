@@ -32,6 +32,7 @@ defmodule CodeMySpecWeb.MailboxLive do
        |> assign(:dns_records, [])
        |> assign(:domain_status, nil)
        |> assign(:domain_error, nil)
+       |> assign(:modal, nil)
        |> assign(:mailboxes, Mail.list_mailboxes(scope))
        |> maybe_load_domain_state()}
     else
@@ -43,21 +44,28 @@ defmodule CodeMySpecWeb.MailboxLive do
   end
 
   @impl true
+  def handle_event("open_modal", %{"modal" => modal}, socket) do
+    {:noreply, assign(socket, :modal, String.to_existing_atom(modal))}
+  end
+
+  def handle_event("close_modal", _params, socket) do
+    {:noreply, assign(socket, :modal, nil)}
+  end
+
   def handle_event("create_mailbox", %{"mailbox" => params}, socket) do
     scope = socket.assigns.current_scope
 
-    socket =
-      case Mail.create_mailbox(scope, params) do
-        {:ok, _mailbox} ->
-          socket
-          |> assign(:mailboxes, Mail.list_mailboxes(scope))
-          |> put_flash(:info, "Mailbox created.")
+    case Mail.create_mailbox(scope, params) do
+      {:ok, _mailbox} ->
+        {:noreply,
+         socket
+         |> assign(:mailboxes, Mail.list_mailboxes(scope))
+         |> assign(:modal, nil)
+         |> put_flash(:info, "Mailbox created.")}
 
-        {:error, _changeset} ->
-          put_flash(socket, :error, "Could not create mailbox — check the address.")
-      end
-
-    {:noreply, socket}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not create mailbox — check the address.")}
+    end
   end
 
   def handle_event("setup_domain", %{"project" => %{"domain" => domain}}, socket) do
@@ -73,10 +81,11 @@ defmodule CodeMySpecWeb.MailboxLive do
          |> assign(:dns_records, records)
          |> assign(:domain_status, if(Project.domain_verified?(project), do: "verified", else: "pending"))
          |> assign(:domain_error, nil)
+         |> assign(:modal, nil)
          |> put_flash(:info, "Domain added — publish the DNS records below, then verify.")}
 
       {:error, reason} ->
-        {:noreply, assign(socket, :domain_error, domain_error_message(reason))}
+        {:noreply, socket |> assign(:domain_error, domain_error_message(reason)) |> assign(:modal, nil)}
     end
   end
 
@@ -150,6 +159,8 @@ defmodule CodeMySpecWeb.MailboxLive do
     |> Enum.reject(&is_nil/1)
   end
 
+  defp user_options(users), do: [{"Shared (no user)", ""}] ++ Enum.map(users, &{&1.email, &1.id})
+
   defp assigned_label(%{user: %{email: email}}) when is_binary(email), do: email
   defp assigned_label(_mailbox), do: "Shared"
 
@@ -162,9 +173,20 @@ defmodule CodeMySpecWeb.MailboxLive do
       <div class="mx-auto w-full max-w-4xl">
         <header class="flex items-center justify-between gap-3 pb-4">
           <h1 class="text-2xl font-semibold">Mailboxes</h1>
-          <.link navigate={~p"/app/mail"} class="btn btn-ghost btn-sm">
-            <.icon name="hero-envelope" class="size-4" /> Go to Mail
-          </.link>
+          <div class="flex items-center gap-2">
+            <button
+              :if={@domain_verified?}
+              type="button"
+              phx-click="open_modal"
+              phx-value-modal="mailbox"
+              class="btn btn-primary btn-sm"
+            >
+              <.icon name="hero-plus" class="size-4" /> New mailbox
+            </button>
+            <.link navigate={~p"/app/mail"} class="btn btn-ghost btn-sm">
+              <.icon name="hero-envelope" class="size-4" /> Go to Mail
+            </.link>
+          </div>
         </header>
 
         <section :if={not @domain_verified?} data-test="domain-setup" class="space-y-4">
@@ -175,23 +197,12 @@ defmodule CodeMySpecWeb.MailboxLive do
 
           <p :if={@domain_error} data-test="domain-error" class="text-error text-sm">{@domain_error}</p>
 
-          <form
-            :if={is_nil(@domain)}
-            phx-submit="setup_domain"
-            data-test="add-domain-form"
-            class="flex flex-wrap items-end gap-2 rounded-box bg-base-200 p-4"
-          >
-            <label class="form-control flex-1">
-              <span class="label-text">Sending domain</span>
-              <input
-                type="text"
-                name="project[domain]"
-                placeholder="inbound.yourdomain.com"
-                class="input input-bordered input-sm"
-              />
-            </label>
-            <button type="submit" class="btn btn-primary btn-sm">Add domain</button>
-          </form>
+          <div :if={is_nil(@domain)} class="rounded-box bg-base-200 p-6 text-center">
+            <p class="mb-3 opacity-70">No sending domain yet.</p>
+            <button type="button" phx-click="open_modal" phx-value-modal="domain" class="btn btn-primary btn-sm">
+              <.icon name="hero-globe-alt" class="size-4" /> Add a domain
+            </button>
+          </div>
 
           <div :if={not is_nil(@domain)} data-test="domain-pending" class="space-y-3 rounded-box bg-base-200 p-4">
             <p class="flex items-center gap-2">
@@ -229,7 +240,7 @@ defmodule CodeMySpecWeb.MailboxLive do
               <.link href="https://resend.com/domains" target="_blank" rel="noopener" class="link">
                 Resend dashboard
               </.link>
-              (see the project's email setup notes).
+              (use a subdomain so it doesn't affect existing mail).
             </p>
 
             <button type="button" phx-click="verify_domain" data-test="verify-domain" class="btn btn-primary btn-sm">
@@ -239,38 +250,7 @@ defmodule CodeMySpecWeb.MailboxLive do
         </section>
 
         <section :if={@domain_verified?}>
-          <form
-            phx-submit="create_mailbox"
-            data-test="new-mailbox-form"
-            class="mb-6 flex flex-wrap items-end gap-2 rounded-box bg-base-200 p-4"
-          >
-            <label class="form-control">
-              <span class="label-text">Address</span>
-              <input
-                type="text"
-                name="mailbox[address]"
-                placeholder={"support@#{@domain}"}
-                class="input input-bordered input-sm"
-              />
-            </label>
-
-            <label class="form-control">
-              <span class="label-text">Assigned to</span>
-              <select name="mailbox[user_id]" class="select select-bordered select-sm">
-                <option value="">Shared</option>
-                <option :for={user <- @assignable_users} value={user.id}>{user.email}</option>
-              </select>
-            </label>
-
-            <label class="form-control">
-              <span class="label-text">Catch-all</span>
-              <input type="checkbox" name="mailbox[catch_all]" value="true" class="checkbox" />
-            </label>
-
-            <button type="submit" class="btn btn-primary btn-sm">Create mailbox</button>
-          </form>
-
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto rounded-box border border-base-300">
             <table class="table">
               <thead>
                 <tr>
@@ -280,7 +260,7 @@ defmodule CodeMySpecWeb.MailboxLive do
               </thead>
               <tbody>
                 <tr :if={@mailboxes == []} data-test="mailboxes-empty">
-                  <td colspan="2" class="text-center opacity-60">No mailboxes yet</td>
+                  <td colspan="2" class="text-center opacity-60">No mailboxes yet — create one above.</td>
                 </tr>
                 <tr :for={mailbox <- @mailboxes} data-test="mailbox">
                   <td class="break-all font-medium">
@@ -294,6 +274,48 @@ defmodule CodeMySpecWeb.MailboxLive do
           </div>
         </section>
       </div>
+
+      <%!-- New-mailbox modal --%>
+      <dialog class={["modal", @modal == :mailbox && "modal-open"]}>
+        <div class="modal-box">
+          <h3 class="text-lg font-semibold">New mailbox</h3>
+          <.form for={%{}} phx-submit="create_mailbox" data-test="new-mailbox-form" class="mt-4 space-y-3">
+            <.input name="mailbox[address]" value="" type="text" label="Address" placeholder={"support@#{@domain}"} />
+            <.input
+              name="mailbox[user_id]"
+              value=""
+              type="select"
+              label="Assigned to"
+              options={user_options(@assignable_users)}
+            />
+            <.input name="mailbox[catch_all]" value="false" type="checkbox" label="Catch-all mailbox" />
+            <div class="modal-action">
+              <button type="button" phx-click="close_modal" class="btn btn-ghost">Cancel</button>
+              <button type="submit" class="btn btn-primary">Create mailbox</button>
+            </div>
+          </.form>
+        </div>
+        <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
+      </dialog>
+
+      <%!-- Add-domain modal --%>
+      <dialog class={["modal", @modal == :domain && "modal-open"]}>
+        <div class="modal-box">
+          <h3 class="text-lg font-semibold">Add a sending domain</h3>
+          <p class="mt-1 text-sm opacity-70">
+            Use a subdomain (e.g. <span class="font-mono">inbound.yourdomain.com</span>) so it doesn't
+            collide with existing mail on your root domain.
+          </p>
+          <.form for={%{}} phx-submit="setup_domain" data-test="add-domain-form" class="mt-4 space-y-3">
+            <.input name="project[domain]" value="" type="text" label="Sending domain" placeholder="inbound.yourdomain.com" />
+            <div class="modal-action">
+              <button type="button" phx-click="close_modal" class="btn btn-ghost">Cancel</button>
+              <button type="submit" class="btn btn-primary">Add domain</button>
+            </div>
+          </.form>
+        </div>
+        <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
+      </dialog>
     </Layouts.app>
     """
   end

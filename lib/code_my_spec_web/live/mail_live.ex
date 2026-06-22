@@ -5,7 +5,7 @@ defmodule CodeMySpecWeb.MailLive do
   (role-scoped: owners/admins see all, members see shared + their own); the
   middle pane lists a mailbox's per-correspondent threads; the reading pane
   renders the selected thread as email (headers + subject + full body, not a
-  chat transcript) and offers compose + reply.
+  chat transcript). Composing and replying happen in modal dialogs.
 
   Administering mailboxes (creating them, domain setup) lives on the separate
   owner/admin-only `CodeMySpecWeb.MailboxLive`.
@@ -29,7 +29,8 @@ defmodule CodeMySpecWeb.MailLive do
      |> assign(:mailbox, nil)
      |> assign(:threads, [])
      |> assign(:selected, nil)
-     |> assign(:current_thread, nil)}
+     |> assign(:current_thread, nil)
+     |> assign(:modal, nil)}
   end
 
   @impl true
@@ -44,7 +45,12 @@ defmodule CodeMySpecWeb.MailLive do
   end
 
   def handle_params(_params, _uri, socket) do
-    {:noreply, socket |> assign(:mailbox, nil) |> assign(:threads, []) |> assign(:selected, nil)}
+    {:noreply,
+     socket
+     |> assign(:mailbox, nil)
+     |> assign(:threads, [])
+     |> assign(:selected, nil)
+     |> assign(:current_thread, nil)}
   end
 
   @impl true
@@ -53,19 +59,27 @@ defmodule CodeMySpecWeb.MailLive do
   end
 
   def handle_event("select_thread", %{"correspondent" => correspondent}, socket) do
-    current =
-      if correspondent in [nil, ""],
-        do: nil,
-        else: selected_thread(socket.assigns.threads, correspondent)
+    current = correspondent != "" && selected_thread(socket.assigns.threads, correspondent)
 
-    {:noreply, socket |> assign(:selected, correspondent) |> assign(:current_thread, current)}
+    {:noreply,
+     socket
+     |> assign(:selected, correspondent)
+     |> assign(:current_thread, current || nil)}
+  end
+
+  def handle_event("open_modal", %{"modal" => modal}, socket) do
+    {:noreply, assign(socket, :modal, String.to_existing_atom(modal))}
+  end
+
+  def handle_event("close_modal", _params, socket) do
+    {:noreply, assign(socket, :modal, nil)}
   end
 
   def handle_event("compose", %{"email" => %{"to" => to, "subject" => subject, "body" => body}}, socket) do
     {:ok, _email} =
       Mail.send_outbound(socket.assigns.mailbox, %{to: to, subject: subject, body: body})
 
-    {:noreply, socket |> load_threads(select: to)}
+    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: to)}
   end
 
   def handle_event("reply", %{"email" => %{"to" => to, "body" => body}}, socket) do
@@ -74,7 +88,7 @@ defmodule CodeMySpecWeb.MailLive do
     {:ok, _email} =
       Mail.send_outbound(socket.assigns.mailbox, %{to: to, subject: subject, body: body})
 
-    {:noreply, load_threads(socket, select: to)}
+    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: to)}
   end
 
   defp load_threads(socket, opts \\ [])
@@ -189,13 +203,7 @@ defmodule CodeMySpecWeb.MailLive do
             <div :if={@mailbox}>
               <div class="flex items-center justify-between border-b border-base-300 p-2">
                 <span class="px-1 text-xs font-semibold uppercase opacity-60">Conversations</span>
-                <button
-                  type="button"
-                  data-test="compose-toggle"
-                  phx-click="select_thread"
-                  phx-value-correspondent=""
-                  class="btn btn-primary btn-xs"
-                >
+                <button type="button" data-test="compose-button" phx-click="open_modal" phx-value-modal="compose" class="btn btn-primary btn-xs">
                   <.icon name="hero-pencil-square" class="size-3" /> New
                 </button>
               </div>
@@ -224,83 +232,81 @@ defmodule CodeMySpecWeb.MailLive do
             </div>
           </section>
 
-          <%!-- Pane 3: reading / compose --%>
+          <%!-- Pane 3: reading --%>
           <section class="rounded-box border border-base-300 p-4" data-test="reading-pane">
             <div :if={is_nil(@mailbox)} class="text-sm opacity-60">
               Choose a mailbox to read and send mail.
             </div>
 
-            <div :if={@mailbox} class="space-y-4">
-              <%!-- compose: shown when no thread is selected --%>
-              <form
-                :if={is_nil(@current_thread)}
-                phx-submit="compose"
-                data-test="compose-form"
-                class="space-y-2"
-              >
-                <h2 class="font-semibold">New email from {@mailbox.address}</h2>
-                <input
-                  type="email"
-                  name="email[to]"
-                  placeholder="recipient@example.com"
-                  class="input input-bordered input-sm w-full"
-                />
-                <input
-                  type="text"
-                  name="email[subject]"
-                  placeholder="Subject"
-                  class="input input-bordered input-sm w-full"
-                />
-                <textarea
-                  name="email[body]"
-                  rows="8"
-                  placeholder="Write your message…"
-                  class="textarea textarea-bordered w-full"
-                ></textarea>
-                <button type="submit" class="btn btn-primary btn-sm">Send</button>
-              </form>
+            <div :if={@mailbox && is_nil(@current_thread)} class="text-sm opacity-60">
+              Select a conversation, or press “New” to compose.
+            </div>
 
-              <%!-- reading: the selected correspondent's thread --%>
-              <div :if={@current_thread} class="space-y-4">
-                <header class="border-b border-base-300 pb-2">
+            <div :if={@current_thread} class="space-y-4">
+              <header class="flex items-start justify-between gap-3 border-b border-base-300 pb-2">
+                <div class="min-w-0">
                   <h2 class="text-lg font-semibold break-all">{@current_thread.subject}</h2>
                   <p class="text-sm opacity-60">with {@current_thread.correspondent}</p>
-                </header>
+                </div>
+                <button type="button" data-test="reply-button" phx-click="open_modal" phx-value-modal="reply" class="btn btn-primary btn-sm shrink-0">
+                  <.icon name="hero-arrow-uturn-left" class="size-4" /> Reply
+                </button>
+              </header>
 
-                <article
-                  :for={email <- @current_thread.emails}
-                  data-test="email"
-                  data-direction={email.direction}
-                  class="rounded-box border border-base-200 bg-base-100 p-3"
-                >
-                  <div class="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-                    <span class="font-medium break-all">{email.from_address}</span>
-                    <span class="text-xs opacity-50">{format_at(email.inserted_at)}</span>
-                  </div>
-                  <div class="text-xs opacity-60 break-all">
-                    to {email.to_address} · <span class="badge badge-ghost badge-xs">{sender_label(email.direction)}</span>
-                  </div>
-                  <div :if={email.subject} class="mt-1 text-sm font-medium">{email.subject}</div>
-                  <div class="mt-2 whitespace-pre-wrap break-words text-sm">{email.body_text}</div>
-                </article>
-
-                <form phx-submit="reply" data-test="reply-form" class="space-y-2 border-t border-base-300 pt-3">
-                  <input type="hidden" name="email[to]" value={@current_thread.correspondent} />
-                  <textarea
-                    name="email[body]"
-                    rows="4"
-                    placeholder={"Reply to #{@current_thread.correspondent}…"}
-                    class="textarea textarea-bordered w-full"
-                  ></textarea>
-                  <button type="submit" class="btn btn-primary btn-sm">
-                    Reply from {@mailbox.address}
-                  </button>
-                </form>
-              </div>
+              <article
+                :for={email <- @current_thread.emails}
+                data-test="email"
+                data-direction={email.direction}
+                class="rounded-box border border-base-200 bg-base-100 p-3"
+              >
+                <div class="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+                  <span class="font-medium break-all">{email.from_address}</span>
+                  <span class="text-xs opacity-50">{format_at(email.inserted_at)}</span>
+                </div>
+                <div class="text-xs opacity-60 break-all">
+                  to {email.to_address} · <span class="badge badge-ghost badge-xs">{sender_label(email.direction)}</span>
+                </div>
+                <div :if={email.subject} class="mt-1 text-sm font-medium">{email.subject}</div>
+                <div class="mt-2 whitespace-pre-wrap break-words text-sm">{email.body_text}</div>
+              </article>
             </div>
           </section>
         </div>
       </div>
+
+      <%!-- Compose modal --%>
+      <dialog :if={@mailbox} class={["modal", @modal == :compose && "modal-open"]}>
+        <div class="modal-box">
+          <h3 class="text-lg font-semibold">New email from {@mailbox.address}</h3>
+          <.form for={%{}} phx-submit="compose" data-test="compose-form" class="mt-4 space-y-3">
+            <.input name="email[to]" value="" type="email" label="To" placeholder="recipient@example.com" />
+            <.input name="email[subject]" value="" type="text" label="Subject" />
+            <.input name="email[body]" value="" type="textarea" label="Message" rows="8" />
+            <div class="modal-action">
+              <button type="button" phx-click="close_modal" class="btn btn-ghost">Cancel</button>
+              <button type="submit" class="btn btn-primary">Send</button>
+            </div>
+          </.form>
+        </div>
+        <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
+      </dialog>
+
+      <%!-- Reply modal --%>
+      <dialog :if={@current_thread} class={["modal", @modal == :reply && "modal-open"]}>
+        <div class="modal-box">
+          <h3 class="text-lg font-semibold">Reply to {@current_thread.correspondent}</h3>
+          <p class="text-sm opacity-60">from {@mailbox.address}</p>
+          <.form for={%{}} phx-submit="reply" data-test="reply-form" class="mt-4 space-y-3">
+            <input type="hidden" name="email[to]" value={@current_thread.correspondent} />
+            <.input name="email[body]" value="" type="textarea" label="Message" rows="6" />
+            <div class="modal-action">
+              <button type="button" phx-click="close_modal" class="btn btn-ghost">Cancel</button>
+              <button type="submit" class="btn btn-primary">Send reply</button>
+            </div>
+          </.form>
+        </div>
+        <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
+      </dialog>
     </Layouts.app>
     """
   end
