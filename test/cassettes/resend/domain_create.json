@@ -1,0 +1,44 @@
+{
+  "object": "domain",
+  "id": "d91f0c2a-spex-domain-0001",
+  "name": "sam-ships.com",
+  "status": "not_started",
+  "created_at": "2026-06-22 00:00:00.000000+00",
+  "region": "us-east-1",
+  "records": [
+    {
+      "record": "DKIM",
+      "name": "resend._domainkey",
+      "value": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCuEe36KXJiThZigUwumCzJHaThNJq7NWVScUEnyLya+HSWznCs62O9JTtrzXcbtHuCKA5rjcFFxEc5bJcC0/yt0Qr0NhS8Aw1MSoKqi3cR67WWBYLwQ5gygASz5SRbW7SE4Y30RpAqGF0Pu7YN1DO7LmaEkwmMJlIh0V9VzxzajwIDAQAB",
+      "type": "TXT",
+      "status": "verified",
+      "ttl": "Auto"
+    },
+    {
+      "record": "SPF",
+      "name": "send",
+      "type": "MX",
+      "ttl": "Auto",
+      "status": "verified",
+      "value": "feedback-smtp.us-east-1.amazonses.com",
+      "priority": 10
+    },
+    {
+      "record": "SPF",
+      "name": "send",
+      "value": "v=spf1 include:amazonses.com ~all",
+      "type": "TXT",
+      "ttl": "Auto",
+      "status": "verified"
+    },
+    {
+      "record": "Receiving",
+      "name": "",
+      "value": "inbound-smtp.us-east-1.amazonaws.com",
+      "type": "MX",
+      "priority": 10,
+      "status": "verified",
+      "ttl": "Auto"
+    }
+  ]
+}
