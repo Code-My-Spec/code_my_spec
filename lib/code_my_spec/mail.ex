@@ -14,6 +14,7 @@ defmodule CodeMySpec.Mail do
   """
 
   import Ecto.Query, warn: false
+  require Logger
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Accounts
@@ -198,22 +199,42 @@ defmodule CodeMySpec.Mail do
   """
   def send_outbound(%Mailbox{} = mailbox, attrs) do
     with {:ok, email} <- record_outbound(mailbox, attrs) do
-      _ = deliver(mailbox, attrs)
-      {:ok, email}
+      {:ok, deliver(mailbox, email, attrs)}
     end
   end
 
-  defp deliver(%Mailbox{} = mailbox, attrs) do
-    swoosh_email =
-      Swoosh.Email.new()
-      |> Swoosh.Email.from(mailbox.address)
-      |> Swoosh.Email.to(Map.get(attrs, :to) || "")
-      |> Swoosh.Email.subject(Map.get(attrs, :subject) || "")
-      |> Swoosh.Email.text_body(Map.get(attrs, :body) || "")
+  # Mailbox mail always goes through Resend's API (the whole point of the
+  # feature — send on the project's own verified domain), independent of the
+  # app's transactional Swoosh mailer, which is the local preview adapter in
+  # dev. Delivery is best-effort: the persisted copy is the source of truth, so
+  # a provider failure is logged, not surfaced as an error to the caller.
+  defp deliver(%Mailbox{} = mailbox, %Email{} = email, attrs) do
+    case ResendClient.send_email(%{
+           from: mailbox.address,
+           to: Map.get(attrs, :to),
+           subject: Map.get(attrs, :subject) || "",
+           text: Map.get(attrs, :body) || ""
+         }) do
+      {:ok, %{"id" => provider_id}} when is_binary(provider_id) ->
+        store_provider_id(email, provider_id)
 
-    case CodeMySpec.Mailer.deliver(swoosh_email) do
-      {:ok, meta} -> {:ok, meta}
-      {:error, reason} -> {:error, reason}
+      {:ok, _body} ->
+        email
+
+      {:error, :resend_not_configured} ->
+        Logger.debug("Mail.send_outbound: Resend not configured; persisted without delivery")
+        email
+
+      {:error, reason} ->
+        Logger.warning("Mail.send_outbound delivery failed for mailbox #{mailbox.id}: #{inspect(reason)}")
+        email
+    end
+  end
+
+  defp store_provider_id(%Email{} = email, provider_id) do
+    case email |> Email.changeset(%{provider_id: provider_id}) |> Repo.update() do
+      {:ok, updated} -> updated
+      {:error, _changeset} -> email
     end
   end
 

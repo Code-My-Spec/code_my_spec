@@ -135,6 +135,39 @@ defmodule CodeMySpec.MailDomainTest do
     end
   end
 
+  describe "send_outbound/2 (Resend delivery)" do
+    test "sends via the provider and records the returned provider id" do
+      plug = fn conn ->
+        case {conn.method, conn.request_path} do
+          {"POST", "/emails"} -> Req.Test.json(conn, %{"id" => "email_1"})
+        end
+      end
+
+      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test_key", plug: plug)
+      scope = full_scope_fixture()
+      {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@sam-ships.com"})
+
+      assert {:ok, email} =
+               Mail.send_outbound(mailbox, %{to: "lead@example.com", subject: "Hi", body: "Hello"})
+
+      assert email.direction == :outbound
+      assert email.from_address == "support@sam-ships.com"
+      assert email.provider_id == "email_1"
+    end
+
+    test "persists the email even when the provider send fails" do
+      Application.put_env(:code_my_spec, ResendClient, api_key: "", plug: nil)
+      scope = full_scope_fixture()
+      {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@sam-ships.com"})
+
+      assert {:ok, email} =
+               Mail.send_outbound(mailbox, %{to: "lead@example.com", subject: "Hi", body: "Hello"})
+
+      assert email.from_address == "support@sam-ships.com"
+      refute email.provider_id
+    end
+  end
+
   describe "domain_dns_records/1" do
     test "reads the current records and status from the provider" do
       install_plug("pending")

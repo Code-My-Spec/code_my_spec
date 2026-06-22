@@ -47,6 +47,25 @@ defmodule CodeMySpec.Mail.ResendClient do
     request(:post, "/domains/#{id}/verify", [])
   end
 
+  @doc """
+  Send an outbound email via `POST /emails`. `attrs` keys: `:from`, `:to`
+  (string or list), `:subject`, `:text`, optional `:html`. Returns the Resend
+  body (with the message `id`) or an error.
+  """
+  @spec send_email(map()) :: {:ok, body()} | error()
+  def send_email(attrs) when is_map(attrs) do
+    payload =
+      %{
+        from: Map.get(attrs, :from),
+        to: attrs |> Map.get(:to) |> List.wrap(),
+        subject: Map.get(attrs, :subject) || ""
+      }
+      |> maybe_put(:text, Map.get(attrs, :text))
+      |> maybe_put(:html, Map.get(attrs, :html))
+
+    request(:post, "/emails", json: payload)
+  end
+
   @spec list_domains() :: {:ok, [map()]} | error()
   def list_domains do
     case request(:get, "/domains", []) do
@@ -68,6 +87,9 @@ defmodule CodeMySpec.Mail.ResendClient do
   end
 
   # Private Helpers
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp request(method, path, opts) do
     case api_key() do
