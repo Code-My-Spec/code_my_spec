@@ -47,6 +47,26 @@ defmodule CodeMySpec.Mail.ResendClient do
     request(:post, "/domains/#{id}/verify", [])
   end
 
+  @spec list_domains() :: {:ok, [map()]} | error()
+  def list_domains do
+    case request(:get, "/domains", []) do
+      {:ok, %{"data" => data}} when is_list(data) -> {:ok, data}
+      {:ok, _body} -> {:ok, []}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc "Find an already-registered domain by name, or `:not_found`."
+  @spec find_domain_by_name(String.t()) :: {:ok, map()} | :not_found | error()
+  def find_domain_by_name(name) when is_binary(name) do
+    with {:ok, domains} <- list_domains() do
+      case Enum.find(domains, &(&1["name"] == name)) do
+        nil -> :not_found
+        domain -> {:ok, domain}
+      end
+    end
+  end
+
   # Private Helpers
 
   defp request(method, path, opts) do

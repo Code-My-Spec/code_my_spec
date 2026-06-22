@@ -166,11 +166,19 @@ defmodule CodeMySpecWeb.MailboxLive do
 
   defp domain_error_message(:no_domain), do: "No domain has been registered yet."
 
-  defp domain_error_message({:resend_error, status, _body}),
-    do: "The email provider returned an error (HTTP #{status}). Check the domain and try again."
+  defp domain_error_message({:resend_error, status, body}) do
+    case resend_message(body) do
+      nil -> "The email provider returned an error (HTTP #{status}). Check the domain and try again."
+      message -> "The email provider rejected the request (HTTP #{status}): #{message}"
+    end
+  end
 
   defp domain_error_message(_reason),
     do: "Could not reach the email provider. Please try again."
+
+  defp resend_message(%{"message" => message}) when is_binary(message), do: message
+  defp resend_message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
+  defp resend_message(_body), do: nil
 
   defp load_threads(%{assigns: %{mailbox: nil}} = socket), do: assign(socket, :threads, [])
 

@@ -70,6 +70,37 @@ defmodule CodeMySpec.MailDomainTest do
       assert {:error, :resend_not_configured} =
                Mail.setup_domain(scope, scope.active_project, "inbound.sam-ships.com")
     end
+
+    test "adopts an already-registered domain when the provider rejects creation" do
+      plug = fn conn ->
+        case {conn.method, conn.request_path} do
+          {"POST", "/domains"} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.resp(403, Jason.encode!(%{"name" => "validation_error", "message" => "domain already exists"}))
+
+          {"GET", "/domains"} ->
+            Req.Test.json(conn, %{
+              "object" => "list",
+              "data" => [%{"id" => "dom_existing", "name" => "inbound.sam-ships.com", "status" => "verified"}]
+            })
+
+          {"GET", "/domains/dom_existing"} ->
+            Req.Test.json(conn, %{"id" => "dom_existing", "status" => "verified", "records" => @records})
+        end
+      end
+
+      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test_key", plug: plug)
+      scope = full_scope_fixture()
+
+      assert {:ok, project, records} =
+               Mail.setup_domain(scope, scope.active_project, "inbound.sam-ships.com")
+
+      assert project.resend_domain_id == "dom_existing"
+      # Adopted domain was already verified — mail should unlock immediately.
+      assert %DateTime{} = project.domain_verified_at
+      assert records == @records
+    end
   end
 
   describe "verify_domain/2" do

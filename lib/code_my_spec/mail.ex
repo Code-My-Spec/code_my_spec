@@ -60,15 +60,39 @@ defmodule CodeMySpec.Mail do
       when is_binary(domain_name) do
     domain_name = String.trim(domain_name)
 
-    with {:ok, body} <- ResendClient.create_domain(domain_name),
-         {:ok, project} <-
-           Projects.update_project(scope, project, %{
-             domain: domain_name,
-             resend_domain_id: body["id"],
-             domain_verified_at: nil
-           }) do
+    with {:ok, body} <- find_or_create_domain(domain_name),
+         {:ok, project} <- Projects.update_project(scope, project, domain_attrs(domain_name, body)) do
       {:ok, project, records(body)}
     end
+  end
+
+  # Resend rejects re-creating a domain the account already has (403/409/422).
+  # Adopt the existing one so setup is idempotent across retries and shared
+  # domains, fetching its full record (incl. DNS records) by id.
+  defp find_or_create_domain(name) do
+    case ResendClient.create_domain(name) do
+      {:ok, body} ->
+        {:ok, body}
+
+      {:error, {:resend_error, status, _}} = error when status in [403, 409, 422] ->
+        case ResendClient.find_domain_by_name(name) do
+          {:ok, domain} -> ResendClient.get_domain(domain["id"])
+          :not_found -> error
+          {:error, _} = list_error -> list_error
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp domain_attrs(name, body) do
+    verified_at =
+      if body["status"] == "verified",
+        do: DateTime.utc_now() |> DateTime.truncate(:second),
+        else: nil
+
+    %{domain: name, resend_domain_id: body["id"], domain_verified_at: verified_at}
   end
 
   @doc """
