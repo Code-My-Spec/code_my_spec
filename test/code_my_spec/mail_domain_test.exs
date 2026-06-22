@@ -4,9 +4,9 @@ defmodule CodeMySpec.MailDomainTest do
   register a sending domain, read its DNS records/status, and verify it.
 
   HTTP is stubbed with a Req `plug:` (no network, no cassette files) and a
-  fake `RESEND_API_KEY` is installed for the duration of each test so the
-  client actually issues requests rather than short-circuiting on a missing
-  key.
+  fake api_key is installed under the client's config key for the duration of
+  each test so the client actually issues requests rather than short-circuiting
+  on a missing key.
   """
 
   use CodeMySpecTest.DataCase, async: false
@@ -23,19 +23,8 @@ defmodule CodeMySpec.MailDomainTest do
   ]
 
   setup do
-    previous = Application.get_env(:code_my_spec, CodeMySpec.Mailer, [])
-
-    Application.put_env(
-      :code_my_spec,
-      CodeMySpec.Mailer,
-      Keyword.put(previous, :api_key, "re_test_key")
-    )
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, CodeMySpec.Mailer, previous)
-      Application.put_env(:code_my_spec, ResendClient, plug: nil)
-    end)
-
+    previous = Application.get_env(:code_my_spec, ResendClient, [])
+    on_exit(fn -> Application.put_env(:code_my_spec, ResendClient, previous) end)
     :ok
   end
 
@@ -53,7 +42,7 @@ defmodule CodeMySpec.MailDomainTest do
       end
     end
 
-    Application.put_env(:code_my_spec, ResendClient, plug: plug)
+    Application.put_env(:code_my_spec, ResendClient, api_key: "re_test_key", plug: plug)
   end
 
   describe "setup_domain/3" do
@@ -75,10 +64,8 @@ defmodule CodeMySpec.MailDomainTest do
     end
 
     test "surfaces a clear error when the provider key is missing" do
+      Application.put_env(:code_my_spec, ResendClient, api_key: "", plug: nil)
       scope = full_scope_fixture()
-
-      config = Application.get_env(:code_my_spec, CodeMySpec.Mailer, [])
-      Application.put_env(:code_my_spec, CodeMySpec.Mailer, Keyword.put(config, :api_key, ""))
 
       assert {:error, :resend_not_configured} =
                Mail.setup_domain(scope, scope.active_project, "inbound.sam-ships.com")

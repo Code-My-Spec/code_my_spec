@@ -168,6 +168,14 @@ if config_env() == :prod do
     api_key: env!("RESEND_API_KEY", :string, "")
 end
 
+# Resend Domains API (in-app sending-domain onboarding). Needed in ALL envs,
+# not just prod: even in dev the domain register/verify calls hit the real
+# provider (outbound mail still uses the per-env Mailer adapter). Sourced from
+# envs/<env>.env via Dotenvy above; empty string → client returns
+# {:error, :resend_not_configured}.
+config :code_my_spec, CodeMySpec.Mail.ResendClient,
+  api_key: env!("RESEND_API_KEY", :string, "")
+
 # GA4 Measurement Protocol — server-side delivery of activation events.
 # Applies to dev + prod (test overrides http_adapter to a no-op so unit
 # tests can't accidentally POST to real GA). measurement_id + api_secret

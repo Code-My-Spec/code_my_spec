@@ -11,12 +11,14 @@ defmodule CodeMySpec.Mail.ResendClient do
     * `verify_domain/1` — `POST /domains/{id}/verify` to ask Resend to re-check
       DNS after the operator has added the records.
 
-  Auth reuses the same `RESEND_API_KEY` the mailer is configured with. When no
-  key is configured the client returns `{:error, :resend_not_configured}` so
-  callers can surface a clear message rather than crashing.
+  Auth comes from `RESEND_API_KEY`, wired in `config/runtime.exs` for every env
+  under this module's config key. When no key is configured the client returns
+  `{:error, :resend_not_configured}` so callers can surface a clear message
+  rather than crashing.
 
-  Tests inject a `plug:` via `Application.put_env(:code_my_spec, __MODULE__, plug: …)`
-  so HTTP can be stubbed without hitting Resend.
+  Tests inject `api_key`/`plug` via
+  `Application.put_env(:code_my_spec, __MODULE__, api_key: …, plug: …)` so HTTP
+  can be stubbed without hitting Resend.
   """
 
   require Logger
@@ -80,7 +82,7 @@ defmodule CodeMySpec.Mail.ResendClient do
 
   defp api_key do
     :code_my_spec
-    |> Application.get_env(CodeMySpec.Mailer, [])
+    |> Application.get_env(__MODULE__, [])
     |> Keyword.get(:api_key)
   end
 
