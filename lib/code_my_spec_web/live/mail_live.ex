@@ -263,8 +263,15 @@ defmodule CodeMySpecWeb.MailLive do
                   <span class="font-medium break-all">{email.from_address}</span>
                   <span class="text-xs opacity-50">{format_at(email.inserted_at)}</span>
                 </div>
-                <div class="text-xs opacity-60 break-all">
+                <div class="flex items-center gap-1 text-xs opacity-60 break-all">
                   to {email.to_address} · <span class="badge badge-ghost badge-xs">{sender_label(email.direction)}</span>
+                  <span
+                    :if={email.direction == :outbound and not is_nil(email.provider_id)}
+                    data-test="email-sent"
+                    class="badge badge-success badge-xs"
+                  >
+                    Sent
+                  </span>
                 </div>
                 <div :if={email.subject} class="mt-1 text-sm font-medium">{email.subject}</div>
                 <div class="mt-2 whitespace-pre-wrap break-words text-sm">{email.body_text}</div>
