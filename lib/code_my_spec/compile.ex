@@ -81,12 +81,33 @@ defmodule CodeMySpec.Compile do
           []
 
         {:error, _reason} ->
-          Logger.warning(
-            "[Compile] Diagnostics file not written (compilation failed with exit code #{exit_code})"
-          )
+          # Non-zero exit, no diagnostics file. This is NOT automatically a code
+          # error: a config/mix.exs change forcing a rebuild, the "you must
+          # restart after changing configuration files" RuntimeError, build-lock
+          # contention, or a project missing the :diagnostics compiler all exit
+          # non-zero with no diagnostics. Only synthesize a blocking problem when
+          # the raw output actually contains a genuine compiler error marker;
+          # otherwise treat it as transient so the stop hook isn't blocked by a
+          # phantom error parsed out of Mix's progress banner ("==> boundary").
+          case extract_compiler_errors(output) do
+            [] ->
+              Logger.warning(
+                "[Compile] exit #{exit_code}, no diagnostics file and no compiler error " <>
+                  "markers in output — treating as transient (config change, lock " <>
+                  "contention, or missing :diagnostics compiler). First 500 chars: " <>
+                  String.slice(output, 0, 500)
+              )
 
-          # Return raw output as the error — the project likely lacks the :diagnostics compiler
-          [%{"message" => String.trim(output), "severity" => "error"}]
+              []
+
+            errors ->
+              Logger.warning(
+                "[Compile] exit #{exit_code}, diagnostics file not written; recovered " <>
+                  "#{length(errors)} compiler error(s) from raw output"
+              )
+
+              errors
+          end
       end
 
     %{
@@ -134,6 +155,49 @@ defmodule CodeMySpec.Compile do
         {:error, _} -> %{"message" => line, "severity" => "error"}
       end
     end)
+  end
+
+  # Markers that prove the raw compiler output contains a genuine code error.
+  @compiler_error_markers [
+    "** (CompileError)",
+    "** (SyntaxError)",
+    "** (TokenMissingError)",
+    "== Compilation error in file"
+  ]
+
+  # Markers that prove a non-zero exit is an infrastructure/transient condition,
+  # not a code error. When present we never synthesize a blocking problem.
+  @transient_markers [
+    "could not compile application",
+    "You must restart your server"
+  ]
+
+  @doc """
+  Extract genuine compiler errors from raw `mix compile` stdout.
+
+  Used only as a fallback when the `:diagnostics` JSONL file was not written and
+  the compile exited non-zero. Returns a list of `%{"message" => ..., "severity"
+  => "error"}` maps for each genuine error line, or `[]` when the output is a
+  transient/infrastructure failure (config change "must restart", lock
+  contention) or merely Mix progress banners with no real diagnostics.
+  """
+  @spec extract_compiler_errors(String.t()) :: [map()]
+  def extract_compiler_errors(output) when is_binary(output) do
+    if Enum.any?(@transient_markers, &String.contains?(output, &1)) do
+      []
+    else
+      output
+      |> String.split("\n")
+      |> Enum.filter(&compiler_error_line?/1)
+      |> Enum.map(&%{"message" => String.trim(&1), "severity" => "error"})
+    end
+  end
+
+  defp compiler_error_line?(line) do
+    trimmed = String.trim_leading(line)
+
+    Enum.any?(@compiler_error_markers, &String.starts_with?(trimmed, &1)) or
+      String.starts_with?(trimmed, "error:")
   end
 
   defp create_temp_file_path do
