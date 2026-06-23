@@ -13,6 +13,7 @@ defmodule CodeMySpec.Issues.IssuesSocket do
   require Logger
 
   alias CodeMySpec.Auth.OAuthClient
+  alias CodeMySpec.Auth.WebSocketBackoff
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Users.Scope
 
@@ -52,7 +53,7 @@ defmodule CodeMySpec.Issues.IssuesSocket do
   @impl Slipstream
   def handle_join(topic, _response, socket) do
     Logger.info("[IssuesSocket] Joined #{topic}")
-    {:ok, socket}
+    {:ok, assign(socket, :reconnect_attempts, 0)}
   end
 
   @impl Slipstream
@@ -91,14 +92,34 @@ defmodule CodeMySpec.Issues.IssuesSocket do
 
   @impl Slipstream
   def handle_disconnect(reason, socket) do
+    attempts = Map.get(socket.assigns, :reconnect_attempts, 0)
+    delay = WebSocketBackoff.delay(attempts)
+
+    Logger.info(
+      "[IssuesSocket] Disconnected (#{inspect(reason)}), reconnecting in #{delay}ms (attempt #{attempts + 1})"
+    )
+
+    Process.send_after(self(), :reconnect, delay)
+    {:ok, assign(socket, :reconnect_attempts, attempts + 1)}
+  end
+
+  @impl Slipstream
+  def handle_info(:reconnect, socket) do
     case build_ws_url() do
       {:ok, uri} ->
-        Logger.info("[IssuesSocket] Disconnected (#{inspect(reason)}), reconnecting with fresh token")
-        connect(socket, uri: uri)
+        {:ok, socket} = connect(socket, uri: uri)
+        {:noreply, socket}
 
       {:error, token_error} ->
-        Logger.warning("[IssuesSocket] Disconnected (#{inspect(reason)}); cannot refresh token: #{inspect(token_error)}")
-        reconnect(socket)
+        attempts = Map.get(socket.assigns, :reconnect_attempts, 0)
+        delay = WebSocketBackoff.delay(attempts)
+
+        Logger.warning(
+          "[IssuesSocket] Cannot refresh token: #{inspect(token_error)}; retrying in #{delay}ms"
+        )
+
+        Process.send_after(self(), :reconnect, delay)
+        {:noreply, assign(socket, :reconnect_attempts, attempts + 1)}
     end
   end
 
