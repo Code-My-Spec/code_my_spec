@@ -6,7 +6,6 @@ default:
 server:
     iex -S mix phx.server
 
-# Run as CLI with SQLite
 cli *args:
     MIX_ENV=dev_cli iex -S mix run --no-halt {{args}}
 
