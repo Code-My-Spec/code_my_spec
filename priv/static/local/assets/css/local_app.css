@@ -547,6 +547,24 @@
       }
     }
   }
+  .collapse-arrow {
+    > .collapse-title:after {
+      position: absolute;
+      display: block;
+      height: 0.5rem;
+      width: 0.5rem;
+      transform: translateY(-100%) rotate(45deg);
+      transition-property: all;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+      transition-duration: 0.2s;
+      top: 1.9rem;
+      inset-inline-end: 1.4rem;
+      content: "";
+      transform-origin: 75% 75%;
+      box-shadow: 2px 2px;
+      pointer-events: none;
+    }
+  }
   .dropdown {
     position: relative;
     display: inline-block;
@@ -880,6 +898,18 @@
     &:is(details) summary {
       outline: none;
     }
+  }
+  .collapse-content {
+    grid-column-start: 1;
+    grid-row-start: 1;
+    visibility: hidden;
+    grid-column-start: 1;
+    grid-row-start: 2;
+    min-height: 0;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    cursor: unset;
+    transition: visibility 0.2s, padding 0.2s ease-out, background-color 0.2s ease-out;
   }
   .collapse {
     visibility: collapse;
@@ -1623,6 +1653,16 @@
       outline: 2px solid currentColor;
     }
   }
+  .collapse-title {
+    grid-column-start: 1;
+    grid-row-start: 1;
+    position: relative;
+    width: 100%;
+    padding: 1rem;
+    padding-inline-end: 3rem;
+    min-height: 3.75rem;
+    transition: background-color 0.2s ease-out;
+  }
   .mockup-code {
     position: relative;
     overflow: hidden;
@@ -2107,6 +2147,16 @@
   }
   .mx-auto {
     margin-inline: auto;
+  }
+  .input-sm {
+    --size: calc(var(--size-field, 0.25rem) * 8);
+    font-size: 0.75rem;
+    &[type="number"] {
+      &::-webkit-inner-spin-button {
+        margin-block: calc(0.25rem * -2);
+        margin-inline-end: calc(0.25rem * -3);
+      }
+    }
   }
   .input-xs {
     --size: calc(var(--size-field, 0.25rem) * 6);
@@ -3582,6 +3632,9 @@
   .items-center {
     align-items: center;
   }
+  .items-end {
+    align-items: flex-end;
+  }
   .items-start {
     align-items: flex-start;
   }
@@ -3911,6 +3964,11 @@
       padding-inline: calc(0.25rem * 3);
       padding-block: calc(0.25rem * 2);
     }
+  }
+  .badge-lg {
+    --size: calc(var(--size-selector, 0.25rem) * 7);
+    font-size: 1rem;
+    padding-inline: calc(0.25rem * 3.5 - var(--border));
   }
   .badge-sm {
     --size: calc(var(--size-selector, 0.25rem) * 5);
