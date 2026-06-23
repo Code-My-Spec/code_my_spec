@@ -27,8 +27,11 @@ defmodule CodeMySpecLocalWeb.ContentLive.Show do
   @impl true
   def handle_params(%{"project_name" => name, "id" => id}, _uri, socket) do
     with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project),
-         %{} = row <- ContentPublishing.get_snapshot(scope, id) do
+         {:ok, scope} <- Scope.for_local_project(project) do
+      # row may be nil (unknown / non-integer id) — the view renders a
+      # not-found state rather than crashing.
+      row = ContentPublishing.get_snapshot(scope, id)
+
       {:noreply,
        assign(socket, project: project, slug: project_slug(project), current_scope: scope, row: row)}
     else
@@ -46,6 +49,13 @@ defmodule CodeMySpecLocalWeb.ContentLive.Show do
       section={:content}
       page_title="Content"
     >
+      <div :if={!@row && @slug} class="p-6" data-test="content-not-found">
+        <.link navigate={~p"/projects/#{@slug}/content"} class="link link-primary text-sm">
+          ← Back to Content
+        </.link>
+        <p class="mt-4 text-base-content/60">Content not found.</p>
+      </div>
+
       <div :if={@row}>
         <.link navigate={~p"/projects/#{@slug}/content"} class="link link-primary text-sm">
           ← Back to Content

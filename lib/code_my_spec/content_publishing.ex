@@ -179,13 +179,34 @@ defmodule CodeMySpec.ContentPublishing do
     |> Repo.all()
   end
 
-  @doc "A single snapshot row for the active project, or nil."
+  @doc """
+  A single snapshot row for the active project, or nil. Tolerates a non-integer
+  id (e.g. a slug in the URL) by returning nil instead of raising
+  `Ecto.Query.CastError`.
+  """
   @spec get_snapshot(Scope.t(), integer() | String.t()) :: Snapshot.t() | nil
   def get_snapshot(%Scope{} = scope, id) do
-    Snapshot
-    |> where([c], c.project_id == ^scope.active_project_id)
-    |> Repo.get(id)
+    case normalize_id(id) do
+      nil ->
+        nil
+
+      int_id ->
+        Snapshot
+        |> where([c], c.project_id == ^scope.active_project_id)
+        |> Repo.get(int_id)
+    end
   end
+
+  defp normalize_id(id) when is_integer(id), do: id
+
+  defp normalize_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int, ""} -> int
+      _ -> nil
+    end
+  end
+
+  defp normalize_id(_), do: nil
 
   @doc "Success/error counts for the active project's snapshot."
   @spec counts(Scope.t()) :: counts()
