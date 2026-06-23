@@ -204,6 +204,85 @@ defmodule CodeMySpec.Mail do
     end
   end
 
+  @doc """
+  Reconcile inbound mail for a project against the provider's Receiving API —
+  the catch-up companion to the (at-least-once, sometimes-missed) webhook.
+
+  Lists received emails, routes any the project never recorded into their
+  mailbox (fetching the body), and backfills bodies onto rows that were stored
+  metadata-only. Idempotent by Message-ID. Bounded to the provider's retention
+  window and the requested page size.
+
+  Returns `{:ok, %{synced: total_seen, new: inserted, backfilled: updated}}`.
+  """
+  def sync_inbound(%Project{} = project, opts \\ []) do
+    case ResendClient.list_received_emails(opts) do
+      {:ok, received} ->
+        tally =
+          Enum.reduce(received, %{synced: 0, new: 0, backfilled: 0}, fn meta, acc ->
+            acc = %{acc | synced: acc.synced + 1}
+
+            case reconcile_received(project, meta) do
+              :inserted -> %{acc | new: acc.new + 1}
+              :backfilled -> %{acc | backfilled: acc.backfilled + 1}
+              _ -> acc
+            end
+          end)
+
+        {:ok, tally}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp reconcile_received(project, meta) do
+    message_id = meta["message_id"]
+    existing = message_id && Repo.get_by(Email, message_id: message_id)
+
+    cond do
+      is_nil(existing) -> insert_received(project, meta)
+      blank_body?(existing) -> backfill_body(existing, meta)
+      true -> :skipped
+    end
+  end
+
+  defp insert_received(project, meta) do
+    case route_inbound(project, %{
+           from: meta["from"],
+           to: meta["to"],
+           subject: meta["subject"],
+           message_id: meta["message_id"],
+           provider_email_id: meta["id"]
+         }) do
+      {:ok, _email} -> :inserted
+      {:error, :no_mailbox} -> :no_mailbox
+      # Lost a race (webhook delivered it concurrently) — already recorded.
+      {:error, _changeset} -> :skipped
+    end
+  end
+
+  defp backfill_body(%Email{} = email, meta) do
+    case ResendClient.get_received_email(meta["id"]) do
+      {:ok, body} ->
+        email
+        |> Email.changeset(%{body_text: body["text"], body_html: body["html"], provider_id: meta["id"]})
+        |> Repo.update()
+
+        :backfilled
+
+      {:error, _reason} ->
+        :skipped
+    end
+  end
+
+  defp blank_body?(%Email{body_text: text, body_html: html}) do
+    blank?(text) and blank?(html)
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+
   @doc "Persist an outbound email sent from a mailbox (From = the mailbox address)."
   def record_outbound(%Mailbox{} = mailbox, attrs) do
     %Email{}

@@ -76,6 +76,22 @@ defmodule CodeMySpec.Mail.ResendClient do
     request(:get, "/emails/receiving/#{id}", [])
   end
 
+  @doc """
+  List received (inbound) emails for the account, most recent first. Metadata
+  only (id, from, to, subject, message_id) — fetch bodies with
+  `get_received_email/1`. `GET /emails/receiving`.
+  """
+  @spec list_received_emails(keyword()) :: {:ok, [map()]} | error()
+  def list_received_emails(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+
+    case request(:get, "/emails/receiving?limit=#{limit}", []) do
+      {:ok, %{"data" => data}} when is_list(data) -> {:ok, data}
+      {:ok, _body} -> {:ok, []}
+      {:error, _reason} = error -> error
+    end
+  end
+
   @spec list_domains() :: {:ok, [map()]} | error()
   def list_domains do
     case request(:get, "/domains", []) do

@@ -48,5 +48,6 @@ defmodule CodeMySpec.Mail.Email do
       :inserted_at
     ])
     |> validate_required([:direction, :correspondent, :mailbox_id])
+    |> unique_constraint(:message_id, name: :emails_message_id_index)
   end
 end

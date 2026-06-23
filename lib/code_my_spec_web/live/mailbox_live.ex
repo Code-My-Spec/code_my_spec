@@ -68,6 +68,21 @@ defmodule CodeMySpecWeb.MailboxLive do
     end
   end
 
+  def handle_event("sync_inbound", _params, socket) do
+    case Mail.sync_inbound(socket.assigns.project) do
+      {:ok, %{synced: synced, new: new, backfilled: backfilled}} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Synced #{synced} message(s) — #{new} new, #{backfilled} backfilled."
+         )}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, domain_error_message(reason))}
+    end
+  end
+
   def handle_event("setup_domain", %{"project" => %{"domain" => domain}}, socket) do
     scope = socket.assigns.current_scope
 
@@ -182,6 +197,15 @@ defmodule CodeMySpecWeb.MailboxLive do
               class="btn btn-primary btn-sm"
             >
               <.icon name="hero-plus" class="size-4" /> New mailbox
+            </button>
+            <button
+              :if={@domain_verified?}
+              type="button"
+              data-test="sync-inbound"
+              phx-click="sync_inbound"
+              class="btn btn-ghost btn-sm"
+            >
+              <.icon name="hero-arrow-path" class="size-4" /> Sync mail
             </button>
             <.link navigate={~p"/app/mail"} class="btn btn-ghost btn-sm">
               <.icon name="hero-envelope" class="size-4" /> Go to Mail

@@ -1,0 +1,10 @@
+{
+  "object": "email",
+  "id": "rcv-spex-1",
+  "to": ["support@sam-ships.com"],
+  "from": "lead@example.com",
+  "subject": "Missed message",
+  "message_id": "<missed-spex-1@example.com>",
+  "text": "This one slipped past the webhook.",
+  "html": "<p>This one slipped past the webhook.</p>"
+}

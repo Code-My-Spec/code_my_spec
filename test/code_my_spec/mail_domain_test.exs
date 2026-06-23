@@ -281,4 +281,89 @@ defmodule CodeMySpec.MailDomainTest do
       assert email.body_text == "Inline body"
     end
   end
+
+  describe "sync_inbound/2 (reconcile from Receiving API)" do
+    setup do
+      scope = full_scope_fixture()
+
+      project =
+        scope.active_project
+        |> Ecto.Changeset.change(domain: "sync.example.com")
+        |> CodeMySpec.Repo.update!()
+
+      {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@sync.example.com"})
+      %{project: project, mailbox: mailbox}
+    end
+
+    defp sync_plug do
+      received = %{
+        "data" => [
+          %{
+            "id" => "rcv1",
+            "to" => ["support@sync.example.com"],
+            "from" => "a@x.com",
+            "subject" => "Missed",
+            "message_id" => "<m1@x>"
+          }
+        ]
+      }
+
+      plug = fn conn ->
+        body =
+          case {conn.method, conn.request_path} do
+            {"GET", "/emails/receiving/" <> _} ->
+              Jason.encode!(%{"text" => "Recovered body", "html" => "<p>Recovered body</p>"})
+
+            {"GET", "/emails/receiving"} ->
+              Jason.encode!(received)
+          end
+
+        conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, body)
+      end
+
+      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test", plug: plug)
+    end
+
+    test "inserts inbound the project never recorded and reports counts", ctx do
+      sync_plug()
+
+      assert {:ok, %{synced: 1, new: 1, backfilled: 0}} = Mail.sync_inbound(ctx.project)
+      assert [%{emails: [email]}] = Mail.list_threads(ctx.mailbox)
+      assert email.body_text == "Recovered body"
+      assert email.message_id == "<m1@x>"
+    end
+
+    test "backfills the body of a metadata-only row", ctx do
+      {:ok, blank} =
+        Mail.route_inbound(ctx.project, %{
+          from: "a@x.com",
+          to: ["support@sync.example.com"],
+          subject: "Missed",
+          message_id: "<m1@x>"
+        })
+
+      refute blank.body_text
+
+      sync_plug()
+
+      assert {:ok, %{new: 0, backfilled: 1}} = Mail.sync_inbound(ctx.project)
+      assert [%{emails: [email]}] = Mail.list_threads(ctx.mailbox)
+      assert email.body_text == "Recovered body"
+    end
+
+    test "skips messages already fully recorded", ctx do
+      {:ok, _} =
+        Mail.route_inbound(ctx.project, %{
+          from: "a@x.com",
+          to: ["support@sync.example.com"],
+          subject: "Missed",
+          text: "already here",
+          message_id: "<m1@x>"
+        })
+
+      sync_plug()
+
+      assert {:ok, %{new: 0, backfilled: 0}} = Mail.sync_inbound(ctx.project)
+    end
+  end
 end
