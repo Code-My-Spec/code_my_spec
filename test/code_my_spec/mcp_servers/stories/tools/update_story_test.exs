@@ -4,7 +4,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStoryTest do
   alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
   alias CodeMySpec.Tags
   alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 

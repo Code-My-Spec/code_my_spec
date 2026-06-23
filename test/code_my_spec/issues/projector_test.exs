@@ -18,7 +18,7 @@ defmodule CodeMySpec.Issues.ProjectorTest do
     %{env: env, tmp_dir: tmp_dir}
   end
 
-  defp build_issue(overrides \\ %{}) do
+  defp build_issue(overrides) do
     Map.merge(
       %Issue{
         id: Ecto.UUID.generate(),

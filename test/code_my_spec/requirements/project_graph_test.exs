@@ -225,7 +225,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
         module_name: "MyApp.Accounts"
       })
 
-    {:ok, child} =
+    {:ok, _child} =
       Components.create_component(scope, %{
         name: "User",
         type: "schema",

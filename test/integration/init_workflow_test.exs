@@ -54,7 +54,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     # Step 4: create project in DB with local_path (simulates init_project MCP tool)
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
-    scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
+    _scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
 
     # Step 5: get_next_requirement computes the graph directly — returns project_setup
     {:reply, graph_resp, ^frame} = GetNextRequirement.execute(%{}, frame)

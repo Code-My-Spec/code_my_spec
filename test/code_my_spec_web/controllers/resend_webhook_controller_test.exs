@@ -22,10 +22,9 @@ defmodule CodeMySpecWeb.ResendWebhookControllerTest do
 
     scope = full_scope_fixture()
 
-    project =
-      scope.active_project
-      |> Ecto.Changeset.change(domain: @domain)
-      |> Repo.update!()
+    scope.active_project
+    |> Ecto.Changeset.change(domain: @domain)
+    |> Repo.update!()
 
     {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@#{@domain}"})
 

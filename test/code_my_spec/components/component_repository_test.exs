@@ -7,7 +7,6 @@ defmodule CodeMySpec.Components.ComponentRepositoryTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.StoriesFixtures
-  import CodeMySpec.RequirementsFixtures
 
 
   alias CodeMySpec.Components.{Component, ComponentRepository}

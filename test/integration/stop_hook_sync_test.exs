@@ -17,7 +17,6 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -236,10 +235,6 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       @moduledoc false
     end
     """)
-  end
-
-  defp find_component(components, module_name) do
-    Enum.find(components, &(&1.module_name == module_name))
   end
 
   defp call_stop_hook!(scope, session_id) do

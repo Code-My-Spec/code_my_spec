@@ -49,7 +49,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       analyzers = Runner.list_analyzers()
 
       assert is_list(analyzers)
-      assert analyzers != []
+      assert match?([_ | _], analyzers)
 
       Enum.each(analyzers, fn analyzer ->
         assert is_atom(analyzer)

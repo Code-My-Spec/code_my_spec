@@ -215,18 +215,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
     """
   end
 
-  defp context_spec_content do
-    """
-    # MyApp.Accounts
-
-    Account management context.
-
-    ## Type
-
-    context
-    """
-  end
-
   defp impl_content(module_name \\ "MyApp.Widget") do
     """
     defmodule #{module_name} do
