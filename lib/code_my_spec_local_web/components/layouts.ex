@@ -149,6 +149,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <div class="local-sidebar-eyebrow">// workflow</div>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/next-task"} active={@section == :next_task}>Next task</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/files"} active={@section == :files}>Files &amp; sync</.sidebar_item>
+      <.sidebar_item to={~p"/projects/#{project_slug(@project)}/content"} active={@section == :content}>Content</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/problems"} active={@section == :problems}>Problems</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/configuration"} active={@section == :configuration}>Configuration</.sidebar_item>
     </div>
@@ -231,6 +232,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
 
   defp section_label(:overview), do: "Overview"
   defp section_label(:files), do: "Files & Sync"
+  defp section_label(:content), do: "Content"
   defp section_label(:problems), do: "Problems"
   defp section_label(:configuration), do: "Configuration"
   defp section_label(:next_task), do: "Next Task"

@@ -59,3 +59,7 @@ config :code_my_spec,
   # Route ProjectUsers' outbound Req through Req.Test so specs/tests can stub
   # the target app's users endpoint without hitting the network.
   project_users_req_plug: {Req.Test, CodeMySpec.ProjectUsers}
+
+# Story 713: run content pull synchronously in tests so it shares the
+# ExUnit sandbox connection instead of racing the test process.
+config :code_my_spec, content_pull_async: false

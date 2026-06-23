@@ -42,13 +42,28 @@ defmodule CodeMySpecWeb.ContentController do
 
   def index(conn, _params) do
     content_type = index_content_type(conn.private.phoenix_action)
-    config = Map.fetch!(@index_config, content_type)
     scope = conn.assigns[:current_scope]
+    posts = Content.list_published_content(scope, content_type)
+    render_post_index(conn, content_type, posts)
+  end
+
+  def blog_tag(conn, %{"tag" => tag}), do: tag_index(conn, :blog, tag)
+  def pages_tag(conn, %{"tag" => tag}), do: tag_index(conn, :page, tag)
+  def landing_tag(conn, %{"tag" => tag}), do: tag_index(conn, :landing, tag)
+  def documentation_tag(conn, %{"tag" => tag}), do: tag_index(conn, :documentation, tag)
+
+  defp tag_index(conn, content_type, tag) do
+    scope = conn.assigns[:current_scope]
+    posts = ContentRepository.list_published_by_tag(scope, content_type, tag)
+    render_post_index(conn, content_type, posts)
+  end
+
+  defp render_post_index(conn, content_type, posts) do
+    config = Map.get(@index_config, content_type, fallback_index_config(content_type))
     base_url = CodeMySpecWeb.Endpoint.url()
 
     posts =
-      scope
-      |> Content.list_published_content(content_type)
+      posts
       |> Enum.sort_by(
         fn post ->
           case post.publish_at do
@@ -127,6 +142,22 @@ defmodule CodeMySpecWeb.ContentController do
   defp index_content_type(:documentation_index), do: :documentation
   defp index_content_type(:pages_index), do: :page
 
+  defp fallback_index_config(content_type) do
+    label = content_type |> to_string() |> String.capitalize()
+
+    %{
+      badge: label,
+      title: label,
+      description: "",
+      icon: "hero-squares-2x2",
+      empty_message: "Nothing here yet",
+      page_title: "#{label} — CodeMySpec",
+      og_image_suffix: "default",
+      item_path_prefix: "/#{content_type}",
+      schema_name: "CodeMySpec #{label}"
+    }
+  end
+
   def show(conn, %{"slug" => slug}) do
     content_type = content_type_from_action(conn.private.phoenix_action)
     is_protected = protected_action?(conn.private.phoenix_action)
@@ -138,9 +169,12 @@ defmodule CodeMySpecWeb.ContentController do
         render(conn, template_action(template), build_show_assigns(content, template, is_protected))
 
       {:error, _reason} ->
+        # Unknown / not-yet-published / expired slugs return a plain 404 at
+        # render time (story 713) — not a redirect, not a custom error page.
         conn
-        |> put_flash(:error, "Content not found")
-        |> redirect(to: ~p"/")
+        |> put_resp_content_type("text/plain")
+        |> send_resp(404, "Not Found")
+        |> halt()
     end
   end
 

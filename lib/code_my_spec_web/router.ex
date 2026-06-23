@@ -63,6 +63,13 @@ defmodule CodeMySpecWeb.Router do
       live "/author/john-davenport", AuthorLive, :author
     end
 
+    # Tag-filtered index pages (story 713) — 3-segment, declared before the
+    # 2-segment :slug routes for clarity.
+    get "/blog/tag/:tag", ContentController, :blog_tag
+    get "/pages/tag/:tag", ContentController, :pages_tag
+    get "/landing/tag/:tag", ContentController, :landing_tag
+    get "/documentation/tag/:tag", ContentController, :documentation_tag
+
     # Content detail pages (dead views — static content, no WebSocket)
     get "/blog/:slug", ContentController, :blog
     get "/pages/:slug", ContentController, :page
@@ -175,6 +182,7 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :api
 
     post "/sync", ContentSyncController, :sync
+    post "/pull", ContentSyncController, :pull
   end
 
   # Registered-users endpoint — CodeMySpec dogfoods its own ProjectUsers feature
@@ -250,9 +258,6 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
         {CodeMySpecWeb.UserAuth, :require_active_project}
       ] do
-      live "/content_admin", ContentAdminLive.Index, :index
-      live "/content_admin/:id", ContentAdminLive.Show, :show
-
       live "/issues", IssuesLive.Index, :index
       live "/issues/:id", IssuesLive.Show, :show
 

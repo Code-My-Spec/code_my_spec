@@ -134,6 +134,31 @@ defmodule CodeMySpec.Content.ContentRepository do
 
   def list_series_posts(_), do: []
 
+  @doc """
+  Returns published, in-window content of `content_type` carrying the given
+  tag (matched by tag slug or name). Applies the same render-time schedule
+  filter as `list_published_content/2`, so out-of-window slugs never appear in
+  a tag index (story 713). nil scope restricts to public content.
+  """
+  @spec list_published_by_tag(scope() | nil, content_type(), String.t()) :: [Content.t()]
+  def list_published_by_tag(scope, content_type, tag) do
+    now = DateTime.utc_now()
+
+    Content
+    |> by_content_type(content_type)
+    |> where([c], is_nil(c.publish_at) or c.publish_at <= ^now)
+    |> where([c], is_nil(c.expires_at) or c.expires_at > ^now)
+    |> maybe_public_only(scope)
+    |> join(:inner, [c], t in assoc(c, :tags))
+    |> where([c, t], t.slug == ^tag or t.name == ^tag)
+    |> distinct(true)
+    |> Repo.all()
+    |> preload_tags()
+  end
+
+  defp maybe_public_only(query, %Scope{}), do: query
+  defp maybe_public_only(query, nil), do: where(query, [c], c.protected == false)
+
   defp by_content_type(query, content_type) do
     where(query, [c], c.content_type == ^content_type)
   end

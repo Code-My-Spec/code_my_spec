@@ -89,6 +89,19 @@ if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
   if System.get_env("NO_SERVER") do
     config :code_my_spec, CodeMySpecLocalWeb.Endpoint, server: false
   end
+
+  # Content publishing (story 712): the local CLI is the publisher — it signs
+  # S3 uploads with the user's own AWS creds and purges Cloudflare directly.
+  # These reach dev_cli via envs/.env (loaded for every env at line 8), so wire
+  # them here too (the web-env block above doesn't run for the cli server).
+  config :ex_aws,
+    access_key_id: env!("AWS_ACCESS_KEY_ID", :string, ""),
+    secret_access_key: env!("AWS_SECRET_ACCESS_KEY", :string, ""),
+    region: env!("AWS_REGION", :string, "us-east-1")
+
+  config :code_my_spec, CodeMySpec.Content.CloudflareClient,
+    api_token: env!("CLOUDFLARE_TOKEN", :string, ""),
+    zone_id: env!("CLOUDFLARE_ZONE_ID", :string, "ba45c3c2010cb275de73f91f4f05edab")
 end
 
 # Web app mode
