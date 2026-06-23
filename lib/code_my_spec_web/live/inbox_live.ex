@@ -256,7 +256,7 @@ defmodule CodeMySpecWeb.InboxLive do
               class={["chat", chat_side(message.role)]}
             >
               <div class="chat-header text-xs opacity-60">{sender_label(message.role)}</div>
-              <div class={["chat-bubble whitespace-pre-wrap break-words", chat_bubble(message.role)]}>
+              <div class={["chat-bubble break-words", chat_bubble(message.role)]}>
                 {message.body}
               </div>
             </div>
