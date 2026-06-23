@@ -35,16 +35,19 @@ defmodule CodeMySpecWeb.MailLive do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :show}} = socket) do
+  def handle_params(%{"id" => id} = params, _uri, %{assigns: %{live_action: :show}} = socket) do
     mailbox = Mail.get_mailbox(socket.assigns.current_scope, id)
+    threads = if mailbox, do: Mail.list_threads(mailbox), else: []
+    key = params["thread"]
+    current = key && Enum.find(threads, &(&1.key == key))
 
     {:noreply,
      socket
      |> assign(:mailbox, mailbox)
-     |> assign(:page_title, (mailbox && mailbox.address) || "Mail")
-     |> assign(:selected, nil)
-     |> assign(:current_thread, nil)
-     |> load_threads()}
+     |> assign(:threads, threads)
+     |> assign(:selected, key)
+     |> assign(:current_thread, current)
+     |> assign(:page_title, (mailbox && mailbox.address) || "Mail")}
   end
 
   def handle_params(_params, _uri, socket) do
@@ -61,15 +64,14 @@ defmodule CodeMySpecWeb.MailLive do
     {:noreply, push_navigate(socket, to: ~p"/app/mail/#{id}")}
   end
 
+  # Thread selection lives in the URL (?thread=KEY) so a reload stays on the
+  # open conversation. The event just patches the URL; handle_params opens it.
   def handle_event("open_thread", %{"key" => key}, socket) do
-    {:noreply,
-     socket
-     |> assign(:selected, key)
-     |> assign(:current_thread, thread_by_key(socket.assigns.threads, key))}
+    {:noreply, push_patch(socket, to: thread_path(socket.assigns.mailbox, key))}
   end
 
   def handle_event("close_thread", _params, socket) do
-    {:noreply, socket |> assign(:selected, nil) |> assign(:current_thread, nil)}
+    {:noreply, push_patch(socket, to: thread_path(socket.assigns.mailbox, nil))}
   end
 
   def handle_event("open_modal", %{"modal" => modal}, socket) do
@@ -84,7 +86,8 @@ defmodule CodeMySpecWeb.MailLive do
     {:ok, _email} =
       Mail.send_outbound(socket.assigns.mailbox, %{to: to, subject: subject, body: body})
 
-    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: :latest)}
+    key = latest_thread_key(socket.assigns.mailbox)
+    {:noreply, socket |> assign(:modal, nil) |> push_patch(to: thread_path(socket.assigns.mailbox, key))}
   end
 
   def handle_event("reply", %{"email" => %{"to" => to, "body" => body}}, socket) do
@@ -93,40 +96,22 @@ defmodule CodeMySpecWeb.MailLive do
     {:ok, _email} =
       Mail.send_outbound(socket.assigns.mailbox, %{to: to, subject: subject, body: body})
 
-    {:noreply, socket |> assign(:modal, nil) |> load_threads(select: :latest)}
+    key = latest_thread_key(socket.assigns.mailbox)
+    {:noreply, socket |> assign(:modal, nil) |> push_patch(to: thread_path(socket.assigns.mailbox, key))}
   end
 
-  defp load_threads(socket, opts \\ [])
-
-  defp load_threads(%{assigns: %{mailbox: nil}} = socket, _opts) do
-    socket |> assign(:threads, []) |> assign(:selected, nil) |> assign(:current_thread, nil)
+  defp latest_thread_key(mailbox) do
+    mailbox |> Mail.list_threads() |> List.first() |> then(&(&1 && &1.key))
   end
 
-  defp load_threads(%{assigns: %{mailbox: mailbox}} = socket, opts) do
-    threads = Mail.list_threads(mailbox)
-
-    # Default: stay in the list (no thread auto-opened). compose/reply open the
-    # just-touched thread; an explicit selection is kept if it still exists.
-    selected =
-      cond do
-        opts[:select] == :latest -> threads |> List.first() |> then(&(&1 && &1.key))
-        socket.assigns.selected && Enum.any?(threads, &(&1.key == socket.assigns.selected)) -> socket.assigns.selected
-        true -> nil
-      end
-
-    socket
-    |> assign(:threads, threads)
-    |> assign(:selected, selected)
-    |> assign(:current_thread, selected && thread_by_key(threads, selected))
-  end
+  defp thread_path(mailbox, nil), do: ~p"/app/mail/#{mailbox.id}"
+  defp thread_path(mailbox, key), do: ~p"/app/mail/#{mailbox.id}?thread=#{key}"
 
   defp reply_subject(%{subject: subject}) when is_binary(subject), do: prefix_re(subject)
   defp reply_subject(_), do: "Re:"
 
   defp prefix_re("Re:" <> _ = subject), do: subject
   defp prefix_re(subject), do: "Re: #{subject}"
-
-  defp thread_by_key(threads, key), do: Enum.find(threads, &(&1.key == key))
 
   defp assigned_label(%{user: %{email: email}}) when is_binary(email), do: email
   defp assigned_label(_mailbox), do: "Shared"
