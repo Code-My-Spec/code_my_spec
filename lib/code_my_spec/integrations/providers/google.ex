@@ -20,22 +20,25 @@ defmodule CodeMySpec.Integrations.Providers.Google do
 
   ## Scopes
 
-  Requests the following Google OAuth scopes:
-  - `email` - Access to user email address
-  - `profile` - Access to user profile information
+  The requested OAuth scopes are configured **per environment** via
+  `config :code_my_spec, google_oauth_scopes: "<space-separated scopes>"`.
+  The default (`"email profile"`) requests only the non-sensitive `email`
+  and `profile` scopes, so the consent screen does not require Google app
+  verification.
 
-  These are non-sensitive scopes, so the OAuth consent screen does not
-  require Google app verification.
-
-  NOTE: The `https://www.googleapis.com/auth/analytics.edit` scope was
-  removed because it is a sensitive scope that forces the app through
-  Google's verification process (the "Google hasn't verified this app"
-  warning). The `CodeMySpec.Google.Analytics` admin client and its
-  MCP surface remain in the codebase but are inert without this scope;
-  re-add it here and re-verify the app before relying on them again.
+  Sensitive scopes (`https://www.googleapis.com/auth/adwords`,
+  `https://www.googleapis.com/auth/analytics.edit`, etc.) force the app
+  through Google's verification process (the "Google hasn't verified this
+  app" warning). Add them only in environments where the app is verified —
+  e.g. `config/dev.exs` enables the `adwords` scope for Google Ads testing
+  while production stays on the verification-safe default until verified.
   """
 
   @behaviour CodeMySpec.Integrations.Providers.Behaviour
+
+  # Verification-safe default — non-sensitive scopes only. Per-environment
+  # config (`:google_oauth_scopes`) adds sensitive scopes where appropriate.
+  @default_scopes "email profile"
 
   @impl true
   def config do
@@ -58,11 +61,16 @@ defmodule CodeMySpec.Integrations.Providers.Google do
       token_url: "https://oauth2.googleapis.com/token",
       auth_method: :client_secret_post,
       authorization_params: [
-        scope: "email profile",
+        scope: scopes(),
         access_type: "offline",
         prompt: "consent"
       ]
     ]
+  end
+
+  # The space-separated OAuth scope string, configured per environment.
+  defp scopes do
+    Application.get_env(:code_my_spec, :google_oauth_scopes, @default_scopes)
   end
 
   @impl true

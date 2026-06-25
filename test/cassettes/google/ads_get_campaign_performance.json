@@ -1,0 +1,66 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-23T00:00:00.000000Z",
+      "request": {
+        "body_json": {
+          "query": "SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, metrics.average_cpc FROM campaign WHERE segments.date DURING LAST_30_DAYS ORDER BY metrics.cost_micros DESC"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": ["application/json"],
+          "content-type": ["application/json"],
+          "user-agent": ["CodeMySpec"]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://googleads.googleapis.com/v17/customers/1234567890/googleAds:search"
+      },
+      "response": {
+        "body_json": {
+          "results": [
+            {
+              "campaign": {
+                "resourceName": "customers/1234567890/campaigns/222",
+                "id": "222",
+                "name": "Search - Brand",
+                "status": "ENABLED",
+                "advertisingChannelType": "SEARCH"
+              },
+              "metrics": {
+                "costMicros": "98000000",
+                "clicks": "210",
+                "impressions": "7400",
+                "conversions": 14.0,
+                "averageCpc": "466666"
+              }
+            },
+            {
+              "campaign": {
+                "resourceName": "customers/1234567890/campaigns/333",
+                "id": "333",
+                "name": "Search - Generic",
+                "status": "ENABLED",
+                "advertisingChannelType": "SEARCH"
+              },
+              "metrics": {
+                "costMicros": "27000000",
+                "clicks": "130",
+                "impressions": "4600",
+                "conversions": 4.0,
+                "averageCpc": "207692"
+              }
+            }
+          ],
+          "fieldMask": "campaign.id,campaign.name,campaign.status,campaign.advertisingChannelType,metrics.costMicros,metrics.clicks,metrics.impressions,metrics.conversions,metrics.averageCpc"
+        },
+        "body_type": "json",
+        "headers": {
+          "content-type": ["application/json; charset=UTF-8"]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

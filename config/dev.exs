@@ -2,6 +2,14 @@ import Config
 
 config :code_my_spec, env: :dev
 
+# Request the Google Ads scope in dev so the OAuth consent flow grants an
+# `adwords`-scoped token for testing the Google Ads MCP server. This is a
+# sensitive scope (triggers Google's unverified-app warning); production
+# keeps the verification-safe default from config.exs until the app is
+# verified for Ads.
+config :code_my_spec,
+  google_oauth_scopes: "email profile https://www.googleapis.com/auth/adwords"
+
 # The CodeMySpec project on the dev server. Framework-scoped issues (friction
 # with CodeMySpec itself, filed by any authenticated user) are attributed here,
 # and ProjectScopeOverride relaxes account-access checks for that narrow path.

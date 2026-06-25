@@ -118,6 +118,12 @@ if config_env() not in [:dev_cli, :prod_cli, :cli_demo] do
   # S3 uploads (issue screenshots)
   config :code_my_spec, s3_bucket: env!("S3_BUCKET", :string, "codemyspec-uploads")
 
+  # Google Ads developer token — server-side only, never exposed to the agent.
+  # Optional: when unset the Ads tools return a "developer token not configured"
+  # error rather than crashing boot.
+  config :code_my_spec, CodeMySpec.Google.Ads,
+    developer_token: env!("GOOGLE_ADS_DEVELOPER_TOKEN", :string, "")
+
   # Static images host (e.g. "https://images.codemyspec.com" for R2). Empty
   # falls back to app-served /images/... so local dev keeps working.
   config :code_my_spec, images_host: env!("IMAGES_HOST", :string, "")

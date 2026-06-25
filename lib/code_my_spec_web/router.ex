@@ -134,6 +134,9 @@ defmodule CodeMySpecWeb.Router do
 
     forward "/ga4", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.Ga4Server
+
+    forward "/google-ads", Anubis.Server.Transport.StreamableHTTP.Plug,
+      server: CodeMySpec.McpServers.GoogleAdsServer
   end
 
   # API routes

@@ -104,8 +104,14 @@ defmodule CodeMySpec.McpServers.GoogleTools do
   def error(:invalid_filters), do: err("Invalid filters: expected a non-empty list of filter objects.")
   def error(:invalid_filter_shape), do: err("Each filter must have \"dimension\", \"operator\", and \"expression\" keys.")
 
+  def error(:no_developer_token),
+    do:
+      err(
+        "Google Ads developer token not configured. Set GOOGLE_ADS_DEVELOPER_TOKEN on the server."
+      )
+
   # Google API HTTP errors — surface status + the API's message when present.
-  def error({tag, status, body}) when tag in [:gsc_error, :ga4_error] do
+  def error({tag, status, body}) when tag in [:gsc_error, :ga4_error, :ads_error] do
     err("Google API returned #{status}: #{api_message(body)}")
   end
 

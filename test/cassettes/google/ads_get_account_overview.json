@@ -1,0 +1,48 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-23T00:00:00.000000Z",
+      "request": {
+        "body_json": {
+          "query": "SELECT customer.id, customer.descriptive_name, customer.currency_code, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions FROM customer WHERE segments.date DURING LAST_30_DAYS"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": ["application/json"],
+          "content-type": ["application/json"],
+          "user-agent": ["CodeMySpec"]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://googleads.googleapis.com/v17/customers/1234567890/googleAds:search"
+      },
+      "response": {
+        "body_json": {
+          "results": [
+            {
+              "customer": {
+                "resourceName": "customers/1234567890",
+                "id": "1234567890",
+                "descriptiveName": "Acme Co",
+                "currencyCode": "USD"
+              },
+              "metrics": {
+                "costMicros": "125000000",
+                "clicks": "340",
+                "impressions": "12000",
+                "conversions": 18.0
+              }
+            }
+          ],
+          "fieldMask": "customer.id,customer.descriptiveName,customer.currencyCode,metrics.costMicros,metrics.clicks,metrics.impressions,metrics.conversions"
+        },
+        "body_type": "json",
+        "headers": {
+          "content-type": ["application/json; charset=UTF-8"]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

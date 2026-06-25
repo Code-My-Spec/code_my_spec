@@ -1,0 +1,44 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-23T00:00:00.000000Z",
+      "request": {
+        "body_json": {
+          "operations": [
+            {
+              "updateMask": "amount_micros",
+              "update": {
+                "resourceName": "customers/1234567890/campaignBudgets/111",
+                "amountMicros": 25000000
+              }
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": ["application/json"],
+          "content-type": ["application/json"],
+          "user-agent": ["CodeMySpec"]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://googleads.googleapis.com/v17/customers/1234567890/campaignBudgets:mutate"
+      },
+      "response": {
+        "body_json": {
+          "results": [
+            {
+              "resourceName": "customers/1234567890/campaignBudgets/111"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "content-type": ["application/json; charset=UTF-8"]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

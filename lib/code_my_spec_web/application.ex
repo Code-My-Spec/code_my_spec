@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},
         {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
         {CodeMySpec.McpServers.Ga4Server, transport: :streamable_http},
+        {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},
         CodeMySpecWeb.Endpoint
       ]
       |> children(env)

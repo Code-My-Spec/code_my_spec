@@ -24,6 +24,12 @@ config :code_my_spec,
   ecto_repos: [CodeMySpec.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Google OAuth scopes requested on the consent screen. Default to the
+# non-sensitive scopes only (no app-verification required). Environments
+# where the app is verified (or under test) add sensitive scopes such as
+# `https://www.googleapis.com/auth/adwords` — see config/dev.exs.
+config :code_my_spec, google_oauth_scopes: "email profile"
+
 # Configures the endpoint
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   url: [host: "localhost"],

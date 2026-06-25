@@ -1,0 +1,36 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-06-23T00:00:00.000000Z",
+      "request": {
+        "body_json": {
+          "query": "SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, metrics.average_cpc FROM campaign WHERE segments.date DURING LAST_30_DAYS ORDER BY metrics.cost_micros DESC"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": ["application/json"],
+          "content-type": ["application/json"],
+          "user-agent": ["CodeMySpec"]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://googleads.googleapis.com/v17/customers/1234567890/googleAds:search"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": 403,
+            "message": "Resource has been exhausted (e.g. check quota).",
+            "status": "RESOURCE_EXHAUSTED"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "content-type": ["application/json; charset=UTF-8"]
+        },
+        "status": 403
+      }
+    }
+  ],
+  "version": "2.0"
+}
