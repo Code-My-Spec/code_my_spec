@@ -2,6 +2,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
   use CodeMySpecLocalWeb, :live_view
 
   alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Components
   alias CodeMySpec.Projects
   alias CodeMySpec.Qa
   alias CodeMySpec.Stories
@@ -47,6 +48,25 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
         <.list>
           <:item title="Title">{@story.title}</:item>
           <:item title="Description">{@story.description}</:item>
+          <:item title="Component">
+            <div :if={@component} class="flex items-center gap-2 flex-wrap">
+              <span class="badge badge-secondary font-mono">{@component.module_name}</span>
+              <span class="badge badge-ghost badge-sm">{@component.type}</span>
+            </div>
+            <div
+              :if={!@component && @story.component_id}
+              role="alert"
+              class="alert alert-warning alert-soft text-sm"
+            >
+              <.icon name="hero-exclamation-triangle" class="size-4" />
+              <span>
+                Linked to a missing component (<span class="font-mono">{String.slice(@story.component_id, 0, 8)}…</span>) — dangling reference; re-link this story to a real component.
+              </span>
+            </div>
+            <div :if={!@component && !@story.component_id} class="text-base-content/60 italic">
+              Not linked to a component.
+            </div>
+          </:item>
           <:item title="Acceptance criteria">
             <div :if={Enum.empty?(@story.criteria)} class="text-base-content/60 italic">
               No criteria defined
@@ -129,6 +149,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
        scope: nil,
        slug: nil,
        story: nil,
+       component: nil,
        tags: [],
        qa_attempts: [],
        invalidating_attempt_id: nil,
@@ -145,6 +166,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
          %Stories.Story{} = story <- Stories.get_story(scope, id) do
       tags = Tags.list_story_tags(scope, story)
       qa_attempts = Qa.list_qa_attempts(scope, story.id)
+      component = story.component_id && Components.get_component(scope, story.component_id)
 
       socket =
         socket
@@ -153,6 +175,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
           scope: scope,
           slug: project_slug(project),
           story: story,
+          component: component,
           tags: tags,
           qa_attempts: qa_attempts,
           invalidating_attempt_id: nil,
