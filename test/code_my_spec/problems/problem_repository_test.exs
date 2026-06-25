@@ -453,6 +453,48 @@ defmodule CodeMySpec.Problems.ProblemRepositoryTest do
     end
   end
 
+  describe "clear_problems_for_source/3 with :all file scope" do
+    test "clears only the matching source project-wide", %{scope: scope} do
+      qa1 = problem_fixture(scope, %{source: "qa_validation", file_path: "lib/a.ex"})
+      qa2 = problem_fixture(scope, %{source: "qa_validation", file_path: "lib/b.ex"})
+      credo = problem_fixture(scope, %{source: "credo", file_path: "lib/a.ex"})
+
+      assert {:ok, 2} =
+               ProblemRepository.clear_problems_for_source(
+                 scope,
+                 [source: "qa_validation"],
+                 :all
+               )
+
+      remaining_ids = Repo.all(Problem) |> Enum.map(& &1.id)
+      assert remaining_ids == [credo.id]
+      refute qa1.id in remaining_ids
+      refute qa2.id in remaining_ids
+    end
+
+    test "does not affect problems from other projects", %{scope: scope} do
+      problem_fixture(scope, %{source: "qa_validation"})
+
+      other_user = user_fixture()
+      other_account = account_with_owner_fixture(other_user)
+      other_scope = user_scope_fixture(other_user, other_account)
+      other_project = project_fixture(other_scope)
+      other_scope = user_scope_fixture(other_user, other_account, other_project)
+      other_problem = problem_fixture(other_scope, %{source: "qa_validation"})
+
+      assert {:ok, 1} =
+               ProblemRepository.clear_problems_for_source(
+                 scope,
+                 [source: "qa_validation"],
+                 :all
+               )
+
+      remaining = Repo.all(Problem)
+      assert length(remaining) == 1
+      assert hd(remaining).id == other_problem.id
+    end
+  end
+
   describe "replace_problems_for_components/4" do
     test "replaces problems for specific components and source", %{scope: scope} do
       component = component_fixture(scope)

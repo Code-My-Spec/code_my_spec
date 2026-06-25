@@ -67,6 +67,29 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
   end
 
   @impl true
+  def handle_event("clear", _params, %{assigns: %{scope: scope, filter: filter}} = socket) do
+    {:ok, count} =
+      case filter do
+        :all -> Problems.clear_project_problems(scope)
+        source -> Problems.clear_problems_for_source(scope, [source: source], :all)
+      end
+
+    result =
+      Problems.list_problems_paginated(scope,
+        page: 1,
+        per_page: @per_page,
+        filter: filter
+      )
+
+    label = if filter == :all, do: "all sources", else: filter
+
+    {:noreply,
+     socket
+     |> assign(page: 1, result: result)
+     |> put_flash(:info, "Cleared #{count} problem(s) from #{label}.")}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -89,7 +112,7 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
           </p>
         </div>
 
-        <div class="flex flex-wrap gap-2 mb-4" data-test="problems-filters">
+        <div class="flex flex-wrap items-center gap-2 mb-4" data-test="problems-filters">
           <.link
             patch={problems_path(@slug, page: 1, filter: :all)}
             data-test="filter-all"
@@ -105,7 +128,29 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
           >
             {source} ({Map.get(@result.counts_by_source, source, 0)})
           </.link>
+
+          <button
+            :if={@result.problems != []}
+            type="button"
+            phx-click={show_confirm("clear-problems-dialog")}
+            data-test="clear-problems"
+            class="btn btn-sm btn-error btn-outline ml-auto"
+          >
+            Clear
+          </button>
         </div>
+
+        <.confirm_dialog
+          id="clear-problems-dialog"
+          title={
+            if @filter == :all,
+              do: "Clear all problems?",
+              else: "Clear all #{@filter} problems?"
+          }
+          message="They'll repopulate the next time the validation pipeline runs."
+          confirm_label="Clear"
+          on_confirm={JS.push("clear")}
+        />
 
         <div class="overflow-x-auto">
           <table class="table table-zebra table-sm" data-test="problems-table">
