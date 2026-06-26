@@ -197,6 +197,18 @@ defmodule CodeMySpecLocalWeb.ContentLive do
                 <input type="text" name="settings[client_api_url]" value={@project.client_api_url} class="input input-bordered input-sm" />
               </label>
               <label class="form-control">
+                <span class="label-text text-xs">AWS access key ID</span>
+                <input type="password" name="settings[aws_access_key_id]" value={@project.aws_access_key_id} class="input input-bordered input-sm" autocomplete="off" />
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">AWS secret access key</span>
+                <input type="password" name="settings[aws_secret_access_key]" value={@project.aws_secret_access_key} class="input input-bordered input-sm" autocomplete="off" />
+              </label>
+              <label class="form-control">
+                <span class="label-text text-xs">AWS region</span>
+                <input type="text" name="settings[aws_region]" value={@project.aws_region} class="input input-bordered input-sm" placeholder="us-east-1" />
+              </label>
+              <label class="form-control">
                 <span class="label-text text-xs">Deploy key</span>
                 <input type="password" name="settings[deploy_key]" value={@project.deploy_key} class="input input-bordered input-sm" />
               </label>

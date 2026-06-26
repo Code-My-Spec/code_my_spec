@@ -87,6 +87,7 @@ defmodule CodeMySpec.ContentPublishing do
 
   defp do_publish(project, success_rows) do
     bucket = project.content_bucket
+    creds = aws_credentials(project)
     blob_json = success_rows |> Enum.map(&blob_row/1) |> Jason.encode!()
     blob_url = "https://#{bucket}/content.json"
     manifest_url = "https://#{bucket}/manifest.json"
@@ -100,10 +101,15 @@ defmodule CodeMySpec.ContentPublishing do
       "counts" => counts
     }
 
-    with :ok <- S3Client.put_object(bucket, "content.json", blob_json, content_type: "application/json"),
+    with :ok <-
+           S3Client.put_object(bucket, "content.json", blob_json,
+             content_type: "application/json",
+             credentials: creds
+           ),
          :ok <-
            S3Client.put_object(bucket, "manifest.json", Jason.encode!(manifest),
-             content_type: "application/json"
+             content_type: "application/json",
+             credentials: creds
            ),
          {:ok, result} <- trigger_client(project, manifest_url) do
       {:ok, Map.merge(result, %{counts: counts, total: length(success_rows)})}
@@ -125,6 +131,18 @@ defmodule CodeMySpec.ContentPublishing do
   end
 
   defp trigger_client(_project, manifest_url), do: {:ok, %{sync_id: nil, manifest_url: manifest_url}}
+
+  # The project's own AWS keys (encrypted at rest), passed per-request to ExAws
+  # so a published install signs uploads without a global `:ex_aws` env. Blank
+  # entries are dropped so ExAws falls back to its app-env/default config.
+  defp aws_credentials(project) do
+    [
+      access_key_id: project.aws_access_key_id,
+      secret_access_key: project.aws_secret_access_key,
+      region: project.aws_region
+    ]
+    |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
+  end
 
   defp blob_row(%Snapshot{} = row), do: content_attrs(row.metadata || %{}, row.processed_content)
 
@@ -273,7 +291,10 @@ defmodule CodeMySpec.ContentPublishing do
         hash = hex(:crypto.hash(:sha256, bytes))
         changed? = image_changed?(scope, key, hash)
 
-        case S3Client.put_object(project.image_bucket, key, bytes, content_type: content_type_for(key)) do
+        case S3Client.put_object(project.image_bucket, key, bytes,
+               content_type: content_type_for(key),
+               credentials: aws_credentials(project)
+             ) do
           :ok ->
             upsert_image(scope, key, hash)
             {synced + 1, failed, maybe_purge(purge, changed?, project.images_host, key)}

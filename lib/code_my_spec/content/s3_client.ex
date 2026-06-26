@@ -19,22 +19,31 @@ defmodule CodeMySpec.Content.S3Client do
   @doc """
   PUT `body` to `s3://<bucket>/<key>`. Returns `:ok` on success, `{:error, _}`
   otherwise.
+
+  Pass `credentials:` (a keyword list of `:access_key_id`, `:secret_access_key`,
+  `:region`) to sign with the project's own AWS keys rather than the global
+  `:ex_aws` app env — that's how a published install (no `envs/.env`) supplies
+  creds. Blank entries should be dropped by the caller so ExAws falls back.
   """
   @spec put_object(String.t(), String.t(), iodata(), keyword()) :: :ok | {:error, term()}
   def put_object(bucket, key, body, opts \\ []) do
     content_type = Keyword.get(opts, :content_type, "application/octet-stream")
+    credentials = Keyword.get(opts, :credentials, [])
 
     bucket
     |> ExAws.S3.put_object(key, body, content_type: content_type)
-    |> ExAws.request(request_config())
+    |> ExAws.request(request_config(credentials))
     |> case do
       {:ok, _response} -> :ok
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp request_config do
+  defp request_config(credentials) do
     extra = Application.get_env(:code_my_spec, __MODULE__, [])[:s3_config] || []
-    Keyword.merge([http_client: ExAwsReqClient], extra)
+
+    [http_client: ExAwsReqClient]
+    |> Keyword.merge(extra)
+    |> Keyword.merge(credentials)
   end
 end

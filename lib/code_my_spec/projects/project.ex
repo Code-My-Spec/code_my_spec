@@ -43,12 +43,16 @@ defmodule CodeMySpec.Projects.Project do
     field :docs_repo, :string
     field :client_api_url, :string
     # Local-first content publishing (story 712): source dir on disk + the
-    # user's own per-project S3 buckets / CDN host. Credentials (AWS/CF) stay
-    # in the local CLI env, NOT here.
+    # user's own per-project S3 buckets / CDN host. The user's AWS keys live
+    # here too, encrypted at rest via Cloak — the local CLI is the publisher,
+    # so a published install (no envs/.env) needs them in the project DB.
     field :content_source_path, :string
     field :image_bucket, :string
     field :images_host, :string
     field :content_bucket, :string
+    field :aws_access_key_id, CodeMySpec.Encrypted.Binary
+    field :aws_secret_access_key, CodeMySpec.Encrypted.Binary
+    field :aws_region, :string
     field :deploy_key, CodeMySpec.Encrypted.Binary
     # Deterministic SHA-256 of the deploy key (the encrypted column can't be
     # searched), letting the widget authenticate with only the key — no
@@ -104,6 +108,9 @@ defmodule CodeMySpec.Projects.Project do
       :image_bucket,
       :images_host,
       :content_bucket,
+      :aws_access_key_id,
+      :aws_secret_access_key,
+      :aws_region,
       :deploy_key,
       :google_analytics_property_id,
       :status,
