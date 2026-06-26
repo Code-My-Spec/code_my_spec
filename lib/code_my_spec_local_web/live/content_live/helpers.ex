@@ -12,9 +12,28 @@ defmodule CodeMySpecLocalWeb.ContentLive.Helpers do
   def status_class(_), do: "badge-ghost"
 
   def format_errors(nil), do: ""
+
+  def format_errors(%{message: message, errors: errors})
+      when is_map(errors) and map_size(errors) > 0 do
+    message <> "\n" <> format_field_errors(errors)
+  end
+
   def format_errors(%{message: message}), do: message
   def format_errors(%{"message" => message}), do: message
   def format_errors(errors), do: inspect(errors)
+
+  # Ecto.Changeset.traverse_errors output: %{"field" => ["msg", ...]} with
+  # nested maps for embeds. Render one "field: messages" line per field.
+  defp format_field_errors(errors) do
+    errors
+    |> Enum.map(fn {field, msgs} -> "#{field}: #{format_field_msgs(msgs)}" end)
+    |> Enum.sort()
+    |> Enum.join("\n")
+  end
+
+  defp format_field_msgs(msgs) when is_list(msgs), do: Enum.join(msgs, ", ")
+  defp format_field_msgs(msgs) when is_map(msgs), do: format_field_errors(msgs)
+  defp format_field_msgs(msg), do: to_string(msg)
 
   def project_slug(project) do
     (project.name || "project")
