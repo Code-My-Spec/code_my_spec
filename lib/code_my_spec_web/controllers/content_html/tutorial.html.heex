@@ -15,18 +15,18 @@
           <div class="badge badge-secondary mb-4">
             Tutorial
           </div>
-          <h1 class="text-4xl font-bold mb-4">{@content.title || @content.slug}</h1>
-          <div class="opacity-60 mb-4">
+          <h1 class="text-4xl font-bold tracking-tight mb-4">{@content.title || @content.slug}</h1>
+          <div class="text-sm text-base-content/60 mb-4">
             {format_publish_date(@content.publish_at)}
           </div>
           <div :if={!Enum.empty?(@tags)} class="flex gap-2 flex-wrap">
-            <span :for={tag <- @tags} class="badge badge-primary badge-sm">
+            <span :for={tag <- @tags} class="badge badge-secondary badge-outline badge-sm">
               {tag.name}
             </span>
           </div>
         </header>
 
-        <div class="prose prose-lg max-w-none">
+        <div class="prose prose-lg max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-a:text-primary">
           <%= if @content.processed_content do %>
             {raw(strip_leading_h1(@content.processed_content))}
           <% else %>

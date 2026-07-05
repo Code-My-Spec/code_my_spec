@@ -2,7 +2,8 @@
    https://tailwindcss.com/docs/configuration */
 
 /* Self-hosted fonts — latin subset, served from /fonts on the same origin.
-   IBM Plex Sans and JetBrains Mono are variable; Space Mono is two static files. */
+   IBM Plex Sans is the single family (body + headings). JetBrains Mono is
+   kept for the rare code/command snippet. */
 @font-face {
     font-family: "IBM Plex Sans";
     font-style: normal;
@@ -19,22 +20,6 @@
     src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
-@font-face {
-    font-family: "Space Mono";
-    font-style: normal;
-    font-weight: 400;
-    font-display: swap;
-    src: url("/fonts/space-mono-400-latin.woff2") format("woff2");
-    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-    font-family: "Space Mono";
-    font-style: normal;
-    font-weight: 700;
-    font-display: swap;
-    src: url("/fonts/space-mono-700-latin.woff2") format("woff2");
-    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2212, U+2215, U+FEFF, U+FFFD;
-}
 
 @import "tailwindcss" source(none);
 @source "../css";
@@ -48,602 +33,108 @@
 @plugin "../vendor/heroicons";
 
 /* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
-   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js
-   Make sure to look at the daisyUI changelog: https://daisyui.com/docs/changelog/ */
+   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js */
 @plugin "../vendor/daisyui" {
     themes: false;
 }
 
-/* daisyUI theme plugin - CodeMySpec custom theme
-   brand_system v0.9 — signal red on black, white = success */
-@plugin "../vendor/daisyui-theme" {
-    name: "codemyspec";
-    default: true;
-    prefersdark: true;
-    color-scheme: "dark";
-    /* Signal red — punctuation, not dominance */
-    --color-primary: #ff3838;
-    --color-primary-content: #000000;
-    /* Secondary kept as a deep wash for backgrounds */
-    --color-secondary: #2a0808;
-    --color-secondary-content: #f5f5f7;
-    /* Accent reserved for spec-writer agent surfaces */
-    --color-accent: #22d3ee;
-    --color-accent-content: #000000;
-    --color-neutral: #0a0a0c;
-    --color-neutral-content: #d4d4d8;
-    /* Pure black ground; ink surfaces step up */
-    --color-base-100: #000000;
-    --color-base-200: #0a0a0c;
-    --color-base-300: #121215;
-    --color-base-content: #d4d4d8;
-    --color-info: oklch(58% 0.158 241.966);
-    --color-info-content: oklch(97% 0.013 236.62);
-    /* White is the success color, not green */
-    --color-success: #f5f5f7;
-    --color-success-content: #000000;
-    --color-warning: #fde047;
-    --color-warning-content: #000000;
-    --color-error: #ff3838;
-    --color-error-content: #000000;
-    /* Sharp corners — chamfer is opt-in via .chamfer-* utilities */
-    --radius-selector: 0;
-    --radius-field: 0;
-    --radius-box: 0;
-    --size-selector: 0.21875rem;
-    --size-field: 0.21875rem;
-    --border: 1px;
-    --depth: 0;
-    --noise: 0;
-}
-
+/* ─────────────────────────────────────────────────────────────────────────
+   "Workshop" — CodeMySpec brand theme for operators.
+   Standard daisyUI theme tokens only, so every daisyUI component picks up the
+   palette and themes stay switchable. Earthy, warm, deliberately not a
+   terminal and not the purple/blue vibe-coder look:
+     primary   = petrol teal   (Build / brand / CTA)
+     secondary = bronze         (Operate)
+     accent    = sage           (Grow)
+   Ground is warm limestone; ink is warm near-black.
+   ───────────────────────────────────────────────────────────────────────── */
 @plugin "../vendor/daisyui-theme" {
     name: "light";
     default: true;
     prefersdark: false;
     color-scheme: "light";
-    --color-base-100: oklch(98% 0 0);
-    --color-base-200: oklch(96% 0.001 286.375);
-    --color-base-300: oklch(92% 0.004 286.32);
-    --color-base-content: oklch(21% 0.006 285.885);
-    --color-primary: oklch(70% 0.213 47.604);
-    --color-primary-content: oklch(98% 0.016 73.684);
-    --color-secondary: oklch(55% 0.027 264.364);
-    --color-secondary-content: oklch(98% 0.002 247.839);
-    --color-accent: oklch(0% 0 0);
-    --color-accent-content: oklch(100% 0 0);
-    --color-neutral: oklch(44% 0.017 285.786);
-    --color-neutral-content: oklch(98% 0 0);
-    --color-info: oklch(62% 0.214 259.815);
-    --color-info-content: oklch(97% 0.014 254.604);
-    --color-success: oklch(70% 0.14 182.503);
-    --color-success-content: oklch(98% 0.014 180.72);
-    --color-warning: oklch(66% 0.179 58.318);
-    --color-warning-content: oklch(98% 0.022 95.277);
-    --color-error: oklch(65% 0.241 354.308);
-    --color-error-content: oklch(97% 0.014 343.198);
-    --radius-selector: 0.25rem;
-    --radius-field: 0.25rem;
-    --radius-box: 0.5rem;
-    --size-selector: 0.21875rem;
-    --size-field: 0.21875rem;
-    --border: 1.5px;
+    --color-base-100: #fdfcf9;
+    --color-base-200: #f5f3ec;
+    --color-base-300: #e7e3d8;
+    --color-base-content: #23211b;
+    --color-primary: #146b68;
+    --color-primary-content: #fbfaf6;
+    --color-secondary: #97652b;
+    --color-secondary-content: #fbfaf6;
+    --color-accent: #556a38;
+    --color-accent-content: #fbfaf6;
+    --color-neutral: #23211b;
+    --color-neutral-content: #f5f3ec;
+    --color-info: #2a6f97;
+    --color-info-content: #f5f9fc;
+    --color-success: #3f7a4b;
+    --color-success-content: #f6faf6;
+    --color-warning: #b9812a;
+    --color-warning-content: #fdf9f0;
+    --color-error: #b23a2e;
+    --color-error-content: #fdf6f5;
+    --radius-selector: 0.5rem;
+    --radius-field: 0.5rem;
+    --radius-box: 1rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 1px;
     --depth: 1;
     --noise: 0;
 }
 
-/* Brand system tokens — see design-tokens.html (v0.9) */
+@plugin "../vendor/daisyui-theme" {
+    name: "dark";
+    default: false;
+    prefersdark: true;
+    color-scheme: "dark";
+    --color-base-100: #22201a;
+    --color-base-200: #191813;
+    --color-base-300: #322f27;
+    --color-base-content: #f0ece2;
+    --color-primary: #4fb3ac;
+    --color-primary-content: #08211f;
+    --color-secondary: #c79a57;
+    --color-secondary-content: #251a09;
+    --color-accent: #9db36f;
+    --color-accent-content: #1b230f;
+    --color-neutral: #2b2820;
+    --color-neutral-content: #f0ece2;
+    --color-info: #6ba6c9;
+    --color-info-content: #08161d;
+    --color-success: #6ba46f;
+    --color-success-content: #0a1a0c;
+    --color-warning: #d6a845;
+    --color-warning-content: #241a06;
+    --color-error: #e06a5a;
+    --color-error-content: #2a0d08;
+    --radius-selector: 0.5rem;
+    --radius-field: 0.5rem;
+    --radius-box: 1rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 1px;
+    --depth: 1;
+    --noise: 0;
+}
+
+/* Type families. One sans family carries body + headings; JetBrains Mono is
+   kept for the rare inline command/code. `font-heading`/`font-display`
+   utilities used across templates now resolve to the body sans. */
 @theme {
-    /* Surface tokens — ink stack on pure black */
-    --color-cms-black: #000000;
-    --color-cms-ink-1: #0a0a0c;
-    --color-cms-ink-2: #121215;
-    --color-cms-ink-3: #1a1a1f;
-
-    /* Signal palette */
-    --color-cms-red: #ff3838;
-    --color-cms-red-dim: #8a1515;
-    --color-cms-red-deep: #2a0808;
-    --color-cms-white: #f5f5f7;
-
-    /* Text scale */
-    --color-cms-text: #d4d4d8;
-    --color-cms-text-dim: #8a8a93;
-    --color-cms-text-mute: #53535a;
-
-    /* Agent palette — only surfaces inside How It Works / CLI / docs */
-    --color-cms-agent-pm: #a78bfa;
-    --color-cms-agent-arch: #60a5fa;
-    --color-cms-agent-bdd: #f472b6;
-    --color-cms-agent-spec: #22d3ee;
-    --color-cms-agent-code: #fde047;
-    --color-cms-agent-qa: #ff3838;
-
-    /* Type families — Space Mono Bold = display, JetBrains Mono = code/labels, IBM Plex Sans = body only */
-    --font-display: "Space Mono", ui-monospace, monospace;
-    --font-heading: "Space Mono", ui-monospace, monospace;
+    --font-display: "IBM Plex Sans", system-ui, sans-serif;
+    --font-heading: "IBM Plex Sans", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, monospace;
     --font-body: "IBM Plex Sans", system-ui, sans-serif;
     --font-sans: "IBM Plex Sans", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
-/* Phase palette — methodology page six-phase loop. Defined as plain :root
-   custom properties (not @theme tokens) because they're only consumed via
-   `var(--color-cms-phase-N)` in inline styles. Tailwind v4 tree-shakes
-   @theme tokens that aren't referenced as utility classes; raw :root
-   custom properties are always preserved. Phase 1 is the brand red anchor. */
-:root {
-    --color-cms-phase-1: #ff3838;
-    --color-cms-phase-2: #fb923c;
-    --color-cms-phase-3: #22d3ee;
-    --color-cms-phase-4: #fde047;
-    --color-cms-phase-5: #a78bfa;
-    --color-cms-phase-6: #34d399;
-}
-
-/* ─── Brand system utilities — texture & geometry daisyUI doesn't model ──── */
-@layer utilities {
-    /* Chamfered corners — corner cuts, not radius. Four sizes; xl matches
-       the full-bleed cards (.harness-card, .proof-feature, .proof-stats). */
-    .chamfer-sm {
-        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-    }
-    .chamfer-md {
-        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-    }
-    .chamfer-lg {
-        clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
-    }
-    .chamfer-xl {
-        clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
-    }
-
-    /* Top-left signal accent bar (80px wide, glowing red) — section markers */
-    .signal-top {
-        position: relative;
-    }
-    .signal-top::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 80px;
-        height: 2px;
-        background: var(--color-cms-red);
-        box-shadow: 0 0 12px var(--color-cms-red);
-    }
-
-    /* Scanline overlay — reserved for brand moments + money shots */
-    .scanlines {
-        position: relative;
-    }
-    .scanlines::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        background: repeating-linear-gradient(
-            0deg,
-            rgba(255, 255, 255, 0.04) 0 1px,
-            transparent 1px 3px
-        );
-        mix-blend-mode: overlay;
-        z-index: 1;
-    }
-
-    /* Hairline red grid — global pressure, soft enough to ignore.
-       Pseudo is viewport-fixed so the radial mask stays centered on screen
-       regardless of scroll position. */
-    .hair-grid::after {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        background:
-            linear-gradient(rgba(255, 56, 56, 0.10) 1px, transparent 1px) 0 0 / 80px 80px,
-            linear-gradient(90deg, rgba(255, 56, 56, 0.10) 1px, transparent 1px) 0 0 / 80px 80px;
-        mask-image: radial-gradient(ellipse at center, black 0%, transparent 80%);
-        opacity: 0.5;
-        z-index: 1;
-    }
-
-    /* ─── Agent phase node (How It Works) ─────────────────────────────
-       Driven by --ac CSS variable set per card to the agent palette token.
-       Renders chamfered colored node + glow shadow + agent-colored title
-       with left accent bar. */
-    .phase-node {
-        border: 1.5px solid var(--ac);
-        box-shadow: 0 0 12px color-mix(in oklab, var(--ac) 24%, transparent);
-    }
-    .phase-color {
-        color: var(--ac);
-    }
-    .phase-title {
-        position: relative;
-        padding-left: 14px;
-        color: var(--ac);
-    }
-    .phase-title::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 3px;
-        height: 16px;
-        background: var(--ac);
-    }
-
-    /* ─── Marketing-zone conventions ────────────────────────────────────
-       Per design-tokens.html v0.9, three intensity zones share one theme:
-         .brand-zone        — / and launch surfaces (40/60 red, full texture)
-         .product-page-zone — /products/*, /methodology, /docs (15/85 red)
-         .app-zone          — workspace LiveView (5/95 red, no chamfer/glow)
-
-       Brand and product zones share base typography (uppercase headings,
-       eyebrow conventions, chamfered/mono brand button). The brand zone may
-       layer additional intensity later; app zone stays plain DaisyUI. */
-    .brand-zone h1,
-    .brand-zone h2,
-    .brand-zone h3,
-    .product-page-zone h1,
-    .product-page-zone h2,
-    .product-page-zone h3 {
-        text-transform: uppercase;
-    }
-
-    .brand-zone .eyebrow,
-    .product-page-zone .eyebrow {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.22em;
-        color: var(--color-cms-red);
-        margin-bottom: 22px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .brand-zone .eyebrow .idx,
-    .product-page-zone .eyebrow .idx {
-        color: var(--color-cms-text-mute);
-    }
-    .brand-zone .eyebrow::after,
-    .product-page-zone .eyebrow::after {
-        content: "";
-        flex: 1;
-        height: 1px;
-        background: linear-gradient(90deg, var(--color-cms-red), transparent);
-        max-width: 200px;
-    }
-
-    /* Brand button override — chamfer + JetBrains Mono + white-on-hover.
-       Scoped to marketing zones so app surfaces (login, register, admin,
-       workspace) keep plain DaisyUI buttons. App zone is intentionally
-       restrained per design-tokens.html. */
-    .brand-zone .btn-primary,
-    .product-page-zone .btn-primary {
-        font-family: var(--font-mono);
-        font-weight: 600;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-    }
-    .brand-zone .btn-primary:hover,
-    .product-page-zone .btn-primary:hover {
-        background: var(--color-cms-white);
-        border-color: var(--color-cms-white);
-    }
-
-    /* App-zone — workspace surfaces (5/95 red, no chamfer/glow per
-       design-tokens.html v0.9). Defensive override: any `font-heading`
-       class that creeps into an app template falls back to body font.
-       Templates should drop `font-heading` at the source; this rule is
-       belt-and-suspenders so a stray usage can't reintroduce Space Mono. */
-    .app-zone .font-heading {
-        font-family: var(--font-body);
-    }
-
-    /* ─── Differentiator card (product zone) ───────────────────────────
-       Big red number with glow + mono "// label" + uppercase white title.
-       Red 3px accent bar at top-left (full height for the wide thesis card). */
-    .diff-card {
-        background: var(--color-cms-ink-1);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 44px 40px;
-        position: relative;
-        transition: background 0.15s;
-        clip-path: polygon(
-            16px 0,
-            100% 0,
-            100% calc(100% - 16px),
-            calc(100% - 16px) 100%,
-            0 100%,
-            0 16px
-        );
-    }
-    .diff-card::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 3px;
-        height: 48px;
-        background: var(--color-cms-red);
-    }
-    .diff-card:hover {
-        background: #111015;
-    }
-    .diff-card--tall {
-        background: linear-gradient(180deg, var(--color-cms-ink-1), #120809);
-    }
-    .diff-card--tall::before {
-        height: 100%;
-    }
-    .diff-num {
-        font-family: var(--font-display);
-        font-weight: 700;
-        font-size: 42px;
-        color: var(--color-cms-red);
-        letter-spacing: -0.02em;
-        line-height: 1;
-        margin-bottom: 4px;
-        text-shadow: 0 0 18px rgba(255, 56, 56, 0.25);
-    }
-    .diff-label {
-        font-family: var(--font-mono);
-        font-size: 10px;
-        color: var(--color-cms-text-mute);
-        text-transform: uppercase;
-        letter-spacing: 0.22em;
-        margin-bottom: 24px;
-    }
-    .diff-label::before {
-        content: "// ";
-    }
-
-    /* ─── MarketMySpec — skill card ────────────────────────────────────
-       3-skill grid: slash-command label + colored top-left accent bar
-       (driven by --ac CSS variable per card). */
-    .skill-card {
-        background: var(--color-cms-ink-1);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 36px 32px;
-        position: relative;
-        transition: background 0.15s;
-        clip-path: polygon(
-            16px 0,
-            100% 0,
-            100% calc(100% - 16px),
-            calc(100% - 16px) 100%,
-            0 100%,
-            0 16px
-        );
-    }
-    .skill-card::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 3px;
-        height: 48px;
-        background: var(--ac, var(--color-cms-red));
-        box-shadow: 0 0 12px var(--ac, var(--color-cms-red));
-    }
-    .skill-cmd {
-        font-family: var(--font-mono);
-        font-size: 14px;
-        color: var(--ac, var(--color-cms-red));
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        margin-bottom: 6px;
-    }
-    .skill-tag {
-        font-family: var(--font-mono);
-        font-size: 10px;
-        color: var(--color-cms-text-mute);
-        text-transform: uppercase;
-        letter-spacing: 0.22em;
-        margin-bottom: 22px;
-    }
-    .skill-tag::before {
-        content: "// ";
-    }
-    .skill-card ul li::before {
-        content: "▸";
-        color: var(--ac, var(--color-cms-red));
-        flex-shrink: 0;
-    }
-
-    /* ─── Industry tile (4-up grid) ─────────────────────────────────── */
-    .industry-card {
-        background: var(--color-cms-ink-1);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 24px 22px;
-        clip-path: polygon(
-            12px 0,
-            100% 0,
-            100% calc(100% - 12px),
-            calc(100% - 12px) 100%,
-            0 100%,
-            0 12px
-        );
-    }
-
-    /* ─── Recipe tile (small, hover bg) ─────────────────────────────── */
-    .recipe-tile {
-        background: var(--color-cms-ink-1);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 18px 14px;
-        text-align: center;
-        transition: all 0.15s;
-        clip-path: polygon(
-            8px 0,
-            100% 0,
-            100% calc(100% - 8px),
-            calc(100% - 8px) 100%,
-            0 100%,
-            0 8px
-        );
-    }
-    .recipe-tile:hover {
-        border-color: var(--color-cms-red);
-        background: #120809;
-    }
-
-    /* ─── Harness comparison card (full top accent bar) ─────────────── */
-    .harness-card {
-        background: var(--color-cms-ink-1);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 40px 36px;
-        position: relative;
-        clip-path: polygon(
-            18px 0,
-            100% 0,
-            100% calc(100% - 18px),
-            calc(100% - 18px) 100%,
-            0 100%,
-            0 18px
-        );
-    }
-    .harness-card::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 3px;
-        background: var(--ac, var(--color-cms-red));
-    }
-
-    /* ─── Proof feature + stats panels ──────────────────────────────── */
-    .proof-feature {
-        background: linear-gradient(180deg, var(--color-cms-ink-1), #0f0509);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 40px 36px;
-        clip-path: polygon(
-            16px 0,
-            100% 0,
-            100% calc(100% - 16px),
-            calc(100% - 16px) 100%,
-            0 100%,
-            0 16px
-        );
-    }
-    .proof-stats {
-        background: var(--color-cms-ink-1);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 36px 32px;
-        clip-path: polygon(
-            16px 0,
-            100% 0,
-            100% calc(100% - 16px),
-            calc(100% - 16px) 100%,
-            0 100%,
-            0 16px
-        );
-    }
-
-    /* ─── MarketMySpec phases connector (skill-themed gradient) ──────── */
-    .skill-phases-connector::before {
-        background: linear-gradient(
-            90deg,
-            var(--color-cms-agent-spec) 0%,
-            var(--color-cms-agent-spec) 30%,
-            var(--color-cms-agent-bdd) 50%,
-            var(--color-cms-agent-code) 75%,
-            var(--color-cms-red) 100%
-        );
-        opacity: 0.7;
-    }
-
-    /* Horizontal connector line through the row of phase nodes — gradient
-       across the agent palette. Position at node-center height. */
-    .phases-connector {
-        position: relative;
-    }
-    .phases-connector::before {
-        content: "";
-        position: absolute;
-        top: 36px;
-        left: calc(100% / 12);
-        right: calc(100% / 12);
-        height: 1px;
-        background: linear-gradient(
-            90deg,
-            var(--color-cms-agent-pm),
-            var(--color-cms-agent-arch),
-            var(--color-cms-agent-spec),
-            var(--color-cms-agent-code),
-            var(--color-cms-agent-bdd),
-            var(--color-cms-agent-qa)
-        );
-        opacity: 0.45;
-        pointer-events: none;
-    }
-
-    /* ─── Methodology stepper — six-phase loop ──────────────────────────
-       Each tab/panel sets --ac inline (one of --color-cms-phase-1..6); the
-       utilities below consume it so panels stay free of inline color/border
-       /shadow attributes. */
-    .method-tab {
-        transition: all 0.15s;
-    }
-    .method-tab:hover {
-        border-color: var(--ac);
-        color: var(--color-cms-text);
-    }
-    .method-tab.is-active {
-        background: rgba(255, 56, 56, 0.04);
-        border-color: var(--ac);
-    }
-    .method-tab.is-active::before {
-        content: "▸";
-        position: absolute;
-        left: -14px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--ac);
-        font-family: var(--font-mono);
-        font-size: 14px;
-    }
-    .method-tab-num {
-        color: var(--ac);
-    }
-    .method-panel-bar {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 3px;
-        background: var(--ac);
-        box-shadow: 0 0 14px var(--ac);
-    }
-    .method-panel-badge {
-        color: var(--ac);
-        border: 1px solid var(--ac);
-    }
-    .method-panel-tagline {
-        color: var(--ac);
-    }
-    .method-panel-bullet {
-        border-left: 2px solid var(--ac);
-    }
-    .method-panel-bullet-mark {
-        color: var(--ac);
-    }
-    .method-guide {
-        color: var(--ac);
-        border-bottom: 1px solid var(--ac);
-    }
-    .method-guide:hover {
-        color: var(--color-cms-white);
-    }
-}
-
-/* Set base font size to 16px to match original */
 html {
     font-size: 16px;
+}
+
+body {
+    font-family: var(--font-sans);
 }
 
 /* Methodology page — flowing dash animation on SVG feedback edges */
@@ -660,277 +151,20 @@ html {
 
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session] {
-    display: contents
+    display: contents;
 }
 
 /* Prose tables: scroll horizontally on narrow viewports instead of forcing
-   the page wider than the viewport. display:block drops table layout but
-   preserves cell rendering, and the overflow lives on the table itself. */
+   the page wider than the viewport. */
 .prose table {
     display: block;
     overflow-x: auto;
     max-width: 100%;
 }
 
-/* Bare long URLs (e.g. in Sources lists) are unbreakable strings that can
-   push the page wider than the viewport on mobile. Let prose links wrap. */
+/* Bare long URLs wrap instead of pushing the page wide on mobile. */
 .prose a {
     overflow-wrap: anywhere;
-}
-
-/* Onboarding install panel — story 698. Signal red on black, chamfered
-   clip-paths, Space Mono display. Matches the brand_system v0.9 install-panel
-   design reference. */
-@layer components {
-    .cms-onboarding {
-        background: var(--color-cms-ink-1);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
-        position: relative;
-    }
-
-    .cms-onboarding::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 60px;
-        height: 2px;
-        background: var(--color-cms-red);
-        box-shadow: 0 0 10px var(--color-cms-red);
-    }
-
-    /* JS-driven toggle: data-state on the card root controls visibility
-       of the expanded body and which toggle glyph shows. The header
-       (eyebrow + pill + toggle) is always rendered. No server roundtrip
-       on click. */
-    .cms-onboarding[data-state="minimized"] .cms-onboarding-exp-body { display: none; }
-    .cms-onboarding[data-state="minimized"] [data-toggle-glyph="expanded"] { display: none; }
-    .cms-onboarding[data-state="expanded"] [data-toggle-glyph="minimized"] { display: none; }
-
-    .cms-onboarding-eyebrow {
-        font-family: var(--font-mono);
-        font-size: 10px;
-        font-weight: 600;
-        letter-spacing: 0.22em;
-        text-transform: uppercase;
-        color: var(--color-cms-red);
-    }
-
-    .cms-onboarding-heading {
-        font-family: var(--font-display);
-        font-weight: 700;
-        font-size: 28px;
-        line-height: 1.05;
-        letter-spacing: -0.02em;
-        text-transform: uppercase;
-        color: var(--color-cms-white);
-        margin: 0;
-    }
-
-    .cms-onboarding-sub {
-        margin: 10px 0 0;
-        color: var(--color-cms-text-dim);
-        font-size: 14px;
-        line-height: 1.55;
-        max-width: 62ch;
-    }
-
-    .cms-onboarding-step-cell {
-        width: 32px;
-        height: 32px;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        color: var(--color-cms-text-dim);
-        background: transparent;
-    }
-
-    .cms-onboarding-step-cell[data-done="true"] {
-        border-color: var(--color-cms-red);
-        background: rgba(255, 56, 56, 0.1);
-        color: var(--color-cms-red);
-    }
-
-    .cms-onboarding-cmd {
-        background: #000;
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-        padding: 11px 14px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        overflow-x: auto;
-    }
-
-    .cms-onboarding-cmd-prompt {
-        color: var(--color-cms-red);
-        font-family: var(--font-mono);
-        font-size: 12px;
-        opacity: 0.7;
-        user-select: none;
-    }
-
-    .cms-onboarding-cmd code {
-        font-family: var(--font-mono);
-        font-size: 13px;
-        color: var(--color-cms-text);
-        background: transparent;
-        border: 0;
-        padding: 0;
-        white-space: nowrap;
-    }
-
-    .cms-onboarding-copy {
-        font-family: var(--font-mono);
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.14em;
-        padding: 9px 14px;
-        background: transparent;
-        color: var(--color-cms-red);
-        border: 1px solid var(--color-cms-red);
-        cursor: pointer;
-        clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-        transition: background 180ms ease, color 180ms ease;
-        white-space: nowrap;
-        min-width: 84px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-    }
-
-    .cms-onboarding-copy:hover {
-        background: rgba(255, 56, 56, 0.1);
-    }
-
-    .cms-onboarding-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-family: var(--font-mono);
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        padding: 6px 10px 6px 9px;
-        clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
-        white-space: nowrap;
-        transition: all 240ms ease;
-        color: var(--color-cms-text-dim);
-        background: rgba(138, 138, 147, 0.06);
-        border: 1px solid rgba(138, 138, 147, 0.22);
-    }
-
-    .cms-onboarding-pill[data-state="connected"] {
-        color: var(--color-cms-red);
-        background: rgba(255, 56, 56, 0.08);
-        border-color: rgba(255, 56, 56, 0.35);
-    }
-
-    .cms-onboarding-pill[data-state="disconnected"] {
-        color: #ffb84a;
-        background: rgba(255, 184, 74, 0.08);
-        border-color: rgba(255, 184, 74, 0.30);
-    }
-
-    .cms-onboarding-pill .cms-pill-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 0;
-        background: var(--color-cms-text-mute);
-    }
-
-    .cms-onboarding-pill[data-state="connected"] .cms-pill-dot {
-        background: var(--color-cms-red);
-        box-shadow: 0 0 8px var(--color-cms-red);
-    }
-
-    .cms-onboarding-pill[data-state="disconnected"] .cms-pill-dot {
-        background: #ffb84a;
-    }
-
-    .cms-onboarding-toggle {
-        all: unset;
-        cursor: pointer;
-        width: 30px;
-        height: 30px;
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        color: var(--color-cms-text-dim);
-        font-family: var(--font-mono);
-        font-size: 14px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-        transition: color 180ms ease, border-color 180ms ease;
-    }
-
-    .cms-onboarding-toggle:hover {
-        color: var(--color-cms-red);
-        border-color: var(--color-cms-red);
-    }
-
-    .cms-onboarding-celebrate {
-        background: linear-gradient(180deg, rgba(255, 56, 56, 0.06), rgba(255, 56, 56, 0.02));
-        border: 1px solid rgba(255, 56, 56, 0.22);
-        padding: 22px;
-        clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-    }
-
-    .cms-onboarding-cta {
-        font-family: var(--font-mono);
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.14em;
-        padding: 13px 20px;
-        background: var(--color-cms-red);
-        color: #000;
-        border: 1.5px solid var(--color-cms-red);
-        cursor: pointer;
-        clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-        transition: background 180ms ease, border-color 180ms ease;
-        white-space: nowrap;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        justify-content: center;
-        text-decoration: none;
-    }
-
-    .cms-onboarding-cta:hover {
-        background: var(--color-cms-white);
-        border-color: var(--color-cms-white);
-    }
-
-    .cms-onboarding-privacy {
-        margin-top: 22px;
-        padding-top: 16px;
-        border-top: 1px solid rgba(255, 56, 56, 0.10);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-family: var(--font-mono);
-        font-size: 10.5px;
-        color: var(--color-cms-text-mute);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        flex-wrap: wrap;
-    }
-
-    .cms-onboarding-privacy::before {
-        content: "◆";
-        color: var(--color-cms-red);
-        opacity: 0.7;
-    }
 }
 
 /* This file is for your main application CSS */

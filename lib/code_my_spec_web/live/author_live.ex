@@ -13,11 +13,11 @@ defmodule CodeMySpecWeb.AuthorLive do
       <div class="max-w-4xl mx-auto px-4 py-12">
         <article>
           <header class="mb-10">
-            <h1 class="text-4xl font-extrabold mb-2">John Davenport</h1>
+            <h1 class="text-4xl font-extrabold tracking-tight mb-2">John Davenport</h1>
             <p class="text-xl text-base-content/70">Founder, CodeMySpec</p>
           </header>
 
-          <div class="prose prose-lg max-w-none">
+          <div class="prose prose-lg max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-a:text-primary">
             <p>
               Full-stack engineer with 20 years of experience spanning enterprise systems, manufacturing IT, fintech, and AI-assisted development tooling. I build tools that help developers ship production software with AI — not by replacing architects, but by giving AI agents the structured workflows they need to write code that actually works.
             </p>
@@ -91,7 +91,7 @@ defmodule CodeMySpecWeb.AuthorLive do
 
         <!-- Published Articles -->
         <section :if={@blog_posts != []} class="mt-16">
-          <h2 class="text-3xl font-bold mb-8">Published Articles</h2>
+          <h2 class="text-3xl font-bold tracking-tight mb-8">Published Articles</h2>
           <div class="space-y-4">
             <a
               :for={post <- @blog_posts}

@@ -557,7 +557,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MarketMySpec do
       </div>
 
       <div :if={@three_amigos.rules != []} class="mb-3">
-        <h5 class="text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2">
+        <h5 class="text-sm font-semibold text-base-content/70 mb-2">
           Rules &amp; Scenarios
         </h5>
         <div class="space-y-2">
@@ -590,7 +590,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MarketMySpec do
       </div>
 
       <div :if={@three_amigos.questions != []} class="mb-3">
-        <h5 class="text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-2">
+        <h5 class="text-sm font-semibold text-base-content/70 mb-2">
           Questions
         </h5>
         <div class="space-y-2">

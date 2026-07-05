@@ -176,9 +176,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     end
   end
 
-  # JS handles the actual flip client-side via JS.toggle_attribute, so
-  # the click is instant. We still keep the assign in sync so the next
-  # server-driven re-render emits the same data-state the user expects.
+  # Server-driven toggle: flip the assign and let the re-render swap
+  # collapse-open/collapse-close. Kept server-authoritative (rather than a
+  # client-side JS.toggle_class) so frequent presence re-renders during CLI
+  # connect can't race the class back open.
   def handle_event("toggle_onboarding", _params, socket) do
     {:noreply, assign(socket, onboarding_expanded: !socket.assigns.onboarding_expanded)}
   end
@@ -260,7 +261,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         |> assign(:cli_first_connected_at, user.cli_first_connected_at)
         |> assign(:cli_ever_connected?, true)
         |> assign(:show_celebrate, true)
-        |> assign(:onboarding_expanded, true)
+        # Collapse the install panel on connect — installation is done, so
+        # tuck it away (the "Open the local workspace" step below carries the
+        # next action). Re-expandable to reinstall on another machine.
+        |> assign(:onboarding_expanded, false)
 
       true ->
         socket
@@ -389,20 +393,16 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   # (no account yet). After confirmation the heading is more direct.
   defp welcome_banner(assigns) do
     ~H"""
-    <div
-      data-test="welcome-banner"
-      class="cms-onboarding"
-      style="border-left: 2px solid var(--color-cms-red, #ff3838); padding: 18px 22px;"
-    >
-      <div class="cms-onboarding-eyebrow mb-2" style="color: var(--color-cms-red, #ff3838);">
-        // welcome
+    <div data-test="welcome-banner" class="card bg-base-200 border-l-4 border-primary">
+      <div class="card-body gap-1 py-5">
+        <span class="badge badge-primary badge-sm w-fit">Welcome</span>
+        <h2 class="text-xl font-bold tracking-tight">
+          You're in. Let's set up your workspace.
+        </h2>
+        <p class="text-base-content/70">
+          Four steps below — each builds on the last.
+        </p>
       </div>
-      <h2 class="cms-onboarding-heading" style="font-size: 20px; margin-bottom: 6px;">
-        You're in. Let's set up your workspace.
-      </h2>
-      <p class="cms-onboarding-sub" style="margin-bottom: 0;">
-        Four steps below — each builds on the last.
-      </p>
     </div>
     """
   end
@@ -422,18 +422,21 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     assigns = assign(assigns, done: done)
 
     ~H"""
-    <div
-      data-test="ladder-progress"
-      class="flex items-center gap-3 text-xs font-mono uppercase tracking-[0.18em] text-base-content/60 px-1"
-    >
-      <span>// onboarding</span>
-      <span class="h-px flex-1 max-w-[120px] bg-base-content/15"></span>
-      <span data-test="ladder-progress-count">
-        <span class={if @done == 4, do: "text-primary font-bold", else: "text-base-content"}>
-          {@done}
+    <div data-test="ladder-progress" class="flex flex-col gap-2 py-1">
+      <ul class="steps steps-horizontal w-full text-sm">
+        <li class={["step", @account_done? && "step-primary"]}>Account</li>
+        <li class={["step", @project_done? && "step-primary"]}>Project</li>
+        <li class={["step", @cli_ever_connected? && "step-primary"]}>Plugin</li>
+        <li class={["step", @application_done? && "step-primary"]}>App</li>
+      </ul>
+      <div class="text-center text-xs text-base-content/60">
+        <span data-test="ladder-progress-count">
+          <span class={if @done == 4, do: "text-primary font-bold", else: "text-base-content font-semibold"}>
+            {@done}
+          </span>
+          / 4 complete
         </span>
-        / 4
-      </span>
+      </div>
     </div>
     """
   end
@@ -443,7 +446,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="account-rung"
       state="done"
-      eyebrow="// step 01 · account"
+      eyebrow="Step 1 · Account"
       label="Accounts"
       value={@name || @count}
     />
@@ -452,13 +455,18 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp account_rung(%{state: "active"} = assigns) do
     ~H"""
-    <div data-test="account-rung" data-state="active" class="cms-onboarding">
-      <div class="px-7 py-7">
-        <div class="cms-onboarding-eyebrow mb-2.5">// step 01 · account</div>
-        <h2 class="cms-onboarding-heading">Name your account.</h2>
-        <p class="cms-onboarding-sub mb-6">
-          This is the workspace where your projects will live. You can rename it later.
-        </p>
+    <div data-test="account-rung" data-state="active" class="card bg-base-100 border-2 border-primary shadow-sm">
+      <div class="card-body gap-4">
+        <div class="flex items-center gap-2">
+          <span class="badge badge-primary badge-outline">Step 1 · Account</span>
+          <span class="badge badge-primary">Active</span>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold tracking-tight">Name your account.</h2>
+          <p class="text-base-content/70 mt-1">
+            This is the workspace where your projects will live. You can rename it later.
+          </p>
+        </div>
         <.form for={@account_form} id="account_form" phx-submit="create_account" class="flex flex-col gap-4">
           <.input
             field={@account_form[:name]}
@@ -469,8 +477,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             autocomplete="off"
             phx-mounted={JS.focus()}
           />
-          <button type="submit" class="cms-onboarding-cta self-start" phx-disable-with="Creating…">
-            <span>▸</span> Create account
+          <button type="submit" class="btn btn-primary self-start" phx-disable-with="Creating…">
+            Create account <.icon name="hero-arrow-right" class="size-4" />
           </button>
         </.form>
       </div>
@@ -483,7 +491,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="account-rung"
       state="pending"
-      eyebrow="// step 01 · account"
+      eyebrow="Step 1 · Account"
       label="Accounts"
       value="—"
       hint="Name your workspace."
@@ -497,7 +505,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="project-rung"
       state="done"
-      eyebrow="// step 02 · project"
+      eyebrow="Step 2 · Project"
       label="Projects"
       value={@name || @count}
     />
@@ -506,13 +514,18 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp project_rung(%{state: "active"} = assigns) do
     ~H"""
-    <div data-test="project-rung" data-state="active" class="cms-onboarding">
-      <div class="px-7 py-7">
-        <div class="cms-onboarding-eyebrow mb-2.5">// step 02 · project</div>
-        <h2 class="cms-onboarding-heading">Name your first project.</h2>
-        <p class="cms-onboarding-sub mb-6">
-          The plugin uses this to link your local repo to the right project. You can rename it later.
-        </p>
+    <div data-test="project-rung" data-state="active" class="card bg-base-100 border-2 border-primary shadow-sm">
+      <div class="card-body gap-4">
+        <div class="flex items-center gap-2">
+          <span class="badge badge-primary badge-outline">Step 2 · Project</span>
+          <span class="badge badge-primary">Active</span>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold tracking-tight">Name your first project.</h2>
+          <p class="text-base-content/70 mt-1">
+            The plugin uses this to link your local repo to the right project. You can rename it later.
+          </p>
+        </div>
         <.form
           for={@project_form}
           id="project_form"
@@ -537,12 +550,13 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           <div
             :if={@project_module_preview != ""}
             data-test="project-module-preview"
-            class="text-xs opacity-70 font-mono -mt-2"
+            class="text-sm text-base-content/60 -mt-2"
           >
-            Will be used as module: <span class="text-primary">{@project_module_preview}</span>
+            Will be used as module:
+            <span class="font-mono text-primary">{@project_module_preview}</span>
           </div>
-          <button type="submit" class="cms-onboarding-cta self-start" phx-disable-with="Creating…">
-            <span>▸</span> Create project
+          <button type="submit" class="btn btn-primary self-start" phx-disable-with="Creating…">
+            Create project <.icon name="hero-arrow-right" class="size-4" />
           </button>
         </.form>
       </div>
@@ -555,7 +569,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="project-rung"
       state="pending"
-      eyebrow="// step 02 · project"
+      eyebrow="Step 2 · Project"
       label="Projects"
       value="—"
       hint="Name your first Phoenix project."
@@ -569,7 +583,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="plugin-rung"
       state="pending"
-      eyebrow="// step 03 · plugin"
+      eyebrow="Step 3 · Plugin"
       label="Plugin"
       value="—"
       hint="Install the CodeMySpec plugin in Claude Code."
@@ -578,9 +592,25 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     """
   end
 
+  # Once connected the plugin step is done — collapse it to the compact
+  # "Done" tile like the account/project rungs. The live session pill and
+  # reinstall commands aren't needed anymore; Step 4 carries the next action.
+  defp plugin_rung(%{state: "done"} = assigns) do
+    ~H"""
+    <.metric_tile
+      data_test="plugin-rung"
+      state="done"
+      eyebrow="Step 3 · Plugin"
+      label="Plugin"
+      value="Connected"
+    />
+    """
+  end
+
+  # Only the ACTIVE plugin step renders the full install panel.
   defp plugin_rung(assigns) do
     ~H"""
-    <div data-test="plugin-rung" data-state={@state} class="cms-onboarding contents">
+    <div data-test="plugin-rung" data-state={@state} class="contents">
       <.onboarding_card {assigns} />
     </div>
     """
@@ -599,13 +629,14 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       rel="noopener noreferrer"
       data-test="application-rung"
       data-state="active"
-      class="cms-onboarding cms-onboarding-link block"
+      class="card bg-primary text-primary-content shadow-sm hover:shadow-md transition-shadow block"
     >
-      <div class="flex items-center gap-4 px-6 py-5">
-        <span class="cms-onboarding-eyebrow">// step 04 · application</span>
+      <div class="card-body flex-row items-center gap-4 py-4 px-6">
+        <span class="badge badge-outline">Step 4 · Application</span>
         <span class="flex-1"></span>
-        <span class="cms-onboarding-cta">
-          <span>▸</span> Open the local workspace · localhost:4003
+        <span class="font-semibold inline-flex items-center gap-2">
+          <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+          Open the local workspace · localhost:4003
         </span>
       </div>
     </a>
@@ -617,17 +648,17 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <div
       data-test="application-rung"
       data-state="pending"
-      class="cms-onboarding"
-      style="opacity: 0.55;"
+      class="card bg-base-100 border border-base-300 opacity-60"
       aria-disabled="true"
     >
-      <div class="flex items-center gap-4 px-6 py-5">
-        <span class="cms-onboarding-eyebrow">// step 04 · application</span>
-        <span class="flex-1"></span>
-        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">Application</span>
-      </div>
-      <div class="px-6 pb-4 -mt-2 text-xs opacity-60 font-mono">
-        Open the local workspace and write your first story.
+      <div class="card-body flex-row items-center gap-4 py-4 px-6">
+        <span class="badge badge-ghost">Pending</span>
+        <div class="flex-1">
+          <div class="text-xs text-base-content/50 font-medium">Step 4 · Application</div>
+          <div class="text-sm text-base-content/60 mt-0.5">
+            Open the local workspace and write your first story.
+          </div>
+        </div>
       </div>
     </div>
     """
@@ -646,29 +677,26 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
     ~H"""
     <div
-      class="cms-onboarding"
+      class={["card bg-base-100 border border-base-300", @dim && "opacity-60"]}
       data-test={@data_test}
       data-state={@state}
-      style={if @dim, do: "opacity: 0.55;", else: ""}
     >
-      <div class="flex items-center gap-4 px-6 py-5">
-        <span class="cms-onboarding-eyebrow">{@eyebrow}</span>
-        <span class="flex-1"></span>
-        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">{@label}</span>
-        <span
-          class="cms-onboarding-heading"
-          style="font-size: 22px; line-height: 1; color: var(--color-cms-text);"
-        >
-          {@value}
+      <div class="card-body flex-row items-center gap-4 py-4 px-6">
+        <span :if={@state == "done"} class="badge badge-success gap-1">
+          <.icon name="hero-check" class="size-3.5" /> Done
         </span>
-      </div>
-      <%!--
-        Audit C4: pending rungs get a one-line preview so the user knows
-        what each step will involve before they reach it. Skip on done
-        rungs — the value already speaks for itself.
-      --%>
-      <div :if={@hint} class="px-6 pb-4 -mt-2 text-xs opacity-60 font-mono">
-        {@hint}
+        <span :if={@state == "pending"} class="badge badge-ghost">Pending</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs text-base-content/50 font-medium">{@eyebrow}</div>
+          <div class="font-semibold text-base-content">{@label}</div>
+          <%!--
+            Audit C4: pending rungs get a one-line preview so the user knows
+            what each step will involve before they reach it. Skip on done
+            rungs — the value already speaks for itself.
+          --%>
+          <div :if={@hint} class="text-sm text-base-content/60 mt-0.5">{@hint}</div>
+        </div>
+        <span class="text-xl font-bold tracking-tight text-base-content">{@value}</span>
       </div>
     </div>
     """
@@ -686,56 +714,51 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       id="cms-onboarding-card"
       data-test="onboarding-card"
       data-state={if @onboarding_expanded, do: "expanded", else: "minimized"}
-      class="cms-onboarding"
+      class={["collapse bg-base-100 border border-base-300", (@onboarding_expanded && "collapse-open") || "collapse-close"]}
     >
-      <div class="cms-onboarding-header flex items-center gap-4 px-6 py-5">
-        <span class="cms-onboarding-eyebrow">// step 03 · plugin</span>
+      <div class="collapse-title flex items-center gap-4 py-4 px-6">
+        <span class="badge badge-secondary badge-outline">Step 3 · Plugin</span>
         <span class="flex-1"></span>
         <.status_pill count={@cli_session_count} ever_connected?={@ever_connected?} state={@pill_state} />
         <button
           type="button"
           data-test="onboarding-toggle"
-          phx-click={
-            JS.toggle_attribute({"data-state", "expanded", "minimized"},
-              to: "#cms-onboarding-card"
-            )
-            |> JS.push("toggle_onboarding")
-          }
-          class="cms-onboarding-toggle"
+          phx-click="toggle_onboarding"
+          class="btn btn-ghost btn-sm btn-circle"
           aria-label="Toggle install panel"
         >
-          <span data-toggle-glyph="expanded">▴</span>
-          <span data-toggle-glyph="minimized">▾</span>
+          <.icon
+            name={if @onboarding_expanded, do: "hero-chevron-up", else: "hero-chevron-down"}
+            class="size-5"
+          />
         </button>
       </div>
 
-      <div class="cms-onboarding-exp-body px-7 pb-7">
-        <h2 class="cms-onboarding-heading">{onboarding_heading(@show_celebrate, @pill_state)}</h2>
-        <p class="cms-onboarding-sub">{onboarding_sub(@show_celebrate, @pill_state)}</p>
+      <div class="collapse-content px-6 pb-6">
+        <h2 class="text-xl font-bold tracking-tight">{onboarding_heading(@show_celebrate, @pill_state)}</h2>
+        <p class="text-base-content/70 mt-1">{onboarding_sub(@show_celebrate, @pill_state)}</p>
 
-        <div :if={!@show_celebrate} class="cms-onboarding-prereq mt-5">
-          <span class="cms-onboarding-eyebrow" style="color: var(--color-cms-amber, #ffb84a);">// before you start</span>
-          <p class="cms-onboarding-sub mt-1">
+        <div :if={!@show_celebrate} class="mt-5 rounded-box border border-warning/40 bg-warning/5 p-4">
+          <div class="flex items-center gap-2">
+            <.icon name="hero-exclamation-triangle" class="size-4 text-warning" />
+            <span class="font-semibold text-sm">Before you start</span>
+          </div>
+          <p class="text-sm text-base-content/70 mt-1.5">
             These three commands are <strong>Claude Code slash commands</strong> — paste them
             into the Claude Code prompt, not your terminal. Launch Claude Code
             <strong>from inside your Phoenix project's root directory</strong>
-            (the folder with <code>mix.exs</code>); CodeMySpec attaches to that directory.
+            (the folder with <code class="text-primary">mix.exs</code>); CodeMySpec attaches to that directory.
           </p>
-          <ul class="cms-onboarding-sub mt-2 list-none p-0" style="font-size: 13px;">
+          <ul class="text-sm text-base-content/70 mt-3 list-disc pl-5 space-y-2">
             <li>
               New to Claude Code? Install it from
-              <a href="https://claude.com/code" target="_blank" rel="noopener noreferrer" class="underline">claude.com/code</a>.
+              <a href="https://claude.com/code" target="_blank" rel="noopener noreferrer" class="link link-primary">claude.com/code</a>.
             </li>
-            <li class="mt-2">
+            <li>
               No Phoenix project yet?
-              <div
-                class="grid items-center gap-3.5 mt-1"
-                style="grid-template-columns: 1fr auto;"
-                data-test="prereq-phx-new"
-              >
-                <div class="cms-onboarding-cmd">
-                  <span class="cms-onboarding-cmd-prompt">▸</span>
-                  <code>mix phx.new myapp &amp;&amp; cd myapp &amp;&amp; claude</code>
+              <div class="flex items-center gap-2 mt-1.5" data-test="prereq-phx-new">
+                <div class="mockup-code flex-1 text-xs">
+                  <pre><code>mix phx.new myapp &amp;&amp; cd myapp &amp;&amp; claude</code></pre>
                 </div>
                 <button
                   type="button"
@@ -743,23 +766,23 @@ defmodule CodeMySpecWeb.AppLive.Overview do
                   data-copy="mix phx.new myapp && cd myapp && claude"
                   phx-click="copy_step"
                   phx-value-step="0"
-                  class="copy-btn cms-onboarding-copy"
+                  class="copy-btn btn btn-sm btn-ghost"
                   aria-label="Copy mix phx.new command"
                 >
-                  Copy
+                  <.icon name="hero-clipboard" class="size-4" /> Copy
                 </button>
               </div>
             </li>
           </ul>
         </div>
 
-        <ol class="mt-6 flex flex-col gap-3.5 list-none p-0">
+        <ol class="mt-6 flex flex-col gap-3 list-none p-0">
           <.install_step :for={step <- @install_steps} step={step} done={@show_celebrate} />
         </ol>
 
         <.celebrate_callout :if={@show_celebrate} />
 
-        <div class="cms-onboarding-privacy">
+        <div class="mt-6 text-xs text-base-content/50">
           <span>We use Presence to show install status. We don't read your code or commands.</span>
         </div>
       </div>
@@ -769,17 +792,17 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp install_step(assigns) do
     ~H"""
-    <li
-      data-test={"install-step-#{@step.n}"}
-      class="grid items-center gap-3.5"
-      style="grid-template-columns: 32px 1fr auto;"
-    >
-      <div class="cms-onboarding-step-cell" data-done={to_string(@done)}>
-        {if @done, do: "✓", else: @step.n}
+    <li data-test={"install-step-#{@step.n}"} class="flex items-center gap-3">
+      <div class={[
+        "flex items-center justify-center size-7 rounded-full shrink-0 text-sm font-semibold",
+        @done && "bg-success text-success-content",
+        !@done && "bg-base-300 text-base-content"
+      ]}>
+        <.icon :if={@done} name="hero-check" class="size-4" />
+        <span :if={!@done}>{@step.n}</span>
       </div>
-      <div class="cms-onboarding-cmd">
-        <span class="cms-onboarding-cmd-prompt">▸</span>
-        <code>{@step.command}</code>
+      <div class="mockup-code flex-1 text-xs">
+        <pre><code>{@step.command}</code></pre>
       </div>
       <button
         type="button"
@@ -787,11 +810,11 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         data-copy={@step.command}
         phx-click="copy_step"
         phx-value-step={@step.n}
-        class="copy-btn cms-onboarding-copy"
+        class="copy-btn btn btn-sm btn-ghost"
         title={@step.command}
         aria-label={"Copy command: #{@step.command}"}
       >
-        Copy
+        <.icon name="hero-clipboard" class="size-4" /> Copy
       </button>
     </li>
     """
@@ -799,28 +822,38 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp celebrate_callout(assigns) do
     ~H"""
-    <div data-test="next-create-story" class="cms-onboarding-celebrate mt-6">
-      <div class="cms-onboarding-eyebrow flex items-center gap-2.5 mb-2.5">
-        <span>// next</span>
-        <span class="flex-1 h-px max-w-[120px]" style="background: linear-gradient(90deg, var(--color-cms-red), transparent);"></span>
+    <div data-test="next-create-story" class="mt-6">
+      <div class="divider text-xs font-medium text-base-content/50">Next</div>
+      <div class="card bg-primary text-primary-content">
+        <div class="card-body gap-2">
+          <h3 class="text-2xl font-bold tracking-tight">
+            Open the local workspace.
+          </h3>
+          <p class="opacity-90">
+            The plugin is connected. Your first story and everything after happens in the local app.
+          </p>
+          <a href="http://localhost:4003" class="btn btn-sm bg-primary-content text-primary self-start mt-1">
+            <.icon name="hero-arrow-top-right-on-square" class="size-4" /> http://localhost:4003
+          </a>
+        </div>
       </div>
-      <h3 class="cms-onboarding-heading" style="font-size: 24px;">
-        Open the local workspace.
-      </h3>
-      <p class="cms-onboarding-sub" style="margin-bottom: 16px;">
-        The plugin is connected. Your first story and everything after happens in the local app.
-      </p>
-      <a href="http://localhost:4003" class="cms-onboarding-cta">
-        <span>▸</span> http://localhost:4003
-      </a>
     </div>
     """
   end
 
   defp status_pill(assigns) do
     ~H"""
-    <span data-test="cli-status-pill" class="cms-onboarding-pill" data-state={@state}>
-      <span class="cms-pill-dot"></span>
+    <span
+      data-test="cli-status-pill"
+      class={[
+        "badge gap-1.5",
+        @state == "connected" && "badge-success",
+        @state == "disconnected" && "badge-warning",
+        @state == "idle" && "badge-ghost"
+      ]}
+      data-state={@state}
+    >
+      <span class="inline-block size-2 rounded-full bg-current opacity-70"></span>
       {pill_text(@count, @ever_connected?)}
     </span>
     """

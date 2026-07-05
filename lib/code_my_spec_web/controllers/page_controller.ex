@@ -3,12 +3,12 @@ defmodule CodeMySpecWeb.PageController do
 
   def home(conn, _params) do
     meta = %{
-      page_title: "CodeMySpec: Phoenix-Native AI Development Harness",
+      page_title: "CodeMySpec — One Person, a Whole Software Company",
       meta_description:
-        "Phoenix-native AI development harness for engineer-founders and Elixir agencies. Specs, code, tests, verification — end to end. BYO model, BYO keys, no token markup.",
-      og_title: "CodeMySpec — AI Development for Engineers Who Care About the Codebase",
+        "You do the thinking, the machine does the labor. Build real software, run the email and chat your customers reach you on, and grow it — the work of a whole team, without being one.",
+      og_title: "CodeMySpec — You do the thinking. The machine does the labor.",
       og_description:
-        "Built by a solo founder, for engineer-founders shipping their own products and Elixir agencies shipping client work. The full Phoenix lifecycle — specs, code, tests, verification — without LLM-generated slop. Bring your own agent, your own model, your own keys.",
+        "Software for operators, not engineers. Build a real app, then keep it running: email on your own domain, live chat with your customers, content and ads that grow it. Drive it yourself, or build it with John.",
       canonical_url: "https://codemyspec.com"
     }
 

@@ -13,27 +13,26 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
         class="mx-auto max-w-xl py-12 flex flex-col gap-5"
       >
         <%!--
-          Audit P1 #3: previously a bare centered paragraph on black, this
-          screen now mirrors the /app rung aesthetic — same eyebrow, same
-          chamfered card, and a preview of the four ladder steps the user
-          will reach after clicking the magic link.
+          Audit P1 #3: previously a bare centered paragraph, this screen now
+          mirrors the sign-up card aesthetic and previews the four ladder
+          steps the user will reach after clicking the magic link.
         --%>
-        <div class="cms-onboarding">
-          <div class="px-7 py-7 flex flex-col gap-3">
-            <div class="cms-onboarding-eyebrow">// step 01 · confirm email</div>
-            <h1 class="cms-onboarding-heading">Check your email.</h1>
-            <p class="cms-onboarding-sub">
+        <div class="card border border-base-300 bg-base-100 shadow-sm">
+          <div class="card-body gap-3 p-7">
+            <span class="badge badge-primary badge-outline">Step 01 · confirm email</span>
+            <h1 class="text-2xl font-bold tracking-tight text-base-content">Check your email.</h1>
+            <p class="text-base-content/70">
               We sent a login link to <strong class="text-base-content">{@email}</strong>. Click it to confirm your account.
             </p>
 
-            <div class="flex items-center gap-3 flex-wrap text-xs font-mono uppercase tracking-[0.14em] text-base-content/60 mt-2">
+            <div class="mt-2 flex flex-wrap items-center gap-3 text-sm text-base-content/60">
               <span>Didn't get it?</span>
               <button
                 type="button"
                 id="resend-button"
                 phx-click="resend"
                 disabled={@cooldown_remaining > 0}
-                class="cms-onboarding-copy disabled:opacity-50 disabled:cursor-not-allowed"
+                class="link link-primary font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
               >
                 <%= if @cooldown_remaining > 0 do %>
                   Resend · {@cooldown_remaining}s
@@ -41,7 +40,7 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
                   Resend link
                 <% end %>
               </button>
-              <.link navigate={~p"/users/register"} class="opacity-70 hover:opacity-100 underline">
+              <.link navigate={~p"/users/register"} class="link link-hover">
                 Wrong email?
               </.link>
             </div>
@@ -53,9 +52,9 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
           gap between "I clicked confirm" and "I see the workspace ladder".
         --%>
         <div class="flex flex-col gap-3">
-          <div class="flex items-center gap-3 text-xs font-mono uppercase tracking-[0.18em] text-base-content/60 px-1">
-            <span>// next · 4 steps</span>
-            <span class="h-px flex-1 max-w-[120px] bg-base-content/15"></span>
+          <div class="flex items-center gap-3 px-1 text-sm font-medium text-base-content/60">
+            <span>Next · 4 steps</span>
+            <span class="h-px max-w-[120px] flex-1 bg-base-content/15"></span>
           </div>
           <.next_step n="02" label="Name your account" />
           <.next_step n="03" label="Name your first Phoenix project" />
@@ -104,11 +103,11 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
 
   defp next_step(assigns) do
     ~H"""
-    <div class="cms-onboarding" style="opacity: 0.55;">
+    <div class="card border border-base-300 bg-base-200 opacity-60">
       <div class="flex items-center gap-4 px-6 py-4">
-        <span class="cms-onboarding-eyebrow">// step {@n}</span>
+        <span class="badge badge-ghost badge-sm">Step {@n}</span>
         <span class="flex-1"></span>
-        <span class="cms-onboarding-eyebrow" style="opacity: 0.7;">{@label}</span>
+        <span class="text-sm text-base-content/70">{@label}</span>
       </div>
     </div>
     """

@@ -237,7 +237,7 @@ defmodule CodeMySpecWeb.Layouts do
 
   def marketing(assigns) do
     ~H"""
-    <div class="drawer" data-theme="codemyspec">
+    <div class="drawer">
       <input id="marketing-drawer-toggle" type="checkbox" class="drawer-toggle" />
 
       <div class="drawer-content min-h-screen flex flex-col">
@@ -286,6 +286,7 @@ defmodule CodeMySpecWeb.Layouts do
               </ul>
             </div>
             <div class="navbar-end gap-1 sm:gap-2">
+              <div class="hidden sm:block mr-1"><.theme_toggle /></div>
               <%= if @current_scope do %>
                 <span class="hidden">{@current_scope.user.email}</span>
                 <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost hidden sm:inline-flex">Log out</.link>
@@ -343,7 +344,7 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
           <div class="border-t border-base-300 pt-6 flex flex-col sm:flex-row justify-between items-center gap-2 text-sm text-base-content/50">
             <div>© {Date.utc_today().year} CodeMySpec</div>
-            <div>Built for Phoenix devs who actually care about architecture.</div>
+            <div>One person. A whole software company.</div>
           </div>
         </div>
       </footer>
@@ -401,8 +402,8 @@ defmodule CodeMySpecWeb.Layouts do
 
   Used at the bottom of every published blog post (called from the three
   `content_html` templates: default, article, tutorial). Reads as the
-  author telling you what they use, not a sales pitch — monospace
-  throughout, no buttons, no colored CTA backgrounds.
+  author telling you what they use — a warm end-of-post card with a
+  clear free-signup CTA and the two install commands in a code block.
 
   The signup URL is UTM-tagged (`source=blog`, `medium=signature`,
   `campaign=post-cta`) so blog → register conversion can be measured
@@ -413,35 +414,35 @@ defmodule CodeMySpecWeb.Layouts do
   """
   def install_signature(assigns) do
     ~H"""
-    <aside class="mt-12 pt-8 border-t border-primary/20 max-w-[64ch] font-mono text-[14px] leading-relaxed text-base-content/80">
-      <p class="text-base-content/90">
-        I built this with
-        <a
-          href="/case-studies/market-my-spec?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
-          data-event-label="cta-signature-case-study"
-          class="text-base-content underline decoration-primary/60 underline-offset-4 hover:text-primary hover:decoration-primary"
-        >CodeMySpec</a> — the harness I work in.
-      </p>
-      <p class="mt-1 text-base-content/70">
-        Sign up (free, no card) then install:
-      </p>
+    <aside class="not-prose mt-12 card bg-base-200 border border-base-300">
+      <div class="card-body gap-4">
+        <p class="text-base-content">
+          I built this with
+          <a
+            href="/case-studies/market-my-spec?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
+            data-event-label="cta-signature-case-study"
+            class="link link-primary font-medium"
+          >CodeMySpec</a> — the harness I work in.
+        </p>
+        <p class="text-base-content/70">
+          Sign up (free, no card) then install:
+        </p>
 
-      <div class="mt-4 pl-4 border-l border-primary/20">
         <a
           href="/users/register?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
           data-event-label="cta-signature-register"
-          class="text-base-content underline decoration-primary/60 underline-offset-4 hover:text-primary hover:decoration-primary"
+          class="btn btn-primary w-fit"
         >
-          https://codemyspec.com/users/register
+          Create your free account
         </a>
-      </div>
 
-      <div class="mt-4 pl-4 border-l border-primary/20 text-base-content/70">
-        <p>/plugin marketplace add Code-My-Spec/plugins</p>
-        <p>/plugin install codemyspec@codemyspec</p>
-      </div>
+        <div class="mockup-code text-sm">
+          <pre><code>/plugin marketplace add Code-My-Spec/plugins</code></pre>
+          <pre><code>/plugin install codemyspec@codemyspec</code></pre>
+        </div>
 
-      <p class="mt-6 text-base-content/60">— John</p>
+        <p class="text-base-content/60">— John</p>
+      </div>
     </aside>
     """
   end
