@@ -1,11 +1,11 @@
 %{
   meta: %{
-    page_title: "CodeMySpec — Lovable for Engineers Who Care About the Code",
+    page_title: "CodeMySpec — How One Person Runs a Whole Software Company",
     meta_description:
-      "Lovable builds the demo. CodeMySpec builds the app you can still maintain in two years. Full-lifecycle AI development for Phoenix engineers: specs, code, tests, browser-based verification. Install as a Claude Code plugin.",
-    og_title: "CodeMySpec — Lovable for engineers who care about the code.",
+      "How CodeMySpec works: it builds your software, runs it, and grows it. You bring the idea and the judgment; the machine does the labor. Build for free; run and grow it for $100/mo.",
+    og_title: "CodeMySpec — How one person runs a whole software company.",
     og_description:
-      "The full-lifecycle AI development platform for senior Phoenix engineers. Specs, code, tests, and browser-based verification, end to end. BYO model, no token markup.",
+      "Build real software, then run it (email on your domain, live chat, one inbox) and grow it (content, ads, conversions). You steer; the machine does the heavy lifting. Drive it yourself, or build it with John.",
     canonical_url: "https://codemyspec.com/products/code-my-spec"
   }
 }

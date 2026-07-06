@@ -86,7 +86,7 @@ defmodule CodeMySpecWeb.Layouts do
             <button
               id="enable-notifications-btn"
               phx-click={JS.dispatch("phx:toggle-push-notifications")}
-              class="btn btn-ghost btn-sm tooltip tooltip-bottom"
+              class="btn btn-ghost btn-sm tooltip tooltip-left"
               data-tip="Enable notifications"
               data-subscribed="false"
             >
@@ -267,19 +267,7 @@ defmodule CodeMySpecWeb.Layouts do
             </div>
             <div class="navbar-center hidden lg:flex">
               <ul class="menu menu-horizontal menu-md px-1">
-                <li>
-                  <details>
-                    <summary>Products</summary>
-                    <ul class="bg-base-200 rounded-box w-48 z-10">
-                      <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
-                      <li>
-                        <.link href="https://marketmyspec.com" target="_blank" rel="noopener noreferrer">
-                          MarketMySpec
-                        </.link>
-                      </li>
-                    </ul>
-                  </details>
-                </li>
+                <li><.link href={~p"/products/code-my-spec"}>Product</.link></li>
                 <li><.link href={~p"/methodology"}>Method</.link></li>
                 <li><.link href={~p"/blog"}>Blog</.link></li>
                 <li><.link href={~p"/documentation"}>Docs</.link></li>
@@ -362,19 +350,7 @@ defmodule CodeMySpecWeb.Layouts do
             </a>
           </div>
           <ul class="menu p-4 text-base-content flex-1">
-            <li>
-              <details open>
-                <summary>Products</summary>
-                <ul>
-                  <li><.link href={~p"/products/code-my-spec"}>CodeMySpec</.link></li>
-                  <li>
-                    <.link href="https://marketmyspec.com" target="_blank" rel="noopener noreferrer">
-                      MarketMySpec
-                    </.link>
-                  </li>
-                </ul>
-              </details>
-            </li>
+            <li><.link href={~p"/products/code-my-spec"}>Product</.link></li>
             <li><.link href={~p"/methodology"}>Method</.link></li>
             <li><.link href={~p"/blog"}>Blog</.link></li>
             <li><.link href={~p"/documentation"}>Docs</.link></li>

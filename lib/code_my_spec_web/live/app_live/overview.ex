@@ -756,8 +756,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             </li>
             <li>
               No Phoenix project yet?
-              <div class="flex items-center gap-2 mt-1.5" data-test="prereq-phx-new">
-                <div class="mockup-code flex-1 text-xs">
+              <div class="flex items-center gap-2 mt-1.5 min-w-0" data-test="prereq-phx-new">
+                <div class="mockup-code flex-1 min-w-0 text-xs">
                   <pre><code>mix phx.new myapp &amp;&amp; cd myapp &amp;&amp; claude</code></pre>
                 </div>
                 <button
@@ -792,7 +792,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp install_step(assigns) do
     ~H"""
-    <li data-test={"install-step-#{@step.n}"} class="flex items-center gap-3">
+    <li data-test={"install-step-#{@step.n}"} class="flex items-center gap-3 min-w-0">
       <div class={[
         "flex items-center justify-center size-7 rounded-full shrink-0 text-sm font-semibold",
         @done && "bg-success text-success-content",
@@ -801,7 +801,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <.icon :if={@done} name="hero-check" class="size-4" />
         <span :if={!@done}>{@step.n}</span>
       </div>
-      <div class="mockup-code flex-1 text-xs">
+      <div class="mockup-code flex-1 min-w-0 text-xs">
         <pre><code>{@step.command}</code></pre>
       </div>
       <button

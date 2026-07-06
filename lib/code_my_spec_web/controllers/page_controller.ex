@@ -61,8 +61,8 @@ defmodule CodeMySpecWeb.PageController do
             "@id" => "https://codemyspec.com/#software",
             "name" => "CodeMySpec",
             "url" => "https://codemyspec.com",
-            "applicationCategory" => "DeveloperApplication",
-            "operatingSystem" => "macOS, Linux, Windows",
+            "applicationCategory" => "BusinessApplication",
+            "operatingSystem" => "Web-based",
             "description" =>
               "Structured AI-assisted development workflows for Phoenix applications. Guides AI agents through design, BDD specs, implementation, and QA.",
             "offers" => %{
@@ -105,8 +105,8 @@ defmodule CodeMySpecWeb.PageController do
             "@id" => "#{canonical}#software",
             "name" => "CodeMySpec",
             "url" => canonical,
-            "applicationCategory" => "DeveloperApplication",
-            "operatingSystem" => "macOS, Linux, Windows",
+            "applicationCategory" => "BusinessApplication",
+            "operatingSystem" => "Web-based",
             "description" => meta.meta_description,
             "screenshot" => %{
               "@type" => "ImageObject",
