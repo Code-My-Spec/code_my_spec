@@ -21,11 +21,9 @@
   ],
   "mcpServers": {
     "local": {
-      "type": "http",
-      "url": "http://localhost:4004/mcp",
-      "headers": {
-        "X-Working-Dir": "${CLAUDE_PROJECT_DIR}"
-      }
+      "type": "stdio",
+      "command": "cms",
+      "args": ["mcp"]
     },
     "vibium": {
       "type": "stdio",

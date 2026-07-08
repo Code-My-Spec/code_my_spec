@@ -136,15 +136,21 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
         Embeddings.sync_framework_knowledge(scope)
         knowledge_ms = System.monotonic_time(:millisecond) - knowledge_start
 
-        projector_start = System.monotonic_time(:millisecond)
-        HexDocProjector.project(scope)
-        projector_ms = System.monotonic_time(:millisecond) - projector_start
-
         Logger.info(
-          "[FileWatcher] Boot embed pass complete root=#{root} knowledge_ms=#{knowledge_ms} projector_ms=#{projector_ms}"
+          "[FileWatcher] Boot embed pass complete root=#{root} knowledge_ms=#{knowledge_ms}"
         )
       end)
     end)
+
+    # HexDocProjector recursively globs deps/<pkg>/lib/**/*.ex for EVERY package
+    # in EVERY watched project — millions of File.ls calls, all serialized
+    # through the single global :file_server_2. Doing that for all projects at
+    # boot wedged the file server long enough that /mcp requests (which need the
+    # file server) timed out — fatal under launchd, where the service comes up
+    # with the full project set. Deps hex-docs are re-projected on `mix.lock`
+    # changes by the poller, and per-project on demand; the boot-time full scan
+    # is redundant and is deliberately dropped. See project_codemyspec_independence.
+    :ok
   end
 
   defp repo_ready? do

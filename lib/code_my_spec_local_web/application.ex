@@ -16,7 +16,35 @@ defmodule CodeMySpecLocalWeb.Application do
 
   @impl true
   def start(_type, _args) do
-    handle_cli_args(cli_argv())
+    argv = cli_argv()
+
+    if mcp_relay_command?(argv) do
+      start_mcp_relay()
+    else
+      start_full(argv)
+    end
+  end
+
+  # `cms mcp` (or CMS_MCP_RELAY=1) boots ONLY the stdio<->server relay — no DB,
+  # no endpoint, no banner. Claude Code spawns it and talks MCP over stdio; the
+  # relay forwards to the one running `cms server` over HTTP. Env-var fallback
+  # covers release invocations that don't thread argv through.
+  defp mcp_relay_command?(argv) do
+    "mcp" in Enum.reject(argv, &(&1 in ["--", ""])) or
+      System.get_env("CMS_MCP_RELAY") in ["1", "true"]
+  end
+
+  defp start_mcp_relay do
+    base_url =
+      System.get_env("CMS_MCP_BASE_URL") ||
+        Application.get_env(:code_my_spec, :mcp_relay_base_url, "http://localhost:4004")
+
+    children = [{CodeMySpecCli.McpRelay, base_url: base_url}]
+    Supervisor.start_link(children, strategy: :one_for_one, name: CodeMySpec.Supervisor)
+  end
+
+  defp start_full(argv) do
+    handle_cli_args(argv)
 
     ensure_server_path()
     ensure_directories()

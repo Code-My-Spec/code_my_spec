@@ -26,12 +26,33 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
     {:ok,
      assign(socket,
        projects: projects,
+       client_user_id: client_user_id,
        project: nil,
        page_title: "Projects",
+       muster_sync?: Application.get_env(:code_my_spec, :muster_sync_enabled, false),
        authed?: OAuthClient.authenticated?(),
        client_user_email: client_user_email,
        linked_project?: Projects.any_linked_project_for_client_user?(client_user_id)
      )}
+  end
+
+  @impl true
+  def handle_event("delete", %{"id" => id}, socket) do
+    scope = %CodeMySpec.Users.Scope{
+      user: %CodeMySpec.ClientUsers.ClientUser{id: socket.assigns.client_user_id || 0},
+      user_id: socket.assigns.client_user_id || 0,
+      active_account_id: nil
+    }
+
+    with %CodeMySpec.Projects.Project{} = project <- Projects.get_project_by_id(id),
+         {:ok, _} <- Projects.delete_project(scope, project) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Project deleted")
+       |> assign(:projects, Projects.list_local_projects(socket.assigns.client_user_id))}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Could not delete project")}
+    end
   end
 
   defp active_client_user do
@@ -66,40 +87,59 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} projects={@projects} project={nil} section={:projects} page_title="Projects">
+      <%!-- The Muster install/link ladder only shows when Muster sync is opted
+            in; standalone CodeMySpec is just a local project manager. --%>
       <.local_install_ladder
-        :if={!local_install_done?(@authed?, @linked_project?)}
+        :if={@muster_sync? && !local_install_done?(@authed?, @linked_project?)}
         authed?={@authed?}
         client_user_email={@client_user_email}
         linked_project?={@linked_project?}
       />
 
-      <div class="mb-6">
-        <h1>Projects</h1>
-        <p class="text-base-content/60 mt-1 font-mono text-sm">
-          Projects linked to a local working directory.
-        </p>
+      <div class="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1>Projects</h1>
+          <p class="text-base-content/60 mt-1 font-mono text-sm">
+            Local codebases CodeMySpec is pointed at.
+          </p>
+        </div>
+        <.link navigate={~p"/projects/new"} class="btn btn-primary" data-test="new-project">
+          New project
+        </.link>
       </div>
 
-      <%!--
-        Audit re-pass §2b: previously a DaisyUI alert repeated the rung
-        copy verbatim ("From Claude Code … run /codemyspec:init …"). The
-        themed ladder above already carries that message with a copy
-        button; the alert was redundant chrome.
-      --%>
+      <div :if={@projects == []} class="text-base-content/60">
+        No projects yet. <.link navigate={~p"/projects/new"} class="link">Create one</.link>.
+      </div>
 
       <div :if={@projects != []} class="grid gap-4 sm:grid-cols-2">
-        <.link
+        <div
           :for={project <- @projects}
-          navigate={~p"/projects/#{project_slug(project)}"}
-          class="card bg-base-200 border border-base-300 hover:border-primary hover:shadow-lg transition"
+          class="card bg-base-200 border border-base-300 hover:border-primary transition"
         >
           <div class="card-body">
-            <h2 class="card-title">{project.name}</h2>
-            <p :if={project.local_path} class="text-sm opacity-60 font-mono truncate">
-              {project.local_path}
-            </p>
+            <.link navigate={~p"/projects/#{project_slug(project)}"} class="hover:underline">
+              <h2 class="card-title">{project.name}</h2>
+              <p :if={project.local_path} class="text-sm opacity-60 font-mono truncate">
+                {project.local_path}
+              </p>
+            </.link>
+            <div class="card-actions justify-end mt-2">
+              <.link navigate={~p"/projects/#{project_slug(project)}/edit"} class="btn btn-xs btn-ghost">
+                Edit
+              </.link>
+              <button
+                type="button"
+                phx-click="delete"
+                phx-value-id={project.id}
+                data-confirm={"Delete project #{project.name}? This only removes the local record."}
+                class="btn btn-xs btn-ghost text-error"
+              >
+                Delete
+              </button>
+            </div>
           </div>
-        </.link>
+        </div>
       </div>
     </Layouts.app>
     """

@@ -35,7 +35,7 @@ defmodule CodeMySpec.Issues do
   # of truth and we ARE the server, OR we're in test); false → use
   # RemoteClient HTTP to the server.
   defp local_repo_env? do
-    Application.get_env(:code_my_spec, :env) in [:dev, :prod, :test]
+    not Application.get_env(:code_my_spec, :sync_issues_to_muster, false)
   end
 
   # -- Reads ------------------------------------------------------------------

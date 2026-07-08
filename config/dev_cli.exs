@@ -79,3 +79,4 @@ config :swoosh, :api_client, false
 config :code_my_spec, :cloudflare_tunnel,
   mode: :quick,
   origin_url: "http://127.0.0.1:4004"
+config :code_my_spec, :mcp_relay_base_url, "http://localhost:4004"

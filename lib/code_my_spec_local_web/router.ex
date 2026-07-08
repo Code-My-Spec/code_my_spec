@@ -20,7 +20,9 @@ defmodule CodeMySpecLocalWeb.Router do
 
       live "/", ProjectsLive.Index, :index
       live "/projects", ProjectsLive.Index, :index
+      live "/projects/new", ProjectsLive.Form, :new
       live "/projects/:project_name", HomeLive
+      live "/projects/:project_name/edit", ProjectsLive.Form, :edit
       live "/projects/:project_name/init", InitLive, :index
       live "/projects/:project_name/init/:step", InitLive, :show
       live "/projects/:project_name/configuration", ConfigurationLive
