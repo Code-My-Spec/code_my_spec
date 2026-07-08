@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "1.5.33",
+      version: "1.5.34",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
@@ -163,7 +163,7 @@ defmodule CodeMySpec.MixProject do
     if Mix.env() == :prod_cli do
       [
         code_my_spec_cli: [
-          steps: [:assemble, &copy_bcrypt_nif_dll/1, :tar]
+          steps: [:assemble, &copy_bcrypt_nif_dll/1, &copy_mcp_relay/1, :tar]
         ]
       ]
     else
@@ -184,6 +184,25 @@ defmodule CodeMySpec.MixProject do
       |> Path.join("lib/bcrypt_elixir-*/priv/bcrypt_nif.so")
       |> Path.wildcard()
       |> Enum.each(fn so -> File.cp!(so, Path.rootname(so) <> ".dll") end)
+    end
+
+    release
+  end
+
+  # cms-mcp-relay is the standalone Go stdio<->HTTP MCP bridge Claude Code spawns
+  # (instead of booting the BEAM via `cms start`). It's cross-compiled to
+  # relay/cms-mcp-relay[.exe] by the CI before `mix release`; this step drops it
+  # into the release bin/ so it ships in the same tarball every packager consumes
+  # (brew symlinks it; the MSI harvests bin/). Skipped if absent so a plain
+  # server build still works.
+  defp copy_mcp_relay(release) do
+    exe = if match?({:win32, _}, :os.type()), do: "cms-mcp-relay.exe", else: "cms-mcp-relay"
+    src = Path.join([File.cwd!(), "relay", exe])
+
+    if File.exists?(src) do
+      dst = Path.join([release.path, "bin", exe])
+      File.cp!(src, dst)
+      File.chmod!(dst, 0o755)
     end
 
     release

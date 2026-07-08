@@ -34,16 +34,23 @@ defmodule CodeMySpecCli.McpRelay do
     redirect_logs_to_stderr()
 
     base_url = Keyword.get(opts, :base_url, @default_base_url)
+    dir = working_dir()
+
+    # The shared server resolves scope from the working directory (it serves
+    # every local project). Over plain HTTP this rode in the X-Working-Dir
+    # header, but Anubis's streamable-HTTP client only attaches custom headers
+    # to POST requests — its standalone SSE GET connection (build_sse_headers)
+    # drops them, so a header-only approach 400s the SSE channel. Pass the dir
+    # as a `?dir=` query param instead: it rides EVERY request (POST + SSE GET),
+    # which the server accepts equivalently to the header. Keep the header too
+    # as belt-and-suspenders for the POST path.
+    dir_base_url = base_url <> "?dir=" <> URI.encode_www_form(dir)
 
     case StreamableHTTP.start_link(
            client: self(),
-           base_url: base_url,
+           base_url: dir_base_url,
            mcp_path: "/mcp",
-           # The shared server resolves scope from the working directory (it
-           # serves every local project). Over HTTP this rode in the
-           # X-Working-Dir header; the relay carries it the same way, from the
-           # dir Claude Code spawned us in.
-           headers: %{"X-Working-Dir" => working_dir()},
+           headers: %{"X-Working-Dir" => dir},
            # enable_sse: also open the server→client SSE channel so we relay
            # server-initiated notifications/requests, not just responses.
            enable_sse: true

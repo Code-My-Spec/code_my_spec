@@ -66,6 +66,22 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      # cms-mcp-relay: the standalone stdio<->HTTP MCP bridge Claude Code spawns.
+      # Built natively per runner (runner OS == target, so no cross-compile);
+      # mix release's copy_mcp_relay step drops it into the release bin/.
+      - name: Build cms-mcp-relay
+        working-directory: relay
+        run: |
+          out=cms-mcp-relay
+          [ "$RUNNER_OS" = "Windows" ] && out=cms-mcp-relay.exe
+          go build -trimpath -ldflags "-s -w" -o "$out" .
+          ls -la "$out"
+
       # Plain `mix release` — a self-contained OTP release (ERTS + start.boot +
       # NIFs on disk), built natively on each runner. No Burrito, no zig, no
       # runtime self-extraction. The tarball is what every packager consumes.

@@ -83,6 +83,17 @@
           System="yes"
           Action="set"
           Part="all" />
+        <!-- Put the release bin/ on PATH so the plugin's stdio MCP command
+             `cms-mcp-relay` (and `cms`) resolve. Appended on install, removed on
+             uninstall. -->
+        <Environment
+          Id="CmsBinPath"
+          Name="PATH"
+          Value="[INSTALLFOLDER]bin"
+          System="yes"
+          Action="set"
+          Part="last"
+          Permanent="no" />
         <RegistryValue
           Root="HKLM"
           Key="Software\CodeMySpec"

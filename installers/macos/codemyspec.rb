@@ -23,6 +23,11 @@ class Codemyspec < Formula
       exec "#{libexec}/bin/code_my_spec_cli" "$@"
     SH
     chmod 0755, bin/"cms"
+
+    # cms-mcp-relay: the standalone Go stdio<->HTTP MCP bridge that Claude Code
+    # spawns for the plugin's local MCP server. Self-contained (no RELEASE_ROOT),
+    # so a plain symlink into bin/ is enough.
+    bin.install_symlink libexec/"bin/cms-mcp-relay"
   end
 
   service do
