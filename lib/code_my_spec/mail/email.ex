@@ -5,7 +5,10 @@ defmodule CodeMySpec.Mail.Email do
   CMS keeps its own copy (metadata + text/html body) so a mailbox's history
   outlives the provider's ~30-day retention window. `correspondent` is the
   other party's address (inbound: the sender; outbound: the recipient) and is
-  what threads a mailbox per-correspondent. Attachments are not stored in v1.
+  what threads a mailbox per-correspondent.
+
+  Inbound attachments are copied out of Resend into our own bucket and hang off
+  this email as `email_attachments` — see `CodeMySpec.Mail.EmailAttachment`.
   """
 
   use Ecto.Schema
@@ -26,6 +29,7 @@ defmodule CodeMySpec.Mail.Email do
     field :in_reply_to, :string
 
     belongs_to :mailbox, CodeMySpec.Mail.Mailbox, type: :binary_id
+    has_many :attachments, CodeMySpec.Mail.EmailAttachment, preload_order: [asc: :inserted_at]
 
     timestamps(type: :utc_datetime_usec)
   end

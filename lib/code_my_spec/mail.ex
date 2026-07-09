@@ -20,7 +20,8 @@ defmodule CodeMySpec.Mail do
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Mail.{Mailbox, Email, ResendClient}
+  alias CodeMySpec.Mail.{Mailbox, Email, ResendClient, Attachments, EmailAttachment}
+  alias CodeMySpec.Uploads
   alias CodeMySpec.Users.Scope
 
   # --- Mailboxes ---
@@ -181,8 +182,23 @@ defmodule CodeMySpec.Mail do
           in_reply_to: Map.get(attrs, :in_reply_to)
         })
         |> Repo.insert()
+        |> tap_store_attachments(attrs)
     end
   end
+
+  # Resend strips inbound attachment bytes from the webhook, so when the event
+  # names any, copy them out of the provider into our bucket. Best-effort: the
+  # email is already persisted, so a storage failure never fails the insert.
+  defp tap_store_attachments({:ok, %Email{} = email} = ok, attrs) do
+    case Map.get(attrs, :attachments) do
+      [_ | _] -> Attachments.store_inbound(email)
+      _ -> :ok
+    end
+
+    ok
+  end
+
+  defp tap_store_attachments(other, _attrs), do: other
 
   # Use the body carried in the event when present (tests / future inline
   # payloads); otherwise fetch it from the Receiving API by id.
@@ -253,7 +269,8 @@ defmodule CodeMySpec.Mail do
            to: meta["to"],
            subject: meta["subject"],
            message_id: meta["message_id"],
-           provider_email_id: meta["id"]
+           provider_email_id: meta["id"],
+           attachments: meta["attachments"]
          }) do
       {:ok, _email} -> :inserted
       {:error, :no_mailbox} -> :no_mailbox
@@ -265,9 +282,16 @@ defmodule CodeMySpec.Mail do
   defp backfill_body(%Email{} = email, meta) do
     case ResendClient.get_received_email(meta["id"]) do
       {:ok, body} ->
-        email
-        |> Email.changeset(%{body_text: body["text"], body_html: body["html"], provider_id: meta["id"]})
-        |> Repo.update()
+        {:ok, updated} =
+          email
+          |> Email.changeset(%{body_text: body["text"], body_html: body["html"], provider_id: meta["id"]})
+          |> Repo.update()
+
+        # Backfill attachments too if this row predates them being copied out.
+        case body["attachments"] do
+          [_ | _] -> Attachments.store_inbound(updated)
+          _ -> :ok
+        end
 
         :backfilled
 
@@ -352,6 +376,28 @@ defmodule CodeMySpec.Mail do
         where: e.mailbox_id == ^mailbox.id,
         order_by: [asc: e.inserted_at, asc: e.id]
     )
+    |> Repo.preload(:attachments)
+  end
+
+  @doc """
+  Fetch an attachment by id, scoped to a mailbox the current member may see, so
+  one member can't pull another project's files. Returns the `EmailAttachment`
+  or `nil`.
+  """
+  def get_attachment(%Scope{} = scope, id) do
+    visible_ids = visible_query(scope) |> select([m], m.id)
+
+    Repo.one(
+      from a in EmailAttachment,
+        join: e in Email,
+        on: e.id == a.email_id,
+        where: a.id == ^id and e.mailbox_id in subquery(visible_ids)
+    )
+  end
+
+  @doc "A short-lived presigned URL to download an attachment's bytes from S3."
+  def attachment_download_url(%EmailAttachment{s3_key: key}) when is_binary(key) do
+    Uploads.presigned_download_url(key)
   end
 
   @doc """

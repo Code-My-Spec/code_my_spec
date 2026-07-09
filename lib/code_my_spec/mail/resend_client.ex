@@ -92,6 +92,44 @@ defmodule CodeMySpec.Mail.ResendClient do
     end
   end
 
+  @doc """
+  List an inbound email's attachments (metadata + a short-lived signed
+  `download_url`) by its Resend receiving id. `GET /emails/receiving/{id}/attachments`.
+  The webhook payload only names the attachments; this is where the bytes live.
+  """
+  @spec list_received_attachments(String.t()) :: {:ok, [map()]} | error()
+  def list_received_attachments(id) when is_binary(id) do
+    case request(:get, "/emails/receiving/#{id}/attachments", []) do
+      {:ok, %{"data" => data}} when is_list(data) -> {:ok, data}
+      {:ok, _body} -> {:ok, []}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Download attachment bytes from a Resend signed `download_url`. The URL is
+  already authenticated by its signature, so no bearer header is sent. Returns
+  the raw body binary. Test plug (if configured under this module) intercepts
+  the request just like the API calls.
+  """
+  @spec download_attachment(String.t()) :: {:ok, binary()} | {:error, term()}
+  def download_attachment(url) when is_binary(url) do
+    req_opts =
+      [method: :get, url: url, decode_body: false, retry: false]
+      |> Keyword.merge(plug_opt())
+
+    case Req.request(req_opts) do
+      {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
+        {:ok, IO.iodata_to_binary(body)}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:resend_error, status, body}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   @spec list_domains() :: {:ok, [map()]} | error()
   def list_domains do
     case request(:get, "/domains", []) do

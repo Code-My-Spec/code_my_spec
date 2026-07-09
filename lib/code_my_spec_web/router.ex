@@ -220,6 +220,12 @@ defmodule CodeMySpecWeb.Router do
   scope "/app", CodeMySpecWeb do
     pipe_through [:browser, :require_authenticated_user]
 
+    # Defined before the `live "/mail/:id"` route so these literal paths win the
+    # match — otherwise `/app/mail/image` binds `:id => "image"` on MailLive and
+    # blows up casting "image" to a mailbox UUID.
+    get "/mail/attachments/:id", MailAttachmentController, :show
+    get "/mail/image", MailImageController, :show
+
     live_session :require_authenticated_user,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
