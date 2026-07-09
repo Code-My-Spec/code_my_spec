@@ -9,6 +9,7 @@ defmodule CodeMySpec.Notifications do
 
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Notifications.PushSubscription
+  alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
 
   @doc """
@@ -139,6 +140,68 @@ defmodule CodeMySpec.Notifications do
   Get a permission request by ID.
   """
   def get_permission_request(id), do: Repo.get(PermissionRequest, id)
+
+  # --- Question Requests (remote AskUserQuestion) ---
+
+  @doc """
+  Create a question request and notify the user via Web Push.
+
+  Returns `{:ok, question_request}`. The caller subscribes to PubSub topic
+  `"question_request:<id>"` to await the answer.
+  """
+  def create_question_request(user_id, %{} = attrs) do
+    attrs = Map.merge(attrs, %{"user_id" => user_id, "status" => "pending"})
+
+    with {:ok, request} <-
+           %QuestionRequest{} |> QuestionRequest.changeset(attrs) |> Repo.insert() do
+      notify_user(user_id, %{
+        type: "question_request",
+        title: request.title || "Claude Code has a question",
+        body: first_question_text(request.questions),
+        url: "/app/questions/#{request.id}"
+      })
+
+      {:ok, request}
+    end
+  end
+
+  @doc """
+  Record answers to a question request and broadcast them so the waiting hook
+  receives them. `answers` maps each question's text to the chosen label(s).
+  """
+  def answer_question_request(id, %{} = answers) do
+    case Repo.get(QuestionRequest, id) do
+      nil ->
+        {:error, :not_found}
+
+      %{status: "pending"} = request ->
+        request
+        |> QuestionRequest.changeset(%{status: "answered", answers: answers})
+        |> Repo.update()
+        |> case do
+          {:ok, updated} ->
+            Phoenix.PubSub.broadcast(
+              CodeMySpec.PubSub,
+              "question_request:#{id}",
+              {:question_answered, %{id: id, answers: answers}}
+            )
+
+            {:ok, updated}
+
+          error ->
+            error
+        end
+
+      %{status: status} ->
+        {:error, {:already_resolved, status}}
+    end
+  end
+
+  @doc "Get a question request by ID."
+  def get_question_request(id), do: Repo.get(QuestionRequest, id)
+
+  defp first_question_text([%{"question" => q} | _]) when is_binary(q), do: q
+  defp first_question_text(_), do: "Tap to answer"
 
   defp decision_to_status("allow"), do: "approved"
   defp decision_to_status("deny"), do: "denied"

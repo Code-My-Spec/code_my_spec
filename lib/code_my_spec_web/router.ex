@@ -156,6 +156,10 @@ defmodule CodeMySpecWeb.Router do
     post "/permissions/request", PermissionController, :create
     post "/permissions/:id/respond", PermissionController, :respond
     get "/permissions/:id/status", PermissionController, :status
+
+    post "/questions/ask", QuestionController, :ask
+    post "/questions/:id/answer", QuestionController, :answer
+    get "/questions/:id/status", QuestionController, :status
   end
 
   # VAPID public key (no auth needed — it's a public key)
@@ -239,6 +243,7 @@ defmodule CodeMySpecWeb.Router do
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
       live "/users/preferences", UserPreferenceLive.Form, :edit
       live "/permissions/:id", PermissionLive.Show, :show
+      live "/questions/:id", QuestionLive.Show, :show
       live "/accounts", AccountLive.Index, :index
       live "/accounts/picker", AccountLive.Picker, :index
       live "/accounts/:id", AccountLive.Manage, :show

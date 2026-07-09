@@ -143,6 +143,7 @@ defmodule CodeMySpecLocalWeb.Router do
     post "/subagent-start", SubagentStartController, :handle
     post "/subagent-stop", SubagentStopController, :handle
     post "/notification", NotificationHookController, :handle
+    post "/ask-user-question", AskUserQuestionController, :handle
   end
 
   # ── Agent tasks (skill-invoked) ──────────────────────────────────
