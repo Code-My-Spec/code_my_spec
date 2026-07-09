@@ -15,6 +15,8 @@ defmodule CodeMySpecWeb.ConversationChannel do
 
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.ScreenshotStore
   alias CodeMySpec.Projects
   alias CodeMySpecWeb.Presence
 
@@ -89,6 +91,29 @@ defmodule CodeMySpecWeb.ConversationChannel do
     {:reply, :ok, socket}
   end
 
+  # The support widget's "Report a problem" tab rides the same deploy-key
+  # connection as chat: a `submit_feedback` event files an issue on the project
+  # (source "widget"), which broadcasts like any other issue so the operator
+  # dashboard and local mirrors pick it up. Reporting and chatting are one
+  # widget, one connection.
+  def handle_in("submit_feedback", payload, socket) do
+    attrs =
+      %{
+        "title" => Map.get(payload, "title"),
+        "description" => Map.get(payload, "description"),
+        "severity" => Map.get(payload, "severity") || "medium"
+      }
+      |> put_screenshot(Map.get(payload, "screenshot"), socket.assigns.project_id)
+
+    case Issues.report_from_widget(socket.assigns.account_id, socket.assigns.project_id, attrs) do
+      {:ok, issue} ->
+        {:reply, {:ok, %{id: issue.id}}, socket}
+
+      {:error, _reason} ->
+        {:reply, {:error, %{reason: "could not file issue"}}, socket}
+    end
+  end
+
   # Scroll-up pagination: the client sends the `inserted_at` of the oldest
   # message it currently holds; the server replies with the previous page
   # (oldest-first) for the client to prepend.
@@ -121,6 +146,18 @@ defmodule CodeMySpecWeb.ConversationChannel do
 
     :ok
   end
+
+  # A captured screenshot rides the event as a base64 data URL; copy it into S3
+  # and attach it to the issue. Best-effort — a failed upload still files the
+  # report, just without the image.
+  defp put_screenshot(attrs, data_url, project_id) when is_binary(data_url) do
+    case ScreenshotStore.store(project_id, data_url) do
+      {:ok, attachment} -> Map.put(attrs, "attachments", [attachment])
+      :error -> attrs
+    end
+  end
+
+  defp put_screenshot(attrs, _data_url, _project_id), do: attrs
 
   defp resolve_account_id(socket) do
     case socket.assigns[:account_id] do

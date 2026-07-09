@@ -116,6 +116,29 @@ defmodule CodeMySpec.Issues do
   end
 
   @doc """
+  Widget-side issue report: an end-user of a client app files an issue through
+  the support widget, authenticated at the socket by the project's deploy key
+  (server-to-server — no CMS user `Scope`). Mirrors `create_issue/2` but takes
+  the account/project ids directly, stamps `source: "widget"` and `scope: :app`
+  unless overridden, and broadcasts `{:created, issue}` so local mirrors and the
+  operator dashboard pick it up like any other issue.
+
+  `attrs` are string-keyed (title/description/severity from the widget form).
+  """
+  def report_from_widget(account_id, project_id, attrs)
+      when is_binary(account_id) and is_binary(project_id) and is_map(attrs) do
+    scope = %Scope{active_account_id: account_id, active_project_id: project_id}
+
+    attrs =
+      attrs
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.put_new("source", "widget")
+      |> Map.put_new("scope", "app")
+
+    create_issue(scope, attrs)
+  end
+
+  @doc """
   Creates issues from a validated QA result document.
 
   Parses the issues section, upserts each issue (skipping duplicates by title + story_id),

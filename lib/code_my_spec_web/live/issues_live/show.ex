@@ -27,6 +27,15 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
         <:item title="Description">
           <p class="whitespace-pre-wrap">{@issue.description}</p>
         </:item>
+        <:item :if={has_screenshot?(@issue)} title="Screenshot">
+          <a href={~p"/app/issues/#{@issue.id}/screenshot"} target="_blank" rel="noopener">
+            <img
+              src={~p"/app/issues/#{@issue.id}/screenshot"}
+              alt="Reported screenshot"
+              class="max-h-96 rounded border border-base-300"
+            />
+          </a>
+        </:item>
         <:item :if={@issue.story_id} title="Story">#{@issue.story_id}</:item>
         <:item :if={@issue.source_path} title="Source path">
           <code class="text-sm">{@issue.source_path}</code>
@@ -185,6 +194,12 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   def handle_info({_action, %Issues.Issue{}}, socket) do
     {:noreply, socket}
   end
+
+  defp has_screenshot?(%{attachments: attachments}) when is_list(attachments) do
+    Enum.any?(attachments, &(is_map(&1) and &1["type"] == "screenshot"))
+  end
+
+  defp has_screenshot?(_issue), do: false
 
   defp available_actions(%{status: :incoming}), do: [:accept, :dismiss]
   defp available_actions(%{status: :accepted}), do: [:resolve]

@@ -56,6 +56,7 @@ defmodule CodeMySpecWeb.IssuesChannel do
       status: issue.status,
       story_id: issue.story_id,
       project_id: issue.project_id,
+      attachments: issue.attachments,
       inserted_at: issue.inserted_at,
       updated_at: issue.updated_at
     }

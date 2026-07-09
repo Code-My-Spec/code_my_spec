@@ -65,6 +65,9 @@ defmodule CodeMySpec.Issues.Issue do
     field :project_id, :binary_id
     field :account_id, :binary_id
     field :synced_from_server, :boolean, default: false
+    # A list of attachment maps, e.g. a widget-reported screenshot copied into
+    # our S3 bucket: %{"type" => "screenshot", "s3_key" => ..., "content_type" => ...}.
+    field :attachments, {:array, :map}, default: []
 
     timestamps(type: :utc_datetime)
   end
@@ -80,7 +83,8 @@ defmodule CodeMySpec.Issues.Issue do
     :source,
     :story_id,
     :source_path,
-    :synced_from_server
+    :synced_from_server,
+    :attachments
   ]
 
   @doc false

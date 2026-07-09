@@ -225,6 +225,7 @@ defmodule CodeMySpecWeb.Router do
     # blows up casting "image" to a mailbox UUID.
     get "/mail/attachments/:id", MailAttachmentController, :show
     get "/mail/image", MailImageController, :show
+    get "/issues/:id/screenshot", IssueScreenshotController, :show
 
     live_session :require_authenticated_user,
       on_mount: [

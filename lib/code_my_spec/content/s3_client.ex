@@ -39,6 +39,23 @@ defmodule CodeMySpec.Content.S3Client do
     end
   end
 
+  @doc """
+  GET `s3://<bucket>/<key>`. Returns `{:ok, body}` or `{:error, _}`. Flows
+  through `ExAwsReqClient` so specs intercept it with the same plug as uploads.
+  """
+  @spec get_object(String.t(), String.t(), keyword()) :: {:ok, binary()} | {:error, term()}
+  def get_object(bucket, key, opts \\ []) do
+    credentials = Keyword.get(opts, :credentials, [])
+
+    bucket
+    |> ExAws.S3.get_object(key)
+    |> ExAws.request(request_config(credentials))
+    |> case do
+      {:ok, %{body: body}} -> {:ok, body}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp request_config(credentials) do
     extra = Application.get_env(:code_my_spec, __MODULE__, [])[:s3_config] || []
 

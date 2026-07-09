@@ -135,7 +135,8 @@ defmodule CodeMySpec.Issues.IssuesSocket do
       status: safe_atom(payload["status"]),
       story_id: payload["story_id"],
       project_id: payload["project_id"],
-      account_id: payload["account_id"]
+      account_id: payload["account_id"],
+      attachments: payload["attachments"] || []
     }
 
     # Socket-delivered events are by definition server-origin — set
