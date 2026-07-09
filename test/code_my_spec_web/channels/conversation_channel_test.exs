@@ -106,6 +106,54 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
     assert_receive {:created, %CodeMySpec.Issues.Issue{title: "Typo on pricing"}}
   end
 
+  test "request_chat_upload returns a presigned URL and a chat-scoped key", %{scope: scope} do
+    {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-cu", "cu@example.com")
+
+    ref = push(channel, "request_chat_upload", %{"content_type" => "image/png", "filename" => "pic.png"})
+    assert_reply ref, :ok, %{upload_url: url, s3_key: key}
+
+    assert url =~ "http"
+    assert String.starts_with?(key, "chat/#{scope.active_project.id}/")
+    assert String.ends_with?(key, "pic.png")
+  end
+
+  test "send_message with an attachment persists it and is pushed back with a URL", %{scope: scope} do
+    key = "chat/#{scope.active_project.id}/abc-123/pic.png"
+    {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-att", "att@example.com")
+
+    push(channel, "send_message", %{
+      "body" => "here you go",
+      "attachments" => [%{"s3_key" => key, "filename" => "pic.png", "content_type" => "image/png", "size" => 10}]
+    })
+
+    assert_push "new_message", %{body: "here you go", attachments: [att]}
+    assert att.filename == "pic.png"
+    assert att.content_type == "image/png"
+    assert att.url =~ "http"
+  end
+
+  test "an attachment-only message (no text) is accepted", %{scope: scope} do
+    key = "chat/#{scope.active_project.id}/def-456/doc.pdf"
+    {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-only", "only@example.com")
+
+    push(channel, "send_message", %{
+      "attachments" => [%{"s3_key" => key, "filename" => "doc.pdf", "content_type" => "application/pdf"}]
+    })
+
+    assert_push "new_message", %{attachments: [%{filename: "doc.pdf"}]}
+  end
+
+  test "an attachment key outside the project prefix is dropped", %{scope: scope} do
+    {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-bad", "bad@example.com")
+
+    push(channel, "send_message", %{
+      "body" => "hi",
+      "attachments" => [%{"s3_key" => "chat/00000000-0000-0000-0000-000000000000/x/pic.png", "filename" => "pic.png"}]
+    })
+
+    assert_push "new_message", %{body: "hi", attachments: []}
+  end
+
   test "feedback missing a title is rejected and files nothing", %{scope: scope} do
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-3", "user3@example.com")
 

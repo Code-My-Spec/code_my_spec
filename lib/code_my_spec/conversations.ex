@@ -92,13 +92,14 @@ defmodule CodeMySpec.Conversations do
   Appends a message to a conversation and broadcasts it on the per-conversation
   topic (for connected widgets) and the account inbox topic (for the operator).
   """
-  def add_message(%Conversation{} = conversation, role, body, sender_id \\ nil) do
+  def add_message(%Conversation{} = conversation, role, body, sender_id \\ nil, attachments \\ []) do
     %Message{}
     |> Message.changeset(%{
       conversation_id: conversation.id,
       role: role,
-      body: body,
-      sender_id: sender_id
+      body: body || "",
+      sender_id: sender_id,
+      attachments: attachments
     })
     |> Repo.insert()
     |> case do
@@ -192,6 +193,21 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
+  Fetch a message by id within the scope's active account (via its
+  conversation), with the conversation preloaded. `nil` if it isn't the
+  account's. Used to serve a message's attachment to the operator.
+  """
+  def get_message(%Scope{} = scope, message_id) do
+    Repo.one(
+      from m in Message,
+        join: c in Conversation,
+        on: c.id == m.conversation_id,
+        where: m.id == ^message_id and c.account_id == ^scope.active_account_id,
+        preload: [conversation: c]
+    )
+  end
+
+  @doc """
   Account-initiated: opens (or reuses) a conversation with a user identified by
   email on the scope's active project, and posts the operator's first message.
   """
@@ -204,9 +220,9 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc "Operator reply into an existing conversation in the scope's active account."
-  def reply(scope, conversation_id, body) do
+  def reply(scope, conversation_id, body, attachments \\ []) do
     conversation = get_conversation!(scope, conversation_id)
-    add_message(conversation, :operator, body, operator_sender_id(scope))
+    add_message(conversation, :operator, body, operator_sender_id(scope), attachments)
   end
 
   @doc """

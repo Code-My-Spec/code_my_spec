@@ -84,11 +84,33 @@ defmodule CodeMySpecWeb.ConversationChannel do
   end
 
   @impl true
-  def handle_in("send_message", %{"body" => body}, socket) do
-    {:ok, _message} =
-      Conversations.add_message(socket.assigns.conversation, :user, body, socket.assigns.end_user_id)
+  def handle_in("send_message", payload, socket) do
+    body = Map.get(payload, "body", "")
+    attachments = valid_chat_attachments(Map.get(payload, "attachments"), socket.assigns.project_id)
 
-    {:reply, :ok, socket}
+    case Conversations.add_message(
+           socket.assigns.conversation,
+           :user,
+           body,
+           socket.assigns.end_user_id,
+           attachments
+         ) do
+      {:ok, _message} -> {:reply, :ok, socket}
+      {:error, _changeset} -> {:reply, {:error, %{reason: "message rejected"}}, socket}
+    end
+  end
+
+  # Presigned S3 URL for a file the customer wants to attach to a chat message —
+  # the bytes go browser→S3, never over the socket. Keyed under the project's
+  # `chat/` prefix; the client PUTs then sends the `s3_key` with `send_message`.
+  def handle_in("request_chat_upload", params, socket) do
+    content_type = Map.get(params, "content_type", "application/octet-stream")
+    key = "chat/#{socket.assigns.project_id}/#{Ecto.UUID.generate()}/#{safe_name(params["filename"])}"
+
+    case Uploads.presigned_upload_url(key, content_type) do
+      {:ok, url} -> {:reply, {:ok, %{upload_url: url, s3_key: key}}, socket}
+      {:error, _reason} -> {:reply, {:error, %{reason: "could not presign upload"}}, socket}
+    end
   end
 
   # Hand the widget a presigned S3 URL so the browser uploads a screenshot's
@@ -197,9 +219,58 @@ defmodule CodeMySpecWeb.ConversationChannel do
       id: message.id,
       body: message.body,
       role: message.role,
+      attachments: Enum.map(message.attachments || [], &attachment_payload/1),
       inserted_at: DateTime.to_iso8601(message.inserted_at)
     }
   end
+
+  # The widget renders from a short-lived presigned GET URL (it can't hit our
+  # authenticated endpoints); it's re-minted on each replay so it's never stale.
+  defp attachment_payload(%{"s3_key" => key} = attachment) do
+    url =
+      case Uploads.presigned_download_url(key) do
+        {:ok, u} -> u
+        _ -> nil
+      end
+
+    %{
+      filename: attachment["filename"],
+      content_type: attachment["content_type"],
+      size: attachment["size"],
+      url: url
+    }
+  end
+
+  defp attachment_payload(_attachment), do: %{}
+
+  # Keep only attachments the client uploaded under this project's own prefix.
+  defp valid_chat_attachments(list, project_id) when is_list(list) do
+    prefix = "chat/#{project_id}/"
+
+    for a <- list, is_map(a), is_binary(a["s3_key"]), String.starts_with?(a["s3_key"], prefix) do
+      %{
+        "s3_key" => a["s3_key"],
+        "filename" => a["filename"],
+        "content_type" => a["content_type"],
+        "size" => a["size"]
+      }
+    end
+  end
+
+  defp valid_chat_attachments(_list, _project_id), do: []
+
+  defp safe_name(name) when is_binary(name) do
+    name
+    |> Path.basename()
+    |> String.replace(~r/[^A-Za-z0-9._-]+/, "_")
+    |> String.slice(0, 120)
+    |> case do
+      "" -> "file"
+      cleaned -> cleaned
+    end
+  end
+
+  defp safe_name(_name), do: "file"
 
   defp broadcast_presence_changed(socket) do
     Phoenix.PubSub.broadcast(

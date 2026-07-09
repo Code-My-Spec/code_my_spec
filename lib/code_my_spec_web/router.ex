@@ -37,6 +37,7 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/developers", PageController, :developers
     get "/products/code-my-spec", PageController, :code_my_spec
     get "/products/market-my-spec", PageController, :market_my_spec_redirect
     get "/sitemap.xml", SitemapController, :index
@@ -226,6 +227,7 @@ defmodule CodeMySpecWeb.Router do
     get "/mail/attachments/:id", MailAttachmentController, :show
     get "/mail/image", MailImageController, :show
     get "/issues/:id/screenshot", IssueScreenshotController, :show
+    get "/inbox/messages/:message_id/attachments/:index", ConversationAttachmentController, :show
 
     live_session :require_authenticated_user,
       on_mount: [

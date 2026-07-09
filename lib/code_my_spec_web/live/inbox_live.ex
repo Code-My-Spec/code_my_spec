@@ -319,7 +319,30 @@ defmodule CodeMySpecWeb.InboxLive do
             >
               <div class="chat-header text-xs opacity-60">{sender_label(message.role)}</div>
               <div class={["chat-bubble break-words", chat_bubble(message.role)]}>
-                {message.body}
+                <p :if={message.body not in [nil, ""]} class="whitespace-pre-wrap">{message.body}</p>
+                <div :for={{att, idx} <- Enum.with_index(message.attachments || [])} class="mt-1">
+                  <a
+                    :if={image_attachment?(att)}
+                    href={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    <img
+                      src={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
+                      alt={att["filename"]}
+                      class="max-h-48 rounded"
+                    />
+                  </a>
+                  <a
+                    :if={not image_attachment?(att)}
+                    href={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
+                    target="_blank"
+                    rel="noopener"
+                    class="inline-flex items-center gap-1 text-sm underline"
+                  >
+                    <.icon name="hero-paper-clip" class="size-4" /> {att["filename"]}
+                  </a>
+                </div>
               </div>
             </div>
           </div>
@@ -359,6 +382,11 @@ defmodule CodeMySpecWeb.InboxLive do
 
   defp presence_label(conversation, online),
     do: if(online?(conversation, online), do: "Online", else: "Offline")
+
+  defp image_attachment?(%{"content_type" => ct}) when is_binary(ct),
+    do: String.starts_with?(ct, "image/")
+
+  defp image_attachment?(_attachment), do: false
 
   defp chat_side(:operator), do: "chat-end"
   defp chat_side(_role), do: "chat-start"
