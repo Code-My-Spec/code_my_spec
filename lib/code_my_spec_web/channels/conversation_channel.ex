@@ -16,8 +16,8 @@ defmodule CodeMySpecWeb.ConversationChannel do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Issues
-  alias CodeMySpec.Issues.ScreenshotStore
   alias CodeMySpec.Projects
+  alias CodeMySpec.Uploads
   alias CodeMySpecWeb.Presence
 
   @impl true
@@ -91,11 +91,26 @@ defmodule CodeMySpecWeb.ConversationChannel do
     {:reply, :ok, socket}
   end
 
+  # Hand the widget a presigned S3 URL so the browser uploads a screenshot's
+  # bytes straight to our bucket — the image never rides this socket. The key is
+  # scoped to the project's `issues/` prefix; the client PUTs to `upload_url`
+  # then reports the `s3_key` back with `submit_feedback`.
+  def handle_in("request_screenshot_upload", params, socket) do
+    content_type = Map.get(params, "content_type", "image/png")
+    key = Uploads.generate_key(socket.assigns.project_id, screenshot_filename(content_type))
+
+    case Uploads.presigned_upload_url(key, content_type) do
+      {:ok, url} -> {:reply, {:ok, %{upload_url: url, s3_key: key}}, socket}
+      {:error, _reason} -> {:reply, {:error, %{reason: "could not presign upload"}}, socket}
+    end
+  end
+
   # The support widget's "Report a problem" tab rides the same deploy-key
   # connection as chat: a `submit_feedback` event files an issue on the project
   # (source "widget"), which broadcasts like any other issue so the operator
   # dashboard and local mirrors pick it up. Reporting and chatting are one
-  # widget, one connection.
+  # widget, one connection. A screenshot, if any, was already uploaded to S3 via
+  # `request_screenshot_upload`; only its `screenshot_key` travels here.
   def handle_in("submit_feedback", payload, socket) do
     attrs =
       %{
@@ -103,7 +118,7 @@ defmodule CodeMySpecWeb.ConversationChannel do
         "description" => Map.get(payload, "description"),
         "severity" => Map.get(payload, "severity") || "medium"
       }
-      |> put_screenshot(Map.get(payload, "screenshot"), socket.assigns.project_id)
+      |> attach_screenshot(payload, socket.assigns.project_id)
 
     case Issues.report_from_widget(socket.assigns.account_id, socket.assigns.project_id, attrs) do
       {:ok, issue} ->
@@ -147,17 +162,28 @@ defmodule CodeMySpecWeb.ConversationChannel do
     :ok
   end
 
-  # A captured screenshot rides the event as a base64 data URL; copy it into S3
-  # and attach it to the issue. Best-effort — a failed upload still files the
-  # report, just without the image.
-  defp put_screenshot(attrs, data_url, project_id) when is_binary(data_url) do
-    case ScreenshotStore.store(project_id, data_url) do
-      {:ok, attachment} -> Map.put(attrs, "attachments", [attachment])
-      :error -> attrs
+  # Attach a screenshot the browser already uploaded to S3. Only accept a key
+  # under this project's own `issues/` prefix (the client can't smuggle in
+  # another project's object).
+  defp attach_screenshot(attrs, payload, project_id) do
+    key = payload["screenshot_key"]
+
+    if is_binary(key) and String.starts_with?(key, "issues/#{project_id}/") do
+      attachment = %{
+        "type" => "screenshot",
+        "s3_key" => key,
+        "content_type" => payload["screenshot_content_type"] || "image/png"
+      }
+
+      Map.put(attrs, "attachments", [attachment])
+    else
+      attrs
     end
   end
 
-  defp put_screenshot(attrs, _data_url, _project_id), do: attrs
+  defp screenshot_filename("image/jpeg"), do: "screenshot.jpg"
+  defp screenshot_filename("image/webp"), do: "screenshot.webp"
+  defp screenshot_filename(_content_type), do: "screenshot.png"
 
   defp resolve_account_id(socket) do
     case socket.assigns[:account_id] do
