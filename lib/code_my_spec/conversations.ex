@@ -22,7 +22,10 @@ defmodule CodeMySpec.Conversations do
 
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Mail
+  alias CodeMySpec.Mail.Mailbox
   alias CodeMySpec.Repo
+  alias CodeMySpec.Users.Scope
 
   @default_page_size 50
 
@@ -100,7 +103,7 @@ defmodule CodeMySpec.Conversations do
     |> Repo.insert()
     |> case do
       {:ok, message} ->
-        touch(conversation)
+        touch(conversation, read_after(role))
         broadcast_new_message(conversation, message)
         {:ok, message}
 
@@ -108,6 +111,11 @@ defmodule CodeMySpec.Conversations do
         error
     end
   end
+
+  # An operator's own message leaves the thread read for the account; an
+  # end-user (or assistant) message marks it unread so the inbox surfaces it.
+  defp read_after(:operator), do: true
+  defp read_after(_role), do: false
 
   @doc """
   A page of messages for a conversation, oldest-first (ready to render).
@@ -201,13 +209,77 @@ defmodule CodeMySpec.Conversations do
     add_message(conversation, :operator, body, operator_sender_id(scope))
   end
 
+  @doc """
+  Marks a conversation read for the account (a teammate opened it). Idempotent;
+  broadcasts an inbox update so every teammate's inbox clears the unread mark.
+  """
+  def mark_read(%Scope{} = scope, conversation_id) do
+    conversation = get_conversation!(scope, conversation_id)
+
+    if conversation.read do
+      {:ok, conversation}
+    else
+      {1, _} =
+        from(c in Conversation, where: c.id == ^conversation.id)
+        |> Repo.update_all(set: [read: true])
+
+      broadcast_inbox_updated(conversation)
+      {:ok, %{conversation | read: true}}
+    end
+  end
+
+  @doc "Set a conversation's triage status (`:open` / `:closed`)."
+  def set_status(%Scope{} = scope, conversation_id, status) when status in [:open, :closed] do
+    conversation = get_conversation!(scope, conversation_id)
+
+    with {:ok, updated} <-
+           conversation |> Conversation.changeset(%{status: status}) |> Repo.update() do
+      broadcast_inbox_updated(updated)
+      {:ok, updated}
+    end
+  end
+
+  @doc "Count of unread conversations for the scope's active account."
+  def unread_count(%Scope{} = scope) do
+    Repo.aggregate(
+      from(c in Conversation, where: c.account_id == ^scope.active_account_id and c.read == false),
+      :count
+    )
+  end
+
+  @doc """
+  Email an offline end-user that a teammate replied, so a message sent while
+  they're away isn't only seen on their next visit. Sent from the project's own
+  mailbox (its verified domain) via `CodeMySpec.Mail`, so it's branded as the
+  project — not CodeMySpec. Best-effort: no mailbox (the project hasn't set up
+  Mail) simply skips, and delivery never blocks the reply.
+
+  The caller (the operator inbox) decides "offline" from presence and only calls
+  this when the user isn't connected.
+  """
+  def notify_offline_reply(%Conversation{} = conversation, body) when is_binary(body) do
+    case Mail.catch_all_mailbox(conversation.project_id) do
+      %Mailbox{} = mailbox ->
+        Mail.send_outbound(mailbox, %{
+          to: conversation.end_user_email,
+          subject: "You have a new reply",
+          body: body <> "\n\n— Reply by returning to the app."
+        })
+
+        :ok
+
+      nil ->
+        :skip
+    end
+  end
+
   defp operator_sender_id(scope), do: scope.user && to_string(scope.user.id)
 
   # ---- internals ----
 
-  defp touch(%Conversation{} = conversation) do
+  defp touch(%Conversation{} = conversation, read) do
     from(c in Conversation, where: c.id == ^conversation.id)
-    |> Repo.update_all(set: [updated_at: DateTime.utc_now() |> DateTime.truncate(:second)])
+    |> Repo.update_all(set: [read: read, updated_at: DateTime.utc_now() |> DateTime.truncate(:second)])
   end
 
   defp broadcast_new_message(%Conversation{} = conversation, %Message{} = message) do
@@ -217,6 +289,14 @@ defmodule CodeMySpec.Conversations do
       {:new_message, message}
     )
 
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      inbox_topic(conversation.account_id),
+      {:inbox_updated, conversation.id}
+    )
+  end
+
+  defp broadcast_inbox_updated(%Conversation{} = conversation) do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       inbox_topic(conversation.account_id),

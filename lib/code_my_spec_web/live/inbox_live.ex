@@ -32,13 +32,15 @@ defmodule CodeMySpecWeb.InboxLive do
 
   @impl true
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :show}} = socket) do
-    conversation = Conversations.get_conversation!(socket.assigns.current_scope, id)
+    # Opening a conversation marks it read for the whole account.
+    {:ok, conversation} = Conversations.mark_read(socket.assigns.current_scope, id)
 
     {:noreply,
      socket
      |> assign(:conversation, conversation)
      |> assign(:messages, Conversations.list_messages(conversation))
-     |> assign(:page_title, conversation.end_user_email)}
+     |> assign(:page_title, conversation.end_user_email)
+     |> load_list()}
   end
 
   def handle_params(_params, _uri, socket) do
@@ -52,6 +54,8 @@ defmodule CodeMySpecWeb.InboxLive do
 
   def handle_event("start_conversation", %{"conversation" => %{"email" => email, "body" => body}}, socket) do
     {:ok, conversation} = Conversations.start_conversation(socket.assigns.current_scope, email, body)
+    # A freshly-started thread means the customer isn't here yet — email them.
+    maybe_notify_offline(conversation, body, socket.assigns.online)
     {:noreply, push_navigate(socket, to: ~p"/app/inbox/#{conversation.id}")}
   end
 
@@ -60,9 +64,24 @@ defmodule CodeMySpecWeb.InboxLive do
 
     if body != "" do
       {:ok, _message} = Conversations.reply(socket.assigns.current_scope, socket.assigns.conversation.id, body)
+      maybe_notify_offline(socket.assigns.conversation, body, socket.assigns.online)
     end
 
     {:noreply, reload_thread(socket)}
+  end
+
+  def handle_event("close_conversation", _params, socket) do
+    {:ok, conversation} =
+      Conversations.set_status(socket.assigns.current_scope, socket.assigns.conversation.id, :closed)
+
+    {:noreply, socket |> assign(:conversation, conversation) |> load_list()}
+  end
+
+  def handle_event("reopen_conversation", _params, socket) do
+    {:ok, conversation} =
+      Conversations.set_status(socket.assigns.current_scope, socket.assigns.conversation.id, :open)
+
+    {:noreply, socket |> assign(:conversation, conversation) |> load_list()}
   end
 
   def handle_event("load_older", _params, socket) do
@@ -108,6 +127,14 @@ defmodule CodeMySpecWeb.InboxLive do
     socket
     |> assign(:conversations, Conversations.list_conversations(scope))
     |> assign(:online, online)
+    |> assign(:unread_count, Conversations.unread_count(scope))
+  end
+
+  # Email the customer only when they're not currently connected via the widget.
+  defp maybe_notify_offline(conversation, body, online) do
+    unless online?(conversation, online) do
+      Conversations.notify_offline_reply(conversation, body)
+    end
   end
 
   defp reload_thread(%{assigns: %{conversation: nil}} = socket), do: socket
@@ -127,7 +154,12 @@ defmodule CodeMySpecWeb.InboxLive do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="mx-auto w-full max-w-4xl">
         <header class="flex items-center justify-between gap-3 pb-4">
-          <h1 class="text-2xl font-semibold">Chats</h1>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-semibold">Chats</h1>
+            <span :if={@unread_count > 0} data-test="unread-count" class="badge badge-primary badge-sm">
+              {@unread_count} unread
+            </span>
+          </div>
 
           <details class="relative z-50" data-test="new-chat-menu">
             <summary class="btn btn-primary btn-sm list-none [&::-webkit-details-marker]:hidden">
@@ -170,11 +202,21 @@ defmodule CodeMySpecWeb.InboxLive do
               <tr
                 :for={conversation <- @conversations}
                 data-test="conversation"
+                data-unread={to_string(!conversation.read)}
                 phx-click="open_conversation"
                 phx-value-id={conversation.id}
-                class="cursor-pointer hover"
+                class={["cursor-pointer hover", conversation.status == :closed && "opacity-50"]}
               >
-                <td data-test="conversation-user" class="break-all font-medium">{conversation.end_user_email}</td>
+                <td data-test="conversation-user" class={["break-all", if(conversation.read, do: "font-medium", else: "font-bold")]}>
+                  <span
+                    :if={!conversation.read}
+                    data-test="unread-dot"
+                    class="mr-1.5 inline-block size-2 rounded-full bg-primary align-middle"
+                  >
+                  </span>
+                  {conversation.end_user_email}
+                  <span :if={conversation.status == :closed} class="badge badge-ghost badge-xs ml-1">Closed</span>
+                </td>
                 <td>
                   <span
                     data-test={"presence-#{conversation.end_user_id}"}
@@ -227,12 +269,32 @@ defmodule CodeMySpecWeb.InboxLive do
             <h1 class="truncate text-lg font-semibold">{@conversation.end_user_email}</h1>
           </div>
 
-          <span
-            data-test={"presence-#{@conversation.end_user_id}"}
-            class={["badge badge-sm shrink-0", if(online?(@conversation, @online), do: "badge-success", else: "badge-ghost")]}
-          >
-            {presence_label(@conversation, @online)}
-          </span>
+          <div class="flex shrink-0 items-center gap-2">
+            <span
+              data-test={"presence-#{@conversation.end_user_id}"}
+              class={["badge badge-sm", if(online?(@conversation, @online), do: "badge-success", else: "badge-ghost")]}
+            >
+              {presence_label(@conversation, @online)}
+            </span>
+            <button
+              :if={@conversation.status == :open}
+              type="button"
+              phx-click="close_conversation"
+              data-test="close-conversation"
+              class="btn btn-ghost btn-xs gap-1"
+            >
+              <.icon name="hero-check" class="size-4" /> Close
+            </button>
+            <button
+              :if={@conversation.status == :closed}
+              type="button"
+              phx-click="reopen_conversation"
+              data-test="reopen-conversation"
+              class="btn btn-ghost btn-xs gap-1"
+            >
+              <.icon name="hero-arrow-path" class="size-4" /> Reopen
+            </button>
+          </div>
         </header>
 
         <div id="messages-scroll" phx-hook=".ChatScroll" class="min-h-0 flex-1 overflow-y-auto py-4">

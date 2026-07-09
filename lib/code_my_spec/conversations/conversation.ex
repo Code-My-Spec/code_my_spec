@@ -21,6 +21,8 @@ defmodule CodeMySpec.Conversations.Conversation do
     field :project_id, :binary_id
     field :end_user_id, :string
     field :end_user_email, :string
+    field :read, :boolean, default: true
+    field :status, Ecto.Enum, values: [:open, :closed], default: :open
 
     has_many :messages, Message, preload_order: [asc: :inserted_at]
 
@@ -30,7 +32,7 @@ defmodule CodeMySpec.Conversations.Conversation do
   @doc false
   def changeset(conversation, attrs) do
     conversation
-    |> cast(attrs, [:account_id, :project_id, :end_user_id, :end_user_email])
+    |> cast(attrs, [:account_id, :project_id, :end_user_id, :end_user_email, :read, :status])
     |> validate_required([:account_id, :project_id, :end_user_email])
     |> unique_constraint([:account_id, :project_id, :end_user_email])
   end
