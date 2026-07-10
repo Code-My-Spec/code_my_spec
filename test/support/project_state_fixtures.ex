@@ -135,10 +135,15 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     context
   end
 
-  @doc "Satisfies `qa_integration_plan` by writing a verified integration spec."
+  @doc """
+  Satisfies `qa_integration_plan` by writing a fully verified integration:
+  spec + verify script + index. The graph check delegates to
+  `QaIntegrationPlan.evaluate/2`, which requires all three (a lone spec
+  file without index/script now yields `:invalid`).
+  """
   @spec apply_qa_integration_plan(map(), String.t()) :: map()
   def apply_qa_integration_plan(context, provider \\ "stripe") do
-    Fixtures.with_verified_integration_spec(context.environment, provider)
+    Fixtures.with_verified_integration(context.environment, provider)
     context
   end
 

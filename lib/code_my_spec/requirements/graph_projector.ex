@@ -341,9 +341,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     raw_edges = Enum.map(edges, fn e -> {key_to_string(e.from), key_to_string(e.to), e} end)
 
-    orphan_source_keys = orphan_reference_source_keys(raw_edges, all_keys)
-    all_sigma = mark_orphan_references(all_sigma, orphan_source_keys)
-
     sigma_edges =
       raw_edges
       |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and MapSet.member?(all_keys, t) end)
@@ -353,6 +350,19 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         %{key: "#{f}->#{t}", source: f, target: t,
           attributes: %{size: 2, color: edge_color(e), type: "arrow"}}
       end)
+
+    # Compute reachability from project nodes via directed BFS over rendered edges.
+    # Component nodes not reachable from any project node are flagged orphan_reference: true
+    # (criterion 5612). This replaces the prior broken-edge-source approach which only
+    # caught nodes with dangling edge targets, missing the larger class of fully-isolated
+    # orphan components that have no story linkage.
+    project_keys =
+      all_sigma
+      |> Enum.filter(fn n -> n.attributes[:entity_type] == "project" end)
+      |> MapSet.new(& &1.key)
+
+    reachable_keys = bfs_reachable(project_keys, sigma_edges)
+    all_sigma = mark_orphan_references(all_sigma, reachable_keys)
 
     %{nodes: all_sigma, edges: sigma_edges}
   end
@@ -452,24 +462,39 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     Enum.reverse(packed)
   end
 
-  # Source keys of edges whose target is missing from the rendered set.
-  # Story 562 surfaces these as `orphan_reference: true` rather than silently
-  # dropping the edge — matches the rule "edges trace back to real nodes."
-  defp orphan_reference_source_keys(raw_edges, all_keys) do
-    raw_edges
-    |> Enum.filter(fn {f, t, _} -> MapSet.member?(all_keys, f) and not MapSet.member?(all_keys, t) end)
-    |> MapSet.new(fn {f, _, _} -> f end)
+  # BFS from project nodes via rendered (directed) sigma edges.
+  # Returns the set of all node keys reachable from any project-typed node.
+  # Used to detect component nodes that have no path back to the project root
+  # (criterion 5611/5612) — these are orphan components with no story linkage.
+  defp bfs_reachable(start_keys, sigma_edges) do
+    adj =
+      Enum.reduce(sigma_edges, %{}, fn e, acc ->
+        Map.update(acc, e.source, [e.target], &[e.target | &1])
+      end)
+
+    bfs_loop(MapSet.to_list(start_keys), start_keys, adj)
   end
 
-  defp mark_orphan_references(nodes, orphan_keys) do
-    Enum.map(nodes, fn node ->
-      attrs =
-        Map.put(
-          node.attributes,
-          :orphan_reference,
-          MapSet.member?(orphan_keys, node.key)
-        )
+  defp bfs_loop([], visited, _adj), do: visited
 
+  defp bfs_loop([key | rest], visited, adj) do
+    neighbors = Map.get(adj, key, [])
+    new_neighbors = Enum.reject(neighbors, &MapSet.member?(visited, &1))
+    new_visited = Enum.reduce(new_neighbors, visited, &MapSet.put(&2, &1))
+    bfs_loop(rest ++ new_neighbors, new_visited, adj)
+  end
+
+  # Mark component nodes unreachable from the project root as orphan_reference: true.
+  # Story/project nodes are never flagged — they are always part of the structural
+  # chain. An orphan component is one that has no story linkage (and thus no
+  # edge path connecting it to the project root through the requirement graph).
+  defp mark_orphan_references(nodes, reachable_keys) do
+    Enum.map(nodes, fn node ->
+      orphan =
+        node.attributes[:entity_type] == "component" and
+          not MapSet.member?(reachable_keys, node.key)
+
+      attrs = Map.put(node.attributes, :orphan_reference, orphan)
       %{node | attributes: attrs}
     end)
   end
