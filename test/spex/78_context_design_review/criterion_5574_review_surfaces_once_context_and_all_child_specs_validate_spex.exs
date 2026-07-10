@@ -47,6 +47,10 @@ defmodule CodeMySpecSpex.Story78.Criterion5574Spex do
         |> element("button[phx-click='sync']")
         |> render_click()
 
+        # Files written above shifted the analysis fingerprints — re-stamp so
+        # tests_passing stays fresh and the review gate is what surfaces.
+        CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
+
         {:ok, Map.put(context, :child, child)}
       end
 

@@ -85,6 +85,12 @@ defmodule CodeMySpecSpex.Story562.Criterion6497Spex do
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
+        # The External files just written shifted the analysis fingerprints,
+        # so :fully_satisfied_project's fresh-run stamp is stale — re-stamp
+        # so tests_passing stays satisfied and personas_complete (broken
+        # next) is the one unsatisfied requirement.
+        CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
+
         {:ok, context}
       end
 

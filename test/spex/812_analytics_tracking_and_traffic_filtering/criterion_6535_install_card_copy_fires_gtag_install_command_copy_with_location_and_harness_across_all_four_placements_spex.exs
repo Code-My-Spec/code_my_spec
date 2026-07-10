@@ -13,11 +13,12 @@ defmodule CodeMySpecSpex.Story812.Criterion6535Spex do
   attributes. (The gtag call itself is browser JS, exercised by browser
   QA, not a spec.)
 
-  The four placements are:
-    - homepage_hero        ("/")
-    - homepage_final_cta   ("/")
-    - product_page_top     ("/products/code-my-spec")
-    - product_page_final   ("/products/code-my-spec")
+  The install-page restructure consolidated the placements onto
+  `/install` (the homepage CTAs now link there instead of hosting cards):
+    - install_page_macos     (server install, macOS tab)
+    - install_page_windows   (server install, Windows tab)
+    - install_page           (plugin install card)
+    - install_page_firstrun  (first-run command)
 
   Driven through the marketing surface. Fails if a placement is dropped
   or stops carrying its install_command_copy / harness / location markup.
@@ -29,27 +30,27 @@ defmodule CodeMySpecSpex.Story812.Criterion6535Spex do
 
   spex "Install-card copy fires gtag install_command_copy with location + harness across all four placements" do
     scenario "all four install-card placements render install_command_copy with harness + location" do
-      given_ "the rendered marketing pages that host the install cards", context do
-        home = html_response(get(context.conn, "/"), 200)
-        product = html_response(get(context.conn, "/products/code-my-spec"), 200)
-        {:ok, Map.put(context, :html, home <> product)}
+      given_ "the rendered install page that hosts the install cards", context do
+        install = html_response(get(context.conn, "/install"), 200)
+        {:ok, Map.put(context, :html, install)}
       end
 
       then_ "install cards fire install_command_copy carrying the harness param", context do
         assert context.html =~ ~s(data-event-name="install_command_copy")
+        assert context.html =~ ~s(data-event-harness="codemyspec-server")
         assert context.html =~ ~s(data-event-harness="codemyspec")
         {:ok, context}
       end
 
-      then_ "the homepage placements are present", context do
-        assert context.html =~ ~s(data-event-location="homepage_hero")
-        assert context.html =~ ~s(data-event-location="homepage_final_cta")
+      then_ "the server-install placements are present", context do
+        assert context.html =~ ~s(data-event-location="install_page_macos")
+        assert context.html =~ ~s(data-event-location="install_page_windows")
         {:ok, context}
       end
 
-      then_ "the product-page placements are present", context do
-        assert context.html =~ ~s(data-event-location="product_page_top")
-        assert context.html =~ ~s(data-event-location="product_page_final")
+      then_ "the plugin and first-run placements are present", context do
+        assert context.html =~ ~s(data-event-location="install_page")
+        assert context.html =~ ~s(data-event-location="install_page_firstrun")
         {:ok, context}
       end
     end

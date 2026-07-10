@@ -109,6 +109,17 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> apply_three_amigos_artifacts()
     |> apply_bdd_spec_file()
     |> ProjectStateFixtures.apply_journey_artifacts()
+    |> apply_fresh_analysis_runs()
+  end
+
+  # tests_passing / spex_passing require a fresh completed analysis run at
+  # the current input fingerprint (v1.5.36 run ledger) — "zero problems
+  # because the suites never ran" is no longer satisfiable. Stamp AFTER the
+  # last code/spec file lands; the qa-role artifacts written later don't
+  # feed any analyzer's fingerprint.
+  defp apply_fresh_analysis_runs(context) do
+    Fixtures.fresh_analysis_runs(context.scope)
+    context
   end
 
   # 6. Component spec/impl topology

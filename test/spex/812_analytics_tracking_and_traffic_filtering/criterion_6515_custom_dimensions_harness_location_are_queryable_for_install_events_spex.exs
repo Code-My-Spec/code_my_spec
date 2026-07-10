@@ -24,10 +24,11 @@ defmodule CodeMySpecSpex.Story812.Criterion6515Spex do
 
   spex "install_command_copy buttons carry harness + location dimensions" do
     scenario "rendered install-card buttons declare the harness and location dimensions" do
-      given_ "the rendered marketing pages that host install cards", context do
-        home = html_response(get(context.conn, "/"), 200)
-        product = html_response(get(context.conn, "/products/code-my-spec"), 200)
-        {:ok, Map.put(context, :html, home <> product)}
+      # The install-page restructure consolidated the cards onto /install —
+      # the homepage CTAs link there rather than hosting cards themselves.
+      given_ "the rendered install page that hosts install cards", context do
+        install = html_response(get(context.conn, "/install"), 200)
+        {:ok, Map.put(context, :html, install)}
       end
 
       then_ "install-card buttons fire install_command_copy with the harness dimension", context do
@@ -37,10 +38,10 @@ defmodule CodeMySpecSpex.Story812.Criterion6515Spex do
       end
 
       then_ "the location dimension is set for every install-card placement", context do
-        assert context.html =~ ~s(data-event-location="homepage_hero")
-        assert context.html =~ ~s(data-event-location="homepage_final_cta")
-        assert context.html =~ ~s(data-event-location="product_page_top")
-        assert context.html =~ ~s(data-event-location="product_page_final")
+        assert context.html =~ ~s(data-event-location="install_page_macos")
+        assert context.html =~ ~s(data-event-location="install_page_windows")
+        assert context.html =~ ~s(data-event-location="install_page")
+        assert context.html =~ ~s(data-event-location="install_page_firstrun")
         {:ok, context}
       end
     end

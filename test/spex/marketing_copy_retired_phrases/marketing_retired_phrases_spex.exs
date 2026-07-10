@@ -105,9 +105,27 @@ defmodule CodeMySpecSpex.MarketingCopy.RetiredPhrasesSpex do
       end
     end
 
-    scenario "The /products/code-my-spec dead view renders no retired phrase" do
-      given_ "the public CodeMySpec product page", context do
-        {:ok, Map.put(context, :path, "/products/code-my-spec")}
+    # /products/code-my-spec 301s to /developers since the 2026-07
+    # install-page restructure — lint the pages that actually render.
+    scenario "The /developers dead view renders no retired phrase" do
+      given_ "the public developers page", context do
+        {:ok, Map.put(context, :path, "/developers")}
+      end
+
+      when_ "a visitor fetches the page", context do
+        conn = get(context.conn, context.path)
+        {:ok, Map.put(context, :body, html_response(conn, 200))}
+      end
+
+      then_ "no retired marketing phrase appears in the rendered HTML", context do
+        assert_no_retired_phrases(context.body, context.path)
+        {:ok, context}
+      end
+    end
+
+    scenario "The /install page renders no retired phrase" do
+      given_ "the public install page", context do
+        {:ok, Map.put(context, :path, "/install")}
       end
 
       when_ "a visitor fetches the page", context do

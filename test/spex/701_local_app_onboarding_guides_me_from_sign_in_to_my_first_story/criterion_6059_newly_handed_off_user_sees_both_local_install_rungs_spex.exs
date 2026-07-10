@@ -18,6 +18,12 @@ defmodule CodeMySpecSpex.Story701.Criterion6059Spex do
   use CodeMySpecSpex.Case
 
   setup do
+    # The ladder is the muster-connected (server-sync) onboarding path —
+    # opt-in since the independence work made local-first the default.
+    # These criteria describe the muster-enabled experience.
+    Application.put_env(:code_my_spec, :muster_sync_enabled, true)
+    on_exit(fn -> Application.delete_env(:code_my_spec, :muster_sync_enabled) end)
+
     # Newly handed-off, pre-OAuth-callback state: no client_users row
     # exists and no project carries a local_path. The bare conn drives
     # the LiveView; the local app should detect the unauth state and

@@ -37,6 +37,11 @@ defmodule CodeMySpecSpex.Story78.Criterion5575Spex do
         |> element("button[phx-click='sync']")
         |> render_click()
 
+        # The impl file written above shifted the analysis fingerprints —
+        # re-stamp so tests_passing stays fresh and the missing child
+        # spec_file is what surfaces.
+        CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope)
+
         {:ok, context}
       end
 

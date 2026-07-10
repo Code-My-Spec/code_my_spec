@@ -652,4 +652,23 @@ defmodule CodeMySpecSpex.Fixtures do
 
     email
   end
+
+  @doc """
+  Stamp completed analysis runs at the CURRENT input fingerprints.
+
+  `tests_passing` / `spex_passing` require a fresh completed run in the
+  analysis ledger (v1.5.36) — zero persisted problems no longer reads as
+  "passing" on a project whose suites never ran. Satisfaction fixtures call
+  this AFTER the last file write; any later relevant file change makes the
+  stamp stale again (by design).
+
+  Syncs first: fingerprints hash the Files table, and fixture-written files
+  the stop hook hasn't synced yet would otherwise shift the fingerprint at
+  stop time — the stamp would read stale and real analyzers would run
+  against the synthetic project.
+  """
+  def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
+    {:ok, _} = CodeMySpec.Files.FileSync.sync_changed(scope, base_dir: scope.cwd)
+    CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
+  end
 end

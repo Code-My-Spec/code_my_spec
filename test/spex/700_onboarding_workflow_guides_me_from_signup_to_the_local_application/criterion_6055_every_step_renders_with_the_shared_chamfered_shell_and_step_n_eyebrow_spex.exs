@@ -1,13 +1,12 @@
 defmodule CodeMySpecSpex.Story700.Criterion6055Spex do
   @moduledoc """
   Story 700 — Onboarding workflow guides me from signup to the local application.
-  Criterion 6055 — Rule: All four steps share a unified visual shell
-  — same chamfered card surface and a "// step 0N · <name>" eyebrow
-  — so the progression reads as a single ladder.
+  Criterion 6055 — Rule: All four steps share a unified visual shell and a
+  step-N eyebrow — so the progression reads as a single ladder.
 
-  Each step's root carries the shared `cms-onboarding` class, and
-  each eyebrow declares the step's number and name in the standard
-  `// step 0N · <name>` form.
+  Post-redesign (standard daisyUI): each step's root carries the shared
+  `card bg-base-100` shell, and each eyebrow declares the step's number and
+  name as a "Step N · Name" badge.
   """
 
   use CodeMySpecSpex.Case
@@ -23,10 +22,10 @@ defmodule CodeMySpecSpex.Story700.Criterion6055Spex do
         {:ok, Map.put(context, :view, view)}
       end
 
-      then_ "each step's root carries the shared chamfered shell class", context do
+      then_ "each step's root carries the shared card shell class", context do
         for rung <- ~w(account-rung project-rung plugin-rung application-rung) do
-          assert has_element?(context.view, "[data-test='#{rung}'].cms-onboarding"),
-                 "expected #{rung} to carry the .cms-onboarding shell class"
+          assert has_element?(context.view, "[data-test='#{rung}'].card"),
+                 "expected #{rung} to carry the shared .card shell class"
         end
 
         {:ok, context}
@@ -34,19 +33,17 @@ defmodule CodeMySpecSpex.Story700.Criterion6055Spex do
 
       then_ "each step's eyebrow declares its step number and name", context do
         eyebrows = [
-          {"account-rung", 1, "account"},
-          {"project-rung", 2, "project"},
-          {"plugin-rung", 3, "plugin"},
-          {"application-rung", 4, "application"}
+          {"account-rung", 1, "Account"},
+          {"project-rung", 2, "Project"},
+          {"plugin-rung", 3, "Plugin"},
+          {"application-rung", 4, "Application"}
         ]
 
         for {rung, n, name} <- eyebrows do
           rendered = element(context.view, "[data-test='#{rung}']") |> render()
 
-          padded = String.pad_leading("#{n}", 2, "0")
-
-          assert rendered =~ "// step #{padded}",
-                 "expected #{rung} to contain '// step #{padded}'; got: #{rendered}"
+          assert rendered =~ "Step #{n}",
+                 "expected #{rung} to contain 'Step #{n}'; got: #{rendered}"
 
           assert rendered =~ name,
                  "expected #{rung} to contain '#{name}'; got: #{rendered}"

@@ -21,6 +21,11 @@ defmodule CodeMySpecSpex.Story701.Criterion6060Spex do
   setup :register_and_log_in_user
 
   setup context do
+    # The ladder is the muster-connected (server-sync) onboarding path —
+    # opt-in since the independence work made local-first the default.
+    Application.put_env(:code_my_spec, :muster_sync_enabled, true)
+    on_exit(fn -> Application.delete_env(:code_my_spec, :muster_sync_enabled) end)
+
     _client_user = Fixtures.client_user_fixture(context.user)
     :ok
   end

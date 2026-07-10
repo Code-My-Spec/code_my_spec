@@ -60,20 +60,20 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
       end
 
       then_ "each rung's eyebrow declares its step number and name", context do
+        # Post-redesign eyebrow format: "Step N · Name" (daisyUI badge), no
+        # zero padding, no "//" prefix.
         eyebrows = %{
-          "account-rung" => {1, "account"},
-          "project-rung" => {2, "project"},
-          "plugin-rung" => {3, "plugin"},
-          "application-rung" => {4, "application"}
+          "account-rung" => {1, "Account"},
+          "project-rung" => {2, "Project"},
+          "plugin-rung" => {3, "Plugin"},
+          "application-rung" => {4, "Application"}
         }
 
         for {rung, {n, name}} <- eyebrows do
           rendered = element(context.view, "[data-test='#{rung}']") |> render()
 
-          padded = String.pad_leading("#{n}", 2, "0")
-
-          assert rendered =~ "step #{padded}",
-                 "expected #{rung} eyebrow to contain 'step #{padded}'; got: #{rendered}"
+          assert rendered =~ "Step #{n}",
+                 "expected #{rung} eyebrow to contain 'Step #{n}'; got: #{rendered}"
 
           assert rendered =~ name,
                  "expected #{rung} eyebrow to contain '#{name}'; got: #{rendered}"
