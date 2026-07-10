@@ -86,3 +86,4 @@ installers/windows/cms.exe
 installers/windows/shawl.exe
 installers/windows/*.msi
 /priv/chromedriver/
+relay/cms-mcp-relay

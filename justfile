@@ -107,6 +107,6 @@ release:
     git push origin "$tag"
     echo
     echo "Tagged $tag and pushed. CI:"
-    echo "  https://github.com/johns10/code_my_spec/actions/workflows/release-extension.yml"
+    echo "  https://github.com/Code-My-Spec/code_my_spec/actions/workflows/release-extension.yml"
     echo "Marketplace:"
     echo "  https://github.com/Code-My-Spec/plugins"

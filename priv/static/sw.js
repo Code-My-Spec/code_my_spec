@@ -15,13 +15,18 @@ self.addEventListener("push", function (event) {
   const title = payload.title || "CodeMySpec";
   const url = payload.url || "/app";
 
+  // Blocking prompts (approvals, questions) must persist until tapped and must
+  // not replace one another — key their tag by URL so each stays its own.
+  const blocking =
+    payload.type === "permission_request" || payload.type === "question_request";
+
   const options = {
     body: payload.body || "",
     icon: "/images/logo.svg",
     badge: "/images/logo.svg",
-    tag: payload.type || "default",
+    tag: blocking ? url : payload.type || "default",
     data: { url: url },
-    requireInteraction: payload.type === "permission_request",
+    requireInteraction: blocking,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
