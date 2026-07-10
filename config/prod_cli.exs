@@ -41,9 +41,14 @@ config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.SqliteVecBackend
 
 # `database` is set in runtime.exs so `~` expands on the user's machine,
 # not the CI builder's ($HOME = /Users/runner in GitHub Actions).
+# `:immediate` transactions: the default `:deferred` mode can't upgrade
+# read→write when another connection committed meanwhile — SQLite returns
+# SQLITE_BUSY instantly and busy_timeout does NOT cover that case. Matters
+# now that background analysis reconciles write concurrently with requests.
 config :code_my_spec, CodeMySpec.Repo,
   pool_size: 5,
   busy_timeout: 10_000,
+  default_transaction_mode: :immediate,
   log: false
 
 # Disable the main web endpoint

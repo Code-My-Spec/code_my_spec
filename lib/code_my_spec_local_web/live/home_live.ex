@@ -10,7 +10,9 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   """
   use CodeMySpecLocalWeb, :live_view
 
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Events
+  alias CodeMySpec.Problems
   alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -32,6 +34,10 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   def handle_params(%{"project_name" => name}, _uri, socket) do
     case load_project_and_scope(name) do
       {:ok, project, scope} ->
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project.id}")
+        end
+
         {:noreply,
          socket
          |> assign(
@@ -42,11 +48,54 @@ defmodule CodeMySpecLocalWeb.HomeLive do
            page_title: project.name,
            error: nil
          )
-         |> assign_ladder_state(project, scope)}
+         |> assign_ladder_state(project, scope)
+         |> assign_analysis_gauge(scope)}
 
       {:error, msg} ->
         {:noreply, assign(socket, error: "#{msg}")}
     end
+  end
+
+  # Run-service transitions push here; reload the gauge from the ledger.
+  @impl true
+  def handle_info({:analysis, _event}, socket) do
+    {:noreply, assign_analysis_gauge(socket, socket.assigns.scope)}
+  end
+
+  # Fixed display order; `Analysis.status/1` covers every source.
+  @gauge_sources [
+    {"compiler", "compile"},
+    {"credo", "credo"},
+    {"exunit", "test"},
+    {"spex", "spex"}
+  ]
+
+  defp assign_analysis_gauge(socket, scope) do
+    status = Analysis.status(scope)
+
+    problem_counts =
+      scope
+      |> Problems.list_project_problems([])
+      |> Enum.frequencies_by(& &1.source)
+
+    gauge =
+      Enum.map(@gauge_sources, fn {source, label} ->
+        %{state: state, run: run} = Map.fetch!(status, source)
+
+        %{
+          source: source,
+          label: label,
+          state: state,
+          problems: Map.get(problem_counts, source, 0),
+          finished_at: run && run.finished_at
+        }
+      end)
+
+    assign(socket, :analysis_gauge, gauge)
+  rescue
+    # Gauge is decorative — a missing ledger table (mid-migration) or any
+    # read hiccup must not take down the dashboard.
+    _ -> assign(socket, :analysis_gauge, [])
   end
 
   defp assign_ladder_state(socket, project, scope) do
@@ -106,9 +155,12 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       </div>
 
       <div :if={@project && !@error}>
-        <div class="mb-8">
-          <h1>{@project.name}</h1>
-          <p :if={@project.local_path} class="text-sm opacity-60 font-mono mt-1">{@project.local_path}</p>
+        <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1>{@project.name}</h1>
+            <p :if={@project.local_path} class="text-sm opacity-60 font-mono mt-1">{@project.local_path}</p>
+          </div>
+          <.analysis_gauge gauge={assigns[:analysis_gauge] || []} />
         </div>
 
         <.per_project_ladder :if={!@has_stories?} {assigns} />
@@ -119,6 +171,51 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  # Analyzer activity gauge — one dot per analyzer source so the engineer can
+  # see at a glance what's running, what's fresh, and what found problems.
+  # States: running (pulsing amber), problems (signal red + count), fresh
+  # (green), failed (red ring), stale (hollow). Live via "analysis:<id>"
+  # PubSub from the run service.
+  defp analysis_gauge(%{gauge: []} = assigns), do: ~H""
+
+  defp analysis_gauge(assigns) do
+    ~H"""
+    <div
+      data-test="analysis-gauge"
+      class="flex items-center gap-3 rounded-box border border-base-300 bg-base-200/60 px-3 py-1.5 font-mono text-xs"
+    >
+      <div
+        :for={item <- @gauge}
+        class="flex items-center gap-1.5"
+        title={gauge_tooltip(item)}
+        data-test={"gauge-#{item.source}"}
+        data-state={item.state}
+      >
+        <span class={["inline-block size-2 rounded-full", gauge_dot(item)]}></span>
+        <span class="opacity-60">{item.label}</span>
+        <span :if={item.problems > 0} class="font-bold text-error">{item.problems}</span>
+      </div>
+    </div>
+    """
+  end
+
+  defp gauge_dot(%{state: :running}), do: "bg-warning animate-pulse"
+  defp gauge_dot(%{problems: count}) when count > 0, do: "bg-error"
+  defp gauge_dot(%{state: :fresh}), do: "bg-success"
+  defp gauge_dot(%{state: :failed}), do: "bg-transparent ring-1 ring-error"
+  defp gauge_dot(_item), do: "bg-transparent ring-1 ring-base-content/30"
+
+  defp gauge_tooltip(item) do
+    finished =
+      case item.finished_at do
+        %DateTime{} = dt -> " · last run #{Calendar.strftime(dt, "%H:%M:%S")}"
+        _ -> ""
+      end
+
+    problems = if item.problems > 0, do: " · #{item.problems} problem(s)", else: ""
+    "#{item.source}: #{item.state}#{problems}#{finished}"
   end
 
   defp per_project_ladder(assigns) do

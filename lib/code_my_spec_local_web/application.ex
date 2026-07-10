@@ -58,6 +58,9 @@ defmodule CodeMySpecLocalWeb.Application do
         CodeMySpecLocalWeb.Migrator,
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.Permissions.TaskSupervisor},
+        # Analysis run service — background analyzers + run ledger. Local-only:
+        # the web build compiles the schemas but never runs analyzers.
+        CodeMySpec.Analysis.Supervisor,
         CodeMySpec.Auth.AuthState,
         CodeMySpec.Embeddings.Serving,
         # session_idle_timeout: 4h — agent workflow has long gaps between MCP

@@ -33,11 +33,14 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
   Returns `{:ok, :valid}` or `{:ok, :invalid, feedback}`.
   """
   @spec evaluate(Scope.t(), map()) :: {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, String.t()}
-  def evaluate(%Scope{} = scope, task) do
+  def evaluate(%Scope{} = scope, task, opts \\ []) do
     task_module = task.session_type
 
-    # Step 1: Sync files
-    sync_files(scope)
+    # Step 1: Sync files. Callers that just synced (stop-hook validation,
+    # the analysis Reconciler) pass `sync: false` — a second full-tree walk
+    # is wasted work, and its missing-files problem sweep would race the
+    # problems the caller just reconciled.
+    if Keyword.get(opts, :sync, true), do: sync_files(scope)
 
     # Step 2: Optional before_evaluate callback (side effects like proposal execution)
     run_before_evaluate(task_module, scope, task)

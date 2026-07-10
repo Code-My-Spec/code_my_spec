@@ -175,9 +175,18 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end
   end
 
-  defp task_excluded_analyzers(nil), do: []
+  @doc """
+  Analyzers the task opts out of via `excluded_analyzers/0`.
 
-  defp task_excluded_analyzers(task) do
+  Public because `Validation`'s no-changed-files self-heal path checks every
+  config-enabled source against the run ledger and must still respect task
+  exclusions (e.g. ComponentTest excluding `:exunit_stale` while tests are
+  being written).
+  """
+  @spec task_excluded_analyzers(map() | nil) :: [atom()]
+  def task_excluded_analyzers(nil), do: []
+
+  def task_excluded_analyzers(task) do
     module = task.session_type
 
     if module && function_exported?(module, :excluded_analyzers, 0) do

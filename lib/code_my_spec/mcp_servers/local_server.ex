@@ -86,6 +86,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
   component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
   component(CodeMySpec.McpServers.Tasks.Tools.AskUser)
+  component(CodeMySpec.McpServers.Tasks.Tools.AwaitAnalysis)
 
   # Knowledge — browse, read, and unified semantic search across every
   # embedded source (knowledge, project_knowledge, spec, rules, hexdocs:*).

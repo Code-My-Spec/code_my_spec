@@ -46,12 +46,19 @@ defmodule CodeMySpec.RequirementsFixtures do
 
     cond do
       attrs.name == "tests_passing" and not satisfied ->
-        # Create test failure problems so RequirementCalculator sees failures
+        # Create test failure problems so RequirementCalculator sees failures.
+        # A fresh run is stamped too — without it the calculator reports
+        # "results not current" instead of the failure count.
         seed_test_failures(scope, component)
+        CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, ["exunit"])
         attrs
 
       attrs.name == "tests_passing" ->
-        # Satisfied = no problems needed (default state)
+        # Satisfied = no problems + a fresh exunit run (zero persisted
+        # problems only counts once results are current for today's files).
+        # Stamped at call time — seed files BEFORE this fixture, or the
+        # fingerprint goes stale again (by design).
+        CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, ["exunit"])
         attrs
 
       is_nil(role) ->

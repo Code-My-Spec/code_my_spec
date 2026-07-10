@@ -75,7 +75,12 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
   end
 
   describe "mix test rewriting" do
-    test "rewrites mix test to mix agent_test", %{scope: scope} do
+    setup %{scope: scope} do
+      # The analysis-API rewrite requires a linked project with a working dir.
+      %{scope: %{scope | cwd: "/tmp/proj"}}
+    end
+
+    test "rewrites mix test into an analysis API curl", %{scope: scope} do
       conn =
         build_post(scope, %{
           "tool_name" => "Bash",
@@ -85,15 +90,51 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       conn = PreToolUseController.handle(conn, conn.body_params)
 
       body = Jason.decode!(conn.resp_body)
-      assert body["hookSpecificOutput"]["updatedInput"]["command"] =~ "mix agent_test"
-      refute body["hookSpecificOutput"]["updatedInput"]["command"] =~ "mix test "
+      command = body["hookSpecificOutput"]["updatedInput"]["command"]
+
+      assert command =~ "curl -sS -X POST"
+      assert command =~ "/api/analysis/run"
+      assert command =~ ~s("source":"exunit")
+      assert command =~ "test/my_test.exs"
+      assert command =~ "X-Working-Dir: /tmp/proj"
+      # A big suite outlives the Bash tool's ~2 min default kill.
+      assert body["hookSpecificOutput"]["updatedInput"]["timeout"] == 600_000
     end
 
-    test "does not rewrite mix agent_test", %{scope: scope} do
+    test "rewrites mix spex with env prefix to the spex source", %{scope: scope} do
       conn =
         build_post(scope, %{
           "tool_name" => "Bash",
-          "tool_input" => %{"command" => "MIX_ENV=test mix agent_test test/my_test.exs"}
+          "tool_input" => %{"command" => "MIX_ENV=test mix spex --stale"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      body = Jason.decode!(conn.resp_body)
+      command = body["hookSpecificOutput"]["updatedInput"]["command"]
+
+      assert command =~ ~s("source":"spex")
+      assert command =~ "--stale"
+    end
+
+    test "does not rewrite compound shell commands", %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "cd sub && mix test"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      body = Jason.decode!(conn.resp_body)
+      assert body == %{}
+    end
+
+    test "does not rewrite without a working dir on the scope", %{scope: scope} do
+      conn =
+        build_post(%{scope | cwd: nil}, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "mix test"}
         })
 
       conn = PreToolUseController.handle(conn, conn.body_params)

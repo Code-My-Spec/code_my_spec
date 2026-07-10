@@ -2,13 +2,25 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
   @moduledoc """
   Handles the Stop hook event.
 
-  Thin HTTP layer: resolves session/task, calls Validation (sync + compile +
-  analyze), calls TaskEvaluator (pure DB read), decides block/allow.
+  Thin HTTP layer: resolves session/task, calls Validation (file sync +
+  in-process validators + background analyzer enqueue), decides block/allow
+  **immediately from persisted Problems** — never waiting on a subprocess, so
+  the response always beats the hook's timeout.
+
+  While background analysis is in flight the stop is a distinct *pending*
+  outcome: task evaluation is skipped (a repeat "analysis running" must not
+  advance the R8 stuck counter) and the R6 "all work complete" terminus never
+  fires (freshness-gated requirements would read as unsatisfied mid-run). In
+  continuous mode a pending stop blocks with an `await_analysis` directive;
+  otherwise it allows with a one-line system message. Results landing after
+  an allowed stop reach the user via push notification and block the next
+  stop.
   """
   use CodeMySpecLocalWeb, :controller
 
   require Logger
 
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.Notifications.NotificationClient
@@ -120,12 +132,50 @@ defmodule CodeMySpecLocalWeb.Hooks.StopController do
       |> Keyword.put(:session_id, session_id)
       |> Keyword.put(:agent_id, active_task && active_task.agent_id)
 
-    with {:ok, _result} <- Validation.validate_stop(scope, active_task, opts),
-         {:ok, :valid} <- maybe_evaluate(scope, session_id, session) do
-      maybe_continue_with_next_task(scope, session, req_id)
-    else
+    case Validation.validate_stop(scope, active_task, opts) do
+      # Persisted problems already block — no need to wait on anything.
       {:error, reason} ->
         maybe_terminate_stuck(scope, session_id, reason, req_id)
+
+      {:ok, _result} ->
+        if pending_analysis?(scope) do
+          pending_response(scope, session, req_id)
+        else
+          case maybe_evaluate(scope, session_id, session) do
+            {:ok, :valid} -> maybe_continue_with_next_task(scope, session, req_id)
+            {:error, reason} -> maybe_terminate_stuck(scope, session_id, reason, req_id)
+          end
+        end
+    end
+  end
+
+  # Analysis in flight → a distinct pending outcome. Evaluation is skipped
+  # entirely: a freshness-gated "tests not run yet" failure repeated across
+  # stops must not advance the R8 stuck counter, and R6's "all work complete"
+  # must not fire off requirements that are only unsatisfied because their
+  # analyzer hasn't landed. The scope's cwd being nil (no project bound)
+  # never reaches here pending — ensure_stale_runs enqueues nothing.
+  defp pending_analysis?(%{active_project_id: nil}), do: false
+  defp pending_analysis?(scope), do: Analysis.runs_in_flight?(scope)
+
+  defp pending_response(scope, session, req_id) do
+    sources = scope |> Analysis.in_flight() |> Enum.join(", ")
+
+    if continuous_mode?(session) do
+      Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — directing await")
+
+      %{
+        "decision" => "block",
+        "reason" =>
+          "Background analysis is still running: #{sources}. " <>
+            "Call `await_analysis` to wait for the results, then stop again."
+      }
+    else
+      Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop")
+
+      %{
+        "systemMessage" => "analysis running: #{sources} — results apply next stop"
+      }
     end
   end
 

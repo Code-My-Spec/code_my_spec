@@ -34,9 +34,17 @@ config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.SqliteVecBackend
 
 # `database` is set in runtime.exs so `~` expands on the user's machine.
+#
+# pool_size 5 (was 1): background analysis reconciles run concurrently with
+# hook requests and LiveViews — one connection made everything queue behind a
+# long write transaction. `:immediate` transactions because the default
+# `:deferred` mode can't upgrade read→write when another connection committed
+# meanwhile — SQLite returns SQLITE_BUSY instantly (snapshot invalidation)
+# and busy_timeout does NOT cover that case.
 config :code_my_spec, CodeMySpec.Repo,
-  pool_size: 1,
+  pool_size: 5,
   busy_timeout: 10_000,
+  default_transaction_mode: :immediate,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
 

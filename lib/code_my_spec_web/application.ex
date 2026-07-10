@@ -57,8 +57,9 @@ defmodule CodeMySpecWeb.Application do
   end
 
   def children(children, :test) do
-    # Local web endpoint is needed for spex tests that drive the local UI.
-    children ++ [CodeMySpecLocalWeb.Endpoint]
+    # Local web endpoint is needed for spex tests that drive the local UI;
+    # the Analysis run service backs the stop-hook paths those tests hit.
+    children ++ [CodeMySpec.Analysis.Supervisor, CodeMySpecLocalWeb.Endpoint]
   end
 
   def children(children, _), do: children

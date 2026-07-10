@@ -589,6 +589,10 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       write_file(tmp_dir, "lib/my_app/accounts/token.ex", impl_content("MyApp.Accounts.Token"))
       sync!(scope, tmp_dir)
 
+      # tests_passing needs a fresh analysis run — zero persisted problems
+      # only counts once results are current for these files (run ledger).
+      CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope)
+
       actionable = actionable_component_names(scope)
       assert {"MyApp.Accounts", "implementation_file"} in actionable,
         "parent impl should be actionable after all children reach terminal. Got: #{inspect(actionable)}"

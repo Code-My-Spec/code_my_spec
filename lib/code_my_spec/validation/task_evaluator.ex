@@ -29,9 +29,18 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
 
   @doc """
   Evaluate the active task on a session.
+
+  ## Options
+
+  - `:record_feedback` (default `true`) — whether an invalid result bumps the
+    session's R8 repeat-feedback counter. Background re-evaluations (analysis
+    Reconciler) pass `false`: repeating the same failure text from a
+    background run must not advance the stuck counter — only agent-facing
+    stops count.
   """
-  @spec evaluate_session(Scope.t(), Session.t()) :: {:ok, :valid} | {:error, String.t()}
-  def evaluate_session(scope, session) do
+  @spec evaluate_session(Scope.t(), Session.t(), keyword()) ::
+          {:ok, :valid} | {:error, String.t()}
+  def evaluate_session(scope, session, opts \\ []) do
     case Session.active_task(session) do
       nil ->
         {:ok, :valid}
@@ -41,15 +50,16 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
         {:ok, :valid}
 
       task ->
-        evaluate_task(scope, session, task)
+        evaluate_task(scope, session, task, opts)
     end
   end
 
   @doc """
   Evaluate a single task: dispatch to custom or unified evaluator, complete on pass.
   """
-  @spec evaluate_task(Scope.t(), Session.t(), map()) :: {:ok, :valid} | {:error, String.t()}
-  def evaluate_task(scope, session, task) do
+  @spec evaluate_task(Scope.t(), Session.t(), map(), keyword()) ::
+          {:ok, :valid} | {:error, String.t()}
+  def evaluate_task(scope, session, task, opts \\ []) do
     module = task.session_type
 
     if is_nil(module) do
@@ -59,7 +69,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
       Logger.info("[TaskEvaluator] Evaluating task #{task.id} (#{type_name})")
 
-      result = dispatch_evaluate(module, scope, task)
+      result = dispatch_evaluate(module, scope, task, opts)
 
       case result do
         {:ok, :valid} ->
@@ -82,7 +92,10 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
           # R8: hash the feedback and bump (or reset) the session-level
           # repeat counter so stop_controller can detect a stuck loop
           # (same hash 5 times in a row → terminate).
-          Sessions.record_eval_feedback(scope, session, feedback)
+          if Keyword.get(opts, :record_feedback, true) do
+            Sessions.record_eval_feedback(scope, session, feedback)
+          end
+
           {:error, feedback}
 
         {:error, :entity_missing} ->
@@ -115,11 +128,13 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
     end
   end
 
-  defp dispatch_evaluate(module, scope, task) do
+  # Custom evaluate/2 modules don't take opts; only the unified evaluator
+  # honors `sync: false`.
+  defp dispatch_evaluate(module, scope, task, opts) do
     if Evaluator.has_custom_evaluate?(module) do
       module.evaluate(scope, task)
     else
-      Evaluator.evaluate(scope, task)
+      Evaluator.evaluate(scope, task, Keyword.take(opts, [:sync]))
     end
   rescue
     e ->

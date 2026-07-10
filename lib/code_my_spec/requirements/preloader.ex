@@ -8,6 +8,7 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   import Ecto.Query
 
+  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
@@ -23,15 +24,16 @@ defmodule CodeMySpec.Requirements.Preloader do
           problems_by_component: %{Ecto.UUID.t() => %{String.t() => integer()}},
           problems_by_story: %{integer() => %{String.t() => integer()}},
           problems_by_source: %{String.t() => integer()},
+          analysis_fresh: %{String.t() => boolean()},
           components: [Component.t()],
           stories: [Story.t()]
         }
 
   @doc """
-  Load all data for the project in ~5 queries.
+  Load all data for the project in ~6 queries.
   """
   @spec load(Scope.t()) :: context()
-  def load(%Scope{active_project_id: project_id}) do
+  def load(%Scope{active_project_id: project_id} = scope) do
     # 1. All components with deps and children preloaded
     components =
       Component
@@ -110,8 +112,31 @@ defmodule CodeMySpec.Requirements.Preloader do
       problems_by_component: problems_by_component,
       problems_by_story: problems_by_story,
       problems_by_source: global_problem_counts,
+      analysis_fresh: analysis_freshness(scope, all_files),
       components: components,
       stories: stories
     }
+  end
+
+  # Per-source freshness: does the latest completed full analysis run match
+  # the current input fingerprint? Reuses the already-loaded file list, so
+  # this is one ledger query plus in-memory hashing. `tests_passing` /
+  # `spex_passing` gate on it — zero persisted problems only means "passing"
+  # when the results are actually current for today's code.
+  defp analysis_freshness(scope, all_files) do
+    latest = RunsRepository.latest_full_runs(scope)
+
+    Map.new(Run.sources(), fn source ->
+      fresh? =
+        case latest[source] do
+          %Run{status: :completed, input_fingerprint: fp} when is_binary(fp) ->
+            fp == Fingerprint.compute(all_files, Fingerprint.roles(source))
+
+          _ ->
+            false
+        end
+
+      {source, fresh?}
+    end)
   end
 end

@@ -107,16 +107,25 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     # Must have a test file before declaring tests passing
     has_test_file = Enum.any?(files, &(&1.role == :test))
 
-    if has_test_file do
-      count = get_problem_count(scope, entity_id(entity), "exunit", ctx)
+    cond do
+      not has_test_file ->
+        {false, %{reason: "No test file exists yet"}}
 
-      if count == 0 do
-        {true, %{status: "No test failures"}}
-      else
-        {false, %{reason: "#{count} test failure(s)", count: count}}
-      end
-    else
-      {false, %{reason: "No test file exists yet"}}
+      # Zero persisted failures only counts once the results are current —
+      # a test run recorded against yesterday's code proves nothing about
+      # the file the agent just wrote. Analysis runs in the background;
+      # this flips true when its run lands.
+      not analysis_fresh?(scope, "exunit", ctx) ->
+        {false, %{reason: "Test results not current — analysis pending or stale"}}
+
+      true ->
+        count = get_problem_count(scope, entity_id(entity), "exunit", ctx)
+
+        if count == 0 do
+          {true, %{status: "No test failures"}}
+        else
+          {false, %{reason: "#{count} test failure(s)", count: count}}
+        end
     end
   end
 
@@ -125,37 +134,47 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # every story's `bdd_specs_passing` (and clamps every story's
   # `qa_complete` to false), which is the stale-listing symptom callers
   # see from `list_requirements`.
-  defp check(%{check_type: :spex_passing}, _scope, %Story{id: story_id}, files, ctx) do
+  defp check(%{check_type: :spex_passing}, scope, %Story{id: story_id}, files, ctx) do
     bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
 
-    if bdd_files == [] do
-      {false, %{reason: "No BDD spec files exist yet"}}
-    else
-      spex_problems = get_story_problem_count(story_id, "spex", ctx)
+    cond do
+      bdd_files == [] ->
+        {false, %{reason: "No BDD spec files exist yet"}}
 
-      if spex_problems == 0 do
-        {true, %{status: "All BDD specs passing"}}
-      else
-        {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
-      end
+      not analysis_fresh?(scope, "spex", ctx) ->
+        {false, %{reason: "Spex results not current — analysis pending or stale"}}
+
+      true ->
+        spex_problems = get_story_problem_count(story_id, "spex", ctx)
+
+        if spex_problems == 0 do
+          {true, %{status: "All BDD specs passing"}}
+        else
+          {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
+        end
     end
   end
 
   # Project (or other non-story) scope: existing project-wide count.
   # Powers `all_bdd_specs_passing` on the project graph.
-  defp check(%{check_type: :spex_passing}, _scope, _entity, files, ctx) do
+  defp check(%{check_type: :spex_passing}, scope, _entity, files, ctx) do
     bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
 
-    if bdd_files == [] do
-      {false, %{reason: "No BDD spec files exist yet"}}
-    else
-      spex_problems = get_global_problem_count(ctx, "spex")
+    cond do
+      bdd_files == [] ->
+        {false, %{reason: "No BDD spec files exist yet"}}
 
-      if spex_problems == 0 do
-        {true, %{status: "All BDD specs passing"}}
-      else
-        {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
-      end
+      not analysis_fresh?(scope, "spex", ctx) ->
+        {false, %{reason: "Spex results not current — analysis pending or stale"}}
+
+      true ->
+        spex_problems = get_global_problem_count(ctx, "spex")
+
+        if spex_problems == 0 do
+          {true, %{status: "All BDD specs passing"}}
+        else
+          {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
+        end
     end
   end
 
@@ -340,4 +359,13 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   defp get_story_problem_count(_story_id, _source, _ctx), do: 0
+
+  # Freshness of a source's latest analysis run vs the current inputs.
+  # Preloaded per project; falls back to a direct ledger check for legacy
+  # callers without a ctx.
+  defp analysis_fresh?(_scope, source, %{analysis_fresh: fresh}) when is_map(fresh) do
+    Map.get(fresh, source, false)
+  end
+
+  defp analysis_fresh?(scope, source, _ctx), do: CodeMySpec.Analysis.fresh?(scope, source)
 end

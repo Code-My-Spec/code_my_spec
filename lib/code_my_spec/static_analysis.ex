@@ -20,6 +20,7 @@ defmodule CodeMySpec.StaticAnalysis do
   defdelegate compile(scope), to: Pipeline
   defdelegate compile(scope, opts), to: Pipeline
   defdelegate resolve_analyzers(task, changed_files, config), to: Pipeline
+  defdelegate task_excluded_analyzers(task), to: Pipeline
   defdelegate run_analyzers(scope, analyzers, changed_files), to: Pipeline
   defdelegate run_analyzers(scope, analyzers, changed_files, config), to: Pipeline
   defdelegate run_analyzers(scope, analyzers, changed_files, config, opts), to: Pipeline

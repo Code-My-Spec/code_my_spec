@@ -192,6 +192,41 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   end
 
   @doc """
+  Atomically reconcile one source's problems: clear the source over the given
+  file scope (`:all` or a path list), then insert the new set — all in a single
+  transaction so an aborted caller can never strand a half-reconciled state
+  (the stop-hook stranded-problems bug).
+
+  ## Examples
+
+      iex> reconcile_problems_for_source(scope, "exunit", :all, problems)
+      {:ok, [%Problem{}, ...]}
+
+      iex> reconcile_problems_for_source(scope, "exunit", ["test/a_test.exs"], [])
+      {:ok, []}
+
+  """
+  @spec reconcile_problems_for_source(Scope.t(), String.t(), [String.t()] | :all, [
+          Problem.t() | map()
+        ]) :: {:ok, [Problem.t()]} | {:error, term()}
+  def reconcile_problems_for_source(
+        %Scope{active_project_id: project_id} = scope,
+        source,
+        file_scope,
+        problems
+      )
+      when is_binary(source) and is_list(problems) do
+    Repo.transaction(fn ->
+      clear_problems_for_source(scope, [source: source], file_scope)
+
+      case insert_all_problems(problems, project_id) do
+        {:error, changeset} -> Repo.rollback(changeset)
+        {:ok, inserted_problems} -> inserted_problems
+      end
+    end)
+  end
+
+  @doc """
   Atomically replaces problems for specific file paths within a project.
 
   Deletes all existing problems matching the given file paths, then inserts the new
@@ -292,7 +327,10 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   Used during sync to clear problems for files that have been deleted from
   the project — those problems reference source paths that no longer exist.
-  Problems with `file_path` nil are preserved (global problems).
+  Problems with `file_path` nil or `"unknown"` are preserved: `"unknown"` is
+  the placeholder for compiler errors recovered from raw output (no
+  diagnostics file), and sweeping those away would un-block a stop that
+  should stay blocked. They clear on the next full compiler reconcile.
   """
   @spec clear_problems_for_missing_files(Scope.t(), [String.t()]) :: {:ok, integer()}
   def clear_problems_for_missing_files(%Scope{active_project_id: project_id}, current_paths)
@@ -300,7 +338,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     {count, _} =
       Problem
       |> where([p], p.project_id == ^project_id)
-      |> where([p], not is_nil(p.file_path))
+      |> where([p], not is_nil(p.file_path) and p.file_path != "unknown")
       |> where([p], p.file_path not in ^current_paths)
       |> Repo.delete_all()
 

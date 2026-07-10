@@ -153,6 +153,11 @@ defmodule CodeMySpecLocalWeb.Router do
 
     post "/agent-tasks/start", SkillController, :start_task
     post "/skills/start", SkillController, :start_skill
+
+    # Model-facing analyzer runs — the PreToolUse hook rewrites agent
+    # `mix test` / `mix spex` commands into a curl against this endpoint,
+    # so model-invoked and stop-hook-invoked runs share one record.
+    post "/analysis/run", AnalysisController, :run
   end
 
   # Init runs before a project is linked, so it gets the cwd-only :init

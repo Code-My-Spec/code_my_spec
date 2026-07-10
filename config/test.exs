@@ -63,3 +63,9 @@ config :code_my_spec,
 # Story 713: run content pull synchronously in tests so it shares the
 # ExUnit sandbox connection instead of racing the test process.
 config :code_my_spec, content_pull_async: false
+
+# Analysis runs execute inline (caller process) in tests: sandbox-owned DB
+# connections, deterministic ordering, and the old synchronous stop-hook
+# semantics for existing tests. The async ProjectServer path is exercised
+# against the live dev server.
+config :code_my_spec, analysis_mode: :inline

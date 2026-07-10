@@ -255,5 +255,9 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       valid: true
     })
     |> CodeMySpec.Repo.insert!()
+
+    # tests_passing also needs a fresh analysis run — zero persisted problems
+    # only counts once exunit results are current for these files.
+    CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, ["exunit"])
   end
 end

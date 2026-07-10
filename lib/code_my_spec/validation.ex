@@ -1,10 +1,15 @@
 defmodule CodeMySpec.Validation do
   @moduledoc """
-  Orchestrates stop hook validation: file sync, compilation, static analysis,
-  tests, and the final blocking decision.
+  Orchestrates stop hook validation: file sync, in-process validators, and
+  the blocking decision — with subprocess analyzers (compile, credo, tests,
+  spex) enqueued as background `Analysis` runs instead of executed inline.
 
-  Runs analyzers and writes results to DB. The blocking decision consults
-  `ProjectConfiguration` modes per source:
+  The stop decision is made immediately from persisted Problems; background
+  runs reconcile new problems on their own schedule (surviving the hook's
+  HTTP timeout) and apply to the next stop. `Analysis`'s run ledger skips
+  any analyzer whose inputs haven't changed since its last completed run.
+
+  The blocking decision consults `ProjectConfiguration` modes per source:
 
   - `:off` — source never blocks (matches `resolve_analyzers` filtering)
   - `:block_all` — every problem from this source blocks
@@ -18,7 +23,7 @@ defmodule CodeMySpec.Validation do
 
   require Logger
 
-  alias CodeMySpec.BddSpecs.Spex
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.FileEdits
@@ -26,12 +31,13 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Problems
-  alias CodeMySpec.Problems.ProblemConverter
   alias CodeMySpec.StaticAnalysis
-  alias CodeMySpec.Tests
   alias CodeMySpec.Users.Scope
 
-  @runner_analyzers [:exunit_stale, :spex_stale]
+  # Analyzer atoms that execute as mix subprocesses → their Analysis source.
+  # Everything else in a resolved analyzer set runs in-process (fast) inside
+  # this request.
+  @subprocess_analyzers %{credo: "credo", exunit_stale: "exunit", spex_stale: "spex"}
 
   # Configurable source → {ProjectConfiguration field, scope predicate for
   # :block_changed mode}.
@@ -61,13 +67,16 @@ defmodule CodeMySpec.Validation do
     are excluded from the block decision.
   - `:agent_id` - sub-agent id; nil means the main agent. Combined with
     `:session_id` for the FileEdits attribution lookup.
+  - `:await` - test-only; block until enqueued background runs finish before
+    the blocking check, restoring synchronous semantics for deterministic
+    specs. The stop hook never passes this.
 
   Set by `StopController` from the `test_output_files` request param so
   cassette-backed specs can drive the pipeline with known outputs without
   relying on `System.cmd` side effects.
   """
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
-          {:ok, %{changed_files: [map()]}} | {:error, String.t()}
+          {:ok, %{changed_files: [map()], analysis: map()}} | {:error, String.t()}
   def validate_stop(%Scope{} = scope, task, opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
@@ -80,7 +89,7 @@ defmodule CodeMySpec.Validation do
   end
 
   defp do_validate_stop(%Scope{cwd: nil}, _task, _opts) do
-    {:ok, %{changed_files: []}}
+    {:ok, %{changed_files: [], analysis: %{enqueued: [], memoized: []}}}
   end
 
   defp do_validate_stop(%Scope{cwd: cwd} = scope, task, opts) do
@@ -98,9 +107,12 @@ defmodule CodeMySpec.Validation do
 
     config = Configurations.get_or_create(scope)
 
-    with :ok <- run_pipeline(scope, task, changed_files, config, opts),
-         :ok <- check_blocking_problems(scope, changed_files, config) do
-      {:ok, %{changed_files: changed_files}}
+    analysis = run_pipeline(scope, task, changed_files, config, opts)
+
+    if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
+
+    with :ok <- check_blocking_problems(scope, changed_files, config) do
+      {:ok, %{changed_files: changed_files, analysis: analysis}}
     end
   end
 
@@ -154,56 +166,63 @@ defmodule CodeMySpec.Validation do
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
     do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
+  # In-process validators run synchronously (they're milliseconds); the four
+  # subprocess sources go through Analysis — enqueued in the background,
+  # memoized against the run ledger when inputs haven't changed. Returns the
+  # `%{enqueued: [...], memoized: [...]}` summary.
+  #
+  # No changed files → stay quiet (criterion 5097): only re-enqueue sources
+  # whose latest run failed (crash/timeout/superseded recovery), via
+  # `only_failed`.
+  defp run_pipeline(scope, task, [], config, opts) do
+    excluded = StaticAnalysis.task_excluded_analyzers(task)
+
+    enabled =
+      for {analyzer, source} <- @subprocess_analyzers,
+          analyzer not in excluded,
+          mode_for(config, config_field(analyzer)) != :off,
+          do: source
+
+    Analysis.ensure_stale_runs(
+      scope,
+      Enum.uniq(["compiler" | enabled]),
+      Keyword.put(opts, :only_failed, true)
+    )
+  end
+
   defp run_pipeline(scope, task, changed_files, config, opts) do
-    forced = forced_runners(scope, config)
+    log_changed_files(changed_files)
 
-    cond do
-      changed_files != [] ->
-        log_changed_files(changed_files)
-        run_full_pipeline(scope, task, changed_files, config, opts, forced)
+    analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
 
-      forced != [] ->
-        Logger.info(
-          "[Validation] No changed files; reconciling persisted problems via #{inspect(forced)}"
-        )
+    {subprocess, in_process} =
+      Enum.split_with(analyzers, &Map.has_key?(@subprocess_analyzers, &1))
 
-        run_runner_analyzers(scope, forced, opts)
-        :ok
+    StaticAnalysis.run_analyzers(scope, in_process, changed_files, config, opts)
 
-      true ->
-        Logger.info("[Validation] No changed files, skipping pipeline")
-        :ok
+    requests =
+      ["compiler" | Enum.map(subprocess, &request_for(&1, changed_files, config))]
+      |> Enum.uniq()
+
+    Analysis.ensure_stale_runs(scope, requests, opts)
+  end
+
+  # Credo mirrors the old pipeline's scoping: `:block_all` sweeps the whole
+  # project (a full, memoizable run); other modes run scoped to the turn's
+  # changed files (partial — refreshes only those files' problems).
+  defp request_for(:credo, changed_files, config) do
+    case mode_for(config, :credo) do
+      :block_all -> "credo"
+      _ -> {"credo", Enum.map(changed_files, & &1.path)}
     end
   end
 
-  defp run_full_pipeline(scope, task, changed_files, config, opts, forced) do
-    with :ok <- StaticAnalysis.compile(scope, opts) do
-      analyzers = StaticAnalysis.resolve_analyzers(task, changed_files, config)
-      {runners, static} = Enum.split_with(analyzers, &(&1 in @runner_analyzers))
-      runners = Enum.uniq(runners ++ forced)
-      StaticAnalysis.run_analyzers(scope, static, changed_files, config, opts)
-      run_runner_analyzers(scope, runners, opts)
-      :ok
-    end
-  end
+  defp request_for(analyzer, _changed_files, _config),
+    do: Map.fetch!(@subprocess_analyzers, analyzer)
 
-  # `mix spex --stale` keeps previously-failed specs in its stale set (via
-  # `Mix.Compilers.Test`), so re-running it reconciles persisted spex problems
-  # even on turns that touched no implementation or bdd_spec files. Without
-  # this, stale failures linger until something in those roles changes.
-  defp forced_runners(scope, config) do
-    if mode_for(config, :spex) != :off and persisted_problems?(scope, "spex") do
-      [:spex_stale]
-    else
-      []
-    end
-  end
-
-  defp persisted_problems?(scope, source) do
-    scope
-    |> Problems.list_project_problems(source: source)
-    |> Enum.any?()
-  end
+  defp config_field(:credo), do: :credo
+  defp config_field(:exunit_stale), do: :exunit
+  defp config_field(:spex_stale), do: :spex
 
   defp resolve_changed_files(scope, %{started_at: started_at}, _sync_result)
        when not is_nil(started_at) do
@@ -304,73 +323,6 @@ defmodule CodeMySpec.Validation do
 
   defp decide(blocking, advisory) do
     {:error, Problems.render_stop_response(blocking, advisory)}
-  end
-
-  defp run_runner_analyzers(scope, analyzers, opts) do
-    Enum.each(analyzers, &run_runner_analyzer(scope, &1, opts))
-  end
-
-  defp run_runner_analyzer(scope, :exunit_stale, opts) do
-    exec_opts = [project_root: scope.cwd] |> maybe_put_output_file(opts, :exunit_output_file)
-
-    run_and_persist(scope, "mix test --stale", "exunit", fn ->
-      case Tests.execute(["--stale"], exec_opts) do
-        {:ok, test_run} -> {:ok, test_run.failures, &test_failure_to_problem/1}
-        {:error, reason} -> {:error, reason}
-      end
-    end)
-  end
-
-  defp run_runner_analyzer(scope, :spex_stale, opts) do
-    exec_opts = [project_root: scope.cwd] |> maybe_put_output_file(opts, :spex_output_file)
-
-    run_and_persist(scope, "mix spex --stale", "spex", fn ->
-      case Spex.execute(["--stale"], exec_opts) do
-        {:ok, failures, _exit_code} -> {:ok, failures, &spex_failure_to_problem/1}
-        {:error, reason} -> {:error, reason}
-      end
-    end)
-  end
-
-  defp maybe_put_output_file(exec_opts, opts, key) do
-    case Keyword.get(opts, key) do
-      nil -> exec_opts
-      path -> Keyword.put(exec_opts, :output_file, path)
-    end
-  end
-
-  defp run_and_persist(scope, label, source, runner) do
-    Logger.info("[Validation] Running #{label}")
-    start = System.monotonic_time(:millisecond)
-
-    case runner.() do
-      {:ok, failures, to_problem} ->
-        problems =
-          failures
-          |> Enum.map(to_problem)
-          |> Enum.map(&%{&1 | project_id: scope.active_project_id, source: source})
-
-        Problems.clear_problems_for_source(scope, [source: source], :all)
-        Problems.create_problems(scope, problems)
-
-        ms = System.monotonic_time(:millisecond) - start
-        Logger.info("[Validation] #{label}: #{length(problems)} failure(s) (#{ms}ms)")
-
-      {:error, reason} ->
-        ms = System.monotonic_time(:millisecond) - start
-        Logger.warning("[Validation] #{label} failed (#{ms}ms): #{inspect(reason)}")
-    end
-  end
-
-  defp test_failure_to_problem(result), do: ProblemConverter.from_test_failure(result.error)
-
-  defp spex_failure_to_problem(failure) do
-    ProblemConverter.from_test_failure(%{
-      file: failure.error && failure.error.file,
-      line: failure.error && failure.error.line,
-      test: "#{failure.spex} — #{failure.scenario}",
-      message: (failure.error && failure.error.message) || "Spex scenario failed"
-    })
   end
 
   defp log_changed_files(changed_files) do
