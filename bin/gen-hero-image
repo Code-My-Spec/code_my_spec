@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Generate a blog hero image via the Gemini image API, normalize it, and write
+# both hero-<slug>.png (master) and hero-<slug>.webp (served) into
+# priv/static/images/. This is the working hero path as of 2026-07: the old
+# nanobanana generate.py fallback is gone and the MCP is usually not loaded, so
+# we call the Gemini REST API directly.
+#
+# Brand: heroes are NOT yet rebranded to the Workshop palette (that is the
+# pending "Bucket F" batch). Match the existing AI hero style: abstract /
+# metaphorical, dark ground, a SINGLE orange accent, cinematic, and ALWAYS end
+# the prompt with "no text no letters no words" to avoid text artifacts. Do not
+# render literal UI / screens / devices.
+#
+# Requires GOOGLE_AI_API_KEY in code_my_spec/.env (gitignored). Needs jq,
+# ImageMagick (magick), and cwebp on PATH.
+#
+# Usage:
+#   bin/gen-hero-image <slug> "<prompt>"
+#
+# Then generate responsive variants and publish:
+#   bin/generate-hero-variants hero-<slug>.webp
+#   bin/sync-images --exclude "*" --include "hero-<slug>*"
+#   bin/purge-cdn hero-<slug>.webp   # only when REPLACING an existing hero
+set -euo pipefail
+
+SLUG="${1:?usage: gen-hero-image <slug> \"<prompt>\"}"
+PROMPT="${2:?usage: gen-hero-image <slug> \"<prompt>\"}"
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMG_DIR="$REPO_ROOT/priv/static/images"
+MODEL="gemini-3.1-flash-image-preview"
+
+# shellcheck disable=SC1091
+set -a; source "$REPO_ROOT/.env"; set +a
+KEY="${GOOGLE_AI_API_KEY:?GOOGLE_AI_API_KEY not found in code_my_spec/.env}"
+
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+body="$(jq -n --arg p "$PROMPT" '{contents:[{parts:[{text:$p}]}],generationConfig:{responseModalities:["IMAGE"]}}')"
+
+curl -sS "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${KEY}" \
+  -H 'Content-Type: application/json' -d "$body" > "$tmp/resp.json"
+
+jq -r '.candidates[0].content.parts[]? | (.inlineData.data // .inline_data.data) // empty' "$tmp/resp.json" \
+  | base64 --decode > "$tmp/out.bin"
+
+if [ ! -s "$tmp/out.bin" ]; then
+  echo "ERROR: no image in response. API said:" >&2
+  jq -r '.error.message // .promptFeedback // "unknown error"' "$tmp/resp.json" >&2
+  exit 1
+fi
+
+magick "$tmp/out.bin" "$IMG_DIR/hero-${SLUG}.png"
+cwebp -q 85 -quiet "$IMG_DIR/hero-${SLUG}.png" -o "$IMG_DIR/hero-${SLUG}.webp"
+echo "wrote hero-${SLUG}.png + hero-${SLUG}.webp ($(cd "$IMG_DIR" && magick identify -format '%wx%h' "hero-${SLUG}.png"))"
+echo "next: bin/generate-hero-variants hero-${SLUG}.webp && bin/sync-images --exclude '*' --include 'hero-${SLUG}*'"

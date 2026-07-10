@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Generate a branded OG / social-preview image (1200x630 PNG) in the
+# "Workshop" brand palette. Text-on-background composite via ImageMagick,
+# NO AI. This is the canonical OG template as of the operator rebrand
+# (2026-07): warm charcoal ground, teal/bronze/sage swatch trio, teal
+# eyebrow, left-aligned cream title, teal footer rule.
+#
+# Palette (matches assets/css/app.css dark theme):
+#   BG #191813  INK #f0ece2  TEAL #4fb3ac  BRONZE #c79a57  SAGE #9db36f  MUTE #a39d8f
+#
+# Usage:
+#   bin/gen-og-image "Post Title" priv/static/images/og-blog-<slug>.png
+#   bin/gen-og-image "Post Title" <out.png> "CODEMYSPEC"   # custom eyebrow
+#
+# The title auto-wraps inside a 1010px column at 66pt; titles up to ~3 lines
+# fit cleanly. After generating, sync + purge:
+#   bin/sync-images --exclude "*" --include "og-*"
+#   bin/purge-cdn og-blog-<slug>.png       # only when REPLACING an existing file
+set -euo pipefail
+
+TITLE="${1:?usage: gen-og-image \"Title\" out.png [EYEBROW]}"
+OUT="${2:?usage: gen-og-image \"Title\" out.png [EYEBROW]}"
+EYEBROW="${3:-CODEMYSPEC}"
+
+BOLD="/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+REG="/System/Library/Fonts/Helvetica.ttc"
+
+BG='#191813'; INK='#f0ece2'; TEAL='#4fb3ac'; BRONZE='#c79a57'; SAGE='#9db36f'; MUTE='#a39d8f'
+
+magick -size 1200x630 xc:"$BG" \
+  -fill "$TEAL"   -draw 'rectangle 92,92 118,106' \
+  -fill "$BRONZE" -draw 'rectangle 126,92 152,106' \
+  -fill "$SAGE"   -draw 'rectangle 160,92 186,106' \
+  -font "$BOLD" -pointsize 26 -fill "$TEAL" -gravity NorthWest -annotate +92+130 "$EYEBROW" \
+  \( -size 1010x -background none -fill "$INK" -font "$BOLD" -pointsize 66 -interline-spacing 8 \
+     -gravity NorthWest caption:"$TITLE" \) \
+     -gravity NorthWest -geometry +90+196 -composite \
+  -fill "$TEAL" -draw 'rectangle 92,540 150,544' \
+  -font "$REG" -pointsize 25 -fill "$MUTE" -gravity NorthWest -annotate +92+558 'John Davenport    ·    codemyspec.com' \
+  "$OUT"
+
+echo "wrote $OUT"
