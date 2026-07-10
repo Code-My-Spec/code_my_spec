@@ -31,28 +31,69 @@
             A local <code class="text-primary">cms</code> process that hosts the tools. Runs in the
             background on <code>localhost:4003</code> and restarts on boot.
           </p>
-          <div class="card bg-base-200 border border-base-300 shadow-sm mt-3">
-            <div class="card-body gap-2 p-4">
-              <div class="flex items-center justify-between">
-                <span class="badge badge-ghost badge-sm">macOS · Apple Silicon</span>
-                <button
-                  class="copy-btn btn btn-xs btn-outline btn-primary"
-                  data-copy={"brew install Code-My-Spec/tap/codemyspec\nbrew services start codemyspec"}
-                  data-event-name="install_command_copy"
-                  data-event-harness="codemyspec-server"
-                  data-event-location="install_page_macos"
-                >
-                  Copy
-                </button>
+          <div role="tablist" class="tabs tabs-lift mt-3">
+            <%!-- macOS tab --%>
+            <input
+              type="radio"
+              name="install_os"
+              role="tab"
+              class="tab"
+              aria-label="macOS"
+              checked
+            />
+            <div role="tabpanel" class="tab-content border-base-300 bg-base-200 rounded-box p-4">
+              <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                  <span class="badge badge-ghost badge-sm">macOS · Apple Silicon</span>
+                  <button
+                    class="copy-btn btn btn-xs btn-outline btn-primary"
+                    data-copy={"brew install Code-My-Spec/tap/codemyspec\nbrew services start codemyspec"}
+                    data-event-name="install_command_copy"
+                    data-event-harness="codemyspec-server"
+                    data-event-location="install_page_macos"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div class="mockup-code text-sm w-full">
+                  <pre data-prefix="$"><code>brew install Code-My-Spec/tap/codemyspec</code></pre>
+                  <pre data-prefix="$"><code>brew services start codemyspec</code></pre>
+                </div>
               </div>
-              <div class="mockup-code text-sm w-full">
-                <pre data-prefix="$"><code>brew install Code-My-Spec/tap/codemyspec</code></pre>
-                <pre data-prefix="$"><code>brew services start codemyspec</code></pre>
+            </div>
+
+            <%!-- Windows tab --%>
+            <input type="radio" name="install_os" role="tab" class="tab" aria-label="Windows" />
+            <div role="tabpanel" class="tab-content border-base-300 bg-base-200 rounded-box p-4">
+              <div class="flex flex-col gap-3">
+                <div>
+                  <div class="flex items-center justify-between">
+                    <span class="badge badge-ghost badge-sm">Windows · x64</span>
+                  </div>
+                  <p class="text-xs text-base-content/60 mt-2">
+                    Download <code>cms-setup-x64.msi</code> from the
+                    <a href="https://github.com/Code-My-Spec/plugins/releases" class="link link-primary">latest release</a>
+                    and run it —
+                  </p>
+                </div>
+                <div class="divider text-xs text-base-content/40 my-0">or, from an elevated PowerShell</div>
+                <div class="flex flex-col gap-2">
+                  <div class="flex justify-end">
+                    <button
+                      class="copy-btn btn btn-xs btn-outline btn-primary"
+                      data-copy={"iwr -useb https://raw.githubusercontent.com/Code-My-Spec/plugins/main/install.ps1 -OutFile install.ps1; .\\install.ps1"}
+                      data-event-name="install_command_copy"
+                      data-event-harness="codemyspec-server"
+                      data-event-location="install_page_windows"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <div class="mockup-code text-xs w-full">
+                    <pre data-prefix="&gt;"><code>iwr -useb https://raw.githubusercontent.com/Code-My-Spec/plugins/main/install.ps1 -OutFile install.ps1; .\install.ps1</code></pre>
+                  </div>
+                </div>
               </div>
-              <p class="text-xs text-base-content/60">
-                Windows (x64)? Grab <code>cms-setup-x64.msi</code> from the
-                <a href="https://github.com/Code-My-Spec/plugins/releases" class="link link-primary">latest release</a>.
-              </p>
             </div>
           </div>
         </div>
