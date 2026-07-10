@@ -79,14 +79,41 @@
         |> Keyword.get(:measurement_id)
     %>
     <%= if ga_measurement_id do %>
-      <%!-- gtag.js: browser pageviews, sessions, engagement, bot exclusion, referrer attribution --%>
-      <script async="async" src={"https://www.googletagmanager.com/gtag/js?id=#{ga_measurement_id}"}>
-      </script>
+      <%!-- gtag.js: browser pageviews, sessions, engagement, bot exclusion, referrer attribution.
+           Deferred to first interaction (or 3.5s idle fallback) to keep GTM's ~180KB off the
+           critical load path (audit 2026-07-10: desktop TBT 390ms). The dataLayer stub below is
+           synchronous, so gtag() calls made before the script arrives are queued and flush on load.
+           /users/register loads eagerly: the GaClientId stitch (rule f9b2c751) wants the _ga
+           cookies present as early as possible on a direct signup landing. --%>
       <script nonce={assigns[:csp_nonce]}>
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
         gtag('config', '<%= ga_measurement_id %>');
+        (() => {
+          let loaded = false;
+          const load = () => {
+            if (loaded) return;
+            loaded = true;
+            const s = document.createElement("script");
+            s.async = true;
+            s.src = "https://www.googletagmanager.com/gtag/js?id=<%= ga_measurement_id %>";
+            document.head.appendChild(s);
+            events.forEach((e) => removeEventListener(e, load, opts));
+          };
+          const events = ["pointerdown", "keydown", "touchstart", "scroll"];
+          const opts = { once: true, passive: true, capture: true };
+          if (location.pathname.startsWith("/users/register")) {
+            load();
+          } else {
+            events.forEach((e) => addEventListener(e, load, opts));
+            if ("requestIdleCallback" in window) {
+              requestIdleCallback(load, { timeout: 3500 });
+            } else {
+              setTimeout(load, 3500);
+            }
+          }
+        })();
       </script>
     <% end %>
 

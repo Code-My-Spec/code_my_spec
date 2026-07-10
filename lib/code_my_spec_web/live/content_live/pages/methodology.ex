@@ -657,6 +657,13 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
             See install commands ↑
           </a>
         </div>
+        <p class="mt-8 text-sm text-base-content/60">
+          Comparing approaches first? Read the neutral
+          <.link navigate="/blog/spec-driven-development" class="link link-primary">
+            guide to spec-driven development
+          </.link>
+          covering the whole tool landscape.
+        </p>
       </div>
     </section>
     """
