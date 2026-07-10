@@ -1,16 +1,17 @@
 defmodule CodeMySpecSpex.Story698.Criterion6046Spex do
   @moduledoc """
   Story 698 — Dashboard install funnel with live CLI status.
-  Criterion 6046 — Rule: Once any CLI has joined Presence, the
-  onboarding component renders minimized by default on subsequent
-  loads, but remains accessible by clicking to expand.
+  Criterion 6046 — Rule: Once any CLI has joined Presence, the plugin
+  step renders collapsed on subsequent loads — a compact Done tile that
+  stays collapsed (no re-expand affordance) but carries the live
+  CLI-status pill, so current presence is always visible at a glance.
 
-  Setup: register a user, simulate a historical CLI presence join via
-  `Phoenix.ChannelTest` — the same channel surface the production CLI
-  hits — then leave the channel so the user reads as "previously
-  connected, not currently connected." Mount /app and assert the
-  onboarding card renders minimized; click the toggle and assert the
-  install steps become visible.
+  Setup: register a user with an active project, simulate a historical
+  CLI presence join via `Phoenix.ChannelTest` — the same channel surface
+  the production CLI hits — then leave the channel so the user reads as
+  "previously connected, not currently connected." Mount /app and assert
+  the plugin rung renders as the collapsed Done tile whose pill reflects
+  the CURRENT (disconnected) presence, with no expanded install panel.
 
   Forward-looking modules referenced (must exist for this spec to run):
     * CodeMySpecWeb.UserSocket — socket handler exposing the CLI channel
@@ -24,9 +25,12 @@ defmodule CodeMySpecSpex.Story698.Criterion6046Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  # The plugin rung only reaches its collapsed Done state once the earlier
+  # rungs are done — the ladder needs an active project.
+  setup :setup_active_project
 
   spex "Previously-connected user sees the onboarding component minimized" do
-    scenario "Previously-connected user sees the onboarding component minimized" do
+    scenario "Previously-connected user sees the collapsed plugin tile with a live pill" do
       given_ "the user's CLI has joined Presence at some point in the past", context do
         {:ok, _reply, channel_socket} =
           CodeMySpecWeb.UserSocket
@@ -46,44 +50,28 @@ defmodule CodeMySpecSpex.Story698.Criterion6046Spex do
         {:ok, Map.put(context, :view, view)}
       end
 
-      then_ "the onboarding card renders in its minimized state", context do
-        assert has_element?(
-                 context.view,
-                 "[data-test='onboarding-card'][data-state='minimized']"
-               ),
-               "expected the onboarding card to render minimized for a previously-connected user"
+      then_ "the plugin rung renders as the collapsed Done tile", context do
+        assert has_element?(context.view, "[data-test='plugin-rung'][data-state='done']"),
+               "expected the plugin rung to render collapsed (done) for a previously-connected user"
 
         {:ok, context}
       end
 
-      then_ "the card root carries data-state=minimized", context do
-        # Visibility of the install steps is CSS-driven via the parent
-        # data-state — the steps render in the DOM at all times so a
-        # JS-only toggle can show/hide them without a server roundtrip.
-        # The contract observed here is the data-state attribute.
+      then_ "the collapsed tile carries the live pill reflecting current presence", context do
+        # Previously connected but no live session right now → the pill must
+        # say so instead of a stale static "Connected".
         assert has_element?(
                  context.view,
-                 "[data-test='onboarding-card'][data-state='minimized']"
+                 "[data-test='plugin-rung'] [data-test='cli-status-pill'][data-state='disconnected']"
                ),
-               "expected the onboarding card data-state to be 'minimized' for a previously-connected user"
+               "expected the collapsed tile's pill to reflect the disconnected presence"
 
         {:ok, context}
       end
 
-      when_ "the user clicks the expand toggle", context do
-        context.view
-        |> element("[data-test='onboarding-toggle']")
-        |> render_click()
-
-        {:ok, context}
-      end
-
-      then_ "the card root flips to data-state=expanded", context do
-        assert has_element?(
-                 context.view,
-                 "[data-test='onboarding-card'][data-state='expanded']"
-               ),
-               "expected the onboarding card data-state to flip to 'expanded' after the toggle click"
+      then_ "no expanded install panel renders", context do
+        refute has_element?(context.view, "[data-test='onboarding-card']"),
+               "expected no install panel — the plugin step stays collapsed once connected"
 
         {:ok, context}
       end

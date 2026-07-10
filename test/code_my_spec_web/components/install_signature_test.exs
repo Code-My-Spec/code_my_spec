@@ -28,7 +28,8 @@ defmodule CodeMySpecWeb.Components.InstallSignatureTest do
       # "CodeMySpec" is now a link to the case study so the literal
       # sentence is broken by an <a> tag — assert each piece separately.
       assert html =~ "I built this with"
-      assert html =~ ">CodeMySpec</a>"
+      # Whitespace-tolerant: formatters shuffle the link text across lines.
+      assert html =~ ~r|>\s*CodeMySpec\s*</a>|
       assert html =~ "— the harness I work in."
       assert html =~ "Sign up (free, no card) then install:"
       assert html =~ "— John"

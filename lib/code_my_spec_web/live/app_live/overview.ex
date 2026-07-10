@@ -592,18 +592,29 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     """
   end
 
-  # Once connected the plugin step is done — collapse it to the compact
-  # "Done" tile like the account/project rungs. The live session pill and
-  # reinstall commands aren't needed anymore; Step 4 carries the next action.
+  # Once connected the plugin step stays collapsed — the compact tile like
+  # the account/project rungs, no reinstall commands. But the status stays
+  # LIVE: the tile carries the Presence-driven pill instead of a static
+  # "Connected", so a CLI that silently dies reads "Claude Code not running"
+  # right on the dashboard instead of lying Done forever.
   defp plugin_rung(%{state: "done"} = assigns) do
+    ever_connected? = not is_nil(assigns[:cli_first_connected_at])
+    pill_state = pill_state(assigns[:cli_session_count] || 0, ever_connected?)
+    assigns = assign(assigns, ever_connected?: ever_connected?, pill_state: pill_state)
+
     ~H"""
-    <.metric_tile
-      data_test="plugin-rung"
-      state="done"
-      eyebrow="Step 3 · Plugin"
-      label="Plugin"
-      value="Connected"
-    />
+    <div class="card bg-base-100 border border-base-300" data-test="plugin-rung" data-state="done">
+      <div class="card-body flex-row items-center gap-4 py-4 px-6">
+        <span class="badge badge-success gap-1">
+          <.icon name="hero-check" class="size-3.5" /> Done
+        </span>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs text-base-content/50 font-medium">Step 3 · Plugin</div>
+          <div class="font-semibold text-base-content">Plugin</div>
+        </div>
+        <.status_pill count={@cli_session_count} ever_connected?={@ever_connected?} state={@pill_state} />
+      </div>
+    </div>
     """
   end
 

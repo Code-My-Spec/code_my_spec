@@ -15,6 +15,10 @@ defmodule CodeMySpecSpex.Story698.Criterion6040Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  # The pill lives on the plugin rung, which needs the earlier rungs done —
+  # the ladder needs an active project (pill renders on both the active
+  # install panel and the collapsed Done tile).
+  setup :setup_active_project
 
   spex "Pill reflects the live CLI session count" do
     scenario "Pill counts multiple live CLI sessions" do

@@ -16,6 +16,10 @@ defmodule CodeMySpecSpex.Story698.Criterion6039Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  # The pill lives on the plugin rung, which needs the earlier rungs done —
+  # the ladder needs an active project (pill renders on both the active
+  # install panel and the collapsed Done tile).
+  setup :setup_active_project
 
   spex "Connection status reflects a CLI leaving within 5 seconds" do
     scenario "Pill flips to disconnected within 5 seconds of CLI exit" do
