@@ -91,10 +91,18 @@ defmodule CodeMySpecWeb.PageController do
     )
   end
 
-  def code_my_spec(conn, _params) do
-    meta = CodeMySpecWeb.PageHTML.code_my_spec_copy().meta
+  def developers(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
-    canonical = "#{base_url}/products/code-my-spec"
+    canonical = "#{base_url}/developers"
+
+    meta = %{
+      page_title: "CodeMySpec for Developers — Scaffolding You Own, Not a Platform You Rent",
+      meta_description:
+        "The free AI build harness that never gets between you and the model. Bring your own keys, own your code, stay in control — a local tool that gives your coding agent the structure to build production software, then gets out of the way.",
+      og_title: "Scaffolding you own. Not a platform you rent.",
+      og_description:
+        "Free forever. Your model, your code, your control. A local harness for your coding agent that builds real software and stays out of the way."
+    }
 
     json_ld_list =
       Enum.map(
@@ -105,8 +113,8 @@ defmodule CodeMySpecWeb.PageController do
             "@id" => "#{canonical}#software",
             "name" => "CodeMySpec",
             "url" => canonical,
-            "applicationCategory" => "BusinessApplication",
-            "operatingSystem" => "Web-based",
+            "applicationCategory" => "DeveloperApplication",
+            "operatingSystem" => "macOS, Windows",
             "description" => meta.meta_description,
             "screenshot" => %{
               "@type" => "ImageObject",
@@ -115,7 +123,7 @@ defmodule CodeMySpecWeb.PageController do
               "height" => 630
             },
             "featureList" =>
-              "BDD spec generation; lifecycle requirement graph; browser-based verification; Claude Code plugin; MCP servers for stories, architecture, and QA; BYO model and BYO API keys with no token markup",
+              "Claude Code plugin; local MCP server; structured spec-driven build workflow; browser-based verification; bring your own model and API keys with no token markup; standard Phoenix output with no lock-in",
             "offers" => %{
               "@type" => "Offer",
               "price" => "0",
@@ -134,13 +142,7 @@ defmodule CodeMySpecWeb.PageController do
               %{
                 "@type" => "ListItem",
                 "position" => 2,
-                "name" => "Products",
-                "item" => "#{base_url}/products"
-              },
-              %{
-                "@type" => "ListItem",
-                "position" => 3,
-                "name" => "CodeMySpec",
+                "name" => "Developers",
                 "item" => canonical
               }
             ]
@@ -151,20 +153,11 @@ defmodule CodeMySpecWeb.PageController do
             "mainEntity" => [
               %{
                 "@type" => "Question",
-                "name" => "I already use Claude Code / Cursor. Why do I need this?",
+                "name" => "If you don't get between me and the model, why install a thing between me and the model?",
                 "acceptedAnswer" => %{
                   "@type" => "Answer",
                   "text" =>
-                    "CodeMySpec runs inside Claude Code as a plugin. It adds the lifecycle layer those tools don't have — specs that survive code changes, a requirement graph that keeps the agent on-rails, and browser-based verification after the tests pass."
-                }
-              },
-              %{
-                "@type" => "Question",
-                "name" => "Isn't this just writing more docs?",
-                "acceptedAnswer" => %{
-                  "@type" => "Answer",
-                  "text" =>
-                    "Specs aren't docs. They generate tests, constrain the agent, and survive when the code changes. Twenty minutes on a spec saves two hours of prompt iteration."
+                    "It doesn't sit between you and the model — it sits around it. It drives the Claude Code you already run; your keys, your code, and your control stay exactly where they are. It just gives your agent the structure to build real software instead of prototypes that rot."
                 }
               },
               %{
@@ -173,7 +166,16 @@ defmodule CodeMySpecWeb.PageController do
                 "acceptedAnswer" => %{
                   "@type" => "Answer",
                   "text" =>
-                    "No. CodeMySpec doesn't mark up model tokens. You keep your own provider, your own keys, your own bill."
+                    "No. CodeMySpec never marks up model tokens or proxies your requests. You keep your own provider, your own keys, your own bill. The build tool is free forever."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "How can it be free forever? What's the catch?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "We make money when your app is running — the hosted layer for email, chat, ads, and analytics that keeps it alive in the world. Not when you build it. So the build tool stays free and we have every reason to stay out of your way."
                 }
               },
               %{
@@ -182,7 +184,7 @@ defmodule CodeMySpecWeb.PageController do
                 "acceptedAnswer" => %{
                   "@type" => "Answer",
                   "text" =>
-                    "Specs are markdown in your repo. Tests are standard Elixir. You own the artifacts. No lock-in."
+                    "You keep everything. It's a standard Phoenix app on your disk that compiles, tests, and ships without us. Specs are markdown in your repo, tests are standard Elixir. No lock-in."
                 }
               },
               %{
@@ -191,7 +193,7 @@ defmodule CodeMySpecWeb.PageController do
                 "acceptedAnswer" => %{
                   "@type" => "Answer",
                   "text" =>
-                    "The core lifecycle — plugin, MCP servers, requirement graph — works on any stack today. Elixir-native features are the deepest integration. Broader stack support is on the roadmap."
+                    "The core workflow — plugin, local server, structured build loop — works on any stack today. Elixir and Phoenix are the deepest integration. Broader stack support is on the roadmap."
                 }
               }
             ]
@@ -200,15 +202,23 @@ defmodule CodeMySpecWeb.PageController do
         &Jason.encode!/1
       )
 
-    render(conn, :code_my_spec,
+    render(conn, :developers,
       page_title: meta.page_title,
       meta_description: meta.meta_description,
       og_title: meta.og_title,
       og_description: meta.og_description,
       og_image: CodeMySpecWeb.ImageUrl.image_url("og-code-my-spec.png", base_url),
-      canonical_url: meta.canonical_url,
+      canonical_url: canonical,
       json_ld_list: json_ld_list
     )
+  end
+
+  # The old engineer product page collapsed into /developers (one engineer door).
+  # 301 preserves its SEO equity and backlinks.
+  def code_my_spec(conn, _params) do
+    conn
+    |> Plug.Conn.put_status(:moved_permanently)
+    |> Phoenix.Controller.redirect(to: "/developers")
   end
 
   def market_my_spec_redirect(conn, _params) do

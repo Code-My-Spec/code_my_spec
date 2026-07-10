@@ -1,0 +1,303 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+  <%!-- ───────────── HERO ───────────── --%>
+  <section class="bg-base-200 border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+      <div>
+        <div class="badge badge-primary badge-outline gap-2 mb-6">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+          Free forever · bring your own model · no lock-in
+        </div>
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
+          Scaffolding you own.<br />
+          <span class="text-primary">Not a platform you rent.</span>
+        </h1>
+        <p class="text-lg text-base-content/70 mt-6 max-w-lg leading-relaxed">
+          Your coding agent, building real software — with your keys, your code, and your
+          control right where they are. It runs on your machine and drives the Claude Code you
+          already have. Free forever.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <a href="#install" class="btn btn-primary btn-lg">Install</a>
+          <a href="#freedoms" class="btn btn-ghost btn-lg">See how it works</a>
+        </div>
+        <p class="mt-6 text-sm text-base-content/60">
+          Your Claude Code · your keys · your repo. <span class="font-semibold text-base-content">Nothing in the middle.</span>
+        </p>
+      </div>
+
+      <%!-- Hero media: the real install commands --%>
+      <.install_card
+        harness="codemyspec"
+        footer_label="claude code · plugin"
+        location="developers_hero"
+      />
+    </div>
+  </section>
+
+  <%!-- ───────────── WHAT IT IS (paradox) ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what it is" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-2xl">
+        It doesn't sit between you and the model. It sits around it.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        Every other AI build tool wants to be the layer between you and the model — proxy your
+        requests, resell your tokens, trap your code in their runtime. This isn't that. It's a
+        local harness that gives your agent the structure to build production software, then gets
+        out of the way. Your Claude Code. Your keys. Your repo. Nothing in the middle.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE THREE FREEDOMS ───────────── --%>
+  <section id="freedoms" class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what you keep" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">
+        Three things you <span class="text-primary">never hand over.</span>
+      </h2>
+
+      <div class="grid md:grid-cols-3 gap-5 mt-12">
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">Your model</span>
+            <h3 class="card-title mt-1">You keep your access.</h3>
+            <p class="text-base-content/70">
+              It drives the Claude Code you already run. Bring your own access — we never proxy
+              it, meter it, or mark it up.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-secondary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">Your code</span>
+            <h3 class="card-title mt-1">You keep your app.</h3>
+            <p class="text-base-content/70">
+              A standard Phoenix app on your disk. It compiles, tests, and ships without us. Walk
+              away any time, with everything.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-accent shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-accent">Your hands on the wheel</span>
+            <h3 class="card-title mt-1">You keep control.</h3>
+            <p class="text-base-content/70">
+              You steer, review, and approve every step. It structures the work; it never takes
+              the wheel and never goes rogue.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── WHY IT'S FREE ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="the catch" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">
+        Free forever. Here's why we can mean it.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        We make money when your app is <span class="italic">running</span> — hosting the email,
+        chat, and growth tooling that keep it alive in the world. Not when you build it. So the
+        build tool is free, your code is yours, and we have every reason to stay out of your way.
+        On purpose.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── INSTALL ───────────── --%>
+  <section id="install" class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="install" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">
+        Two pieces. A few minutes.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        A local <code class="text-primary">cms</code> server that runs in the background on your
+        machine, and the Claude Code plugin that drives it. Server first, then plugin.
+      </p>
+
+      <div class="grid lg:grid-cols-3 gap-6 mt-12">
+        <%!-- Step 1: server --%>
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <span class="badge badge-neutral badge-sm">1</span>
+            <h3 class="font-semibold">Install the server</h3>
+          </div>
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body gap-2 p-4">
+              <div class="flex items-center justify-between">
+                <span class="badge badge-ghost badge-sm">macOS · Apple Silicon</span>
+                <button
+                  class="copy-btn btn btn-xs btn-outline btn-primary"
+                  data-copy={"brew install Code-My-Spec/tap/codemyspec\nbrew services start codemyspec"}
+                  data-event-name="install_command_copy"
+                  data-event-harness="codemyspec-server"
+                  data-event-location="developers_install_macos"
+                >
+                  Copy
+                </button>
+              </div>
+              <div class="mockup-code text-xs w-full">
+                <pre data-prefix="$"><code>brew install Code-My-Spec/tap/codemyspec</code></pre>
+                <pre data-prefix="$"><code>brew services start codemyspec</code></pre>
+              </div>
+              <p class="text-xs text-base-content/60">
+                Windows (x64)? Grab the MSI from the
+                <a href="https://github.com/Code-My-Spec/plugins/releases" class="link link-primary">latest release</a>.
+              </p>
+            </div>
+          </div>
+          <p class="text-xs text-base-content/60">
+            Runs as a background service on <code>localhost:4003</code> and restarts on boot.
+          </p>
+        </div>
+
+        <%!-- Step 2: plugin --%>
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <span class="badge badge-neutral badge-sm">2</span>
+            <h3 class="font-semibold">Install the plugin</h3>
+          </div>
+          <.install_card
+            harness="codemyspec"
+            footer_label="in claude code"
+            location="developers_install"
+          />
+        </div>
+
+        <%!-- Step 3: first run --%>
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <span class="badge badge-neutral badge-sm">3</span>
+            <h3 class="font-semibold">First run</h3>
+          </div>
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body gap-2 p-4">
+              <div class="flex items-center justify-between">
+                <span class="badge badge-ghost badge-sm">in your Phoenix project</span>
+                <button
+                  class="copy-btn btn btn-xs btn-outline btn-primary"
+                  data-copy="/codemyspec:init auth"
+                  data-event-name="install_command_copy"
+                  data-event-harness="codemyspec-init"
+                  data-event-location="developers_install_firstrun"
+                >
+                  Copy
+                </button>
+              </div>
+              <div class="mockup-code text-xs w-full">
+                <pre data-prefix="$"><code>/codemyspec:init auth</code></pre>
+              </div>
+              <p class="text-xs text-base-content/60">
+                Then tell the agent to run <code>get_next_requirement</code>. That's the only
+                command you need to remember — whenever it doesn't know what's next, that's the
+                answer.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-sm text-base-content/50 mt-8">
+        Requirements: macOS (Apple Silicon) or Windows (x64) · Claude Code CLI · a Phoenix
+        project (Elixir 1.18+, Phoenix 1.8+, PostgreSQL).
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── PROOF ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="proof" />
+      <div class="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center mt-6">
+        <div>
+          <blockquote class="text-2xl md:text-3xl font-medium leading-snug tracking-tight">
+            Built this way, in the open. <span class="text-primary">One person.</span>
+          </blockquote>
+          <p class="text-base-content/70 mt-5 leading-relaxed">
+            I run my whole company on this. If it holds up a company for one person, it'll hold
+            your codebase together too.
+          </p>
+          <div class="flex items-center gap-3 mt-6">
+            <div class="avatar avatar-placeholder">
+              <div class="w-11 rounded-lg bg-primary text-primary-content">
+                <span class="font-bold">JD</span>
+              </div>
+            </div>
+            <div class="text-sm text-base-content/70">
+              <span class="font-semibold text-base-content">John Davenport</span>
+              — building CodeMySpec with the model, solo, in real time.
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body py-4">
+              <div class="flex items-baseline gap-3">
+                <span class="font-semibold">MetricFlow</span>
+                <span class="badge badge-primary badge-sm">13 days</span>
+              </div>
+              <p class="text-sm text-base-content/60">A real app with real integrations, built end to end.</p>
+            </div>
+          </div>
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body py-4">
+              <div class="flex items-baseline gap-3">
+                <span class="font-semibold">Fuellytics</span>
+                <span class="badge badge-primary badge-sm">live</span>
+              </div>
+              <p class="text-sm text-base-content/60">A client product in the hands of paying customers.</p>
+            </div>
+          </div>
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body py-4">
+              <div class="flex items-baseline gap-3">
+                <span class="font-semibold">codemyspec.com</span>
+                <span class="badge badge-primary badge-sm">recursive</span>
+              </div>
+              <p class="text-sm text-base-content/60">And every email, chat, and post you get from us — same way.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── OPERATE LAYER (soft upsell) ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="when it's built" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-2xl">
+        When you're ready to ship it, there's a layer for that.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        Built something real? There's a hosted layer to run and grow it — email on your own
+        domain, live chat, ads, and analytics. That's the paid part. Building stays free.
+      </p>
+      <div class="mt-6">
+        <.link navigate={~p"/"} class="link link-primary font-medium">See operate &amp; grow →</.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FINAL CTA ───────────── --%>
+  <section class="bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-20 lg:py-28 text-center">
+      <h2 class="text-4xl md:text-5xl font-bold tracking-tight max-w-2xl mx-auto">
+        Scaffolding you own. <span class="text-primary">Free forever.</span>
+      </h2>
+      <div class="mt-8 flex flex-wrap gap-4 justify-center">
+        <a href="#install" class="btn btn-primary btn-lg">Install</a>
+        <.link navigate={~p"/methodology"} class="btn btn-ghost btn-lg">See the methodology →</.link>
+      </div>
+    </div>
+  </section>
+</Layouts.marketing>

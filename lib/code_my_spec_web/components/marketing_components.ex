@@ -46,7 +46,7 @@ defmodule CodeMySpecWeb.MarketingComponents do
 
   ## Examples
 
-      <.install_card harness="codemyspec" brief_url={~p"/products/code-my-spec"} />
+      <.install_card harness="codemyspec" brief_url={~p"/developers"} />
   """
   attr :harness, :string, required: true, values: ~w(codemyspec marketmyspec)
 

@@ -267,7 +267,7 @@ defmodule CodeMySpecWeb.Layouts do
             </div>
             <div class="navbar-center hidden lg:flex">
               <ul class="menu menu-horizontal menu-md px-1">
-                <li><.link href={~p"/products/code-my-spec"}>Product</.link></li>
+                <li><.link href={~p"/developers"}>Developers</.link></li>
                 <li><.link href={~p"/methodology"}>Method</.link></li>
                 <li><.link href={~p"/blog"}>Blog</.link></li>
                 <li><.link href={~p"/documentation"}>Docs</.link></li>
@@ -350,7 +350,7 @@ defmodule CodeMySpecWeb.Layouts do
             </a>
           </div>
           <ul class="menu p-4 text-base-content flex-1">
-            <li><.link href={~p"/products/code-my-spec"}>Product</.link></li>
+            <li><.link href={~p"/developers"}>Developers</.link></li>
             <li><.link href={~p"/methodology"}>Method</.link></li>
             <li><.link href={~p"/blog"}>Blog</.link></li>
             <li><.link href={~p"/documentation"}>Docs</.link></li>

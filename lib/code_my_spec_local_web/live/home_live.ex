@@ -15,6 +15,13 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
+  # Operate/grow CTA destinations (the hosted connect + operate conversion
+  # surface) don't exist yet. v1 points the "connect" and "start operating"
+  # CTAs at the done-with-you booking so the funnel is real today with no new
+  # backend. TODO(john): replace with your real booking link, then swap the
+  # CTA hrefs for the real /connect + /operate routes when they ship.
+  @book_call_url "https://cal.com/john-s10-davenport"
+
   @impl true
   def mount(_params, _session, socket) do
     projects = Projects.list_local_projects()
@@ -54,7 +61,15 @@ defmodule CodeMySpecLocalWeb.HomeLive do
     |> assign(:stories_count, stories_count)
     |> assign(:has_stories?, has_stories?)
     |> assign(:active_rung, active_rung(init_done?, setup_done?, has_stories?))
+    |> assign(:operate_state, operate_state(project))
   end
+
+  # Link state IS the funnel. A project with no account_id is "floating" —
+  # local-first, offline, never connected to a server account. Once it has an
+  # account_id it's linked to a (billable) server account, where operate/grow
+  # lives. `:operating` (account actively paying) is a later split off :linked.
+  defp operate_state(%{account_id: nil}), do: :floating
+  defp operate_state(%{account_id: _}), do: :linked
 
   # Stories are moving from the dashboard server to the local CLI DB.
   # During the migration window the server-side stories table may be
@@ -99,6 +114,8 @@ defmodule CodeMySpecLocalWeb.HomeLive do
         <.per_project_ladder :if={!@has_stories?} {assigns} />
 
         <.dash_cards :if={@has_stories?} slug={@slug} />
+
+        <.operate_band operate_state={@operate_state} slug={@slug} />
       </div>
     </Layouts.app>
     """
@@ -241,6 +258,66 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   defp rung_test_id(:init), do: "init-rung"
   defp rung_test_id(:project_setup), do: "project-setup-rung"
   defp rung_test_id(:first_story), do: "first-story-rung"
+
+  # The build→operate bridge. Build is free; operate/grow is the paid layer on
+  # the project's server account. This band is the only door from the free
+  # engineer surface to the money — rendered on every project state:
+  #   :floating → not connected to a server account yet → offer to connect
+  #   :linked   → connected → offer to turn on operate/grow
+  #   :operating → paying → live deep-links (built later, off :linked split)
+  # NOTE(john): all copy below is a draft placeholder — rewrite in your voice.
+  attr :operate_state, :atom, required: true
+  attr :slug, :string, required: true
+
+  defp operate_band(%{operate_state: :floating} = assigns) do
+    assigns = assign(assigns, :book_call_url, @book_call_url)
+
+    ~H"""
+    <div data-test="operate-band" data-state="floating" class="cms-onboarding mt-10">
+      <div class="px-6 py-6 flex flex-col gap-3">
+        <span class="cms-onboarding-eyebrow">// operate &amp; grow</span>
+        <h2 class="text-lg font-semibold">This project is local-only.</h2>
+        <p class="text-sm opacity-70 max-w-xl">
+          It's not connected to a server account yet. Connect it to a workspace to
+          run it in production — custom-domain email, live chat, and the ads and
+          analytics tooling. Building stays free; the hosted server is what you
+          pay for.
+        </p>
+        <div class="flex items-center gap-3 flex-wrap">
+          <a href={@book_call_url} class="cms-onboarding-cta" data-test="operate-band-connect-cta">
+            <span>▸</span> Connect to a workspace
+          </a>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp operate_band(%{operate_state: :linked} = assigns) do
+    assigns = assign(assigns, :book_call_url, @book_call_url)
+
+    ~H"""
+    <div data-test="operate-band" data-state="linked" class="cms-onboarding mt-10">
+      <div class="px-6 py-6 flex flex-col gap-3">
+        <span class="cms-onboarding-eyebrow">// operate &amp; grow</span>
+        <h2 class="text-lg font-semibold">Connected. Ready to ship.</h2>
+        <p class="text-sm opacity-70 max-w-xl">
+          Operate &amp; grow runs on the hosted server — custom-domain email and
+          live chat in one inbox, plus content, ads, and conversion analytics.
+          Turn it on when you're ready to put this in front of users.
+        </p>
+        <div class="flex items-center gap-3 flex-wrap">
+          <a href={@book_call_url} class="cms-onboarding-cta" data-test="operate-band-operate-cta">
+            <span>▸</span> Start operating
+          </a>
+          <span class="text-xs opacity-60">
+            or set it up with John — <a href={@book_call_url} class="underline">book a call</a>.
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
 
   # Audit re-pass §2i: workshop dash-cards must cover every section the
   # sidebar exposes — Personas and Scheduler were in `// data` but missing

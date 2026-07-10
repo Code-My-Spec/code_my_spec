@@ -594,7 +594,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
 
           <.install_card
             harness="codemyspec"
-            brief_url={~p"/products/code-my-spec"}
+            brief_url={~p"/developers"}
             brief_label="Read the brief →"
             footer_label="claude code · v1.0"
             location="methodology"
