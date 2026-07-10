@@ -213,6 +213,84 @@ defmodule CodeMySpecWeb.PageController do
     )
   end
 
+  def install(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/install"
+
+    meta = %{
+      page_title: "Install CodeMySpec — Free Forever",
+      meta_description:
+        "Install the CodeMySpec build harness in a few minutes — a local server plus a Claude Code plugin. Bring your own keys, own your code, free forever.",
+      og_title: "Install CodeMySpec — free forever",
+      og_description:
+        "Two pieces, a few minutes. A local server and a Claude Code plugin. Your model, your code, your control — free forever."
+    }
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "HowTo",
+            "name" => "Install CodeMySpec",
+            "description" => meta.meta_description,
+            "totalTime" => "PT5M",
+            "step" => [
+              %{
+                "@type" => "HowToStep",
+                "position" => 1,
+                "name" => "Install the server",
+                "text" =>
+                  "On macOS (Apple Silicon): brew install Code-My-Spec/tap/codemyspec, then brew services start codemyspec. On Windows (x64): run the cms-setup-x64.msi installer."
+              },
+              %{
+                "@type" => "HowToStep",
+                "position" => 2,
+                "name" => "Install the plugin",
+                "text" =>
+                  "In Claude Code: /plugin marketplace add Code-My-Spec/plugins, then /plugin install codemyspec@codemyspec."
+              },
+              %{
+                "@type" => "HowToStep",
+                "position" => 3,
+                "name" => "First run",
+                "text" =>
+                  "In your Phoenix project, run /codemyspec:init auth, then tell the agent to use the get_next_requirement tool."
+              }
+            ]
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "SoftwareApplication",
+            "@id" => "#{canonical}#software",
+            "name" => "CodeMySpec",
+            "url" => canonical,
+            "applicationCategory" => "DeveloperApplication",
+            "operatingSystem" => "macOS, Windows",
+            "description" => meta.meta_description,
+            "offers" => %{
+              "@type" => "Offer",
+              "price" => "0",
+              "priceCurrency" => "USD",
+              "availability" => "https://schema.org/InStock"
+            },
+            "publisher" => %{"@id" => "#{base_url}/#organization"}
+          }
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :install,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-code-my-spec.png", base_url),
+      canonical_url: canonical,
+      json_ld_list: json_ld_list
+    )
+  end
+
   # The old engineer product page collapsed into /developers (one engineer door).
   # 301 preserves its SEO equity and backlinks.
   def code_my_spec(conn, _params) do

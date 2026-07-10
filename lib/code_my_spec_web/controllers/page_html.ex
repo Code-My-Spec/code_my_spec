@@ -7,13 +7,4 @@ defmodule CodeMySpecWeb.PageHTML do
   use CodeMySpecWeb, :html
 
   embed_templates "page_html/*"
-
-  @external_resource code_my_spec_copy_path =
-                       Path.join(__DIR__, "page_html/code_my_spec_copy.exs")
-  @code_my_spec_copy (case Code.eval_file(code_my_spec_copy_path) do
-                        {copy, _} -> copy
-                      end)
-
-  def code_my_spec_copy, do: @code_my_spec_copy
-
 end

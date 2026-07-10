@@ -17,7 +17,7 @@
           already have. Free forever.
         </p>
         <div class="mt-8 flex flex-wrap items-center gap-4">
-          <a href="#install" class="btn btn-primary btn-lg">Install</a>
+          <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install — free</.link>
           <a href="#freedoms" class="btn btn-ghost btn-lg">See how it works</a>
         </div>
         <p class="mt-6 text-sm text-base-content/60">
@@ -111,107 +111,6 @@
     </div>
   </section>
 
-  <%!-- ───────────── INSTALL ───────────── --%>
-  <section id="install" class="border-b border-base-300 bg-base-200">
-    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
-      <.eyebrow name="install" />
-      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">
-        Two pieces. A few minutes.
-      </h2>
-      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        A local <code class="text-primary">cms</code> server that runs in the background on your
-        machine, and the Claude Code plugin that drives it. Server first, then plugin.
-      </p>
-
-      <div class="grid lg:grid-cols-3 gap-6 mt-12">
-        <%!-- Step 1: server --%>
-        <div class="flex flex-col gap-3">
-          <div class="flex items-center gap-2">
-            <span class="badge badge-neutral badge-sm">1</span>
-            <h3 class="font-semibold">Install the server</h3>
-          </div>
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body gap-2 p-4">
-              <div class="flex items-center justify-between">
-                <span class="badge badge-ghost badge-sm">macOS · Apple Silicon</span>
-                <button
-                  class="copy-btn btn btn-xs btn-outline btn-primary"
-                  data-copy={"brew install Code-My-Spec/tap/codemyspec\nbrew services start codemyspec"}
-                  data-event-name="install_command_copy"
-                  data-event-harness="codemyspec-server"
-                  data-event-location="developers_install_macos"
-                >
-                  Copy
-                </button>
-              </div>
-              <div class="mockup-code text-xs w-full">
-                <pre data-prefix="$"><code>brew install Code-My-Spec/tap/codemyspec</code></pre>
-                <pre data-prefix="$"><code>brew services start codemyspec</code></pre>
-              </div>
-              <p class="text-xs text-base-content/60">
-                Windows (x64)? Grab the MSI from the
-                <a href="https://github.com/Code-My-Spec/plugins/releases" class="link link-primary">latest release</a>.
-              </p>
-            </div>
-          </div>
-          <p class="text-xs text-base-content/60">
-            Runs as a background service on <code>localhost:4003</code> and restarts on boot.
-          </p>
-        </div>
-
-        <%!-- Step 2: plugin --%>
-        <div class="flex flex-col gap-3">
-          <div class="flex items-center gap-2">
-            <span class="badge badge-neutral badge-sm">2</span>
-            <h3 class="font-semibold">Install the plugin</h3>
-          </div>
-          <.install_card
-            harness="codemyspec"
-            footer_label="in claude code"
-            location="developers_install"
-          />
-        </div>
-
-        <%!-- Step 3: first run --%>
-        <div class="flex flex-col gap-3">
-          <div class="flex items-center gap-2">
-            <span class="badge badge-neutral badge-sm">3</span>
-            <h3 class="font-semibold">First run</h3>
-          </div>
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body gap-2 p-4">
-              <div class="flex items-center justify-between">
-                <span class="badge badge-ghost badge-sm">in your Phoenix project</span>
-                <button
-                  class="copy-btn btn btn-xs btn-outline btn-primary"
-                  data-copy="/codemyspec:init auth"
-                  data-event-name="install_command_copy"
-                  data-event-harness="codemyspec-init"
-                  data-event-location="developers_install_firstrun"
-                >
-                  Copy
-                </button>
-              </div>
-              <div class="mockup-code text-xs w-full">
-                <pre data-prefix="$"><code>/codemyspec:init auth</code></pre>
-              </div>
-              <p class="text-xs text-base-content/60">
-                Then tell the agent to run <code>get_next_requirement</code>. That's the only
-                command you need to remember — whenever it doesn't know what's next, that's the
-                answer.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <p class="text-sm text-base-content/50 mt-8">
-        Requirements: macOS (Apple Silicon) or Windows (x64) · Claude Code CLI · a Phoenix
-        project (Elixir 1.18+, Phoenix 1.8+, PostgreSQL).
-      </p>
-    </div>
-  </section>
-
   <%!-- ───────────── PROOF ───────────── --%>
   <section class="border-b border-base-300">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
@@ -295,7 +194,7 @@
         Scaffolding you own. <span class="text-primary">Free forever.</span>
       </h2>
       <div class="mt-8 flex flex-wrap gap-4 justify-center">
-        <a href="#install" class="btn btn-primary btn-lg">Install</a>
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install — free</.link>
         <.link navigate={~p"/methodology"} class="btn btn-ghost btn-lg">See the methodology →</.link>
       </div>
     </div>
