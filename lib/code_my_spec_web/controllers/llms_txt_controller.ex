@@ -7,11 +7,54 @@ defmodule CodeMySpecWeb.LlmsTxtController do
 
   @static_pages [
     %{title: "Homepage", url: "/", description: "Product overview and registration"},
-    %{title: "Methodology", url: "/methodology", description: "The six-phase CodeMySpec development method"},
-    %{title: "Case Studies", url: "/case-studies", description: "Index of end-to-end teardowns of products built with CodeMySpec"},
-    %{title: "MetricFlow Case Study", url: "/case-studies/metric-flow", description: "Full-stack Phoenix analytics app built with zero human-written code"},
-    %{title: "Market My Spec Case Study", url: "/case-studies/market-my-spec", description: "Marketing-strategy product built with zero prompts and zero human-written code; configurable workflow, Three Amigos, and BDD-spec boundary protection"},
-    %{title: "About", url: "/author/john-davenport", description: "About the founder and the project"}
+    %{
+      title: "Pricing",
+      url: "/pricing",
+      description:
+        "Free to build (harness + content engine, your own AI keys), $100/month per user to operate and grow, or built with you from $500 (quoted)"
+    },
+    %{
+      title: "Developers",
+      url: "/developers",
+      description: "The free engineer build harness: your model, your code, no lock-in"
+    },
+    %{
+      title: "Install",
+      url: "/install",
+      description: "Install the free build harness: local server plus Claude Code plugin"
+    },
+    %{
+      title: "Methodology",
+      url: "/methodology",
+      description: "The six-phase CodeMySpec development method"
+    },
+    %{
+      title: "Case Studies",
+      url: "/case-studies",
+      description: "Index of end-to-end teardowns of products built with CodeMySpec"
+    },
+    %{
+      title: "MetricFlow Case Study",
+      url: "/case-studies/metric-flow",
+      description: "Full-stack Phoenix analytics app built with zero human-written code"
+    },
+    %{
+      title: "Market My Spec Case Study",
+      url: "/case-studies/market-my-spec",
+      description:
+        "Marketing-strategy product built with zero prompts and zero human-written code; configurable workflow, Three Amigos, and BDD-spec boundary protection"
+    },
+    %{
+      title: "Cleaner CRM Case Study",
+      url: "/case-studies/cleaner-crm",
+      description:
+        "Three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; self-orchestrated loop, browser QA, real Stripe payments, live UAT, 0.4% of the conversation typed by the human"
+    },
+    %{
+      title: "About",
+      url: "/author/john-davenport",
+      description: "About the founder and the project"
+    }
   ]
 
   def index(conn, _params) do

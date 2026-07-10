@@ -38,12 +38,16 @@
               />
             </figure>
             <div class="card-body gap-4">
-              <!-- Date Badge -->
-              <div class="flex items-center gap-2 text-sm text-base-content/60">
+              <!-- Date + Byline -->
+              <div class="flex items-center gap-2 text-sm text-base-content/60 flex-wrap">
                 <.icon name="hero-calendar" class="w-4 h-4" />
                 <time datetime={post.publish_at}>
                   {format_date(post.publish_at)}
                 </time>
+                <span :if={post.metadata["author"]} class="flex items-center gap-2">
+                  <span class="opacity-40">·</span>
+                  <.icon name="hero-user" class="w-4 h-4" /> {post.metadata["author"]}
+                </span>
               </div>
               <!-- Title -->
               <h2 class="card-title text-2xl group-hover:text-primary transition-colors">

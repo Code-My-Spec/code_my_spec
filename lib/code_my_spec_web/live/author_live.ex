@@ -19,16 +19,22 @@ defmodule CodeMySpecWeb.AuthorLive do
 
           <div class="prose prose-lg max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-a:text-primary">
             <p>
-              Full-stack engineer with 20 years of experience spanning enterprise systems, manufacturing IT, fintech, and AI-assisted development tooling. I build tools that help developers ship production software with AI — not by replacing architects, but by giving AI agents the structured workflows they need to write code that actually works.
+              Full-stack engineer with 15 years of experience spanning enterprise systems, manufacturing IT, fintech, and AI-assisted development tooling. I build tools that help developers ship production software with AI — not by replacing architects, but by giving AI agents the structured workflows they need to write code that actually works.
             </p>
 
             <p>
-              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built three production applications with it — <a href="/case-studies/metric-flow">MetricFlow</a> (40 commits, 13 days, zero human-written code), Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration), and <a href="/case-studies/market-my-spec">Market My Spec</a> (a small MCP server that exposes a marketing-strategy skill to Claude Code, shipped across one weekend with zero prompts and zero lines of code) — to prove the methodology works before asking anyone else to use it.
+              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built four production applications with it —
+              <a href="/case-studies/metric-flow">MetricFlow</a>
+              (40 commits, 13 days, zero human-written code), Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration),
+              <a href="/case-studies/market-my-spec">Market My Spec</a>
+              (a small MCP server that exposes a marketing-strategy skill to Claude Code, shipped across one weekend with zero prompts and zero lines of code), and
+              <a href="/case-studies/cleaner-crm">Cleaner CRM</a>
+              (a three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; I typed 0.4% of the characters in the build conversation) — to prove the methodology works before asking anyone else to use it.
             </p>
 
             <h2>Career Path</h2>
             <p>
-              I started in hardware design at GE Intelligent Platforms (2005-2010), designing embedded computing solutions — VME and CompactPCI single board computers for military, aerospace, and industrial customers. That gave me a foundation in systems thinking that's shaped everything since.
+              I started in hardware design at GE Intelligent Platforms, designing embedded computing solutions — VME and CompactPCI single board computers for military, aerospace, and industrial customers. That gave me a foundation in systems thinking that's shaped everything since.
             </p>
             <p>
               From there I moved into manufacturing IT at Enova Premier, managing production systems across 4 automotive plants for a tier-one supplier assembling wheels and tires for Toyota, GM, and Hyundai. I built an industrial IoT platform combining OPC UA, real-time PLC data, and GraphQL APIs into operator-facing Vue.js applications — and hired and trained the first software development team the company ever had.
@@ -37,48 +43,123 @@ defmodule CodeMySpecWeb.AuthorLive do
               I spent three years at FunnelCloud as Head of Implementations, leading technical operations for an MES vendor serving 50-60 automotive plants. Then three years at Openforce as a software engineer on IC Insure — an insurance marketplace built on an Elixir/Phoenix monolith with CQRS, Event Sourcing (Commanded), and GraphQL (Absinthe), serving clients including American Express and Hudson Insurance Group.
             </p>
             <p>
-              Along the way I founded several products that taught me more than they earned: <strong>UserDocs</strong> (documentation automation, three major architectural rewrites, secured a pilot with Chef), <strong>Discussit</strong> (conversation intelligence with LLM-powered topic analysis), and <strong>Desert First Cleaning</strong> (which actually did work — $252K+ revenue, 150% YoY growth).
+              Along the way I founded several products that taught me more than they earned:
+              <strong>UserDocs</strong>
+              (documentation automation, three major architectural rewrites, secured a pilot with Chef),
+              <strong>Discussit</strong>
+              (conversation intelligence with LLM-powered topic analysis), and
+              <strong>Desert First Cleaning</strong>
+              (which actually did work — $252K+ revenue, 150% YoY growth).
             </p>
 
             <h2>What I've Built</h2>
             <ul>
-              <li><strong>CodeMySpec</strong> — AI development harness for Phoenix. 368 modules, 46 bounded contexts, compile-time dependency enforcement. MCP servers for product management and architecture, BDD spec generation, session orchestration, and automated QA. Ships as a Claude Code extension.</li>
-              <li><strong>Fuellytics</strong> — Fleet fuel card fraud detection platform. 5-validator pipeline, Claude Vision OCR, Stripe Issuing/Treasury/Connect, Twilio SMS. Built with CodeMySpec in 55 commits, zero human-written code.</li>
-              <li><strong>MetricFlow</strong> — Cross-platform ad analytics correlating Google Ads, Facebook Ads, and GA4 with QuickBooks revenue. Pearson correlation engine, Claude-powered insights. <a href="/case-studies/metric-flow">40 commits, 13 days, honest assessment</a>.</li>
-              <li><strong>Market My Spec</strong> — Small MCP server that exposes a marketing-strategy skill to Claude Code. Multi-tenant accounts with agency tier, magic-link auth, OAuth scaffolding, eight-step strategy walkthrough delivered over MCP. <a href="/case-studies/market-my-spec">17 commits across 4 days, zero prompts, zero lines of code</a>.</li>
-              <li><strong>IC Insure</strong> — Insurance marketplace for independent contractors. Elixir/Phoenix, CQRS/Event Sourcing, 11 bounded contexts, 20+ supervised processes. One of two engineers.</li>
-              <li><strong>UserDocs</strong> — Browser automation for documentation. Phoenix LiveView, Chrome DevTools Protocol, multi-tenant architecture. Three major rewrites.</li>
-              <li><strong>Discussit</strong> — Conversation intelligence platform with Zoom/OpenPhone ingestion, transcription, and LLM-powered topic clustering.</li>
+              <li>
+                <strong>CodeMySpec</strong>
+                — AI development harness for Phoenix. 368 modules, 46 bounded contexts, compile-time dependency enforcement. MCP servers for product management and architecture, BDD spec generation, session orchestration, and automated QA. Ships as a Claude Code extension.
+              </li>
+              <li>
+                <strong>Fuellytics</strong>
+                — Fleet fuel card fraud detection platform. 5-validator pipeline, Claude Vision OCR, Stripe Issuing/Treasury/Connect, Twilio SMS. Built with CodeMySpec in 55 commits, zero human-written code.
+              </li>
+              <li>
+                <strong>MetricFlow</strong>
+                — Cross-platform ad analytics correlating Google Ads, Facebook Ads, and GA4 with QuickBooks revenue. Pearson correlation engine, Claude-powered insights. <a href="/case-studies/metric-flow">40 commits, 13 days, honest assessment</a>.
+              </li>
+              <li>
+                <strong>Market My Spec</strong>
+                — Small MCP server that exposes a marketing-strategy skill to Claude Code. Multi-tenant accounts with agency tier, magic-link auth, OAuth scaffolding, eight-step strategy walkthrough delivered over MCP. <a href="/case-studies/market-my-spec">17 commits across 4 days, zero prompts, zero lines of code</a>.
+              </li>
+              <li>
+                <strong>Cleaner CRM</strong>
+                — Three-persona CRM for cleaning businesses: owner back office, cleaner field app, public booking funnel with real Stripe payments. Two-shotted with Claude Fable 5 in three days on a self-orchestrating loop; 0.4% of the conversation typed by a human. <a href="/case-studies/cleaner-crm">21 stories, 143 BDD criteria, honest teardown</a>.
+              </li>
+              <li>
+                <strong>IC Insure</strong>
+                — Insurance marketplace for independent contractors. Elixir/Phoenix, CQRS/Event Sourcing, 11 bounded contexts, 20+ supervised processes. One of two engineers.
+              </li>
+              <li>
+                <strong>UserDocs</strong>
+                — Browser automation for documentation. Phoenix LiveView, Chrome DevTools Protocol, multi-tenant architecture. Three major rewrites.
+              </li>
+              <li>
+                <strong>Discussit</strong>
+                — Conversation intelligence platform with Zoom/OpenPhone ingestion, transcription, and LLM-powered topic clustering.
+              </li>
             </ul>
 
             <h2>Technical Focus</h2>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 not-prose mb-6">
               <div>
                 <h3 class="font-semibold text-base mt-4 mb-2">Languages & Frameworks</h3>
-                <p class="text-base-content/70 text-sm">Elixir, Phoenix, LiveView, OTP, Python, TypeScript, C#, Blazor, Vue.js, React</p>
+                <p class="text-base-content/70 text-sm">
+                  Elixir, Phoenix, LiveView, OTP, Python, TypeScript, C#, Blazor, Vue.js, React
+                </p>
               </div>
               <div>
                 <h3 class="font-semibold text-base mt-4 mb-2">AI & LLM Engineering</h3>
-                <p class="text-base-content/70 text-sm">Claude API, MCP servers, agentic workflows, BDD spec generation, embedding pipelines, RAG</p>
+                <p class="text-base-content/70 text-sm">
+                  Claude API, MCP servers, agentic workflows, BDD spec generation, embedding pipelines, RAG
+                </p>
               </div>
               <div>
                 <h3 class="font-semibold text-base mt-4 mb-2">Architecture</h3>
-                <p class="text-base-content/70 text-sm">CQRS, Event Sourcing, DDD, bounded contexts, dependency graphs, multi-tenant systems</p>
+                <p class="text-base-content/70 text-sm">
+                  CQRS, Event Sourcing, DDD, bounded contexts, dependency graphs, multi-tenant systems
+                </p>
               </div>
               <div>
                 <h3 class="font-semibold text-base mt-4 mb-2">Data & Infrastructure</h3>
-                <p class="text-base-content/70 text-sm">PostgreSQL, Snowflake, SQLite, Docker, Fly.io, GitHub Actions, OPC UA, industrial IoT</p>
+                <p class="text-base-content/70 text-sm">
+                  PostgreSQL, Snowflake, SQLite, Docker, Fly.io, GitHub Actions, OPC UA, industrial IoT
+                </p>
               </div>
             </div>
 
             <h2>Connect</h2>
             <ul>
-              <li><a href="https://www.linkedin.com/in/john-davenport-software/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>
-              <li><a href="https://x.com/johns10d" target="_blank" rel="noopener noreferrer">X / Twitter</a></li>
-              <li><a href="https://www.youtube.com/@codemyspec" target="_blank" rel="noopener noreferrer">YouTube</a></li>
-              <li><a href="https://github.com/code-my-spec" target="_blank" rel="noopener noreferrer">GitHub</a></li>
-              <li><a href="https://www.reddit.com/user/johns10davenport/" target="_blank" rel="noopener noreferrer">Reddit</a></li>
-              <li><a href="https://john.davenport.rocks" target="_blank" rel="noopener noreferrer">Full Resume</a></li>
+              <li>
+                <a
+                  href="https://www.linkedin.com/in/john-davenport-software/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  LinkedIn
+                </a>
+              </li>
+              <li>
+                <a href="https://x.com/johns10d" target="_blank" rel="noopener noreferrer">
+                  X / Twitter
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://www.youtube.com/@codemyspec"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  YouTube
+                </a>
+              </li>
+              <li>
+                <a href="https://github.com/code-my-spec" target="_blank" rel="noopener noreferrer">
+                  GitHub
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://www.reddit.com/user/johns10davenport/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Reddit
+                </a>
+              </li>
+              <li>
+                <a href="https://john.davenport.rocks" target="_blank" rel="noopener noreferrer">
+                  Full Resume
+                </a>
+              </li>
             </ul>
           </div>
 
@@ -88,8 +169,8 @@ defmodule CodeMySpecWeb.AuthorLive do
             </a>
           </div>
         </article>
-
-        <!-- Published Articles -->
+        
+    <!-- Published Articles -->
         <section :if={@blog_posts != []} class="mt-16">
           <h2 class="text-3xl font-bold tracking-tight mb-8">Published Articles</h2>
           <div class="space-y-4">
@@ -140,7 +221,7 @@ defmodule CodeMySpecWeb.AuthorLive do
           "jobTitle" => "Founder",
           "url" => @author_url,
           "description" =>
-            "Full-stack engineer with 20 years of experience. Founder of CodeMySpec. Background in hardware engineering (GE), manufacturing IT, enterprise insurance systems (Elixir/Phoenix), and AI-assisted development tooling.",
+            "Full-stack engineer with 15 years of experience. Founder of CodeMySpec. Background in hardware engineering (GE), manufacturing IT, enterprise insurance systems (Elixir/Phoenix), and AI-assisted development tooling.",
           "image" => %{
             "@type" => "ImageObject",
             "url" => CodeMySpecWeb.ImageUrl.image_url("john-davenport.jpg", base_url),
@@ -202,10 +283,13 @@ defmodule CodeMySpecWeb.AuthorLive do
      |> assign(:page_title, "John Davenport — Founder, CodeMySpec")
      |> assign(
        :meta_description,
-       "Full-stack engineer with 20 years of experience. Founder of CodeMySpec. Background in hardware engineering, manufacturing IT, enterprise systems, and AI-assisted development."
+       "Full-stack engineer with 15 years of experience. Founder of CodeMySpec. Background in hardware engineering, manufacturing IT, enterprise systems, and AI-assisted development."
      )
      |> assign(:og_title, "John Davenport — Founder, CodeMySpec")
-     |> assign(:og_description, "20 years of experience from hardware design to AI-assisted development. Building tools that help developers ship production software with AI.")
+     |> assign(
+       :og_description,
+       "15 years of experience from hardware design to AI-assisted development. Building tools that help developers ship production software with AI."
+     )
      |> assign(:og_image, CodeMySpecWeb.ImageUrl.image_url("john-davenport.jpg", base_url))
      |> assign(:canonical_url, @author_url)
      |> assign(:json_ld, json_ld)}

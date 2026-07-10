@@ -1,0 +1,61 @@
+<%!-- Standalone branded 404. Inline styles on purpose: error pages render
+outside the app layout and must not depend on the asset pipeline. --%>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Page not found · CodeMySpec</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #faf9f7;
+        color: #1f2937;
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+      }
+      .wrap { max-width: 34rem; padding: 2rem; text-align: center; }
+      .code { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: #0f766e; }
+      h1 { font-size: 2rem; margin: 0.75rem 0 0.5rem; letter-spacing: -0.02em; }
+      p { color: #4b5563; line-height: 1.6; }
+      .links { margin-top: 1.75rem; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+      .links a {
+        display: inline-block;
+        padding: 0.6rem 1.1rem;
+        border-radius: 0.5rem;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.9rem;
+        border: 1px solid #d6d3d1;
+        color: #1f2937;
+      }
+      .links a.primary { background: #0f766e; border-color: #0f766e; color: #fff; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #1c1917; color: #e7e5e4; }
+        p { color: #a8a29e; }
+        .links a { border-color: #44403c; color: #e7e5e4; }
+        .links a.primary { background: #14b8a6; border-color: #14b8a6; color: #042f2e; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="code">404 · CodeMySpec</div>
+      <h1>This page doesn't exist.</h1>
+      <p>
+        The link may be old, or the page may have moved. Everything worth reading is one
+        click away.
+      </p>
+      <div class="links">
+        <a class="primary" href="/">Home</a>
+        <a href="/blog">Blog</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/documentation">Docs</a>
+      </div>
+    </div>
+  </body>
+</html>

@@ -2,9 +2,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
   @moduledoc """
   Index page for the case-studies collection.
 
-  Hard-coded list (two entries) matching the static LiveView pages at
-  `/case-studies/metric-flow` and `/case-studies/market-my-spec`.
-  Resolves the breadcrumb parent that both detail pages reference.
+  Hard-coded list matching the static LiveView pages at
+  `/case-studies/metric-flow`, `/case-studies/market-my-spec`, and
+  `/case-studies/cleaner-crm`. Resolves the breadcrumb parent that
+  the detail pages reference.
   """
 
   use CodeMySpecWeb, :live_view
@@ -12,6 +13,20 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
   alias CodeMySpecWeb.Layouts
 
   @case_studies [
+    %{
+      slug: "cleaner-crm",
+      title: "Cleaner CRM",
+      tagline: "Two prompts. Two UAT passes. Three days. Fable did the rest.",
+      summary:
+        "A full cleaning-business CRM two-shotted with Claude Fable 5 (July 7-9, 2026). Owner back office, cleaner field app, public booking funnel with real Stripe payments, deployed to live UAT. 172 subagents, 0.4% of the conversation typed by John, and an honest accounting of everything that broke.",
+      og_image: "og-cleanercrm.png",
+      stats: [
+        %{label: "Prompts by John", value: "2"},
+        %{label: "Stories", value: "21"},
+        %{label: "Typed by John", value: "0.4%"}
+      ],
+      published_at: "2026-07-10"
+    },
     %{
       slug: "market-my-spec",
       title: "Market My Spec",
@@ -66,11 +81,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
             href={"/case-studies/#{cs.slug}"}
             class="card lg:card-side bg-base-100 shadow-xl border border-base-300 hover:shadow-2xl transition-shadow group"
           >
-            <figure class="lg:w-2/5 bg-base-200">
+            <figure class="lg:w-2/5 bg-[#191813]">
               <img
                 src={CodeMySpecWeb.ImageUrl.image_url(cs.og_image, CodeMySpecWeb.Endpoint.url())}
                 alt={"#{cs.title} case study preview"}
-                class="w-full h-full object-cover"
+                class="w-full h-full object-contain"
                 loading="lazy"
               />
             </figure>
@@ -92,8 +107,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
 
               <div class="card-actions justify-end mt-2">
                 <span class="btn btn-primary btn-sm gap-2">
-                  Read the teardown
-                  <.icon name="hero-arrow-right" class="w-4 h-4" />
+                  Read the teardown <.icon name="hero-arrow-right" class="w-4 h-4" />
                 </span>
               </div>
             </div>
@@ -169,7 +183,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
      |> assign(:meta_title, "Case Studies — CodeMySpec")
      |> assign(
        :meta_description,
-       "End-to-end teardowns of products built with CodeMySpec. MetricFlow, Market My Spec, and the harness changes each one drove."
+       "End-to-end teardowns of products built with CodeMySpec. MetricFlow, Market My Spec, Cleaner CRM, and the harness changes each one drove."
      )
      |> assign(:og_title, "Case Studies — CodeMySpec")
      |> assign(
