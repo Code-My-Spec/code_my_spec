@@ -68,7 +68,7 @@ defmodule CodeMySpecWeb.UserLive.LoginTest do
         |> render_click()
         |> follow_redirect(conn, ~p"/users/register")
 
-      assert register_html =~ "holds it together"
+      assert register_html =~ "Bring the idea."
     end
   end
 

@@ -49,8 +49,10 @@ defmodule CodeMySpecWeb.MarketingRetiredPhrasesTest do
     "platform of harnesses for the founder"
   ]
 
+  # /products/code-my-spec now 301s to /developers (the 2026-07 install-page
+  # restructure); lint the surfaces that actually render.
   @live_marketing_surfaces ["/users/register", "/users/log-in"]
-  @dead_marketing_surfaces ["/", "/products/code-my-spec"]
+  @dead_marketing_surfaces ["/", "/developers", "/install"]
 
   describe "live marketing surfaces" do
     for path <- @live_marketing_surfaces do

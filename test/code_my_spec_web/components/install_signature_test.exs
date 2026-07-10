@@ -4,12 +4,12 @@ defmodule CodeMySpecWeb.Components.InstallSignatureTest do
   (`CodeMySpecWeb.Layouts.install_signature/1`).
 
   The signature ships on every published blog post per
-  `.code_my_spec/issues/blog-post-install-signature.md`. The audience is
-  senior Phoenix engineers / agency tech leads — they read aggressive
-  end-of-post CTAs as marketing smell. The contract below enforces the
-  "author signature, not a sales card" shape: monospace, no buttons, no
-  primary-color CTA backgrounds, no urgency framing, UTM-tagged signup
-  URL preserved exactly.
+  `.code_my_spec/issues/blog-post-install-signature.md`. The 2026-07
+  install-page restructure evolved it from a bare monospace signature into a
+  quiet card: author-voice copy, ONE register CTA, install commands in a
+  terminal block, signed off by John. The contract below enforces that
+  shape — a single clearly-labeled CTA with UTM-tagged href, commands as
+  terminal text (never links), and still zero urgency framing.
   """
 
   use CodeMySpecTest.ConnCase, async: true
@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.Components.InstallSignatureTest do
       refute html =~ ~s|href="#{"/plugin"}|
     end
 
-    test "links signup with UTM tags preserved in href, clean URL in display", %{html: html} do
+    test "links signup with UTM tags preserved in href on the register CTA", %{html: html} do
       # HEEx leaves `&` as-is in href attributes when the URL params
       # can't be parsed as character references (HTML5-valid). The href
       # carries the UTM payload so blog → register conversion tracks
@@ -60,20 +60,17 @@ defmodule CodeMySpecWeb.Components.InstallSignatureTest do
       assert html =~
                ~s|href="/users/register?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"|
 
-      # Visible link text is the clean URL — devs reading the post see
-      # a readable URL, not a tracking string. Right-click → copy-link
-      # still grabs the UTM'd href for any edge-case tracking.
-      assert html =~ "https://codemyspec.com/users/register"
-      refute html =~ ">https://codemyspec.com/users/register?utm_source"
+      # The CTA is labeled for analytics and reads as an invitation,
+      # not urgency.
+      assert html =~ ~s|data-event-label="cta-signature-register"|
+      assert html =~ "Create your free account"
     end
 
-    test "renders as an author signature, not a marketing card", %{html: html} do
-      # The block must NOT look like a CTA — no btn classes, no primary
-      # background fills, no urgency framing. These are the explicit
-      # "what NOT to ship" items from the issue.
-      refute html =~ "btn-primary"
-      refute html =~ "btn btn-"
-      refute html =~ "bg-primary "
+    test "renders as a quiet card with exactly one CTA and no urgency framing", %{html: html} do
+      # One register button, nothing shouty — a single btn-primary and
+      # none of the "what NOT to ship" phrases from the issue.
+      assert length(String.split(html, "btn-primary")) == 2
+
       refute html =~ "GET STARTED"
       refute html =~ "Sign up now"
       refute html =~ "!"
@@ -83,13 +80,12 @@ defmodule CodeMySpecWeb.Components.InstallSignatureTest do
       refute html =~ "10x"
     end
 
-    test "uses monospace styling and a horizontal-rule-style top border", %{html: html} do
-      # font-mono applied to the whole block.
-      assert html =~ "font-mono"
-      # `border-t border-primary/20` is the brand's hairline divider —
-      # matches how article.html.heex separates the Prev/Next nav from
-      # the article body.
-      assert html =~ "border-t border-primary/20"
+    test "renders install commands in a terminal block inside the card", %{html: html} do
+      # The commands live in a mockup-code terminal block — readable,
+      # copyable, visibly "type this in Claude Code".
+      assert html =~ "mockup-code"
+      # Card container, not a floating paragraph.
+      assert html =~ ~s|class="not-prose mt-12 card|
     end
   end
 end

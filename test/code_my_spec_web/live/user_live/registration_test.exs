@@ -5,38 +5,35 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
   import CodeMySpec.UsersFixtures
 
   describe "Registration page" do
-    test "renders the outcome-focused headline", %{conn: conn} do
+    test "renders the builder-focused headline", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "AI-generated codebase is starting to"
-      assert html =~ "harness"
-      assert html =~ "holds it together"
+      assert html =~ "Bring the idea."
+      assert html =~ "Start building."
       assert html =~ "Log in"
     end
 
     test "renders the free / no-credit-card reassurance", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "FREE"
-      assert html =~ "NO CREDIT CARD"
+      assert html =~ "Free to start, just an email."
+      assert html =~ "No password, no company, no credit card."
     end
 
-    test "promotes the platform tagline directly under the headline", %{conn: conn} do
+    test "promotes the free-to-build tagline directly under the headline", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "A Claude Code plugin platform"
-      assert html =~ "One harness per domain"
+      assert html =~ "Free to build — you and the model, shaping real software together."
+      assert html =~ "Real software, not a prototype."
     end
 
-    test "renders the BYO differentiator line", %{conn: conn} do
+    test "renders the BYO-keys differentiator line", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
-      assert html =~ "Bring your own Claude"
-      assert html =~ "Bring your own keys"
-      assert html =~ "don&#39;t markup tokens"
+      assert html =~ "Bring your own AI keys; we never mark them up."
     end
 
     test "renders the MetricFlow proof line linking to the case study", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "John shipped MetricFlow using these harnesses"
+      assert html =~ "John built and runs MetricFlow"
       assert html =~ "Read the case study"
       assert html =~ ~s|href="/case-studies/metric-flow"|
     end
@@ -76,7 +73,7 @@ defmodule CodeMySpecWeb.UserLive.RegistrationTest do
         |> element("#registration_form")
         |> render_change(user: %{"email" => "with spaces"})
 
-      assert result =~ "holds it together"
+      assert result =~ "Bring the idea."
       assert result =~ "must have the @ sign and no spaces"
     end
   end
