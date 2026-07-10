@@ -10,6 +10,11 @@ defmodule CodeMySpecWeb.MarketingComponents do
   """
 
   use Phoenix.Component
+  use Phoenix.VerifiedRoutes, endpoint: CodeMySpecWeb.Endpoint, router: CodeMySpecWeb.Router
+
+  import CodeMySpecWeb.CoreComponents, only: [icon: 1]
+
+  alias CodeMySpecWeb.ExternalLinks
 
   @doc """
   Section eyebrow — the small uppercase label that prefaces a section heading.
@@ -74,7 +79,7 @@ defmodule CodeMySpecWeb.MarketingComponents do
       ])
 
     ~H"""
-    <div class="card bg-base-200 border border-base-300 shadow-sm">
+    <div class="card bg-base-200 border border-base-300 shadow-sm min-w-0">
       <div class="card-body gap-3 p-5">
         <div class="flex items-center justify-between">
           <span class="badge badge-primary badge-sm font-mono">/{@harness}</span>
@@ -88,8 +93,8 @@ defmodule CodeMySpecWeb.MarketingComponents do
             Copy
           </button>
         </div>
-        <div class="mockup-code text-sm w-full">
-          <pre :for={cmd <- @commands} data-prefix="$"><code>{cmd}</code></pre>
+        <div class="mockup-code text-sm w-full min-w-0">
+          <pre :for={cmd <- @commands} data-prefix="$" class="whitespace-pre-wrap break-all"><code>{cmd}</code></pre>
         </div>
         <div
           :if={@brief_url || @footer_label}
@@ -102,6 +107,123 @@ defmodule CodeMySpecWeb.MarketingComponents do
         </div>
       </div>
     </div>
+    """
+  end
+
+  @doc """
+  Pricing tiers — the single source of truth for the three plans, reused by
+  the homepage teaser and the `/pricing` page so their CTAs never drift.
+
+  Build → `/install` (free), Operate & Grow → `/users/register` (paid
+  self-serve), Built with you → John's booking (done-with-you).
+  """
+  attr :class, :string, default: nil, doc: "extra classes on the grid wrapper"
+
+  def pricing_tiers(assigns) do
+    ~H"""
+    <div class={["grid md:grid-cols-3 gap-5", @class]}>
+      <div class="card bg-base-100 border-2 border-primary shadow-sm">
+        <div class="card-body">
+          <span class="text-xs font-semibold uppercase tracking-[0.15em] text-base-content/60">
+            Build
+          </span>
+          <div class="text-4xl font-bold mt-1">
+            $0 <span class="text-base font-normal text-base-content/50">/ forever</span>
+          </div>
+          <p class="text-base-content/70">
+            The full harness — build the software, and market it before it exists.
+          </p>
+          <ul class="mt-3 space-y-2 text-sm">
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" />
+              Build real software with the model
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" />
+              Content engine: your site and blog, live before the app
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" />
+              Bring your own AI keys, no markup
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" />
+              Yours to keep — no lock-in
+            </li>
+          </ul>
+          <div class="card-actions mt-4">
+            <.link href={~p"/install"} class="btn btn-primary btn-block">Start free</.link>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 border border-base-300 shadow-sm">
+        <div class="card-body">
+          <span class="text-xs font-semibold uppercase tracking-[0.15em] text-base-content/60">
+            Operate &amp; Grow
+          </span>
+          <div class="text-4xl font-bold mt-1">
+            $100 <span class="text-base font-normal text-base-content/50">/ month per user</span>
+          </div>
+          <p class="text-base-content/70">Everything after launch, in one place.</p>
+          <ul class="mt-3 space-y-2 text-sm">
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" />
+              Email on your own domain
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" />
+              Live chat + one shared inbox
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" />
+              Content publishing + Google Ads
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" />
+              See who's converting
+            </li>
+          </ul>
+          <div class="card-actions mt-4">
+            <.link href={~p"/users/register"} class="btn btn-outline btn-block">Get started</.link>
+          </div>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 border border-base-300 shadow-sm">
+        <div class="card-body">
+          <span class="text-xs font-semibold uppercase tracking-[0.15em] text-base-content/60">
+            Built with you
+          </span>
+          <div class="text-4xl font-bold mt-1">
+            $500 <span class="text-base font-normal text-base-content/50">minimum · quoted</span>
+          </div>
+          <p class="text-base-content/70">
+            John runs the harness on your project. You get working software — and everything on the left.
+          </p>
+          <ul class="mt-3 space-y-2 text-sm">
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-accent shrink-0 mt-0.5" />
+              Scoped and quoted after a real conversation
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-accent shrink-0 mt-0.5" />
+              Built the same way — specs, tests, verification
+            </li>
+            <li class="flex gap-2">
+              <.icon name="hero-check" class="size-4 text-accent shrink-0 mt-0.5" />
+              You own everything when it ships
+            </li>
+          </ul>
+          <div class="card-actions mt-4">
+            <a href={ExternalLinks.cal_john()} class="btn btn-outline btn-block">Talk to John</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="text-sm text-base-content/50 mt-4">
+      Built with you is a conversation, not a checkout. Bring what you're trying to run and John will quote it.
+    </p>
     """
   end
 end

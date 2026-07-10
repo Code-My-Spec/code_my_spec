@@ -9,11 +9,13 @@ defmodule CodeMySpecWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {CodeMySpecWeb.Layouts, :root}
     plug :protect_from_forgery
+
     plug :put_secure_browser_headers, %{
       "strict-transport-security" => "max-age=63072000; includeSubDomains; preload",
       "permissions-policy" => "camera=(), microphone=(), geolocation=()",
       "x-frame-options" => "SAMEORIGIN"
     }
+
     plug :fetch_current_scope_for_user
     plug CodeMySpecWeb.Plugs.GaClientId
     plug CodeMySpecWeb.Plugs.CSP
@@ -39,6 +41,7 @@ defmodule CodeMySpecWeb.Router do
     get "/", PageController, :home
     get "/developers", PageController, :developers
     get "/install", PageController, :install
+    get "/pricing", PageController, :pricing
     get "/products/code-my-spec", PageController, :code_my_spec
     get "/products/market-my-spec", PageController, :market_my_spec_redirect
     get "/sitemap.xml", SitemapController, :index
@@ -59,9 +62,12 @@ defmodule CodeMySpecWeb.Router do
       live "/case-studies", ContentLive.Pages.CaseStudiesIndex, :case_studies
       live "/case-studies/metric-flow", ContentLive.Pages.MetricFlow, :metric_flow
       live "/case-studies/market-my-spec", ContentLive.Pages.MarketMySpec, :market_my_spec
+      live "/case-studies/cleaner-crm", ContentLive.Pages.CleanerCrm, :cleaner_crm
+
       live "/blog/agentic-marketing-with-mcp",
            ContentLive.Pages.AgenticMarketingWithMcp,
            :agentic_marketing_with_mcp
+
       live "/author/john-davenport", AuthorLive, :author
     end
 

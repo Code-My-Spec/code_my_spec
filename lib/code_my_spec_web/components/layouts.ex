@@ -91,7 +91,9 @@ defmodule CodeMySpecWeb.Layouts do
               data-subscribed="false"
             >
               <span data-notif-icon-off><.icon name="hero-bell" class="size-5" /></span>
-              <span data-notif-icon-on class="hidden"><.icon name="hero-bell-alert-solid" class="size-5 text-primary" /></span>
+              <span data-notif-icon-on class="hidden">
+                <.icon name="hero-bell-alert-solid" class="size-5 text-primary" />
+              </span>
             </button>
           </div>
         </div>
@@ -125,12 +127,18 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/users"}>Users</a></li>
               <li><a href={~p"/app/inbox"}>Chats</a></li>
               <li><a href={~p"/app/mail"}>Mail</a></li>
-              <li :if={can_manage_mailboxes?(@current_scope)}><a href={~p"/app/mailboxes"}>Mailboxes</a></li>
+              <li :if={can_manage_mailboxes?(@current_scope)}>
+                <a href={~p"/app/mailboxes"}>Mailboxes</a>
+              </li>
               <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
               <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <% end %>
             <%= if @current_scope do %>
-              <li class={if onboarding_complete?(@current_scope), do: "border-t border-base-300 mt-2 pt-2", else: "mt-auto border-t border-base-300 pt-2"}>
+              <li class={
+                if onboarding_complete?(@current_scope),
+                  do: "border-t border-base-300 mt-2 pt-2",
+                  else: "mt-auto border-t border-base-300 pt-2"
+              }>
                 <div class="text-xs opacity-60 px-2 truncate" title={@current_scope.user.email}>
                   {@current_scope.user.email}
                 </div>
@@ -257,11 +265,22 @@ defmodule CodeMySpecWeb.Layouts do
                   viewBox="0 0 24 24"
                   class="inline-block w-5 h-5 stroke-current"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
                 </svg>
               </label>
               <a href={~p"/"} class="btn btn-ghost text-xl normal-case px-2">
-                <img src={~p"/images/logo.svg"} alt="CodeMySpec" class="h-8 w-8" width="32" height="32" />
+                <img
+                  src={~p"/images/logo.svg"}
+                  alt="CodeMySpec"
+                  class="h-8 w-8"
+                  width="32"
+                  height="32"
+                />
                 <span class="hidden sm:inline">CodeMySpec</span>
               </a>
             </div>
@@ -269,6 +288,7 @@ defmodule CodeMySpecWeb.Layouts do
               <ul class="menu menu-horizontal menu-md px-1">
                 <li><.link href={~p"/developers"}>Developers</.link></li>
                 <li><.link href={~p"/methodology"}>Method</.link></li>
+                <li><.link href={~p"/pricing"}>Pricing</.link></li>
                 <li><.link href={~p"/blog"}>Blog</.link></li>
                 <li><.link href={~p"/documentation"}>Docs</.link></li>
               </ul>
@@ -277,11 +297,19 @@ defmodule CodeMySpecWeb.Layouts do
               <div class="hidden sm:block mr-1"><.theme_toggle /></div>
               <%= if @current_scope do %>
                 <span class="hidden">{@current_scope.user.email}</span>
-                <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost hidden sm:inline-flex">Log out</.link>
+                <.link
+                  href={~p"/users/log-out"}
+                  method="delete"
+                  class="btn btn-ghost hidden sm:inline-flex"
+                >
+                  Log out
+                </.link>
                 <.link href={~p"/app"} class="btn btn-primary">Open workspace</.link>
               <% else %>
-                <.link href={~p"/users/log-in"} class="btn btn-ghost hidden sm:inline-flex">Log in</.link>
-                <.link href={~p"/users/register"} class="btn btn-primary">Get started</.link>
+                <.link href={~p"/users/log-in"} class="btn btn-ghost hidden sm:inline-flex">
+                  Log in
+                </.link>
+                <.link href={~p"/install"} class="btn btn-primary">Start free</.link>
               <% end %>
             </div>
           </nav>
@@ -291,53 +319,127 @@ defmodule CodeMySpecWeb.Layouts do
           {render_slot(@inner_block)}
         </main>
 
-      <footer class="border-t border-base-300">
-        <div class="max-w-7xl mx-auto px-6 py-10">
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <h4 class="font-bold text-sm mb-3 text-base-content">Product</h4>
-              <ul class="space-y-2 text-sm text-base-content/70">
-                <li><a href="/methodology" class="hover:text-primary transition-colors">Methodology</a></li>
-                <li><a href="/case-studies" class="hover:text-primary transition-colors">Case Studies</a></li>
-                <li><a href="/users/register" class="hover:text-primary transition-colors">Get Started</a></li>
-              </ul>
+        <footer class="border-t border-base-300">
+          <div class="max-w-7xl mx-auto px-6 py-10">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+              <div>
+                <h4 class="font-bold text-sm mb-3 text-base-content">Product</h4>
+                <ul class="space-y-2 text-sm text-base-content/70">
+                  <li>
+                    <a href="/methodology" class="hover:text-primary transition-colors">
+                      Methodology
+                    </a>
+                  </li>
+                  <li><a href="/pricing" class="hover:text-primary transition-colors">Pricing</a></li>
+                  <li>
+                    <a href="/case-studies" class="hover:text-primary transition-colors">
+                      Case Studies
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/users/register" class="hover:text-primary transition-colors">
+                      Get Started
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h4 class="font-bold text-sm mb-3 text-base-content">Content</h4>
+                <ul class="space-y-2 text-sm text-base-content/70">
+                  <li><a href="/blog" class="hover:text-primary transition-colors">Blog</a></li>
+                  <li>
+                    <a href="/documentation" class="hover:text-primary transition-colors">
+                      Documentation
+                    </a>
+                  </li>
+                  <li><a href="/pages" class="hover:text-primary transition-colors">Pages</a></li>
+                  <li>
+                    <a href="/pages/founder-story" class="hover:text-primary transition-colors">
+                      Founder Story
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/pages/about" class="hover:text-primary transition-colors">About</a>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h4 class="font-bold text-sm mb-3 text-base-content">Legal</h4>
+                <ul class="space-y-2 text-sm text-base-content/70">
+                  <li>
+                    <a href="/pages/privacy-policy" class="hover:text-primary transition-colors">
+                      Privacy Policy
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/pages/terms-of-service" class="hover:text-primary transition-colors">
+                      Terms of Service
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="/pages/end-user-license-agreement"
+                      class="hover:text-primary transition-colors"
+                    >
+                      EULA
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h4 class="font-bold text-sm mb-3 text-base-content">Connect</h4>
+                <ul class="space-y-2 text-sm text-base-content/70">
+                  <li>
+                    <a
+                      href="https://github.com/code-my-spec"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="hover:text-primary transition-colors"
+                    >
+                      GitHub
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://www.linkedin.com/in/john-davenport-software/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="hover:text-primary transition-colors"
+                    >
+                      LinkedIn
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://x.com/johns10d"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="hover:text-primary transition-colors"
+                    >
+                      X / Twitter
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://www.youtube.com/@codemyspec"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="hover:text-primary transition-colors"
+                    >
+                      YouTube
+                    </a>
+                  </li>
+                </ul>
+              </div>
             </div>
-            <div>
-              <h4 class="font-bold text-sm mb-3 text-base-content">Content</h4>
-              <ul class="space-y-2 text-sm text-base-content/70">
-                <li><a href="/blog" class="hover:text-primary transition-colors">Blog</a></li>
-                <li><a href="/documentation" class="hover:text-primary transition-colors">Documentation</a></li>
-                <li><a href="/pages" class="hover:text-primary transition-colors">Pages</a></li>
-                <li><a href="/pages/founder-story" class="hover:text-primary transition-colors">Founder Story</a></li>
-                <li><a href="/pages/about" class="hover:text-primary transition-colors">About</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 class="font-bold text-sm mb-3 text-base-content">Legal</h4>
-              <ul class="space-y-2 text-sm text-base-content/70">
-                <li><a href="/pages/privacy-policy" class="hover:text-primary transition-colors">Privacy Policy</a></li>
-                <li><a href="/pages/terms-of-service" class="hover:text-primary transition-colors">Terms of Service</a></li>
-                <li><a href="/pages/end-user-license-agreement" class="hover:text-primary transition-colors">EULA</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 class="font-bold text-sm mb-3 text-base-content">Connect</h4>
-              <ul class="space-y-2 text-sm text-base-content/70">
-                <li><a href="https://github.com/code-my-spec" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">GitHub</a></li>
-                <li><a href="https://www.linkedin.com/in/john-davenport-software/" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">LinkedIn</a></li>
-                <li><a href="https://x.com/johns10d" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">X / Twitter</a></li>
-                <li><a href="https://www.youtube.com/@codemyspec" target="_blank" rel="noopener noreferrer" class="hover:text-primary transition-colors">YouTube</a></li>
-              </ul>
+            <div class="border-t border-base-300 pt-6 flex flex-col sm:flex-row justify-between items-center gap-2 text-sm text-base-content/50">
+              <div>© {Date.utc_today().year} CodeMySpec</div>
+              <div>One person. A whole software company.</div>
             </div>
           </div>
-          <div class="border-t border-base-300 pt-6 flex flex-col sm:flex-row justify-between items-center gap-2 text-sm text-base-content/50">
-            <div>© {Date.utc_today().year} CodeMySpec</div>
-            <div>One person. A whole software company.</div>
-          </div>
-        </div>
-      </footer>
+        </footer>
 
-      <.flash_group flash={@flash} />
+        <.flash_group flash={@flash} />
       </div>
 
       <div class="drawer-side z-20">
@@ -352,6 +454,7 @@ defmodule CodeMySpecWeb.Layouts do
           <ul class="menu p-4 text-base-content flex-1">
             <li><.link href={~p"/developers"}>Developers</.link></li>
             <li><.link href={~p"/methodology"}>Method</.link></li>
+            <li><.link href={~p"/pricing"}>Pricing</.link></li>
             <li><.link href={~p"/blog"}>Blog</.link></li>
             <li><.link href={~p"/documentation"}>Docs</.link></li>
           </ul>
@@ -361,10 +464,12 @@ defmodule CodeMySpecWeb.Layouts do
                 {@current_scope.user.email}
               </div>
               <.link href={~p"/app"} class="btn btn-primary btn-block">Open workspace</.link>
-              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-block">Log out</.link>
+              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-block">
+                Log out
+              </.link>
             <% else %>
               <.link href={~p"/users/log-in"} class="btn btn-ghost btn-block">Log in</.link>
-              <.link href={~p"/users/register"} class="btn btn-primary btn-block">Get started</.link>
+              <.link href={~p"/install"} class="btn btn-primary btn-block">Start free</.link>
             <% end %>
           </div>
         </aside>
@@ -398,7 +503,10 @@ defmodule CodeMySpecWeb.Layouts do
             href="/case-studies/market-my-spec?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
             data-event-label="cta-signature-case-study"
             class="link link-primary font-medium"
-          >CodeMySpec</a> — the harness I work in.
+          >
+            CodeMySpec
+          </a>
+          — the harness I work in.
         </p>
         <p class="text-base-content/70">
           Sign up (free, no card) then install:

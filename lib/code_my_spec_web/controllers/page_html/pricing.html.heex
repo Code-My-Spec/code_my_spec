@@ -1,0 +1,45 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+  <%!-- ───────────── HERO ───────────── --%>
+  <section class="bg-base-200 border-b border-base-300">
+    <div class="max-w-3xl mx-auto px-6 py-14 lg:py-20 text-center">
+      <.eyebrow name="pricing" align="center" />
+      <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-[1.05] mt-3">
+        Free to build. <span class="text-primary">$100 a month</span> to run.
+      </h1>
+      <p class="text-lg text-base-content/70 mt-5 max-w-2xl mx-auto leading-relaxed">
+        CodeMySpec is a set of model harnesses that help one person build, sell, and support
+        real software. Building is free forever. You pay when your software is live and working
+        for you — or bring John in to build it with you.
+      </p>
+      <p class="text-sm text-base-content/60 mt-4">
+        We never mark up the AI that powers it — bring your own keys and pay the AI company directly.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── PLANS ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.pricing_tiers />
+    </div>
+  </section>
+
+  <%!-- ───────────── RECOMMENDED PATH ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-3xl mx-auto px-6 py-14 lg:py-20">
+      <.eyebrow name="where_to_start" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">
+        Start with the marketing, not the app.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 leading-relaxed">
+        The harness includes a content engine, so the free tier isn't a demo — it's a working
+        start. Spin up your site, publish content, and let people find you while the software
+        is still being built. By the time the app is ready, you have an audience waiting for it.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-4">
+        <.link href={~p"/install"} class="btn btn-primary btn-lg">Start free</.link>
+        <a href={ExternalLinks.cal_john()} class="btn btn-outline btn-lg">Talk to John</a>
+      </div>
+    </div>
+  </section>
+</Layouts.marketing>

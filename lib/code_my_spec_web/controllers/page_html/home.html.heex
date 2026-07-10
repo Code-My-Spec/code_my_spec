@@ -12,8 +12,10 @@
           <span class="text-primary">The machine does the labor.</span>
         </h1>
         <p class="text-lg text-base-content/70 mt-6 max-w-lg leading-relaxed">
-          Together you build the software, run the email and chat your customers reach you on,
-          and do the outreach that grows it — the work of a whole team, without being one.
+          CodeMySpec is a set of AI harnesses that help one person build, sell, and support
+          real software. Together you build the app, run the email and chat your customers
+          reach you on, and do the outreach that grows it — the work of a whole team, without
+          being one.
         </p>
         <div class="mt-8 flex flex-wrap items-center gap-4">
           <.link href={~p"/install"} class="btn btn-primary btn-lg">Start free</.link>
@@ -247,43 +249,10 @@
         We never mark up the AI that powers it — bring your own keys and pay the AI company directly.
       </p>
 
-      <div class="grid md:grid-cols-2 gap-5 mt-12 max-w-3xl">
-        <div class="card bg-base-100 border-2 border-primary shadow-sm">
-          <div class="card-body">
-            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-base-content/60">Build</span>
-            <div class="text-4xl font-bold mt-1">$0 <span class="text-base font-normal text-base-content/50">/ forever</span></div>
-            <p class="text-base-content/70">Build your app and see it work. Own what you make.</p>
-            <ul class="mt-3 space-y-2 text-sm">
-              <li class="flex gap-2"><.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" /> Build real software with the model</li>
-              <li class="flex gap-2"><.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" /> Bring your own AI keys, no markup</li>
-              <li class="flex gap-2"><.icon name="hero-check" class="size-4 text-primary shrink-0 mt-0.5" /> Yours to keep — no lock-in</li>
-            </ul>
-            <div class="card-actions mt-4">
-              <.link href={~p"/install"} class="btn btn-primary btn-block">Start free</.link>
-            </div>
-          </div>
-        </div>
-
-        <div class="card bg-base-100 border border-base-300 shadow-sm">
-          <div class="card-body">
-            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-base-content/60">Operate &amp; Grow</span>
-            <div class="text-4xl font-bold mt-1">
-              $100 <span class="text-base font-normal text-base-content/50">/ month</span>
-            </div>
-            <p class="text-base-content/70">Everything after launch, in one place.</p>
-            <ul class="mt-3 space-y-2 text-sm">
-              <li class="flex gap-2"><.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" /> Email on your own domain</li>
-              <li class="flex gap-2"><.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" /> Live chat + one shared inbox</li>
-              <li class="flex gap-2"><.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" /> Content publishing + Google Ads</li>
-              <li class="flex gap-2"><.icon name="hero-check" class="size-4 text-secondary shrink-0 mt-0.5" /> See who's converting</li>
-            </ul>
-            <div class="card-actions mt-4">
-              <a href={ExternalLinks.cal_john()} class="btn btn-outline btn-block">Build it with me</a>
-            </div>
-          </div>
-        </div>
-      </div>
-      <p class="text-sm text-base-content/50 mt-4">Want it built with you? That's a conversation, not a checkout.</p>
+      <.pricing_tiers class="mt-12" />
+      <p class="text-sm text-base-content/50 mt-4">
+        The full breakdown lives on the <.link href={~p"/pricing"} class="link link-primary">pricing page</.link>.
+      </p>
     </div>
   </section>
 

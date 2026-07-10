@@ -64,13 +64,29 @@ defmodule CodeMySpecWeb.PageController do
             "applicationCategory" => "BusinessApplication",
             "operatingSystem" => "Web-based",
             "description" =>
-              "Structured AI-assisted development workflows for Phoenix applications. Guides AI agents through design, BDD specs, implementation, and QA.",
+              "A set of AI harnesses that help one person build, sell, and support real software. Build free with your own AI keys; run and grow it for $100 a month per user.",
             "offers" => %{
-              "@type" => "Offer",
-              "price" => "0",
+              "@type" => "AggregateOffer",
               "priceCurrency" => "USD",
-              "availability" => "https://schema.org/InStock",
-              "priceValidUntil" => "2027-04-05"
+              "lowPrice" => "0",
+              "highPrice" => "100",
+              "offerCount" => "2",
+              "offers" => [
+                %{
+                  "@type" => "Offer",
+                  "name" => "Build",
+                  "price" => "0",
+                  "priceCurrency" => "USD",
+                  "availability" => "https://schema.org/InStock"
+                },
+                %{
+                  "@type" => "Offer",
+                  "name" => "Operate & Grow",
+                  "price" => "100",
+                  "priceCurrency" => "USD",
+                  "availability" => "https://schema.org/InStock"
+                }
+              ]
             },
             "publisher" => %{
               "@id" => "https://codemyspec.com/#organization"
@@ -153,7 +169,8 @@ defmodule CodeMySpecWeb.PageController do
             "mainEntity" => [
               %{
                 "@type" => "Question",
-                "name" => "If you don't get between me and the model, why install a thing between me and the model?",
+                "name" =>
+                  "If you don't get between me and the model, why install a thing between me and the model?",
                 "acceptedAnswer" => %{
                   "@type" => "Answer",
                   "text" =>
@@ -291,6 +308,104 @@ defmodule CodeMySpecWeb.PageController do
     )
   end
 
+  def pricing(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/pricing"
+
+    meta = %{
+      page_title: "CodeMySpec Pricing — Free to Build, $100/mo to Run",
+      meta_description:
+        "Build for free with the CodeMySpec harness, content engine included. Run and grow your software for $100 a month per user, or have John build it with you from $500.",
+      og_title: "Free to build. $100 a month to run.",
+      og_description:
+        "The build and content harnesses are free forever, with your own AI keys and no markup. Pay $100 a month per user when your software is live, or have John build it with you from $500."
+    }
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "SoftwareApplication",
+            "@id" => "#{canonical}#software",
+            "name" => "CodeMySpec",
+            "url" => canonical,
+            "applicationCategory" => "BusinessApplication",
+            "operatingSystem" => "Web-based, macOS, Windows",
+            "description" =>
+              "A set of model harnesses that help one person build, sell, and support real software.",
+            "offers" => %{
+              "@type" => "AggregateOffer",
+              "priceCurrency" => "USD",
+              "lowPrice" => "0",
+              "highPrice" => "100",
+              "offerCount" => "2",
+              "offers" => [
+                %{
+                  "@type" => "Offer",
+                  "name" => "Build",
+                  "description" =>
+                    "The build and content harnesses, free forever. Bring your own AI keys, own everything you make.",
+                  "price" => "0",
+                  "priceCurrency" => "USD",
+                  "availability" => "https://schema.org/InStock"
+                },
+                %{
+                  "@type" => "Offer",
+                  "name" => "Operate & Grow",
+                  "description" =>
+                    "Email on your own domain, live chat, content publishing, Google Ads, and conversion reporting. Per user, per month.",
+                  "price" => "100",
+                  "priceCurrency" => "USD",
+                  "availability" => "https://schema.org/InStock"
+                }
+              ]
+            },
+            "publisher" => %{"@id" => "#{base_url}/#organization"}
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "Service",
+            "@id" => "#{canonical}#built-with-you",
+            "name" => "CodeMySpec — Built with you",
+            "serviceType" => "Software development",
+            "description" =>
+              "John runs the CodeMySpec harness on your project and delivers working software. Scoped and quoted after a conversation, $500 minimum.",
+            "provider" => %{"@id" => "#{base_url}/#organization"},
+            "offers" => %{
+              "@type" => "Offer",
+              "priceCurrency" => "USD",
+              "priceSpecification" => %{
+                "@type" => "PriceSpecification",
+                "minPrice" => "500",
+                "priceCurrency" => "USD"
+              },
+              "availability" => "https://schema.org/InStock"
+            }
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "BreadcrumbList",
+            "itemListElement" => [
+              %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+              %{"@type" => "ListItem", "position" => 2, "name" => "Pricing", "item" => canonical}
+            ]
+          }
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :pricing,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-pricing.png", base_url),
+      canonical_url: canonical,
+      json_ld_list: json_ld_list
+    )
+  end
+
   # The old engineer product page collapsed into /developers (one engineer door).
   # 301 preserves its SEO equity and backlinks.
   def code_my_spec(conn, _params) do
@@ -304,5 +419,4 @@ defmodule CodeMySpecWeb.PageController do
     |> Plug.Conn.put_status(:moved_permanently)
     |> Phoenix.Controller.redirect(external: "https://marketmyspec.com")
   end
-
 end
