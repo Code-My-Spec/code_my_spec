@@ -71,6 +71,25 @@ defmodule CodeMySpecWeb.QuestionLiveTest do
     assert Notifications.get_question_request(req.id).answers["Which database?"] == "CockroachDB"
   end
 
+  test "a question with no options renders a textarea and records the typed answer", %{conn: conn, user: user} do
+    {:ok, req} =
+      Notifications.create_question_request(user.id, %{
+        "questions" => [%{"question" => "What should the error copy say?", "options" => []}]
+      })
+
+    {:ok, view, html} = live(conn, ~p"/app/questions/#{req.id}")
+    assert html =~ "What should the error copy say?"
+    assert html =~ "<textarea"
+
+    view
+    |> element("form")
+    |> render_submit(%{"q_0" => "Something went wrong — please try again."})
+
+    updated = Notifications.get_question_request(req.id)
+    assert updated.status == "answered"
+    assert updated.answers["What should the error copy say?"] == "Something went wrong — please try again."
+  end
+
   test "another user's question is not shown", %{conn: conn} do
     other = user_fixture()
 

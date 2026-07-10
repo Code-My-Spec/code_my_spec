@@ -104,31 +104,41 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
                   <p class="mt-1 font-medium">{question["question"]}</p>
                 </div>
 
-                <label
-                  :for={opt <- question["options"] || []}
-                  class="flex cursor-pointer items-start gap-3 rounded-box border border-base-300 p-3 hover:bg-base-300/40"
-                >
-                  <input
-                    type={input_type(question)}
-                    name={field_name(question, i)}
-                    value={opt["label"]}
-                    class={choice_class(question)}
-                  />
-                  <span class="flex flex-col">
-                    <span class="font-medium">{opt["label"]}</span>
-                    <span :if={opt["description"]} class="text-xs opacity-60">{opt["description"]}</span>
-                  </span>
-                </label>
+                <textarea
+                  :if={free_form?(question)}
+                  name={"q_#{i}"}
+                  rows="4"
+                  placeholder="Type your answer…"
+                  class="textarea textarea-bordered w-full"
+                ></textarea>
 
-                <label class="flex cursor-pointer items-center gap-3 rounded-box border border-dashed border-base-300 p-3">
-                  <input type={input_type(question)} name={field_name(question, i)} value="__other__" class={choice_class(question)} />
-                  <input
-                    type="text"
-                    name={"q_#{i}_other"}
-                    placeholder="Other…"
-                    class="input input-bordered input-sm flex-1"
-                  />
-                </label>
+                <div :if={not free_form?(question)} class="space-y-2">
+                  <label
+                    :for={opt <- question["options"] || []}
+                    class="flex cursor-pointer items-start gap-3 rounded-box border border-base-300 p-3 hover:bg-base-300/40"
+                  >
+                    <input
+                      type={input_type(question)}
+                      name={field_name(question, i)}
+                      value={opt["label"]}
+                      class={choice_class(question)}
+                    />
+                    <span class="flex flex-col">
+                      <span class="font-medium">{opt["label"]}</span>
+                      <span :if={opt["description"]} class="text-xs opacity-60">{opt["description"]}</span>
+                    </span>
+                  </label>
+
+                  <label class="flex cursor-pointer items-center gap-3 rounded-box border border-dashed border-base-300 p-3">
+                    <input type={input_type(question)} name={field_name(question, i)} value="__other__" class={choice_class(question)} />
+                    <input
+                      type="text"
+                      name={"q_#{i}_other"}
+                      placeholder="Other…"
+                      class="input input-bordered input-sm flex-1"
+                    />
+                  </label>
+                </div>
               </fieldset>
 
               <button type="submit" class="btn btn-primary btn-lg w-full">Send answer</button>
@@ -143,6 +153,9 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
     </Layouts.app>
     """
   end
+
+  # A question with no options is answered as free text (a textarea).
+  defp free_form?(question), do: (question["options"] || []) == []
 
   defp input_type(%{"multiSelect" => true}), do: "checkbox"
   defp input_type(_question), do: "radio"
