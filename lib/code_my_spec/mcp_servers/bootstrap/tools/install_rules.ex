@@ -22,9 +22,23 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallRules do
       :ok ->
         {:reply, BootstrapMapper.install_success(".code_my_spec/rules/"), frame}
 
+      {:error, {:source_dir, :enoent}} ->
+        {:reply, BootstrapMapper.error(stale_server_message("priv/rules")), frame}
+
       {:error, reason} ->
         {:reply, BootstrapMapper.error("Failed to install rules: #{inspect(reason)}"), frame}
     end
+  end
+
+  # `Application.app_dir/2` resolves against the RUNNING release's priv — a
+  # missing source dir almost always means the cms binary was updated on disk
+  # while an older BEAM kept serving (its extracted priv no longer matches).
+  # A bare `:enoent` cost a real user a debugging session; say the fix.
+  defp stale_server_message(dir) do
+    "The running cms server can't find its #{dir} directory. This usually means " <>
+      "the server was updated while the old process kept running — restart it " <>
+      "(macOS: `brew services restart codemyspec`; Windows: restart the CodeMySpec " <>
+      "service) and retry."
   end
 
   # Source files ship with the harness package (`priv/rules/`) and are read

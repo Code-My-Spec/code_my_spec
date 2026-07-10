@@ -247,7 +247,18 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
       (deps/migrate/compile/test), integration provider command pattern,
       and the feedback widget multi-step setup procedure.
     - `cms_generators/script-format.md` — reproducible bash script format
-      and rules.\
+      and rules.
+
+    ## Case-module namespace clash (phx.gen.auth)
+
+    Project setup renames the test case modules to `AppTest.ConnCase` /
+    `AppTest.DataCase`, but Phoenix generators hardcode the default names
+    (`AppWeb.ConnCase` / `App.DataCase`) in every test they emit. Before
+    running `mix phx.gen.auth`, make sure the compatibility shims exist
+    (`test/support/conn_case_compat.ex` / `data_case_compat.ex` — modules
+    named `AppWeb.ConnCase` / `App.DataCase` whose `__using__` forwards to
+    the `AppTest.*` case). If they're missing, create them; otherwise the
+    generated test suite will not compile.\
     """
   end
 

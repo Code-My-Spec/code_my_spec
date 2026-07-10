@@ -30,9 +30,23 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks do
          :ok <- copy_framework_files(env, source_dir, framework_dir) do
       {:reply, BootstrapMapper.install_success(".code_my_spec/credo_checks/"), frame}
     else
+      {:error, {:source_dir, :enoent}} ->
+        {:reply, BootstrapMapper.error(stale_server_message()), frame}
+
       {:error, reason} ->
         {:reply, BootstrapMapper.error("Failed to install credo checks: #{inspect(reason)}"), frame}
     end
+  end
+
+  # `Application.app_dir/2` resolves against the RUNNING release's priv — a
+  # missing source dir almost always means the cms binary was updated on disk
+  # while an older BEAM kept serving. A bare `:enoent` cost a real user a
+  # debugging session; say the fix.
+  defp stale_server_message do
+    "The running cms server can't find its priv/credo_checks directory. This " <>
+      "usually means the server was updated while the old process kept running — " <>
+      "restart it (macOS: `brew services restart codemyspec`; Windows: restart " <>
+      "the CodeMySpec service) and retry."
   end
 
   # Idempotent: never overwrites an existing destination file. Once a
@@ -47,7 +61,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks do
   defp copy_framework_files(env, source_dir, framework_dir) do
     case File.ls(source_dir) do
       {:ok, entries} -> reduce_copies(env, entries, source_dir, framework_dir)
-      {:error, reason} -> {:error, reason}
+      {:error, reason} -> {:error, {:source_dir, reason}}
     end
   end
 

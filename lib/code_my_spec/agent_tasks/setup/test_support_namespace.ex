@@ -56,6 +56,44 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
     `#{mod}.DataCase` → `#{mod}Test.DataCase`
 
     Update all test files that `use` these modules.
+
+    Then create compatibility shims so Phoenix generators keep working —
+    `mix phx.gen.auth` / `phx.gen.live` / `phx.gen.html` hardcode the default
+    case-module names in every test they emit, and without these shims their
+    output does not compile:
+
+    `test/support/conn_case_compat.ex`:
+    ```elixir
+    defmodule #{mod}Web.ConnCase do
+      @moduledoc \"\"\"
+      Compatibility shim: Phoenix generators emit `use #{mod}Web.ConnCase`.
+      The real case module is `#{mod}Test.ConnCase` — forward to it.
+      \"\"\"
+      defmacro __using__(opts) do
+        quote do
+          use #{mod}Test.ConnCase, unquote(opts)
+        end
+      end
+    end
+    ```
+
+    `test/support/data_case_compat.ex`:
+    ```elixir
+    defmodule #{mod}.DataCase do
+      @moduledoc \"\"\"
+      Compatibility shim: Phoenix generators emit `use #{mod}.DataCase`.
+      The real case module is `#{mod}Test.DataCase` — forward to it.
+      \"\"\"
+      defmacro __using__(opts) do
+        quote do
+          use #{mod}Test.DataCase, unquote(opts)
+        end
+      end
+    end
+    ```
+
+    Newly generated tests then compile as-emitted; normalize them to the
+    `#{mod}Test.*` names whenever you next touch those files.
     """}
   end
 end
