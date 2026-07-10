@@ -85,7 +85,8 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
               <img
                 src={CodeMySpecWeb.ImageUrl.image_url(cs.og_image, CodeMySpecWeb.Endpoint.url())}
                 alt={"#{cs.title} case study preview"}
-                class="w-full h-full object-contain"
+                class="w-full h-full"
+                style="object-fit: contain; filter: none;"
                 loading="lazy"
               />
             </figure>
