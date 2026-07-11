@@ -139,6 +139,27 @@ defmodule CodeMySpec.Issues do
   end
 
   @doc """
+  Deploy-key-authenticated framework issue report: an installed CLI files
+  CodeMySpec friction (looping hooks, contradictory prompts, tool errors)
+  without an OAuth connection — the pre-shared framework deploy key resolves
+  the project via its blind-index hash, same flow as `report_from_widget/3`.
+  Scope is forced to `framework` so the key grants nothing broader; source
+  defaults to `"cli"`.
+  """
+  def report_framework_issue(account_id, project_id, attrs)
+      when is_binary(account_id) and is_binary(project_id) and is_map(attrs) do
+    scope = %Scope{active_account_id: account_id, active_project_id: project_id}
+
+    attrs =
+      attrs
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.put("scope", "framework")
+      |> Map.put_new("source", "cli")
+
+    create_issue(scope, attrs)
+  end
+
+  @doc """
   Creates issues from a validated QA result document.
 
   Parses the issues section, upserts each issue (skipping duplicates by title + story_id),

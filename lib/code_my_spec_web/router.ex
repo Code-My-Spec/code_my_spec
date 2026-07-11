@@ -210,6 +210,14 @@ defmodule CodeMySpecWeb.Router do
     get "/users", CmsUsersController, :index
   end
 
+  # Framework issue intake from installed CLIs (deploy-key Bearer auth, no
+  # OAuth — local-first installs have no token; the key resolves the project).
+  scope "/api/framework", CodeMySpecWeb do
+    pipe_through :api
+
+    post "/issues", FrameworkIssuesController, :create
+  end
+
   # (analytics/event route removed — browser events fire via gtag.js directly)
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

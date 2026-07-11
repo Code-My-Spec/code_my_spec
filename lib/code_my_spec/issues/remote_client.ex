@@ -115,8 +115,50 @@ defmodule CodeMySpec.Issues.RemoteClient do
   or `{:error, reason}` otherwise.
   """
   def create_issue(%Scope{} = scope, attrs, opts \\ []) do
-    scope = route_framework_scope(scope, attrs)
+    if framework?(attrs[:scope]) do
+      create_framework_issue(scope, attrs, opts)
+    else
+      post_issue(scope, attrs, opts)
+    end
+  end
 
+  # Framework-scoped issues are friction with CodeMySpec itself, so they must
+  # land on the CodeMySpec project on the server — not the user's active
+  # project. Preferred auth is the pre-shared framework deploy key (widget
+  # semantics: self-identifying via its blind-index hash, grants issue-filing
+  # only), which works without an OAuth connection — the local-first default.
+  # When no key is configured, fall back to the legacy OAuth path with the
+  # `x-project-id` header overridden to the per-environment
+  # `:code_my_spec_project_id`.
+  defp create_framework_issue(%Scope{} = scope, attrs, opts) do
+    case framework_deploy_key() do
+      key when is_binary(key) and key != "" ->
+        client =
+          Req.new(
+            base_url: get_base_url(),
+            headers: [authorization: "Bearer #{key}"],
+            decode_json: [keys: :strings],
+            retry: :transient,
+            max_retries: 3
+          )
+          |> maybe_plug(opts)
+
+        with {:ok, response} <-
+               Req.post(client,
+                 url: "/api/framework/issues",
+                 json: %{issue: stringify_attrs(attrs)}
+               ) do
+          handle_create_response(response)
+        end
+
+      _ ->
+        scope
+        |> route_framework_scope()
+        |> post_issue(attrs, opts)
+    end
+  end
+
+  defp post_issue(%Scope{} = scope, attrs, opts) do
     with {:ok, client} <- new(scope, opts),
          {:ok, response} <-
            Req.post(client, url: "/api/issues", json: %{issue: stringify_attrs(attrs)}) do
@@ -124,18 +166,10 @@ defmodule CodeMySpec.Issues.RemoteClient do
     end
   end
 
-  # Framework-scoped issues are friction with CodeMySpec itself, so they must
-  # land on the CodeMySpec project on the server — not the user's active
-  # project. Override the project the request is scoped to (sent via the
-  # `x-project-id` header) with the per-environment `:code_my_spec_project_id`.
-  # If unconfigured, fall through unchanged.
-  defp route_framework_scope(%Scope{} = scope, attrs) do
-    case {framework?(attrs[:scope]), code_my_spec_project_id()} do
-      {true, project_id} when is_binary(project_id) ->
-        %{scope | active_project_id: project_id}
-
-      _ ->
-        scope
+  defp route_framework_scope(%Scope{} = scope) do
+    case code_my_spec_project_id() do
+      project_id when is_binary(project_id) -> %{scope | active_project_id: project_id}
+      _ -> scope
     end
   end
 
@@ -145,6 +179,10 @@ defmodule CodeMySpec.Issues.RemoteClient do
 
   defp code_my_spec_project_id do
     Application.get_env(:code_my_spec, :code_my_spec_project_id)
+  end
+
+  defp framework_deploy_key do
+    Application.get_env(:code_my_spec, :framework_deploy_key)
   end
 
   defp handle_create_response(%{status: status, body: body}) when status in [200, 201],

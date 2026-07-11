@@ -11,8 +11,16 @@ config :code_my_spec,
 
 # Framework-scoped issues route to the CodeMySpec project on the dev server,
 # not the user's active project. Sent via the `x-project-id` header by
-# Issues.RemoteClient.create_issue/3.
+# Issues.RemoteClient.create_issue/3 on the legacy OAuth fallback path.
 config :code_my_spec, code_my_spec_project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
+
+# That project's deploy key (projects.deploy_key — widget semantics: the
+# blind-index hash resolves the project from the key alone). Preferred auth
+# for framework issues: POST /api/framework/issues works with no OAuth
+# connection, the local-first default.
+config :code_my_spec,
+  framework_deploy_key:
+    "6fc8a6e26353b21b332ce537ed427175ef3af8e2cad73a834095d1e1e8918062e42b6aa8c27f5d8f47246574c82b2d3a17248db692906f6f1bcbfd7b754286c9"
 
 # PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.
 # Disable on the local CLI deployment; versions are still recorded but

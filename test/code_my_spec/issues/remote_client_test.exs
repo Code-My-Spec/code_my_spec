@@ -159,9 +159,69 @@ defmodule CodeMySpec.Issues.RemoteClientTest do
     end
   end
 
+  describe "create_issue/3 with framework deploy key" do
+    setup do
+      prev = Application.get_env(:code_my_spec, :framework_deploy_key)
+      Application.put_env(:code_my_spec, :framework_deploy_key, "framework-key-abc")
+
+      on_exit(fn ->
+        if prev do
+          Application.put_env(:code_my_spec, :framework_deploy_key, prev)
+        else
+          Application.delete_env(:code_my_spec, :framework_deploy_key)
+        end
+      end)
+
+      :ok
+    end
+
+    test "framework-scoped issue posts to the key-auth endpoint with no OAuth token", %{
+      scope: scope
+    } do
+      plug = auth_capturing_plug(self(), 201, %{"data" => issue_payload(%{"scope" => "framework"})})
+
+      # No `token:` opt — the key path must never touch OAuthClient.
+      assert {:ok, %Issue{}} =
+               RemoteClient.create_issue(
+                 scope,
+                 %{title: "Looping hook", scope: :framework, severity: :high, description: "..."},
+                 plug: plug
+               )
+
+      assert_received {:request, path, authorization}
+      assert path == "/api/framework/issues"
+      assert authorization == "Bearer framework-key-abc"
+    end
+
+    test "app-scoped issue still takes the OAuth path", %{scope: scope} do
+      plug = auth_capturing_plug(self(), 201, %{"data" => issue_payload(%{})})
+
+      assert {:ok, %Issue{}} =
+               RemoteClient.create_issue(
+                 scope,
+                 %{title: "Bug", scope: :app, severity: :low, description: "..."},
+                 plug: plug,
+                 token: "test"
+               )
+
+      assert_received {:request, "/api/issues", "Bearer test"}
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
+
+  defp auth_capturing_plug(test_pid, status, body) do
+    fn conn ->
+      authorization = conn |> Plug.Conn.get_req_header("authorization") |> List.first()
+      send(test_pid, {:request, conn.request_path, authorization})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.resp(status, Jason.encode!(body))
+    end
+  end
 
   defp capturing_plug(test_pid, status, body) do
     fn conn ->
