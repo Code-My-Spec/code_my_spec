@@ -21,8 +21,8 @@ defmodule CodeMySpecSpex.Story858.Criterion7306Spex do
 
   spex "Opting out of prod completes setup UAT-only" do
     scenario "with prod opted out, the setup plan is UAT-only" do
-      given_ "Sam has opted out of a prod environment in project configuration", context do
-        {:ok, _config} = Fixtures.update_project_configuration(context.scope, %{devops_prod: :off})
+      given_ "Sam has set the DevOps level to UAT-only in project configuration", context do
+        {:ok, _config} = Fixtures.update_project_configuration(context.scope, %{devops: :uat})
         {:ok, context}
       end
 

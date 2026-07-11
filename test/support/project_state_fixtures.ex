@@ -139,7 +139,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   Satisfies `devops_setup` by writing a setup record attesting verified
   environments (story 858). The evaluator requires an `## Environments`
   section with live health-check verification — and `prod` unless the
-  project opted out via `devops_prod: :off`.
+  project opted out via `devops: :uat` (one level below the full-promotion default).
   """
   @spec apply_devops_setup(map()) :: map()
   def apply_devops_setup(context) do

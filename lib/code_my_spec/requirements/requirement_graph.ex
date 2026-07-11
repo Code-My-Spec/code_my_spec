@@ -537,8 +537,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp compute_all_from_ctx(scope, ctx, config) do
     {component_nodes, component_edges} = instantiate_component_graphs(scope, ctx, config)
-    {story_nodes, story_edges} = compute_story_nodes(scope, ctx)
-    {project_nodes, project_edges} = compute_project_nodes(scope, ctx)
+    {story_nodes, story_edges} = compute_story_nodes(scope, ctx, config)
+    {project_nodes, project_edges} = compute_project_nodes(scope, ctx, config)
 
     all_nodes = project_nodes ++ story_nodes ++ component_nodes
     all_template_edges = component_edges ++ story_edges ++ project_edges
@@ -807,8 +807,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     Enum.filter(defs, &(&1.name in allowed))
   end
 
-  defp compute_story_nodes(scope, ctx) do
-    template = RequirementDefinitionData.story_graph()
+  defp compute_story_nodes(scope, ctx, config) do
+    # Only the devops filter applies to story templates — the
+    # specs/reviews/tests filters are component-scoped by design
+    # (require_specs must not strip three_amigos/bdd requirements).
+    # devops: :off drops the deploy requirement from every story.
+    template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
     project = scope.active_project
 
     {nodes, edges} =
@@ -848,9 +852,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, edges}
   end
 
-  defp compute_project_nodes(scope, ctx) do
+  defp compute_project_nodes(scope, ctx, config) do
     project = scope.active_project
-    template = RequirementDefinitionData.project_graph()
+
+    # Only the devops filter applies to the project template (see
+    # compute_story_nodes) — devops: :off drops devops_setup so the graph
+    # never demands infrastructure work.
+    template = maybe_filter_devops(RequirementDefinitionData.project_graph(), config)
     files = ctx.files_by_project || []
 
     id_map = Map.new(template, fn d -> {d.id, [{"project", project.id, d.name}]} end)
@@ -992,12 +1000,21 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # require_specs: false → removes :specification artifact types
   # require_reviews: false → removes :review artifact types
   # require_unit_tests: false → removes :tests artifact type + tests_passing
+  # devops: :off → removes devops_setup + deploy (the graph stays silent
+  # about infrastructure; the user deploys on their own terms)
   defp filter_definitions_by_config(definitions, config) do
     definitions
     |> maybe_filter_specs(config)
     |> maybe_filter_reviews(config)
     |> maybe_filter_tests(config)
+    |> maybe_filter_devops(config)
   end
+
+  defp maybe_filter_devops(definitions, %{devops: :off}) do
+    Enum.reject(definitions, &(&1.name in ["devops_setup", "deploy"]))
+  end
+
+  defp maybe_filter_devops(definitions, _config), do: definitions
 
   defp maybe_filter_specs(definitions, %{require_specs: false}) do
     Enum.reject(definitions, &(&1.artifact_type == :specification))

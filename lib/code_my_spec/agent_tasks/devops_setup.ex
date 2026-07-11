@@ -19,8 +19,9 @@ defmodule CodeMySpec.AgentTasks.DevopsSetup do
   - Nightly `pg_dump` to S3 with expiry; UptimeRobot (or equivalent)
     monitor per public domain.
 
-  Environments: UAT by default, prod by default with a per-project opt-out
-  (`ProjectConfiguration.devops_prod: :off`).
+  Environments follow `ProjectConfiguration.devops` — one ordered level:
+  `:off` (the graph never demands this task), `:uat` (staging only), or
+  `:prod` (full UAT-then-prod, the default).
   """
 
   alias CodeMySpec.Configurations
@@ -106,8 +107,10 @@ defmodule CodeMySpec.AgentTasks.DevopsSetup do
     end
   end
 
+  # :off never reaches this task (the graph filter drops the requirement);
+  # anything unset or unknown gets the recommended full-promotion default.
   defp prod_enabled?(config) do
-    (Map.get(config, :devops_prod) || :on) != :off
+    (Map.get(config, :devops) || :prod) != :uat
   end
 
   # ── Prompt sections ─────────────────────────────────────────────────

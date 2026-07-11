@@ -29,7 +29,8 @@ defmodule CodeMySpec.AgentTasks.Deploy do
   @spec command(Scope.t(), map()) :: {:ok, String.t()}
   def command(%Scope{} = scope, task) do
     config = Configurations.get_or_create(scope)
-    prod? = (Map.get(config, :devops_prod) || :on) != :off
+    # :off never reaches this task (the graph filter drops the requirement).
+    prod? = (Map.get(config, :devops) || :prod) != :uat
     story_id = story_id_of(task)
 
     {:ok,
