@@ -83,6 +83,18 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     # `apply_persona` is folded into kickoff there; the result still merges
     # `:persona_slug` and `:persona_id` into context for the story-level
     # steps below.
+    |> apply_without_deploy()
+    |> ProjectStateFixtures.apply_deploy_record()
+  end
+
+  @doc """
+  Apply every satisfaction layer EXCEPT the story's `deploy` record —
+  the "story just cleared QA, promotion pending" state the loop-deploy
+  spex (story 858) start from.
+  """
+  @spec apply_without_deploy(map()) :: map()
+  def apply_without_deploy(context) do
+    context
     |> apply_without_qa_story()
     |> apply_qa_story_artifacts()
   end
@@ -100,6 +112,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> ProjectStateFixtures.apply_technical_strategy()
     |> ProjectStateFixtures.apply_code_generation()
     |> ProjectStateFixtures.apply_qa_integration_plan()
+    |> ProjectStateFixtures.apply_devops_setup()
     |> ProjectStateFixtures.apply_architecture()
     |> ProjectStateFixtures.apply_spex_boundary_ready()
     |> apply_component_subgraph()

@@ -71,6 +71,10 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # filters out registrations whose last_heartbeat_at exceeds this).
     field :subagent_ttl_minutes, :integer, default: 10
 
+    # Story 858 — prod is stood up by default, but the user can opt out;
+    # devops_setup then plans UAT only and the graph never demands prod.
+    field :devops_prod, Ecto.Enum, values: [:on, :off], default: :on
+
     timestamps(type: :utc_datetime)
   end
 
@@ -89,7 +93,8 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
       :spec_validation,
       :qa_validation,
       :fix_issues_min_severity,
-      :subagent_ttl_minutes
+      :subagent_ttl_minutes,
+      :devops_prod
     ])
     |> validate_required([:project_id])
     |> validate_number(:subagent_ttl_minutes, greater_than: 0)

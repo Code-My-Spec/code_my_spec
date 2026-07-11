@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7304Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,11 +24,16 @@ defmodule CodeMySpecSpex.Story858.Criterion7304Spex do
   spex "DevOps setup surfaces after code generation" do
     scenario "with code generation complete, the graph offers devops_setup" do
       given_ "the project chain is satisfied through code generation", context do
-        context =
-          context
-          |> ProjectStateFixtures.apply_project_setup_steps()
-          |> ProjectStateFixtures.apply_technical_strategy()
-          |> ProjectStateFixtures.apply_code_generation()
+        # The serial chain gates on unsatisfied ancestors, so everything
+        # upstream of devops_setup (setup → personas → stories → strategy →
+        # code generation) must be satisfied for it to surface.
+        context = ProjectStateFixtures.apply_project_kickoff(context)
+
+        _story =
+          StoryHelpers.create_story(context.scope,
+            title: "Seed story",
+            description: "As a user, I want the app to exist."
+          )
 
         {:ok, context}
       end

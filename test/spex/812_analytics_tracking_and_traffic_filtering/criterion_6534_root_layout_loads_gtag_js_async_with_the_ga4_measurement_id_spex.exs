@@ -44,13 +44,13 @@ defmodule CodeMySpecSpex.Story812.Criterion6534Spex do
       end
 
       then_ "the gtag snippet is loaded asynchronously", context do
-        # The gtag script tag must carry `async` in some form.
-        # The URL path is `gtag/js` (not `gtag.js`) — check for `async`
-        # on any `<script>` element that references googletagmanager.
-        # Accept bare `async`, `async=""`, or `async="async"`.
+        # gtag.js is deferred to first interaction/idle (4db65177): the
+        # page ships an inline loader that createElement's the script with
+        # `async = true` instead of a static <script async> tag. Assert the
+        # deferred loader carries the async flag near the gtag src.
         assert context.html =~
-                 ~r/<script[^>]*async[^>]*googletagmanager|<script[^>]*googletagmanager[^>]*async/,
-               "expected the gtag.js script tag from googletagmanager.com to carry the `async` attribute"
+                 ~r/async\s*=\s*true[\s\S]{0,200}googletagmanager\.com\/gtag\/js|<script[^>]*async[^>]*googletagmanager/,
+               "expected the gtag.js loader to mark the script async (deferred loader or static tag)"
 
         {:ok, context}
       end

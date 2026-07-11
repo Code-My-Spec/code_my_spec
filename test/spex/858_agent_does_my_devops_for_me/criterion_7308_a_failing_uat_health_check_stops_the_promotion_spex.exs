@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7308Spex do
   spex "A failing UAT health check stops the promotion" do
     scenario "the deploy prompt gates prod on UAT health" do
       given_ "devops setup is complete and a story has passed QA", context do
-        {:ok, FullSatisfactionFixtures.apply(context)}
+        {:ok, FullSatisfactionFixtures.apply_without_deploy(context)}
       end
 
       given_ "the agent has signalled session start", context do
@@ -45,8 +45,8 @@ defmodule CodeMySpecSpex.Story858.Criterion7308Spex do
           StartTask.execute(
             %{
               requirement_name: "deploy",
-              entity_type: "project",
-              entity_id: to_string(context.project.id),
+              entity_type: "story",
+              entity_id: to_string(context.story.id),
               session_id: context.session_id
             },
             frame

@@ -136,6 +136,54 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   end
 
   @doc """
+  Satisfies `devops_setup` by writing a setup record attesting verified
+  environments (story 858). The evaluator requires an `## Environments`
+  section with live health-check verification — and `prod` unless the
+  project opted out via `devops_prod: :off`.
+  """
+  @spec apply_devops_setup(map()) :: map()
+  def apply_devops_setup(context) do
+    :ok =
+      Environments.write_file(context.environment, ".code_my_spec/devops/setup.md", """
+      # DevOps Setup
+
+      ## Environments
+
+      - uat.example.test — health check verified (200 over TLS)
+      - example.test (prod) — health check verified (200 over TLS)
+
+      ## Resilience
+
+      - Nightly pg_dump to the backups bucket (90-day expiry)
+      - Uptime monitors: uat.example.test, example.test
+      """)
+
+    context
+  end
+
+  @doc """
+  Satisfies the story-level `deploy` requirement by writing the story's
+  deploy record with a verified promotion (story 858).
+  """
+  @spec apply_deploy_record(map()) :: map()
+  def apply_deploy_record(%{story: story} = context) do
+    :ok =
+      Environments.write_file(
+        context.environment,
+        ".code_my_spec/devops/deploys/story_#{story.id}.md",
+        """
+        # Deploy — story #{story.id}
+
+        - Version: abc123
+        - UAT health check: verified (200 over TLS)
+        - Prod health check: verified (200 over TLS)
+        """
+      )
+
+    context
+  end
+
+  @doc """
   Satisfies `qa_integration_plan` by writing a fully verified integration:
   spec + verify script + index. The graph check delegates to
   `QaIntegrationPlan.evaluate/2`, which requires all three (a lone spec

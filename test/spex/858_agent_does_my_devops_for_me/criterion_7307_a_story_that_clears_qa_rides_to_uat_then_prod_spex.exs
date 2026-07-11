@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7307Spex do
   spex "A story that clears QA rides to UAT then prod" do
     scenario "after QA passes, the loop's next work is the deploy" do
       given_ "devops setup is complete and a story has passed QA", context do
-        {:ok, FullSatisfactionFixtures.apply(context)}
+        {:ok, FullSatisfactionFixtures.apply_without_deploy(context)}
       end
 
       when_ "the agent calls get_next_requirement", context do

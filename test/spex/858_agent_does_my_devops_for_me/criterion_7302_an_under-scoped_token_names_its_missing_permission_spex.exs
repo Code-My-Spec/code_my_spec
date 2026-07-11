@@ -62,8 +62,8 @@ defmodule CodeMySpecSpex.Story858.Criterion7302Spex do
       end
 
       and_ "the prompt requires naming the credential and the permission it lacks", context do
-        assert context.prompt =~ ~r/(which|name[s]?( the)?) credential/i,
-               "expected the prompt to require naming the failing credential"
+        assert context.prompt =~ ~r/(which|name[s]?( the)?)\s+credential/i,
+               "expected the prompt to require naming the failing credential; got: #{context.prompt}"
 
         {:ok, context}
       end
