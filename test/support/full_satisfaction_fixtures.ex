@@ -83,6 +83,19 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     # `apply_persona` is folded into kickoff there; the result still merges
     # `:persona_slug` and `:persona_id` into context for the story-level
     # steps below.
+    |> apply_without_release()
+    |> ProjectStateFixtures.apply_release_record()
+  end
+
+  @doc """
+  Apply every satisfaction layer EXCEPT the prod release record — the
+  "deployed to UAT, release pending" state the release spex (story 859)
+  start from. The story's deploy record exists but no release manifest
+  covers it, so the `release` requirement reads unsatisfied.
+  """
+  @spec apply_without_release(map()) :: map()
+  def apply_without_release(context) do
+    context
     |> apply_without_deploy()
     |> ProjectStateFixtures.apply_deploy_record()
   end

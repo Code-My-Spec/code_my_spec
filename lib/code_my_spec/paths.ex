@@ -80,6 +80,12 @@ defmodule CodeMySpec.Paths do
   @doc "Deploy record for one story (`.code_my_spec/devops/deploys/story_<id>.md`)."
   def devops_deploy_record(story_id), do: Path.join(devops_deploys_dir(), "story_#{story_id}.md")
 
+  @doc "Prod release records directory (`.code_my_spec/releases`)."
+  def releases_dir, do: Path.join(@base_dir, "releases")
+
+  @doc "Release record for one version (`.code_my_spec/releases/<version>.md`)."
+  def release_record(version), do: Path.join(releases_dir(), "#{version}.md")
+
   @doc "Credo custom checks directory (`.code_my_spec/credo_checks`)."
   def credo_checks_dir, do: Path.join(@base_dir, "credo_checks")
 

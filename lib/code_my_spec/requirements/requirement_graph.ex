@@ -1011,7 +1011,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp maybe_filter_devops(definitions, %{devops: :off}) do
-    Enum.reject(definitions, &(&1.name in ["devops_setup", "deploy"]))
+    Enum.reject(definitions, &(&1.name in ["devops_setup", "deploy", "release"]))
+  end
+
+  # UAT-only: stories deploy to staging, but no prod release is ever
+  # demanded — the user promotes on their own terms.
+  defp maybe_filter_devops(definitions, %{devops: :uat}) do
+    Enum.reject(definitions, &(&1.name == "release"))
   end
 
   defp maybe_filter_devops(definitions, _config), do: definitions

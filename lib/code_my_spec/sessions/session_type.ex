@@ -31,6 +31,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.PersonaResearch,
 
     AgentTasks.ProjectSetup,
+    AgentTasks.Release,
     AgentTasks.SpexBoundaryReady,
     AgentTasks.QaApp,
     AgentTasks.QaIntegrationPlan,

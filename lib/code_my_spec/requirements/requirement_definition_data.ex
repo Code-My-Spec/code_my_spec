@@ -988,6 +988,25 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "Wallaby journey tests exist",
         prerequisites: [11]
+      }),
+      new!(%{
+        id: 18,
+        name: "release",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: AgentTasks.Release, function: :evaluate},
+        satisfied_by: AgentTasks.Release,
+        artifact_type: :code,
+        description:
+          "Prod release cut — every UAT deploy covered by a release with notes, tag, and verified prod health",
+        # The cycle's terminus: only after the user journeys are complete
+        # and updated. Recurrence is content-based — a UAT deploy not
+        # covered by a release manifest reopens this.
+        prerequisites: [12],
+        # Human approval + external side effects (tag, GitHub Release,
+        # prod deploy) — the agent records the release and calls
+        # evaluate_task.
+        validation_type: :manual
       })
     ]
   end

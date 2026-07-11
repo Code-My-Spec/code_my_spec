@@ -1,14 +1,15 @@
 defmodule CodeMySpec.AgentTasks.Deploy do
   @moduledoc """
-  Deploy a story's build through the loop (Story 858).
+  Release a story's build to UAT (Stories 858/859).
 
-  Once `devops_setup` is complete, deploys ride the ongoing loop: a story
-  that clears QA gets promoted — UAT first, health-verified, then prod
-  (unless the project opted out of prod). The completion record is
-  `.code_my_spec/devops/deploys/story_<id>.md`.
+  Once `devops_setup` is complete, every story that clears QA is released
+  to UAT immediately — health-verified, recorded at
+  `.code_my_spec/devops/deploys/story_<id>.md`. Prod promotion does NOT
+  happen here: it belongs to the formal release process
+  (`AgentTasks.Release`), which runs at the end of the cycle after the
+  user journeys are complete.
   """
 
-  alias CodeMySpec.Configurations
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
   alias CodeMySpec.Users.Scope
@@ -18,52 +19,51 @@ defmodule CodeMySpec.AgentTasks.Deploy do
   the next thing to do.
   """
   def dispatch(_node) do
-    "Deploy the story's build: UAT first, verify its health check, then " <>
-      "promote to prod. Use when the story has cleared QA and DevOps setup " <>
-      "is complete."
+    "Release the story's build to UAT and verify its health check — prod " <>
+      "promotion belongs to the cycle-end release process. Use when the " <>
+      "story has cleared QA and DevOps setup is complete."
   end
 
   @doc """
-  Generate the prompt for the deploy session.
+  Generate the prompt for the UAT deploy session.
   """
   @spec command(Scope.t(), map()) :: {:ok, String.t()}
-  def command(%Scope{} = scope, task) do
-    config = Configurations.get_or_create(scope)
-    # :off never reaches this task (the graph filter drops the requirement).
-    prod? = (Map.get(config, :devops) || :prod) != :uat
+  def command(%Scope{} = _scope, task) do
     story_id = story_id_of(task)
 
     {:ok,
      """
-     # Deploy Session#{if story_id, do: " — story #{story_id}", else: ""}
+     # UAT Deploy Session#{if story_id, do: " — story #{story_id}", else: ""}
 
-     The story has cleared QA — promote the build through the environments.
+     The story has cleared QA — release the build to UAT. Prod is NOT part
+     of this session: prod promotion happens in the cycle-end release
+     process, after the user journeys are complete.
 
-     ## Order of operations
+     ## Procedure
 
      1. Build and deploy the current build to **UAT** (`kamal deploy` with
         the UAT config).
      2. **Verify UAT's health check**: request `https://uat.<domain>/health`
         and confirm 200 over valid TLS.
-     #{promotion_step(prod?)}
 
      ## On a failing UAT health check — halt
 
-     If UAT's health check does not pass, **halt the promotion — do not
-     deploy prod**. Surface the failure as a problem (create an issue with
-     the health-check output) so the loop and the user see it, then stop.
-     A sick UAT is a red light, never a warning.
+     If UAT's health check does not pass, **halt** — the deploy is not done.
+     Surface the failure as a problem (create an issue with the health-check
+     output) so the loop and the user see it, then stop. A sick UAT never
+     reads as shipped.
 
      ## Done signal
 
-     Write `#{deploy_record_path(story_id)}` recording the version deployed,
-     each environment's verified health check, and the timestamps. Then call
-     `evaluate_task`.
+     Write `#{deploy_record_path(story_id)}` recording the version deployed
+     and UAT's verified health check with timestamps. Then call
+     `evaluate_task`. This record is what the release process later compiles
+     into the prod release notes.
      """}
   end
 
   @doc """
-  Evaluate: the story's deploy record exists.
+  Evaluate: the story's UAT deploy record exists and attests verification.
 
   Called two ways: as the requirement's delegate check (second arg is the
   Story struct) and as the task evaluator (second arg is the task, which
@@ -85,19 +85,9 @@ defmodule CodeMySpec.AgentTasks.Deploy do
 
       {:error, _} ->
         {:ok, :invalid,
-         "No deploy record at `#{record}` — the deploy is complete only when each " <>
-           "environment's health check is verified and recorded there."}
+         "No deploy record at `#{record}` — the UAT deploy is complete only when " <>
+           "its health check is verified and recorded there."}
     end
-  end
-
-  defp promotion_step(true) do
-    "3. Only after UAT verifies, deploy **prod** and verify its health\n" <>
-      "        check the same way."
-  end
-
-  defp promotion_step(false) do
-    "3. This project has opted out of the second environment — UAT's\n" <>
-      "        verification completes the promotion."
   end
 
   defp deploy_record_path(nil), do: Path.join(Paths.devops_deploys_dir(), "story_<id>.md")

@@ -38,9 +38,14 @@ defmodule CodeMySpecSpex.Story858.Criterion7307Spex do
         {:ok, context}
       end
 
-      and_ "the deploy directive orders UAT before prod", context do
-        assert context.response_text =~ ~r/uat.*prod/is,
-               "expected the deploy directive to promote UAT first, then prod"
+      and_ "the deploy targets UAT and defers prod to the release process", context do
+        # Story 859 amendment: per-story deploys stop at UAT; prod
+        # promotion belongs to the cycle-end release.
+        assert context.response_text =~ ~r/uat/i,
+               "expected the deploy directive to target UAT"
+
+        assert context.response_text =~ ~r/release process/i,
+               "expected the directive to defer prod promotion to the release process"
 
         {:ok, context}
       end

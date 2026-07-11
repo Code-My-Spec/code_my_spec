@@ -55,16 +55,21 @@ defmodule CodeMySpecSpex.Story858.Criterion7308Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt requires verifying UAT's health before prod", context do
-        assert context.prompt =~ ~r/uat.*health.*prod/is,
-               "expected the prompt to order UAT health verification before the prod deploy"
+      then_ "the prompt requires verifying UAT's health check", context do
+        # Story 859 amendment: the deploy is UAT-only; a failing health
+        # check fails the DEPLOY (prod isn't in this session at all).
+        assert context.prompt =~ ~r/uat.*health/is,
+               "expected the prompt to require UAT health verification"
 
         {:ok, context}
       end
 
-      and_ "a failing health check halts the promotion and surfaces the failure", context do
-        assert context.prompt =~ ~r/(halt|stop|do not deploy prod)/i,
+      and_ "a failing health check halts the deploy and surfaces the failure", context do
+        assert context.prompt =~ ~r/(halt|stop)/i,
                "expected an explicit halt instruction on a failing UAT health check"
+
+        assert context.prompt =~ ~r/problem|issue/i,
+               "expected the failure to surface as a problem/issue"
 
         {:ok, context}
       end

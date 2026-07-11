@@ -184,6 +184,36 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   end
 
   @doc """
+  Satisfies the project-level `release` requirement by writing a release
+  record whose `## Stories` manifest covers the context's story (story 859).
+  Coverage is content-based: an uncovered deploy record reopens the release.
+  """
+  @spec apply_release_record(map()) :: map()
+  def apply_release_record(%{story: story} = context) do
+    :ok =
+      Environments.write_file(
+        context.environment,
+        ".code_my_spec/releases/0.1.0.md",
+        """
+        # Release 0.1.0
+
+        User-facing notes for the cycle.
+
+        ## Stories
+
+        - story_#{story.id}
+
+        ## Verification
+
+        - Prod health check: verified (200 over TLS)
+        - Tag v0.1.0 annotated + GitHub Release published
+        """
+      )
+
+    context
+  end
+
+  @doc """
   Satisfies `qa_integration_plan` by writing a fully verified integration:
   spec + verify script + index. The graph check delegates to
   `QaIntegrationPlan.evaluate/2`, which requires all three (a lone spec
