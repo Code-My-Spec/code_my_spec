@@ -52,7 +52,8 @@ defmodule CodeMySpecWeb.Plugs.LegacyRedirects do
   )
 
   @custom_redirects %{
-    "/pages/methodology" => "/methodology"
+    "/pages/methodology" => "/methodology",
+    "/docs" => "/documentation"
   }
 
   @redirects @page_to_blog_slugs

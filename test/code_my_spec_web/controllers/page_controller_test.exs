@@ -8,7 +8,21 @@ defmodule CodeMySpecWeb.PageControllerTest do
     # Hero copy from the current home.html.heex (2026-07 "thinking vs labor" hero).
     assert body =~ "You do the thinking."
     assert body =~ "The machine does the labor."
-    assert body =~ "the work of a whole team, without being one"
+    # Meta description leads with the canonical quotable definition (GEO).
+    assert body =~ "CodeMySpec is a set of AI harnesses that help one person build, sell"
+  end
+
+  test "GET /pricing renders the FAQ and references the canonical software entity", %{conn: conn} do
+    conn = get(conn, ~p"/pricing")
+    body = html_response(conn, 200)
+
+    assert body =~ "How much does CodeMySpec cost?"
+    assert body =~ "What happens if I stop paying?"
+    assert body =~ ~s|"@type":"FAQPage"|
+    # Pricing references the homepage's canonical SoftwareApplication by @id
+    # instead of defining a duplicate entity.
+    assert body =~ ~s|/#software|
+    refute body =~ "model harnesses"
   end
 
   test "home page CTAs link to the install page", %{conn: conn} do

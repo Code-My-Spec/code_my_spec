@@ -23,6 +23,14 @@ defmodule CodeMySpecWeb.Plugs.LegacyRedirectsTest do
       end
     end
 
+    test "301 redirects /docs to /documentation", %{conn: conn} do
+      conn = LegacyRedirects.call(%{conn | method: "GET", request_path: "/docs"}, [])
+
+      assert conn.status == 301
+      assert get_resp_header(conn, "location") == ["/documentation"]
+      assert conn.halted
+    end
+
     test "preserves the query string on redirect", %{conn: conn} do
       conn =
         %{

@@ -86,9 +86,13 @@ var theme_default = plugin.withOptions((options = {}) => {
       }
     };
     if (prefersdark) {
+      // Scope the OS-dark fallback to "no explicit theme chosen". A bare
+      // `:root` here ties with `[data-theme="light"]` on specificity and,
+      // being later in source order, overrides an explicit Light selection
+      // for dark-OS users.
       addBase({
         "@media (prefers-color-scheme: dark)": {
-          [root]: baseStyles[selector]
+          [`${root}:not([data-theme])`]: baseStyles[selector]
         }
       });
     }

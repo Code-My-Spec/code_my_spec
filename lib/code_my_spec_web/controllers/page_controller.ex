@@ -5,7 +5,7 @@ defmodule CodeMySpecWeb.PageController do
     meta = %{
       page_title: "CodeMySpec — One Person, a Whole Software Company",
       meta_description:
-        "You do the thinking, the machine does the labor. Build real software, run the email and chat your customers reach you on, and grow it — the work of a whole team, without being one.",
+        "CodeMySpec is a set of AI harnesses that help one person build, sell, and support real software. You do the thinking; the machine does the labor.",
       og_title: "CodeMySpec — You do the thinking. The machine does the labor.",
       og_description:
         "Software for operators, not engineers. Build a real app, then keep it running: email on your own domain, live chat with your customers, content and ads that grow it. Drive it yourself, or build it with John.",
@@ -41,7 +41,7 @@ defmodule CodeMySpecWeb.PageController do
             },
             "contactPoint" => %{
               "@type" => "ContactPoint",
-              "contactType" => "customer support",
+              "contactType" => "customer service",
               "url" => "https://codemyspec.com/pages/about"
             },
             "sameAs" => [
@@ -62,7 +62,7 @@ defmodule CodeMySpecWeb.PageController do
             "name" => "CodeMySpec",
             "url" => "https://codemyspec.com",
             "applicationCategory" => "BusinessApplication",
-            "operatingSystem" => "Web-based",
+            "operatingSystem" => "Web-based, macOS, Windows",
             "description" =>
               "A set of AI harnesses that help one person build, sell, and support real software. Build free with your own AI keys; run and grow it for $100 a month per user.",
             "offers" => %{
@@ -75,6 +75,8 @@ defmodule CodeMySpecWeb.PageController do
                 %{
                   "@type" => "Offer",
                   "name" => "Build",
+                  "description" =>
+                    "The build and content harnesses, free forever. Bring your own AI keys, own everything you make.",
                   "price" => "0",
                   "priceCurrency" => "USD",
                   "availability" => "https://schema.org/InStock"
@@ -82,6 +84,8 @@ defmodule CodeMySpecWeb.PageController do
                 %{
                   "@type" => "Offer",
                   "name" => "Operate & Grow",
+                  "description" =>
+                    "Email on your own domain, live chat, content publishing, Google Ads, and conversion reporting. Per user, per month.",
                   "price" => "100",
                   "priceCurrency" => "USD",
                   "availability" => "https://schema.org/InStock"
@@ -324,44 +328,14 @@ defmodule CodeMySpecWeb.PageController do
     json_ld_list =
       Enum.map(
         [
+          # Reference the canonical SoftwareApplication entity defined on the
+          # homepage instead of duplicating (and drifting from) it here.
           %{
             "@context" => "https://schema.org",
             "@type" => "SoftwareApplication",
-            "@id" => "#{canonical}#software",
+            "@id" => "#{base_url}/#software",
             "name" => "CodeMySpec",
-            "url" => canonical,
-            "applicationCategory" => "BusinessApplication",
-            "operatingSystem" => "Web-based, macOS, Windows",
-            "description" =>
-              "A set of model harnesses that help one person build, sell, and support real software.",
-            "offers" => %{
-              "@type" => "AggregateOffer",
-              "priceCurrency" => "USD",
-              "lowPrice" => "0",
-              "highPrice" => "100",
-              "offerCount" => "2",
-              "offers" => [
-                %{
-                  "@type" => "Offer",
-                  "name" => "Build",
-                  "description" =>
-                    "The build and content harnesses, free forever. Bring your own AI keys, own everything you make.",
-                  "price" => "0",
-                  "priceCurrency" => "USD",
-                  "availability" => "https://schema.org/InStock"
-                },
-                %{
-                  "@type" => "Offer",
-                  "name" => "Operate & Grow",
-                  "description" =>
-                    "Email on your own domain, live chat, content publishing, Google Ads, and conversion reporting. Per user, per month.",
-                  "price" => "100",
-                  "priceCurrency" => "USD",
-                  "availability" => "https://schema.org/InStock"
-                }
-              ]
-            },
-            "publisher" => %{"@id" => "#{base_url}/#organization"}
+            "url" => canonical
           },
           %{
             "@context" => "https://schema.org",
@@ -389,6 +363,75 @@ defmodule CodeMySpecWeb.PageController do
             "itemListElement" => [
               %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
               %{"@type" => "ListItem", "position" => 2, "name" => "Pricing", "item" => canonical}
+            ]
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "FAQPage",
+            "mainEntity" => [
+              %{
+                "@type" => "Question",
+                "name" => "How much does CodeMySpec cost?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "Building is free forever. Running your software — customer email on your domain, live chat, content publishing, ads, and conversion reporting — is $100 a month per user. If you want it built with you, John quotes the work after a conversation, with a $500 minimum."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "Is the free tier a trial?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "No. The build harness and the content engine are free forever, with no credit card and nothing that expires. It isn't a stripped-down demo — it's the same harness John uses to run CodeMySpec itself."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "Am I paying for the AI on top of this?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "You bring your own AI keys and pay the AI company directly for what you use. CodeMySpec never marks up model tokens or proxies your requests — your keys, your bill, your code."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "What does \"per user\" mean?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "A user is a person on your account doing the work — answering chat, sending email, publishing content. If that's just you, Operate & Grow costs $100 a month, total. Add seats only when more hands are actually in the tools."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "What does the $500 minimum on Built with you cover?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "It's a floor, not a package. You bring what you're trying to run, John scopes it in a real conversation and quotes a real number. The work is done the same way as self-serve — specs, tests, verification — and you own everything when it ships."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "What happens if I stop paying?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "The hosted services stop — email, chat, publishing, reporting. Your software, your code, and your content stay yours. There's no lock-in to unwind; the $100 was never rent on your own app."
+                }
+              },
+              %{
+                "@type" => "Question",
+                "name" => "Can I use it for internal tools instead of software I sell?",
+                "acceptedAnswer" => %{
+                  "@type" => "Answer",
+                  "text" =>
+                    "Yes. Build and Operate work the same whether the software faces customers or your own crew. Plenty of operators need a tool that fits their workflow, not a product to sell — that counts."
+                }
+              }
             ]
           }
         ],

@@ -342,7 +342,7 @@ defmodule CodeMySpecWeb.ContentController do
       "url" => url,
       "image" => image,
       "datePublished" => format_iso8601(content.publish_at),
-      "dateModified" => format_iso8601(content.updated_at),
+      "dateModified" => content_modified_at(content),
       "author" => author,
       "publisher" => publisher,
       "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
@@ -362,7 +362,7 @@ defmodule CodeMySpecWeb.ContentController do
       "url" => url,
       "image" => image,
       "datePublished" => format_iso8601(content.publish_at),
-      "dateModified" => format_iso8601(content.updated_at),
+      "dateModified" => content_modified_at(content),
       "author" => author,
       "publisher" => publisher,
       "mainEntityOfPage" => %{"@type" => "WebPage", "@id" => url},
@@ -387,7 +387,7 @@ defmodule CodeMySpecWeb.ContentController do
       "name" => content.title || content.slug,
       "url" => url,
       "datePublished" => format_iso8601(content.publish_at),
-      "dateModified" => format_iso8601(content.updated_at),
+      "dateModified" => content_modified_at(content),
       "author" => author,
       "publisher" => publisher,
       "itemReviewed" => %{
@@ -406,7 +406,7 @@ defmodule CodeMySpecWeb.ContentController do
       "name" => content.title || content.slug,
       "url" => url,
       "datePublished" => format_iso8601(content.publish_at),
-      "dateModified" => format_iso8601(content.updated_at),
+      "dateModified" => content_modified_at(content),
       "author" => author,
       "publisher" => publisher
     }
@@ -420,6 +420,17 @@ defmodule CodeMySpecWeb.ContentController do
       "name" => content.title || content.slug,
       "url" => url
     }
+  end
+
+  # `updated_at` is rewritten by every content sync, which stamped the same
+  # deploy-time dateModified on every post (a freshness/date-spam signal).
+  # Prefer an explicit `updated:` date in frontmatter metadata; otherwise fall
+  # back to the immutable publish date.
+  defp content_modified_at(content) do
+    case get_in(content.metadata || %{}, ["metadata", "updated"]) do
+      nil -> format_iso8601(content.publish_at)
+      updated -> to_string(updated)
+    end
   end
 
   defp schema_author(base_url) do
@@ -436,7 +447,8 @@ defmodule CodeMySpecWeb.ContentController do
         "https://www.linkedin.com/in/john-davenport-software/",
         "https://x.com/johns10d",
         "https://www.youtube.com/@codemyspec",
-        "https://www.reddit.com/user/johns10davenport/"
+        "https://www.reddit.com/user/johns10davenport/",
+        "https://john.davenport.rocks"
       ]
     }
   end
