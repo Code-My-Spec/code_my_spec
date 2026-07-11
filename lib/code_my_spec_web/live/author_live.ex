@@ -23,13 +23,15 @@ defmodule CodeMySpecWeb.AuthorLive do
             </p>
 
             <p>
-              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built four production applications with it —
+              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built five production applications with it —
               <a href="/case-studies/metric-flow">MetricFlow</a>
               (40 commits, 13 days, zero human-written code), Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration),
               <a href="/case-studies/market-my-spec">Market My Spec</a>
-              (a small MCP server that exposes a marketing-strategy skill to Claude Code, shipped across one weekend with zero prompts and zero lines of code), and
+              (a small MCP server that exposes a marketing-strategy skill to Claude Code, shipped across one weekend with zero prompts and zero lines of code),
               <a href="/case-studies/cleaner-crm">Cleaner CRM</a>
-              (a three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; I typed 0.4% of the characters in the build conversation) — to prove the methodology works before asking anyone else to use it.
+              (a three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; I typed 0.4% of the characters in the build conversation), and
+              <a href="/case-studies/keel">Keel</a>
+              (an agent-first double-entry ledger running my own cross-border books; the agent found $227k of phantom income Quicken had miscounted) — to prove the methodology works before asking anyone else to use it.
             </p>
 
             <h2>Career Path</h2>
@@ -73,6 +75,10 @@ defmodule CodeMySpecWeb.AuthorLive do
               <li>
                 <strong>Cleaner CRM</strong>
                 — Three-persona CRM for cleaning businesses: owner back office, cleaner field app, public booking funnel with real Stripe payments. Two-shotted with Claude Fable 5 in three days on a self-orchestrating loop; 0.4% of the conversation typed by a human. <a href="/case-studies/cleaner-crm">21 stories, 143 BDD criteria, honest teardown</a>.
+              </li>
+              <li>
+                <strong>Keel</strong>
+                — Agent-first, multi-currency, double-entry ledger running my own cross-border books. Quicken SQLite import, deterministic rules engine with an LLM tail, 22 intent-level MCP tools, crypto as asset-as-currency. The agent found $227,736 of phantom income. <a href="/case-studies/keel">48 stories, 182 BDD criteria, honest teardown</a>.
               </li>
               <li>
                 <strong>IC Insure</strong>
@@ -234,9 +240,9 @@ defmodule CodeMySpecWeb.AuthorLive do
             "name" => "CodeMySpec"
           },
           "sameAs" => [
+            "https://github.com/johns10",
             "https://www.linkedin.com/in/john-davenport-software/",
             "https://x.com/johns10d",
-            "https://github.com/code-my-spec",
             "https://www.youtube.com/@codemyspec",
             "https://www.reddit.com/user/johns10davenport/",
             "https://john.davenport.rocks"

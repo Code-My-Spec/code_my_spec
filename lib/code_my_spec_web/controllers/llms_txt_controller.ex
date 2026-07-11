@@ -51,6 +51,12 @@ defmodule CodeMySpecWeb.LlmsTxtController do
         "Three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; self-orchestrated loop, browser QA, real Stripe payments, live UAT, 0.4% of the conversation typed by the human"
     },
     %{
+      title: "Keel Case Study",
+      url: "/case-studies/keel",
+      description:
+        "Agent-first double-entry cross-border ledger built on the founder's real books over 26 days; 9,225 transactions balancing to the cent, $227,736 of phantom income found, 2.9% of the conversation typed by the human"
+    },
+    %{
       title: "About",
       url: "/author/john-davenport",
       description: "About the founder and the project"

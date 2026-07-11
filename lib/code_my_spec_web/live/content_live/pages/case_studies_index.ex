@@ -14,6 +14,20 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
 
   @case_studies [
     %{
+      slug: "keel",
+      title: "Keel",
+      tagline: "My own books. 9,225 transactions. The agent found $227,736 of phantom income.",
+      summary:
+        "An agent-first, double-entry, cross-border personal-finance ledger John built on his real books over 26 days (June 15 to July 10, 2026). The collaborative end of the dial: 2.9% of the conversation typed by the human, who supplied the accounting judgment no fixture could encode.",
+      og_image: "og-keel.png",
+      stats: [
+        %{label: "Phantom Income Found", value: "$227,736"},
+        %{label: "Stories", value: "48"},
+        %{label: "Typed by John", value: "2.9%"}
+      ],
+      published_at: "2026-07-11"
+    },
+    %{
       slug: "cleaner-crm",
       title: "Cleaner CRM",
       tagline: "Two prompts. Two UAT passes. Three days. Fable did the rest.",

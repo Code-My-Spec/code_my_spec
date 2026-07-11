@@ -22,6 +22,7 @@ defmodule CodeMySpecWeb.SitemapController do
     "/case-studies/metric-flow",
     "/case-studies/market-my-spec",
     "/case-studies/cleaner-crm",
+    "/case-studies/keel",
     "/author/john-davenport",
     "/pages/founder-story",
     "/pages/about",
@@ -32,21 +33,15 @@ defmodule CodeMySpecWeb.SitemapController do
   def index(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
 
-    # Use the most recent content date as fallback for static pages
     all_content =
       @content_types
       |> Enum.flat_map(fn {type, _prefix} ->
         ContentRepository.list_published_content(nil, type)
       end)
 
-    latest_date =
-      all_content
-      |> Enum.map(fn c -> c.publish_at || c.updated_at end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.max(DateTime, fn -> DateTime.utc_now() end)
-      |> format_date()
-
-    static_entries = Enum.map(@static_locs, &%{loc: &1, lastmod: latest_date})
+    # Static pages get no lastmod: stamping them with a borrowed "latest
+    # content" date reads as sitewide date churn to crawlers.
+    static_entries = Enum.map(@static_locs, &%{loc: &1})
 
     content_entries =
       @content_types
