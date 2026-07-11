@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb.SitemapController do
     "/case-studies/cleaner-crm",
     "/case-studies/keel",
     "/case-studies/legwork",
+    "/case-studies/ear-witness",
     "/author/john-davenport",
     "/pages/founder-story",
     "/pages/about",

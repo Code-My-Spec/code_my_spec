@@ -63,6 +63,12 @@ defmodule CodeMySpecWeb.LlmsTxtController do
         "Outbound-process composer built in one weekend with Claude Opus 4.8; five-stage prose runbooks worked by an agent over 16 OAuth-authenticated MCP tools, human launch gate, 2.1% of the conversation typed by the human"
     },
     %{
+      title: "EarWitness Live Build",
+      url: "/case-studies/ear-witness",
+      description:
+        "Live harness build in progress: a local-first Otter alternative (on-device transcription, diarization, audio-tap meeting capture, MCP access). 10 stories with full Three Amigos records published before the code exists"
+    },
+    %{
       title: "About",
       url: "/author/john-davenport",
       description: "About the founder and the project"

@@ -14,6 +14,20 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
 
   @case_studies [
     %{
+      slug: "ear-witness",
+      title: "EarWitness",
+      tagline: "Live build in progress. The requirements are public before the code exists.",
+      summary:
+        "A local-first Otter alternative: on-device transcription, speaker diarization, audio-tap meeting capture with no bot in the room, an Otter-style editor, and MCP access for your AI assistant. Being built live by the harness right now; 10 stories with full Three Amigos records, follow along on Reddit.",
+      og_image: "og-earwitness.png",
+      stats: [
+        %{label: "Status", value: "Live"},
+        %{label: "Stories", value: "10"},
+        %{label: "Acceptance Criteria", value: "49"}
+      ],
+      published_at: "2026-07-11"
+    },
+    %{
       slug: "legwork",
       title: "Legwork",
       tagline:

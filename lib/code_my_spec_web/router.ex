@@ -65,6 +65,7 @@ defmodule CodeMySpecWeb.Router do
       live "/case-studies/cleaner-crm", ContentLive.Pages.CleanerCrm, :cleaner_crm
       live "/case-studies/keel", ContentLive.Pages.Keel, :keel
       live "/case-studies/legwork", ContentLive.Pages.Legwork, :legwork
+      live "/case-studies/ear-witness", ContentLive.Pages.EarWitness, :ear_witness
 
       live "/blog/agentic-marketing-with-mcp",
            ContentLive.Pages.AgenticMarketingWithMcp,
