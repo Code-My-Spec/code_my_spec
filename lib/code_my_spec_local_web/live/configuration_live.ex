@@ -153,6 +153,24 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
             </div>
           </section>
 
+          <section class="card bg-base-200 border border-base-300">
+            <div class="card-body">
+              <h2 class="card-title text-lg">DevOps</h2>
+              <p class="text-sm opacity-70">
+                Prod is stood up by default; opt out to run UAT-only (story 858).
+              </p>
+
+              <div class="divider my-1"></div>
+
+              <.select_field
+                name="devops_prod"
+                label="Prod Environment"
+                value={@configuration.devops_prod}
+                modes={[:on, :off]}
+              />
+            </div>
+          </section>
+
           <div class="flex justify-end">
             <button type="submit" class="btn btn-primary" data-test="save-configuration">
               Save Configuration
@@ -222,6 +240,7 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
   defp parse_bool(_), do: false
 
   defp format_mode(:off), do: "Off"
+  defp format_mode(:on), do: "On"
   defp format_mode(:block_all), do: "Block All"
   defp format_mode(:block_changed), do: "Block Changed"
   defp format_mode(:dont_block), do: "Don't Block"
