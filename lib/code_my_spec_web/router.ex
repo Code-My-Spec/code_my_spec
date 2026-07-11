@@ -254,12 +254,14 @@ defmodule CodeMySpecWeb.Router do
     live_session :require_authenticated_user,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
-        {CodeMySpecWeb.UserAuth, :require_authenticated}
+        {CodeMySpecWeb.UserAuth, :require_authenticated},
+        {CodeMySpecWeb.Live.NotificationsHook, :default}
       ] do
       live "/", AppLive.Overview
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
       live "/users/preferences", UserPreferenceLive.Form, :edit
+      live "/notifications", NotificationLive.Index, :index
       live "/permissions/:id", PermissionLive.Show, :show
       live "/questions/:id", QuestionLive.Show, :show
       live "/accounts", AccountLive.Index, :index
@@ -275,7 +277,8 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
-        {CodeMySpecWeb.UserAuth, :require_active_account}
+        {CodeMySpecWeb.UserAuth, :require_active_account},
+        {CodeMySpecWeb.Live.NotificationsHook, :default}
       ] do
       live "/projects", ProjectLive.Index, :index
       live "/projects/picker", ProjectLive.Picker, :index
@@ -291,7 +294,8 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
-        {CodeMySpecWeb.UserAuth, :require_active_project}
+        {CodeMySpecWeb.UserAuth, :require_active_project},
+        {CodeMySpecWeb.Live.NotificationsHook, :default}
       ] do
       live "/issues", IssuesLive.Index, :index
       live "/issues/:id", IssuesLive.Show, :show

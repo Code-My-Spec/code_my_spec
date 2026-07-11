@@ -223,9 +223,32 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(function (reg) {
     console.log("[Push] Service worker registered", reg.scope)
     updateNotificationButton()
+    resyncPushSubscription()
   }).catch(function (err) {
     console.warn("[Push] Service worker registration failed", err)
   })
+}
+
+// The server deletes subscription rows when a push bounces (404/410), but the
+// browser-side subscription survives — so the bell shows "on" while the server
+// has nothing to send to. Re-upsert the subscription on every load (idempotent
+// on endpoint) so the server record always matches the browser's reality.
+async function resyncPushSubscription() {
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    if (!sub) return
+    await fetch("/api/browser/push-subscriptions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-csrf-token": csrfToken
+      },
+      body: JSON.stringify({ subscription: sub.toJSON() })
+    })
+  } catch (err) {
+    console.warn("[Push] Subscription resync failed", err)
+  }
 }
 
 // Hydrate button state on LiveView navigations

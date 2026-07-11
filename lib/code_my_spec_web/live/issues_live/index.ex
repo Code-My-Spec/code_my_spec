@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <.header>
         Issues
         <:actions>

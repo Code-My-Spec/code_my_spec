@@ -12,7 +12,7 @@ defmodule CodeMySpecWeb.AccountLive.Invitations do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path} pending_notifications={@pending_notifications}>
       <.live_component
         module={Navigation}
         id="navigation"

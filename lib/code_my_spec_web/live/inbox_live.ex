@@ -151,7 +151,7 @@ defmodule CodeMySpecWeb.InboxLive do
 
   defp render_index(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <div class="mx-auto w-full max-w-4xl">
         <header class="flex items-center justify-between gap-3 pb-4">
           <div class="flex items-center gap-2">
@@ -242,7 +242,7 @@ defmodule CodeMySpecWeb.InboxLive do
 
   defp render_show(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatScroll">
         export default {
           mounted() {

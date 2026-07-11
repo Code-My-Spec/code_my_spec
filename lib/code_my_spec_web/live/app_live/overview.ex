@@ -315,7 +315,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <div
         id="onboarding-page"
         phx-hook=".SignUpTracking"

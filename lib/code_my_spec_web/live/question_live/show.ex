@@ -76,7 +76,7 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <div class="mx-auto max-w-lg">
         <div :if={@request} class="card bg-base-200 shadow-xl">
           <div class="card-body">

@@ -36,6 +36,10 @@ defmodule CodeMySpecWeb.Layouts do
 
   attr :current_path, :string, default: "/"
 
+  attr :pending_notifications, :integer,
+    default: 0,
+    doc: "pending questions/approvals count for the navbar badge (NotificationsHook)"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -83,6 +87,21 @@ defmodule CodeMySpecWeb.Layouts do
             </div>
           </div>
           <div class="flex-none shrink-0">
+            <.link
+              navigate={~p"/app/notifications"}
+              class="btn btn-ghost btn-sm tooltip tooltip-left"
+              data-tip="Notifications"
+            >
+              <span class="indicator">
+                <span
+                  :if={@pending_notifications > 0}
+                  class="indicator-item badge badge-primary badge-xs"
+                >
+                  {@pending_notifications}
+                </span>
+                <.icon name="hero-inbox" class="size-5" />
+              </span>
+            </.link>
             <button
               id="enable-notifications-btn"
               phx-click={JS.dispatch("phx:toggle-push-notifications")}

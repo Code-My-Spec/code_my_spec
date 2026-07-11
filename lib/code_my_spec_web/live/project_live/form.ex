@@ -7,7 +7,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <.header>
         {@page_title}
         <:subtitle>Use this form to manage project records in your database.</:subtitle>

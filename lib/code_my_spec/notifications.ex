@@ -69,6 +69,89 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
+  # --- Notifications inbox ---
+
+  @resolved_limit 50
+
+  @doc """
+  List a user's question and permission requests for the notifications inbox.
+
+  Pending items first (newest first), then the #{@resolved_limit} most recently
+  resolved items across both types.
+  """
+  def list_notifications(user_id) do
+    pending_notifications(user_id) ++ resolved_notifications(user_id)
+  end
+
+  @doc "Count a user's pending question and permission requests."
+  def count_pending_notifications(user_id) do
+    count_pending(QuestionRequest, user_id) + count_pending(PermissionRequest, user_id)
+  end
+
+  @doc """
+  Subscribe to the badge topic: `{:pending_notifications_changed}` fires whenever
+  a request is created or resolved. Consumed (halted) by the layout badge hook.
+  """
+  def subscribe_notifications(user_id) do
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user_notifications:#{user_id}")
+  end
+
+  @doc """
+  Subscribe to the list topic: `{:notifications_changed}` fires on the same
+  events. Separate topic so the inbox LiveView receives it even though the
+  badge hook halts its own message.
+  """
+  def subscribe_notifications_list(user_id) do
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user_notifications:#{user_id}:list")
+  end
+
+  defp broadcast_notifications_changed(user_id) do
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "user_notifications:#{user_id}",
+      {:pending_notifications_changed}
+    )
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "user_notifications:#{user_id}:list",
+      {:notifications_changed}
+    )
+  end
+
+  defp pending_notifications(user_id) do
+    (pending_query(QuestionRequest, user_id) |> Repo.all()) ++
+      (pending_query(PermissionRequest, user_id) |> Repo.all())
+    |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+  end
+
+  defp resolved_notifications(user_id) do
+    (resolved_query(QuestionRequest, user_id) |> Repo.all()) ++
+      (resolved_query(PermissionRequest, user_id) |> Repo.all())
+    |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+    |> Enum.take(@resolved_limit)
+  end
+
+  defp pending_query(schema, user_id) do
+    from(r in schema,
+      where: r.user_id == ^user_id and r.status == "pending",
+      order_by: [desc: r.inserted_at]
+    )
+  end
+
+  defp resolved_query(schema, user_id) do
+    from(r in schema,
+      where: r.user_id == ^user_id and r.status != "pending",
+      order_by: [desc: r.inserted_at],
+      limit: @resolved_limit
+    )
+  end
+
+  defp count_pending(schema, user_id) do
+    from(r in schema, where: r.user_id == ^user_id and r.status == "pending")
+    |> Repo.aggregate(:count)
+  end
+
   # --- Permission Requests ---
 
   @doc """
@@ -95,6 +178,8 @@ defmodule CodeMySpec.Notifications do
           body: format_tool_summary(request.tool_name, request.tool_input),
           url: "/app/permissions/#{request.id}"
         })
+
+        broadcast_notifications_changed(user_id)
 
         {:ok, request}
 
@@ -124,6 +209,8 @@ defmodule CodeMySpec.Notifications do
               "permission_request:#{id}",
               {:permission_decided, %{id: id, decision: decision}}
             )
+
+            broadcast_notifications_changed(updated.user_id)
 
             {:ok, updated}
 
@@ -161,6 +248,8 @@ defmodule CodeMySpec.Notifications do
         url: "/app/questions/#{request.id}"
       })
 
+      broadcast_notifications_changed(user_id)
+
       {:ok, request}
     end
   end
@@ -185,6 +274,8 @@ defmodule CodeMySpec.Notifications do
               "question_request:#{id}",
               {:question_answered, %{id: id, answers: answers}}
             )
+
+            broadcast_notifications_changed(updated.user_id)
 
             {:ok, updated}
 
