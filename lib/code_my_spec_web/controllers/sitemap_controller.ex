@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb.SitemapController do
     "/case-studies/market-my-spec",
     "/case-studies/cleaner-crm",
     "/case-studies/keel",
+    "/case-studies/legwork",
     "/author/john-davenport",
     "/pages/founder-story",
     "/pages/about",

@@ -23,15 +23,17 @@ defmodule CodeMySpecWeb.AuthorLive do
             </p>
 
             <p>
-              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built five production applications with it —
+              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built six production applications with it —
               <a href="/case-studies/metric-flow">MetricFlow</a>
               (40 commits, 13 days, zero human-written code), Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration),
               <a href="/case-studies/market-my-spec">Market My Spec</a>
               (a small MCP server that exposes a marketing-strategy skill to Claude Code, shipped across one weekend with zero prompts and zero lines of code),
               <a href="/case-studies/cleaner-crm">Cleaner CRM</a>
-              (a three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; I typed 0.4% of the characters in the build conversation), and
+              (a three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; I typed 0.4% of the characters in the build conversation),
               <a href="/case-studies/keel">Keel</a>
-              (an agent-first double-entry ledger running my own cross-border books; the agent found $227k of phantom income Quicken had miscounted) — to prove the methodology works before asking anyone else to use it.
+              (an agent-first double-entry ledger running my own cross-border books; the agent found $227k of phantom income Quicken had miscounted), and
+              <a href="/case-studies/legwork">Legwork</a>
+              (an outbound-process composer built in a weekend, where the agent works five-stage runbooks over OAuth-authenticated MCP and the human keeps the launch gate) — to prove the methodology works before asking anyone else to use it.
             </p>
 
             <h2>Career Path</h2>
@@ -79,6 +81,10 @@ defmodule CodeMySpecWeb.AuthorLive do
               <li>
                 <strong>Keel</strong>
                 — Agent-first, multi-currency, double-entry ledger running my own cross-border books. Quicken SQLite import, deterministic rules engine with an LLM tail, 22 intent-level MCP tools, crypto as asset-as-currency. The agent found $227,736 of phantom income. <a href="/case-studies/keel">48 stories, 182 BDD criteria, honest teardown</a>.
+              </li>
+              <li>
+                <strong>Legwork</strong>
+                — Outbound-process composer: five-stage prose runbooks an LLM agent works via 16 OAuth-authenticated MCP tools, with a human launch gate. Built in one weekend with Claude Opus 4.8; gating real prospects on day two. <a href="/case-studies/legwork">7 stories, 47 BDD criteria, honest teardown</a>.
               </li>
               <li>
                 <strong>IC Insure</strong>

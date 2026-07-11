@@ -57,6 +57,12 @@ defmodule CodeMySpecWeb.LlmsTxtController do
         "Agent-first double-entry cross-border ledger built on the founder's real books over 26 days; 9,225 transactions balancing to the cent, $227,736 of phantom income found, 2.9% of the conversation typed by the human"
     },
     %{
+      title: "Legwork Case Study",
+      url: "/case-studies/legwork",
+      description:
+        "Outbound-process composer built in one weekend with Claude Opus 4.8; five-stage prose runbooks worked by an agent over 16 OAuth-authenticated MCP tools, human launch gate, 2.1% of the conversation typed by the human"
+    },
+    %{
       title: "About",
       url: "/author/john-davenport",
       description: "About the founder and the project"

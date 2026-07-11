@@ -14,6 +14,21 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
 
   @case_studies [
     %{
+      slug: "legwork",
+      title: "Legwork",
+      tagline:
+        "My manual outbound process, productized in a weekend. The agent is one of the users.",
+      summary:
+        "An outbound-process composer built with Claude Opus 4.8 over one weekend (July 5-6, 2026). Five-stage prose runbooks an LLM agent works via 16 OAuth-authenticated MCP tools, with a human launch gate. Gating John's real prospects on day two, overturning his own guesses 8 times out of 12.",
+      og_image: "og-legwork.png",
+      stats: [
+        %{label: "Build Time", value: "1 weekend"},
+        %{label: "Stories", value: "7"},
+        %{label: "Typed by John", value: "2.1%"}
+      ],
+      published_at: "2026-07-11"
+    },
+    %{
       slug: "keel",
       title: "Keel",
       tagline: "My own books. 9,225 transactions. The agent found $227,736 of phantom income.",
