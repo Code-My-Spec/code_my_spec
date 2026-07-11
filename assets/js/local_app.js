@@ -399,6 +399,20 @@ let liveSocket = new LiveSocket("/local-live", Socket, {
 liveSocket.connect()
 window.liveSocket = liveSocket
 
+// Server-pushed file downloads (e.g. the stories Export button).
+window.addEventListener("phx:download_file", (ev) => {
+  const {content, filename, content_type} = ev.detail
+  const blob = new Blob([content], {type: content_type || "text/plain"})
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename || "download.txt"
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+})
+
 // --- Local app: delegated copy-button handler ---
 // Any element with `.copy-btn[data-copy]` becomes a clipboard button.
 // Used by the InitLive step pages so users can one-click the prompt
