@@ -735,17 +735,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         execution_type: :main_agent
       }),
       new!(%{
-        id: 3,
-        name: "bdd_specs_passing",
-        node_scope: :self,
-        check_type: :spex_passing,
-        satisfied_by: AgentTasks.FixBddSpecs,
-        artifact_type: :tests,
-        description: "BDD specs pass",
-        prerequisites: [2],
-        execution_type: :main_agent
-      }),
-      new!(%{
         id: 4,
         name: "qa_complete",
         node_scope: :self,
@@ -754,7 +743,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA complete: at least one valid DB-backed pass attempt exists",
-        prerequisites: [3],
+        prerequisites: [2],
         execution_type: :sub_agent,
         subagent_role: :qa
       }),
@@ -943,16 +932,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [7]
       }),
       new!(%{
-        id: 9,
-        name: "all_bdd_specs_passing",
-        node_scope: :self,
-        check_type: :spex_passing,
-        satisfied_by: AgentTasks.FixAllBddSpecs,
-        artifact_type: :tests,
-        description: "All BDD specs pass across all stories",
-        prerequisites: [14]
-      }),
-      new!(%{
         id: 10,
         name: "qa_journey_plan",
         node_scope: :self,
@@ -961,7 +940,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaJourney,
         artifact_type: :review,
         description: "QA journey plan exists and valid",
-        prerequisites: [9]
+        prerequisites: [14]
       }),
       new!(%{
         id: 11,

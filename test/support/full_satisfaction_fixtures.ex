@@ -20,13 +20,12 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   - `architecture_designed` — via `Fixtures.with_proposal/2`
   - `issues_triaged`, `issues_resolved` — vacuous (no incoming issues)
   - `qa_setup` — write `.code_my_spec/qa/plan.md`
-  - `all_bdd_specs_passing` — bdd spec file written + zero spex problems
   - `qa_journey_plan`, `qa_journey_execute`, `qa_journey_wallaby` — files written
 
   Story-level requirements:
   - `component_linked` — `set_story_component` MCP
   - `three_amigos_complete` — persona linked + rule + criterion (via MCP)
-  - `bdd_specs_exist`, `bdd_specs_passing` — bdd spec file + zero spex problems
+  - `bdd_specs_exist` — bdd spec file written
   - `qa_complete` — `.code_my_spec/qa/<story_id>/{brief,result}.md`
 
   Component-level requirements (for a single schema component, the
@@ -225,7 +224,7 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     context
   end
 
-  # 11. BDD spec file for the story → bdd_specs_exist + bdd_specs_passing
+  # 11. BDD spec file for the story → bdd_specs_exist
   defp apply_bdd_spec_file(context) do
     :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, context.story)
     context

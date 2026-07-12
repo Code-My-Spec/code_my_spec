@@ -31,7 +31,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           | :field_present
           | :no_problems
           | :tests_passing
-          | :spex_passing
           | :delegate
 
   @type node_scope :: :parent | :child | :self
@@ -71,7 +70,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     :field_present,
     :no_problems,
     :tests_passing,
-    :spex_passing,
     :delegate
   ]
 

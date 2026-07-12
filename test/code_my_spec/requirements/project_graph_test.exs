@@ -64,10 +64,10 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       # Cross-entity: story → component (bdd_specs_exist → component first req)
       assert {"story", "component"} in edge_types
 
-      # Cross-entity: component → story (component terminal → bdd_specs_passing)
+      # Cross-entity: component → story (component terminal → qa_complete)
       assert {"component", "story"} in edge_types
 
-      # Cross-entity: story → project (qa_complete → all_bdd_specs_passing)
+      # Cross-entity: story → project (qa_complete → qa_journey_plan)
       assert {"story", "project"} in edge_types
     end
 
@@ -109,7 +109,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
       assert "User Registration" in story_names
     end
 
-    test "story requirements include bdd_specs_exist and bdd_specs_passing" do
+    test "story requirements include bdd_specs_exist and qa_complete" do
       {scope, _tmp_dir} = setup_full_project()
 
       %{nodes: nodes} = Requirements.project_graph(scope)
@@ -122,7 +122,6 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
 
       assert "component_linked" in story_req_names
       assert "bdd_specs_exist" in story_req_names
-      assert "bdd_specs_passing" in story_req_names
       assert "qa_complete" in story_req_names
     end
 

@@ -12,7 +12,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   - `:field_present` — Field on entity struct is not nil
   - `:no_problems`   — Zero Problem records from configured source
   - `:tests_passing` — Zero exunit Problems
-  - `:spex_passing`  — Zero spex Problems
   """
 
   import Ecto.Query
@@ -24,7 +23,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Preloader
-  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   @type computed_requirement :: %{
@@ -125,55 +123,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
           {true, %{status: "No test failures"}}
         else
           {false, %{reason: "#{count} test failure(s)", count: count}}
-        end
-    end
-  end
-
-  # Per-story scope: only count spex problems whose file belongs to this
-  # story. Without this, one failing spex anywhere in the project blocks
-  # every story's `bdd_specs_passing` (and clamps every story's
-  # `qa_complete` to false), which is the stale-listing symptom callers
-  # see from `list_requirements`.
-  defp check(%{check_type: :spex_passing}, scope, %Story{id: story_id}, files, ctx) do
-    bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
-
-    cond do
-      bdd_files == [] ->
-        {false, %{reason: "No BDD spec files exist yet"}}
-
-      not analysis_fresh?(scope, "spex", ctx) ->
-        {false, %{reason: "Spex results not current — analysis pending or stale"}}
-
-      true ->
-        spex_problems = get_story_problem_count(story_id, "spex", ctx)
-
-        if spex_problems == 0 do
-          {true, %{status: "All BDD specs passing"}}
-        else
-          {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
-        end
-    end
-  end
-
-  # Project (or other non-story) scope: existing project-wide count.
-  # Powers `all_bdd_specs_passing` on the project graph.
-  defp check(%{check_type: :spex_passing}, scope, _entity, files, ctx) do
-    bdd_files = Enum.filter(files, &(&1.role == :bdd_spec))
-
-    cond do
-      bdd_files == [] ->
-        {false, %{reason: "No BDD spec files exist yet"}}
-
-      not analysis_fresh?(scope, "spex", ctx) ->
-        {false, %{reason: "Spex results not current — analysis pending or stale"}}
-
-      true ->
-        spex_problems = get_global_problem_count(ctx, "spex")
-
-        if spex_problems == 0 do
-          {true, %{status: "All BDD specs passing"}}
-        else
-          {false, %{reason: "#{spex_problems} failing BDD spec(s)"}}
         end
     end
   end
@@ -343,22 +292,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     |> where([p], p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source)
     |> Repo.aggregate(:count)
   end
-
-  defp get_global_problem_count(%{problems_by_source: pbs}, source) when is_map(pbs) do
-    Map.get(pbs, source, 0)
-  end
-
-  defp get_global_problem_count(_, _source), do: 0
-
-  # Per-story problem count keyed by source. Loaded by Preloader by
-  # joining `problems` to `files` on `path` and grouping by
-  # `files.story_id`. Returns 0 when the preload is missing (legacy
-  # callers without a ctx).
-  defp get_story_problem_count(story_id, source, %{problems_by_story: pbs}) when is_map(pbs) do
-    pbs |> Map.get(story_id, %{}) |> Map.get(source, 0)
-  end
-
-  defp get_story_problem_count(_story_id, _source, _ctx), do: 0
 
   # Freshness of a source's latest analysis run vs the current inputs.
   # Preloaded per project; falls back to a direct ledger check for legacy

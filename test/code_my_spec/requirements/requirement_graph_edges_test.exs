@@ -41,13 +41,13 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {nodes, _edges} = RequirementGraph.compute_graph(scope)
 
-      # bdd_specs_passing should be unsatisfied — context.tests_passing is unsatisfied
-      bdd_passing = find_node(nodes, "story", story.id, "bdd_specs_passing")
-      assert bdd_passing
-      refute bdd_passing.satisfied
+      # qa_complete should be unsatisfied — context.tests_passing is unsatisfied
+      qa_complete = find_node(nodes, "story", story.id, "qa_complete")
+      assert qa_complete
+      refute qa_complete.satisfied
     end
 
-    test "clamping cascades: qa_complete unsatisfied when bdd_specs_passing is clamped" do
+    test "clamping cascades: qa_complete unsatisfied when component chain is unsatisfied" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -121,7 +121,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       refute tests_passing.satisfied, "tests_passing should not be vacuously satisfied with no test file"
     end
 
-    test "bdd_specs_passing is unsatisfied when no bdd spec files exist" do
+    test "bdd_specs_exist is unsatisfied when no bdd spec files exist" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -136,7 +136,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       sync!(scope, tmp_dir)
 
       {nodes, _} = RequirementGraph.compute_graph(scope)
-      bdd = find_node(nodes, "story", story.id, "bdd_specs_passing")
+      bdd = find_node(nodes, "story", story.id, "bdd_specs_exist")
       assert bdd
       refute bdd.satisfied
     end
@@ -174,12 +174,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       end)
       assert entry, "should have entry edge from story.bdd_specs_exist to component.spec_file"
 
-      # Exit: component.implementation_file → story.bdd_specs_passing (terminal for schema)
+      # Exit: component.implementation_file → story.qa_complete (terminal for schema)
       exit_edge = Enum.find(edges, fn e ->
         e.from == {"component", component.id, "implementation_file"} and
-        e.to == {"story", story.id, "bdd_specs_passing"}
+        e.to == {"story", story.id, "qa_complete"}
       end)
-      assert exit_edge, "should have exit edge from component terminal to story.bdd_specs_passing"
+      assert exit_edge, "should have exit edge from component terminal to story.qa_complete"
     end
 
     test "creates edges for direct dependencies" do
@@ -390,8 +390,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     end
   end
 
-  describe "bdd_specs_passing prerequisites" do
-    test "bdd_specs_passing has bdd_specs_exist as prerequisite edge" do
+  describe "qa_complete prerequisites" do
+    test "qa_complete has bdd_specs_exist as prerequisite edge" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -407,13 +407,13 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       prereq_edge = Enum.find(edges, fn e ->
         e.from == {"story", story.id, "bdd_specs_exist"} and
-        e.to == {"story", story.id, "bdd_specs_passing"}
+        e.to == {"story", story.id, "qa_complete"}
       end)
 
-      assert prereq_edge, "bdd_specs_passing should have prerequisite edge from bdd_specs_exist"
+      assert prereq_edge, "qa_complete should have prerequisite edge from bdd_specs_exist"
     end
 
-    test "bdd_specs_passing is not actionable when bdd_specs_exist is unsatisfied" do
+    test "qa_complete is not actionable when bdd_specs_exist is unsatisfied" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -426,11 +426,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       sync!(scope, tmp_dir)
 
       actionable = RequirementGraph.next_actionable(scope)
-      bdd_passing = Enum.find(actionable, fn n ->
-        n.entity_type == "story" and n.entity_id == story.id and n.name == "bdd_specs_passing"
+      qa_complete = Enum.find(actionable, fn n ->
+        n.entity_type == "story" and n.entity_id == story.id and n.name == "qa_complete"
       end)
 
-      refute bdd_passing, "bdd_specs_passing should not be actionable when bdd_specs_exist is unsatisfied"
+      refute qa_complete, "qa_complete should not be actionable when bdd_specs_exist is unsatisfied"
     end
   end
 

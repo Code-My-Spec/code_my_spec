@@ -9,8 +9,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   2. **Project → story**: project.qa_setup → story.component_linked (the
      whole-project gate that opens story-level work)
   2. **Story → component tree**: bdd_specs_exist → component's first req;
-     component's terminal req → bdd_specs_passing
-  3. **Stories → project**: each story's qa_complete → all_bdd_specs_passing
+     component's terminal req → qa_complete
+  3. **Stories → project**: each story's qa_complete → qa_journey_plan
      (project-level fan-in node — gives the requirements graph a structural
      seam where story state aggregates into project state, which the
      graph projector uses to lay out late_project nodes at the bottom band)
@@ -272,12 +272,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.any?(&(&1.name == name))
   end
 
-  # bdd_specs_passing is gated on the LEAVES of the surface's
+  # qa_complete is gated on the LEAVES of the surface's
   # orchestration tree:
   # - leaf surface (template has no :child defs): the surface's own
-  #   last :self def feeds bdd_specs_passing.
+  #   last :self def feeds qa_complete.
   # - container surface (template has :child defs): each direct
-  #   child's terminal feeds bdd_specs_passing. Sibling children
+  #   child's terminal feeds qa_complete. Sibling children
   #   with cross-context deps collapse via transitive reduction —
   #   only the deepest leaf survives.
   defp surface_exit_edge(surface, story, ctx, config) do
@@ -297,7 +297,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         [
           %{
             from: {"component", surface.id, terminal.name},
-            to: {"story", story.id, "bdd_specs_passing"}
+            to: {"story", story.id, "qa_complete"}
           }
         ]
     end
@@ -315,7 +315,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           [
             %{
               from: {"component", child.id, name},
-              to: {"story", story.id, "bdd_specs_passing"}
+              to: {"story", story.id, "qa_complete"}
             }
           ]
       end
@@ -386,12 +386,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     Enum.find(definitions, &(&1.name == name))
   end
 
-  # Cross-entity: story.qa_complete → project.all_bdd_specs_passing.
+  # Cross-entity: story.qa_complete → project.qa_journey_plan.
   # The project-level fan-in: every story's QA completion gates the
-  # project's `all_bdd_specs_passing` aggregate, which downstream
-  # nodes (qa_journey_plan etc.) depend on. Restoring this edge after
-  # the e7452b3a / 36ae631e removal so the graph projector has a
-  # structural seam to lay late_project nodes against the bottom band.
+  # project's QA journey chain. This edge is the structural seam the
+  # graph projector uses to lay late_project nodes against the bottom
+  # band — keep a story→project fan-in even if the target node changes.
   defp story_to_project_edges(ctx) do
     project_id =
       case ctx.stories do
@@ -403,7 +402,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Enum.map(ctx.stories, fn story ->
         %{
           from: {"story", story.id, "qa_complete"},
-          to: {"project", project_id, "all_bdd_specs_passing"}
+          to: {"project", project_id, "qa_journey_plan"}
         }
       end)
     else

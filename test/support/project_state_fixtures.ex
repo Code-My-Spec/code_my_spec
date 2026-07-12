@@ -413,7 +413,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   end
 
   @doc """
-  Satisfies `bdd_specs_exist` and `bdd_specs_passing` on a story by
+  Satisfies `bdd_specs_exist` on a story by
   writing a passing-stub BDD spec file at the canonical path the
   harness derives from `(story_id, criterion_id)`. Requires the
   story to have at least one criterion.

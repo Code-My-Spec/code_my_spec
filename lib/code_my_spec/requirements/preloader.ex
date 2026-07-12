@@ -76,42 +76,12 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> where([s], s.project_id == ^project_id)
       |> Repo.all()
 
-    # Global problem counts by source (for project-level checks like
-    # `all_bdd_specs_passing`).
-    global_problem_counts =
-      Problem
-      |> where([p], p.project_id == ^project_id)
-      |> group_by([p], p.source)
-      |> select([p], {p.source, count(p.id)})
-      |> Repo.all()
-      |> Map.new()
-
-    # Per-story problem counts. Joins problems → files on path, so a
-    # spex failure shows up under the story whose `test/spex/<id>_*/`
-    # directory owns the file. Without this, story-level
-    # `spex_passing` would have to fall back to the project-wide
-    # count and clamp every story when one spex fails anywhere.
-    problems_by_story =
-      Problem
-      |> join(:inner, [p], f in File,
-        on: f.path == p.file_path and f.project_id == p.project_id
-      )
-      |> where([p, f], p.project_id == ^project_id and not is_nil(f.story_id))
-      |> group_by([p, f], [f.story_id, p.source])
-      |> select([p, f], {f.story_id, p.source, count(p.id)})
-      |> Repo.all()
-      |> Enum.reduce(%{}, fn {story_id, source, count}, acc ->
-        Map.update(acc, story_id, %{source => count}, &Map.put(&1, source, count))
-      end)
-
     %{
       files_by_component: files_by_component,
       files_by_story: files_by_story,
       files_by_project: all_files,
       files_by_path: Map.new(all_files, &{&1.path, &1}),
       problems_by_component: problems_by_component,
-      problems_by_story: problems_by_story,
-      problems_by_source: global_problem_counts,
       analysis_fresh: analysis_freshness(scope, all_files),
       components: components,
       stories: stories
@@ -120,9 +90,9 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   # Per-source freshness: does the latest completed full analysis run match
   # the current input fingerprint? Reuses the already-loaded file list, so
-  # this is one ledger query plus in-memory hashing. `tests_passing` /
-  # `spex_passing` gate on it — zero persisted problems only means "passing"
-  # when the results are actually current for today's code.
+  # this is one ledger query plus in-memory hashing. `tests_passing` gates
+  # on it — zero persisted problems only means "passing" when the results
+  # are actually current for today's code.
   defp analysis_freshness(scope, all_files) do
     latest = RunsRepository.latest_full_runs(scope)
 

@@ -128,7 +128,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     | `implementation_file` | Implementation code in `lib/` |
     | `tests_passing` | Fix failing tests |
     | `bdd_specs_exist` | BDD scenario files for a story's acceptance criteria |
-    | `bdd_specs_passing` | Fix failing BDD specs |
     | `qa_complete` | QA brief and results for a story |
 
     ### Step 4: Automatic Evaluation
