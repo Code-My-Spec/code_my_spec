@@ -159,41 +159,25 @@ defmodule CodeMySpec.Issues.RemoteClientTest do
     end
   end
 
-  describe "create_issue/3 with framework deploy key" do
-    setup do
-      prev = Application.get_env(:code_my_spec, :framework_deploy_key)
-      Application.put_env(:code_my_spec, :framework_deploy_key, "framework-key-abc")
-
-      on_exit(fn ->
-        if prev do
-          Application.put_env(:code_my_spec, :framework_deploy_key, prev)
-        else
-          Application.delete_env(:code_my_spec, :framework_deploy_key)
-        end
-      end)
-
-      :ok
-    end
-
-    test "framework-scoped issue posts to the key-auth endpoint with no OAuth token", %{
-      scope: scope
-    } do
+  describe "create_issue/3 auth path" do
+    # Framework issues ride the CLI's OAuth session against /api/issues —
+    # never the deploy-key endpoint (/api/framework/issues), which is
+    # reserved for widget-style unauthenticated intake.
+    test "framework-scoped issue posts to /api/issues with the OAuth token", %{scope: scope} do
       plug = auth_capturing_plug(self(), 201, %{"data" => issue_payload(%{"scope" => "framework"})})
 
-      # No `token:` opt — the key path must never touch OAuthClient.
       assert {:ok, %Issue{}} =
                RemoteClient.create_issue(
                  scope,
                  %{title: "Looping hook", scope: :framework, severity: :high, description: "..."},
-                 plug: plug
+                 plug: plug,
+                 token: "test"
                )
 
-      assert_received {:request, path, authorization}
-      assert path == "/api/framework/issues"
-      assert authorization == "Bearer framework-key-abc"
+      assert_received {:request, "/api/issues", "Bearer test"}
     end
 
-    test "app-scoped issue still takes the OAuth path", %{scope: scope} do
+    test "app-scoped issue takes the same OAuth path", %{scope: scope} do
       plug = auth_capturing_plug(self(), 201, %{"data" => issue_payload(%{})})
 
       assert {:ok, %Issue{}} =

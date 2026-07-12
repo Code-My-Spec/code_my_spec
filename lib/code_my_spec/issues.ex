@@ -139,12 +139,12 @@ defmodule CodeMySpec.Issues do
   end
 
   @doc """
-  Deploy-key-authenticated framework issue report: an installed CLI files
-  CodeMySpec friction (looping hooks, contradictory prompts, tool errors)
-  without an OAuth connection — the pre-shared framework deploy key resolves
-  the project via its blind-index hash, same flow as `report_from_widget/3`.
-  Scope is forced to `framework` so the key grants nothing broader; source
-  defaults to `"cli"`.
+  Deploy-key-authenticated framework issue report for clients with no OAuth
+  session (widget-style embeds and other external reporters) — the deploy key
+  resolves the project via its blind-index hash, same flow as
+  `report_from_widget/3`. Scope is forced to `framework` so the key grants
+  nothing broader. Installed CLIs don't take this path; they file framework
+  issues over their OAuth session via `ProjectScopeOverride`.
   """
   def report_framework_issue(account_id, project_id, attrs)
       when is_binary(account_id) and is_binary(project_id) and is_map(attrs) do

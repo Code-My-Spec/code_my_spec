@@ -2,12 +2,16 @@ defmodule CodeMySpecWeb.FrameworkIssuesController do
   @moduledoc """
   Deploy-key-authenticated framework issue intake.
 
-  Installed CLIs file framework-scoped friction here without an OAuth
-  connection — local-first installs have no token. The Bearer credential is
-  the CodeMySpec project's deploy key: self-identifying via its blind-index
-  hash (same flow as `WidgetSocket`), so the key alone resolves the project
-  and no project id crosses the wire. The surface is deliberately narrow —
-  create only, scope forced to `framework` by `Issues.report_framework_issue/3`.
+  For clients with no OAuth session — widget-style embeds and other external
+  reporters. The Bearer credential is the CodeMySpec project's deploy key:
+  self-identifying via its blind-index hash (same flow as `WidgetSocket`), so
+  the key alone resolves the project and no project id crosses the wire. The
+  surface is deliberately narrow — create only, scope forced to `framework`
+  by `Issues.report_framework_issue/3`.
+
+  Installed CLIs do NOT use this endpoint: they file framework issues over
+  their OAuth session via POST /api/issues, with `ProjectScopeOverride`
+  allowing that one write against the configured CodeMySpec project.
   """
 
   use CodeMySpecWeb, :controller

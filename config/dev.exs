@@ -15,14 +15,6 @@ config :code_my_spec,
 # and ProjectScopeOverride relaxes account-access checks for that narrow path.
 config :code_my_spec, code_my_spec_project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
 
-# That project's deploy key (projects.deploy_key — widget semantics: the
-# blind-index hash resolves the project from the key alone). Lets the CLI
-# file framework issues via POST /api/framework/issues with no OAuth
-# connection; Issues.RemoteClient falls back to the OAuth path when unset.
-config :code_my_spec,
-  framework_deploy_key:
-    "6fc8a6e26353b21b332ce537ed427175ef3af8e2cad73a834095d1e1e8918062e42b6aa8c27f5d8f47246574c82b2d3a17248db692906f6f1bcbfd7b754286c9"
-
 # Configure your database
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",
