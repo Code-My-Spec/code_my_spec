@@ -66,7 +66,7 @@ defmodule CodeMySpecWeb.LlmsTxtController do
       title: "EarWitness Live Build",
       url: "/case-studies/ear-witness",
       description:
-        "Live harness build in progress: a local-first Otter alternative (on-device transcription, diarization, audio-tap meeting capture, MCP access). 10 stories with full Three Amigos records published before the code exists"
+        "Live harness build in progress: a local-first Otter alternative (on-device transcription, diarization, audio-tap meeting capture, MCP access). 11 stories with full Three Amigos records, statuses updating as browser QA passes"
     },
     %{
       title: "About",

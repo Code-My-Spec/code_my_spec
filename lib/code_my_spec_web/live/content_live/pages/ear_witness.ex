@@ -27,10 +27,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
     metadata: %{
       meta_title: "EarWitness Live Build: A Local-First Otter Alternative, Built by the Harness",
       meta_description:
-        "A live CodeMySpec build, happening now. EarWitness transcribes, segments, and diarizes speakers on your machine, taps your audio so meetings record without a bot, and exposes your conversations to Claude over MCP. 10 stories, 45 Three Amigos rules, 49 acceptance criteria, all public before the code exists.",
+        "A live CodeMySpec build, happening now. EarWitness transcribes, segments, and diarizes speakers on your machine, taps your audio so meetings record without a bot, and exposes your conversations to Claude over MCP. 11 stories, 55 Three Amigos rules, 60 acceptance criteria, 4 stories browser-QA passed and counting.",
       og_title: "EarWitness Live Build — The Requirements, Before the Code",
       og_description:
-        "A local-first Otter alternative being built live by the CodeMySpec harness. 10 stories, 45 rules, 49 BDD criteria published before implementation. Follow the build on Reddit; download the releases as they land.",
+        "A local-first Otter alternative being built live by the CodeMySpec harness. 11 stories, 55 rules, 60 BDD criteria, statuses updating as the build runs. Follow the build on Reddit; download the releases as they land.",
       og_image: nil,
       author: "John Davenport",
       tags: [
@@ -50,18 +50,18 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
       title: "EarWitness",
       tagline: "A local-first Otter alternative, being built live. These are the requirements.",
       description:
-        "EarWitness transcribes, segments, and diarizes speakers entirely on your machine. An audio tap records the meetings you're in without a bot in the participant list; a bot can join the ones you're not. An Otter-style editor fixes speakers and prose, and MCP tools let Claude work your conversation data. The harness is building it live: the 10 stories below, with their Three Amigos rules and given-when-then scenarios, are the real records driving the build, published before the code exists. The teardown lands here when it ships.",
+        "EarWitness transcribes, segments, and diarizes speakers entirely on your machine, live while the recording runs. An audio tap records the meetings you're in without a bot in the participant list, with a recording notice participants actually hear. An Otter-style editor fixes speakers and prose, and MCP tools let Claude work your conversation data. The harness is building it live: the 11 stories below, with their Three Amigos rules and given-when-then scenarios, are the real records driving the build, and their statuses update as stories pass browser QA. The teardown lands here when it ships.",
       stats: [
-        %{label: "Status", value: "Live"},
-        %{label: "Stories", value: "10"},
-        %{label: "Three Amigos Rules", value: "45"},
-        %{label: "Acceptance Criteria", value: "49"}
+        %{label: "Stories QA-Passed", value: "4 of 11"},
+        %{label: "Three Amigos Rules", value: "55"},
+        %{label: "Acceptance Criteria", value: "60"},
+        %{label: "Spex Green", value: "60"}
       ]
     },
     overview: %{
       title: "What is EarWitness?",
       description:
-        "Everything local: the audio, the models, the transcripts, the search index. Nothing leaves your machine. The persona driving the requirements is Dana the Hearing Documenter: someone whose work depends on knowing who said what, who can't hand recordings to a cloud service, and who needs a transcriber working minutes after install.",
+        "Everything local: the audio, the models, the transcripts, the search index. Nothing leaves your machine. Two personas drive the requirements: Dana the Hearing Documenter, whose work depends on knowing who said what and who can't hand recordings to a cloud service, and Marcus the Meeting-Heavy Builder, who lives in back-to-back calls and wants them captured without a bot in the room.",
       integrations: [
         %{
           name: "Audio Tap",
@@ -79,9 +79,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
           icon: "hero-command-line"
         },
         %{
-          name: "Meeting Bot",
-          description: "For the meetings you can't attend, a bot joins and transcribes",
-          icon: "hero-user-plus"
+          name: "Live Transcription",
+          description: "Transcribe and segment while the recording is still running",
+          icon: "hero-bolt"
         },
         %{
           name: "Editor",
@@ -105,7 +105,8 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
         "A working transcriber minutes after install",
         "Recording-law awareness built into the product",
         "Your AI assistant works your conversations over MCP",
-        "Send a bot to the meetings you can't attend"
+        "A recording notice participants actually hear",
+        "Live transcription and segmentation while recording"
       ]
     },
     repository: %{
@@ -116,8 +117,8 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
       stats: [
         %{label: "Language", value: "Elixir / Phoenix"},
         %{label: "Build Status", value: "Live"},
-        %{label: "Stories", value: "10"},
-        %{label: "Persona", value: "Dana"}
+        %{label: "Commits", value: "96"},
+        %{label: "Spex", value: "60 green"}
       ]
     }
   }

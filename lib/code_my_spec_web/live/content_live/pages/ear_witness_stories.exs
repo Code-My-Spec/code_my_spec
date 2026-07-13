@@ -1,7 +1,7 @@
 [
   %{
     story_id: 860,
-    status: :in_progress,
+    status: :completed,
     title: "Transcribe a hearing recording locally",
     description:
       "As a hearing documenter, I want to import a recording of a public proceeding (or record it live) and get an accurate transcript produced entirely on my own machine, so that public-but-unpublished hearings become searchable, quotable documents without any audio ever leaving my device.
@@ -9,18 +9,19 @@
 Seed context: EarWitness's founding customer wants to transcribe tenant-board dispute proceedings that are public but published nowhere; the founder wants the same private capture for his own meetings. Decision drivers from persona research (hearing-documenter): privacy/confidentiality, no bot joining calls, zero marginal cost at volume, and support for multi-hour recordings.",
     tags: [%{name: "documenter"}],
     criteria: [
-      %{description: "Import a WAV file into the library", verified: false},
-      %{description: "Reject a corrupt or unsupported file without touching the library", verified: false},
-      %{description: "Record live audio and land it in the library", verified: false},
-      %{description: "No input device available", verified: false},
-      %{description: "Transcribe successfully with networking disabled", verified: false},
-      %{description: "Transcribe a three-hour hearing block", verified: false},
-      %{description: "Every transcript passage carries its audio timestamp", verified: false},
-      %{description: "Keep using the app while transcription runs", verified: false},
-      %{description: "Interrupted transcription resumes after restart", verified: false},
-      %{description: "Reopen a transcript after restarting the app", verified: false},
-      %{description: "Imported recording waits for an explicit transcribe action", verified: false}
+      %{description: "Import a WAV file into the library", verified: true},
+      %{description: "Reject a corrupt or unsupported file without touching the library", verified: true},
+      %{description: "Record live audio and land it in the library", verified: true},
+      %{description: "No input device available", verified: true},
+      %{description: "Transcribe successfully with networking disabled", verified: true},
+      %{description: "Transcribe a three-hour hearing block", verified: true},
+      %{description: "Every transcript passage carries its audio timestamp", verified: true},
+      %{description: "Keep using the app while transcription runs", verified: true},
+      %{description: "Interrupted transcription resumes after restart", verified: true},
+      %{description: "Reopen a transcript after restarting the app", verified: true},
+      %{description: "Imported recording waits for an explicit transcribe action", verified: true}
     ],
+    qa: %{final: :pass, attempts: 3, history: [:partial, :partial, :pass]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
@@ -151,21 +152,22 @@ Then no transcription starts until the user explicitly requests it"
   },
   %{
     story_id: 861,
-    status: :in_progress,
+    status: :completed,
     title: "Capture my own meetings without a bot",
     description:
-      "As a meeting participant, I want EarWitness to record both sides of my calls by tapping the system audio devices (input and output) so that I get a complete record of meetings I'm in without a notetaker bot sitting in the participant list.
+      "As a meeting participant, I want EarWitness to record both sides of my calls — my microphone and the system audio output — so that I get a complete record of meetings I'm in without a notetaker bot sitting in the participant list.
 
-Context: this was the original product requirement — on macOS an audio-tap virtual device can act like a mic while exposing the output audio for capture. Recording without notifying other participants has legal implications, which is why the consent/notification behavior is a separate story (\"Stay on the right side of recording law\").",
+Context: capture is platform-native behind a common capture-source seam (see the miniaudio-capture and macos-system-audio-tap ADRs — this replaces the earlier Membrane/PortAudio approach, which could not build on Windows). Microphone capture works on all platforms via the miniaudio C NIF. System-audio *output* capture (the other side of the call) uses miniaudio's WASAPI loopback on Windows and a PulseAudio/PipeWire monitor source on Linux; on macOS it uses a native Core Audio process tap (macOS 14.4+, driverless, permission-gated) — there is no cross-platform path for macOS system output. Recording without notifying other participants has legal implications, handled by the separate consent story (\"Stay on the right side of recording law\"). \"Guided setup when the tap is missing\" now means granting the OS system-audio permission (or showing an unsupported-OS/version notice) rather than installing a virtual audio device.",
     tags: [%{name: "documenter"}],
     criteria: [
-      %{description: "Select the tap as the capture source", verified: false},
-      %{description: "A recorded call contains both sides of the conversation", verified: false},
-      %{description: "Nothing joins the meeting when capture runs", verified: false},
-      %{description: "Capture starts when the policy allows it", verified: false},
-      %{description: "Capture refused when the policy's conditions are unmet", verified: false},
-      %{description: "Guided setup when the tap is missing", verified: false}
+      %{description: "Select the tap as the capture source", verified: true},
+      %{description: "A recorded call contains both sides of the conversation", verified: true},
+      %{description: "Nothing joins the meeting when capture runs", verified: true},
+      %{description: "Capture starts when the policy allows it", verified: true},
+      %{description: "Capture refused when the policy's conditions are unmet", verified: true},
+      %{description: "Guided setup when the tap is missing", verified: true}
     ],
+    qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
@@ -244,7 +246,7 @@ Then the app walks them through enabling it instead of failing silently"
   },
   %{
     story_id: 862,
-    status: :in_progress,
+    status: :completed,
     title: "Know who said what",
     description:
       "As a hearing documenter, I want transcripts to distinguish the speakers (adjudicator, landlord, tenant, interpreter — or my meeting counterparts) and recognize recurring voices across recordings so that every quote is attributable to a person without me re-listening to the audio.
@@ -252,13 +254,14 @@ Then the app walks them through enabling it instead of failing silently"
 Covers on-device diarization (segmenting who spoke when) plus speaker identification via clustering voice signatures across the library, so people I record regularly get recognized automatically.",
     tags: [%{name: "documenter"}],
     criteria: [
-      %{description: "Two-person hearing shows two distinct speakers", verified: false},
-      %{description: "Naming a speaker relabels all their segments", verified: false},
-      %{description: "A known voice is recognized in a new recording", verified: false},
-      %{description: "Diarize with networking disabled", verified: false},
-      %{description: "Overlapping or unclear speech is marked unknown, not misattributed", verified: false},
-      %{description: "Deleting a voice signature stops future recognition", verified: false}
+      %{description: "Two-person hearing shows two distinct speakers", verified: true},
+      %{description: "Naming a speaker relabels all their segments", verified: true},
+      %{description: "A known voice is recognized in a new recording", verified: true},
+      %{description: "Diarize with networking disabled", verified: true},
+      %{description: "Overlapping or unclear speech is marked unknown, not misattributed", verified: true},
+      %{description: "Deleting a voice signature stops future recognition", verified: true}
     ],
+    qa: %{final: :pass, attempts: 3, history: [:fail, :partial, :pass]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
@@ -342,7 +345,7 @@ Then future recordings no longer auto-attribute that voice, and past transcripts
   },
   %{
     story_id: 863,
-    status: :in_progress,
+    status: :completed,
     title: "Fix the transcript like Otter",
     description:
       "As a hearing documenter, I want an editor where I can rename and swap speaker labels, correct transcription mistakes, and replay the audio behind any passage so that the final transcript is accurate enough to publish, cite, or share.
@@ -350,14 +353,15 @@ Then future recordings no longer auto-attribute that voice, and past transcripts
 The Otter-style experience: transcript and audio side by side, click a segment to hear it, reassign a segment to the right speaker, and edit text inline — all changes staying on my machine.",
     tags: [%{name: "documenter"}],
     criteria: [
-      %{description: "Fix a mis-heard word inline", verified: false},
-      %{description: "Move a segment to the right speaker", verified: false},
-      %{description: "Click a passage to hear it", verified: false},
-      %{description: "Edits are still there after a restart", verified: false},
-      %{description: "Undo walks back through edits", verified: false},
-      %{description: "Revert a segment to what the machine heard", verified: false},
-      %{description: "Follow-along highlighting during playback", verified: false}
+      %{description: "Fix a mis-heard word inline", verified: true},
+      %{description: "Move a segment to the right speaker", verified: true},
+      %{description: "Click a passage to hear it", verified: true},
+      %{description: "Edits are still there after a restart", verified: true},
+      %{description: "Undo walks back through edits", verified: true},
+      %{description: "Revert a segment to what the machine heard", verified: true},
+      %{description: "Follow-along highlighting during playback", verified: true}
     ],
+    qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
@@ -466,6 +470,7 @@ Then the highlight moves to the segment currently being spoken"
       %{description: "Corrected words become findable", verified: false},
       %{description: "Find a recording by its title", verified: false}
     ],
+    qa: %{final: :partial, attempts: 1, history: [:partial]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
@@ -556,12 +561,12 @@ Then the recording itself appears in the results alongside any transcript matche
     tags: [%{name: "documenter"}],
     criteria: [
       %{description: "Create a case and add hearings to it", verified: false},
-      %{description: "Edit a recording's metadata", verified: false},
       %{description: "One recording appears in two collections", verified: false},
       %{description: "Browse the library by collection", verified: false},
       %{description: "Removing a case keeps its recordings", verified: false},
       %{description: "Restore a recording from the trash", verified: false}
     ],
+    qa: %{final: :partial, attempts: 1, history: [:partial]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
@@ -580,13 +585,6 @@ Then the collection shows both hearings together"
         %{
           statement: "A recording has a title, date, and participants the user can edit",
           scenarios: [
-            %{
-              kind: "happy path",
-              title: "Edit a recording's metadata",
-              body: "Given a recording with a default filename title
-When the user renames it and sets its date and participants
-Then the library shows the new title, date, and participants"
-            }
           ]
         },
         %{
@@ -659,6 +657,7 @@ Then the recording is back in the library with its transcript intact"
       %{description: "Network drop mid-download recovers cleanly", verified: false},
       %{description: "Swap the active model in settings", verified: false}
     ],
+    qa: %{final: :partial, attempts: 1, history: [:partial]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
@@ -762,10 +761,84 @@ Then subsequent transcriptions use the newly selected model"
 Context: recording without notifying participants is legal in some places (one-party consent) and not others; the behavior needs to be a pluggable policy of the capture system rather than a hardcoded stance.",
     tags: [%{name: "documenter"}],
     criteria: [
+      %{description: "Pick the notify policy in settings", verified: false},
+      %{description: "Capture proceeds only on the policy's terms", verified: false},
+      %{description: "Capture refused when the policy cannot be satisfied", verified: false},
+      %{description: "Policies are explained where they are chosen", verified: false},
+      %{description: "Participants hear the recording notice", verified: false},
+      %{description: "Fresh install defaults to the protective policy", verified: false}
     ],
+    qa: %{final: :fail, attempts: 2, history: [:partial, :fail]},
     three_amigos: %{
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
+        %{
+          statement: "The user chooses a recording consent policy (silent, notify, or announce) in settings",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Pick the notify policy in settings",
+              body: "Given the settings screen is open
+When the user selects the \"notify\" consent policy
+Then notify becomes the active policy for future captures"
+            }
+          ]
+        },
+        %{
+          statement: "The chosen policy is enforced at every capture start",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Capture proceeds only on the policy's terms",
+              body: "Given the announce policy is active
+When the user starts a tap capture
+Then the announcement runs first and recording starts only after it completes"
+            },
+            %{
+              kind: "failure path",
+              title: "Capture refused when the policy cannot be satisfied",
+              body: "Given the announce policy is active but the notice cannot be delivered
+When the user tries to start a capture
+Then the capture is refused with an explanation instead of recording silently"
+            }
+          ]
+        },
+        %{
+          statement: "Each policy choice is explained in plain language with a not-legal-advice disclaimer",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Policies are explained where they are chosen",
+              body: "Given the settings screen shows the three policies
+When the user reads each option
+Then each has a plain-language explanation of what it does, plus a disclaimer that this is not legal advice"
+            }
+          ]
+        },
+        %{
+          statement: "The announce policy delivers an audible recording notice before capture begins",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Participants hear the recording notice",
+              body: "Given the announce policy is active during a call
+When capture starts
+Then an audible recording notice is played to the other participants before any audio is kept"
+            }
+          ]
+        },
+        %{
+          statement: "The policy defaults to notify until the user changes it",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Fresh install defaults to the protective policy",
+              body: "Given a fresh install where the user never touched consent settings
+When the first capture starts
+Then the notify policy governs it"
+            }
+          ]
+        }
       ],
       questions: [
       ],
@@ -780,6 +853,109 @@ Context: recording without notifying participants is legal in some places (one-p
       "As a knowledge worker, I want my AI assistant (Claude or any MCP client) to securely search, read, and summarize my conversation library so that I can ask \"what did we decide about X?\" or get a meeting summary written without copy-pasting transcripts around.
 
 EarWitness exposes MCP tools over the local library; what leaves the machine is only what I explicitly ask my own assistant to read.",
+    tags: [%{name: "builder"}],
+    criteria: [
+      %{description: "Claude Code connects and lists the tools", verified: false},
+      %{description: "Ask the assistant what was decided", verified: false},
+      %{description: "Assistant saves a meeting summary onto the recording", verified: false},
+      %{description: "Assistant cannot edit transcripts or rename speakers", verified: false},
+      %{description: "Revoking access shuts the assistant out", verified: false},
+      %{description: "No network listener for the MCP surface", verified: false}
+    ],
+    qa: %{final: :partial, attempts: 1, history: [:partial]},
+    three_amigos: %{
+      persona: %{name: "Marcus the Meeting-Heavy Builder", slug: "meeting-heavy-builder", type: "proto"},
+      rules: [
+        %{
+          statement: "An MCP client on the same machine can connect to EarWitness's tools over stdio",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Claude Code connects and lists the tools",
+              body: "Given assistant access is enabled
+When the user's MCP client starts the EarWitness stdio server
+Then the client lists EarWitness's search, read, and summary tools"
+            }
+          ]
+        },
+        %{
+          statement: "The assistant can search the library and read transcripts with speakers and timestamps",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Ask the assistant what was decided",
+              body: "Given transcripts mentioning a rent decision exist
+When the assistant searches \"rent arrears\" and reads the matching transcript
+Then it receives the passages with speaker names and timestamps"
+            }
+          ]
+        },
+        %{
+          statement: "The assistant can attach a summary or note to a recording while all other writes stay in the UI",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Assistant saves a meeting summary onto the recording",
+              body: "Given the assistant read a meeting transcript
+When it calls the summary tool with its write-up
+Then the summary appears on that recording in the app"
+            },
+            %{
+              kind: "failure path",
+              title: "Assistant cannot edit transcripts or rename speakers",
+              body: "Given assistant access is enabled
+When the assistant looks for tools to edit transcript text or rename speakers
+Then no such tools exist on the MCP surface"
+            }
+          ]
+        },
+        %{
+          statement: "Assistant access is something the user explicitly enables and can revoke",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Revoking access shuts the assistant out",
+              body: "Given assistant access was enabled and used
+When the user disables assistant access in settings
+Then subsequent MCP connections and tool calls are refused"
+            }
+          ]
+        },
+        %{
+          statement: "The MCP surface opens no network port; conversation data leaves the machine only through the user's own assistant",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "No network listener for the MCP surface",
+              body: "Given assistant access is enabled
+When the MCP surface is in use over stdio
+Then no additional network port is opened by EarWitness for assistant access"
+            }
+          ]
+        }
+      ],
+      questions: [
+      ],
+      note: nil
+    }
+  },
+  %{
+    story_id: 871,
+    status: :in_progress,
+    title: "Announce a recording notice participants actually hear",
+    description:
+      "As a person recording a conversation under an \"announce\" consent policy, I want an audible recording notice to reach the other participants, so that consent is genuine and legally meaningful — not just an on-screen claim.
+
+Deferred out of story 867 (PM decision, John, 2026-07-12). Story 867's `:announce` policy currently returns a `:delivered` status without playing any real audio (documented stub in `EarWitness.Audio.ConsentPolicy`); that \"real audible notice\" behavior is descoped to this story.
+
+Architecture notes from the 2026-07-12 discussion:
+- The four audio paths are independent. Capturing the *other side* of a call needs the macOS Core Audio process tap / Windows WASAPI loopback (a separate capture concern). Playing a notice out the *speakers* is plain miniaudio playback (works everywhere, no tap) and reaches only in-room/mic-picked-up listeners.
+- The real target chosen is to put the notice **on the user's outgoing voice channel** so remote conferencing participants hear it. Software cannot inject into another app's mic input; that requires a **virtual audio INPUT device driver** per OS (macOS AudioServerPlugIn, Windows driver) — signed/notarized, install-time, permission-heavy, and *heavier and separate* from the driverless Core Audio output tap.
+- Likely v1 path: deliver the notice through the **meeting bot** (story 869), which plays it into the meeting's own audio with no native audio work on the user's machine. The virtual-mic / heavier-native-component route is later work.
+
+A prototype that plays a bundled 16kHz-mono-PCM16 clip via a miniaudio `play_notice/1` playback NIF was built and verified (69/69 spex) but intentionally NOT merged — it only covered the speakers path. Recoverable from session history if useful.
+
+Run start_three_amigos_session to derive acceptance criteria.",
     tags: [%{name: "unknown"}],
     criteria: [
     ],
@@ -793,18 +969,24 @@ EarWitness exposes MCP tools over the local library; what leaves the machine is 
     }
   },
   %{
-    story_id: 869,
+    story_id: 872,
     status: :in_progress,
-    title: "Send a bot to the meetings I can't attend",
+    title: "Live transcription and segmentation while recording",
     description:
-      "As a busy professional, I want to dispatch a meeting bot that joins a call the normal way (visible in the participant list) and brings back the recording, transcript, and speaker labels so that I don't lose the content of meetings I can't be in.
+      "As someone recording a conversation, I want the transcript and its segments to appear live as I record — not only after I stop — so I can see the conversation being captured in real time and trust it's working.
 
-The complement to the audio tap: the tap covers meetings I attend; the bot covers meetings I don't. It runs under my account and its output lands in the same local library.",
-    tags: [%{name: "unknown"}],
+Context / why this is a new story: live transcription existed under the original Membrane capture pipeline but was lost in the 2026-07-12 cross-platform rewrite. Membrane was superseded (miniaudio-capture ADR + macos-system-audio-tap ADR) because shmex/POSIX shared memory has no Windows port and Membrane never delivered the macOS system-audio tap. The replacement miniaudio pipeline (EarWitness.Audio.Pipeline) captures to a WAV file and only transcribes on stop (batch). Restoring live transcription is therefore net-new work against the current architecture, not a simple regression fix.
+
+Desired behavior (from operator UAT): while a recording is in progress, stream captured PCM in chunks, run transcription + segmentation as fast as possible on the rolling audio, and surface partial/finalized segments in the RecordingLive UI live. Speaker clustering/diarization runs AFTER (cluster once enough audio exists), consistent with the diarization-v1 approach — live pass prioritizes fast transcribe+segment; speaker assignment refines afterward.
+
+Likely implementation surface (for Three Amigos to refine, not prescriptive): the miniaudio capture NIF (c_src/ear_witness/audio_capture.cpp) currently writes to a WAV and finalizes on stop_capture — live mode needs it to emit PCM chunks to Elixir during capture (or expose an incremental read of the growing buffer); EarWitness.Transcription (server/engine/worker) then transcribes rolling windows incrementally; RecordingLive renders partial segments; diarization clusters post-hoc. Cross-platform constraint stands: whatever streams must work on macOS Core Audio tap, Windows WASAPI, and Linux — no Membrane/shmex.
+
+Non-goals: perfect real-time speaker labels during the live pass (clustering is deferred); changing the on-stop batch path for existing recordings.",
+    tags: [%{name: "builder"}],
     criteria: [
     ],
     three_amigos: %{
-      persona: nil,
+      persona: %{name: "Marcus the Meeting-Heavy Builder", slug: "meeting-heavy-builder", type: "proto"},
       rules: [
       ],
       questions: [
