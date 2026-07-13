@@ -68,8 +68,8 @@ diagnostics.jsonl
 .code_my_spec/internal/
 
 # Built binary (distributed via GitHub Releases, not git)
-/CodeMySpec/bin/cms
-/CodeMySpec/bin/cms.exe
+/plugins/claude/bin/cms
+/plugins/claude/bin/cms.exe
 artifacts/
 
 # Dynamically generated test cassettes (rewritten per test run)

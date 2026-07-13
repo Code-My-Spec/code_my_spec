@@ -70,7 +70,7 @@ This will:
 
 ### Versioning
 
-Update the version in `CodeMySpec/.claude-plugin/plugin.json` before releasing:
+Update the version in `plugins/claude/.claude-plugin/plugin.json` before releasing:
 
 ```json
 {

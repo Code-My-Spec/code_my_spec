@@ -37,7 +37,7 @@ build-cli:
 package-plugin:
     MIX_ENV=dev_cli mix cms.package_plugin
     @echo
-    @echo "Diff vs source: diff -r CodeMySpec release/codemyspec-extension/plugins/codemyspec"
+    @echo "Diff vs source: diff -r plugins/claude release/codemyspec-extension/plugins/codemyspec"
     @echo "Sanity check:   grep -rn 4004 release/codemyspec-extension   # should be empty"
 
 # Bump plugin.json + mix.exs to VERSION and stage them — then commit + push, then `just release`
@@ -48,10 +48,11 @@ bump VERSION:
       echo "Bad version: {{VERSION}} (want N.N.N)" >&2
       exit 1
     fi
-    sed -i.bak -E 's/"version": "[0-9.]+"/"version": "{{VERSION}}"/' CodeMySpec/.claude-plugin/plugin.json
+    sed -i.bak -E 's/"version": "[0-9.]+"/"version": "{{VERSION}}"/' plugins/claude/.claude-plugin/plugin.json
+    sed -i.bak -E 's/"version": "[0-9.]+"/"version": "{{VERSION}}"/' plugins/codex/.codex-plugin/plugin.json
     sed -i.bak -E 's/version: "[0-9.]+",/version: "{{VERSION}}",/' mix.exs
-    rm -f CodeMySpec/.claude-plugin/plugin.json.bak mix.exs.bak
-    git add CodeMySpec/.claude-plugin/plugin.json mix.exs
+    rm -f plugins/claude/.claude-plugin/plugin.json.bak plugins/codex/.codex-plugin/plugin.json.bak mix.exs.bak
+    git add plugins/claude/.claude-plugin/plugin.json plugins/codex/.codex-plugin/plugin.json mix.exs
     echo
     echo "Bumped to {{VERSION}}, staged. Commit (bundling other changes if you like), push, then \`just release\`."
 
@@ -63,7 +64,7 @@ publish VERSION:
       echo "Bad version: {{VERSION}} (want N.N.N)" >&2
       exit 1
     fi
-    if [ -n "$(git status --porcelain CodeMySpec/.claude-plugin/plugin.json mix.exs)" ]; then
+    if [ -n "$(git status --porcelain plugins/claude/.claude-plugin/plugin.json mix.exs)" ]; then
       echo "plugin.json or mix.exs already has uncommitted changes — commit or reset first" >&2
       exit 1
     fi
@@ -77,7 +78,7 @@ release:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    plugin_version=$(jq -r .version CodeMySpec/.claude-plugin/plugin.json)
+    plugin_version=$(jq -r .version plugins/claude/.claude-plugin/plugin.json)
     mix_version=$(grep -E '^      version:' mix.exs | sed -E 's/.*"([0-9.]+)".*/\1/')
 
     if [ "$plugin_version" != "$mix_version" ]; then
@@ -92,7 +93,7 @@ release:
       exit 1
     fi
 
-    if [ -n "$(git status --porcelain CodeMySpec/.claude-plugin/plugin.json mix.exs)" ]; then
+    if [ -n "$(git status --porcelain plugins/claude/.claude-plugin/plugin.json mix.exs)" ]; then
       echo "plugin.json or mix.exs has uncommitted changes — commit first" >&2
       exit 1
     fi

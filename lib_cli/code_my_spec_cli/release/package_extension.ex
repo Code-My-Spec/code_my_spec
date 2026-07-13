@@ -31,7 +31,7 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     # here so the copy step finds the file regardless of target OS.
     source_basename = "#{release_name}_#{target_name}" <> source_ext(context.target)
     source_binary = Path.join([app_path, "burrito_out", source_basename])
-    source_extension = Path.join(app_path, "CodeMySpec")
+    source_extension = Path.join(app_path, "plugins/claude")
 
     # Output paths
     release_base = Path.join(app_path, "release")
@@ -109,7 +109,199 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
     create_gitignore(extension_dir)
 
+    # The Antigravity and Codex ports of the plugin ship in the same release
+    # repo, under antigravity/ and codex/. Source layout: plugins/<vendor>/,
+    # siblings of plugins/claude/.
+    source_antigravity = Path.join(Path.dirname(source_extension), "antigravity")
+    package_antigravity_files(source_antigravity, extension_dir)
+
+    source_codex = Path.join(Path.dirname(source_extension), "codex")
+    package_codex_files(source_codex, extension_dir)
+
     %{extension_dir: extension_dir, plugin_dest: plugin_dest}
+  end
+
+  @doc """
+  Packages the Antigravity plugin (`plugins/antigravity/`) into
+  `<extension_dir>/antigravity/#{@plugin_slug}/` with the same dev→prod
+  port rewrite as the Claude plugin. Users install it with
+  `agy plugin install ./antigravity/#{@plugin_slug}` from a checkout, or by
+  copying that directory into `.agents/plugins/` / `~/.gemini/config/plugins/`.
+  """
+  # sobelow_skip ["Traversal"]
+  def package_antigravity_files(source_antigravity, extension_dir) do
+    if File.dir?(source_antigravity) do
+      antigravity_dest = Path.join([extension_dir, "antigravity", @plugin_slug])
+
+      File.rm_rf!(antigravity_dest)
+      File.mkdir_p!(antigravity_dest)
+
+      File.cp_r!(source_antigravity, antigravity_dest)
+      log("Copied Antigravity plugin into antigravity/#{@plugin_slug}/")
+
+      rewrite_dev_port(antigravity_dest)
+      log("Rewrote Antigravity dev port 4004 -> prod port 4003")
+
+      # cp_r preserves modes, but the hook script MUST be executable —
+      # a silent chmod loss would make every hook a no-op.
+      hook_script = Path.join([antigravity_dest, "bin", "ag-hook.sh"])
+      if File.exists?(hook_script), do: File.chmod!(hook_script, 0o755)
+
+      create_antigravity_install_script(extension_dir)
+      log("Created install-antigravity.sh")
+    else
+      log("Antigravity plugin source not found at #{source_antigravity} — skipping")
+    end
+  end
+
+  # Antigravity has no marketplace-by-git mechanism — users either clone this
+  # repo and `agy plugin install` a path, or run this one-liner:
+  #
+  #   curl -fsSL https://raw.githubusercontent.com/Code-My-Spec/plugins/main/install-antigravity.sh | bash
+  #
+  # The script downloads the repo tarball, extracts the Antigravity plugin,
+  # and copies it into Antigravity's global plugin locations.
+  # sobelow_skip ["Traversal"]
+  defp create_antigravity_install_script(extension_dir) do
+    script = ~S"""
+    #!/bin/bash
+    # Install the CodeMySpec plugin for Google Antigravity.
+    #
+    # Downloads the plugin from the Code-My-Spec/plugins repo and copies it into
+    # Antigravity's global plugin directory (and the Antigravity CLI's, if the
+    # CLI is present). Safe to re-run — each run replaces the installed copy.
+    #
+    # macOS / Linux only. Requires: curl, tar.
+    set -euo pipefail
+
+    REPO="Code-My-Spec/plugins"
+    PLUGIN_SUBDIR="antigravity/codemyspec"
+    GLOBAL_DEST="$HOME/.gemini/config/plugins/codemyspec"
+    CLI_HOME="$HOME/.gemini/antigravity-cli"
+    CLI_DEST="$CLI_HOME/plugins/codemyspec"
+
+    BLUE='\033[0;34m'; GREEN='\033[0;32m'; RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
+    info() { echo -e "${BLUE}${BOLD}>>>${NC} $1"; }
+    ok()   { echo -e "${GREEN}${BOLD}>>>${NC} $1"; }
+    err()  { echo -e "${RED}${BOLD}>>>${NC} $1"; }
+
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+
+    info "Downloading CodeMySpec Antigravity plugin..."
+    curl -fsSL "https://github.com/${REPO}/archive/refs/heads/main.tar.gz" \
+      | tar -xz -C "$TMP" --strip-components=3 "plugins-main/${PLUGIN_SUBDIR}"
+
+    if [ ! -f "$TMP/plugin.json" ]; then
+      err "Download failed — plugin.json not found in archive"
+      exit 1
+    fi
+
+    install_to() {
+      local dest="$1"
+      rm -rf "$dest"
+      mkdir -p "$(dirname "$dest")"
+      cp -R "$TMP" "$dest"
+      chmod +x "$dest/bin/ag-hook.sh"
+      ok "Installed to $dest"
+    }
+
+    install_to "$GLOBAL_DEST"
+
+    # Stage into the Antigravity CLI's plugin directory too, if the CLI is set up.
+    if [ -d "$CLI_HOME" ]; then
+      install_to "$CLI_DEST"
+    fi
+
+    echo
+    ok "CodeMySpec plugin for Antigravity installed."
+    echo
+    echo "  Requires the cms server (skills, hooks, and MCP talk to it):"
+    echo "    brew install Code-My-Spec/tap/codemyspec && brew services start codemyspec"
+    echo
+    echo "  Restart Antigravity (or reload plugins) to pick it up."
+    """
+
+    script_path = Path.join(extension_dir, "install-antigravity.sh")
+    File.write!(script_path, script)
+    File.chmod!(script_path, 0o755)
+  end
+
+  @doc """
+  Packages the Codex plugin (`plugins/codex/`) into
+  `<extension_dir>/codex/#{@plugin_slug}/` with the same dev→prod port
+  rewrite, and writes the Codex marketplace catalog at
+  `.agents/plugins/marketplace.json` so users can install with
+  `codex plugin marketplace add #{@github_repo}`.
+  """
+  # sobelow_skip ["Traversal"]
+  def package_codex_files(source_codex, extension_dir) do
+    if File.dir?(source_codex) do
+      codex_dest = Path.join([extension_dir, "codex", @plugin_slug])
+
+      File.rm_rf!(codex_dest)
+      File.mkdir_p!(codex_dest)
+
+      File.cp_r!(source_codex, codex_dest)
+      log("Copied Codex plugin into codex/#{@plugin_slug}/")
+
+      rewrite_dev_port(codex_dest)
+      log("Rewrote Codex dev port 4004 -> prod port 4003")
+
+      hook_script = Path.join([codex_dest, "bin", "hook"])
+      if File.exists?(hook_script), do: File.chmod!(hook_script, 0o755)
+
+      create_codex_marketplace_json(extension_dir, codex_dest)
+      log("Created Codex marketplace catalog (.agents/plugins/marketplace.json)")
+    else
+      log("Codex plugin source not found at #{source_codex} — skipping")
+    end
+  end
+
+  # sobelow_skip ["Traversal"]
+  defp create_codex_marketplace_json(extension_dir, codex_dest) do
+    manifest_path = Path.join([codex_dest, ".codex-plugin", "plugin.json"])
+
+    description =
+      case File.read(manifest_path) do
+        {:ok, content} ->
+          case Jason.decode(content) do
+            {:ok, %{"description" => description}} -> description
+            _ -> "CodeMySpec plugin for Codex"
+          end
+
+        _ ->
+          "CodeMySpec plugin for Codex"
+      end
+
+    marketplace = %{
+      "name" => "codemyspec",
+      "plugins" => [
+        %{
+          "name" => @plugin_slug,
+          "description" => description,
+          "source" => %{
+            "source" => "git-subdir",
+            "url" => "https://github.com/#{@github_repo}.git",
+            "path" => "./codex/#{@plugin_slug}",
+            "ref" => "main"
+          },
+          "policy" => %{
+            "installation" => "AVAILABLE",
+            "authentication" => "ON_INSTALL"
+          },
+          "category" => "Developer Tools"
+        }
+      ]
+    }
+
+    marketplace_dir = Path.join([extension_dir, ".agents", "plugins"])
+    File.mkdir_p!(marketplace_dir)
+
+    File.write!(
+      Path.join(marketplace_dir, "marketplace.json"),
+      Jason.encode!(marketplace, pretty: true)
+    )
   end
 
   # sobelow_skip ["Traversal"]
@@ -354,11 +546,42 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     /plugin install codemyspec@codemyspec
     ```
 
+    ### Google Antigravity
+
+    One-liner (installs into `~/.gemini/config/plugins/`, plus the Antigravity
+    CLI's plugin directory if present):
+
+    ```
+    curl -fsSL https://raw.githubusercontent.com/Code-My-Spec/plugins/main/install-antigravity.sh | bash
+    ```
+
+    Or manually: the plugin lives under `antigravity/codemyspec/` — with this
+    repo checked out, `agy plugin install ./antigravity/codemyspec`, or copy
+    that directory into your workspace's `.agents/plugins/` (workspace-scoped)
+    or `~/.gemini/config/plugins/` (global). The `cms` server install from
+    step 1 is required either way.
+
+    ### OpenAI Codex
+
+    The Codex port lives under `codex/codemyspec/`, and this repo doubles as
+    a Codex plugin marketplace:
+
+    ```
+    codex plugin marketplace add Code-My-Spec/plugins
+    ```
+
+    Then install `codemyspec` from the `/plugins` picker, and trust its hooks
+    via `/hooks`. The `cms` server install from step 1 is required.
+
     ## Layout
 
-    - `.claude-plugin/marketplace.json` — marketplace manifest
+    - `.claude-plugin/marketplace.json` — Claude Code marketplace manifest
+    - `.agents/plugins/marketplace.json` — Codex marketplace catalog
     - `plugins/codemyspec/` — the CodeMySpec plugin source (skills, agents,
       hooks, install scripts)
+    - `antigravity/codemyspec/` — the Google Antigravity port (skills, agents,
+      rules, hooks, MCP config)
+    - `codex/codemyspec/` — the OpenAI Codex port (skills, hooks, MCP config)
 
     ## Getting Started
 

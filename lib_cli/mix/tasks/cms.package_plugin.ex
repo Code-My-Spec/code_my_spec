@@ -15,7 +15,7 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
 
   Inspect the output:
 
-      diff -r CodeMySpec release/codemyspec-extension/plugins/codemyspec
+      diff -r plugins/claude release/codemyspec-extension/plugins/codemyspec
       grep -rn 4004 release/codemyspec-extension          # should be empty
       grep -rn 4003 release/codemyspec-extension          # should show rewrites
   """
@@ -28,10 +28,10 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
   @impl Mix.Task
   def run(args) do
     app_path = File.cwd!()
-    source = Path.join(app_path, "CodeMySpec")
+    source = Path.join(app_path, "plugins/claude")
 
     unless File.dir?(source) do
-      Mix.raise("No CodeMySpec/ directory at #{source} — run this from the repo root.")
+      Mix.raise("No plugins/claude/ directory at #{source} — run this from the repo root.")
     end
 
     extension_dir =
