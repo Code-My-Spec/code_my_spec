@@ -126,6 +126,15 @@ defmodule CodeMySpecLocalWeb.Router do
     plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
 
+  # Antigravity hook endpoints — same scope chain, but the workspace
+  # arrives as `workspacePaths` in the JSON body instead of a header
+  pipeline :antigravity_hook do
+    plug CodeMySpecLocalWeb.Plugs.LocalOnly
+    plug CodeMySpecLocalWeb.Plugs.AntigravityWorkspace
+    plug CodeMySpecLocalWeb.Plugs.WorkingDir
+    plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
+  end
+
   # Bootstrap endpoints — cwd-only scope, runnable before a project is linked
   pipeline :init do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
@@ -144,6 +153,16 @@ defmodule CodeMySpecLocalWeb.Router do
     post "/subagent-stop", SubagentStopController, :handle
     post "/notification", NotificationHookController, :handle
     post "/ask-user-question", AskUserQuestionController, :handle
+  end
+
+  scope "/api/antigravity/hooks", CodeMySpecLocalWeb.Antigravity do
+    pipe_through :antigravity_hook
+
+    post "/pre-invocation", HooksController, :pre_invocation
+    post "/pre-tool-use", HooksController, :pre_tool_use
+    post "/post-tool-use", HooksController, :post_tool_use
+    post "/post-invocation", HooksController, :post_invocation
+    post "/stop", HooksController, :stop
   end
 
   # ── Agent tasks (skill-invoked) ──────────────────────────────────
