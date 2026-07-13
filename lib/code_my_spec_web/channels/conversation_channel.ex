@@ -22,30 +22,44 @@ defmodule CodeMySpecWeb.ConversationChannel do
 
   @impl true
   def join("conversation:" <> topic_user_id, _payload, socket) do
-    if topic_user_id == socket.assigns[:end_user_id] do
-      account_id = resolve_account_id(socket)
+    email = socket.assigns[:end_user_email]
 
-      {:ok, conversation} =
-        Conversations.find_or_create_conversation(
-          account_id,
-          socket.assigns.project_id,
-          socket.assigns.end_user_email,
-          end_user_id: socket.assigns.end_user_id
+    cond do
+      topic_user_id != socket.assigns[:end_user_id] ->
+        Logger.warning(
+          "[ConversationChannel] join rejected — user mismatch topic=#{topic_user_id} socket=#{inspect(socket.assigns[:end_user_id])}"
         )
 
-      socket =
-        socket
-        |> assign(:account_id, account_id)
-        |> assign(:conversation, conversation)
+        {:error, %{reason: "unauthorized"}}
 
-      send(self(), :after_join)
-      {:ok, socket}
-    else
-      Logger.warning(
-        "[ConversationChannel] join rejected — user mismatch topic=#{topic_user_id} socket=#{inspect(socket.assigns[:end_user_id])}"
-      )
+      # Conversations thread on email; without one the conversation insert
+      # would fail validation and crash the join. Reject cleanly instead so
+      # integrations that omitted `user_email` on connect get a usable error.
+      not (is_binary(email) and email != "") ->
+        Logger.warning(
+          "[ConversationChannel] join rejected — no end_user_email topic=#{topic_user_id}"
+        )
 
-      {:error, %{reason: "unauthorized"}}
+        {:error, %{reason: "email required"}}
+
+      true ->
+        account_id = resolve_account_id(socket)
+
+        {:ok, conversation} =
+          Conversations.find_or_create_conversation(
+            account_id,
+            socket.assigns.project_id,
+            email,
+            end_user_id: socket.assigns.end_user_id
+          )
+
+        socket =
+          socket
+          |> assign(:account_id, account_id)
+          |> assign(:conversation, conversation)
+
+        send(self(), :after_join)
+        {:ok, socket}
     end
   end
 

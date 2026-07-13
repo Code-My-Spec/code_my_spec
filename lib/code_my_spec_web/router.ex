@@ -219,6 +219,16 @@ defmodule CodeMySpecWeb.Router do
     post "/issues", FrameworkIssuesController, :create
   end
 
+  # Widget API (deploy-key Bearer auth, the key resolves the project). Desktop
+  # apps push their end-users here — the counterpart to the pull-based
+  # /api/cms/users integration web apps expose — so widget chat and issue
+  # reporting have a durable identity.
+  scope "/api/widget", CodeMySpecWeb do
+    pipe_through :api
+
+    post "/users", WidgetUsersController, :upsert
+  end
+
   # (analytics/event route removed — browser events fire via gtag.js directly)
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

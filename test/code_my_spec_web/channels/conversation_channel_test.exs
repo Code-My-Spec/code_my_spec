@@ -30,6 +30,11 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
     |> subscribe_and_join(CodeMySpecWeb.ConversationChannel, "conversation:#{end_user_id}", %{})
   end
 
+  test "join without an end_user_email is rejected cleanly, not crashed", %{scope: scope} do
+    assert {:error, %{reason: "email required"}} =
+             join_widget(scope.active_project.id, "eu-no-email", nil)
+  end
+
   test "submit_feedback files an issue on the project, visible to the operator", %{scope: scope} do
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-1", "user@example.com")
 
