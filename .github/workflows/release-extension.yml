@@ -212,6 +212,9 @@ jobs:
         run: |
           chmod +x artifacts/extension/plugins/codemyspec/.claude-plugin/bin/* || true
           [ -f artifacts/extension/install.sh ] && chmod +x artifacts/extension/install.sh || true
+          [ -f artifacts/extension/install-antigravity.sh ] && chmod +x artifacts/extension/install-antigravity.sh || true
+          [ -f artifacts/extension/antigravity/codemyspec/bin/ag-hook.sh ] && chmod +x artifacts/extension/antigravity/codemyspec/bin/ag-hook.sh || true
+          [ -f artifacts/extension/codex/codemyspec/bin/hook ] && chmod +x artifacts/extension/codex/codemyspec/bin/hook || true
 
       # Publish the filled brew formula to the tap so
       # `brew install Code-My-Spec/tap/codemyspec` resolves this release.
@@ -274,8 +277,16 @@ jobs:
           mkdir -p plugins
           cp -R ../artifacts/extension/plugins/codemyspec plugins/codemyspec
 
+          # Antigravity + Codex ports and the Codex marketplace catalog.
+          rm -rf antigravity codex .agents
+          cp -R ../artifacts/extension/antigravity antigravity
+          cp -R ../artifacts/extension/codex codex
+          mkdir -p .agents/plugins
+          cp ../artifacts/extension/.agents/plugins/marketplace.json .agents/plugins/marketplace.json
+
           # Root-level installers we own.
           cp ../artifacts/extension/install.sh install.sh
+          cp ../artifacts/extension/install-antigravity.sh install-antigravity.sh
           cp ../installers/windows/install.ps1 install.ps1
           cp ../artifacts/extension/README.md README.md
 
