@@ -349,7 +349,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
             The Requirements, Before the Code
           </h2>
           <p class="text-base-content/70 mb-6">
-            Every story below carries its persona, its Three Amigos rules, full given-when-then scenarios, and its acceptance criteria, exported straight from the harness database while the build runs. When implementation starts, these become the BDD specs; when specs pass, browser QA verifies each story against the running app. Watch the statuses change as the build progresses.
+            Each story carries its persona, its Three Amigos rules, full given-when-then scenarios, and its acceptance criteria, exported straight from the harness database while the build runs. Stories waiting their turn at Three Amigos show up too, empty and marked as such. When implementation starts, these become the BDD specs; when specs pass, browser QA verifies each story against the running app. Watch the statuses change as the build progresses.
           </p>
 
           <div class="stats bg-base-200 shadow mb-6">
@@ -490,13 +490,14 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
                     </span>
                   </div>
                   <div class="flex items-center gap-2 ml-4 flex-shrink-0">
-                    <%= if Map.get(story, :three_amigos) do %>
-                      <div class="badge badge-accent badge-sm gap-1">
-                        <.icon name="hero-users" class="w-3 h-3" /> 3A
-                      </div>
-                    <% end %>
+                    <div :if={specced?(story)} class="badge badge-accent badge-sm gap-1">
+                      <.icon name="hero-users" class="w-3 h-3" /> 3A
+                    </div>
+                    <div :if={!specced?(story)} class="badge badge-ghost badge-sm gap-1">
+                      <.icon name="hero-clock" class="w-3 h-3" /> Awaiting 3A
+                    </div>
                     <.story_status_badge status={story.status} />
-                    <div class="badge badge-outline badge-sm gap-1">
+                    <div :if={story.criteria != []} class="badge badge-outline badge-sm gap-1">
                       <.icon name="hero-clipboard-document-check" class="w-3 h-3" />
                       {length(story.criteria)}
                     </div>
@@ -546,9 +547,14 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
                   </ul>
                 <% end %>
 
-                <%= if Map.get(story, :three_amigos) do %>
-                  <.three_amigos_block three_amigos={story.three_amigos} />
-                <% end %>
+                <.three_amigos_block :if={specced?(story)} three_amigos={story.three_amigos} />
+
+                <p
+                  :if={!specced?(story)}
+                  class="mt-4 pt-4 border-t border-base-300 text-sm text-base-content/50 italic"
+                >
+                  This story hasn't run Three Amigos yet. Its rules, scenarios, and acceptance criteria appear here once it does.
+                </p>
               </div>
             </div>
           <% end %>
@@ -557,6 +563,13 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
       <div class="modal-backdrop" phx-click="close_stories"></div>
     </div>
     """
+  end
+
+  defp specced?(story) do
+    case Map.get(story, :three_amigos) do
+      nil -> false
+      ta -> ta.rules != [] or not is_nil(ta.persona)
+    end
   end
 
   attr :three_amigos, :map, required: true
