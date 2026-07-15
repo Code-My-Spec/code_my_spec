@@ -984,12 +984,115 @@ Likely implementation surface (for Three Amigos to refine, not prescriptive): th
 Non-goals: perfect real-time speaker labels during the live pass (clustering is deferred); changing the on-stop batch path for existing recordings.",
     tags: [%{name: "builder"}],
     criteria: [
+      %{description: "Segments show up while still recording", verified: false},
+      %{description: "Stopping diarizes the live transcript instead of re-transcribing", verified: false},
+      %{description: "No speakers during recording, speakers after stop", verified: false},
+      %{description: "Slow machine falls behind but loses no audio", verified: false},
+      %{description: "Live pass uses the model chosen in Settings", verified: false},
+      %{description: "Live transcript for a tapped call", verified: false},
+      %{description: "Stop is instant; last segments and speakers fill in after", verified: false}
     ],
     three_amigos: %{
       persona: %{name: "Marcus the Meeting-Heavy Builder", slug: "meeting-heavy-builder", type: "proto"},
       rules: [
+        %{
+          statement: "While a recording is in progress, newly recognized transcript segments appear in the live view as they are transcribed, without waiting for the recording to stop.",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Segments show up while still recording",
+              body: "Given Marcus starts recording a call and the transcription model is ready
+When he has been speaking for several sentences and is still recording
+Then the sentences he already spoke appear as transcript segments in the recording view
+And the recording is still in progress (he has not stopped it)"
+            }
+          ]
+        },
+        %{
+          statement: "The transcript built live during recording is the canonical transcript; stopping the recording adds speaker labels via diarization rather than re-transcribing the audio.",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Stopping diarizes the live transcript instead of re-transcribing",
+              body: "Given Marcus watched segments appear live throughout a recording
+When he stops the recording
+Then the same segments he saw live remain as the recording's transcript
+And each segment now carries a speaker label produced by diarization
+And the audio is not transcribed a second time"
+            }
+          ]
+        },
+        %{
+          statement: "During recording, transcript segments are shown without speaker labels; speaker attribution appears only after the recording stops.",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "No speakers during recording, speakers after stop",
+              body: "Given Marcus is recording and segments are appearing live
+When he looks at a live segment before stopping
+Then it shows the spoken text and its timestamp but no speaker label
+When he later stops the recording
+Then each segment shows the speaker it was attributed to"
+            }
+          ]
+        },
+        %{
+          statement: "Live transcription never interferes with the recording itself; if transcription cannot keep pace with the audio, capture continues and the live transcript falls behind but still completes.",
+          scenarios: [
+            %{
+              kind: "failure path",
+              title: "Slow machine falls behind but loses no audio",
+              body: "Given Dana is recording a long hearing on a machine that transcribes slower than real time
+When transcription falls behind the incoming audio
+Then the recording keeps capturing every part of the hearing to its file
+And the live transcript keeps catching up on the backlog rather than dropping audio
+And once transcription finishes the backlog the transcript covers the whole recording"
+            }
+          ]
+        },
+        %{
+          statement: "Live transcription uses the transcription model selected in Settings — the same model used for the final transcript.",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Live pass uses the model chosen in Settings",
+              body: "Given Marcus has selected the Large v3 Turbo model in Settings
+When he records a conversation and segments appear live
+Then the live transcript is produced by the Large v3 Turbo model
+And not by a different or fallback model"
+            }
+          ]
+        },
+        %{
+          statement: "Live transcription works for whichever capture source is active — the microphone or the system-audio tap.",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Live transcript for a tapped call",
+              body: "Given Marcus is capturing a video call through the system-audio tap
+When both sides of the call are speaking
+Then the live transcript shows segments from the call as it happens
+And it behaves the same as a microphone recording would"
+            }
+          ]
+        },
+        %{
+          statement: "Stopping a recording returns immediately; any remaining backlog transcription and the diarization pass complete in the background, filling in the final segments and speaker labels shortly after.",
+          scenarios: [
+            %{
+              kind: "happy path",
+              title: "Stop is instant; last segments and speakers fill in after",
+              body: "Given Dana stops a long hearing recording while transcription is still catching up on backlog audio
+When she stops the recording
+Then the app returns to a stopped state immediately without waiting
+And the remaining segments finish transcribing in the background
+And once that finishes, diarization runs and speaker labels appear on all segments a moment later"
+            }
+          ]
+        }
       ],
       questions: [
+        %{body: "If the user stops a recording while live transcription is still catching up on backlog audio, should \"stop\" block until the backlog finishes transcribing before running diarization (final transcript + speakers ready immediately, but stop may take a moment on slow machines), or return instantly and finish transcribing + diarizing in the background (UI is snappy, but the transcript/speakers fill in shortly after stop)?", status: :resolved, resolution: nil}
       ],
       note: nil
     }

@@ -27,10 +27,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
     metadata: %{
       meta_title: "EarWitness Live Build: A Local-First Otter Alternative, Built by the Harness",
       meta_description:
-        "A live CodeMySpec build, happening now. EarWitness transcribes, segments, and diarizes speakers on your machine, taps your audio so meetings record without a bot, and exposes your conversations to Claude over MCP. 11 stories, 55 Three Amigos rules, 60 acceptance criteria, 4 stories browser-QA passed and counting.",
+        "A live CodeMySpec build, happening now. EarWitness transcribes, segments, and diarizes speakers on your machine, taps your audio so meetings record without a bot, and exposes your conversations to Claude over MCP. 11 stories, 62 Three Amigos rules, 67 acceptance criteria, 4 stories browser-QA passed and 5 more in flight.",
       og_title: "EarWitness Live Build — The Requirements, Before the Code",
       og_description:
-        "A local-first Otter alternative being built live by the CodeMySpec harness. 11 stories, 55 rules, 60 BDD criteria, statuses updating as the build runs. Follow the build on Reddit; download the releases as they land.",
+        "A local-first Otter alternative being built live by the CodeMySpec harness. 11 stories, 62 rules, 67 BDD criteria, statuses updating as the build runs. Follow the build on Reddit; download the releases as they land.",
       og_image: nil,
       author: "John Davenport",
       tags: [
@@ -53,9 +53,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
         "EarWitness transcribes, segments, and diarizes speakers entirely on your machine, live while the recording runs. An audio tap records the meetings you're in without a bot in the participant list, with a recording notice participants actually hear. An Otter-style editor fixes speakers and prose, and MCP tools let Claude work your conversation data. The harness is building it live: the 11 stories below, with their Three Amigos rules and given-when-then scenarios, are the real records driving the build, and their statuses update as stories pass browser QA. The teardown lands here when it ships.",
       stats: [
         %{label: "Stories QA-Passed", value: "4 of 11"},
-        %{label: "Three Amigos Rules", value: "55"},
-        %{label: "Acceptance Criteria", value: "60"},
-        %{label: "Spex Green", value: "60"}
+        %{label: "Three Amigos Rules", value: "62"},
+        %{label: "Acceptance Criteria", value: "67"},
+        %{label: "Spex Green", value: "75"}
       ]
     },
     overview: %{
@@ -117,8 +117,8 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
       stats: [
         %{label: "Language", value: "Elixir / Phoenix"},
         %{label: "Build Status", value: "Live"},
-        %{label: "Commits", value: "96"},
-        %{label: "Spex", value: "60 green"}
+        %{label: "Commits", value: "111"},
+        %{label: "Spex", value: "75 green"}
       ]
     }
   }

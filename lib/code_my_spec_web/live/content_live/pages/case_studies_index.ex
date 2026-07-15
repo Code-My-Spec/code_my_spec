@@ -23,7 +23,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
       stats: [
         %{label: "Status", value: "Live"},
         %{label: "Stories QA-Passed", value: "4 of 11"},
-        %{label: "Acceptance Criteria", value: "60"}
+        %{label: "Acceptance Criteria", value: "67"}
       ],
       published_at: "2026-07-11"
     },
