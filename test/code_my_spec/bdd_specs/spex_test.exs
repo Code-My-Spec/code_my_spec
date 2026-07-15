@@ -165,4 +165,51 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       }
     }
   end
+
+  # ============================================================================
+  # expand_directory_args/2 - directory args expand to their *_spex.exs files
+  # ============================================================================
+
+  describe "expand_directory_args/2" do
+    test "expands a directory arg to its spex files", %{tmp_dir: tmp_dir} do
+      dir = Path.join(tmp_dir, "test/spex/story")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "criterion_1_spex.exs"), "")
+      File.write!(Path.join(dir, "criterion_2_spex.exs"), "")
+      File.write!(Path.join(dir, "not_a_spex.txt"), "")
+
+      expanded = Spex.expand_directory_args(["test/spex/story"], tmp_dir)
+
+      assert Enum.sort(expanded) == [
+               "test/spex/story/criterion_1_spex.exs",
+               "test/spex/story/criterion_2_spex.exs"
+             ]
+    end
+
+    test "expands nested directories recursively", %{tmp_dir: tmp_dir} do
+      dir = Path.join(tmp_dir, "test/spex/story/nested")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "deep_spex.exs"), "")
+
+      assert Spex.expand_directory_args(["test/spex/story"], tmp_dir) ==
+               ["test/spex/story/nested/deep_spex.exs"]
+    end
+
+    test "leaves file args, flags, and unknown paths untouched", %{tmp_dir: tmp_dir} do
+      file = Path.join(tmp_dir, "single_spex.exs")
+      File.write!(file, "")
+
+      args = ["single_spex.exs", "--trace", "no/such/path.exs"]
+      assert Spex.expand_directory_args(args, tmp_dir) == args
+    end
+
+    test "keeps a directory with no spex files as-is (mix spex reports it loudly)", %{
+      tmp_dir: tmp_dir
+    } do
+      dir = Path.join(tmp_dir, "empty_dir")
+      File.mkdir_p!(dir)
+
+      assert Spex.expand_directory_args(["empty_dir"], tmp_dir) == ["empty_dir"]
+    end
+  end
 end

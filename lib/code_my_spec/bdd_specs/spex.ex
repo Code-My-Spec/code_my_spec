@@ -49,6 +49,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
         )
       )
 
+    args = expand_directory_args(args, project_root)
     spex_args = build_args(args, temp_file, quiet)
     command = "mix " <> Enum.join(spex_args, " ")
 
@@ -101,6 +102,39 @@ defmodule CodeMySpec.BddSpecs.Spex do
   end
 
   # Private functions
+
+  # `mix spex` (sexy_spex) filters explicit args with File.exists?/1 only — a
+  # directory passes that check, loads zero tests, and the run reports "clean"
+  # with an empty JSONL no matter what the directory contains. Expand directory
+  # args to their *_spex.exs files here so `mix spex test/spex/some_story/`
+  # runs what the caller meant.
+  @doc false
+  def expand_directory_args(args, project_root) do
+    Enum.flat_map(args, fn arg ->
+      cond do
+        String.starts_with?(arg, "-") ->
+          [arg]
+
+        File.dir?(Path.expand(arg, project_root)) ->
+          arg
+          |> Path.expand(project_root)
+          |> Path.join("**/*_spex.exs")
+          |> Path.wildcard()
+          |> Enum.map(&Path.relative_to(&1, project_root))
+          |> case do
+            [] ->
+              Logger.warning("[Spex] Directory arg #{arg} contains no *_spex.exs files")
+              [arg]
+
+            files ->
+              files
+          end
+
+        true ->
+          [arg]
+      end
+    end)
+  end
 
   defp build_args(args, temp_file, quiet) do
     base_args = ["spex" | args] ++ ["--jsonl=#{temp_file}"]
