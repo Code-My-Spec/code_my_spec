@@ -176,13 +176,19 @@ defmodule CodeMySpecWeb.Layouts do
     """
   end
 
-  # Gate for the full sidebar + picker breadcrumbs (audit S2 / P0 #3).
-  # Temporarily forced open: any logged-in scope is treated as onboarded so
-  # the full menu and breadcrumbs always render. To re-enable the ladder gate,
-  # restore the project-linked + cli_first_connected_at clauses below.
+  # True once the user has finished the onboarding ladder enough that
+  # the full sidebar is useful — they have a project linked AND a CLI
+  # has connected at least once. Until both are true, deep nav links
+  # are dead ends and we hide them (audit S2).
   defp onboarding_complete?(nil), do: false
 
-  defp onboarding_complete?(_), do: true
+  defp onboarding_complete?(%{
+         user: %{cli_first_connected_at: %DateTime{}},
+         active_project: %{__struct__: _}
+       }),
+       do: true
+
+  defp onboarding_complete?(_), do: false
 
   # Only owners/admins administer mailboxes, so the Mailboxes nav item is
   # theirs alone. Guarded on an active account so it never raises for a
