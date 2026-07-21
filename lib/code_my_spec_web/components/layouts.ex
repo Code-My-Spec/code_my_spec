@@ -176,17 +176,14 @@ defmodule CodeMySpecWeb.Layouts do
     """
   end
 
-  # True once the user has finished the onboarding ladder enough that
-  # the full sidebar is useful — they have a project linked AND a CLI
-  # has connected at least once. Until both are true, deep nav links
-  # are dead ends and we hide them (audit S2).
+  # True once the user has a project linked — enough for the full sidebar to
+  # be useful. We intentionally do NOT gate on a local CLI connection
+  # (`cli_first_connected_at`): a user can connect the plugin from a separate
+  # machine, so requiring a local connect here hid the menu from people who
+  # were actually set up (audit S2 originally gated on both).
   defp onboarding_complete?(nil), do: false
 
-  defp onboarding_complete?(%{
-         user: %{cli_first_connected_at: %DateTime{}},
-         active_project: %{__struct__: _}
-       }),
-       do: true
+  defp onboarding_complete?(%{active_project: %{__struct__: _}}), do: true
 
   defp onboarding_complete?(_), do: false
 
