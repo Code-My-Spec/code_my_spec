@@ -49,6 +49,7 @@ defmodule CodeMySpecWeb.Router do
     get "/llms-full.txt", LlmsTxtController, :full
 
     # Content index pages (dead views)
+    get "/blog/feed.xml", FeedController, :blog
     get "/blog", ContentController, :blog_index
     get "/documentation", ContentController, :documentation_index
     get "/pages", ContentController, :pages_index
