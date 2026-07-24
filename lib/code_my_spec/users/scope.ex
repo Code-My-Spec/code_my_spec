@@ -113,6 +113,8 @@ defmodule CodeMySpec.Users.Scope do
   """
   @spec for_local_project(Project.t()) :: {:ok, t()} | {:error, atom()}
   @spec for_local_project(Project.t()) :: {:ok, t()} | {:error, atom()}
+  def for_local_project(nil), do: {:error, :no_local_path}
+
   def for_local_project(%Project{local_path: nil}), do: {:error, :no_local_path}
 
   def for_local_project(%Project{} = project) do

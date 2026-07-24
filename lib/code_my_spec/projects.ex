@@ -178,7 +178,7 @@ defmodule CodeMySpec.Projects do
   @spec list_local_account_ids() :: [Ecto.UUID.t()]
   def list_local_account_ids do
     from(p in Project,
-      where: not is_nil(p.local_path),
+      where: not is_nil(p.local_path) and not is_nil(p.account_id),
       select: p.account_id,
       distinct: true
     )
@@ -190,7 +190,9 @@ defmodule CodeMySpec.Projects do
   `local_path` set, or `nil`. Used by the local socket supervisor
   to bootstrap a scope per local account.
   """
-  @spec first_local_project_for_account(Ecto.UUID.t()) :: Project.t() | nil
+  @spec first_local_project_for_account(Ecto.UUID.t() | nil) :: Project.t() | nil
+  def first_local_project_for_account(nil), do: nil
+
   def first_local_project_for_account(account_id) do
     from(p in Project,
       where: p.account_id == ^account_id and not is_nil(p.local_path),

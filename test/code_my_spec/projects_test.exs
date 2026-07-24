@@ -55,6 +55,34 @@ defmodule CodeMySpec.ProjectsTest do
       assert "is already in use by another project" in errors_on(changeset).deploy_key
     end
 
+    test "list_local_account_ids/0 skips local projects with a nil account_id" do
+      # A local project whose account_id is nil (reachable when a project is
+      # created under a scope with no active account) must not surface as a nil
+      # in the account list — SocketSupervisor feeds each id into
+      # first_local_project_for_account/1, and Ecto raises on `== nil`, which
+      # crash-loops the whole local server at boot.
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      project_fixture(scope, %{local_path: "/tmp/good"})
+      orphan = project_fixture(scope, %{local_path: "/tmp/orphan"})
+
+      {1, _} =
+        Repo.update_all(from(p in Project, where: p.id == ^orphan.id),
+          set: [account_id: nil]
+        )
+
+      ids = Projects.list_local_account_ids()
+
+      refute nil in ids
+      assert account.id in ids
+    end
+
+    test "first_local_project_for_account/1 returns nil for a nil account without raising" do
+      assert Projects.first_local_project_for_account(nil) == nil
+    end
+
     test "list_projects/1 returns all scoped projects" do
       user = user_fixture()
       other_user = user_fixture()
