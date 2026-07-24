@@ -24,7 +24,6 @@
       "type": "stdio",
       "command": "cms-mcp-relay",
       "env": {
-        "CLAUDE_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}",
         "CMS_MCP_BASE_URL": "http://localhost:4003"
       }
     },

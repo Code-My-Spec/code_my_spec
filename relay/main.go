@@ -33,7 +33,7 @@ const defaultBaseURL = "http://localhost:4003"
 
 func main() {
 	base := getenv("CMS_MCP_BASE_URL", defaultBaseURL)
-	dir := getenv("CLAUDE_PROJECT_DIR", cwd())
+	dir := resolveDir()
 	endpoint := strings.TrimRight(base, "/") + "/mcp?dir=" + url.QueryEscape(dir)
 
 	r := &relay{
@@ -152,6 +152,25 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// resolveDir picks the project directory the server resolves scope from.
+// CLAUDE_PROJECT_DIR wins when it names a real directory. Some Claude Code
+// builds forward the plugin-config placeholder "${CLAUDE_PROJECT_DIR}"
+// literally (no env interpolation); that value — and any other non-existent
+// path — falls back to the process cwd so the relay still resolves scope
+// instead of failing every request (initialize included) with
+// "Path does not exist", which leaves the MCP server registering zero tools.
+func resolveDir() string {
+	if v := os.Getenv("CLAUDE_PROJECT_DIR"); v != "" && !strings.Contains(v, "${") && isDir(v) {
+		return v
+	}
+	return cwd()
+}
+
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
 
 func cwd() string {
