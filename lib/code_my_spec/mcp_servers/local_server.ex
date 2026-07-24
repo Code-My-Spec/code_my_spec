@@ -131,4 +131,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Qa.Tools.SubmitQaResult)
   component(CodeMySpec.McpServers.Qa.Tools.ListQaAttempts)
   component(CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt)
+
+  # Problems — clear stale persisted problems that block the Stop hook
+  # after the underlying file is fixed but a later run didn't re-check it.
+  component(CodeMySpec.McpServers.Problems.Tools.ClearProblems)
 end
