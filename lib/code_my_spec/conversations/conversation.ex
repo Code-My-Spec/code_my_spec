@@ -21,6 +21,9 @@ defmodule CodeMySpec.Conversations.Conversation do
     field :project_id, :binary_id
     field :end_user_id, :string
     field :end_user_email, :string
+    # Set for background-agent-session conversations (harness team's shared id);
+    # nil for customer-support widget conversations.
+    field :session_external_id, :string
     field :read, :boolean, default: true
     field :status, Ecto.Enum, values: [:open, :closed], default: :open
 
@@ -35,5 +38,18 @@ defmodule CodeMySpec.Conversations.Conversation do
     |> cast(attrs, [:account_id, :project_id, :end_user_id, :end_user_email, :read, :status])
     |> validate_required([:account_id, :project_id, :end_user_email])
     |> unique_constraint([:account_id, :project_id, :end_user_email])
+  end
+
+  @doc """
+  Changeset for a background-agent-session conversation: keyed by
+  `session_external_id` instead of an end-user email (agents have no end user).
+  """
+  def agent_changeset(conversation, attrs) do
+    conversation
+    |> cast(attrs, [:account_id, :project_id, :session_external_id, :read, :status])
+    |> validate_required([:account_id, :project_id, :session_external_id])
+    |> unique_constraint([:account_id, :project_id, :session_external_id],
+      name: :conversations_account_project_session_index
+    )
   end
 end

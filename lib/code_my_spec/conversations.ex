@@ -88,6 +88,77 @@ defmodule CodeMySpec.Conversations do
     )
   end
 
+  # ---- Background-agent side (harness session, no end user) ----
+
+  @doc """
+  Finds the conversation for a background-agent session — keyed by the harness
+  `session_external_id` (the shared id for the whole Pi team) — or creates it.
+  Agent conversations have no end user; the whole team's transcript lands here.
+  """
+  def find_or_create_agent_conversation(account_id, project_id, session_external_id) do
+    case Repo.get_by(Conversation,
+           account_id: account_id,
+           project_id: project_id,
+           session_external_id: session_external_id
+         ) do
+      nil ->
+        %Conversation{}
+        |> Conversation.agent_changeset(%{
+          account_id: account_id,
+          project_id: project_id,
+          session_external_id: session_external_id
+        })
+        |> Repo.insert()
+        |> case do
+          {:ok, conversation} ->
+            {:ok, conversation}
+
+          # Lost an insert race — fetch the now-existing row.
+          {:error, _changeset} ->
+            {:ok,
+             Repo.get_by!(Conversation,
+               account_id: account_id,
+               project_id: project_id,
+               session_external_id: session_external_id
+             )}
+        end
+
+      conversation ->
+        {:ok, conversation}
+    end
+  end
+
+  @doc """
+  Appends a background-agent transcript line and broadcasts it like any other
+  message (so the operator inbox renders it live). `kind` is the harness message
+  kind (`"assistant"` / `"tool"` / `"status"`); `agent_role` is the speaking lane.
+  """
+  def add_agent_message(%Conversation{} = conversation, agent_role, kind, text) do
+    %Message{}
+    |> Message.agent_changeset(%{
+      conversation_id: conversation.id,
+      role: agent_message_role(kind),
+      agent_role: agent_role,
+      body: text || "",
+      sender_id: "agent:#{agent_role}"
+    })
+    |> Repo.insert()
+    |> case do
+      {:ok, message} ->
+        touch(conversation, false)
+        broadcast_new_message(conversation, message)
+        {:ok, message}
+
+      error ->
+        error
+    end
+  end
+
+  # Harness kind -> Message role. Tool calls render distinctly; everything else
+  # (assistant prose, status lines) is assistant-voiced.
+  defp agent_message_role("tool"), do: :tool
+  defp agent_message_role(_kind), do: :assistant
+
   @doc """
   Appends a message to a conversation and broadcasts it on the per-conversation
   topic (for connected widgets) and the account inbox topic (for the operator).

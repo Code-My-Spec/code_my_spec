@@ -69,3 +69,7 @@ config :code_my_spec, content_pull_async: false
 # semantics for existing tests. The async ProjectServer path is exercised
 # against the live dev server.
 config :code_my_spec, analysis_mode: :inline
+
+# Static harness socket secret in tests — deterministic and avoids writing a
+# generated secret into the developer's ~/.codemyspec on `mix test`.
+config :code_my_spec, harness_secret: "test-harness-secret"

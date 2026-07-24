@@ -18,8 +18,11 @@ defmodule CodeMySpec.Conversations.Message do
 
   schema "conversation_messages" do
     field :body, :string
-    field :role, Ecto.Enum, values: [:user, :operator, :assistant]
+    field :role, Ecto.Enum, values: [:user, :operator, :assistant, :tool]
     field :sender_id, :string
+    # The speaking lane for agent-session transcripts: manager / product /
+    # spec_writer / coding / qa. nil for human (user/operator) messages.
+    field :agent_role, :string
     # Files shared in the message, copied into our S3 bucket, e.g.
     # %{"s3_key" => ..., "filename" => ..., "content_type" => ..., "size" => ...}.
     field :attachments, {:array, :map}, default: []
@@ -37,6 +40,17 @@ defmodule CodeMySpec.Conversations.Message do
     |> cast(attrs, [:body, :role, :sender_id, :conversation_id, :attachments], empty_values: [])
     |> validate_required([:role, :conversation_id])
     |> validate_body_or_attachments()
+  end
+
+  @doc """
+  Changeset for a background-agent transcript line: carries the speaking lane in
+  `agent_role`. Body may be empty (e.g. a bare tool call), so the
+  body-or-attachments rule doesn't apply.
+  """
+  def agent_changeset(message, attrs) do
+    message
+    |> cast(attrs, [:body, :role, :agent_role, :sender_id, :conversation_id], empty_values: [])
+    |> validate_required([:role, :conversation_id])
   end
 
   # A message must carry either text or at least one attachment.

@@ -13,6 +13,11 @@ defmodule CodeMySpecLocalWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: false
 
+  # Data-plane socket the Pi harness connects to (see CodeMySpec.AgentHarness).
+  socket "/harness_socket", CodeMySpecLocalWeb.HarnessSocket,
+    websocket: true,
+    longpoll: false
+
   # Serve static assets (JS bundle for LiveView)
   plug Plug.Static,
     at: "/local/assets",

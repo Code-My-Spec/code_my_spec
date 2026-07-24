@@ -10,6 +10,7 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
 
   require Logger
 
+  alias CodeMySpec.AgentHarness.HarnessProxySocket
   alias CodeMySpec.Issues.IssuesSocket
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.ProjectsSocket
@@ -59,7 +60,10 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
       {:ok, scope} ->
         [
           Supervisor.child_spec({ProjectsSocket, scope: scope}, id: {ProjectsSocket, account_id}),
-          Supervisor.child_spec({IssuesSocket, scope: scope}, id: {IssuesSocket, account_id})
+          Supervisor.child_spec({IssuesSocket, scope: scope}, id: {IssuesSocket, account_id}),
+          Supervisor.child_spec({HarnessProxySocket, scope: scope},
+            id: {HarnessProxySocket, account_id}
+          )
         ]
 
       {:error, _} ->

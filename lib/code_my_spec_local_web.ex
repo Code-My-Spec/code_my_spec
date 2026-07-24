@@ -11,7 +11,15 @@ defmodule CodeMySpecLocalWeb do
   Markdown rendering for the API lives in `*Markdown` modules.
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.McpServers], exports: :all
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec,
+      CodeMySpec.AgentHarness,
+      CodeMySpec.Environments,
+      CodeMySpec.McpServers
+    ],
+    exports: :all
 
   def static_paths, do: ~w(local/assets)
 

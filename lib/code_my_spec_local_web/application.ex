@@ -70,6 +70,11 @@ defmodule CodeMySpecLocalWeb.Application do
         # 4h covers a normal working block; supervisor restarts re-arm the timer.
         {CodeMySpec.McpServers.LocalServer,
          transport: {:streamable_http, start: true}, session_idle_timeout: to_timeout(hour: 4)},
+        # Harness data plane: Presence = lane heartbeat, WorkSource resolves the
+        # next requirement for a parked lane. The per-account Slipstream proxy to
+        # the server's user plane is started by SocketSupervisor.
+        CodeMySpecLocalWeb.Presence,
+        CodeMySpec.AgentHarness.WorkSource,
         CodeMySpecLocalWeb.Endpoint,
         CodeMySpec.ProjectSync.FileWatcherServer,
         CodeMySpecLocalWeb.SocketSupervisor,

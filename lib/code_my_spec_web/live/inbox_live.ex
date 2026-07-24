@@ -39,7 +39,7 @@ defmodule CodeMySpecWeb.InboxLive do
      socket
      |> assign(:conversation, conversation)
      |> assign(:messages, Conversations.list_messages(conversation))
-     |> assign(:page_title, conversation.end_user_email)
+     |> assign(:page_title, conversation_title(conversation))
      |> load_list()}
   end
 
@@ -214,7 +214,7 @@ defmodule CodeMySpecWeb.InboxLive do
                     class="mr-1.5 inline-block size-2 rounded-full bg-primary align-middle"
                   >
                   </span>
-                  {conversation.end_user_email}
+                  {conversation_title(conversation)}
                   <span :if={conversation.status == :closed} class="badge badge-ghost badge-xs ml-1">Closed</span>
                 </td>
                 <td>
@@ -266,7 +266,7 @@ defmodule CodeMySpecWeb.InboxLive do
             <.link navigate={~p"/app/inbox"} data-test="back-to-chats" class="btn btn-ghost btn-xs shrink-0">
               <.icon name="hero-arrow-left" class="size-4" /> Chats
             </.link>
-            <h1 class="truncate text-lg font-semibold">{@conversation.end_user_email}</h1>
+            <h1 class="truncate text-lg font-semibold">{conversation_title(@conversation)}</h1>
           </div>
 
           <div class="flex shrink-0 items-center gap-2">
@@ -374,6 +374,12 @@ defmodule CodeMySpecWeb.InboxLive do
       message -> message.body
     end
   end
+
+  # Agent-session conversations have no end user — label them by their harness
+  # session id instead of a (nil) email.
+  defp conversation_title(%{end_user_email: email}) when is_binary(email) and email != "", do: email
+  defp conversation_title(%{session_external_id: ext}) when is_binary(ext), do: "Agent · #{ext}"
+  defp conversation_title(_conversation), do: "Conversation"
 
   defp online?(%{end_user_id: end_user_id}, online) when is_binary(end_user_id),
     do: MapSet.member?(online, end_user_id)
