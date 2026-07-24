@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6535Spex do
   `/install` (the homepage CTAs now link there instead of hosting cards):
     - install_page_macos     (server install, macOS tab)
     - install_page_windows   (server install, Windows tab)
-    - install_page           (plugin install card)
+    - install_page_claude    (plugin install card, Claude Code tab)
     - install_page_firstrun  (first-run command)
 
   Driven through the marketing surface. Fails if a placement is dropped
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6535Spex do
       end
 
       then_ "the plugin and first-run placements are present", context do
-        assert context.html =~ ~s(data-event-location="install_page")
+        assert context.html =~ ~s(data-event-location="install_page_claude")
         assert context.html =~ ~s(data-event-location="install_page_firstrun")
         {:ok, context}
       end

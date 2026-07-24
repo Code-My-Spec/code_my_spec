@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6515Spex do
       then_ "the location dimension is set for every install-card placement", context do
         assert context.html =~ ~s(data-event-location="install_page_macos")
         assert context.html =~ ~s(data-event-location="install_page_windows")
-        assert context.html =~ ~s(data-event-location="install_page")
+        assert context.html =~ ~s(data-event-location="install_page_claude")
         assert context.html =~ ~s(data-event-location="install_page_firstrun")
         {:ok, context}
       end
