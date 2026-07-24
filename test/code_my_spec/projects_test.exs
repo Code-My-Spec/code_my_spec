@@ -41,6 +41,20 @@ defmodule CodeMySpec.ProjectsTest do
       assert Projects.get_project!(scope, project.id).deploy_key == plaintext
     end
 
+    test "reusing another project's deploy key returns an error, not a constraint crash" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      shared_key = "shared-deploy-key-secret"
+      project_fixture(scope, %{deploy_key: shared_key})
+      other = project_fixture(scope, %{deploy_key: "a-different-key"})
+
+      assert {:error, changeset} = Projects.update_project(scope, other, %{deploy_key: shared_key})
+
+      assert "is already in use by another project" in errors_on(changeset).deploy_key
+    end
+
     test "list_projects/1 returns all scoped projects" do
       user = user_fixture()
       other_user = user_fixture()

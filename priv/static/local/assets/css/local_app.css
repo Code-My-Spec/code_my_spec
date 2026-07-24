@@ -1868,6 +1868,9 @@
       }
     }
   }
+  .absolute {
+    position: absolute;
+  }
   .fixed {
     position: fixed;
   }
@@ -5904,7 +5907,7 @@ html {
 }
 @layer base {
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme]) {
       color-scheme: dark;
       --color-primary: #ff3838;
       --color-primary-content: #000000;

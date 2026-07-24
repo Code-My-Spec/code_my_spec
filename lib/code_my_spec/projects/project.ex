@@ -129,6 +129,10 @@ defmodule CodeMySpec.Projects.Project do
     |> validate_client_api_url()
     |> put_change(:account_id, user_scope.active_account_id)
     |> put_deploy_key_hash()
+    |> unique_constraint(:deploy_key,
+      name: :projects_deploy_key_hash_index,
+      message: "is already in use by another project"
+    )
   end
 
   @doc """

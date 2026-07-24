@@ -52,8 +52,13 @@ defmodule CodeMySpecLocalWeb.ContentLive do
 
   @impl true
   def handle_event("save-settings", %{"settings" => attrs}, socket) do
-    {:ok, project} = Projects.update_project(socket.assigns.scope, socket.assigns.project, attrs)
-    {:noreply, socket |> put_flash(:info, "Settings saved") |> reassign(project)}
+    case Projects.update_project(socket.assigns.scope, socket.assigns.project, attrs) do
+      {:ok, project} ->
+        {:noreply, socket |> put_flash(:info, "Settings saved") |> reassign(project)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, put_flash(socket, :error, settings_error_message(changeset))}
+    end
   end
 
   def handle_event("save-source", %{"source" => %{"path" => path}}, socket) do
@@ -108,6 +113,17 @@ defmodule CodeMySpecLocalWeb.ContentLive do
 
     base = "Published #{total} #{if total == 1, do: "item", else: "items"}"
     if breakdown == "", do: base, else: "#{base} (#{breakdown})"
+  end
+
+  defp settings_error_message(changeset) do
+    errors =
+      Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+        Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+          opts |> Keyword.get(String.to_existing_atom(key), "") |> to_string()
+        end)
+      end)
+
+    format_errors(%{message: "Couldn't save settings", errors: errors})
   end
 
   @impl true
@@ -210,7 +226,7 @@ defmodule CodeMySpecLocalWeb.ContentLive do
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">Deploy key</span>
-                <input type="password" name="settings[deploy_key]" value={@project.deploy_key} class="input input-bordered input-sm" />
+                <input type="password" name="settings[deploy_key]" value={@project.deploy_key} class="input input-bordered input-sm" autocomplete="off" />
               </label>
               <div class="flex items-end">
                 <button type="submit" class="btn btn-sm">Save settings</button>
