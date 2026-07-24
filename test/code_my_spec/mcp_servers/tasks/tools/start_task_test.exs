@@ -75,6 +75,29 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
       assert task.status == :active
     end
+
+    test "lazily registers the session when the SessionStart hook never ran" do
+      # First-session case: the conversation's session_id has no row because
+      # the SessionStart hook hadn't fired (Claude Code loads hooks once at
+      # session start). start_task must self-heal, not dead-end.
+      {scope, _session, _component, req_params} = setup_requirement()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      external_id = "conv-unregistered-#{System.unique_integer([:positive])}"
+      refute Sessions.get_by_external_id(scope, external_id)
+
+      assert {:reply, response, ^frame} =
+               StartTask.execute(Map.put(req_params, :session_id, external_id), frame)
+
+      refute response.isError
+
+      created = Sessions.get_by_external_id(scope, external_id)
+      assert created, "start_task should have registered the missing session"
+
+      updated_session = Sessions.get_session(scope, created.id)
+      task = Enum.find(updated_session.tasks, &(&1.requirement_name == "spec_file"))
+      assert task.status == :active
+    end
   end
 
   describe "execute/2 — deduplication" do
@@ -197,18 +220,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
       assert response_text(response) =~ "not found"
     end
 
-    test "returns error for non-existent session" do
+    test "self-registers a UUID-form session_id that has no row instead of erroring" do
+      # An unknown but valid session_id is indistinguishable from a real
+      # conversation whose SessionStart hook never fired, so start_task
+      # registers it rather than dead-ending (see happy-path self-heal test).
       {scope, _session, _component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      assert {:reply, response, ^frame} =
-               StartTask.execute(
-                 Map.put(req_params, :session_id, Ecto.UUID.generate()),
-                 frame
-               )
+      session_id = Ecto.UUID.generate()
 
-      assert response.isError
-      assert response_text(response) =~ "Session not found"
+      assert {:reply, response, ^frame} =
+               StartTask.execute(Map.put(req_params, :session_id, session_id), frame)
+
+      refute response.isError
+      assert Sessions.get_by_external_id(scope, session_id)
     end
 
     test "returns error when session_id is missing" do

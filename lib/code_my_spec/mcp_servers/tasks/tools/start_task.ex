@@ -100,9 +100,17 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do
       nil ->
-        # Try as DB UUID
+        # Try as DB UUID (an agent may pass the internal id), then lazily
+        # register. On the first session of a conversation the SessionStart
+        # hook may not have fired — Claude Code loads hooks once at session
+        # start, so a session opened before the plugin's hooks were enabled
+        # never gets its session row, and the agent would dead-end here until
+        # a full /clear + restart. Rather than error, create the row under the
+        # same working-dir scope the hook would have used (the /mcp pipeline
+        # and the hook pipeline both resolve scope from X-Working-Dir), so the
+        # flow self-heals in place.
         case safe_get_session(scope, session_id) do
-          nil -> {:error, "Session not found: #{session_id}. Has the SessionStart hook fired?"}
+          nil -> lazily_register_session(scope, session_id)
           session -> {:ok, session}
         end
 
@@ -113,6 +121,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp resolve_session(_scope, _session_id) do
     {:error, "No session_id available. The PreToolUse hook should inject it automatically."}
+  end
+
+  defp lazily_register_session(scope, session_id) do
+    case Sessions.find_or_create_session(scope, session_id) do
+      {:ok, session} ->
+        {:ok, session}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error, "Could not register session #{session_id}: #{inspect(changeset.errors)}"}
+    end
   end
 
   defp safe_get_session(scope, id) do
