@@ -210,4 +210,16 @@ defmodule CodeMySpec.Accounts do
   def user_has_account_access?(%Scope{} = scope, account_id) do
     MembersRepository.user_has_account_access?(scope.user.id, account_id)
   end
+
+  @doc """
+  Returns the scope user's own role in `account_id` (`:owner`, `:admin`,
+  `:member`, ...) or `nil` when they are not a member.
+
+  Reads only the caller's own membership, so — like
+  `user_has_account_access?/2` — it does not authorize and never raises. Use it
+  for nav/visibility gates; use `get_user_role/3` to read *another* user's role.
+  """
+  def own_role(%Scope{} = scope, account_id) do
+    MembersRepository.get_user_role(scope.user.id, account_id)
+  end
 end

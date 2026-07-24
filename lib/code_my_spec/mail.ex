@@ -461,13 +461,11 @@ defmodule CodeMySpec.Mail do
     end
   end
 
-  defp owner_or_admin?(%Scope{} = scope) do
-    case Accounts.get_user_role(scope, scope.user.id, scope.active_account_id) do
-      role when role in [:owner, :admin] -> true
-      {:ok, role} when role in [:owner, :admin] -> true
-      _ -> false
-    end
+  defp owner_or_admin?(%Scope{active_account_id: account_id} = scope) when is_binary(account_id) do
+    Accounts.own_role(scope, account_id) in [:owner, :admin]
   end
+
+  defp owner_or_admin?(_), do: false
 
   defp string_keyed(map), do: Map.new(map, fn {k, v} -> {to_string(k), v} end)
 end
