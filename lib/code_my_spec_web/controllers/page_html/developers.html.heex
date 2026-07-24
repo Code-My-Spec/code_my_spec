@@ -95,6 +95,65 @@
     </div>
   </section>
 
+  <%!-- ───────────── WORKS WITH YOUR AGENT ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="your agent, not ours" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-2xl">
+        Works with the agent you already use.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        The harness is a local server on your machine, and each plugin is a thin adapter that points
+        your agent at it. That's why it's agent-agnostic by design: your specs, tests, and code never
+        depend on which agent wrote them.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-5 mt-12">
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">Claude Code</h3>
+              <span class="badge badge-primary badge-sm">flagship</span>
+            </div>
+            <p class="text-base-content/70 text-sm">
+              The deepest integration — specialized subagents and the full lifecycle. The original.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">OpenAI Codex</h3>
+              <span class="badge badge-ghost badge-sm">early</span>
+            </div>
+            <p class="text-base-content/70 text-sm">
+              The same harness, driven from Codex. Ported and available.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">Google Antigravity</h3>
+              <span class="badge badge-ghost badge-sm">early</span>
+            </div>
+            <p class="text-base-content/70 text-sm">
+              The same harness, driven from Antigravity. Ported and available.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8">
+        <.link navigate={~p"/install"} class="link link-primary font-medium">
+          Install for your agent →
+        </.link>
+      </div>
+    </div>
+  </section>
+
   <%!-- ───────────── WHY IT'S FREE ───────────── --%>
   <section class="border-b border-base-300">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">

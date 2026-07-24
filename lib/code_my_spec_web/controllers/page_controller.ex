@@ -1,6 +1,47 @@
 defmodule CodeMySpecWeb.PageController do
   use CodeMySpecWeb, :controller
 
+  # Rendered in the visible FAQ section on the homepage AND serialized into
+  # FAQPage JSON-LD — one source so the schema never claims text the page
+  # doesn't show.
+  @home_faqs [
+    %{
+      q: "What is CodeMySpec?",
+      a:
+        "A set of AI harnesses that help one person build, sell, and support real software. " <>
+          "You build the app with the model, run the email and chat your customers reach you on, " <>
+          "and do the outreach that grows it — the work of a whole team, from one seat."
+    },
+    %{
+      q: "Do I need to know how to code?",
+      a:
+        "No. CodeMySpec is built for operators, not engineers. You bring the judgment about " <>
+          "your business; the model does the building and the running, with you calling the shots. " <>
+          "Developers who'd rather wire it up themselves can use the build harness free."
+    },
+    %{
+      q: "How much does it cost?",
+      a:
+        "Building is free forever — bring your own AI keys and pay the AI company directly; " <>
+          "we never mark up your tokens. Running your software — email on your own domain, live " <>
+          "chat, content publishing, ads, and conversion reporting — is $100 a month per user. " <>
+          "Want it built with you? John scopes and quotes the work, from $500."
+    },
+    %{
+      q: "Is the free tier a trial?",
+      a:
+        "No. Nothing expires and there's no credit card. It's the same harness John uses to " <>
+          "run CodeMySpec itself."
+    },
+    %{
+      q: "What happens if I stop paying?",
+      a:
+        "The hosted services stop — email, chat, publishing, reporting. Your software, your " <>
+          "code, and your content stay yours. There's no lock-in to unwind; the $100 was never " <>
+          "rent on your own app."
+    }
+  ]
+
   def home(conn, _params) do
     meta = %{
       page_title: "CodeMySpec — One Person, a Whole Software Company",
@@ -95,6 +136,18 @@ defmodule CodeMySpecWeb.PageController do
             "publisher" => %{
               "@id" => "https://codemyspec.com/#organization"
             }
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "FAQPage",
+            "mainEntity" =>
+              Enum.map(@home_faqs, fn faq ->
+                %{
+                  "@type" => "Question",
+                  "name" => faq.q,
+                  "acceptedAnswer" => %{"@type" => "Answer", "text" => faq.a}
+                }
+              end)
           }
         ],
         &Jason.encode!/1
@@ -107,7 +160,8 @@ defmodule CodeMySpecWeb.PageController do
       og_description: meta.og_description,
       og_image: CodeMySpecWeb.ImageUrl.image_url("og-home.png", CodeMySpecWeb.Endpoint.url()),
       canonical_url: meta.canonical_url,
-      json_ld_list: json_ld_list
+      json_ld_list: json_ld_list,
+      faqs: @home_faqs
     )
   end
 

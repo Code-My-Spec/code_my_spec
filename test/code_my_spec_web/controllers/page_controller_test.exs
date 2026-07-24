@@ -25,6 +25,16 @@ defmodule CodeMySpecWeb.PageControllerTest do
     refute body =~ "model harnesses"
   end
 
+  test "GET / renders the FAQ section with matching FAQPage schema", %{conn: conn} do
+    conn = get(conn, ~p"/")
+    body = html_response(conn, 200)
+
+    assert body =~ "What is CodeMySpec?"
+    assert body =~ "Do I need to know how to code?"
+    # Schema and visible content come from the same @home_faqs source.
+    assert body =~ ~s|"@type":"FAQPage"|
+  end
+
   test "home page CTAs link to the install page", %{conn: conn} do
     conn = get(conn, ~p"/")
     body = html_response(conn, 200)

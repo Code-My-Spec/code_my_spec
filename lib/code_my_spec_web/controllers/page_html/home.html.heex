@@ -256,6 +256,23 @@
     </div>
   </section>
 
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section id="faq" class="border-b border-base-300 bg-base-100">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="common questions" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">
+        Asked before you got here.
+      </h2>
+
+      <div class="grid md:grid-cols-2 gap-x-10 gap-y-8 mt-12">
+        <div :for={faq <- @faqs} class="max-w-prose">
+          <h3 class="font-semibold text-lg">{faq.q}</h3>
+          <p class="text-base-content/70 mt-2 leading-relaxed">{faq.a}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <%!-- ───────────── FINAL CTA ───────────── --%>
   <section class="bg-base-200">
     <div class="max-w-6xl mx-auto px-6 py-20 lg:py-28 text-center">
