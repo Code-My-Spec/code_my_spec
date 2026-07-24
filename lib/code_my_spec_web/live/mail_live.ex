@@ -307,7 +307,14 @@ defmodule CodeMySpecWeb.MailLive do
           <.icon name="hero-exclamation-triangle" class="size-5" />
           <span>
             Mail can't be sent or received until this project's sending domain is verified.
-            {if @can_administer?, do: "Verify it under Manage mailboxes.", else: "Ask an account owner to verify the domain."}
+            <.link
+              :if={@can_administer? and @current_scope.active_project}
+              navigate={~p"/app/projects/#{@current_scope.active_project}/edit"}
+              class="link"
+            >
+              Verify it in project settings.
+            </.link>
+            <span :if={not @can_administer?}>Ask an account owner to verify the domain.</span>
           </span>
         </div>
 

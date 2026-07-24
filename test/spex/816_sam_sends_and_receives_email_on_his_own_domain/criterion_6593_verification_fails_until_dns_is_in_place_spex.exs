@@ -7,10 +7,10 @@ defmodule CodeMySpecSpex.Story816.Criterion6593Spex do
   send or receive email.
 
   Surface:
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" (owner/admin) — if the
-      operator verifies before the DNS records have propagated, the provider
-      reports the domain unverified and mail stays gated. The provider (Resend)
-      is replayed from recorded responses via `Req.Test` (shared mode).
+    * `CodeMySpecWeb.ProjectLive.Form` at "/app/projects/:id/edit" (owner/admin)
+      — if the operator verifies before the DNS records have propagated, the
+      provider reports the domain unverified and mail stays gated. The provider
+      (Resend) is replayed from recorded responses via `Req.Test` (shared mode).
   """
 
   use CodeMySpecSpex.Case
@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6593Spex do
   spex "Verifying before DNS is in place leaves the domain gated" do
     scenario "Verification fails until the DNS records are in place" do
       given_ "Sam has registered his sending domain but not published the records", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/edit")
 
         view
         |> form("[data-test='add-domain-form']", project: %{domain: "sam-ships.com"})

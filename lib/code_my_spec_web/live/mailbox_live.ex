@@ -1,10 +1,13 @@
 defmodule CodeMySpecWeb.MailboxLive do
   @moduledoc """
   Mailbox administration for a project — **owners and admins only**. Here an
-  operator sets up the project's sending domain (register → publish DNS →
-  verify) and creates/administers the mailboxes (assigned to a user, or shared,
-  or the catch-all). Reading and sending mail lives on the separate Mail inbox
-  (`CodeMySpecWeb.MailLive`); this surface is purely administrative.
+  operator creates and administers the mailboxes (assigned to a user, or
+  shared, or the catch-all). Reading and sending mail lives on the separate
+  Mail inbox (`CodeMySpecWeb.MailLive`); this surface is purely administrative.
+
+  The sending domain those mailboxes ride on is set up in project settings
+  (`CodeMySpecWeb.ProjectLive.Form`); mailboxes stay gated here until it's
+  verified.
 
   Members are redirected to the inbox — they use mailboxes, they don't manage
   them.
@@ -29,12 +32,8 @@ defmodule CodeMySpecWeb.MailboxLive do
        |> assign(:domain_verified?, Project.domain_verified?(project))
        |> assign(:domain, project && project.domain)
        |> assign(:assignable_users, assignable_users(scope))
-       |> assign(:dns_records, [])
-       |> assign(:domain_status, nil)
-       |> assign(:domain_error, nil)
        |> assign(:modal, nil)
-       |> assign(:mailboxes, Mail.list_mailboxes(scope))
-       |> maybe_load_domain_state()}
+       |> assign(:mailboxes, Mail.list_mailboxes(scope))}
     else
       {:ok,
        socket
@@ -80,71 +79,6 @@ defmodule CodeMySpecWeb.MailboxLive do
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, domain_error_message(reason))}
-    end
-  end
-
-  def handle_event("setup_domain", %{"project" => %{"domain" => domain}}, socket) do
-    scope = socket.assigns.current_scope
-
-    case Mail.setup_domain(scope, socket.assigns.project, domain) do
-      {:ok, project, records} ->
-        {:noreply,
-         socket
-         |> assign(:project, project)
-         |> assign(:domain, project.domain)
-         |> assign(:domain_verified?, Project.domain_verified?(project))
-         |> assign(:dns_records, records)
-         |> assign(:domain_status, if(Project.domain_verified?(project), do: "verified", else: "pending"))
-         |> assign(:domain_error, nil)
-         |> assign(:modal, nil)
-         |> put_flash(:info, "Domain added — publish the DNS records below, then verify.")}
-
-      {:error, reason} ->
-        {:noreply, socket |> assign(:domain_error, domain_error_message(reason)) |> assign(:modal, nil)}
-    end
-  end
-
-  def handle_event("verify_domain", _params, socket) do
-    scope = socket.assigns.current_scope
-
-    case Mail.verify_domain(scope, socket.assigns.project) do
-      {:ok, project, :verified} ->
-        {:noreply,
-         socket
-         |> assign(:project, project)
-         |> assign(:domain_verified?, true)
-         |> assign(:domain_error, nil)
-         |> put_flash(:info, "Domain verified — mail is now enabled.")}
-
-      {:ok, _project, status} ->
-        {:noreply,
-         socket
-         |> assign(:domain_status, status)
-         |> put_flash(:error, "Domain not verified yet (status: #{status}). Add the DNS records and try again.")}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :domain_error, domain_error_message(reason))}
-    end
-  end
-
-  defp maybe_load_domain_state(socket) do
-    project = socket.assigns.project
-
-    cond do
-      socket.assigns.domain_verified? -> socket
-      is_nil(project) or is_nil(project.resend_domain_id) -> socket
-      not connected?(socket) -> socket
-      true -> load_domain_state(socket, project)
-    end
-  end
-
-  defp load_domain_state(socket, project) do
-    case Mail.domain_dns_records(project) do
-      {:ok, records, status} ->
-        socket |> assign(:dns_records, records) |> assign(:domain_status, status)
-
-      {:error, reason} ->
-        assign(socket, :domain_error, domain_error_message(reason))
     end
   end
 
@@ -213,63 +147,25 @@ defmodule CodeMySpecWeb.MailboxLive do
           </div>
         </header>
 
-        <section :if={not @domain_verified?} data-test="domain-setup" class="space-y-4">
+        <section :if={not @domain_verified?} data-test="domain-gate" class="space-y-4">
           <div data-test="verify-notice" class="alert alert-warning">
             <.icon name="hero-exclamation-triangle" class="size-5" />
             <span>Verify your sending domain before mail can be sent or received.</span>
           </div>
 
-          <p :if={@domain_error} data-test="domain-error" class="text-error text-sm">{@domain_error}</p>
-
-          <div :if={is_nil(@domain)} class="rounded-box bg-base-200 p-6 text-center">
-            <p class="mb-3 opacity-70">No sending domain yet.</p>
-            <button type="button" phx-click="open_modal" phx-value-modal="domain" class="btn btn-primary btn-sm">
-              <.icon name="hero-globe-alt" class="size-4" /> Add a domain
-            </button>
-          </div>
-
-          <div :if={not is_nil(@domain)} data-test="domain-pending" class="space-y-3 rounded-box bg-base-200 p-4">
-            <p class="flex items-center gap-2">
-              <span class="opacity-70">Domain:</span>
-              <span class="font-mono">{@domain}</span>
-              <span class="badge badge-ghost badge-sm">{@domain_status || "pending"}</span>
+          <div class="rounded-box bg-base-200 p-6 text-center">
+            <p :if={is_nil(@domain)} class="mb-3 opacity-70">No sending domain yet.</p>
+            <p :if={not is_nil(@domain)} class="mb-3 opacity-70">
+              <span class="font-mono">{@domain}</span> isn't verified yet.
             </p>
-
-            <div :if={@dns_records != []} class="overflow-x-auto">
-              <p class="mb-1 text-sm opacity-70">Add these records at your DNS provider:</p>
-              <table class="table table-sm" data-test="dns-records">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Name</th>
-                    <th>Value</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr :for={record <- @dns_records}>
-                    <td>{record["type"] || record["record"]}</td>
-                    <td class="break-all font-mono text-xs">{record["name"]}</td>
-                    <td class="break-all font-mono text-xs">{record["value"]}</td>
-                    <td>{record["priority"]}</td>
-                    <td>{record["status"]}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <p class="text-sm opacity-70">
-              To <strong>receive</strong> mail, also enable receiving and add the MX record on the
-              <.link href="https://resend.com/domains" target="_blank" rel="noopener" class="link">
-                Resend dashboard
-              </.link>
-              (use a subdomain so it doesn't affect existing mail).
-            </p>
-
-            <button type="button" phx-click="verify_domain" data-test="verify-domain" class="btn btn-primary btn-sm">
-              Verify domain
-            </button>
+            <.link
+              :if={@project}
+              navigate={~p"/app/projects/#{@project}/edit"}
+              data-test="domain-settings-link"
+              class="btn btn-primary btn-sm"
+            >
+              <.icon name="hero-globe-alt" class="size-4" /> Set up the domain in project settings
+            </.link>
           </div>
         </section>
 
@@ -322,24 +218,6 @@ defmodule CodeMySpecWeb.MailboxLive do
         <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
       </dialog>
 
-      <%!-- Add-domain modal --%>
-      <dialog class={["modal", @modal == :domain && "modal-open"]}>
-        <div class="modal-box">
-          <h3 class="text-lg font-semibold">Add a sending domain</h3>
-          <p class="mt-1 text-sm opacity-70">
-            Use a subdomain (e.g. <span class="font-mono">inbound.yourdomain.com</span>) so it doesn't
-            collide with existing mail on your root domain.
-          </p>
-          <.form for={%{}} phx-submit="setup_domain" data-test="add-domain-form" class="mt-4 space-y-3">
-            <.input name="project[domain]" value="" type="text" label="Sending domain" placeholder="inbound.yourdomain.com" />
-            <div class="modal-action">
-              <button type="button" phx-click="close_modal" class="btn btn-ghost">Cancel</button>
-              <button type="submit" class="btn btn-primary">Add domain</button>
-            </div>
-          </.form>
-        </div>
-        <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
-      </dialog>
     </Layouts.app>
     """
   end

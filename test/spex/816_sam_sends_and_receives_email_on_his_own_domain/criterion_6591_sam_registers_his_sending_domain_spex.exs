@@ -7,11 +7,11 @@ defmodule CodeMySpecSpex.Story816.Criterion6591Spex do
   send or receive email.
 
   Surface:
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" (owner/admin) — submitting
-      the add-domain form registers the domain with the provider and shows the
-      DNS records to publish. The provider (Resend) is replayed from a recorded
-      response via `Req.Test` (shared mode, since the LiveView runs in its own
-      process).
+    * `CodeMySpecWeb.ProjectLive.Form` at "/app/projects/:id/edit" (owner/admin)
+      — submitting the add-domain form registers the domain with the provider
+      and shows the DNS records to publish. The provider (Resend) is replayed
+      from a recorded response via `Req.Test` (shared mode, since the LiveView
+      runs in its own process).
   """
 
   use CodeMySpecSpex.Case
@@ -26,8 +26,8 @@ defmodule CodeMySpecSpex.Story816.Criterion6591Spex do
 
   spex "Registering a domain shows the DNS records to publish" do
     scenario "Sam registers his sending domain" do
-      given_ "Sam is on the mailbox admin surface with no domain set", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+      given_ "Sam is on his project settings with no domain set", context do
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/edit")
 
         {:ok, Map.put(context, :view, view)}
       end

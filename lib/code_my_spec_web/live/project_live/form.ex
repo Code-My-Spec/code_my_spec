@@ -1,7 +1,19 @@
 defmodule CodeMySpecWeb.ProjectLive.Form do
+  @moduledoc """
+  Create and edit a project.
+
+  The sending domain lives here too (register → publish DNS → verify), but
+  it is deliberately **not** a field on the main form: setting `domain`
+  registers it with the mail provider and records the provider's domain id,
+  so it moves through `Mail.setup_domain/3` on its own submit rather than the
+  project save. It only appears when editing (registration needs a persisted
+  project) and only for account owners/admins, who are the ones who
+  administer mail.
+  """
+
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Projects
+  alias CodeMySpec.{Mail, Projects}
   alias CodeMySpec.Projects.Project
 
   @impl true
@@ -93,6 +105,109 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
           <.button navigate={return_path(@current_scope, @return_to, @project)}>Cancel</.button>
         </footer>
       </.form>
+
+      <%!-- Sending domain — its own submits, outside the project form: adding a
+            domain registers it with the mail provider and saves immediately. --%>
+      <section
+        :if={@live_action == :edit and @can_administer_domain?}
+        data-test="domain-setup"
+        class="mt-10 space-y-4 border-t border-base-300 pt-6"
+      >
+        <div>
+          <h2 class="text-lg font-semibold">Sending domain</h2>
+          <p class="text-sm opacity-70">
+            Mailboxes send and receive on this domain. Use a subdomain
+            (e.g. <span class="font-mono">inbound.yourdomain.com</span>) so it doesn't collide with
+            existing mail on your root domain.
+          </p>
+        </div>
+
+        <div :if={not @domain_verified?} data-test="verify-notice" class="alert alert-warning">
+          <.icon name="hero-exclamation-triangle" class="size-5" />
+          <span>Verify your sending domain before mail can be sent or received.</span>
+        </div>
+
+        <p :if={@domain_error} data-test="domain-error" class="text-error text-sm">{@domain_error}</p>
+
+        <div :if={@domain_verified?} data-test="domain-verified" class="rounded-box bg-base-200 p-4">
+          <p class="flex items-center gap-2">
+            <span class="opacity-70">Domain:</span>
+            <span class="font-mono">{@domain}</span>
+            <span class="badge badge-success badge-sm">verified</span>
+          </p>
+          <.link navigate={~p"/app/mailboxes"} class="link text-sm">Manage mailboxes</.link>
+        </div>
+
+        <.form
+          :if={is_nil(@domain)}
+          for={%{}}
+          phx-submit="setup_domain"
+          data-test="add-domain-form"
+          class="space-y-3 rounded-box bg-base-200 p-4"
+        >
+          <.input
+            name="project[domain]"
+            value=""
+            type="text"
+            label="Sending domain"
+            placeholder="inbound.yourdomain.com"
+          />
+          <.button phx-disable-with="Adding...">Add domain</.button>
+        </.form>
+
+        <div
+          :if={not @domain_verified? and not is_nil(@domain)}
+          data-test="domain-pending"
+          class="space-y-3 rounded-box bg-base-200 p-4"
+        >
+          <p class="flex items-center gap-2">
+            <span class="opacity-70">Domain:</span>
+            <span class="font-mono">{@domain}</span>
+            <span class="badge badge-ghost badge-sm">{@domain_status || "pending"}</span>
+          </p>
+
+          <div :if={@dns_records != []} class="overflow-x-auto">
+            <p class="mb-1 text-sm opacity-70">Add these records at your DNS provider:</p>
+            <table class="table table-sm" data-test="dns-records">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Name</th>
+                  <th>Value</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={record <- @dns_records}>
+                  <td>{record["type"] || record["record"]}</td>
+                  <td class="break-all font-mono text-xs">{record["name"]}</td>
+                  <td class="break-all font-mono text-xs">{record["value"]}</td>
+                  <td>{record["priority"]}</td>
+                  <td>{record["status"]}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="text-sm opacity-70">
+            To <strong>receive</strong> mail, also enable receiving and add the MX record on the
+            <.link href="https://resend.com/domains" target="_blank" rel="noopener" class="link">
+              Resend dashboard
+            </.link>
+            (use a subdomain so it doesn't affect existing mail).
+          </p>
+
+          <button
+            type="button"
+            phx-click="verify_domain"
+            data-test="verify-domain"
+            class="btn btn-primary btn-sm"
+          >
+            Verify domain
+          </button>
+        </div>
+      </section>
     </Layouts.app>
     """
   end
@@ -116,6 +231,8 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     |> assign(:project, project)
     |> assign(:deploy_key_value, project.deploy_key)
     |> assign(:form, to_form(Projects.change_project(socket.assigns.current_scope, project)))
+    |> assign_domain_state(project)
+    |> maybe_load_domain_state()
   end
 
   defp apply_action(socket, :new, _params) do
@@ -126,6 +243,17 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     |> assign(:project, project)
     |> assign(:deploy_key_value, nil)
     |> assign(:form, to_form(Projects.change_project(socket.assigns.current_scope, project)))
+    |> assign_domain_state(nil)
+  end
+
+  defp assign_domain_state(socket, project) do
+    socket
+    |> assign(:can_administer_domain?, Mail.can_administer?(socket.assigns.current_scope))
+    |> assign(:domain, project && project.domain)
+    |> assign(:domain_verified?, Project.domain_verified?(project))
+    |> assign(:dns_records, [])
+    |> assign(:domain_status, nil)
+    |> assign(:domain_error, nil)
   end
 
   @impl true
@@ -157,6 +285,55 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
 
   def handle_event("save", %{"project" => project_params}, socket) do
     save_project(socket, socket.assigns.live_action, project_params)
+  end
+
+  def handle_event("setup_domain", %{"project" => %{"domain" => domain}}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Mail.setup_domain(scope, socket.assigns.project, domain) do
+      {:ok, project, records} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:domain, project.domain)
+         |> assign(:domain_verified?, Project.domain_verified?(project))
+         |> assign(:dns_records, records)
+         |> assign(
+           :domain_status,
+           if(Project.domain_verified?(project), do: "verified", else: "pending")
+         )
+         |> assign(:domain_error, nil)
+         |> put_flash(:info, "Domain added — publish the DNS records below, then verify.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :domain_error, domain_error_message(reason))}
+    end
+  end
+
+  def handle_event("verify_domain", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    case Mail.verify_domain(scope, socket.assigns.project) do
+      {:ok, project, :verified} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:domain_verified?, true)
+         |> assign(:domain_error, nil)
+         |> put_flash(:info, "Domain verified — mail is now enabled.")}
+
+      {:ok, _project, status} ->
+        {:noreply,
+         socket
+         |> assign(:domain_status, status)
+         |> put_flash(
+           :error,
+           "Domain not verified yet (status: #{status}). Add the DNS records and try again."
+         )}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :domain_error, domain_error_message(reason))}
+    end
   end
 
   defp save_project(socket, :edit, project_params) do
@@ -195,6 +372,52 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
 
   defp return_path(_scope, "index", _project), do: ~p"/app/projects"
   defp return_path(_scope, "show", project), do: ~p"/app/projects/#{project}"
+
+  # A registered-but-unverified domain has DNS records the operator still needs
+  # to publish — fetch them from the provider so they're on screen. Skipped on
+  # the dead render so the page paints without waiting on an HTTP round trip.
+  defp maybe_load_domain_state(socket) do
+    project = socket.assigns.project
+
+    cond do
+      socket.assigns.domain_verified? -> socket
+      is_nil(project) or is_nil(project.resend_domain_id) -> socket
+      not connected?(socket) -> socket
+      true -> load_domain_state(socket, project)
+    end
+  end
+
+  defp load_domain_state(socket, project) do
+    case Mail.domain_dns_records(project) do
+      {:ok, records, status} ->
+        socket |> assign(:dns_records, records) |> assign(:domain_status, status)
+
+      {:error, reason} ->
+        assign(socket, :domain_error, domain_error_message(reason))
+    end
+  end
+
+  defp domain_error_message(:resend_not_configured),
+    do: "Email provider isn't configured yet (missing RESEND_API_KEY)."
+
+  defp domain_error_message(:no_domain), do: "No domain has been registered yet."
+
+  defp domain_error_message({:resend_error, status, body}) do
+    case resend_message(body) do
+      nil ->
+        "The email provider returned an error (HTTP #{status}). Check the domain and try again."
+
+      message ->
+        "The email provider rejected the request (HTTP #{status}): #{message}"
+    end
+  end
+
+  defp domain_error_message(_reason),
+    do: "Could not reach the email provider. Please try again."
+
+  defp resend_message(%{"message" => message}) when is_binary(message), do: message
+  defp resend_message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
+  defp resend_message(_body), do: nil
 
   defp create_github_repo(socket, repo_type, params, suffix) do
     project = socket.assigns.project

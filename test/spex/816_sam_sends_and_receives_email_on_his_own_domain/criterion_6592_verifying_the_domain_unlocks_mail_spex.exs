@@ -7,10 +7,10 @@ defmodule CodeMySpecSpex.Story816.Criterion6592Spex do
   send or receive email.
 
   Surface:
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" (owner/admin) — once the
-      DNS records are in place, clicking Verify marks the domain verified and
-      enables mail. The provider (Resend) is replayed from recorded responses
-      via `Req.Test` (shared mode).
+    * `CodeMySpecWeb.ProjectLive.Form` at "/app/projects/:id/edit" (owner/admin)
+      — once the DNS records are in place, clicking Verify marks the domain
+      verified and enables mail. The provider (Resend) is replayed from recorded
+      responses via `Req.Test` (shared mode).
   """
 
   use CodeMySpecSpex.Case
@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6592Spex do
   spex "Verifying a domain whose DNS is in place enables mail" do
     scenario "Verifying the domain unlocks mail" do
       given_ "Sam has registered his sending domain", context do
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/edit")
 
         view
         |> form("[data-test='add-domain-form']", project: %{domain: "sam-ships.com"})
