@@ -115,10 +115,18 @@ defmodule CodeMySpecLocalWeb.Application do
   end
 
   defp cli_argv do
-    call_optional(@burrito_args, :argv) || []
+    # Only a packaged release gets its argv parsed as `cms` subcommands. Run
+    # from source, `System.argv()` holds the mix task name and its flags, and
+    # `Burrito.Util.Args.argv/0` hands those straight back — so
+    # `handle_cli_args/1` would reject "cms.content.publish" as an unknown
+    # subcommand and halt the VM before the task ran. Mix is absent from the
+    # release, which makes its presence the signal for "booted from source."
+    if running_under_mix?(), do: [], else: call_optional(@burrito_args, :argv) || []
   rescue
     _ -> []
   end
+
+  defp running_under_mix?, do: Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0)
 
   defp handle_cli_args(argv) do
     # Drop Burrito's launcher separator so subcommand matching is clean.
