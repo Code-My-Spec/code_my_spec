@@ -10,25 +10,24 @@
         Free to build · your model, your keys · no lock-in
       </div>
       <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] max-w-4xl">
-        The harness that turns AI coding into <span class="text-primary">a system.</span>
+        AI can build you an app in an hour.<br />
+        <span class="text-primary">Then you change one thing, and it falls down.</span>
       </h1>
       <p class="text-lg text-base-content/70 mt-6 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          CodeMySpec is a requirements-driven development harness for building real software with AI.
+          CodeMySpec is for the morning after.
         </strong>
-        It runs as a plugin inside your AI coding agent and walks that agent through a full lifecycle
-        for every piece of your app: specification, tests, implementation, review, and QA, in the
-        right order.
+        It runs inside the AI tool you already use and gives it the discipline the chat window never
+        had: write down what the software should do, prove it does that, and don't move on until it
+        holds.
       </p>
       <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        <span class="font-semibold text-base-content">The core of it is that the specifications execute.</span>
-        Each story's agreed behavior compiles into real test files in your own repository, so your
-        intent is checked against the code continuously rather than written down once and left to rot.
-        Everything else in the harness exists to serve that.
+        <span class="font-semibold text-base-content">You don't supervise it. The harness supervises it.</span>
+        Every piece of behavior you agree to becomes a test that uses your app the way a person would,
+        so the machine can't write itself a passing grade and move on.
       </p>
       <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        You bring your own model and API keys. No token markup, nothing to lock you in, and building
-        is free.
+        You bring your own AI account. No markup, nothing that traps your work, and building is free.
       </p>
       <div class="mt-8 flex flex-wrap items-center gap-4">
         <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
@@ -82,6 +81,68 @@
     </div>
   </section>
 
+  <%!-- ───────────── THE WORKDAY ─────────────
+        The most persuasive thing available to a non-technical reader: it turns
+        every feature into a shape they can picture — a day, a rhythm, and sleep.
+        Source: the operator narrative (SOURCE-operator-narrative.md). --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what a day looks like" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        A workday with a beginning and an end.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          You take in five stories in the morning, it builds all day, you try it in the evening, and
+          it fixes what you found overnight.
+        </strong>
+        Then you take the next five. Most projects come out to about ten of these, roughly a business
+        day each.
+      </p>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-12">
+        <div :for={
+          {when_, what, who} <- [
+            {"Morning", "Take in five stories and answer the design questions.", "you"},
+            {"All day", "It builds. You are not in the room for this part.", "it"},
+            {"Evening", "You click around like a real person and say what's wrong.", "you"},
+            {"Overnight", "It fixes what you found. Come back to a working app.", "it"}
+          ]
+        } class={[
+          "card border shadow-sm",
+          who == "you" && "bg-base-100 border-base-300 border-t-4 border-t-primary",
+          who == "it" && "bg-base-200 border-base-300 border-t-4 border-t-base-300"
+        ]}>
+          <div class="card-body">
+            <div class="flex items-baseline justify-between gap-2">
+              <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+                {when_}
+              </span>
+              <span class="text-[10px] font-semibold uppercase tracking-[0.15em] text-base-content/40">
+                {who}
+              </span>
+            </div>
+            <p class="text-base-content/80 mt-2 leading-relaxed">{what}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-12 max-w-2xl space-y-4 text-base-content/70 leading-relaxed">
+        <p>
+          <span class="font-semibold text-base-content">Start smaller than you want to.</span>
+          Pick a self-contained core you can hold in your head and get running in a day. Five stories,
+          not fifty. That limit is for your benefit, not the machine's: thirty pages of everything it's
+          about to do is thirty pages you won't read, and then you've approved something you can't
+          picture.
+        </p>
+        <p>
+          If you already drew the whole thing, that work isn't wasted. It just isn't the first move.
+          The first move is deciding where one foundation block goes.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <%!-- ───────────── THE KEYSTONE — executable specs ─────────────
         This is the load-bearing section. Written specs are the optional layer
         (require_specs is a config knob); the executable specification is the
@@ -94,12 +155,17 @@
       </h2>
       <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          CodeMySpec turns each story's acceptance criteria into named rules, Gherkin scenarios, and
-          executable specifications that run against your code.
+          Every rule you agree to becomes a test that uses your application the way a person would.
         </strong>
-        A written specification is a claim about intent. An executable specification is a claim that
-        gets checked. That difference is the whole product. Take everything else out of the harness and
-        this is the part that still makes it work.
+        Given someone who has never signed up, when they sign up, the terms appear. The test clicks the
+        actual button and checks for the actual words on the actual screen. So the machine can't write
+        itself a fake test that passes and move on. It has to make the thing work the way you would
+        find it working.
+      </p>
+      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        Writing behavior down before you build has been the professional standard for twenty years, and
+        almost nobody did it, because it was too much work to be worth it. What changed is that the
+        labor is now free. The expensive discipline just became trivial.
       </p>
 
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-10">
@@ -176,7 +242,7 @@
             <title id="loop-title">The CodeMySpec build loop</title>
             <desc id="loop-desc">
               Seven steps run in order: plan, spec, test, code, review, verify, and QA. The verify
-              step compiles the code and runs Credo, the tests, and the Spex specs, and returns the
+              step builds the app and runs every check and test, and returns the
               work to the code step when a check fails.
             </desc>
 
@@ -276,8 +342,8 @@
           </svg>
         </div>
         <figcaption class="text-sm text-base-content/60 mt-3 max-w-3xl leading-relaxed">
-          Step 6 is the gate: on every agent stop, CodeMySpec compiles the code and runs Credo, the
-          tests, and the Spex specs. Blocking is configurable per check, from never to any failure.
+          Step 6 is the gate: every time the agent stops, the work gets built and run through every check
+          and test before it is allowed to continue. How strict each check is, is up to you.
           You drive the loop with three commands —
           <code class="text-base-content">/next</code> starts the next requirement,
           <code class="text-base-content">/implement</code> loops the whole graph, and
@@ -379,7 +445,7 @@
               Your coding agent talks directly to your model provider using your own keys, and
               CodeMySpec is not in that path. Separately, a thin plugin adapter connects the agent to
               the cms server running on your machine, which reads and writes the executable
-              specifications and ExUnit tests in your own repository.
+              specifications and tests in your own repository.
             </desc>
 
             <%!-- the model path: direct, and we are not on it --%>
@@ -499,7 +565,7 @@
                 Your repository
               </text>
               <text x="560" y="222" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
-                executable specs · ExUnit tests
+                your specs · your tests
               </text>
               <text x="560" y="238" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
                 your code, on your disk
@@ -541,13 +607,13 @@
         <div class="card bg-base-100 border border-base-300 border-t-4 border-t-secondary shadow-sm">
           <div class="card-body">
             <span class="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
-              16 component types
+              Real building blocks
             </span>
-            <h3 class="card-title mt-1">It knows what a context is.</h3>
+            <h3 class="card-title mt-1">It knows what it's building with.</h3>
             <p class="text-base-content/70">
-              Contexts, schemas, repositories, LiveViews, GenServers, controllers and more are
-              first-class types, each with its own design rules. The harness knows a context is a
-              boundary and a GenServer is stateful, so it builds idiomatic OTP.
+              The harness understands sixteen different kinds of parts a real application is made of,
+              each with its own rules about how it should be built. So what comes out looks like
+              software a professional wrote, not software a chat window guessed at.
             </p>
           </div>
         </div>
@@ -602,11 +668,22 @@
       </h2>
       <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          The harness and the local server cost nothing to run with your own AI keys.
+          Building costs nothing, and that is not a trial.
         </strong>
-        The hosted Operate and Grow layer — customer email on your own domain, live chat, content
-        publishing, and team collaboration — is $100 per month per user. A done-with-you build
-        engagement starts at $500, quoted. You never pay CodeMySpec for model tokens.
+        The hosted layer for running and growing the software afterwards — customer email on your own
+        domain, live chat, content publishing, working as a team — is $100 per month per user. Having it
+        built with you starts at $500, quoted. You never pay us for AI usage.
+      </p>
+      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        Here is why that split matters, and it is the honest reason to trust this over the alternative.
+        A tool that charges you to build has a reason to keep you building: close enough to the answer
+        to keep paying, never close enough to walk away with a finished thing.
+        <span class="font-semibold text-base-content">
+          Their goal is to keep you subscribed. Your goal is to end up owning something that makes you
+          money or saves you time.
+        </span>
+        We only get paid once your software is live and earning, so getting you out the door with a
+        working application is the entire business.
       </p>
       <div class="mt-6">
         <.link navigate={~p"/pricing"} class="link link-primary font-medium">See full pricing →</.link>

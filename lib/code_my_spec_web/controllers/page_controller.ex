@@ -555,16 +555,17 @@ defmodule CodeMySpecWeb.PageController do
           "plugin is a thin adapter that points your agent at it."
     },
     %{
-      q: "Is CodeMySpec only for Phoenix and Elixir?",
+      q: "Does CodeMySpec only work with one kind of app?",
       a:
-        "No. The core lifecycle — the requirement graph, specs, BDD scenarios, and browser QA — works on " <>
-          "any stack through your AI agent. Phoenix and Elixir are the deepest integration, where " <>
-          "CodeMySpec understands 16 component types and builds idiomatic, OTP-aware code."
+        "No. The core lifecycle — planning the work, agreeing the behavior, writing the tests, and QAing " <>
+          "the running app — works on any technology through your AI agent. It goes deepest on the " <>
+          "stack it was built for, where it understands sixteen kinds of building block and the rules " <>
+          "each one follows."
     },
     %{
       q: "Does CodeMySpec lock me in?",
       a:
-        "No. Your executable specifications and your tests are real Elixir test files in your own " <>
+        "No. Your executable specifications and your tests are ordinary test files in your own " <>
           "repository, and you bring your own model and API keys with no markup on tokens. There is no " <>
           "proprietary spec format and nothing to export. If you stopped using CodeMySpec tomorrow, you " <>
           "would keep every artifact of value, and the specifications would still run."
@@ -580,10 +581,10 @@ defmodule CodeMySpecWeb.PageController do
     %{
       q: "What does CodeMySpec verify before code ships?",
       a:
-        "Every time the agent stops, CodeMySpec compiles the code, runs Credo, runs the tests, and runs " <>
-          "the Spex specs, and it can block the agent from continuing on failure. Blocking is " <>
-          "configurable per check: off, block on any failure, block only on changed files, or never " <>
-          "block. The agent cannot quietly leave the build broken or skip the tests."
+        "Every time the agent stops, the work is built and run through every check and test before it is " <>
+          "allowed to continue, and a failure can stop it there. How strict each check is, is up to " <>
+          "you. The point is that the agent cannot quietly leave things broken or skip the tests and " <>
+          "tell you it was fine."
     },
     %{
       q: "What does CodeMySpec cost?",
@@ -595,10 +596,10 @@ defmodule CodeMySpecWeb.PageController do
     %{
       q: "Who is CodeMySpec for?",
       a:
-        "CodeMySpec is for engineers who ship and maintain the code they build — senior Phoenix and " <>
-          "Elixir engineers, Elixir agencies, and solo technical founders shipping a real product. It is " <>
-          "not for throwaway prototypes. If you are throwing it away, prompt directly; if you are " <>
-          "shipping it, you need the harness."
+        "Anyone who needs the software to still work next month. That includes people who are not " <>
+          "engineers: if you have built something with AI and watched it break every time you change " <>
+          "it, this is the layer that was missing. It is not for throwaway prototypes. If you are " <>
+          "throwing it away, prompt directly; if you are shipping it, you need the harness."
     }
   ]
 
@@ -607,15 +608,15 @@ defmodule CodeMySpecWeb.PageController do
     canonical = "#{base_url}/product"
 
     meta = %{
-      page_title: "CodeMySpec — The AI Development Harness for Software You Can Maintain",
+      page_title: "CodeMySpec — Build Software With AI That Doesn't Fall Down",
       meta_description:
-        "CodeMySpec is a spec-driven development harness that runs inside your AI coding agent. Its " <>
-          "specifications execute, so your intent is continuously verified against the code. Bring " <>
-          "your own model, no lock-in.",
-      og_title: "Your specifications execute",
+        "AI can build you an app in an hour, then break it when you change one thing. CodeMySpec is " <>
+          "for the morning after: it turns what you agreed on into tests that check your app the way " <>
+          "a person would. Free to build.",
+      og_title: "AI built it in an hour. Now make it hold.",
       og_description:
-        "The BDD specs are the walls: acceptance criteria compiled into runnable specifications that " <>
-          "continuously verify your intent against the code, inside the coding agent you already use."
+        "You don't supervise it, the harness supervises it. Five stories in the morning, it builds " <>
+          "all day, you try it in the evening, it fixes what you found overnight."
     }
 
     json_ld_list =

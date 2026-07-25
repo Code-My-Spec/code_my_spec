@@ -74,11 +74,30 @@ defmodule CodeMySpecWeb.PageControllerTest do
     conn = get(conn, ~p"/product")
     body = html_response(conn, 200)
 
-    assert body =~ "The harness that turns AI coding into"
-    # The first sentence has to stand alone as the answer to "what is CodeMySpec",
-    # because a retrieval system lifts the passage rather than the page.
-    assert body =~
-             "CodeMySpec is a requirements-driven development harness for building real software with AI."
+    # Leads with the problem the reader has actually lived, not the product
+    # category. /developers is the engineer-pitched page; this one is not.
+    assert body =~ "Then you change one thing, and it falls down."
+    assert body =~ "CodeMySpec is for the morning after."
+    assert body =~ "supervise it. The harness supervises it."
+  end
+
+  test "GET /product stays legible to a non-engineer", %{conn: conn} do
+    conn = get(conn, ~p"/product")
+    body = html_response(conn, 200)
+
+    # Engineers are not the audience here — the tool names belong on /developers.
+    # The claims stay; the jargon goes. Scoped to visible copy: the JSON-LD
+    # featureList keeps precise tool names on purpose, because that is read by
+    # machines answering capability questions and never by a human on the page.
+    visible = String.replace(body, ~r|<script type="application/ld\+json".*?</script>|s, "")
+
+    for jargon <- ~w(Credo ExUnit OTP GenServer LiveView) do
+      refute visible =~ jargon, "expected /product copy to avoid #{jargon}"
+    end
+
+    # The workday rhythm is the most persuasive thing available to this reader.
+    assert body =~ "A workday with a beginning and an end."
+    assert body =~ "Overnight"
   end
 
   test "GET /product leads on executable specs, not written spec documents", %{conn: conn} do
