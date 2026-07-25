@@ -8,10 +8,26 @@ defmodule CodeMySpecWeb.LlmsTxtController do
   @static_pages [
     %{title: "Homepage", url: "/", description: "Product overview and registration"},
     %{
+      title: "Product",
+      url: "/product",
+      description:
+        "The canonical product page: what CodeMySpec is, the seven-step build loop, architecture " <>
+          "enforcement, verification, agentic QA, where it sits against coding agents and app " <>
+          "builders, and why there is no lock-in"
+    },
+    %{
       title: "Pricing",
       url: "/pricing",
       description:
         "Free to build (harness + content engine, your own AI keys), $100/month per user to operate and grow, or built with you from $500 (quoted)"
+    },
+    %{
+      title: "Supported AI agents",
+      url: "/agents",
+      description:
+        "Which coding agents CodeMySpec runs inside (Claude Code flagship, OpenAI Codex and " <>
+          "Google Antigravity early) and why the harness is agent-agnostic: it is a local server, " <>
+          "and each plugin is a thin adapter"
     },
     %{
       title: "Developers",

@@ -40,6 +40,7 @@ defmodule CodeMySpecWeb.Router do
 
     get "/", PageController, :home
     get "/product", PageController, :product
+    get "/agents", PageController, :agents
     get "/developers", PageController, :developers
     get "/install", PageController, :install
     get "/pricing", PageController, :pricing

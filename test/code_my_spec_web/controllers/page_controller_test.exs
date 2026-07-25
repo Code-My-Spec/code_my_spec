@@ -101,6 +101,32 @@ defmodule CodeMySpecWeb.PageControllerTest do
     assert body =~ "Where CodeMySpec sits in your toolchain"
   end
 
+  test "GET /agents names the flagship and never claims parity", %{conn: conn} do
+    conn = get(conn, ~p"/agents")
+    body = html_response(conn, 200)
+
+    assert body =~ "Works with the agent"
+    assert body =~ "Claude Code"
+    assert body =~ "OpenAI Codex"
+    assert body =~ "Google Antigravity"
+    # Maturity tiers are load-bearing: one flagship, two early.
+    assert body =~ "flagship"
+    assert body =~ "early"
+    assert body =~ ~s|"@type":"FAQPage"|
+  end
+
+  test "GET /agents publishes no unverified install commands", %{conn: conn} do
+    conn = get(conn, ~p"/agents")
+    body = html_response(conn, 200)
+
+    # The Codex and Antigravity marketplace invocations are flagged unverified in
+    # their plugin READMEs. An install command that dead-ends costs more trust
+    # than the page earns, so /install owns them and this page only links there.
+    refute body =~ "codex plugin marketplace"
+    refute body =~ "agy plugin install"
+    assert body =~ ~s|href="/install"|
+  end
+
   test "GET /product keeps claims inside the honesty ledger", %{conn: conn} do
     conn = get(conn, ~p"/product")
     body = html_response(conn, 200)

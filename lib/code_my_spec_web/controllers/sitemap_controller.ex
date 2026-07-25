@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.SitemapController do
   @static_locs [
     "/",
     "/product",
+    "/agents",
     "/developers",
     "/install",
     "/pricing",

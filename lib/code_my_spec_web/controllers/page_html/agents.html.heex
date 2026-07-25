@@ -1,0 +1,323 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+  <%!-- ───────────── HERO ───────────── --%>
+  <section class="bg-base-200 border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <div class="badge badge-primary badge-outline gap-2 mb-6">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+        Three agents · one harness · your keys
+      </div>
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] max-w-4xl">
+        Works with the agent <span class="text-primary">you already use.</span>
+      </h1>
+      <p class="text-lg text-base-content/70 mt-6 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          CodeMySpec runs as a plugin inside Claude Code, OpenAI Codex, or Google Antigravity.
+        </strong>
+        Claude Code has the deepest integration and is the flagship. Codex and Antigravity are
+        early. All three run on your own API keys, with no markup on model tokens.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center gap-4">
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install for your agent</.link>
+        <.link navigate={~p"/product"} class="btn btn-ghost btn-lg">What the harness does →</.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── WHY SEVERAL AGENTS WORK (diagram) ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="why this is possible" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        The harness isn't the plugin.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          The harness is a local server on your machine, and each plugin is a thin adapter that
+          points your agent at it.
+        </strong>
+        The requirement graph, the specs, the verification, and the QA are written once and reused by
+        every agent. That is why supporting a new one is an adapter rather than a rewrite.
+      </p>
+
+      <%!-- Three adapters converging on one server. Distinct from the /product
+           diagram on purpose: that one shows we're off the model path, this one
+           shows where the intelligence actually lives. --%>
+      <figure class="mt-12">
+        <div class="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
+          <svg
+            viewBox="0 0 1040 300"
+            class="w-full h-auto min-w-[720px]"
+            role="img"
+            aria-labelledby="agents-title agents-desc"
+          >
+            <title id="agents-title">Three coding agents converging on one local harness</title>
+            <desc id="agents-desc">
+              Claude Code, OpenAI Codex, and Google Antigravity each connect through their own thin
+              plugin adapter, which registers the harness tools and forwards lifecycle hooks. All
+              three adapters converge on a single cms server running on your machine, which holds the
+              requirement graph, the specifications, verification, and QA.
+            </desc>
+
+            <g class="text-base-content">
+              <g :for={
+                {name, tier, x} <- [
+                  {"Claude Code", "flagship", 40},
+                  {"OpenAI Codex", "early", 400},
+                  {"Google Antigravity", "early", 760}
+                ]
+              }>
+                <rect
+                  x={x}
+                  y="28"
+                  width="240"
+                  height="60"
+                  rx="8"
+                  fill="currentColor"
+                  fill-opacity="0.03"
+                  stroke="currentColor"
+                  stroke-opacity="0.25"
+                />
+                <text x={x + 120} y="54" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+                  {name}
+                </text>
+                <text x={x + 120} y="74" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+                  {tier}
+                </text>
+
+                <%!-- the adapter strip --%>
+                <rect
+                  x={x + 40}
+                  y="112"
+                  width="160"
+                  height="26"
+                  rx="4"
+                  class="text-primary"
+                  fill="currentColor"
+                  fill-opacity="0.1"
+                  stroke="currentColor"
+                  stroke-opacity="0.5"
+                />
+                <text
+                  x={x + 120}
+                  y="129"
+                  text-anchor="middle"
+                  font-size="10.5"
+                  font-weight="600"
+                  class="text-primary"
+                  fill="currentColor"
+                >
+                  thin adapter
+                </text>
+
+                <line
+                  x1={x + 120}
+                  y1="88"
+                  x2={x + 120}
+                  y2="112"
+                  stroke="currentColor"
+                  stroke-opacity="0.3"
+                  stroke-width="1.5"
+                />
+                <%!-- converge on the server --%>
+                <path
+                  d={"M #{x + 120} 138 L #{x + 120} 172 L 520 172 L 520 196"}
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-opacity="0.3"
+                  stroke-width="1.5"
+                />
+              </g>
+              <path d="M 520 204 l -4 -8 l 8 0 z" fill="currentColor" fill-opacity="0.4" />
+            </g>
+
+            <g class="text-primary">
+              <rect
+                x="200"
+                y="204"
+                width="640"
+                height="66"
+                rx="8"
+                fill="currentColor"
+                fill-opacity="0.08"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <text x="520" y="232" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">
+                cms · one local server on your machine
+              </text>
+              <text x="520" y="252" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity="0.85">
+                requirement graph · specifications · verification · QA
+              </text>
+            </g>
+          </svg>
+        </div>
+        <figcaption class="text-sm text-base-content/60 mt-3 max-w-3xl leading-relaxed">
+          Each adapter does three things: it registers the harness tools, forwards the agent's
+          lifecycle hooks so verification can run, and ships the skills you drive the loop with.
+          Everything else lives in the server.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE THREE, HONESTLY ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="the three, honestly" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        One is the flagship. Two are early. Here's the difference.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        Every agent gets the same harness, but the agents themselves expose different hooks, so the
+        integrations aren't identical. Rather than claim parity, here is what actually differs.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-5 mt-12">
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">Claude Code</h3>
+              <span class="badge badge-primary badge-sm">flagship</span>
+            </div>
+            <p class="text-base-content/70 text-sm">
+              The original and the deepest integration. The full lifecycle, all eight skills, and the
+              five specialized subagents that write specs, tests, code, BDD specs, and run QA.
+            </p>
+            <p class="text-sm mt-2">
+              <span class="font-semibold text-base-content">Caveats:</span>
+              <span class="text-base-content/70">none. Everything downstream is ported from here.</span>
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">OpenAI Codex</h3>
+              <span class="badge badge-ghost badge-sm">early</span>
+            </div>
+            <p class="text-base-content/70 text-sm">
+              A thin port. Codex adopted a nearly identical hook protocol, so the same skills and the
+              same server-side lifecycle work with very little translation.
+            </p>
+            <p class="text-sm mt-2">
+              <span class="font-semibold text-base-content">Caveats:</span>
+              <span class="text-base-content/70">
+                verification runs, but its file scoping doesn't recognize Codex's edit tool yet, so
+                change-scoped checks act as though nothing changed. No subagent format.
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title">Google Antigravity</h3>
+              <span class="badge badge-ghost badge-sm">early</span>
+            </div>
+            <p class="text-base-content/70 text-sm">
+              Skills become slash commands automatically, and the five agents ship in Antigravity's
+              own format. The server speaks its hook dialect.
+            </p>
+            <p class="text-sm mt-2">
+              <span class="font-semibold text-base-content">Caveats:</span>
+              <span class="text-base-content/70">
+                the surface emits no subagent events, so per-agent attribution doesn't apply, and the
+                test-command rewrite arrives as a redirect rather than an edit.
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-sm text-base-content/60 mt-8 max-w-2xl leading-relaxed">
+        The local server ships for macOS on Apple Silicon and Windows on x64. There's no Linux binary
+        in the packaged install path today.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── WHAT EVERY AGENT GETS ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="the same eight skills" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        The commands don't change when the agent does.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          All three plugins ship the same eight skills, so the workflow you learn transfers.
+        </strong>
+      </p>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-10">
+        <div :for={
+          {cmd, what} <- [
+            {"init", "link your project"},
+            {"product", "define what to build"},
+            {"design", "plan the architecture"},
+            {"next", "start the next requirement"},
+            {"develop", "build one component"},
+            {"implement", "loop the whole graph"},
+            {"qa", "test the running app"},
+            {"sync", "refresh project state"}
+          ]
+        } class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body py-4">
+            <code class="font-semibold text-primary">/{cmd}</code>
+            <p class="text-sm text-base-content/60">{what}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── NO LOCK-IN ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what this buys you" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        You aren't betting your workflow on one vendor.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          Your specs are markdown and your tests are standard ExUnit, in your own repository, and the
+          harness is a local server rather than a part of the agent.
+        </strong>
+        Switching agents means installing a different adapter. Every artifact comes with you, and
+        when the next, better agent ships, the harness moves with you instead of trapping you.
+      </p>
+      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed italic">
+        It doesn't sit between you and the model. It sits around it.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="questions" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">Straight answers.</h2>
+      <div class="grid md:grid-cols-2 gap-x-12 gap-y-8 mt-12">
+        <div :for={faq <- @faqs} class="max-w-prose">
+          <h3 class="font-semibold text-lg">{faq.q}</h3>
+          <p class="text-base-content/70 mt-2 leading-relaxed">{faq.a}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FINAL CTA ───────────── --%>
+  <section class="bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-20 lg:py-28 text-center">
+      <h2 class="text-4xl md:text-5xl font-bold tracking-tight max-w-3xl mx-auto">
+        Install it in the agent you already have.
+      </h2>
+      <div class="mt-8 flex flex-wrap gap-4 justify-center">
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install — free</.link>
+        <.link navigate={~p"/product"} class="btn btn-ghost btn-lg">See what it does →</.link>
+      </div>
+    </div>
+  </section>
+</Layouts.marketing>

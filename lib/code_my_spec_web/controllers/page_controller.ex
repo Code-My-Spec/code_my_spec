@@ -672,6 +672,126 @@ defmodule CodeMySpecWeb.PageController do
     )
   end
 
+  # Maturity language is load-bearing here. Claude Code is the flagship; Codex
+  # and Antigravity are early, and the per-agent gaps below come from the plugin
+  # READMEs rather than the marketing narrative. Install commands deliberately
+  # live on /install only — the Codex and Antigravity marketplace invocations are
+  # flagged unverified in their READMEs, and publishing an install command that
+  # dead-ends costs more trust than the page earns.
+  @agent_faqs [
+    %{
+      q: "What AI agents does CodeMySpec work with?",
+      a:
+        "CodeMySpec works with Claude Code, OpenAI Codex, and Google Antigravity. Claude Code has " <>
+          "the deepest integration and is the flagship; Codex and Antigravity are early. All three " <>
+          "run on your own API keys with no markup on model tokens."
+    },
+    %{
+      q: "How can one tool support several different agents?",
+      a:
+        "Because the harness is not the plugin. The harness is a local server on your machine, and " <>
+          "each plugin is a thin adapter that registers the server's tools and forwards the agent's " <>
+          "lifecycle events to it. The requirement graph, the specs, the verification, and the QA " <>
+          "are written once and reused by every agent, so supporting a new one is an adapter rather " <>
+          "than a rewrite."
+    },
+    %{
+      q: "Is CodeMySpec only for Claude Code?",
+      a:
+        "No. Claude Code is the original and deepest integration, but CodeMySpec also ships plugins " <>
+          "for OpenAI Codex and Google Antigravity. The same specs, verification, and browser QA " <>
+          "work regardless of which agent drives them."
+    },
+    %{
+      q: "What is different about the early agents?",
+      a:
+        "Claude Code gets the full lifecycle including the five specialized subagents. On Codex, " <>
+          "verification runs but its file scoping does not yet recognize Codex's edit tool, so " <>
+          "change-scoped checks behave as though nothing changed. On Antigravity the five agents " <>
+          "ship, but the surface emits no subagent events, so per-agent attribution does not apply " <>
+          "and the test-command rewrite is delivered as a redirect instead of an edit."
+    },
+    %{
+      q: "Which operating systems does the harness run on?",
+      a:
+        "The local server ships for macOS on Apple Silicon and Windows on x64. There is no Linux " <>
+          "binary in the packaged install path today."
+    },
+    %{
+      q: "Does using a plugin lock me into that agent?",
+      a:
+        "No. Your specs are markdown and your tests are standard ExUnit in your own repository, and " <>
+          "the harness is a local server rather than part of the agent. Switching agents means " <>
+          "installing a different adapter; every artifact comes with you."
+    }
+  ]
+
+  def agents(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/agents"
+
+    meta = %{
+      page_title: "AI Coding Agents CodeMySpec Works With — Claude Code, Codex, Antigravity",
+      meta_description:
+        "CodeMySpec runs as a plugin inside Claude Code, OpenAI Codex, or Google Antigravity. " <>
+          "The harness is a local server and each plugin is a thin adapter, so it is agent-agnostic " <>
+          "by architecture.",
+      og_title: "Works with the agent you already use",
+      og_description:
+        "Claude Code, OpenAI Codex, or Google Antigravity. One local harness, thin adapters, your " <>
+          "own keys — so your specs and tests never depend on which agent wrote them."
+    }
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "BreadcrumbList",
+            "itemListElement" => [
+              %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+              %{
+                "@type" => "ListItem",
+                "position" => 2,
+                "name" => "Product",
+                "item" => "#{base_url}/product"
+              },
+              %{
+                "@type" => "ListItem",
+                "position" => 3,
+                "name" => "Supported agents",
+                "item" => canonical
+              }
+            ]
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "FAQPage",
+            "mainEntity" =>
+              Enum.map(@agent_faqs, fn faq ->
+                %{
+                  "@type" => "Question",
+                  "name" => faq.q,
+                  "acceptedAnswer" => %{"@type" => "Answer", "text" => faq.a}
+                }
+              end)
+          }
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :agents,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-agents.png", base_url),
+      canonical_url: canonical,
+      json_ld_list: json_ld_list,
+      faqs: @agent_faqs
+    )
+  end
+
   # /developers is the engineer-persona lander; /product is the product-scoped
   # cornerstone. The legacy plural namespace dates from when MarketMySpec lived
   # here too, so it points at the cornerstone now, not the persona page.
