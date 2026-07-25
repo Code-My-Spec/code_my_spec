@@ -39,6 +39,7 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/product", PageController, :product
     get "/developers", PageController, :developers
     get "/install", PageController, :install
     get "/pricing", PageController, :pricing

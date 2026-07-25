@@ -49,9 +49,65 @@ defmodule CodeMySpecWeb.PageControllerTest do
     assert redirected_to(conn, 301) == "https://marketmyspec.com"
   end
 
-  test "GET /products/code-my-spec 301-redirects to /developers", %{conn: conn} do
+  test "GET /products/code-my-spec 301-redirects to the /product cornerstone", %{conn: conn} do
     conn = get(conn, ~p"/products/code-my-spec")
 
-    assert redirected_to(conn, 301) == "/developers"
+    assert redirected_to(conn, 301) == "/product"
+  end
+
+  test "retired MCP-era feature pages 301 into the cornerstone", %{conn: conn} do
+    for slug <- ~w(architect-mcp-feature design-documentation-feature
+                   product-manager-mcp-feature stories-feature stories-mcp-server) do
+      conn = get(build_conn(), "/pages/#{slug}")
+
+      assert redirected_to(conn, 301) == "/product",
+             "expected /pages/#{slug} to 301 to /product"
+    end
+
+    # The plug must not hijack page slugs it wasn't given. (Content lives in the
+    # database, which is empty here, so the live page 404s in test — the point is
+    # that it falls through to the controller instead of redirecting.)
+    refute get(conn, ~p"/pages/about").status == 301
+  end
+
+  test "GET /product renders the cornerstone with a liftable definition", %{conn: conn} do
+    conn = get(conn, ~p"/product")
+    body = html_response(conn, 200)
+
+    assert body =~ "The harness that turns AI coding into"
+    # The first sentence has to stand alone as the answer to "what is CodeMySpec",
+    # because a retrieval system lifts the passage rather than the page.
+    assert body =~
+             "CodeMySpec is a requirements-driven development harness for building real software with AI."
+  end
+
+  test "GET /product carries FAQ, software and breadcrumb schema", %{conn: conn} do
+    conn = get(conn, ~p"/product")
+    body = html_response(conn, 200)
+
+    assert body =~ ~s|"@type":"FAQPage"|
+    assert body =~ ~s|"@type":"SoftwareApplication"|
+    assert body =~ ~s|"@type":"BreadcrumbList"|
+    # Schema and visible copy come from the same @product_faqs source.
+    assert body =~ "Does CodeMySpec lock me in?"
+  end
+
+  test "GET /product diagrams are labelled for screen readers", %{conn: conn} do
+    conn = get(conn, ~p"/product")
+    body = html_response(conn, 200)
+
+    assert body =~ ~s|role="img"|
+    assert body =~ "The CodeMySpec build loop"
+    assert body =~ "Where CodeMySpec sits in your toolchain"
+  end
+
+  test "GET /product keeps claims inside the honesty ledger", %{conn: conn} do
+    conn = get(conn, ~p"/product")
+    body = html_response(conn, 200)
+
+    # Claude Code is the flagship; Codex and Antigravity are early. Never parity.
+    assert body =~ "Claude Code has the " <> "deepest integration and is the flagship"
+    # The server ships for macOS and Windows only — no Linux binary to promise.
+    refute body =~ "Linux"
   end
 end

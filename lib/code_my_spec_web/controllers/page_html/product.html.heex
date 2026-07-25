@@ -1,0 +1,531 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+  <%!-- ───────────── HERO — the money passage ─────────────
+        First two sentences are the liftable "what is CodeMySpec" answer. A
+        retrieval system pulls this passage, so it has to stand alone. --%>
+  <section class="bg-base-200 border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <div class="badge badge-primary badge-outline gap-2 mb-6">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+        Free to build · your model, your keys · no lock-in
+      </div>
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] max-w-4xl">
+        The harness that turns AI coding into <span class="text-primary">a system.</span>
+      </h1>
+      <p class="text-lg text-base-content/70 mt-6 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          CodeMySpec is a requirements-driven development harness for building real software with AI.
+        </strong>
+        It runs as a plugin inside your AI coding agent and walks that agent through a full lifecycle
+        for every piece of your app: specification, tests, implementation, review, and QA, in the
+        right order.
+      </p>
+      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        Your specifications live as plain markdown and your tests as standard ExUnit, both in your own
+        repository. You bring your own model and API keys. There is no token markup and nothing to
+        lock you in. Building is free.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center gap-4">
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
+        <a href="#loop" class="btn btn-ghost btn-lg">See the loop</a>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE LOOP (diagram) ───────────── --%>
+  <section id="loop" class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="how it works" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        One task at a time, in dependency order.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          CodeMySpec models your project as a graph of stories, components, and requirements, then
+          hands the agent the single next piece of work whose prerequisites are already met.
+        </strong>
+        Every piece runs the same loop, and the work is verified before the agent moves on.
+      </p>
+
+      <%!-- Inline SVG: theme-aware via currentColor on the wrapping <g> elements,
+           so it tracks light/dark with no duplicate assets and no network request.
+           Wide by nature, so it scrolls inside its own container on small screens
+           rather than squashing to illegibility. --%>
+      <figure class="mt-12">
+        <div class="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
+          <svg
+            viewBox="0 0 1040 220"
+            class="w-full h-auto min-w-[860px]"
+            role="img"
+            aria-labelledby="loop-title loop-desc"
+          >
+            <title id="loop-title">The CodeMySpec build loop</title>
+            <desc id="loop-desc">
+              Seven steps run in order: plan, spec, test, code, review, verify, and QA. The verify
+              step compiles the code and runs Credo, the tests, and the Spex specs, and returns the
+              work to the code step when a check fails.
+            </desc>
+
+            <%!-- arrows between steps --%>
+            <g class="text-base-content" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.5">
+              <line x1="163" y1="76" x2="177" y2="76" />
+              <line x1="303" y1="76" x2="317" y2="76" />
+              <line x1="443" y1="76" x2="457" y2="76" />
+              <line x1="583" y1="76" x2="597" y2="76" />
+              <line x1="723" y1="76" x2="737" y2="76" />
+              <line x1="863" y1="76" x2="877" y2="76" />
+            </g>
+
+            <%!-- the six ordinary steps --%>
+            <g class="text-base-content">
+              <g :for={
+                {label, note, x, idx} <- [
+                  {"Plan", "build the graph", 40, "1"},
+                  {"Spec", "before any code", 180, "2"},
+                  {"Test", "from the spec", 320, "3"},
+                  {"Code", "to pass tests", 460, "4"},
+                  {"Review", "against rules", 600, "5"},
+                  {"QA", "the live app", 880, "7"}
+                ]
+              }>
+                <rect
+                  x={x}
+                  y="48"
+                  width="124"
+                  height="56"
+                  rx="8"
+                  fill="currentColor"
+                  fill-opacity="0.03"
+                  stroke="currentColor"
+                  stroke-opacity="0.25"
+                />
+                <text
+                  x={x + 12}
+                  y="38"
+                  font-size="11"
+                  font-weight="600"
+                  fill="currentColor"
+                  fill-opacity="0.4"
+                >
+                  {idx}
+                </text>
+                <text x={x + 62} y="72" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">
+                  {label}
+                </text>
+                <text
+                  x={x + 62}
+                  y="90"
+                  text-anchor="middle"
+                  font-size="10.5"
+                  fill="currentColor"
+                  fill-opacity="0.55"
+                >
+                  {note}
+                </text>
+              </g>
+            </g>
+
+            <%!-- step 6, verify: the gate, so it carries the accent --%>
+            <g class="text-primary">
+              <rect
+                x="740"
+                y="48"
+                width="124"
+                height="56"
+                rx="8"
+                fill="currentColor"
+                fill-opacity="0.08"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <text x="752" y="38" font-size="11" font-weight="600" fill="currentColor" fill-opacity="0.7">
+                6
+              </text>
+              <text x="802" y="72" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">
+                Verify
+              </text>
+              <text x="802" y="90" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.8">
+                the gate
+              </text>
+            </g>
+
+            <%!-- failure path: verify sends the work back to code --%>
+            <g class="text-primary" stroke="currentColor" fill="none" stroke-width="1.5" stroke-dasharray="4 4">
+              <path d="M 802 110 L 802 160 L 522 160 L 522 110" />
+            </g>
+            <g class="text-primary">
+              <path d="M 522 110 l -4 8 l 8 0 z" fill="currentColor" stroke="none" />
+              <text x="662" y="176" text-anchor="middle" font-size="11" font-weight="600" fill="currentColor">
+                blocks and returns the work when a check fails
+              </text>
+            </g>
+          </svg>
+        </div>
+        <figcaption class="text-sm text-base-content/60 mt-3 max-w-3xl leading-relaxed">
+          Step 6 is the gate: on every agent stop, CodeMySpec compiles the code and runs Credo, the
+          tests, and the Spex specs. Blocking is configurable per check, from never to any failure.
+          You drive the loop with three commands —
+          <code class="text-base-content">/next</code> starts the next requirement,
+          <code class="text-base-content">/implement</code> loops the whole graph, and
+          <code class="text-base-content">/qa</code> runs QA.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <%!-- ───────────── WHERE IT SITS ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="where it sits" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        It doesn't replace your agent. It runs inside it.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          Cursor, Claude Code, and Copilot are the agent that writes the code. CodeMySpec is the
+          harness on top that adds specs, architecture, verification, and QA.
+        </strong>
+        The tools it is genuinely an alternative to are the app builders. Lovable builds the demo;
+        CodeMySpec builds the app you can still maintain in two years.
+      </p>
+
+      <div class="overflow-x-auto mt-10">
+        <table class="table bg-base-100 border border-base-300 rounded-lg">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Tools</th>
+              <th>What they do</th>
+              <th>Relationship</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="font-semibold whitespace-nowrap">Coding agents</td>
+              <td class="text-base-content/70">Cursor, Claude Code, Copilot</td>
+              <td class="text-base-content/70">Generate and edit code in your editor</td>
+              <td><span class="badge badge-primary badge-sm">Runs inside them</span></td>
+            </tr>
+            <tr>
+              <td class="font-semibold whitespace-nowrap">Full app builders</td>
+              <td class="text-base-content/70">Lovable, Replit, Bolt, v0</td>
+              <td class="text-base-content/70">Build an app for someone who won't read the code</td>
+              <td><span class="badge badge-secondary badge-sm">The real alternative</span></td>
+            </tr>
+            <tr>
+              <td class="font-semibold whitespace-nowrap">Spec-only tools</td>
+              <td class="text-base-content/70">Kiro, GitHub Spec Kit, OpenSpec</td>
+              <td class="text-base-content/70">Generate a spec and a plan, then hand off</td>
+              <td class="text-base-content/70">Carries the spec through tests, verification, and QA</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <.link navigate={~p"/blog/codemyspec-vs-kiro-specs"} class="link link-primary font-medium">
+          Compared with Kiro →
+        </.link>
+        <.link navigate={~p"/blog/lovable-alternatives"} class="link link-primary font-medium">
+          Compared with Lovable and the app builders →
+        </.link>
+        <.link navigate={~p"/blog/spec-driven-development"} class="link link-primary font-medium">
+          What spec-driven development is →
+        </.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── ARCHITECTURE (diagram) — the no-lock-in proof ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="no lock-in" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        It doesn't sit between you and the model. It sits around it.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          The harness is a local server on your machine, and each plugin is a thin adapter that
+          points your agent at it.
+        </strong>
+        Your requests to the model are never proxied, metered, or marked up. That is also why
+        supporting a new agent is a small adapter rather than a rewrite.
+      </p>
+
+      <figure class="mt-12">
+        <div class="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
+          <svg
+            viewBox="0 0 1040 300"
+            class="w-full h-auto min-w-[820px]"
+            role="img"
+            aria-labelledby="arch-title arch-desc"
+          >
+            <title id="arch-title">Where CodeMySpec sits in your toolchain</title>
+            <desc id="arch-desc">
+              Your coding agent talks directly to your model provider using your own keys, and
+              CodeMySpec is not in that path. Separately, a thin plugin adapter connects the agent to
+              the cms server running on your machine, which reads and writes the markdown specs and
+              ExUnit tests in your own repository.
+            </desc>
+
+            <%!-- the model path: direct, and we are not on it --%>
+            <g class="text-base-content">
+              <rect
+                x="40"
+                y="40"
+                width="200"
+                height="64"
+                rx="8"
+                fill="currentColor"
+                fill-opacity="0.03"
+                stroke="currentColor"
+                stroke-opacity="0.25"
+              />
+              <text x="140" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+                Your coding agent
+              </text>
+              <text x="140" y="86" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+                Claude Code · Codex · Antigravity
+              </text>
+
+              <rect
+                x="800"
+                y="40"
+                width="200"
+                height="64"
+                rx="8"
+                fill="currentColor"
+                fill-opacity="0.03"
+                stroke="currentColor"
+                stroke-opacity="0.25"
+              />
+              <text x="900" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+                Your model provider
+              </text>
+              <text x="900" y="86" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+                your keys · your bill
+              </text>
+
+              <line
+                x1="240"
+                y1="72"
+                x2="792"
+                y2="72"
+                stroke="currentColor"
+                stroke-opacity="0.35"
+                stroke-width="1.5"
+              />
+              <path d="M 800 72 l -8 -4 l 0 8 z" fill="currentColor" fill-opacity="0.35" />
+              <text x="520" y="60" text-anchor="middle" font-size="11" font-weight="600" fill="currentColor" fill-opacity="0.6">
+                direct — we are not in this path
+              </text>
+            </g>
+
+            <%!-- the harness path --%>
+            <g class="text-primary">
+              <line
+                x1="140"
+                y1="104"
+                x2="140"
+                y2="168"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path d="M 140 176 l -4 -8 l 8 0 z" fill="currentColor" />
+              <text x="152" y="140" font-size="11" font-weight="600" fill="currentColor">
+                plugin — a thin adapter
+              </text>
+
+              <rect
+                x="40"
+                y="176"
+                width="200"
+                height="72"
+                rx="8"
+                fill="currentColor"
+                fill-opacity="0.08"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <text x="140" y="204" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+                cms — local server
+              </text>
+              <text x="140" y="222" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.8">
+                requirement graph · specs
+              </text>
+              <text x="140" y="238" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.8">
+                verification · QA
+              </text>
+            </g>
+
+            <g class="text-base-content">
+              <line
+                x1="240"
+                y1="212"
+                x2="432"
+                y2="212"
+                stroke="currentColor"
+                stroke-opacity="0.35"
+                stroke-width="1.5"
+              />
+              <path d="M 440 212 l -8 -4 l 0 8 z" fill="currentColor" fill-opacity="0.35" />
+
+              <rect
+                x="440"
+                y="176"
+                width="240"
+                height="72"
+                rx="8"
+                fill="currentColor"
+                fill-opacity="0.03"
+                stroke="currentColor"
+                stroke-opacity="0.25"
+              />
+              <text x="560" y="204" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">
+                Your repository
+              </text>
+              <text x="560" y="222" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+                markdown specs · ExUnit tests
+              </text>
+              <text x="560" y="238" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
+                your code, on your disk
+              </text>
+            </g>
+          </svg>
+        </div>
+        <figcaption class="text-sm text-base-content/60 mt-3 max-w-3xl leading-relaxed">
+          Everything of value stays on your side of the line. Stop using CodeMySpec and you keep the
+          specs, the tests, and a standard app that compiles and ships without us.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <%!-- ───────────── WHAT KEEPS THE CODEBASE COHERENT ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what holds it together" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        AI accelerates code generation. Without boundaries, it accelerates entropy at the same rate.
+      </h2>
+
+      <div class="grid md:grid-cols-3 gap-5 mt-12">
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+              Architecture
+            </span>
+            <h3 class="card-title mt-1">Boundaries the agent can't cross.</h3>
+            <p class="text-base-content/70">
+              CodeMySpec validates the dependency graph for circular references and boundary
+              violations, and generates architecture views the agent reads as context before it
+              writes code.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-secondary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
+              16 component types
+            </span>
+            <h3 class="card-title mt-1">It knows what a context is.</h3>
+            <p class="text-base-content/70">
+              Contexts, schemas, repositories, LiveViews, GenServers, controllers and more are
+              first-class types, each with its own design rules. The harness knows a context is a
+              boundary and a GenServer is stateful, so it builds idiomatic OTP.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-accent shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
+              Traceability
+            </span>
+            <h3 class="card-title mt-1">Every line traces to a reason.</h3>
+            <p class="text-base-content/70">
+              A Three Amigos process turns acceptance criteria into named rules, Gherkin scenarios,
+              and executable ExUnit specs. Code traces back to a story and a criterion.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── QA — with the proof attached ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="proving it works" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        "Tests pass" is not the same as "it works."
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          A QA agent drives your running application in a real browser — per story, per user
+          journey, or across the whole app — and records an audited trail of every attempt.
+        </strong>
+        Unit tests miss integration failures, broken flows, and UI regressions that look correct in
+        the code and break in front of a user. Agentic QA catches that class of failure.
+      </p>
+      <div class="mt-6">
+        <.link navigate={~p"/blog/agentic-qa"} class="link link-primary font-medium">
+          Read what browser QA found on a real product, including a fraud surface the BDD specs
+          marked as passing →
+        </.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PRICING ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what it costs" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        Building is free. You pay when it's running.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          The harness and the local server cost nothing to run with your own AI keys.
+        </strong>
+        The hosted Operate and Grow layer — customer email on your own domain, live chat, content
+        publishing, and team collaboration — is $100 per month per user. A done-with-you build
+        engagement starts at $500, quoted. You never pay CodeMySpec for model tokens.
+      </p>
+      <div class="mt-6">
+        <.link navigate={~p"/pricing"} class="link link-primary font-medium">See full pricing →</.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ — same list drives the FAQPage schema ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="questions" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">Straight answers.</h2>
+      <div class="grid md:grid-cols-2 gap-x-12 gap-y-8 mt-12">
+        <div :for={faq <- @faqs} class="max-w-prose">
+          <h3 class="font-semibold text-lg">{faq.q}</h3>
+          <p class="text-base-content/70 mt-2 leading-relaxed">{faq.a}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FINAL CTA ───────────── --%>
+  <section class="bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-20 lg:py-28 text-center">
+      <h2 class="text-4xl md:text-5xl font-bold tracking-tight max-w-3xl mx-auto">
+        Try it on one real feature. <span class="text-primary">Building is free.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-5 max-w-xl mx-auto leading-relaxed">
+        Install the plugin, run <code class="text-base-content">/init</code> to link your project,
+        then <code class="text-base-content">/next</code> to start the next requirement.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-4 justify-center">
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
+        <.link navigate={~p"/methodology"} class="btn btn-ghost btn-lg">Read the methodology →</.link>
+      </div>
+    </div>
+  </section>
+</Layouts.marketing>

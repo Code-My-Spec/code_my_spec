@@ -51,10 +51,28 @@ defmodule CodeMySpecWeb.Plugs.LegacyRedirects do
     writing-design-documents
   )
 
+  # The Nov-2025 feature pages described the product as a fleet of hosted MCP
+  # servers ("Architect MCP Server", "Stories MCP Server", tool-count tables) and
+  # claimed stories live in our database. Both are false now — one local server,
+  # specs as markdown in your repo — and the database line contradicts the
+  # no-lock-in claim outright. Three of them covered Stories and cannibalized each
+  # other. Over 90 days they earned no clicks and a single site: impression, so
+  # there was no equity to preserve; they fold into the /product cornerstone.
+  @retired_feature_pages ~w(
+    architect-mcp-feature
+    design-documentation-feature
+    product-manager-mcp-feature
+    stories-feature
+    stories-mcp-server
+  )
+
   @custom_redirects %{
-    "/pages/methodology" => "/methodology",
-    "/docs" => "/documentation"
-  }
+                      "/pages/methodology" => "/methodology",
+                      "/docs" => "/documentation"
+                    }
+                    |> Map.merge(
+                      Map.new(@retired_feature_pages, fn slug -> {"/pages/#{slug}", "/product"} end)
+                    )
 
   @redirects @page_to_blog_slugs
              |> Map.new(fn slug -> {"/pages/#{slug}", "/blog/#{slug}"} end)

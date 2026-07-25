@@ -505,10 +505,180 @@ defmodule CodeMySpecWeb.PageController do
 
   # The old engineer product page collapsed into /developers (one engineer door).
   # 301 preserves its SEO equity and backlinks.
+  # Answer-first on purpose: each answer's first sentence is a complete, liftable
+  # response, because a retrieval system pulls the passage, not the page. Claims
+  # here are bounded by the feature-research honesty ledger — Claude Code is the
+  # flagship and Codex/Antigravity are early, the server ships for macOS and
+  # Windows only, and QA outcomes are cited as case-study results.
+  @product_faqs [
+    %{
+      q: "What is CodeMySpec?",
+      a:
+        "CodeMySpec is a requirements-driven development harness for building real software with AI. " <>
+          "It runs as a plugin inside your AI coding agent and walks that agent through a full lifecycle " <>
+          "for every piece of your app — specification, tests, implementation, review, and QA, in the " <>
+          "right order. Your specs are plain markdown and your tests are standard ExUnit, both in your " <>
+          "own repository."
+    },
+    %{
+      q: "Does CodeMySpec replace Cursor, Claude Code, or Copilot?",
+      a:
+        "No — CodeMySpec runs inside them. Those are the coding agent that writes the code; CodeMySpec " <>
+          "is the harness on top that adds specs, architecture enforcement, verification, and QA. The " <>
+          "tools CodeMySpec is genuinely an alternative to are the app builders like Lovable and Replit: " <>
+          "it is the engineer's version of that promise, where the result is code you can still maintain."
+    },
+    %{
+      q: "What AI agents does CodeMySpec work with?",
+      a:
+        "CodeMySpec works with Claude Code, OpenAI Codex, and Google Antigravity. Claude Code has the " <>
+          "deepest integration and is the flagship; Codex and Antigravity are early. It works across " <>
+          "agents because the harness is not the plugin — it is a local server on your machine, and each " <>
+          "plugin is a thin adapter that points your agent at it."
+    },
+    %{
+      q: "Is CodeMySpec only for Phoenix and Elixir?",
+      a:
+        "No. The core lifecycle — the requirement graph, specs, BDD scenarios, and browser QA — works on " <>
+          "any stack through your AI agent. Phoenix and Elixir are the deepest integration, where " <>
+          "CodeMySpec understands 16 component types and builds idiomatic, OTP-aware code."
+    },
+    %{
+      q: "Does CodeMySpec lock me in?",
+      a:
+        "No. Your specifications are plain markdown and your tests are standard ExUnit, both in your own " <>
+          "repository, and you bring your own model and API keys with no markup on tokens. There is no " <>
+          "proprietary spec format, no custom test runner, and no DSL to learn. If you stopped using " <>
+          "CodeMySpec tomorrow, you would keep every artifact of value."
+    },
+    %{
+      q: "How does CodeMySpec catch bugs that tests miss?",
+      a:
+        "A QA agent drives your running application in a real browser — per story, per user journey, or " <>
+          "across the whole app — and records an audited trail of every attempt. Passing tests are not " <>
+          "the same as working software: unit tests miss integration failures, broken flows, and UI " <>
+          "regressions that look correct in the code and break in front of a user."
+    },
+    %{
+      q: "What does CodeMySpec verify before code ships?",
+      a:
+        "Every time the agent stops, CodeMySpec compiles the code, runs Credo, runs the tests, and runs " <>
+          "the Spex specs, and it can block the agent from continuing on failure. Blocking is " <>
+          "configurable per check: off, block on any failure, block only on changed files, or never " <>
+          "block. The agent cannot quietly leave the build broken or skip the tests."
+    },
+    %{
+      q: "What does CodeMySpec cost?",
+      a:
+        "Building is free. The harness and the local server cost nothing to run with your own AI keys, " <>
+          "and CodeMySpec never marks up model tokens. The hosted Operate and Grow layer is $100 per " <>
+          "month per user, and a done-with-you build engagement starts at $500, quoted."
+    },
+    %{
+      q: "Who is CodeMySpec for?",
+      a:
+        "CodeMySpec is for engineers who ship and maintain the code they build — senior Phoenix and " <>
+          "Elixir engineers, Elixir agencies, and solo technical founders shipping a real product. It is " <>
+          "not for throwaway prototypes. If you are throwing it away, prompt directly; if you are " <>
+          "shipping it, you need the harness."
+    }
+  ]
+
+  def product(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/product"
+
+    meta = %{
+      page_title: "CodeMySpec — The AI Development Harness for Software You Can Maintain",
+      meta_description:
+        "CodeMySpec is a spec-driven development harness that runs inside your AI coding agent. " <>
+          "Specs, tests, architecture, and QA on one requirement graph. Bring your own model, no lock-in.",
+      og_title: "The harness that turns AI coding into a system",
+      og_description:
+        "Specs, tests, architecture enforcement, verification, and browser QA on one requirement graph — " <>
+          "inside the coding agent you already use. Free to build."
+    }
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "SoftwareApplication",
+            "@id" => "#{canonical}#software",
+            "name" => "CodeMySpec",
+            "url" => canonical,
+            "applicationCategory" => "DeveloperApplication",
+            "operatingSystem" => "macOS, Windows",
+            "description" => meta.meta_description,
+            "featureList" =>
+              "Requirement graph that sequences the work; specification-first workflow; 16 Phoenix " <>
+                "component types; dependency-graph validation and architecture enforcement; Three " <>
+                "Amigos BDD scenarios compiled to ExUnit; automatic compile, Credo, test and Spex " <>
+                "verification on every agent stop; agentic browser QA against the running app; " <>
+                "plugins for Claude Code, OpenAI Codex and Google Antigravity; markdown specs and " <>
+                "ExUnit tests in your own repository; bring your own model and keys with no token markup",
+            "offers" => [
+              %{
+                "@type" => "Offer",
+                "name" => "Build",
+                "price" => "0",
+                "priceCurrency" => "USD",
+                "availability" => "https://schema.org/InStock"
+              },
+              %{
+                "@type" => "Offer",
+                "name" => "Operate & Grow",
+                "price" => "100",
+                "priceCurrency" => "USD",
+                "availability" => "https://schema.org/InStock"
+              }
+            ],
+            "publisher" => %{"@id" => "#{base_url}/#organization"}
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "BreadcrumbList",
+            "itemListElement" => [
+              %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+              %{"@type" => "ListItem", "position" => 2, "name" => "Product", "item" => canonical}
+            ]
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "FAQPage",
+            "mainEntity" =>
+              Enum.map(@product_faqs, fn faq ->
+                %{
+                  "@type" => "Question",
+                  "name" => faq.q,
+                  "acceptedAnswer" => %{"@type" => "Answer", "text" => faq.a}
+                }
+              end)
+          }
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :product,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-product.png", base_url),
+      canonical_url: canonical,
+      json_ld_list: json_ld_list,
+      faqs: @product_faqs
+    )
+  end
+
+  # /developers is the engineer-persona lander; /product is the product-scoped
+  # cornerstone. The legacy plural namespace dates from when MarketMySpec lived
+  # here too, so it points at the cornerstone now, not the persona page.
   def code_my_spec(conn, _params) do
     conn
     |> Plug.Conn.put_status(:moved_permanently)
-    |> Phoenix.Controller.redirect(to: "/developers")
+    |> Phoenix.Controller.redirect(to: "/product")
   end
 
   def market_my_spec_redirect(conn, _params) do
