@@ -226,4 +226,66 @@ defmodule CodeMySpecWeb.MarketingComponents do
     </p>
     """
   end
+
+  @doc """
+  FAQ accordion, and the matching `FAQPage` schema from the same list.
+
+  A page passes one list of `%{q:, a:}` maps to both `faq/1` and
+  `faq_json_ld/1`, so the markup and the structured data can never drift —
+  which is the failure mode when each page hand-rolls its own copy of both.
+
+  Rendered as `collapse` items rather than a flat list: an FAQ is scan-and-open
+  content, and a wall of open answers buries whatever follows it. The first item
+  is open by default so the section reads as answers rather than as closed
+  boxes. `name` groups the radios so opening one closes the rest.
+
+  Answers stay in the DOM whether open or closed, so crawlers and retrieval
+  systems still read every answer.
+
+  ## Examples
+
+      <.faq faqs={@faqs} />
+      <.faq faqs={@faqs} name="pricing-faq" />
+  """
+  attr :faqs, :list, required: true, doc: "list of %{q: String.t(), a: String.t()}"
+  attr :name, :string, default: "faq", doc: "radio group name; unique per page"
+  attr :class, :string, default: nil
+
+  def faq(assigns) do
+    ~H"""
+    <div class={["join join-vertical w-full", @class]}>
+      <div
+        :for={{item, i} <- Enum.with_index(@faqs)}
+        class="collapse collapse-arrow join-item border border-base-300 bg-base-100"
+      >
+        <input type="radio" name={@name} checked={i == 0} />
+        <h3 class="collapse-title font-semibold text-lg">{item.q}</h3>
+        <div class="collapse-content">
+          <p class="text-base-content/70 leading-relaxed">{item.a}</p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Builds the `FAQPage` JSON-LD map for the same list `faq/1` renders.
+
+  Returns a plain map; the caller encodes it alongside its other schema blocks.
+  """
+  @spec faq_json_ld([%{q: String.t(), a: String.t()}]) :: map()
+  def faq_json_ld(faqs) do
+    %{
+      "@context" => "https://schema.org",
+      "@type" => "FAQPage",
+      "mainEntity" =>
+        Enum.map(faqs, fn faq ->
+          %{
+            "@type" => "Question",
+            "name" => faq.q,
+            "acceptedAnswer" => %{"@type" => "Answer", "text" => faq.a}
+          }
+        end)
+    }
+  end
 end

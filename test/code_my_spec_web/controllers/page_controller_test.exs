@@ -109,8 +109,9 @@ defmodule CodeMySpecWeb.PageControllerTest do
     # real projects turn off, so the copy must not present markdown documents as
     # the artifact you get.
     assert body =~ "the BDD specs are the walls"
-    assert body =~ "the specifications execute"
-    assert body =~ "executable specifications"
+    # Stated in plain language rather than as "the specifications execute" — same
+    # claim, legible to a reader who will never open the repo.
+    assert body =~ "becomes a test that uses your application the way a person would"
     refute body =~ "plain markdown"
     refute body =~ "specs are markdown"
   end

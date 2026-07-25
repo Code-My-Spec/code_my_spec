@@ -299,12 +299,7 @@
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
       <.eyebrow name="questions" />
       <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">Straight answers.</h2>
-      <div class="grid md:grid-cols-2 gap-x-12 gap-y-8 mt-12">
-        <div :for={faq <- @faqs} class="max-w-prose">
-          <h3 class="font-semibold text-lg">{faq.q}</h3>
-          <p class="text-base-content/70 mt-2 leading-relaxed">{faq.a}</p>
-        </div>
-      </div>
+      <.faq faqs={@faqs} name="agents-faq" class="mt-10 max-w-3xl" />
     </div>
   </section>
 

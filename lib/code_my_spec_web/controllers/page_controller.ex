@@ -514,12 +514,10 @@ defmodule CodeMySpecWeb.PageController do
     %{
       q: "What is CodeMySpec?",
       a:
-        "CodeMySpec is a requirements-driven development harness for building real software with AI. " <>
-          "It runs as a plugin inside your AI coding agent and walks that agent through a full lifecycle " <>
-          "for every piece of your app — specification, tests, implementation, review, and QA, in the " <>
-          "right order. Its core idea is that the specifications execute: each story's agreed behavior " <>
-          "becomes real test files in your own repository, so your intent is verified against the code " <>
-          "continuously instead of described in a document."
+        "CodeMySpec is a harness that runs inside the AI tool you already use and gives it the " <>
+          "discipline a chat window never had. It interviews you about what you want, writes down the " <>
+          "behavior you agree on, turns that into tests that check your app the way a person would, " <>
+          "and then builds until those tests hold. You don't supervise it — the harness supervises it."
     },
     %{
       q: "What makes CodeMySpec's specifications different?",
@@ -666,18 +664,7 @@ defmodule CodeMySpecWeb.PageController do
               %{"@type" => "ListItem", "position" => 2, "name" => "Product", "item" => canonical}
             ]
           },
-          %{
-            "@context" => "https://schema.org",
-            "@type" => "FAQPage",
-            "mainEntity" =>
-              Enum.map(@product_faqs, fn faq ->
-                %{
-                  "@type" => "Question",
-                  "name" => faq.q,
-                  "acceptedAnswer" => %{"@type" => "Answer", "text" => faq.a}
-                }
-              end)
-          }
+          CodeMySpecWeb.MarketingComponents.faq_json_ld(@product_faqs)
         ],
         &Jason.encode!/1
       )
@@ -786,18 +773,7 @@ defmodule CodeMySpecWeb.PageController do
               }
             ]
           },
-          %{
-            "@context" => "https://schema.org",
-            "@type" => "FAQPage",
-            "mainEntity" =>
-              Enum.map(@agent_faqs, fn faq ->
-                %{
-                  "@type" => "Question",
-                  "name" => faq.q,
-                  "acceptedAnswer" => %{"@type" => "Answer", "text" => faq.a}
-                }
-              end)
-          }
+          CodeMySpecWeb.MarketingComponents.faq_json_ld(@agent_faqs)
         ],
         &Jason.encode!/1
       )

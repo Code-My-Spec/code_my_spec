@@ -23,11 +23,7 @@
       </p>
       <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <span class="font-semibold text-base-content">You don't supervise it. The harness supervises it.</span>
-        Every piece of behavior you agree to becomes a test that uses your app the way a person would,
-        so the machine can't write itself a passing grade and move on.
-      </p>
-      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        You bring your own AI account. No markup, nothing that traps your work, and building is free.
+        You bring your own AI account, nothing traps your work, and building is free.
       </p>
       <div class="mt-8 flex flex-wrap items-center gap-4">
         <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
@@ -130,14 +126,9 @@
       <div class="mt-12 max-w-2xl space-y-4 text-base-content/70 leading-relaxed">
         <p>
           <span class="font-semibold text-base-content">Start smaller than you want to.</span>
-          Pick a self-contained core you can hold in your head and get running in a day. Five stories,
-          not fifty. That limit is for your benefit, not the machine's: thirty pages of everything it's
-          about to do is thirty pages you won't read, and then you've approved something you can't
-          picture.
-        </p>
-        <p>
-          If you already drew the whole thing, that work isn't wasted. It just isn't the first move.
-          The first move is deciding where one foundation block goes.
+          Five stories, not fifty — a core you can hold in your head and get running in a day. That
+          limit is for your benefit, not the machine's. If you already drew the whole thing, that work
+          isn't wasted; it just isn't the first move.
         </p>
       </div>
     </div>
@@ -162,44 +153,11 @@
         itself a fake test that passes and move on. It has to make the thing work the way you would
         find it working.
       </p>
+
       <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        Writing behavior down before you build has been the professional standard for twenty years, and
-        almost nobody did it, because it was too much work to be worth it. What changed is that the
-        labor is now free. The expensive discipline just became trivial.
+        Because they run, they can't quietly drift from the code, and they can't rot into
+        documentation nobody trusts.
       </p>
-
-      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-10">
-        <div :for={
-          {idx, label, what} <- [
-            {"1", "Acceptance criteria", "what the story has to do, written as discrete records"},
-            {"2", "Named rules", "criteria grouped into the rules that govern the behavior"},
-            {"3", "Gherkin scenarios", "given / when / then, agreed before code exists"},
-            {"4", "Executable specs", "real test files that run against the built code"}
-          ]
-        } class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
-          <div class="card-body py-4">
-            <span class="text-xs font-semibold text-primary tabular-nums">{idx}</span>
-            <h3 class="font-semibold leading-snug">{label}</h3>
-            <p class="text-sm text-base-content/60 leading-relaxed">{what}</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-10 max-w-2xl space-y-4 text-base-content/70 leading-relaxed">
-        <p>
-          Because they execute, they can be run continuously. They run with the rest of your test
-          suite, and the verify gate can run them on every agent stop, so the behavior you agreed on
-          is checked against what the agent actually built rather than at whatever point someone
-          remembers to look. Specifications that execute cannot quietly drift from the code, and they
-          cannot rot into documentation nobody trusts.
-        </p>
-        <p>
-          <span class="font-semibold text-base-content">Design documents are the optional part.</span>
-          The written module specification is a configuration knob you can turn off, and plenty of
-          projects run without it. The executable specification is not a knob, because it is the layer
-          that verifies itself.
-        </p>
-      </div>
 
       <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
         <.link navigate={~p"/blog/bdd-specs-for-ai-generated-code"} class="link link-primary font-medium">
@@ -221,10 +179,9 @@
       </h2>
       <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          CodeMySpec models your project as a graph of stories, components, and requirements, then
-          hands the agent the single next piece of work whose prerequisites are already met.
+          It hands the agent one piece of work at a time, in the order the work actually has to happen.
         </strong>
-        Every piece runs the same loop, and the work is verified before the agent moves on.
+        Every piece runs the same loop, and nothing moves on until it holds up.
       </p>
 
       <%!-- Inline SVG: theme-aware via currentColor on the wrapping <g> elements,
@@ -350,69 +307,6 @@
           <code class="text-base-content">/qa</code> runs QA.
         </figcaption>
       </figure>
-    </div>
-  </section>
-
-  <%!-- ───────────── WHERE IT SITS ───────────── --%>
-  <section class="border-b border-base-300">
-    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
-      <.eyebrow name="where it sits" />
-      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
-        It doesn't replace your agent. It runs inside it.
-      </h2>
-      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        <strong class="text-base-content">
-          Cursor, Claude Code, and Copilot are the agent that writes the code. CodeMySpec is the
-          harness on top that adds specs, architecture, verification, and QA.
-        </strong>
-        The tools it is genuinely an alternative to are the app builders. Lovable builds the demo;
-        CodeMySpec builds the app you can still maintain in two years.
-      </p>
-
-      <div class="overflow-x-auto mt-10">
-        <table class="table bg-base-100 border border-base-300 rounded-lg">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th>Tools</th>
-              <th>What they do</th>
-              <th>Relationship</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="font-semibold whitespace-nowrap">Coding agents</td>
-              <td class="text-base-content/70">Cursor, Claude Code, Copilot</td>
-              <td class="text-base-content/70">Generate and edit code in your editor</td>
-              <td><span class="badge badge-primary badge-sm">Runs inside them</span></td>
-            </tr>
-            <tr>
-              <td class="font-semibold whitespace-nowrap">Full app builders</td>
-              <td class="text-base-content/70">Lovable, Replit, Bolt, v0</td>
-              <td class="text-base-content/70">Build an app for someone who won't read the code</td>
-              <td><span class="badge badge-secondary badge-sm">The real alternative</span></td>
-            </tr>
-            <tr>
-              <td class="font-semibold whitespace-nowrap">Spec-only tools</td>
-              <td class="text-base-content/70">Kiro, GitHub Spec Kit, OpenSpec</td>
-              <td class="text-base-content/70">Generate a spec and a plan, then hand off</td>
-              <td class="text-base-content/70">Carries the spec through tests, verification, and QA</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-        <.link navigate={~p"/blog/codemyspec-vs-kiro-specs"} class="link link-primary font-medium">
-          Compared with Kiro →
-        </.link>
-        <.link navigate={~p"/blog/lovable-alternatives"} class="link link-primary font-medium">
-          Compared with Lovable and the app builders →
-        </.link>
-        <.link navigate={~p"/blog/spec-driven-development"} class="link link-primary font-medium">
-          What spec-driven development is →
-        </.link>
-      </div>
     </div>
   </section>
 
@@ -581,60 +475,6 @@
     </div>
   </section>
 
-  <%!-- ───────────── WHAT KEEPS THE CODEBASE COHERENT ───────────── --%>
-  <section class="border-b border-base-300 bg-base-200">
-    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
-      <.eyebrow name="what holds it together" />
-      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
-        AI accelerates code generation. Without boundaries, it accelerates entropy at the same rate.
-      </h2>
-
-      <div class="grid md:grid-cols-3 gap-5 mt-12">
-        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
-          <div class="card-body">
-            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
-              Architecture
-            </span>
-            <h3 class="card-title mt-1">Boundaries the agent can't cross.</h3>
-            <p class="text-base-content/70">
-              CodeMySpec validates the dependency graph for circular references and boundary
-              violations, and generates architecture views the agent reads as context before it
-              writes code.
-            </p>
-          </div>
-        </div>
-
-        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-secondary shadow-sm">
-          <div class="card-body">
-            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
-              Real building blocks
-            </span>
-            <h3 class="card-title mt-1">It knows what it's building with.</h3>
-            <p class="text-base-content/70">
-              The harness understands sixteen different kinds of parts a real application is made of,
-              each with its own rules about how it should be built. So what comes out looks like
-              software a professional wrote, not software a chat window guessed at.
-            </p>
-          </div>
-        </div>
-
-        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-accent shadow-sm">
-          <div class="card-body">
-            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
-              Design reviews
-            </span>
-            <h3 class="card-title mt-1">Mistakes caught while they're cheap.</h3>
-            <p class="text-base-content/70">
-              Contexts and their children get a design review as a required step, before the
-              implementation counts as done. An architectural mistake costs minutes at the design
-              stage and days once it's spread across twenty files.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <%!-- ───────────── QA — with the proof attached ───────────── --%>
   <section class="border-b border-base-300">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
@@ -644,11 +484,11 @@
       </h2>
       <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          A QA agent drives your running application in a real browser — per story, per user
-          journey, or across the whole app — and records an audited trail of every attempt.
+          A QA agent opens your running application in a real browser and uses it — story by story,
+          then all the way through, the way a customer would.
         </strong>
-        Unit tests miss integration failures, broken flows, and UI regressions that look correct in
-        the code and break in front of a user. Agentic QA catches that class of failure.
+        That catches the things tests never see: the flow that breaks at the seams, the screen that
+        looks right in the code and wrong to a person.
       </p>
       <div class="mt-6">
         <.link navigate={~p"/blog/agentic-qa"} class="link link-primary font-medium">
@@ -696,11 +536,18 @@
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
       <.eyebrow name="questions" />
       <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">Straight answers.</h2>
-      <div class="grid md:grid-cols-2 gap-x-12 gap-y-8 mt-12">
-        <div :for={faq <- @faqs} class="max-w-prose">
-          <h3 class="font-semibold text-lg">{faq.q}</h3>
-          <p class="text-base-content/70 mt-2 leading-relaxed">{faq.a}</p>
-        </div>
+      <.faq faqs={@faqs} name="product-faq" class="mt-10 max-w-3xl" />
+
+      <div class="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <.link navigate={~p"/blog/lovable-alternatives"} class="link link-primary font-medium">
+          Compared with Lovable and the app builders →
+        </.link>
+        <.link navigate={~p"/blog/codemyspec-vs-kiro-specs"} class="link link-primary font-medium">
+          Compared with Kiro →
+        </.link>
+        <.link navigate={~p"/developers"} class="link link-primary font-medium">
+          The technical detail →
+        </.link>
       </div>
     </div>
   </section>
