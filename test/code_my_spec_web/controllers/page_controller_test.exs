@@ -159,7 +159,7 @@ defmodule CodeMySpecWeb.PageControllerTest do
     body = html_response(conn, 200)
 
     assert body =~ ~s|role="img"|
-    assert body =~ "The CodeMySpec build loop"
+    assert body =~ "The CodeMySpec process"
     assert body =~ "Where CodeMySpec sits in your toolchain"
   end
 

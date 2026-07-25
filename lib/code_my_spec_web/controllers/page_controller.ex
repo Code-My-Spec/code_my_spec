@@ -514,10 +514,11 @@ defmodule CodeMySpecWeb.PageController do
     %{
       q: "What is CodeMySpec?",
       a:
-        "CodeMySpec is a harness that runs inside the AI tool you already use and gives it the " <>
-          "discipline a chat window never had. It interviews you about what you want, writes down the " <>
-          "behavior you agree on, turns that into tests that check your app the way a person would, " <>
-          "and then builds until those tests hold. You don't supervise it — the harness supervises it."
+        "CodeMySpec lets you build a reliable, maintainable application without writing code and without " <>
+          "prompting the model. You work through a process instead: it interviews you about what you " <>
+          "want, writes down the behavior you agree on, turns that into tests that check your app the " <>
+          "way a person would, and builds until those tests hold. You don't supervise it — the harness " <>
+          "supervises it."
     },
     %{
       q: "What makes CodeMySpec's specifications different?",
@@ -608,13 +609,13 @@ defmodule CodeMySpecWeb.PageController do
     meta = %{
       page_title: "CodeMySpec — Build Software With AI That Doesn't Fall Down",
       meta_description:
-        "AI can build you an app in an hour, then break it when you change one thing. CodeMySpec is " <>
-          "for the morning after: it turns what you agreed on into tests that check your app the way " <>
-          "a person would. Free to build.",
+        "Build a reliable, maintainable application without writing code and without prompting the " <>
+          "model. You work through a process; CodeMySpec holds the machine to it, and proves the " <>
+          "result with tests that use your app like a person. Free to build.",
       og_title: "AI built it in an hour. Now make it hold.",
       og_description:
-        "You don't supervise it, the harness supervises it. Five stories in the morning, it builds " <>
-          "all day, you try it in the evening, it fixes what you found overnight."
+        "No code, no prompting. Five steps, and only two are yours: say what you want, and say whether " <>
+          "it came out right. The harness does the rest and proves it works."
     }
 
     json_ld_list =

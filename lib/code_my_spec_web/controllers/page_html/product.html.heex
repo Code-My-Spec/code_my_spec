@@ -15,11 +15,11 @@
       </h1>
       <p class="text-lg text-base-content/70 mt-6 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          CodeMySpec is for the morning after.
+          CodeMySpec is for the morning after. Build software that stays reliable without writing code
+          and without prompting the model.
         </strong>
-        It runs inside the AI tool you already use and gives it the discipline the chat window never
-        had: write down what the software should do, prove it does that, and don't move on until it
-        holds.
+        You work through a process instead: say what you want, agree what it should do, and let the
+        harness hold the machine to it.
       </p>
       <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <span class="font-semibold text-base-content">You don't supervise it. The harness supervises it.</span>
@@ -170,141 +170,114 @@
     </div>
   </section>
 
-  <%!-- ───────────── THE LOOP (diagram) ───────────── --%>
+  <%!-- ───────────── THE PROCESS (diagram) ─────────────
+        Five steps from the user's side, not the seven-node engine graph. The
+        you/it marking is the value proposition made visible: the reader never
+        appears in a step that involves writing code or prompting a model. --%>
   <section id="loop" class="border-b border-base-300">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
       <.eyebrow name="how it works" />
       <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
-        One task at a time, in dependency order.
+        You work the process. It does the labor.
       </h2>
       <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          It hands the agent one piece of work at a time, in the order the work actually has to happen.
+          Five steps, the same five every time, and only two of them are yours.
         </strong>
-        Every piece runs the same loop, and nothing moves on until it holds up.
+        You say what you want and whether it came out right. Everything between those
+        two is the machine's problem, and the harness is what holds it to the job.
       </p>
 
-      <%!-- Inline SVG: theme-aware via currentColor on the wrapping <g> elements,
-           so it tracks light/dark with no duplicate assets and no network request.
-           Wide by nature, so it scrolls inside its own container on small screens
-           rather than squashing to illegibility. --%>
+      <%!-- Theme-aware via currentColor; scrolls in its own container on narrow
+           screens rather than squashing to illegibility. --%>
       <figure class="mt-12">
         <div class="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
           <svg
-            viewBox="0 0 1040 220"
-            class="w-full h-auto min-w-[860px]"
+            viewBox="0 0 1040 250"
+            class="w-full h-auto min-w-[820px]"
             role="img"
             aria-labelledby="loop-title loop-desc"
           >
-            <title id="loop-title">The CodeMySpec build loop</title>
+            <title id="loop-title">The CodeMySpec process</title>
             <desc id="loop-desc">
-              Seven steps run in order: plan, spec, test, code, review, verify, and QA. The verify
-              step builds the app and runs every check and test, and returns the
-              work to the code step when a check fails.
+              Five steps in order: plan, spec, code, QA, and review. You do the planning, the
+              specification and the final review; the machine writes the code and QAs the running
+              application. Anything QA finds goes back to the code step before you ever see it.
             </desc>
 
-            <%!-- arrows between steps --%>
-            <g class="text-base-content" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.5">
-              <line x1="163" y1="76" x2="177" y2="76" />
-              <line x1="303" y1="76" x2="317" y2="76" />
-              <line x1="443" y1="76" x2="457" y2="76" />
-              <line x1="583" y1="76" x2="597" y2="76" />
-              <line x1="723" y1="76" x2="737" y2="76" />
-              <line x1="863" y1="76" x2="877" y2="76" />
+            <g class="text-base-content" stroke="currentColor" stroke-opacity="0.3" stroke-width="1.5">
+              <line x1="212" y1="112" x2="228" y2="112" />
+              <line x1="404" y1="112" x2="420" y2="112" />
+              <line x1="596" y1="112" x2="612" y2="112" />
+              <line x1="788" y1="112" x2="804" y2="112" />
             </g>
 
-            <%!-- the six ordinary steps --%>
-            <g class="text-base-content">
-              <g :for={
-                {label, note, x, idx} <- [
-                  {"Plan", "build the graph", 40, "1"},
-                  {"Spec", "before any code", 180, "2"},
-                  {"Test", "from the spec", 320, "3"},
-                  {"Code", "to pass tests", 460, "4"},
-                  {"Review", "against rules", 600, "5"},
-                  {"QA", "the live app", 880, "7"}
-                ]
-              }>
+            <g :for={
+              {label, note, who, x} <- [
+                {"Plan", "what you want built", "you", 40},
+                {"Spec", "what it should do", "you", 232},
+                {"Code", "it builds until the tests pass", "it", 424},
+                {"QA", "it uses the app like a customer", "it", 616},
+                {"Review", "you say if it is right", "you", 808}
+              ]
+            }>
+              <g class={if who == "you", do: "text-primary", else: "text-base-content"}>
                 <rect
                   x={x}
-                  y="48"
-                  width="124"
-                  height="56"
-                  rx="8"
+                  y="74"
+                  width="176"
+                  height="76"
+                  rx="10"
                   fill="currentColor"
-                  fill-opacity="0.03"
+                  fill-opacity={if who == "you", do: "0.09", else: "0.03"}
                   stroke="currentColor"
-                  stroke-opacity="0.25"
+                  stroke-opacity={if who == "you", do: "0.85", else: "0.25"}
+                  stroke-width={if who == "you", do: "1.75", else: "1"}
                 />
                 <text
-                  x={x + 12}
-                  y="38"
-                  font-size="11"
-                  font-weight="600"
+                  x={x + 88}
+                  y="58"
+                  text-anchor="middle"
+                  font-size="12"
+                  font-weight="700"
+                  letter-spacing="1.5"
                   fill="currentColor"
-                  fill-opacity="0.4"
+                  fill-opacity={if who == "you", do: "0.9", else: "0.45"}
                 >
-                  {idx}
+                  {String.upcase(who)}
                 </text>
-                <text x={x + 62} y="72" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">
+                <text x={x + 88} y="108" text-anchor="middle" font-size="21" font-weight="700" fill="currentColor">
                   {label}
                 </text>
-                <text
-                  x={x + 62}
-                  y="90"
-                  text-anchor="middle"
-                  font-size="10.5"
-                  fill="currentColor"
-                  fill-opacity="0.55"
-                >
-                  {note}
-                </text>
               </g>
-            </g>
-
-            <%!-- step 6, verify: the gate, so it carries the accent --%>
-            <g class="text-primary">
-              <rect
-                x="740"
-                y="48"
-                width="124"
-                height="56"
-                rx="8"
+              <text
+                x={x + 88}
+                y="132"
+                text-anchor="middle"
+                font-size="11.5"
+                class="text-base-content"
                 fill="currentColor"
-                fill-opacity="0.08"
-                stroke="currentColor"
-                stroke-width="1.5"
-              />
-              <text x="752" y="38" font-size="11" font-weight="600" fill="currentColor" fill-opacity="0.7">
-                6
-              </text>
-              <text x="802" y="72" text-anchor="middle" font-size="15" font-weight="700" fill="currentColor">
-                Verify
-              </text>
-              <text x="802" y="90" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.8">
-                the gate
+                fill-opacity="0.6"
+              >
+                {note}
               </text>
             </g>
 
-            <%!-- failure path: verify sends the work back to code --%>
-            <g class="text-primary" stroke="currentColor" fill="none" stroke-width="1.5" stroke-dasharray="4 4">
-              <path d="M 802 110 L 802 160 L 522 160 L 522 110" />
+            <%!-- what QA finds never reaches you: it goes back to Code --%>
+            <g class="text-base-content" stroke="currentColor" stroke-opacity="0.45" fill="none" stroke-width="1.5" stroke-dasharray="5 4">
+              <path d="M 704 150 L 704 196 L 512 196 L 512 150" />
             </g>
-            <g class="text-primary">
-              <path d="M 522 110 l -4 8 l 8 0 z" fill="currentColor" stroke="none" />
-              <text x="662" y="176" text-anchor="middle" font-size="11" font-weight="600" fill="currentColor">
-                blocks and returns the work when a check fails
+            <g class="text-base-content">
+              <path d="M 512 150 l -4 8 l 8 0 z" fill="currentColor" fill-opacity="0.45" stroke="none" />
+              <text x="608" y="216" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor" fill-opacity="0.6">
+                anything QA finds goes back before you see it
               </text>
             </g>
           </svg>
         </div>
         <figcaption class="text-sm text-base-content/60 mt-3 max-w-3xl leading-relaxed">
-          Step 6 is the gate: every time the agent stops, the work gets built and run through every check
-          and test before it is allowed to continue. How strict each check is, is up to you.
-          You drive the loop with three commands —
-          <code class="text-base-content">/next</code> starts the next requirement,
-          <code class="text-base-content">/implement</code> loops the whole graph, and
-          <code class="text-base-content">/qa</code> runs QA.
+          You never write the code and you never prompt the model. You answer questions at the start
+          and you judge the result at the end.
         </figcaption>
       </figure>
     </div>
