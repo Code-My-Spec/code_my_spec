@@ -302,6 +302,7 @@ defmodule CodeMySpecWeb.Layouts do
             </div>
             <div class="navbar-center hidden lg:flex">
               <ul class="menu menu-horizontal menu-md px-1">
+                <li><.link href={~p"/product"}>Product</.link></li>
                 <li><.link href={~p"/developers"}>Developers</.link></li>
                 <li><.link href={~p"/methodology"}>Method</.link></li>
                 <li><.link href={~p"/pricing"}>Pricing</.link></li>
@@ -341,6 +342,22 @@ defmodule CodeMySpecWeb.Layouts do
               <div>
                 <h4 class="font-bold text-sm mb-3 text-base-content">Product</h4>
                 <ul class="space-y-2 text-sm text-base-content/70">
+                  <li>
+                    <a href="/product" class="hover:text-primary transition-colors">Overview</a>
+                  </li>
+                  <li>
+                    <a href="/developers" class="hover:text-primary transition-colors">
+                      For developers
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/agents" class="hover:text-primary transition-colors">
+                      Supported agents
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/install" class="hover:text-primary transition-colors">Install</a>
+                  </li>
                   <li>
                     <a href="/methodology" class="hover:text-primary transition-colors">
                       Methodology
@@ -468,7 +485,9 @@ defmodule CodeMySpecWeb.Layouts do
             </a>
           </div>
           <ul class="menu p-4 text-base-content flex-1">
+            <li><.link href={~p"/product"}>Product</.link></li>
             <li><.link href={~p"/developers"}>Developers</.link></li>
+            <li><.link href={~p"/agents"}>Supported agents</.link></li>
             <li><.link href={~p"/methodology"}>Method</.link></li>
             <li><.link href={~p"/pricing"}>Pricing</.link></li>
             <li><.link href={~p"/blog"}>Blog</.link></li>

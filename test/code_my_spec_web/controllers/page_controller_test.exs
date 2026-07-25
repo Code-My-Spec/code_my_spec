@@ -70,6 +70,16 @@ defmodule CodeMySpecWeb.PageControllerTest do
     refute get(conn, ~p"/pages/about").status == 301
   end
 
+  test "marketing pages are reachable from the shared nav, not just by URL", %{conn: conn} do
+    body = get(conn, ~p"/") |> html_response(200)
+
+    # A page nobody can navigate to is a page nobody reads. Any new marketing
+    # route belongs in the navbar, the mobile drawer, or the footer.
+    for path <- ~w(/product /developers /agents /install /methodology /pricing /blog /documentation) do
+      assert body =~ ~s|href="#{path}"|, "expected #{path} to be linked from the layout"
+    end
+  end
+
   test "GET /product renders the cornerstone with a liftable definition", %{conn: conn} do
     conn = get(conn, ~p"/product")
     body = html_response(conn, 200)
