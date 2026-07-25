@@ -96,6 +96,23 @@ defmodule CodeMySpecWeb.PageControllerTest do
     refute body =~ "specs are markdown"
   end
 
+  test "GET /product shows a readable scenario, never a code sample", %{conn: conn} do
+    conn = get(conn, ~p"/product")
+    body = html_response(conn, 200)
+
+    # A product page sells the idea; a wall of Elixir screens out everyone not
+    # already deep in the language. The scenario is the readable half of an
+    # executable spec, so it carries the point in plain language instead.
+    assert body =~ "an active card"
+    assert body =~ "the next swipe is declined"
+    assert body =~ "Verified against your code"
+
+    refute body =~ "<pre"
+    refute body =~ "defmodule"
+    # Slash commands are the product's own vocabulary and stay; source is out.
+    refute body =~ "assert "
+  end
+
   test "GET /product carries FAQ, software and breadcrumb schema", %{conn: conn} do
     conn = get(conn, ~p"/product")
     body = html_response(conn, 200)

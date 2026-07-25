@@ -602,37 +602,6 @@ defmodule CodeMySpecWeb.PageController do
     }
   ]
 
-  # An illustrative spec in the real Spex DSL, kept short enough to read at a
-  # glance. Lives here rather than in the template because HEEx treats `{...}` in
-  # the body as interpolation, which would mangle every tuple.
-  @product_spec_example_path "test/spex/412_card_lock/criterion_3180_locked_card_declines_a_swipe_spex.exs"
-
-  @product_spec_example ~S'''
-  defmodule MyAppSpex.Story412.Criterion3180Spex do
-    @moduledoc """
-    Story 412 — Card lock
-    Criterion 3180 — A locked card declines a swipe.
-    """
-    use MyAppSpex.Case
-
-    spex "Card lock" do
-      scenario "a locked card declines a swipe" do
-        given_ :an_active_card
-
-        when_ "the owner locks it", ctx do
-          {:ok, card} = Cards.lock(ctx.card)
-          {:ok, %{ctx | card: card}}
-        end
-
-        then_ "the next swipe is declined", ctx do
-          assert {:error, :card_locked} = Swipes.authorize(ctx.card, 4000)
-          {:ok, ctx}
-        end
-      end
-    end
-  end
-  '''
-
   def product(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = "#{base_url}/product"
@@ -720,9 +689,7 @@ defmodule CodeMySpecWeb.PageController do
       og_image: CodeMySpecWeb.ImageUrl.image_url("og-product.png", base_url),
       canonical_url: canonical,
       json_ld_list: json_ld_list,
-      faqs: @product_faqs,
-      spec_example: @product_spec_example,
-      spec_example_path: @product_spec_example_path
+      faqs: @product_faqs
     )
   end
 

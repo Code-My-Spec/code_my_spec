@@ -36,21 +36,47 @@
       </div>
       </div>
 
-      <%!-- Show the artifact rather than describing it. The filename carries the
-           traceability claim on its own: story 412, criterion 3180. --%>
+      <%!-- No code samples on a product page. The scenario is the readable half of
+           an executable specification — plain language anyone can check — and the
+           passing state is what makes "the specifications execute" concrete. --%>
       <figure class="min-w-0">
         <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
-          <div class="flex items-center gap-2 px-4 py-2.5 border-b border-base-300 bg-base-200">
-            <span class="inline-block w-2 h-2 rounded-full bg-primary/60"></span>
-            <code class="text-xs text-base-content/60 truncate">{@spec_example_path}</code>
+          <div class="flex items-center justify-between gap-3 px-5 py-3 border-b border-base-300 bg-base-200">
+            <span class="text-sm font-semibold">Card lock</span>
+            <span class="text-xs text-base-content/50 whitespace-nowrap">
+              story 412 · criterion 3180
+            </span>
           </div>
-          <div class="overflow-x-auto">
-            <pre class="text-[11.5px] leading-relaxed p-4 text-base-content/80"><code>{@spec_example}</code></pre>
+
+          <div class="p-5 space-y-4">
+            <div class="flex gap-4">
+              <span class="w-16 shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-primary pt-0.5">
+                Given
+              </span>
+              <span class="text-base-content/85">an active card</span>
+            </div>
+            <div class="flex gap-4">
+              <span class="w-16 shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-primary pt-0.5">
+                When
+              </span>
+              <span class="text-base-content/85">the owner locks it</span>
+            </div>
+            <div class="flex gap-4">
+              <span class="w-16 shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-primary pt-0.5">
+                Then
+              </span>
+              <span class="text-base-content/85">the next swipe is declined</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2.5 px-5 py-3 border-t border-base-300 bg-primary/5">
+            <span class="hero-check-circle-mini size-5 text-primary shrink-0"></span>
+            <span class="text-sm font-medium text-primary">Verified against your code</span>
           </div>
         </div>
         <figcaption class="text-sm text-base-content/60 mt-3 leading-relaxed">
-          An executable specification. The filename ties it to a story and a criterion, and it runs
-          against your code like any other test.
+          Behavior you agreed on, in plain language, tied to the story it came from. This is a
+          specification that runs, so it either holds or it does not.
         </figcaption>
       </figure>
     </div>
@@ -95,11 +121,11 @@
 
       <div class="mt-10 max-w-2xl space-y-4 text-base-content/70 leading-relaxed">
         <p>
-          Because they execute, they can be run continuously. Your suite runs them with
-          <code class="text-base-content">mix spex</code>, and the verify gate can run them on every
-          agent stop, so the behavior you agreed on is checked against what the agent actually built
-          rather than at whatever point someone remembers to look. Specifications that execute cannot
-          quietly drift from the code, and they cannot rot into documentation nobody trusts.
+          Because they execute, they can be run continuously. They run with the rest of your test
+          suite, and the verify gate can run them on every agent stop, so the behavior you agreed on
+          is checked against what the agent actually built rather than at whatever point someone
+          remembers to look. Specifications that execute cannot quietly drift from the code, and they
+          cannot rot into documentation nobody trusts.
         </p>
         <p>
           <span class="font-semibold text-base-content">Design documents are the optional part.</span>
