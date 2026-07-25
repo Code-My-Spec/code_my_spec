@@ -259,7 +259,7 @@ defmodule CodeMySpecWeb.PageController do
                 "acceptedAnswer" => %{
                   "@type" => "Answer",
                   "text" =>
-                    "You keep everything. It's a standard Phoenix app on your disk that compiles, tests, and ships without us. Specs are markdown in your repo, tests are standard Elixir. No lock-in."
+                    "You keep everything. It's a standard Phoenix app on your disk that compiles, tests, and ships without us. Your specifications are executable Elixir test files in your repo, so they keep running without us too. No lock-in."
                 }
               },
               %{
@@ -517,8 +517,26 @@ defmodule CodeMySpecWeb.PageController do
         "CodeMySpec is a requirements-driven development harness for building real software with AI. " <>
           "It runs as a plugin inside your AI coding agent and walks that agent through a full lifecycle " <>
           "for every piece of your app — specification, tests, implementation, review, and QA, in the " <>
-          "right order. Your specs are plain markdown and your tests are standard ExUnit, both in your " <>
-          "own repository."
+          "right order. Its core idea is that the specifications execute: each story's agreed behavior " <>
+          "becomes real test files in your own repository, so your intent is verified against the code " <>
+          "continuously instead of described in a document."
+    },
+    %{
+      q: "What makes CodeMySpec's specifications different?",
+      a:
+        "They execute. CodeMySpec converts a story's acceptance criteria into named rules, Gherkin " <>
+          "scenarios, and executable specifications that run against your code, so the behavior you " <>
+          "agreed on is continuously checked against what the agent actually built. A written " <>
+          "specification is a claim about intent; an executable one is a claim that gets checked. If " <>
+          "your application is the castle, these are the walls."
+    },
+    %{
+      q: "Do I have to write markdown specification documents?",
+      a:
+        "No. The written module specification is a configuration knob you can turn off, and plenty of " <>
+          "projects run without it because generating prose documents costs tokens and time. The " <>
+          "executable specifications are the part that is not optional, because they are the layer that " <>
+          "verifies itself."
     },
     %{
       q: "Does CodeMySpec replace Cursor, Claude Code, or Copilot?",
@@ -546,10 +564,10 @@ defmodule CodeMySpecWeb.PageController do
     %{
       q: "Does CodeMySpec lock me in?",
       a:
-        "No. Your specifications are plain markdown and your tests are standard ExUnit, both in your own " <>
+        "No. Your executable specifications and your tests are real Elixir test files in your own " <>
           "repository, and you bring your own model and API keys with no markup on tokens. There is no " <>
-          "proprietary spec format, no custom test runner, and no DSL to learn. If you stopped using " <>
-          "CodeMySpec tomorrow, you would keep every artifact of value."
+          "proprietary spec format and nothing to export. If you stopped using CodeMySpec tomorrow, you " <>
+          "would keep every artifact of value, and the specifications would still run."
     },
     %{
       q: "How does CodeMySpec catch bugs that tests miss?",
@@ -584,6 +602,37 @@ defmodule CodeMySpecWeb.PageController do
     }
   ]
 
+  # An illustrative spec in the real Spex DSL, kept short enough to read at a
+  # glance. Lives here rather than in the template because HEEx treats `{...}` in
+  # the body as interpolation, which would mangle every tuple.
+  @product_spec_example_path "test/spex/412_card_lock/criterion_3180_locked_card_declines_a_swipe_spex.exs"
+
+  @product_spec_example ~S'''
+  defmodule MyAppSpex.Story412.Criterion3180Spex do
+    @moduledoc """
+    Story 412 — Card lock
+    Criterion 3180 — A locked card declines a swipe.
+    """
+    use MyAppSpex.Case
+
+    spex "Card lock" do
+      scenario "a locked card declines a swipe" do
+        given_ :an_active_card
+
+        when_ "the owner locks it", ctx do
+          {:ok, card} = Cards.lock(ctx.card)
+          {:ok, %{ctx | card: card}}
+        end
+
+        then_ "the next swipe is declined", ctx do
+          assert {:error, :card_locked} = Swipes.authorize(ctx.card, 4000)
+          {:ok, ctx}
+        end
+      end
+    end
+  end
+  '''
+
   def product(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = "#{base_url}/product"
@@ -591,12 +640,13 @@ defmodule CodeMySpecWeb.PageController do
     meta = %{
       page_title: "CodeMySpec — The AI Development Harness for Software You Can Maintain",
       meta_description:
-        "CodeMySpec is a spec-driven development harness that runs inside your AI coding agent. " <>
-          "Specs, tests, architecture, and QA on one requirement graph. Bring your own model, no lock-in.",
-      og_title: "The harness that turns AI coding into a system",
+        "CodeMySpec is a spec-driven development harness that runs inside your AI coding agent. Its " <>
+          "specifications execute, so your intent is continuously verified against the code. Bring " <>
+          "your own model, no lock-in.",
+      og_title: "Your specifications execute",
       og_description:
-        "Specs, tests, architecture enforcement, verification, and browser QA on one requirement graph — " <>
-          "inside the coding agent you already use. Free to build."
+        "The BDD specs are the walls: acceptance criteria compiled into runnable specifications that " <>
+          "continuously verify your intent against the code, inside the coding agent you already use."
     }
 
     json_ld_list =
@@ -612,12 +662,14 @@ defmodule CodeMySpecWeb.PageController do
             "operatingSystem" => "macOS, Windows",
             "description" => meta.meta_description,
             "featureList" =>
-              "Requirement graph that sequences the work; specification-first workflow; 16 Phoenix " <>
-                "component types; dependency-graph validation and architecture enforcement; Three " <>
-                "Amigos BDD scenarios compiled to ExUnit; automatic compile, Credo, test and Spex " <>
-                "verification on every agent stop; agentic browser QA against the running app; " <>
-                "plugins for Claude Code, OpenAI Codex and Google Antigravity; markdown specs and " <>
-                "ExUnit tests in your own repository; bring your own model and keys with no token markup",
+              "Executable specifications: acceptance criteria compiled into named rules, Gherkin " <>
+                "scenarios and runnable spec files that continuously verify intent against the code; " <>
+                "requirement graph that sequences the work; 16 Phoenix component types; " <>
+                "dependency-graph validation and architecture enforcement; automatic compile, Credo, " <>
+                "test and Spex verification on every agent stop; agentic browser QA against the " <>
+                "running app; plugins for Claude Code, OpenAI Codex and Google Antigravity; specs and " <>
+                "tests as real Elixir test files in your own repository; bring your own model and " <>
+                "keys with no token markup",
             "offers" => [
               %{
                 "@type" => "Offer",
@@ -668,7 +720,9 @@ defmodule CodeMySpecWeb.PageController do
       og_image: CodeMySpecWeb.ImageUrl.image_url("og-product.png", base_url),
       canonical_url: canonical,
       json_ld_list: json_ld_list,
-      faqs: @product_faqs
+      faqs: @product_faqs,
+      spec_example: @product_spec_example,
+      spec_example_path: @product_spec_example_path
     )
   end
 
@@ -720,9 +774,9 @@ defmodule CodeMySpecWeb.PageController do
     %{
       q: "Does using a plugin lock me into that agent?",
       a:
-        "No. Your specs are markdown and your tests are standard ExUnit in your own repository, and " <>
-          "the harness is a local server rather than part of the agent. Switching agents means " <>
-          "installing a different adapter; every artifact comes with you."
+        "No. Your executable specifications and tests are real Elixir test files in your own " <>
+          "repository, and the harness is a local server rather than part of the agent. Switching " <>
+          "agents means installing a different adapter; every artifact comes with you and still runs."
     }
   ]
 

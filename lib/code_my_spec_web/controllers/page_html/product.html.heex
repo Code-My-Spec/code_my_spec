@@ -3,7 +3,8 @@
         First two sentences are the liftable "what is CodeMySpec" answer. A
         retrieval system pulls this passage, so it has to stand alone. --%>
   <section class="bg-base-200 border-b border-base-300">
-    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-12 lg:gap-14 items-center">
+      <div>
       <div class="badge badge-primary badge-outline gap-2 mb-6">
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
         Free to build · your model, your keys · no lock-in
@@ -20,13 +21,101 @@
         right order.
       </p>
       <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
-        Your specifications live as plain markdown and your tests as standard ExUnit, both in your own
-        repository. You bring your own model and API keys. There is no token markup and nothing to
-        lock you in. Building is free.
+        <span class="font-semibold text-base-content">The core of it is that the specifications execute.</span>
+        Each story's agreed behavior compiles into real test files in your own repository, so your
+        intent is checked against the code continuously rather than written down once and left to rot.
+        Everything else in the harness exists to serve that.
+      </p>
+      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        You bring your own model and API keys. No token markup, nothing to lock you in, and building
+        is free.
       </p>
       <div class="mt-8 flex flex-wrap items-center gap-4">
         <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
-        <a href="#loop" class="btn btn-ghost btn-lg">See the loop</a>
+        <a href="#specs" class="btn btn-ghost btn-lg">How the specs work</a>
+      </div>
+      </div>
+
+      <%!-- Show the artifact rather than describing it. The filename carries the
+           traceability claim on its own: story 412, criterion 3180. --%>
+      <figure class="min-w-0">
+        <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+          <div class="flex items-center gap-2 px-4 py-2.5 border-b border-base-300 bg-base-200">
+            <span class="inline-block w-2 h-2 rounded-full bg-primary/60"></span>
+            <code class="text-xs text-base-content/60 truncate">{@spec_example_path}</code>
+          </div>
+          <div class="overflow-x-auto">
+            <pre class="text-[11.5px] leading-relaxed p-4 text-base-content/80"><code>{@spec_example}</code></pre>
+          </div>
+        </div>
+        <figcaption class="text-sm text-base-content/60 mt-3 leading-relaxed">
+          An executable specification. The filename ties it to a story and a criterion, and it runs
+          against your code like any other test.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE KEYSTONE — executable specs ─────────────
+        This is the load-bearing section. Written specs are the optional layer
+        (require_specs is a config knob); the executable specification is the
+        mandatory one, and it is what makes the harness work. --%>
+  <section id="specs" class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="the core innovation" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        If your application is the castle, <span class="text-primary">the BDD specs are the walls.</span>
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          CodeMySpec turns each story's acceptance criteria into named rules, Gherkin scenarios, and
+          executable specifications that run against your code.
+        </strong>
+        A written specification is a claim about intent. An executable specification is a claim that
+        gets checked. That difference is the whole product. Take everything else out of the harness and
+        this is the part that still makes it work.
+      </p>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-10">
+        <div :for={
+          {idx, label, what} <- [
+            {"1", "Acceptance criteria", "what the story has to do, written as discrete records"},
+            {"2", "Named rules", "criteria grouped into the rules that govern the behavior"},
+            {"3", "Gherkin scenarios", "given / when / then, agreed before code exists"},
+            {"4", "Executable specs", "real test files that run against the built code"}
+          ]
+        } class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body py-4">
+            <span class="text-xs font-semibold text-primary tabular-nums">{idx}</span>
+            <h3 class="font-semibold leading-snug">{label}</h3>
+            <p class="text-sm text-base-content/60 leading-relaxed">{what}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-10 max-w-2xl space-y-4 text-base-content/70 leading-relaxed">
+        <p>
+          Because they execute, they can be run continuously. Your suite runs them with
+          <code class="text-base-content">mix spex</code>, and the verify gate can run them on every
+          agent stop, so the behavior you agreed on is checked against what the agent actually built
+          rather than at whatever point someone remembers to look. Specifications that execute cannot
+          quietly drift from the code, and they cannot rot into documentation nobody trusts.
+        </p>
+        <p>
+          <span class="font-semibold text-base-content">Design documents are the optional part.</span>
+          The written module specification is a configuration knob you can turn off, and plenty of
+          projects run without it. The executable specification is not a knob, because it is the layer
+          that verifies itself.
+        </p>
+      </div>
+
+      <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <.link navigate={~p"/blog/bdd-specs-for-ai-generated-code"} class="link link-primary font-medium">
+          How BDD specs catch what unit tests confirm →
+        </.link>
+        <.link navigate={~p"/blog/bdd-attention-three-amigos"} class="link link-primary font-medium">
+          Where the scenarios come from →
+        </.link>
       </div>
     </div>
   </section>
@@ -173,7 +262,7 @@
   </section>
 
   <%!-- ───────────── WHERE IT SITS ───────────── --%>
-  <section class="border-b border-base-300 bg-base-200">
+  <section class="border-b border-base-300">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
       <.eyebrow name="where it sits" />
       <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
@@ -263,8 +352,8 @@
             <desc id="arch-desc">
               Your coding agent talks directly to your model provider using your own keys, and
               CodeMySpec is not in that path. Separately, a thin plugin adapter connects the agent to
-              the cms server running on your machine, which reads and writes the markdown specs and
-              ExUnit tests in your own repository.
+              the cms server running on your machine, which reads and writes the executable
+              specifications and ExUnit tests in your own repository.
             </desc>
 
             <%!-- the model path: direct, and we are not on it --%>
@@ -384,7 +473,7 @@
                 Your repository
               </text>
               <text x="560" y="222" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
-                markdown specs · ExUnit tests
+                executable specs · ExUnit tests
               </text>
               <text x="560" y="238" text-anchor="middle" font-size="10.5" fill="currentColor" fill-opacity="0.55">
                 your code, on your disk
@@ -394,7 +483,7 @@
         </div>
         <figcaption class="text-sm text-base-content/60 mt-3 max-w-3xl leading-relaxed">
           Everything of value stays on your side of the line. Stop using CodeMySpec and you keep the
-          specs, the tests, and a standard app that compiles and ships without us.
+          executable specifications, the tests, and a standard app that compiles and ships without us.
         </figcaption>
       </figure>
     </div>
@@ -440,12 +529,13 @@
         <div class="card bg-base-100 border border-base-300 border-t-4 border-t-accent shadow-sm">
           <div class="card-body">
             <span class="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
-              Traceability
+              Design reviews
             </span>
-            <h3 class="card-title mt-1">Every line traces to a reason.</h3>
+            <h3 class="card-title mt-1">Mistakes caught while they're cheap.</h3>
             <p class="text-base-content/70">
-              A Three Amigos process turns acceptance criteria into named rules, Gherkin scenarios,
-              and executable ExUnit specs. Code traces back to a story and a criterion.
+              Contexts and their children get a design review as a required step, before the
+              implementation counts as done. An architectural mistake costs minutes at the design
+              stage and days once it's spread across twenty files.
             </p>
           </div>
         </div>

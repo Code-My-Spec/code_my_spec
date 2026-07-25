@@ -81,6 +81,21 @@ defmodule CodeMySpecWeb.PageControllerTest do
              "CodeMySpec is a requirements-driven development harness for building real software with AI."
   end
 
+  test "GET /product leads on executable specs, not written spec documents", %{conn: conn} do
+    conn = get(conn, ~p"/product")
+    body = html_response(conn, 200)
+
+    # The executable BDD specs are the core innovation and the only mandatory
+    # spec layer. The written module spec is a config knob (require_specs) that
+    # real projects turn off, so the copy must not present markdown documents as
+    # the artifact you get.
+    assert body =~ "the BDD specs are the walls"
+    assert body =~ "the specifications execute"
+    assert body =~ "executable specifications"
+    refute body =~ "plain markdown"
+    refute body =~ "specs are markdown"
+  end
+
   test "GET /product carries FAQ, software and breadcrumb schema", %{conn: conn} do
     conn = get(conn, ~p"/product")
     body = html_response(conn, 200)
