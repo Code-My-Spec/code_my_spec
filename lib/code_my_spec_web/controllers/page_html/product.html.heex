@@ -511,16 +511,48 @@
       <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">Straight answers.</h2>
       <.faq faqs={@faqs} name="product-faq" class="mt-10 max-w-3xl" />
 
-      <div class="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-        <.link navigate={~p"/blog/lovable-alternatives"} class="link link-primary font-medium">
-          Compared with Lovable and the app builders →
-        </.link>
-        <.link navigate={~p"/blog/codemyspec-vs-kiro-specs"} class="link link-primary font-medium">
-          Compared with Kiro →
-        </.link>
-        <.link navigate={~p"/developers"} class="link link-primary font-medium">
-          The technical detail →
-        </.link>
+      <%!-- This page is the hub, so it feeds the feature pages rather than
+           sending readers back into the blog. Feature links come first and get
+           the weight; comparisons stay because someone in the FAQ is evaluating,
+           but they sit second and quieter. --%>
+      <div class="mt-12 max-w-3xl">
+        <h3 class="text-sm font-semibold uppercase tracking-[0.15em] text-primary">Go deeper</h3>
+        <div class="grid sm:grid-cols-2 gap-3 mt-4">
+          <.link
+            navigate={~p"/design-system"}
+            class="card bg-base-100 border border-base-300 hover:border-primary transition-colors"
+          >
+            <div class="card-body py-4">
+              <span class="font-semibold">Design system →</span>
+              <span class="text-sm text-base-content/60">
+                Decide how it looks once, so every page stops guessing.
+              </span>
+            </div>
+          </.link>
+          <.link
+            navigate={~p"/agents"}
+            class="card bg-base-100 border border-base-300 hover:border-primary transition-colors"
+          >
+            <div class="card-body py-4">
+              <span class="font-semibold">Supported agents →</span>
+              <span class="text-sm text-base-content/60">
+                Claude Code, Codex and Antigravity, and why all three work.
+              </span>
+            </div>
+          </.link>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-base-content/60">
+          <.link navigate={~p"/blog/lovable-alternatives"} class="link link-hover">
+            Compared with Lovable
+          </.link>
+          <.link navigate={~p"/blog/codemyspec-vs-kiro-specs"} class="link link-hover">
+            Compared with Kiro
+          </.link>
+          <.link navigate={~p"/developers"} class="link link-hover">
+            The technical detail, for engineers
+          </.link>
+        </div>
       </div>
     </div>
   </section>

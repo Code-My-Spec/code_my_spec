@@ -1,0 +1,315 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+  <%!-- ───────────── HERO ─────────────
+        Traffic arrives on "vibe coded website" having just read that their site
+        looks like everyone else's, so the problem opens in that vocabulary. --%>
+  <section class="bg-base-200 border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] gap-12 lg:gap-14 items-center">
+      <div>
+        <div class="badge badge-primary badge-outline gap-2 mb-6">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+          One afternoon · no design tools · no CSS
+        </div>
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
+          Decide how it looks <span class="text-primary">once.</span>
+        </h1>
+        <p class="text-lg text-base-content/70 mt-6 max-w-xl leading-relaxed">
+          <strong class="text-base-content">
+            Answer five questions about how your project should look. Every page built after that has
+            to reference your answers instead of inventing its own.
+          </strong>
+          No design software, no CSS, and no arguing with a model about colors on every page.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
+          <.link navigate={~p"/product"} class="btn btn-ghost btn-lg">See the whole process →</.link>
+        </div>
+      </div>
+
+      <%!-- The five questions as the hero visual. Shows what you are actually
+           asked, which is more reassuring than describing an "interview". --%>
+      <figure class="min-w-0">
+        <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b border-base-300 bg-base-200">
+            <span class="text-sm font-semibold">The five questions</span>
+          </div>
+          <div class="p-5 space-y-3.5">
+            <div :for={
+              {n, q, opts} <- [
+                {"1", "Theme", "a named starting point, or custom"},
+                {"2", "Colors", "assigned to roles in your product"},
+                {"3", "Typography", "compact, default or spacious"},
+                {"4", "Layout", "sidebar, top nav or hybrid"},
+                {"5", "Tone", "minimal through to information dense"}
+              ]
+            } class="flex gap-4">
+              <span class="w-5 shrink-0 text-xs font-semibold text-primary tabular-nums pt-1">
+                {n}
+              </span>
+              <div class="min-w-0">
+                <div class="font-semibold leading-snug">{q}</div>
+                <div class="text-sm text-base-content/60 leading-relaxed">{opts}</div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2.5 px-5 py-3 border-t border-base-300 bg-primary/5">
+            <span class="hero-check-circle-mini size-5 text-primary shrink-0"></span>
+            <span class="text-sm font-medium text-primary">You pick. You don't describe.</span>
+          </div>
+        </div>
+        <figcaption class="text-sm text-base-content/60 mt-3 leading-relaxed">
+          Every question comes with concrete options, so choosing is the whole job.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE PROBLEM ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="why they all look alike" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        Nobody told it how yours should look, so it used the average.
+      </h2>
+      <div class="mt-4 max-w-2xl space-y-4 text-lg text-base-content/70 leading-relaxed">
+        <p>
+          <strong class="text-base-content">
+            Vibe coded projects look alike because nothing said how yours should be different.
+          </strong>
+          The model reached for the average of everything it trained on. Your visitor has seen that
+          average forty times, recognizes it before reading a word, and reads it as nobody having
+          decided anything here.
+        </p>
+        <p>
+          Prompting your way out does not hold. Art direction supplied one page at a time never
+          carries to the next page, so six pages become six dialects of the same project.
+        </p>
+      </div>
+      <%!-- Demoted out of the CTA slot on purpose. The reader's next step on a
+           feature page is /install; these are context, so they read as quiet
+           prose links rather than competing calls to action.
+           Re-add /blog/vibe-coded-websites-look-the-same once it publishes. --%>
+      <p class="mt-8 max-w-2xl text-sm text-base-content/60 leading-relaxed">
+        The same thing happens
+        <.link navigate={~p"/blog/prevent-slop-elixir-codebases"} class="link link-hover text-base-content/80">
+          inside the code itself
+        </.link>
+        , not just on the surface. And if yours is already built and you would rather not redo it
+        yourself,
+        <.link navigate={~p"/vibe-coding-rebuild"} class="link link-hover text-base-content/80">
+          it can be rebuilt for you
+        </.link>
+        .
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── HOW IT WORKS ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="how it works" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        An interview, then a file your project keeps.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          Run <code class="text-base-content">/codemyspec:design ui</code> and answer the questions.
+        </strong>
+        There is nothing to configure first.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-5 mt-12">
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+              While you answer
+            </span>
+            <h3 class="card-title mt-1">You watch it fill in.</h3>
+            <p class="text-base-content/70">
+              Your design system updates after every answer, so you can open it in a browser and see
+              your palette and type as you decide. Change your mind while it is still cheap.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-secondary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
+              What you get
+            </span>
+            <h3 class="card-title mt-1">A page, not a document.</h3>
+            <p class="text-base-content/70">
+              One file in your project that documents your choices and renders them live at the same
+              time. Show it to someone and they see the real thing, not a description of it.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-accent shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
+              Afterwards
+            </span>
+            <h3 class="card-title mt-1">Every page has to cite it.</h3>
+            <p class="text-base-content/70">
+              From then on, each page states its layout and behavior before any code exists, and the
+              agent is told to read your design system first rather than invent something.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-base-content/70 mt-10 max-w-2xl leading-relaxed">
+        <span class="font-semibold text-base-content">Roles, not swatches.</span>
+        You assign colors to jobs in your product rather than picking values you like. That is what
+        makes a palette survive contact with features you have not thought of yet.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── PROOF: three real systems ─────────────
+        The strongest asset available. Same interview, three projects, nothing
+        visually in common — and each choice justified by its own domain. This
+        argues the case without copy. --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what comes out" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        Three projects. Three systems. One interview.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          These answered the same five questions and share no palette, no density, and no type
+          treatment.
+        </strong>
+        MetricFlow is an analytics product and wanted to feel alive. Keel is a ledger, and its file
+        says why in one line: low eye-strain for long tax-season sessions.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-5 mt-12">
+        <figure :for={
+          {slug, name, note} <- [
+            {"metric-flow", "MetricFlow",
+             "Custom dark theme, aurora gradient, indigo and cyan, panels with backdrop blur."},
+            {"keel", "Keel",
+             "Light Nord palette, system fonts with tabular figures, credit and debit as semantic colors."}
+          ]
+        }>
+          <img
+            src={"https://images.codemyspec.com/design-system-#{slug}.webp"}
+            alt={"The #{name} design system"}
+            class="w-full rounded-lg border border-base-300"
+            width="1280"
+            height="900"
+            loading="lazy"
+          />
+          <figcaption class="text-sm text-base-content/60 mt-3 leading-relaxed">
+            <span class="font-semibold text-base-content">{name}.</span> {note}
+          </figcaption>
+        </figure>
+      </div>
+
+      <p class="text-base-content/70 mt-10 max-w-2xl leading-relaxed">
+        The subtler thing they prove is what did not happen: none of them look like CodeMySpec. The
+        process does not impose a house style. It makes you decide, then holds every page you build
+        afterward to the decision.
+      </p>
+
+      <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <.link
+          navigate={~p"/documentation/design-system-examples"}
+          class="link link-primary font-medium"
+        >
+          All three, with the reasoning →
+        </.link>
+        <.link
+          navigate={~p"/documentation/design-system-interview"}
+          class="link link-primary font-medium"
+        >
+          The interview procedure in full →
+        </.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── HONEST LIMITS ─────────────
+        Deliberately on the page. Everyone in this category overstates and the
+        reader has been burned by it, so precision is the differentiator. --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what it does not do" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        What this doesn't do, said plainly.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        You have probably been oversold once already, so here is the honest shape of it.
+      </p>
+
+      <ul class="mt-10 max-w-3xl space-y-5">
+        <li :for={
+          claim <- [
+            "Your design system reaches the agent as something it must read, and as a required section on every page before code exists. What does not happen is a machine rendering your finished page and checking it against your design system pixel by pixel. No tool does that today.",
+            "The check confirms your design decisions exist and are complete. It does not confirm the built page obeyed them. Reviewing pages is still yours, with much less to review.",
+            "The instruction points the agent at your design system file, so the file has to exist. Skip the interview and it points at nothing.",
+            "This step is optional. Nothing stops you building pages without it, you just inherit the average again."
+          ]
+        } class="flex gap-4">
+          <span class="hero-minus-small-mini size-5 text-base-content/40 shrink-0 mt-0.5"></span>
+          <span class="text-base-content/70 leading-relaxed">{claim}</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <%!-- ───────────── HOW IT FITS ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="how it fits" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        One of several decisions you make once.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          Design sits alongside the other things CodeMySpec has you settle before building: what the
+          product does, how it is structured, what it runs on.
+        </strong>
+        The pattern is the same every time. You decide once through a structured interview, the
+        decision lands in a file your project keeps, and later work has to reference it.
+      </p>
+      <p class="text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        That is what working a process instead of prompting means in practice. Design is the clearest
+        instance of it, because the cost of not deciding shows up on the page where your customers can
+        see it.
+      </p>
+      <div class="mt-8">
+        <.link navigate={~p"/product"} class="link link-primary font-medium">
+          See the whole process →
+        </.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="questions" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">Straight answers.</h2>
+      <.faq faqs={@faqs} name="design-faq" class="mt-10 max-w-3xl" />
+    </div>
+  </section>
+
+  <%!-- ───────────── CTA ───────────── --%>
+  <section class="bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-20 lg:py-28 text-center">
+      <h2 class="text-4xl md:text-5xl font-bold tracking-tight max-w-3xl mx-auto">
+        The cheapest afternoon in the project.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-5 max-w-xl mx-auto leading-relaxed">
+        It is the one that stops you rebuilding pages later. Building with CodeMySpec is free.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-4 justify-center">
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
+        <.link navigate={~p"/product"} class="btn btn-ghost btn-lg">See the whole process →</.link>
+      </div>
+    </div>
+  </section>
+</Layouts.marketing>

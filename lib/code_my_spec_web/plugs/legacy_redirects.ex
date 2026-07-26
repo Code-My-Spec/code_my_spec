@@ -68,7 +68,11 @@ defmodule CodeMySpecWeb.Plugs.LegacyRedirects do
 
   @custom_redirects %{
                       "/pages/methodology" => "/methodology",
-                      "/docs" => "/documentation"
+                      "/docs" => "/documentation",
+                      # Promoted from landing content to a first-class page: it is a
+                      # service offer with pricing and a booking CTA, and it needed
+                      # FAQPage schema that markdown content cannot produce.
+                      "/landing/vibe-coding-rebuild" => "/vibe-coding-rebuild"
                     }
                     |> Map.merge(
                       Map.new(@retired_feature_pages, fn slug -> {"/pages/#{slug}", "/product"} end)

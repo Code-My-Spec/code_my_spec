@@ -266,7 +266,8 @@ defmodule CodeMySpecWeb.Layouts do
 
       <div class="drawer-content min-h-screen flex flex-col">
         <!-- Navbar — hamburger toggles the drawer on <lg; on lg+ the nav renders
-             inline with a Products submenu (DaisyUI menu details/summary). -->
+             inline, with the feature pages nested under Product as a hover
+             dropdown whose trigger still navigates. -->
         <header class="border-b border-base-300">
           <nav class="navbar max-w-7xl mx-auto px-4">
             <div class="navbar-start">
@@ -301,8 +302,37 @@ defmodule CodeMySpecWeb.Layouts do
               </a>
             </div>
             <div class="navbar-center hidden lg:flex">
+              <%!-- Product is a hover dropdown whose trigger still navigates:
+                   clicking goes to /product, hovering reveals the feature pages
+                   nested under it. `dropdown-hover` also opens on :focus-within,
+                   so keyboard users get it too, and the mobile drawer below
+                   lists everything flat for touch.
+
+                   New feature pages go in this list, not the top level. --%>
               <ul class="menu menu-horizontal menu-md px-1">
-                <li><.link href={~p"/product"}>Product</.link></li>
+                <li class="dropdown dropdown-hover dropdown-bottom">
+                  <.link href={~p"/product"} class="gap-1.5">
+                    Product
+                    <span class="hero-chevron-down-micro size-3 opacity-60"></span>
+                  </.link>
+                  <%!-- w-max sizes the panel to its longest item so nothing wraps;
+                       whitespace-nowrap keeps it that way as items are added. --%>
+                  <ul class="dropdown-content menu menu-sm bg-base-100 border border-base-300 rounded-box z-[1] w-max p-2 shadow-lg mt-1">
+                    <li><.link href={~p"/product"} class="whitespace-nowrap">Overview</.link></li>
+                    <li>
+                      <.link href={~p"/design-system"} class="whitespace-nowrap">Design system</.link>
+                    </li>
+                    <li>
+                      <.link href={~p"/agents"} class="whitespace-nowrap">Supported agents</.link>
+                    </li>
+                    <li>
+                      <.link href={~p"/vibe-coding-rebuild"} class="whitespace-nowrap">
+                        Rebuild service
+                      </.link>
+                    </li>
+                    <li><.link href={~p"/install"} class="whitespace-nowrap">Install</.link></li>
+                  </ul>
+                </li>
                 <li><.link href={~p"/developers"}>Developers</.link></li>
                 <li><.link href={~p"/methodology"}>Method</.link></li>
                 <li><.link href={~p"/pricing"}>Pricing</.link></li>
@@ -353,6 +383,16 @@ defmodule CodeMySpecWeb.Layouts do
                   <li>
                     <a href="/agents" class="hover:text-primary transition-colors">
                       Supported agents
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/design-system" class="hover:text-primary transition-colors">
+                      Design system
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/vibe-coding-rebuild" class="hover:text-primary transition-colors">
+                      Rebuild service
                     </a>
                   </li>
                   <li>
@@ -488,6 +528,8 @@ defmodule CodeMySpecWeb.Layouts do
             <li><.link href={~p"/product"}>Product</.link></li>
             <li><.link href={~p"/developers"}>Developers</.link></li>
             <li><.link href={~p"/agents"}>Supported agents</.link></li>
+            <li><.link href={~p"/design-system"}>Design system</.link></li>
+            <li><.link href={~p"/vibe-coding-rebuild"}>Rebuild service</.link></li>
             <li><.link href={~p"/methodology"}>Method</.link></li>
             <li><.link href={~p"/pricing"}>Pricing</.link></li>
             <li><.link href={~p"/blog"}>Blog</.link></li>

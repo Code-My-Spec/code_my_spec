@@ -35,6 +35,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
       {stories_section(assigns)}
       {repository_section(assigns)}
       {dev_story_section(assigns)}
+      {design_section(assigns)}
       {conclusion_section(assigns)}
 
       <.stories_modal :if={@show_stories_modal} stories={@stories} />
@@ -511,4 +512,34 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
     </div>
     """
   end
+
+  defp design_section(assigns) do
+    ~H"""
+    <section class="border-b border-base-300">
+      <div class="max-w-6xl mx-auto px-6 py-16">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">how it looks</p>
+        <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+          A dark theme that had to feel alive.
+        </h2>
+        <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+          MetricFlow's look was decided once, up front, through a five-question interview rather than page by page. It went custom rather than picking a named theme: a bespoke palette in oklch, indigo and cyan against a deep neutral ground, semi-transparent panels with backdrop blur, and an animated aurora gradient behind the content. A dashboard someone stares at for an hour needs depth cues and needs the numbers to sit forward.
+        </p>
+        <img
+          src="https://images.codemyspec.com/design-system-metric-flow.webp"
+          alt="The MetricFlow design system"
+          class="w-full rounded-lg border border-base-300 mt-8"
+          width="1280"
+          height="900"
+          loading="lazy"
+        />
+        <div class="mt-6">
+          <.link navigate={~p"/design-system"} class="link link-primary font-medium">
+            How the design system step works &rarr;
+          </.link>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
 end

@@ -75,8 +75,47 @@ defmodule CodeMySpecWeb.PageControllerTest do
 
     # A page nobody can navigate to is a page nobody reads. Any new marketing
     # route belongs in the navbar, the mobile drawer, or the footer.
-    for path <- ~w(/product /developers /agents /install /methodology /pricing /blog /documentation) do
+    for path <-
+          ~w(/product /developers /agents /design-system /vibe-coding-rebuild /install /methodology /pricing /blog /documentation) do
       assert body =~ ~s|href="#{path}"|, "expected #{path} to be linked from the layout"
+    end
+  end
+
+  test "GET /vibe-coding-rebuild is a service page with Service and FAQ schema", %{conn: conn} do
+    conn = get(conn, ~p"/vibe-coding-rebuild")
+    body = html_response(conn, 200)
+
+    assert body =~ "Keep the behavior."
+    assert body =~ "Book a call"
+    # Promoted from markdown content precisely so it could carry these.
+    assert body =~ ~s|"@type":"Service"|
+    assert body =~ ~s|"@type":"FAQPage"|
+    assert body =~ "Why trust this over an agency?"
+  end
+
+  test "the retired landing URL 301s to the promoted page", %{conn: conn} do
+    conn = get(conn, "/landing/vibe-coding-rebuild")
+    assert redirected_to(conn, 301) == "/vibe-coding-rebuild"
+  end
+
+  test "GET /design-system states its limits and stays operator-legible", %{conn: conn} do
+    conn = get(conn, ~p"/design-system")
+    body = html_response(conn, 200)
+
+    assert body =~ "Decide how it looks"
+    assert body =~ ~s|"@type":"FAQPage"|
+
+    # The limits are on the page on purpose. Everyone in this category
+    # overstates and this reader has already been oversold once.
+    assert body =~ "do, said plainly."
+    assert body =~ "pixel by pixel"
+
+    # Optional step. Never imply it gates the build.
+    refute body =~ "required step"
+
+    # Operator page: the design step is for people who do not write CSS.
+    for jargon <- ~w(Credo ExUnit OTP GenServer) do
+      refute body =~ jargon, "expected /design-system to avoid #{jargon}"
     end
   end
 

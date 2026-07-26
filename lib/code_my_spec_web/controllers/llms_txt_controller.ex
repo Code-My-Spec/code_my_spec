@@ -22,6 +22,20 @@ defmodule CodeMySpecWeb.LlmsTxtController do
         "Free to build (harness + content engine, your own AI keys), $100/month per user to operate and grow, or built with you from $500 (quoted)"
     },
     %{
+      title: "Design system",
+      url: "/design-system",
+      description:
+        "The optional design step: answer five questions about how your project should look, and " <>
+          "every page built after that has to reference your answers instead of inventing its own"
+    },
+    %{
+      title: "Vibe coding rebuild service",
+      url: "/vibe-coding-rebuild",
+      description:
+        "Done-with-you service: reverse-engineers a broken Lovable, Replit or Bolt app into " <>
+          "written stories and executable specs, then rebuilds against them. Quoted, from $500"
+    },
+    %{
       title: "Supported AI agents",
       url: "/agents",
       description:

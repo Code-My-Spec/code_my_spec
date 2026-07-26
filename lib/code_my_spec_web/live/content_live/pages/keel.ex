@@ -188,6 +188,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Keel do
       {stories_section(assigns)}
       {repository_section(assigns)}
       {dev_story_section(assigns)}
+      {design_section(assigns)}
       {conclusion_section(assigns)}
 
       <.stories_modal :if={@show_stories_modal} stories={@stories} />
@@ -758,4 +759,34 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Keel do
   defp question_status_class(:resolved), do: "badge-success"
   defp question_status_class(:open), do: "badge-warning"
   defp question_status_class(_), do: "badge-ghost"
+
+  defp design_section(assigns) do
+    ~H"""
+    <section class="border-b border-base-300">
+      <div class="max-w-6xl mx-auto px-6 py-16">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-primary">how it looks</p>
+        <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+          Nord, because tax season is long.
+        </h2>
+        <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+          Keel's look was decided once, up front, through a five-question interview rather than page by page. The design system file says why in a single line: a muted blue-grey Nord palette chosen for low eye-strain during long tax-season sessions. System fonts with tabular figures so money and ID columns line up in tables. And credit and debit mapped onto semantic colors, so financial meaning survives a theme change instead of being hard-coded to a hex value.
+        </p>
+        <img
+          src="https://images.codemyspec.com/design-system-keel.webp"
+          alt="The Keel design system"
+          class="w-full rounded-lg border border-base-300 mt-8"
+          width="1280"
+          height="900"
+          loading="lazy"
+        />
+        <div class="mt-6">
+          <.link navigate={~p"/design-system"} class="link link-primary font-medium">
+            How the design system step works &rarr;
+          </.link>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
 end

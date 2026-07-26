@@ -736,6 +736,230 @@ defmodule CodeMySpecWeb.PageController do
     }
   ]
 
+  # Claims verified against source 2026-07-26: `argument-hint: "[architecture|ui|
+  # strategy]"` in the design skill, output at `.code_my_spec/design/
+  # design_system.html` via the daisyUI CDN, and DesignUi appears in zero graph
+  # templates — so this step is genuinely optional and the page must not imply
+  # otherwise. The limits below are the differentiator, not a liability:
+  # everyone in this category overstates and the buyer has already been burned.
+  @design_faqs [
+    %{
+      q: "Do I need to know design, or write any CSS?",
+      a:
+        "No. The step interviews you and offers concrete options for every question, so you are " <>
+          "picking rather than describing. You never open a design tool and you never write a line of " <>
+          "styling."
+    },
+    %{
+      q: "What do I actually end up with?",
+      a:
+        "One page in your own project that documents your choices and renders them live at the same " <>
+          "time, in your colors and your type, with a switch for light and dark. It is plain HTML you " <>
+          "can open in a browser, read, edit, and take anywhere. Because the documentation and the " <>
+          "preview are the same file, they cannot drift apart."
+    },
+    %{
+      q: "Does this stop the AI from ignoring my design system?",
+      a:
+        "It makes ignoring it much harder, and it is worth being precise about how. Your design " <>
+          "system is handed to the agent as something it must read before building, and every page " <>
+          "has to state its design choices before any code exists. What does not happen is a machine " <>
+          "rendering your finished page and comparing it to your design system pixel by pixel. No " <>
+          "tool does that today, and anyone implying otherwise is overstating. Reviewing pages is " <>
+          "still yours, with far less to review because the decisions are already made."
+    },
+    %{
+      q: "Can I change my mind later?",
+      a:
+        "Yes. Run the step again on an existing project and it walks you through revisions instead " <>
+          "of starting over. The file updates as you answer, so you can see your palette and type " <>
+          "while changing your mind is still cheap."
+    },
+    %{
+      q: "Do I have to do this before I build anything?",
+      a:
+        "No, nothing blocks you from building without it. But run it before your first page and " <>
+          "every page after inherits the decision. Run it late and you will be revisiting pages that " <>
+          "guessed."
+    },
+    %{
+      q: "Will my site still look like every other AI-built site?",
+      a:
+        "That sameness comes from nothing having told the model how your project should look, so it " <>
+          "used the average of everything it trained on. Once your choices are written down and every " <>
+          "page has to reference them, the average stops being the default. The decision is the fix, " <>
+          "and the point of this step is that you make it once instead of arguing about colors on " <>
+          "every page."
+    }
+  ]
+
+  # Promoted from `/landing/vibe-coding-rebuild` content on 2026-07-26. It is a
+  # service offer with pricing and a booking CTA, not an essay, so it wanted
+  # components and FAQPage schema that markdown cannot produce. Copy is carried
+  # over intact; only the FAQ presentation changed.
+  @rebuild_faqs [
+    %{
+      q: "Why trust this over an agency?",
+      a:
+        "Look at how cleanup agencies describe the work: audit, refactor, contact us for a quote. " <>
+          "The deliverable is cleaner code, which you cannot evaluate, on a timeline you cannot " <>
+          "verify. This process produces its proof as it goes: the stories and specs land in your " <>
+          "hands early, in plain language, and you check them against your own business before the " <>
+          "rebuild starts. I have not found a cleanup service that hands you the specification as an " <>
+          "artifact you keep. Here it is the point."
+    },
+    %{
+      q: "What do you need from me?",
+      a:
+        "Access to the running app and the code export, plus a few conversations. You are the " <>
+          "oracle for step one: only you know which behaviors are features and which are bugs you " <>
+          "have been living with."
+    },
+    %{
+      q: "Can my current app keep running during the rebuild?",
+      a:
+        "Yes. Nothing in the process modifies your app or its code. The specs drive it through the " <>
+          "browser the way a user would, against a test account or a staging copy. You switch over " <>
+          "when the new app passes."
+    },
+    %{
+      q: "What if I only want the specs?",
+      a:
+        "That is a valid stopping point. The stories and specs are written against your business, " <>
+          "not my stack. Take them anywhere."
+    },
+    %{
+      q: "Doesn't \"never rewrite from scratch\" apply here?",
+      a:
+        "The famous warning is about losing accumulated knowledge: years of edge cases and bug fixes " <>
+          "encoded in old code nobody remembers. The warning is correct, and this process is built " <>
+          "around it. The first three steps capture that knowledge in executable form before a single " <>
+          "line gets rebuilt. A rewrite without specs is a gamble; a rewrite against specs extracted " <>
+          "from the running system is a migration with a checklist. The warning also assumes " <>
+          "battle-tested code carrying years of fixes. A vibe coded app is months old and carries the " <>
+          "opposite: generated bulk nobody ever reviewed."
+    }
+  ]
+
+  def vibe_coding_rebuild(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/vibe-coding-rebuild"
+
+    meta = %{
+      page_title: "Vibe Coding Rebuild & Cleanup Service | CodeMySpec",
+      meta_description:
+        "Your Lovable or Replit app broke under real use. We reverse-engineer it into written " <>
+          "specs, then rebuild it on a stack you own. Quoted straight, from $500.",
+      og_title: "Vibe Coding Rebuild: Keep the Behavior, Lose the Slop",
+      og_description:
+        "The app that broke is still a working specification of your business. We extract the " <>
+          "stories, pin the behavior in executable specs, and rebuild on a stack you own."
+    }
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "Service",
+            "@id" => "#{canonical}#service",
+            "name" => "Vibe Coding Rebuild",
+            "url" => canonical,
+            "serviceType" => "Software rebuild and specification recovery",
+            "description" => meta.meta_description,
+            "provider" => %{"@id" => "#{base_url}/#organization"},
+            "offers" => %{
+              "@type" => "Offer",
+              "price" => "500",
+              "priceCurrency" => "USD",
+              "description" => "Quoted per engagement, $500 minimum"
+            }
+          },
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "BreadcrumbList",
+            "itemListElement" => [
+              %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+              %{
+                "@type" => "ListItem",
+                "position" => 2,
+                "name" => "Vibe coding rebuild",
+                "item" => canonical
+              }
+            ]
+          },
+          CodeMySpecWeb.MarketingComponents.faq_json_ld(@rebuild_faqs)
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :vibe_coding_rebuild,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image:
+        CodeMySpecWeb.ImageUrl.image_url("og-landing-vibe-coding-rebuild.png", base_url),
+      canonical_url: canonical,
+      json_ld_list: json_ld_list,
+      faqs: @rebuild_faqs
+    )
+  end
+
+  def design_system(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/design-system"
+
+    meta = %{
+      page_title: "Design System: Decide How It Looks Once | CodeMySpec",
+      meta_description:
+        "Answer five questions about how your project should look. Every page built after that " <>
+          "references your answers instead of inventing its own. No design tools, no CSS.",
+      og_title: "Decide how it looks once",
+      og_description:
+        "Vibe coded projects look alike because nothing told the model how yours should look. Five " <>
+          "questions, one afternoon, and a design system every page after that has to follow."
+    }
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "BreadcrumbList",
+            "itemListElement" => [
+              %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+              %{
+                "@type" => "ListItem",
+                "position" => 2,
+                "name" => "Product",
+                "item" => "#{base_url}/product"
+              },
+              %{
+                "@type" => "ListItem",
+                "position" => 3,
+                "name" => "Design system",
+                "item" => canonical
+              }
+            ]
+          },
+          CodeMySpecWeb.MarketingComponents.faq_json_ld(@design_faqs)
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :design_system,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-design-system.png", base_url),
+      canonical_url: canonical,
+      json_ld_list: json_ld_list,
+      faqs: @design_faqs
+    )
+  end
+
   def agents(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = "#{base_url}/agents"

@@ -1,0 +1,257 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+  <%!-- ───────────── HERO ───────────── --%>
+  <section class="bg-base-200 border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <div class="badge badge-primary badge-outline gap-2 mb-6">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+        Built with you · quoted straight · from $500
+      </div>
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] max-w-4xl">
+        Keep the behavior. <span class="text-primary">Lose the slop.</span>
+      </h1>
+      <p class="text-lg text-base-content/70 mt-6 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">Cleanup is the wrong product.</strong>
+        If your Lovable or Replit or Bolt app is breaking under real customers, the fix is not paying
+        someone to patch generated code that nobody, including the machine that wrote it, ever
+        understood. The patches compound the mess.
+      </p>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        The fix is extracting what your app already knows and rebuilding on it. Here is how that
+        works, and what it costs.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center gap-4">
+        <a href="https://cal.com/john-s10-davenport" class="btn btn-primary btn-lg">Book a call</a>
+        <a href="#process" class="btn btn-ghost btn-lg">See the process</a>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── EVIDENCE ─────────────
+        Two sourced numbers, pulled out of the prose so they land. Both are
+        external findings, cited, not our claims. --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="you are not the only one" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        Your situation is normal, and it is measured.
+      </h2>
+
+      <div class="grid md:grid-cols-2 gap-5 mt-10">
+        <a
+          href="https://thehackernews.com/2026/05/what-2000-exposed-vibe-coded-apps.html"
+          target="_blank"
+          rel="noopener"
+          class="card bg-base-100 border border-base-300 hover:border-primary transition-colors"
+        >
+          <div class="card-body">
+            <span class="text-4xl font-bold text-primary tabular-nums">2,000+</span>
+            <p class="text-base-content/70 mt-1 leading-relaxed">
+              vibe coded apps found publicly exposing sensitive data in a May 2026 scan, most without
+              basic authentication.
+            </p>
+            <span class="text-xs text-base-content/50 mt-2">The Hacker News →</span>
+          </div>
+        </a>
+
+        <div class="card bg-base-100 border border-base-300">
+          <div class="card-body">
+            <span class="text-4xl font-bold text-primary tabular-nums">2.74×</span>
+            <p class="text-base-content/70 mt-1 leading-relaxed">
+              more security flaws in AI-generated code than human-written code, per Veracode.
+            </p>
+            <span class="text-xs text-base-content/50 mt-2">Veracode</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-lg text-base-content/70 mt-10 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">Your prototype was never the problem.</strong>
+        Shipping the prototype as the product was.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE REFRAME ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="the reframe" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        Your broken app is a working specification.
+      </h2>
+      <div class="mt-4 max-w-2xl space-y-4 text-lg text-base-content/70 leading-relaxed">
+        <p>
+          The app in front of you demonstrates, click by click, how your business is supposed to work.
+          Which fields matter on the intake form. What happens when an order is paid but not
+          fulfilled. Who gets the email and when.
+        </p>
+        <p>
+          You spent weeks encoding that knowledge through prompts, and it lives in the running app
+          right now, even though the code underneath is a hairball.
+        </p>
+      </div>
+
+      <blockquote class="mt-10 border-l-4 border-primary pl-6 max-w-2xl">
+        <p class="text-2xl md:text-3xl font-medium leading-snug tracking-tight">
+          That behavior is the asset. <span class="text-primary">The code is disposable.</span>
+        </p>
+      </blockquote>
+
+      <p class="text-base-content/70 mt-10 max-w-2xl leading-relaxed">
+        Code used to be expensive, so the default for a broken app was salvage: refactor, patch, limp
+        along. That math assumed the costly thing was writing code. It is not anymore. The costly
+        thing now is a precise understanding of what the app is supposed to do, and your running app
+        already contains it.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE PROCESS ───────────── --%>
+  <section id="process" class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="the process" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        Five steps, and you hold the proof at every one.
+      </h2>
+
+      <ol class="mt-12 space-y-4">
+        <li
+          :for={
+            {n, title, body} <- [
+              {"1", "Extract the stories",
+               "I point Claude Code at your codebase and your running app and pull out the user stories: every workflow, every rule, every edge case your prompting baked in. You review the list. You will find things you forgot were in there, and things that were wrong all along. Better to know before the rebuild than after."},
+              {"2", "Pin the behavior in executable specs",
+               "I write behavior specs against your running app through the browser: log in as this user, submit this form, expect this result. The specs capture your app's behavior, not its code. That makes them portable. They describe your business, not your codebase."},
+              {"3", "Recover the business rules",
+               "Stories plus specs plus a read of the code surface the real rules of your operation, in plain language you can check. This document outlives any codebase."},
+              {"4", "Rebuild against the specs",
+               "I build spec first on a deliberately boring stack that stays up. The specs written against your old app now run against the new one. When they pass, the rebuild is done. Done is a test result, not a vibe."},
+              {"5", "You keep everything",
+               "Stories, specs, rules document, code. If you ever leave, you leave with the full written record of how your software works. No vendor, including me, gets to hold that hostage again."}
+            ]
+          }
+          class="card bg-base-100 border border-base-300 border-l-4 border-l-primary shadow-sm"
+        >
+          <div class="card-body flex-row gap-5 items-start">
+            <span class="text-2xl font-bold text-primary tabular-nums shrink-0 leading-none pt-1">
+              {n}
+            </span>
+            <div class="min-w-0">
+              <h3 class="font-semibold text-lg leading-snug">{title}</h3>
+              <p class="text-base-content/70 mt-1.5 leading-relaxed">{body}</p>
+            </div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="mt-10 max-w-2xl space-y-4 text-base-content/70 leading-relaxed">
+        <p>
+          <span class="font-semibold text-base-content">None of this is my invention.</span>
+          It is characterization testing, Michael Feathers' twenty-year-old discipline for taming
+          legacy code: capture what the system actually does, then hold it steady while you replace
+          everything underneath. It was always the right way to take over a codebase nobody
+          understands. It was also expensive enough that almost nobody did it. Agents changed the
+          price, not the idea.
+        </p>
+        <p>
+          And I will be straight with you: the spec-driven build loop is how I build and run
+          CodeMySpec every day, in the open. Pointing that discipline backwards at an existing app is
+          the newer move, and on the call I will tell you exactly how proven each step is.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── PRICING ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what it costs" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        A conversation, then a quote.
+      </h2>
+
+      <div class="grid md:grid-cols-3 gap-5 mt-10">
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+              The rebuild
+            </span>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="text-3xl font-bold">$500</span>
+              <span class="text-base-content/60">minimum, quoted</span>
+            </div>
+            <p class="text-base-content/70 mt-2 leading-relaxed">
+              A small app with a handful of workflows lands close to that. A real operation costs real
+              money, and you hear a specific number before anything starts. No hourly meter.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-base-content/50">
+              Once it is live
+            </span>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="text-3xl font-bold">$100</span>
+              <span class="text-base-content/60">per user, per month</span>
+            </div>
+            <p class="text-base-content/70 mt-2 leading-relaxed">
+              Running it: email on your domain, live chat, publishing, reporting.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-base-content/50">
+              The build tooling
+            </span>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="text-3xl font-bold">Free</span>
+            </div>
+            <p class="text-base-content/70 mt-2 leading-relaxed">
+              Stays free, whether or not you ever hire me.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8">
+        <.link navigate={~p"/pricing"} class="link link-primary font-medium">See full pricing →</.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="questions" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3">Straight answers.</h2>
+      <.faq faqs={@faqs} name="rebuild-faq" class="mt-10 max-w-3xl" />
+
+      <p class="mt-10 max-w-2xl text-sm text-base-content/60 leading-relaxed">
+        If your app is holding up and you would rather drive the rebuild yourself, the
+        <.link navigate={~p"/product"} class="link link-hover text-base-content/80">
+          harness is free to use
+        </.link>
+        and this is the same process it runs.
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── CTA ───────────── --%>
+  <section class="bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-20 lg:py-28 text-center">
+      <h2 class="text-4xl md:text-5xl font-bold tracking-tight max-w-3xl mx-auto">
+        Bring what's broken.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-5 max-w-xl mx-auto leading-relaxed">
+        You will get a straight answer on whether a rebuild makes sense, and what it would cost.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-4 justify-center">
+        <a href="https://cal.com/john-s10-davenport" class="btn btn-primary btn-lg">Book a call</a>
+        <.link navigate={~p"/product"} class="btn btn-ghost btn-lg">See how it works →</.link>
+      </div>
+    </div>
+  </section>
+</Layouts.marketing>

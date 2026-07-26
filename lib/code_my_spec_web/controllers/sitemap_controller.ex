@@ -15,6 +15,8 @@ defmodule CodeMySpecWeb.SitemapController do
     "/",
     "/product",
     "/agents",
+    "/design-system",
+    "/vibe-coding-rebuild",
     "/developers",
     "/install",
     "/pricing",
