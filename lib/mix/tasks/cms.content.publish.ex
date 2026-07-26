@@ -45,6 +45,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
       # Skip the confirmation prompt (CI, scripts)
       MIX_ENV=dev_cli mix cms.content.publish --yes
 
+      # Send a specific deploy key, when the target server's DEPLOY_KEY env var
+      # differs from the one stored on the project. Not persisted.
+      MIX_ENV=prod_cli mix cms.content.publish --deploy-key "$DEPLOY_KEY"
+
   A file with frontmatter errors is staged as an error row and blocks the
   publish. The task names every offending file so the fix is a re-run away.
   """
@@ -64,7 +68,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
 
   @default_project "Code My Spec"
 
-  @switches [project: :string, sync_only: :boolean, yes: :boolean]
+  @switches [project: :string, sync_only: :boolean, yes: :boolean, deploy_key: :string]
   @aliases [p: :project, y: :yes]
 
   @impl Mix.Task
@@ -72,9 +76,14 @@ defmodule Mix.Tasks.Cms.Content.Publish do
     {opts, _rest} = OptionParser.parse!(args, strict: @switches, aliases: @aliases)
 
     ensure_cli_env!()
-    Mix.Task.run("app.start")
+    start_minimal!()
 
-    project = fetch_project!(Keyword.get(opts, :project, @default_project))
+    project =
+      opts
+      |> Keyword.get(:project, @default_project)
+      |> fetch_project!()
+      |> override_deploy_key(opts[:deploy_key])
+
     scope = build_scope!(project)
 
     print_target(project)
@@ -85,6 +94,35 @@ defmodule Mix.Tasks.Cms.Content.Publish do
     else
       confirm!(project, Keyword.get(opts, :yes, false))
       publish!(scope)
+    end
+  end
+
+  # Publishing needs the database, the vault (project AWS creds and the deploy
+  # key are Cloak-encrypted at rest) and an HTTP client. It does NOT need the
+  # local web endpoints or the MCP servers — and starting them collides with the
+  # `cms` service on :4003/:4004, which is running whenever you are actually
+  # working. `app.start` booted everything and died with :eaddrinuse, so start
+  # only what publishing uses.
+  defp start_minimal! do
+    Mix.Task.run("app.config")
+    Application.ensure_all_started(:ecto_sql)
+    Application.ensure_all_started(:req)
+
+    # Environments.Registry too: Scope.for_local_project/1 resolves the project's
+    # working directory through it.
+    children = [
+      CodeMySpec.Vault,
+      CodeMySpec.Repo,
+      CodeMySpec.Environments.registry_child_spec()
+    ]
+
+    case Supervisor.start_link(children, strategy: :one_for_one, name: __MODULE__.Supervisor) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Mix.shell().error("Could not start the database: #{inspect(reason)}")
+        System.halt(1)
     end
   end
 
@@ -121,6 +159,17 @@ defmodule Mix.Tasks.Cms.Content.Publish do
 
         System.halt(1)
     end
+  end
+
+  # In-memory only: the receiving server compares the bearer token against its
+  # own DEPLOY_KEY env var, so when those drift the fix is to send the key the
+  # server actually has rather than to rewrite the stored one. Nothing is
+  # persisted, so this cannot corrupt the project row.
+  defp override_deploy_key(project, nil), do: project
+
+  defp override_deploy_key(project, key) do
+    Mix.shell().info("Using --deploy-key override (stored key left untouched).")
+    %{project | deploy_key: key}
   end
 
   defp build_scope!(project) do
