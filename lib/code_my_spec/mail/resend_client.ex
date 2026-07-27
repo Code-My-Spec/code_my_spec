@@ -21,8 +21,6 @@ defmodule CodeMySpec.Mail.ResendClient do
   can be stubbed without hitting Resend.
   """
 
-  require Logger
-
   @api_base "https://api.resend.com"
   @default_region "us-east-1"
 

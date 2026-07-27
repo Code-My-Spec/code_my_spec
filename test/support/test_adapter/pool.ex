@@ -18,8 +18,6 @@ defmodule CodeMySpec.Support.TestAdapter.Pool do
 
   use GenServer
 
-  require Logger
-
   @code_repo_fixture "../code_my_spec_test_repos/test_phoenix_project"
   @content_repo_fixture "../code_my_spec_test_repos/test_content_repo"
 

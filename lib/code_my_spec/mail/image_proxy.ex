@@ -16,8 +16,6 @@ defmodule CodeMySpec.Mail.ImageProxy do
   size, and only serves `image/*` responses.
   """
 
-  require Logger
-
   @salt "mail-image-proxy"
   @max_age 60 * 60 * 24 * 7
   @max_bytes 10_000_000

@@ -17,7 +17,6 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
   """
 
   use Phoenix.Channel
-  require Logger
 
   alias CodeMySpec.AgentHarness
   alias CodeMySpec.AgentHarness.WorkSource
@@ -40,7 +39,10 @@ defmodule CodeMySpecLocalWeb.HarnessChannel do
     %{external_id: external_id, role: role} = socket.assigns
 
     {:ok, _ref} =
-      Presence.track(socket, role, %{online_at: System.system_time(:second), external_id: external_id})
+      Presence.track(socket, role, %{
+        online_at: System.system_time(:second),
+        external_id: external_id
+      })
 
     {:noreply, socket}
   end

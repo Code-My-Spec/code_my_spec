@@ -99,7 +99,7 @@ defmodule CodeMySpec.Environments do
 
   ## Parameters
 
-  - `type` - Environment type (`:cli`, `:server`, `:vscode`)
+  - `type` - Environment type (`:cli`, `:local`, `:vscode`)
   - `opts` - Options passed to the implementation's `create/1` function
 
   ## Returns
@@ -112,8 +112,8 @@ defmodule CodeMySpec.Environments do
       # Create CLI environment with tmux
       {:ok, env} = Environments.create(:cli, session_id: 123)
 
-      # Create server environment
-      {:ok, env} = Environments.create(:server)
+      # Create local environment
+      {:ok, env} = Environments.create(:local)
   """
   @spec create(type :: atom(), opts :: keyword()) ::
           {:ok, Environment.t()} | {:error, term()}
@@ -181,14 +181,12 @@ defmodule CodeMySpec.Environments do
 
   defp impl(:memory), do: CodeMySpec.Support.InMemoryEnvironment
 
-  defp impl(:server) do
-    # Server implementation not yet created
-    {:error, "Server environment not implemented"}
-  end
-
-  defp impl(type) do
-    {:error, "Unknown environment type: #{inspect(type)}"}
-  end
+  # No `:server` clause and no catch-all on purpose. `Environment.type` is
+  # `Ecto.Enum, values: [:cli, :local, :vscode]`, so neither was reachable —
+  # and both returned an `{:error, _}` tuple where every caller immediately
+  # does `impl(type).some_function(...)`, which would have crashed with
+  # "tuple.some_function/N is undefined" rather than surfacing the error.
+  # An unknown type now raises FunctionClauseError, naming the real problem.
 
   def environment_setup_command(environment, attrs) do
     impl(environment).environment_setup_command(environment, attrs)

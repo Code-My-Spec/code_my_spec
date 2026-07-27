@@ -150,12 +150,21 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     end
   end
 
+  # Task dispatch goes through `apply/3` rather than `module.command(...)`.
+  #
+  # `resolve_session_type/2` returns one of ~30 task modules, and their
+  # `command/2` argument shapes genuinely differ (`%{component_id: _}` for
+  # component tasks, `%{project_id: _}` for project ones). The session type
+  # decides which module comes back, so the pairing is always correct at
+  # runtime — but that correlation isn't expressible to the type checker,
+  # which sees the whole union and reports every combination it can't rule
+  # out. `apply/3` states plainly that this is dynamic dispatch.
   defp run_bootstrap_task(scope, external_id, session_type) do
     with {:ok, _} <- validate_external_id(external_id),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil) do
       # Bootstrap tasks get a minimal scope — just environment/cwd, no project needed
       bootstrap_scope = ensure_environment(scope)
-      {:ok, prompt} = agent_task_module.command(bootstrap_scope, %{})
+      {:ok, prompt} = apply(agent_task_module, :command, [bootstrap_scope, %{}])
       {:ok, prompt, %{}}
     end
   end
@@ -168,7 +177,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, session} <- find_or_create_session(scope, external_id, agent_task_module),
          {:ok, _session} <- init_session_state(scope, session, agent_task_module),
-         {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id}) do
+         {:ok, prompt} <-
+           apply(agent_task_module, :command, [scope, %{project_id: scope.active_project_id}]) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -199,7 +209,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, _session} <- create_session(scope, external_id, agent_task_module, nil),
-         {:ok, prompt} <- agent_task_module.command(scope, %{project_id: scope.active_project_id}) do
+         {:ok, prompt} <-
+           apply(agent_task_module, :command, [scope, %{project_id: scope.active_project_id}]) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -212,7 +223,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
          {:ok, _session} <- create_topic_session(scope, external_id, agent_task_module, topic),
          task_attrs <- %{project_id: scope.active_project_id, requirement_name: topic},
-         {:ok, prompt} <- agent_task_module.command(scope, task_attrs) do
+         {:ok, prompt} <- apply(agent_task_module, :command, [scope, task_attrs]) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
@@ -226,10 +237,10 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, agent_task_module} <- resolve_session_type(session_type, component),
          {:ok, _session} <- create_session(scope, external_id, agent_task_module, component),
          {:ok, prompt} <-
-           agent_task_module.command(scope, %{
-             component_id: component.id,
-             project_id: scope.active_project_id
-           }) do
+           apply(agent_task_module, :command, [
+             scope,
+             %{component_id: component.id, project_id: scope.active_project_id}
+           ]) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
