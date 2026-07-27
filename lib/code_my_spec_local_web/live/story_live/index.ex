@@ -74,17 +74,46 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
               >
                 {story.title}
               </h2>
-              <div
-                :if={is_nil(story.component_id)}
-                class="alert alert-warning py-1 px-3 flex items-center gap-2"
-              >
-                <.icon name="hero-exclamation-triangle" class="h-4 w-4" />
-                <span class="text-sm">No Component</span>
+              <div class="flex items-center gap-2">
+                <span
+                  :if={story.ready_for_dev == true}
+                  data-test="story-ready"
+                  class="badge badge-success"
+                >
+                  Ready for development
+                </span>
+                <span
+                  :if={story.ready_for_dev != true}
+                  data-test="story-not-ready"
+                  class="badge badge-ghost"
+                >
+                  Parked
+                </span>
+                <button
+                  type="button"
+                  phx-click="toggle_story_ready"
+                  phx-value-id={story.id}
+                  data-test="toggle-story-ready"
+                  class="btn btn-ghost btn-xs"
+                >
+                  {if story.ready_for_dev == true, do: "Park", else: "Release"}
+                </button>
+                <div
+                  :if={is_nil(story.component_id)}
+                  class="alert alert-warning py-1 px-3 flex items-center gap-2"
+                >
+                  <.icon name="hero-exclamation-triangle" class="h-4 w-4" />
+                  <span class="text-sm">No Component</span>
+                </div>
               </div>
             </div>
 
             <p class="text-base-content/80 mb-4 leading-relaxed">
-              {story.description}
+              {story.story || story.description}
+            </p>
+
+            <p :if={story.notes not in [nil, ""]} class="text-sm text-base-content/60 mb-4 italic">
+              Notes: {story.notes}
             </p>
 
             <div :if={@show_criteria} class="mb-4">
@@ -231,6 +260,20 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
     {:ok, _} = Stories.delete_story(scope, story)
 
     {:noreply, stream_delete(socket, :stories, story)}
+  end
+
+  @impl true
+  def handle_event("toggle_story_ready", %{"id" => id}, socket) do
+    scope = socket.assigns.scope
+    story = Stories.get_story!(scope, id)
+
+    case Stories.update_story(scope, story, %{ready_for_dev: !(story.ready_for_dev == true)}) do
+      {:ok, updated} ->
+        {:noreply, stream_insert(socket, :stories, updated)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not change readiness: #{inspect(reason)}")}
+    end
   end
 
   @impl true

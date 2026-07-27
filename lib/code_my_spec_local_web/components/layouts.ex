@@ -158,6 +158,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <div class="local-sidebar-eyebrow">// data</div>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}"} active={@section == :overview}>Overview</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/stories"} active={@section in [:stories, :scheduler]}>Stories</.sidebar_item>
+      <.sidebar_item to={~p"/projects/#{project_slug(@project)}/epics"} active={@section == :epics}>Epics</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/requirements"} active={@section in [:requirements, :requirements_stories]}>Requirements</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/requirements/graph"} active={@section == :requirements_graph}>Graph</.sidebar_item>
       <.sidebar_item to={~p"/projects/#{project_slug(@project)}/architecture"} active={@section == :architecture}>Architecture</.sidebar_item>
@@ -241,6 +242,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
   defp section_label(:requirements_graph), do: "Requirements Graph"
   defp section_label(:architecture), do: "Architecture"
   defp section_label(:stories), do: "Stories"
+  defp section_label(:epics), do: "Epics"
   defp section_label(:scheduler), do: "Scheduler"
   defp section_label(:personas), do: "Personas"
   defp section_label(:issues), do: "Issues"
@@ -249,8 +251,12 @@ defmodule CodeMySpecLocalWeb.Layouts do
   defp section_label(:knowledge), do: "Knowledge Base"
   defp section_label(:project_knowledge), do: "Project Knowledge"
   defp section_label(:projects), do: "Projects"
-  defp section_label(other) when is_atom(other), do: other |> Atom.to_string() |> String.capitalize()
+  # `nil` is an atom, so this has to precede the catch-all below — otherwise a
+  # page with no `:section` renders the string "Nil" in the breadcrumb.
   defp section_label(nil), do: nil
+
+  defp section_label(other) when is_atom(other),
+    do: other |> Atom.to_string() |> String.capitalize()
 
   defp section_path(nil), do: "/overview"
   defp section_path(section) do

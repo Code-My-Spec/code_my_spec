@@ -3538,6 +3538,15 @@
   .max-h-96 {
     max-height: calc(var(--spacing) * 96);
   }
+  .max-h-\[60vh\] {
+    max-height: 60vh;
+  }
+  .min-h-14 {
+    min-height: calc(var(--spacing) * 14);
+  }
+  .min-h-24 {
+    min-height: calc(var(--spacing) * 24);
+  }
   .min-h-\[200px\] {
     min-height: 200px;
   }
@@ -3651,6 +3660,9 @@
       outline: 2px solid currentColor;
       outline-offset: 2px;
     }
+  }
+  .cursor-grab {
+    cursor: grab;
   }
   .cursor-move {
     cursor: move;
@@ -4078,6 +4090,9 @@
   .py-2 {
     padding-block: calc(var(--spacing) * 2);
   }
+  .py-3 {
+    padding-block: calc(var(--spacing) * 3);
+  }
   .py-3\.5 {
     padding-block: calc(var(--spacing) * 3.5);
   }
@@ -4328,6 +4343,9 @@
   }
   .opacity-0 {
     opacity: 0%;
+  }
+  .opacity-40 {
+    opacity: 40%;
   }
   .opacity-50 {
     opacity: 50%;
@@ -4644,6 +4662,11 @@
       }
     }
   }
+  .active\:cursor-grabbing {
+    &:active {
+      cursor: grabbing;
+    }
+  }
   .sm\:inline {
     @media (width >= 40rem) {
       display: inline;
@@ -4955,9 +4978,19 @@
       display: table-cell;
     }
   }
+  .lg\:max-h-\[85vh\] {
+    @media (width >= 64rem) {
+      max-height: 85vh;
+    }
+  }
   .lg\:max-h-\[calc\(100vh-7rem\)\] {
     @media (width >= 64rem) {
       max-height: calc(100vh - 7rem);
+    }
+  }
+  .lg\:grid-cols-2 {
+    @media (width >= 64rem) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
   .lg\:grid-cols-3 {
@@ -4968,6 +5001,11 @@
   .lg\:grid-cols-\[20rem_1fr_22rem\] {
     @media (width >= 64rem) {
       grid-template-columns: 20rem 1fr 22rem;
+    }
+  }
+  .lg\:overflow-y-auto {
+    @media (width >= 64rem) {
+      overflow-y: auto;
     }
   }
   .lg\:px-8 {

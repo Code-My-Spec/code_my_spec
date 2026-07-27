@@ -1,6 +1,14 @@
 // Local web LiveView setup (port 4003, localhost only)
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
+import {hooks as colocatedHooks} from "phoenix-colocated/code_my_spec"
+import Sortable from "../vendor/Sortable.min.js"
+
+// Colocated hooks defined in local LiveViews (`:type={Phoenix.LiveView.ColocatedHook}`)
+// were never registered here, so every one of them — including the story
+// scheduler's drag-and-drop — was dead on the local app. Sortable is exposed
+// globally because those hooks reach for `window.Sortable`.
+window.Sortable = Sortable
 // graphology + sigma loaded via script tags in root layout (UMD globals)
 
 function themeVar(name) {
@@ -393,7 +401,7 @@ ${outHtml || "  (none)"}`
 let csrfToken = document.querySelector("meta[name='csrf-token']")?.getAttribute("content")
 let liveSocket = new LiveSocket("/local-live", Socket, {
   params: {_csrf_token: csrfToken},
-  hooks: Hooks
+  hooks: {...colocatedHooks, ...Hooks}
 })
 
 liveSocket.connect()

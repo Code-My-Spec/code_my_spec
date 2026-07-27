@@ -10,6 +10,10 @@ defmodule CodeMySpec.Stories.Story do
           id: integer() | nil,
           title: String.t(),
           description: String.t(),
+          story: String.t() | nil,
+          notes: String.t() | nil,
+          ready_for_dev: boolean(),
+          epic_id: Ecto.UUID.t() | nil,
           acceptance_criteria: [String.t()],
           criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
           tags: [CodeMySpec.Tags.Tag.t()] | Ecto.Association.NotLoaded.t(),
@@ -31,7 +35,13 @@ defmodule CodeMySpec.Stories.Story do
   def field_docs do
     %{
       title: "Story title, e.g. 'User Login Feature'",
-      description: "User story in 'As a [role], I want [goal] so that [value]' format",
+      description: "Legacy alias for `story`; kept in sync automatically",
+      story: "User story in 'As a [role], I want [goal] so that [value]' format",
+      notes: "Working notes for the agent — mechanism, dependencies, caveats",
+      ready_for_dev:
+        "Whether the story is released for development. Stories produce no " <>
+          "requirements until this is true. New stories start false",
+      epic_id: "Epic this story belongs to (a story belongs to at most one)",
       acceptance_criteria: "List of acceptance criteria strings",
       priority: "Priority order (1 = highest). Lower numbers are higher priority",
       status: "Story status: in_progress, completed, or dirty",
@@ -41,7 +51,17 @@ defmodule CodeMySpec.Stories.Story do
 
   schema "stories" do
     field :title, :string
+    # `description` is the legacy field. `story` is the user-story sentence
+    # ("As an X, I want Y, so that Z") and `notes` is the agent's working
+    # scratch space. The two are kept in sync on write until `description`
+    # is retired — see `sync_story_and_description/1`.
     field :description, :string
+    field :story, :string
+    field :notes, :string
+    # Pace control. A story produces no requirements until it is released,
+    # and new stories start parked. The default lives here rather than in
+    # the migration.
+    field :ready_for_dev, :boolean, default: false
     field :acceptance_criteria, {:array, :string}
     # `:active` is a legacy status that predates the narrowed enum
     # (`:in_progress | :completed | :dirty`). Accepted on read to
@@ -64,6 +84,7 @@ defmodule CodeMySpec.Stories.Story do
     belongs_to :first_version, PaperTrail.Version
     belongs_to :current_version, PaperTrail.Version, on_replace: :update
     belongs_to :component, CodeMySpec.Components.Component, type: :binary_id
+    belongs_to :epic, CodeMySpec.Epics.Epic, type: :binary_id
 
     timestamps(type: :utc_datetime)
   end
@@ -74,17 +95,22 @@ defmodule CodeMySpec.Stories.Story do
     |> cast(attrs, [
       :title,
       :description,
+      :story,
+      :notes,
+      :ready_for_dev,
       :status,
       :priority,
       :locked_at,
       :lock_expires_at,
       :locked_by,
       :project_id,
-      :component_id
+      :component_id,
+      :epic_id
     ])
+    |> sync_story_and_description()
     |> validate_required([
       :title,
-      :description
+      :story
     ])
     |> cast_assoc(:criteria,
       with: &Criterion.nested_changeset/2,
@@ -93,6 +119,35 @@ defmodule CodeMySpec.Stories.Story do
     )
     |> unique_constraint([:title, :project_id])
   end
+
+  # Transitional: `description` and `story` hold the same user-story
+  # sentence while both columns exist. New callers write `story`, legacy
+  # callers write `description`, and whichever arrives is copied to the
+  # other so all 160-odd existing readers keep working. Delete this once
+  # `description` is dropped.
+  # Keyed on *changes*, not fields: updating only `description` on a story
+  # that already has `story` set must move both, or a read returns the stale
+  # sentence. When both change, the caller meant what it said.
+  defp sync_story_and_description(changeset) do
+    story_change = get_change(changeset, :story)
+    description_change = get_change(changeset, :description)
+
+    cond do
+      present?(story_change) and is_nil(description_change) ->
+        put_change(changeset, :description, story_change)
+
+      present?(description_change) and is_nil(story_change) ->
+        put_change(changeset, :story, description_change)
+
+      true ->
+        changeset
+    end
+  end
+
+  defp present?(nil), do: false
+  defp present?(""), do: false
+  defp present?(value) when is_binary(value), do: String.trim(value) != ""
+  defp present?(_), do: false
 
   @doc false
   def lock_changeset(story, attrs) do

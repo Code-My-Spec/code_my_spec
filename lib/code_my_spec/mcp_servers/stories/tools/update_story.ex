@@ -31,6 +31,19 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
         "New description in 'As a [role], I want [goal] so that [value]' format. " <>
           "Role must be a real human, not a system or technical component (optional)"
 
+    field :story, :string,
+      doc:
+        "User-story sentence in 'As a [role], I want [goal] so that [value]' format. " <>
+          "Keep it to the sentence — mechanism and caveats belong in `notes` (optional)"
+
+    field :notes, :string,
+      doc: "Working notes — mechanism, dependencies, caveats (optional)"
+
+    field :ready_for_dev, :boolean,
+      doc:
+        "Release the story for development, or park it. Parked stories produce " <>
+          "no requirements in the development graph (optional)"
+
     field :acceptance_criteria, {:list, :string},
       doc: "Replace unverified criteria with these (optional)"
 

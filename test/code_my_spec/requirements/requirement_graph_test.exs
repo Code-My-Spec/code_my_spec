@@ -86,6 +86,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _story} =
         Stories.create_story(scope, %{
+        ready_for_dev: true,
           title: "Test Story",
           description: "As a user...",
           acceptance_criteria: ["AC1"]
@@ -125,6 +126,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _} =
         Stories.create_story(scope, %{
+        ready_for_dev: true,
           title: "Test Story",
           description: "As a user...",
           acceptance_criteria: ["AC1"]
@@ -233,6 +235,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _story} =
         Stories.create_story(scope, %{
+        ready_for_dev: true,
           title: "User Login",
           description: "As a user...",
           acceptance_criteria: ["AC1"]
@@ -279,6 +282,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _story} =
         Stories.create_story(scope, %{
+        ready_for_dev: true,
           title: "Registration",
           description: "As a user...",
           acceptance_criteria: ["AC1"]

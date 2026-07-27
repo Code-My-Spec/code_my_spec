@@ -249,6 +249,7 @@ defmodule CodeMySpec.Requirements.ProjectGraphTest do
     # Create a story linked to the context
     {:ok, story} =
       Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "User Registration",
         description: "As a user, I can register",
         acceptance_criteria: ["Can create account"]

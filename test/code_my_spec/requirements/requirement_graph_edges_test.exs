@@ -31,6 +31,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       context = create_component(scope, "MyApp.Accounts", "context")
 
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"],
@@ -54,6 +55,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       context = create_component(scope, "MyApp.Accounts", "context")
 
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"],
@@ -85,6 +87,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {:ok, story} =
         Stories.create_story(scope, %{
+        ready_for_dev: true,
           title: "Test Story",
           description: "As a user...",
           acceptance_criteria: ["AC1"],
@@ -127,6 +130,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       component = create_component(scope, "MyApp.Widget", "repository")
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"],
@@ -155,6 +159,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       })
 
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"],
@@ -200,6 +205,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       })
 
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"],
@@ -263,6 +269,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       })
 
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"],
@@ -396,6 +403,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       seed_setup(tmp_dir)
 
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"]
@@ -418,6 +426,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       seed_setup(tmp_dir)
 
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"]
@@ -441,6 +450,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       component = create_component(scope, "MyApp.Widget", "schema")
       {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
         title: "Test Story",
         description: "As a user...",
         acceptance_criteria: ["AC1"],

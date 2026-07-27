@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.StoryHelpers do
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
+  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -47,6 +48,18 @@ defmodule CodeMySpecSpex.StoryHelpers do
     {:reply, response, _frame} = CreateStory.execute(params, frame)
 
     story_id = extract_id(response)
+
+    # Stories are created parked — they produce no requirements until they
+    # are released for development. Spex that set up a story are describing
+    # work already in flight, so release it here. Pass
+    # `ready_for_dev: false` to exercise the pace gate itself.
+    if Keyword.get(attrs, :ready_for_dev, true) do
+      {:reply, _resp, _frame} =
+        UpdateStory.execute(
+          %{story_id: to_string(story_id), ready_for_dev: true},
+          frame
+        )
+    end
 
     # CreateStory no longer accepts acceptance_criteria (those land via
     # Three Amigos at runtime). Use AddCriterion per description here.

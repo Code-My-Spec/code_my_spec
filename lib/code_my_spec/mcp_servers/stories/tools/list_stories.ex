@@ -22,6 +22,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
     field :offset, :integer, doc: "Stories to skip for pagination (default: 0)"
     field :search, :string, doc: "Filter by title or description (case-insensitive)"
     field :tag, :string, doc: "Filter by tag name"
+
+    field :ready_for_dev, :boolean,
+      doc:
+        "Filter by readiness. Pass false to see the parked backlog — the " <>
+          "stories the development graph hides (optional)"
   end
 
   @impl true
@@ -36,6 +41,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
         opts = [limit: limit, offset: offset]
         opts = if params[:search], do: Keyword.put(opts, :search, params[:search]), else: opts
         opts = if params[:tag], do: Keyword.put(opts, :tag, params[:tag]), else: opts
+
+        opts =
+          if is_boolean(params[:ready_for_dev]),
+            do: Keyword.put(opts, :ready_for_dev, params[:ready_for_dev]),
+            else: opts
 
         Logger.debug("[ListStories] calling list_project_stories_paginated with project_id: #{scope.active_project_id}")
         {stories, total} = Stories.list_project_stories_paginated(scope, opts)

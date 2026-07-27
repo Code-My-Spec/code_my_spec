@@ -71,9 +71,18 @@ defmodule CodeMySpec.Requirements.Preloader do
       end)
 
     # 4. Stories
+    #
+    # The pace gate. Only stories released for development project into the
+    # requirement graph — a parked story produces no nodes at all, not even
+    # Three Amigos. This is deliberately a filter rather than a requirement
+    # node: a `ready_for_dev` node would surface as actionable work and the
+    # agent would simply satisfy it, gating nothing.
+    #
+    # Parked stories stay reachable through the backlog tools, which query
+    # Stories directly rather than going through the graph.
     stories =
       Story
-      |> where([s], s.project_id == ^project_id)
+      |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
       |> Repo.all()
 
     %{

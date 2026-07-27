@@ -16,6 +16,10 @@ defmodule CodeMySpec.StoriesFixtures do
         locked_at: ~U[2025-07-17 12:48:00Z],
         priority: 42,
         status: :in_progress,
+        # A fixture story represents work already in flight, so it is released
+        # for development. New stories created through the app start parked —
+        # pass `ready_for_dev: false` explicitly to exercise the pace gate.
+        ready_for_dev: true,
         # Random ASCII-only word — names with apostrophes (e.g. "O'Kon") get
         # HTML-escaped to `&#39;`, breaking `assert html =~ story.title` in
         # tests that exercise the rendered page.

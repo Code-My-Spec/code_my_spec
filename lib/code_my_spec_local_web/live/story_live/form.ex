@@ -57,7 +57,14 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
           </p>
         </div>
 
-        <.form for={@form} id="story-form" phx-change="validate" phx-submit="save" class="flex flex-col gap-4">
+        <.form
+          for={@form}
+          id="story-form"
+          data-test="story-form"
+          phx-change="validate"
+          phx-submit="save"
+          class="flex flex-col gap-4"
+        >
           <.input
             field={@form[:title]}
             type="text"
@@ -65,10 +72,16 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
             placeholder="As a <user> I want <behavior>"
           />
           <.input
-            field={@form[:description]}
+            field={@form[:story]}
             type="textarea"
-            label="Description"
-            placeholder="Why this matters — what does it unlock for the user?"
+            label="Story"
+            placeholder="As a <role>, I want <goal>, so that <value>"
+          />
+          <.input
+            field={@form[:notes]}
+            type="textarea"
+            label="Notes"
+            placeholder="Mechanism, dependencies, caveats — anything that isn't the story itself"
           />
           <div class="fieldset mb-2">
             <span class="label mb-1">Acceptance Criteria</span>
@@ -217,8 +230,36 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
   end
 
   def handle_event("save", %{"story" => story_params}, socket) do
-    save_story(socket, socket.assigns.live_action, story_params)
+    save_story(socket, socket.assigns.live_action, drop_blank_criteria(story_params))
   end
+
+  # The form always renders one empty criterion row, so saving a story with
+  # just a title and a story sentence would fail on "description can't be
+  # blank" for a row the user never asked for. Acceptance criteria come from
+  # Three Amigos now — `create_story` doesn't even accept them — so an
+  # untouched row means "no criterion", not an error.
+  #
+  # `criteria_sort` has to go with them: cast_assoc treats a sort entry with
+  # no matching data as a request to add a fresh (empty) child.
+  defp drop_blank_criteria(%{"criteria" => criteria} = params) when is_map(criteria) do
+    kept =
+      criteria
+      |> Enum.reject(fn {_index, attrs} -> blank_description?(attrs) end)
+      |> Map.new()
+
+    if map_size(kept) == map_size(criteria) do
+      params
+    else
+      params |> Map.put("criteria", kept) |> Map.delete("criteria_sort")
+    end
+  end
+
+  defp drop_blank_criteria(params), do: params
+
+  defp blank_description?(%{"description" => description}) when is_binary(description),
+    do: String.trim(description) == ""
+
+  defp blank_description?(_), do: true
 
   defp save_story(socket, :edit, story_params) do
     case Stories.update_story(socket.assigns.scope, socket.assigns.story, story_params) do

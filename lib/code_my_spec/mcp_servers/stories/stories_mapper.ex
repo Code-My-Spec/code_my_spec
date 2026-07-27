@@ -41,10 +41,25 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
     criteria_lines = format_criteria_text(story.criteria)
 
+    notes_line =
+      case story.notes do
+        nil -> ""
+        "" -> ""
+        notes -> "\n\n**Notes:** #{notes}"
+      end
+
+    component_line =
+      case story.component do
+        %{module_name: module_name} -> "\n\n**Component:** #{module_name}"
+        _ -> ""
+      end
+
     summary = """
     ## #{story.title} (ID: #{story.id})
 
-    #{story.description || "No description"}
+    #{story.story || story.description || "No story"}#{notes_line}#{component_line}
+
+    Ready for development: #{story.ready_for_dev == true}
 
     **Acceptance Criteria:** #{criteria_count} total, #{verified_count} verified#{tags_line}
 
@@ -385,7 +400,11 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     base = %{
       id: story.id,
       title: story.title,
+      story: story.story || story.description,
+      notes: story.notes,
       description: story.description,
+      ready_for_dev: story.ready_for_dev == true,
+      epic_id: story.epic_id,
       acceptance_criteria: criteria_descriptions(story),
       criteria: format_criteria(story.criteria),
       component_id: story.component_id,
@@ -403,7 +422,11 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     base = %{
       id: story.id,
       title: story.title,
+      story: story.story || story.description,
+      notes: story.notes,
       description: story.description,
+      ready_for_dev: story.ready_for_dev == true,
+      epic_id: story.epic_id,
       component_id: story.component_id,
       priority: story.priority
     }

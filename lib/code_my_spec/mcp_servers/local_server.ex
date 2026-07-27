@@ -48,6 +48,13 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule)
   component(CodeMySpec.McpServers.Stories.Tools.ListProjectTags)
   component(CodeMySpec.McpServers.Stories.Tools.TagStories)
+
+  # Epics — organizational grouping of stories, plus the one-shot bulk
+  # release that controls how fast work enters the development graph.
+  component(CodeMySpec.McpServers.Stories.Tools.CreateEpic)
+  component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
+  component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic)
+  component(CodeMySpec.McpServers.Stories.Tools.SetEpicStoriesReady)
   component(CodeMySpec.McpServers.Stories.Tools.StartStoryInterview)
   component(CodeMySpec.McpServers.Stories.Tools.StartStoryReview)
   component(CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession)

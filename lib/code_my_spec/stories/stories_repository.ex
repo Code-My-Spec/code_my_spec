@@ -8,6 +8,18 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Users.User
+
+  # PaperTrail originator, or `nil` when there isn't a real one.
+  #
+  # The local CLI scope carries a synthetic `%ClientUser{id: 0}` that is
+  # never persisted (`Scope.for_local_project/1`). Handing that to PaperTrail
+  # writes `versions.originator_id = 0` and violates
+  # `versions_originator_id_fkey` — SQLite tolerates it only because FK
+  # enforcement is off there, so it fails the moment the same write runs
+  # against Postgres. Local work simply records no originator.
+  defp originator(%Scope{user: %User{} = user}), do: user
+  defp originator(%Scope{}), do: nil
 
   def list_stories(%Scope{} = scope) do
     Story
@@ -37,6 +49,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     offset = Keyword.get(opts, :offset, 0)
     search = Keyword.get(opts, :search)
     tag = Keyword.get(opts, :tag)
+    ready_for_dev = Keyword.get(opts, :ready_for_dev)
 
     base_query =
       from(s in Story,
@@ -66,6 +79,16 @@ defmodule CodeMySpec.Stories.StoriesRepository do
         )
       else
         query
+      end
+
+    # The backlog view. This is the only route to stories the development
+    # graph deliberately hides, so it must be able to select them.
+    # `ready_for_dev` is nullable in the DB; treat NULL as not ready.
+    query =
+      case ready_for_dev do
+        true -> from(s in query, where: s.ready_for_dev == true)
+        false -> from(s in query, where: is_nil(s.ready_for_dev) or s.ready_for_dev == false)
+        _ -> query
       end
 
     total = Repo.aggregate(query, :count, :id)
@@ -137,7 +160,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       {:ok, story_id} ->
         Story
         |> Repo.get_by(id: story_id, project_id: scope.active_project_id)
-        |> Repo.preload([:criteria, :tags])
+        |> Repo.preload([:criteria, :tags, :component])
 
       :error ->
         nil
@@ -168,7 +191,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Story.changeset(attrs_with_ownership)
     |> Ecto.Changeset.put_change(:project_id, project_id)
     |> put_account_id(scope)
-    |> PaperTrail.insert(originator: scope.user)
+    |> PaperTrail.insert(originator: originator(scope))
     |> case do
       {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags])}
       {:error, changeset} -> {:error, changeset}
@@ -188,7 +211,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     story
     |> Story.changeset(attrs_with_ownership)
-    |> PaperTrail.update(originator: scope.user)
+    |> PaperTrail.update(originator: originator(scope))
     |> case do
       {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags], force: true)}
       {:error, changeset} -> {:error, changeset}
@@ -206,7 +229,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
       from(i in CodeMySpec.Issues.Issue, where: i.story_id == ^story.id)
       |> Repo.update_all(set: [story_id: nil])
 
-      case PaperTrail.delete(story, originator: scope.user) do
+      case PaperTrail.delete(story, originator: originator(scope)) do
         {:ok, %{model: model}} -> model
         {:error, changeset} -> Repo.rollback(changeset)
       end
@@ -313,7 +336,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   def set_story_component(%Scope{} = scope, %Story{} = story, component_id) do
     story
     |> Story.changeset(%{component_id: component_id})
-    |> PaperTrail.update(originator: scope.user)
+    |> PaperTrail.update(originator: originator(scope))
     |> case do
       {:ok, %{model: story}} -> {:ok, story}
       {:error, changeset} -> {:error, changeset}
@@ -350,7 +373,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     story
     |> Story.changeset(%{component_id: component_id})
-    |> PaperTrail.update(originator: scope.user)
+    |> PaperTrail.update(originator: originator(scope))
     |> case do
       {:ok, %{model: updated}} -> updated
       {:error, changeset} -> Repo.rollback({:invalid, story_id, changeset})
@@ -363,7 +386,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   def clear_story_component(%Scope{} = scope, %Story{} = story) do
     story
     |> Story.changeset(%{component_id: nil})
-    |> PaperTrail.update(originator: scope.user)
+    |> PaperTrail.update(originator: originator(scope))
     |> case do
       {:ok, %{model: story}} -> {:ok, story}
       {:error, changeset} -> {:error, changeset}
