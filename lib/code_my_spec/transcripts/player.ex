@@ -23,6 +23,17 @@ defmodule CodeMySpec.Transcripts.Player do
   @text_cap 700
   @result_cap 200
 
+  # AskUserQuestion renders in the user's browser, not the terminal, so a
+  # replay that prints only the tool name drops the most informative thing in
+  # an interview session: the options, and the reasoning attached to each one.
+  # Those descriptions are where you can see the agent has already read the
+  # persona and the codebase before it asked anything.
+  @option_width 62
+  @option_desc_lines 3
+  # An answer block is a list, one line per question. Capping it at the first
+  # line prints "The user answered on their phone:" and nothing else.
+  @answer_cap 12
+
   @doc """
   Play a transcript as a paced terminal session.
 
@@ -92,6 +103,60 @@ defmodule CodeMySpec.Transcripts.Player do
     end
   end
 
+  # -- the interview question, expanded ------------------------------------
+  defp render_block(
+         %{"type" => "tool_use", "name" => "AskUserQuestion", "input" => input},
+         _type,
+         index,
+         ctx
+       ) do
+    puts([IO.ANSI.cyan(), "⏺ AskUserQuestion", IO.ANSI.reset()])
+
+    questions = input["questions"] || []
+
+    # Spread the block's delay across the options instead of dumping the whole
+    # prompt and then sleeping. The options arriving one at a time is the beat
+    # worth watching — it is the moment the choice is being put to you — and
+    # pacing still behaves, because the pieces sum to the block's delay.
+    option_count = questions |> Enum.flat_map(&(&1["options"] || [])) |> length()
+    per_option = if option_count > 0, do: div(delay_for(index, ctx), option_count), else: 0
+
+    for q <- questions do
+      puts([
+        IO.ANSI.cyan(),
+        "  │ ",
+        IO.ANSI.bright(),
+        IO.ANSI.white(),
+        to_string(q["header"] || ""),
+        IO.ANSI.reset(),
+        IO.ANSI.white(),
+        "  ",
+        to_string(q["question"] || ""),
+        IO.ANSI.reset()
+      ])
+
+      for o <- q["options"] || [] do
+        puts([
+          IO.ANSI.cyan(),
+          "  │   ",
+          IO.ANSI.yellow(),
+          "○ ",
+          to_string(o["label"] || ""),
+          IO.ANSI.reset()
+        ])
+
+        o["description"]
+        |> wrap(@option_width)
+        |> Enum.take(@option_desc_lines)
+        |> Enum.each(fn line ->
+          puts([IO.ANSI.cyan(), "  │     ", IO.ANSI.faint(), line, IO.ANSI.reset()])
+        end)
+
+        beat(per_option)
+      end
+    end
+  end
+
   # -- tool action: render Claude-Code style + fire the real op -------------
   defp render_block(%{"type" => "tool_use"} = block, _type, index, ctx) do
     tool_call = block |> ToolCall.new() |> inject_session_id(ctx)
@@ -105,12 +170,56 @@ defmodule CodeMySpec.Transcripts.Player do
     text = block |> result_text() |> String.trim()
 
     if text != "" do
-      puts([IO.ANSI.faint(), "  ⎿  ", cap(first_line(text), @result_cap), IO.ANSI.reset()])
+      render_result(text)
       beat(delay_for(index, ctx))
     end
   end
 
   defp render_block(_block, _type, _index, _ctx), do: :ok
+
+  # Most results are noise past the first line. An answer block is the
+  # exception — it is one line per question, and the answers are the point.
+  defp render_result(text) do
+    if answer_block?(text) do
+      lines = text |> String.split("\n", trim: true) |> Enum.take(@answer_cap)
+
+      for {line, i} <- Enum.with_index(lines) do
+        prefix = if i == 0, do: "  ⎿  ", else: "     "
+        colour = if i == 0, do: IO.ANSI.faint(), else: IO.ANSI.green()
+        puts([colour, prefix, cap(String.trim(line), @result_cap), IO.ANSI.reset()])
+      end
+    else
+      puts([IO.ANSI.faint(), "  ⎿  ", cap(first_line(text), @result_cap), IO.ANSI.reset()])
+    end
+  end
+
+  defp answer_block?(text) do
+    String.contains?(text, "The user answered") and String.contains?(text, "\n")
+  end
+
+  # Greedy word wrap. Long unbroken tokens (a hex colour, a path) are left to
+  # overflow rather than be chopped mid-token.
+  defp wrap(nil, _width), do: []
+
+  defp wrap(text, width) do
+    text
+    |> to_string()
+    |> String.split(~r/\s+/, trim: true)
+    |> Enum.reduce([], fn word, acc ->
+      case acc do
+        [] ->
+          [word]
+
+        [current | rest] ->
+          if String.length(current) + 1 + String.length(word) <= width do
+            [current <> " " <> word | rest]
+          else
+            [word, current | rest]
+          end
+      end
+    end)
+    |> Enum.reverse()
+  end
 
   # Task/QA tools (start_task, evaluate_task, submit_qa_result, create_issue,
   # accept_issue, resolve_issue, …) expect a `session_id` arg that the
