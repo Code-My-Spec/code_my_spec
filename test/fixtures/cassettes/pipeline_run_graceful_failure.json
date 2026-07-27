@@ -26,8 +26,7 @@
         "json",
         "--all",
         "--all-priorities",
-        "--no-color",
-        "/nonexistent/test_test.exs"
+        "--no-color"
       ],
       "command": "mix",
       "exit_code": 1,

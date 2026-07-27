@@ -30,13 +30,15 @@ defmodule CodeMySpec.Analysis do
   # connections, deterministic ordering, old synchronous stop semantics.
   defp mode, do: Application.get_env(:code_my_spec, :analysis_mode, :async)
 
-  # Canonical full-run args per source. `--stale` delegates test selection to
-  # mix's own manifest — semantically a full run.
+  # Every run is a full run over every file. Analysis is async and its results
+  # surface on the next stop, so there is nothing to gain from narrowing the
+  # work — and plenty to lose: scoped runs could only ever refresh part of the
+  # Problems table, which is what made staleness so hard to reason about.
   @full_args %{
     "compiler" => [],
     "credo" => [],
-    "exunit" => ["--stale"],
-    "spex" => ["--stale"]
+    "exunit" => [],
+    "spex" => []
   }
 
   @doc """
@@ -97,13 +99,42 @@ defmodule CodeMySpec.Analysis do
   defp normalize_request({source, args}) when is_list(args), do: {source, args}
   defp normalize_request(source) when is_binary(source), do: {source, Map.fetch!(@full_args, source)}
 
-  defp needs_run?(source, args, fingerprints, latest, only_failed) do
-    cond do
-      only_failed -> match?(%Run{status: :failed}, latest[source])
-      kind_for(args) == :partial -> true
-      true -> stale?(source, fingerprints, latest)
-    end
+  # A stop with changed files re-runs everything. The old fingerprint memo
+  # skipped sources whose inputs hadn't moved, which saved little (the work is
+  # async and off the critical path) and cost a lot: a skipped source left
+  # last run's Problems in place with no run to explain them.
+  #
+  # `only_failed` survives because it is a different question — a stop with NO
+  # changed files stays quiet entirely, re-enqueuing only sources whose last
+  # run crashed or timed out.
+  # On a quiet stop, compiler also re-runs when another source was skipped
+  # *because of* compiler errors — only a compiler run can clear them.
+  #
+  # Without this the pipeline deadlocks: a stale compiler error makes exunit
+  # skip, a skipped run finishes `:failed` (never `:completed`), `only_failed`
+  # re-enqueues exunit but not compiler, so nothing can clear the error.
+  # exunit re-runs and re-skips on every stop while `tests_passing` waits
+  # forever for a completed run — even though `mix test` passes clean by hand.
+  #
+  # Scoped to the skip case on purpose: a quiet stop with nothing skipped must
+  # still block on a genuinely outstanding compile error without re-running
+  # anything (criterion 6077).
+  defp needs_run?("compiler", _args, _fingerprints, latest, true) do
+    match?(%Run{status: :failed}, latest["compiler"]) or
+      Enum.any?(latest, fn {_source, run} -> skipped_for_compile_errors?(run) end)
   end
+
+  defp needs_run?(source, _args, _fingerprints, latest, true),
+    do: match?(%Run{status: :failed}, latest[source])
+
+  defp needs_run?(_source, _args, _fingerprints, _latest, _only_failed), do: true
+
+  # `Reconciler.fail/2` stamps the reason into `stats["error"]`.
+  defp skipped_for_compile_errors?(%Run{status: :failed, stats: %{"error" => err}})
+       when is_binary(err),
+       do: String.contains?(err, "skipped_compile_errors")
+
+  defp skipped_for_compile_errors?(_run), do: false
 
   @doc """
   Run one analyzer and block until it finishes (joining an identical
@@ -214,16 +245,12 @@ defmodule CodeMySpec.Analysis do
     %{
       source: source,
       args: args,
-      kind: kind_for(args),
+      # Always `:full`. Every run now sweeps the whole project and replaces
+      # that source's Problems wholesale, so there is no partial kind left.
+      kind: :full,
       fingerprint: fingerprint,
       opts: runner_opt_passthrough(opts) ++ [notify: Keyword.get(opts, :notify, true)]
     }
-  end
-
-  # Path-like args make a run partial: it only refreshes the files it covers
-  # and never satisfies freshness.
-  defp kind_for(args) do
-    if Enum.any?(args, &(not String.starts_with?(&1, "-"))), do: :partial, else: :full
   end
 
   @passthrough_opts [

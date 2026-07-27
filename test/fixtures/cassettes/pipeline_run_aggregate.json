@@ -46,9 +46,7 @@
         "json",
         "--all",
         "--all-priorities",
-        "--no-color",
-        "lib/test_phoenix_project/blog/post_repository.ex",
-        "test/test_phoenix_project/blog/post_repository_test.exs"
+        "--no-color"
       ],
       "command": "mix",
       "exit_code": 4,

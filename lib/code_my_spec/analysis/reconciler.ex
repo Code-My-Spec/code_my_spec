@@ -109,45 +109,16 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   # -- Clear scope --
 
-  # Full runs produce the complete picture for their source → clear all.
-  # Partial (targeted) runs only refresh the files they actually covered.
-  defp clear_scope(_scope, %Run{kind: :full}), do: :all
-
-  defp clear_scope(scope, %Run{kind: :partial} = run) do
-    run.args
-    |> args_list()
-    |> Enum.filter(&path_like?/1)
-    |> Enum.map(&strip_line/1)
-    |> Enum.flat_map(&expand_path(scope, &1))
-    |> Enum.uniq()
-    |> case do
-      # No recognizable paths — don't wipe anything beyond what we insert over.
-      [] -> []
-      paths -> paths
-    end
-  end
-
-  defp args_list(%{"args" => args}) when is_list(args), do: args
-  defp args_list(args) when is_list(args), do: args
-  defp args_list(_), do: []
-
-  defp path_like?(arg), do: not String.starts_with?(arg, "-")
-
-  defp strip_line(arg), do: arg |> String.split(":") |> hd()
-
-  # A directory arg covers every tracked file under it.
-  defp expand_path(scope, path) do
-    trimmed = String.trim_trailing(path, "/")
-
-    if String.ends_with?(path, "/") or Path.extname(trimmed) == "" do
-      scope
-      |> Files.list_files()
-      |> Enum.filter(&String.starts_with?(&1.path, trimmed <> "/"))
-      |> Enum.map(& &1.path)
-    else
-      [trimmed]
-    end
-  end
+  # Every run sweeps the whole project, so every run replaces its source's
+  # Problems wholesale: clear all, then insert what this run found — one
+  # transaction, so the old set stays readable until the new one lands.
+  #
+  # This deliberately replaced a scoped variant that derived the clear set by
+  # parsing paths back out of `run.args`. It could only ever clear part of the
+  # table, so a problem fixed by an edit elsewhere never went away, and the
+  # arg parsing was fragile besides (an extension-less token was treated as a
+  # directory and expanded to every file beneath it).
+  defp clear_scope(_scope, %Run{}), do: :all
 
   # -- Post-persist hooks --
 

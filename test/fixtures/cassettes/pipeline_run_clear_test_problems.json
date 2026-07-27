@@ -46,8 +46,7 @@
         "json",
         "--all",
         "--all-priorities",
-        "--no-color",
-        "test/test_phoenix_project_web/controllers/page_controller_test.exs"
+        "--no-color"
       ],
       "command": "mix",
       "exit_code": 0,

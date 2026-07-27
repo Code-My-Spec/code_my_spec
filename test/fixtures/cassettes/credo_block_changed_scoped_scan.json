@@ -17,8 +17,7 @@
       "args": [
         "test",
         "--formatter",
-        "ClientUtils.TestFormatter",
-        "--stale"
+        "ClientUtils.TestFormatter"
       ],
       "command": "mix",
       "exit_code": 1,
@@ -31,7 +30,6 @@
     {
       "args": [
         "spex",
-        "--stale",
         "--jsonl=/Users/johndavenport/Documents/github/code_my_spec/test/fixtures/validation/pipeline_clean_credo/spex.jsonl"
       ],
       "command": "mix",
@@ -50,8 +48,7 @@
         "json",
         "--all",
         "--all-priorities",
-        "--no-color",
-        "lib/clean_module.ex"
+        "--no-color"
       ],
       "command": "mix",
       "exit_code": 0,

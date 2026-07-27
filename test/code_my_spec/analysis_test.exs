@@ -125,7 +125,9 @@ defmodule CodeMySpec.AnalysisTest do
       assert paths == ["test/new_test.exs"]
     end
 
-    test "partial run only clears problems for the files it covered", %{scope: scope} do
+    test "a run replaces every problem for its source, not just the files it names",
+         %{scope: scope} do
+      # A problem from an earlier run, in a file this run does not report on.
       Problems.create_problems(scope, [
         %{problem("test/other_test.exs") | project_id: scope.active_project_id}
       ])
@@ -133,7 +135,7 @@ defmodule CodeMySpec.AnalysisTest do
       {:ok, run} =
         RunsRepository.start_run(scope, %{
           source: "exunit",
-          kind: :partial,
+          kind: :full,
           args: %{"args" => ["test/target_test.exs:12"]}
         })
 
@@ -151,8 +153,11 @@ defmodule CodeMySpec.AnalysisTest do
         |> Enum.map(& &1.file_path)
         |> Enum.sort()
 
-      # The unrelated failure survives; the targeted file's problems refresh.
-      assert paths == ["test/other_test.exs", "test/target_test.exs"]
+      # Every run sweeps the whole project, so its results are the complete
+      # picture for that source: the stale problem is gone even though this
+      # run never mentioned that file. Scoped clearing is what left problems
+      # behind after a fix landed somewhere else.
+      assert paths == ["test/target_test.exs"]
     end
 
     test "stamps component_id on test problems via the file path join", %{scope: scope} do

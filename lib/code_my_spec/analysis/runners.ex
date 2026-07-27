@@ -12,8 +12,6 @@ defmodule CodeMySpec.Analysis.Runners do
   pre-recorded tool output.
   """
 
-  require Logger
-
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Problems.ProblemConverter

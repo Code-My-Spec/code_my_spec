@@ -8,8 +8,7 @@
         "json",
         "--all",
         "--all-priorities",
-        "--no-color",
-        "lib/test_phoenix_project_web/router.ex"
+        "--no-color"
       ],
       "command": "mix",
       "exit_code": 0,

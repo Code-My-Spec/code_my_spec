@@ -207,16 +207,13 @@ defmodule CodeMySpec.Validation do
     Analysis.ensure_stale_runs(scope, requests, opts)
   end
 
-  # Credo mirrors the old pipeline's scoping: `:block_all` sweeps the whole
-  # project (a full, memoizable run); other modes run scoped to the turn's
-  # changed files (partial — refreshes only those files' problems).
-  defp request_for(:credo, changed_files, config) do
-    case mode_for(config, :credo) do
-      :block_all -> "credo"
-      _ -> {"credo", Enum.map(changed_files, & &1.path)}
-    end
-  end
-
+  # Every source, credo included, scans the whole project. The config mode
+  # decides whether credo *blocks*; it no longer decides what credo looks at.
+  #
+  # `:block_changed` still blocks only on violations in the turn's changed
+  # files — that filtering lives in `apply_mode/4` at decision time. What
+  # changes is that violations elsewhere are now persisted as advisory and
+  # visible on the Problems page instead of never being looked for.
   defp request_for(analyzer, _changed_files, _config),
     do: Map.fetch!(@subprocess_analyzers, analyzer)
 

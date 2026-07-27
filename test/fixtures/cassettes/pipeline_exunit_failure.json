@@ -22,8 +22,7 @@
       "args": [
         "test",
         "--formatter",
-        "ClientUtils.TestFormatter",
-        "--stale"
+        "ClientUtils.TestFormatter"
       ],
       "command": "mix",
       "exit_code": 1,
