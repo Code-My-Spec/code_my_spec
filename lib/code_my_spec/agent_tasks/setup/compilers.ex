@@ -23,19 +23,31 @@ defmodule CodeMySpec.AgentTasks.Setup.Compilers do
     {:ok, """
     # Configure Compilers
 
-    Add a per-environment `compilers/1` to `mix.exs`:
+    Add a per-environment `compilers/1` to `mix.exs`, plus the `spex:` key
+    that tells the `:spex` compiler where spec files live and which boundary
+    owns them:
 
     ```elixir
     def project do
-      [compilers: compilers(Mix.env()), ...]
+      [
+        compilers: compilers(Mix.env()),
+        spex: [pattern: "test/spex/**/*_spex.exs", boundary: <App>Spex],
+        ...
+      ]
     end
 
+    # :spex only runs in :test — it compiles the BDD spec files under
+    # test/spex, which exist in no other environment.
     defp compilers(:test),
-      do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :spex, :app]
+      do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :spex, :app]
 
     defp compilers(_),
-      do: [:diagnostics, :boundary, :phoenix_live_view, :erlang, :elixir, :app]
+      do: [:boundary, :diagnostics, :phoenix_live_view, :erlang, :elixir, :app]
     ```
+
+    `:boundary` comes from the `:boundary` dep and `:diagnostics` from
+    `:client_utils` — both must be present, and neither may be `only: :dev`,
+    or the compiler is missing in `:test` and `:prod`.
     """}
   end
 end

@@ -25,12 +25,14 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
 
     Add to `deps/0` in `mix.exs`:
 
-    - `:credo` — static code analysis
-    - `:client_utils` — CodeMySpec client utilities
-    - `:sobelow` — security-focused static analysis
-    - `:sexy_spex` — BDD specification testing
-    - `:boundary` — module dependency enforcement
-    - `:code_my_spec_generators` — `mix cms_gen.*` scaffolding tasks (use `only: :dev`)
+    - `:boundary` — module dependency enforcement; supplies the `:boundary`
+      compiler, so it must NOT be `only: :dev`
+    - `:client_utils` — CodeMySpec client utilities; supplies the
+      `:diagnostics` compiler, so it must NOT be `only: :dev`
+    - `:credo` — static code analysis (`only: [:dev, :test], runtime: false`)
+    - `:sobelow` — security-focused static analysis (same)
+    - `:sexy_spex` — BDD specification testing (`only: [:dev, :test]`)
+    - `:code_my_spec_generators` — `mix cms_gen.*` scaffolding (`only: :dev`)
 
     Then: `mix deps.get`
     """}
