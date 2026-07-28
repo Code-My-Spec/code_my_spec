@@ -236,12 +236,12 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
-  # Priority order: the user's login-shell PATH (their real, working
-  # toolchain), the inherited PATH, then common version-manager / Homebrew
-  # shim dirs as a last resort. Dedup, preserving order.
+  # Priority order: the user's own shell PATH (their real, working toolchain),
+  # the inherited PATH, then common version-manager / Homebrew shim dirs as a
+  # last resort. Dedup, preserving order.
   defp unix_toolchain_path do
     segments =
-      [login_shell_path(), System.get_env("PATH") | unix_fallback_dirs()]
+      [user_shell_path(), System.get_env("PATH") | unix_fallback_dirs()]
       |> Enum.reject(&(&1 in [nil, ""]))
       |> Enum.flat_map(&String.split(&1, ":", trim: true))
       |> Enum.uniq()
@@ -252,19 +252,75 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
-  # `-lc` (login, non-interactive) loads profile-level config without the
-  # job-control/prompt hazards of an interactive `-i` shell, so it can't hang
-  # when spawned without a tty. `printf %s "$PATH"` is portable across shells.
+  # Bound on the interactive probe, and the fence around its output.
+  @path_probe_timeout 5_000
+  @path_sentinel "__CMS_PATH__"
+
+  # The *interactive* PATH is the one that matters. Version managers (asdf,
+  # mise, nvm) initialise in `.zshrc`/`.bashrc`, which a login-only `-lc` shell
+  # never sources — so their shims arrived only via `unix_fallback_dirs/0`,
+  # appended dead last, behind `/opt/homebrew/bin`. A project on a managed
+  # Elixir then resolved `mix` to whatever Homebrew had, and a Homebrew Elixir
+  # built against a different OTP than the installed one *hangs* rather than
+  # failing, wedging every analyzer run at 0% CPU until the job timeout.
+  #
+  # Reading the user's own PATH also avoids hardcoding a toolchain: someone
+  # with no version manager just gets their normal PATH, Homebrew first.
+  #
+  # `-i` carries the hazards the login-only probe was written to dodge, so both
+  # are handled rather than traded away. rc files print banners — one here
+  # emitted "Restored session … 18:57:48", whose timestamp colons parsed as
+  # PATH separators — so the value is fenced in a sentinel the banner can't
+  # forge. And a pathological rc can block without a tty, so the probe is
+  # bounded; on timeout, non-zero exit, or missing sentinel we fall back to
+  # `-lc`, which is exactly the previous behaviour.
+  defp user_shell_path, do: interactive_shell_path() || login_shell_path()
+
+  defp interactive_shell_path do
+    shell = System.get_env("SHELL") || "/bin/sh"
+    script = ~s(printf '\\n#{@path_sentinel}%s\\n' "$PATH")
+
+    task = Task.async(fn -> safe_cmd(shell, ["-ilc", script]) end)
+
+    case Task.yield(task, @path_probe_timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {out, 0}} -> extract_fenced_path(out)
+      _ -> nil
+    end
+  end
+
   defp login_shell_path do
     shell = System.get_env("SHELL") || "/bin/sh"
 
-    case System.cmd(shell, ["-lc", "printf %s \"$PATH\""], stderr_to_stdout: false) do
-      {out, 0} -> String.trim(out)
+    case safe_cmd(shell, ["-lc", ~s(printf %s "$PATH")]) do
+      {out, 0} -> blank_to_nil(String.trim(out))
       _ -> nil
     end
-  rescue
-    _ -> nil
   end
+
+  # Runs inside a Task for the interactive probe, so a raise here would take
+  # the linked caller down with it — hence the local rescue rather than one
+  # around the call site.
+  defp safe_cmd(shell, args) do
+    System.cmd(shell, args, stderr_to_stdout: false)
+  rescue
+    _ -> :error
+  end
+
+  # Last sentinel line wins: rc output can precede it, never follow it.
+  defp extract_fenced_path(out) do
+    out
+    |> String.split("\n")
+    |> Enum.reverse()
+    |> Enum.find_value(fn line ->
+      case String.split(line, @path_sentinel, parts: 2) do
+        [_, path] -> blank_to_nil(String.trim(path))
+        _ -> nil
+      end
+    end)
+  end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
 
   defp unix_fallback_dirs do
     home = System.user_home() || ""
