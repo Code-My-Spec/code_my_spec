@@ -25,9 +25,36 @@
         </div>
       </div>
 
-      <%!-- The five questions as the hero visual. Shows what you are actually
-           asked, which is more reassuring than describing an "interview". --%>
-      <figure class="min-w-0">
+      <%!-- The hero visual is the run itself: one command, the five questions,
+           the file, and three systems that came out of the same interview.
+           Self-hosted rather than a YouTube embed — an iframe would ship most
+           of a megabyte of third-party script into the LCP element on the one
+           page where the video *is* the hero. `preload="none"` means the page
+           pays only for the poster until someone actually clicks.
+
+           Width and height are set so the box does not reflow when the poster
+           lands. The video is also on YouTube, which is a different job:
+           distribution and citations, not this page's first paint. --%>
+      <figure class="min-w-0 space-y-4">
+        <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+          <video
+            class="w-full aspect-video bg-base-300"
+            controls
+            playsinline
+            preload="none"
+            width="1920"
+            height="1080"
+            poster="https://images.codemyspec.com/ds-hero-poster.jpg"
+          >
+            <source src="https://images.codemyspec.com/ds-hero.mp4" type="video/mp4" />
+            Your browser cannot play this video.
+            <.link href="https://youtu.be/baTqgRbRprM" class="link">Watch it on YouTube</.link>.
+          </video>
+          <figcaption class="px-5 py-3 border-t border-base-300 text-sm text-base-content/60">
+            One command, five questions, and three real design systems. 1 min 40.
+          </figcaption>
+        </div>
+
         <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
           <div class="px-5 py-3 border-b border-base-300 bg-base-200">
             <span class="text-sm font-semibold">The five questions</span>
