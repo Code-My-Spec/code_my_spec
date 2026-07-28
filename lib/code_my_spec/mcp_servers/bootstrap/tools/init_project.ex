@@ -10,7 +10,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
 
 
   alias CodeMySpec.Auth.OAuthClient
-  alias CodeMySpec.McpServers.Bootstrap.BootstrapMapper
+  alias CodeMySpec.McpServers.Bootstrap.{BootstrapMapper, Installers}
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -28,7 +28,18 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
     with {:ok, token} <- OAuthClient.get_token(),
          {:ok, project_data} <- fetch_project(token, project_id),
          {:ok, project} <- upsert_local_project(project_data, working_dir) do
-      {:reply, BootstrapMapper.init_success("local_path: #{working_dir}", project.name), frame}
+      # Install the harness files the project needs but that require no
+      # judgement — AGENTS.md, CLAUDE.md, rules, credo checks. Doing it here
+      # rather than waiting for an agent to call four MCP tools is what lets a
+      # freshly generated project satisfy `project_setup` with zero model
+      # turns. Best-effort: a failed install must not fail the link.
+      installed = Installers.install_all(Validators.mcp_environment(frame))
+
+      {:reply,
+       BootstrapMapper.init_success(
+         "local_path: #{working_dir}#{install_summary(installed)}",
+         project.name
+       ), frame}
     else
       {:error, reason} when reason in [:not_authenticated, :needs_authentication] ->
         {:reply, BootstrapMapper.not_authenticated_error(), frame}
@@ -36,6 +47,22 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
       {:error, reason} ->
         {:reply, BootstrapMapper.error("#{reason}"), frame}
     end
+  end
+
+  # Surfaced in the tool reply so a failed install is visible at the moment it
+  # happens, rather than showing up later as an unexplained unsatisfied
+  # `project_setup` requirement.
+  defp install_summary({installed, []}) do
+    "\ninstalled: #{Enum.join(installed, ", ")}"
+  end
+
+  defp install_summary({installed, failures}) do
+    failed = Enum.map_join(failures, ", ", fn {label, reason} -> "#{label} (#{inspect(reason)})" end)
+
+    installed_part =
+      if installed == [], do: "", else: "\ninstalled: #{Enum.join(installed, ", ")}"
+
+    "#{installed_part}\nFAILED to install: #{failed} — run the matching install_* tool for details"
   end
 
   defp fetch_project(token, project_id) do

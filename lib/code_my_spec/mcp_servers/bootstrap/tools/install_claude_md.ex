@@ -28,7 +28,12 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd do
     end
   end
 
-  defp install(env) do
+  @doc """
+  Create or refresh the managed section in `CLAUDE.md`. Public because
+  `init_project` runs it directly — see
+  `CodeMySpec.McpServers.Bootstrap.Installers`.
+  """
+  def install(env) do
     app_name = extract_app_name(env)
     managed_section = Content.claude_md_content(app_name)
     start_marker = Content.claude_md_start_marker()

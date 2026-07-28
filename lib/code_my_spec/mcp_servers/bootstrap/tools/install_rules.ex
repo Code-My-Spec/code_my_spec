@@ -41,10 +41,15 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallRules do
       "service) and retry."
   end
 
-  # Source files ship with the harness package (`priv/rules/`) and are read
-  # straight from disk; only the destination is routed through the
-  # environment so specs can install into an in-memory project.
-  defp install(env) do
+  @doc """
+  Install the default rules. Public because `init_project` runs it directly:
+  a fresh project should not need an agent turn to get its own rule files.
+
+  Source files ship with the harness package (`priv/rules/`) and are read
+  straight from disk; only the destination is routed through the environment
+  so specs can install into an in-memory project.
+  """
+  def install(env) do
     source_dir = Application.app_dir(:code_my_spec, "priv/rules")
     target_dir = CodeMySpec.Paths.rules_dir()
 
