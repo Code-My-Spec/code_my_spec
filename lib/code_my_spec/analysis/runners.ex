@@ -77,6 +77,23 @@ defmodule CodeMySpec.Analysis.Runners do
     exec_opts = [project_root: cwd] |> maybe_output_file(opts)
 
     case Tests.execute(args, exec_opts) do
+      # `mix test` exited nonzero without reporting a single failure: bad args,
+      # a compile error, missing deps. The suite never ran, so this result says
+      # nothing about the code.
+      #
+      # Returning `{:ok, problems: []}` here was actively harmful. The
+      # Reconciler clears a source's Problems wholesale before inserting, so an
+      # empty result wiped every real exunit Problem and then finished the run
+      # `:completed` at the current fingerprint — and `tests_passing` checks
+      # exactly those two things (a fresh completed run, zero problems). A
+      # `mix test` that failed to start therefore reported the component's
+      # tests as passing.
+      #
+      # Failing the run leaves it `:failed`: never fresh, never
+      # problem-clearing, and re-enqueued on the next stop.
+      {:ok, %{execution_status: :error} = test_run} ->
+        {:error, {:test_suite_did_not_run, test_run.exit_code, error_excerpt(test_run.raw_output)}}
+
       {:ok, test_run} ->
         problems =
           test_run.failures
@@ -100,6 +117,14 @@ defmodule CodeMySpec.Analysis.Runners do
     exec_opts = [project_root: cwd] |> maybe_output_file(opts)
 
     case Spex.execute(args, exec_opts) do
+      # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}`
+      # for a missing file, so "the run never happened" and "everything is
+      # clean" are indistinguishable by the failure list alone — the nonzero
+      # exit is the only thing separating them. Fail the run rather than let an
+      # empty result clear every spex Problem and finish `:completed`.
+      {:ok, [], exit_code} when exit_code != 0 ->
+        {:error, {:spex_suite_did_not_run, exit_code}}
+
       {:ok, failures, exit_code} ->
         problems =
           failures
@@ -152,6 +177,20 @@ defmodule CodeMySpec.Analysis.Runners do
 
   defp first_line(nil), do: ""
   defp first_line(message), do: message |> String.split("\n", parts: 2) |> hd()
+
+  # mix reports *why* it wouldn't run at the very end of its output ("Paths
+  # given to mix test did not match...", a compile error summary), so the tail
+  # carries the signal and the head is compile chatter. Kept short: this rides
+  # into the run's `stats["error"]`, which Reconciler.fail truncates at 500.
+  defp error_excerpt(nil), do: ""
+
+  defp error_excerpt(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.take(-3)
+    |> Enum.join(" | ")
+    |> String.slice(0, 300)
+  end
 
   defp cap(output) when byte_size(output) > @output_cap,
     do: binary_part(output, 0, @output_cap) <> "\n… (truncated)"
