@@ -32,6 +32,12 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com",
       "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com",
       "img-src 'self' data: https://images.codemyspec.com https://www.google-analytics.com https://www.googletagmanager.com https://img.shields.io",
+      # Video is served from the same bucket as the images, but media-src does
+      # not inherit from img-src — without this it falls back to default-src
+      # 'self' and every <video> from the CDN is blocked. The poster still
+      # loads, because that is an image, so the failure looks like a video
+      # that simply never plays.
+      "media-src 'self' https://images.codemyspec.com",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self'",
       "object-src 'none'",

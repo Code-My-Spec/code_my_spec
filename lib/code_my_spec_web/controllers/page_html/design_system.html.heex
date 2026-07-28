@@ -35,10 +35,11 @@
            Width and height are set so the box does not reflow when the poster
            lands. The video is also on YouTube, which is a different job:
            distribution and citations, not this page's first paint. --%>
-      <figure class="min-w-0 space-y-4">
+      <figure class="min-w-0">
         <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
           <video
-            class="w-full aspect-video bg-base-300"
+            id="ds-hero-video"
+            class="hidden w-full aspect-video bg-base-300"
             controls
             playsinline
             preload="none"
@@ -50,16 +51,17 @@
             Your browser cannot play this video.
             <.link href="https://youtu.be/baTqgRbRprM" class="link">Watch it on YouTube</.link>.
           </video>
-          <figcaption class="px-5 py-3 border-t border-base-300 text-sm text-base-content/60">
-            One command, five questions, and three real design systems. 1 min 40.
-          </figcaption>
-        </div>
 
-        <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
-          <div class="px-5 py-3 border-b border-base-300 bg-base-200">
-            <span class="text-sm font-semibold">The five questions</span>
-          </div>
-          <div class="p-5 space-y-3.5">
+          <button
+            id="ds-hero-play"
+            type="button"
+            class="block w-full text-left cursor-pointer group"
+            aria-label="Play the design system walkthrough, 1 minute 40"
+          >
+            <div class="px-5 py-3 border-b border-base-300 bg-base-200">
+              <span class="text-sm font-semibold">The five questions</span>
+            </div>
+            <div class="p-5 space-y-3.5">
             <div :for={
               {n, q, opts} <- [
                 {"1", "Theme", "a named starting point, or custom"},
@@ -78,15 +80,36 @@
               </div>
             </div>
           </div>
-          <div class="flex items-center gap-2.5 px-5 py-3 border-t border-base-300 bg-primary/5">
-            <span class="hero-check-circle-mini size-5 text-primary shrink-0"></span>
-            <span class="text-sm font-medium text-primary">You pick. You don't describe.</span>
-          </div>
+            <div class="flex items-center gap-3 px-5 py-3.5 border-t border-base-300 bg-primary/5 group-hover:bg-primary/10 transition-colors">
+              <span class="hero-play-circle-solid size-7 text-primary shrink-0"></span>
+              <span class="text-sm font-semibold text-primary">
+                Watch it answer them — 1 min 40
+              </span>
+            </div>
+          </button>
         </div>
         <figcaption class="text-sm text-base-content/60 mt-3 leading-relaxed">
           Every question comes with concrete options, so choosing is the whole job.
         </figcaption>
       </figure>
+
+      <%!-- Swap the card for the player on click. The card is real markup
+           rather than a poster image, so the questions are readable, selectable
+           and indexable before anyone presses play, and the video costs nothing
+           until they do. Nonced because script-src has no 'unsafe-inline', so
+           an onclick attribute would be blocked. --%>
+      <script nonce={assigns[:csp_nonce]}>
+        (function () {
+          var btn = document.getElementById("ds-hero-play");
+          var video = document.getElementById("ds-hero-video");
+          if (!btn || !video) return;
+          btn.addEventListener("click", function () {
+            btn.remove();
+            video.classList.remove("hidden");
+            video.play();
+          });
+        })();
+      </script>
     </div>
   </section>
 
