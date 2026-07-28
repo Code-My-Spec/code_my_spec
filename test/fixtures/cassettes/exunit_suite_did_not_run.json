@@ -1,0 +1,22 @@
+{
+  "commands": [
+    {
+      "args": [
+        "test",
+        "--formatter",
+        "ClientUtils.TestFormatter"
+      ],
+      "command": "mix",
+      "exit_code": 1,
+      "opts": {
+        "env": {
+          "MIX_ENV": "test"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "** (Mix) Could not find a Mix.Project, please ensure you are running Mix in a directory with a mix.exs file\n",
+      "recorded_at": "2026-07-28T18:40:00.000000Z"
+    }
+  ],
+  "ports": []
+}
