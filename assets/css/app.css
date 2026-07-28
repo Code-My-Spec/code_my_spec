@@ -167,4 +167,15 @@ body {
     overflow-wrap: anywhere;
 }
 
+/* @tailwindcss/typography decorates blockquotes with generated quote marks
+   (`content: open-quote`), which assumes the quoted text does not carry its
+   own. Ours does, and should: the same markdown is served as plain text
+   through llms.txt and lifted verbatim by models, where no CSS applies and a
+   quotation with no quotation marks reads as our own sentence. So the literal
+   quotes stay in the source and the generated pair goes. */
+.prose blockquote p:first-of-type::before,
+.prose blockquote p:last-of-type::after {
+    content: none;
+}
+
 /* This file is for your main application CSS */
