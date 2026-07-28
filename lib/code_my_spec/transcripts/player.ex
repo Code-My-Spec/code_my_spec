@@ -93,6 +93,10 @@ defmodule CodeMySpec.Transcripts.Player do
       trimmed == "" or command_noise?(trimmed) ->
         :ok
 
+      invocation = command_invocation(trimmed) ->
+        puts([IO.ANSI.bright(), IO.ANSI.green(), "▶ ", invocation, IO.ANSI.reset()])
+        beat(delay_for(index, ctx))
+
       type == "user" ->
         puts([IO.ANSI.bright(), IO.ANSI.green(), "▶ ", cap(trimmed, @text_cap), IO.ANSI.reset()])
         beat(delay_for(index, ctx))
@@ -235,13 +239,42 @@ defmodule CodeMySpec.Transcripts.Player do
 
   defp inject_session_id(tool_call, _ctx), do: tool_call
 
-  # Slash-command + local-command metadata that Claude Code injects as user
-  # text — noise for a demo terminal, not something the human or agent "said".
+  # Housekeeping slash commands. These really are noise in a demo — nobody
+  # needs to watch a context get cleared.
+  @housekeeping ~w(/clear /compact /cost /model /help /exit /login /logout /doctor /status)
+
+  # Local-command metadata Claude Code injects as user text. Most of it is
+  # noise, but the invocation itself is not: a video that says "run one
+  # command" has to show the command. Dropping it wholesale meant the most
+  # important frame of a demo never rendered.
   defp command_noise?(text) do
-    String.contains?(text, "<command-name>") or
+    # The payload a skill injects when it loads: its base directory and the
+    # whole prompt as JSON. Machine scaffolding, not something anyone said.
+    String.starts_with?(text, "Base directory for this skill:") or
       String.contains?(text, "<local-command-caveat>") or
-      String.contains?(text, "<command-message>") or
-      String.starts_with?(text, "<command-")
+      (command_invocation(text) == nil and
+         (String.contains?(text, "<command-name>") or
+            String.contains?(text, "<command-message>") or
+            String.starts_with?(text, "<command-")))
+  end
+
+  # `/codemyspec:design ui` out of the <command-name>/<command-args> pair.
+  # Returns nil for housekeeping commands and for anything unparseable, both of
+  # which fall through to being filtered.
+  defp command_invocation(text) do
+    with [_, name] <- Regex.run(~r{<command-name>([^<]+)</command-name>}, text),
+         name = String.trim(name),
+         false <- name in @housekeeping do
+      args =
+        case Regex.run(~r{<command-args>([^<]*)</command-args>}, text) do
+          [_, a] -> String.trim(a)
+          _ -> ""
+        end
+
+      String.trim("#{name} #{args}")
+    else
+      _ -> nil
+    end
   end
 
   # -- action labels (Claude Code-ish) --------------------------------------
