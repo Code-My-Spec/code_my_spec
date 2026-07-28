@@ -3,8 +3,8 @@
         Traffic arrives on "vibe coded website" having just read that their site
         looks like everyone else's, so the problem opens in that vocabulary. --%>
   <section class="bg-base-200 border-b border-base-300">
-    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] gap-12 lg:gap-14 items-center">
-      <div>
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-20">
+      <div class="max-w-3xl">
         <div class="badge badge-primary badge-outline gap-2 mb-6">
           <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
           One afternoon · no design tools · no CSS
@@ -12,34 +12,27 @@
         <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
           Decide how it looks <span class="text-primary">once.</span>
         </h1>
-        <p class="text-lg text-base-content/70 mt-6 max-w-xl leading-relaxed">
-          <strong class="text-base-content">
-            Answer five questions about how your project should look. Every page built after that has
-            to reference your answers instead of inventing its own.
-          </strong>
-          No design software, no CSS, and no arguing with a model about colors on every page.
-        </p>
-        <div class="mt-8 flex flex-wrap items-center gap-4">
-          <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
-          <.link navigate={~p"/product"} class="btn btn-ghost btn-lg">See the whole process →</.link>
-        </div>
       </div>
 
-      <%!-- The hero visual is the run itself: one command, the five questions,
-           the file, and three systems that came out of the same interview.
-           Self-hosted rather than a YouTube embed — an iframe would ship most
-           of a megabyte of third-party script into the LCP element on the one
-           page where the video *is* the hero. `preload="none"` means the page
-           pays only for the poster until someone actually clicks.
+      <%!-- Heading, then the video, then the explanation and the CTAs. The
+           video answers "what is this" faster than the paragraph does, so it
+           goes above it; the paragraph is there for whoever does not press
+           play.
 
-           Width and height are set so the box does not reflow when the poster
-           lands. The video is also on YouTube, which is a different job:
-           distribution and citations, not this page's first paint. --%>
-      <figure class="min-w-0">
-        <div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+           Full container width rather than a side column, which is a
+           legibility constraint and not a taste one: the terminal is 72
+           columns, and in the old 494px column that came to 6.6px per
+           character against a floor of about 8. At 1152px it is 15.3px.
+
+           Poster plus native controls, no click-to-swap placeholder — that
+           resized the box mid-interaction and hid the play control behind a
+           custom one. preload="none" keeps the page at 46KB until someone
+           presses play; width and height stop it reflowing. --%>
+      <figure class="mt-10">
+        <div class="rounded-box overflow-hidden border border-base-300 shadow-sm bg-base-300">
           <video
             id="ds-hero-video"
-            class="hidden w-full aspect-video bg-base-300"
+            class="w-full aspect-video block"
             controls
             playsinline
             preload="none"
@@ -51,65 +44,26 @@
             Your browser cannot play this video.
             <.link href="https://youtu.be/baTqgRbRprM" class="link">Watch it on YouTube</.link>.
           </video>
-
-          <button
-            id="ds-hero-play"
-            type="button"
-            class="block w-full text-left cursor-pointer group"
-            aria-label="Play the design system walkthrough, 1 minute 40"
-          >
-            <div class="px-5 py-3 border-b border-base-300 bg-base-200">
-              <span class="text-sm font-semibold">The five questions</span>
-            </div>
-            <div class="p-5 space-y-3.5">
-            <div :for={
-              {n, q, opts} <- [
-                {"1", "Theme", "a named starting point, or custom"},
-                {"2", "Colors", "assigned to roles in your product"},
-                {"3", "Typography", "compact, default or spacious"},
-                {"4", "Layout", "sidebar, top nav or hybrid"},
-                {"5", "Tone", "minimal through to information dense"}
-              ]
-            } class="flex gap-4">
-              <span class="w-5 shrink-0 text-xs font-semibold text-primary tabular-nums pt-1">
-                {n}
-              </span>
-              <div class="min-w-0">
-                <div class="font-semibold leading-snug">{q}</div>
-                <div class="text-sm text-base-content/60 leading-relaxed">{opts}</div>
-              </div>
-            </div>
-          </div>
-            <div class="flex items-center gap-3 px-5 py-3.5 border-t border-base-300 bg-primary/5 group-hover:bg-primary/10 transition-colors">
-              <span class="hero-play-circle-solid size-7 text-primary shrink-0"></span>
-              <span class="text-sm font-semibold text-primary">
-                Watch it answer them — 1 min 40
-              </span>
-            </div>
-          </button>
         </div>
-        <figcaption class="text-sm text-base-content/60 mt-3 leading-relaxed">
-          Every question comes with concrete options, so choosing is the whole job.
+        <figcaption class="text-sm text-base-content/60 mt-3">
+          One command, the five questions, and three real design systems from the same interview.
+          1 min 40.
         </figcaption>
       </figure>
 
-      <%!-- Swap the card for the player on click. The card is real markup
-           rather than a poster image, so the questions are readable, selectable
-           and indexable before anyone presses play, and the video costs nothing
-           until they do. Nonced because script-src has no 'unsafe-inline', so
-           an onclick attribute would be blocked. --%>
-      <script nonce={assigns[:csp_nonce]}>
-        (function () {
-          var btn = document.getElementById("ds-hero-play");
-          var video = document.getElementById("ds-hero-video");
-          if (!btn || !video) return;
-          btn.addEventListener("click", function () {
-            btn.remove();
-            video.classList.remove("hidden");
-            video.play();
-          });
-        })();
-      </script>
+      <div class="max-w-3xl mt-10">
+        <p class="text-lg text-base-content/70 leading-relaxed">
+          <strong class="text-base-content">
+            Answer five questions about how your project should look. Every page built after that has
+            to reference your answers instead of inventing its own.
+          </strong>
+          No design software, no CSS, and no arguing with a model about colors on every page.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
+          <.link navigate={~p"/product"} class="btn btn-ghost btn-lg">See the whole process →</.link>
+        </div>
+      </div>
     </div>
   </section>
 
