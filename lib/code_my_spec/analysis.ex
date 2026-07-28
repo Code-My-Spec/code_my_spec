@@ -30,10 +30,14 @@ defmodule CodeMySpec.Analysis do
   # connections, deterministic ordering, old synchronous stop semantics.
   defp mode, do: Application.get_env(:code_my_spec, :analysis_mode, :async)
 
-  # Every run is a full run over every file. Analysis is async and its results
-  # surface on the next stop, so there is nothing to gain from narrowing the
-  # work — and plenty to lose: scoped runs could only ever refresh part of the
-  # Problems table, which is what made staleness so hard to reason about.
+  # Canonical args for a stop-hook run: bare, so every source sweeps every
+  # file. Analysis is async and its results surface on the next stop, so there
+  # is nothing to gain from narrowing the work — and plenty to lose, since a
+  # scoped sweep can only ever refresh part of the Problems table.
+  #
+  # Model-invoked runs (`await_run/4`) still carry the caller's args and are
+  # classified `:partial` by `kind_for/1`; only the runs enqueued from here
+  # are guaranteed full.
   @full_args %{
     "compiler" => [],
     "credo" => [],
@@ -245,12 +249,26 @@ defmodule CodeMySpec.Analysis do
     %{
       source: source,
       args: args,
-      # Always `:full`. Every run now sweeps the whole project and replaces
-      # that source's Problems wholesale, so there is no partial kind left.
-      kind: :full,
+      kind: kind_for(args),
       fingerprint: fingerprint,
       opts: runner_opt_passthrough(opts) ++ [notify: Keyword.get(opts, :notify, true)]
     }
+  end
+
+  # Path-like args mean the caller targeted specific files — the PreToolUse
+  # hook rewriting `mix test test/foo_test.exs` into an API run. Those cover
+  # only what they name, so they are `:partial` and can never satisfy
+  # freshness: `latest_full_run/2` filters on `kind == :full`.
+  #
+  # The stop hook always requests bare full runs (`@full_args` is empty for
+  # every source), so this only ever fires for model-invoked runs.
+  #
+  # Without the distinction, one `mix test <file>` finished `:completed` at
+  # the current fingerprint and `clear_scope/2` replaced the source's Problems
+  # wholesale — so running a single test file wiped every other exunit Problem
+  # and reported the whole suite fresh and passing.
+  defp kind_for(args) do
+    if Enum.any?(args, &(not String.starts_with?(&1, "-"))), do: :partial, else: :full
   end
 
   @passthrough_opts [

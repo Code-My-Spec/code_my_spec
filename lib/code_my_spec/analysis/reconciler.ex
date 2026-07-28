@@ -28,7 +28,31 @@ defmodule CodeMySpec.Analysis.Reconciler do
   Returns `{:ok, run}` with the finished Run row.
   """
   @spec reconcile(Scope.t(), Run.t(), map(), keyword()) :: {:ok, Run.t()} | {:error, term()}
-  def reconcile(%Scope{} = scope, %Run{} = run, result, opts \\ []) do
+  def reconcile(scope, run, result, opts \\ [])
+
+  # A targeted run (`mix test test/foo_test.exs`, rewritten by the PreToolUse
+  # hook) only covers the files it names, so its result is not the complete
+  # picture for the source. The reconcile below is wholesale — clear the
+  # source, insert what this run found — and applying that to a one-file run
+  # deletes every Problem the run never looked at, then finishes `:completed`
+  # at the current fingerprint. That combination reported the whole suite
+  # fresh and passing off a single test file.
+  #
+  # So a partial finishes with output, exit status and stats — which is what
+  # the model reads back from the analysis API — and leaves Problems alone.
+  # `latest_full_run/2` filters `kind == :full`, so it never satisfies
+  # freshness either. The stop hook's full run stays the authoritative sweep.
+  def reconcile(%Scope{}, %Run{kind: :partial} = run, result, _opts) do
+    Logger.info("[Analysis] #{run.source} targeted run — output only, Problems untouched")
+
+    RunsRepository.finish_run(run, :completed, %{
+      output: result.output,
+      exit_status: result.exit_status,
+      stats: result.stats
+    })
+  end
+
+  def reconcile(%Scope{} = scope, %Run{} = run, result, opts) do
     problems =
       result.problems
       |> Enum.map(&stamp_project(&1, scope))

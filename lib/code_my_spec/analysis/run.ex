@@ -10,9 +10,12 @@ defmodule CodeMySpec.Analysis.Run do
   current inputs means the persisted Problems for that source are current and
   the analyzer does not need to re-run.
 
-  `kind` distinguishes canonical `:full` runs (bare / `--stale` — eligible to
-  satisfy freshness) from `:partial` targeted runs (`mix test path/` — problems
-  reconciled only for the files that ran, never freshness-making).
+  `kind` distinguishes canonical `:full` runs (bare args, the stop hook's
+  whole-project sweep — eligible to satisfy freshness) from `:partial` targeted
+  runs (`mix test path/`, rewritten by the PreToolUse hook). A partial records
+  its output and stats for the model to read back but leaves Problems
+  untouched, and `latest_full_run/2` filters it out so it can never make a
+  source look fresh.
   """
 
   use Ecto.Schema

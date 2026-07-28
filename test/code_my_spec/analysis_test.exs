@@ -3,6 +3,7 @@ defmodule CodeMySpec.AnalysisTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.{Fingerprint, Reconciler, RunsRepository}
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
@@ -153,11 +154,52 @@ defmodule CodeMySpec.AnalysisTest do
         |> Enum.map(& &1.file_path)
         |> Enum.sort()
 
-      # Every run sweeps the whole project, so its results are the complete
+      # A full run sweeps the whole project, so its results are the complete
       # picture for that source: the stale problem is gone even though this
       # run never mentioned that file. Scoped clearing is what left problems
       # behind after a fix landed somewhere else.
       assert paths == ["test/target_test.exs"]
+    end
+
+    test "a targeted run records output but leaves problems and freshness alone",
+         %{scope: scope} do
+      upsert_file!(scope, "lib/foo.ex", :implementation, "aaa")
+
+      Problems.create_problems(scope, [
+        %{problem("test/other_test.exs") | project_id: scope.active_project_id}
+      ])
+
+      {:ok, run} =
+        RunsRepository.start_run(scope, %{
+          source: "exunit",
+          kind: :partial,
+          args: %{"args" => ["test/target_test.exs"]},
+          input_fingerprint: Fingerprint.current(scope, "exunit")
+        })
+
+      {:ok, finished} =
+        Reconciler.reconcile(scope, run, %{
+          problems: [],
+          output: "1 test, 0 failures",
+          exit_status: 0,
+          stats: %{"tests" => 1}
+        })
+
+      # The model still reads its tool output back off the run.
+      assert finished.status == :completed
+      assert finished.output == "1 test, 0 failures"
+
+      # But a one-file run is no evidence about a file it never ran. Wholesale
+      # clearing here deleted every Problem the run hadn't looked at.
+      paths =
+        scope |> Problems.list_project_problems(source: "exunit") |> Enum.map(& &1.file_path)
+
+      assert paths == ["test/other_test.exs"]
+
+      # And it must not make the source look current: completed + matching
+      # fingerprint is exactly what `tests_passing` accepts, so a targeted run
+      # reading as fresh passed a suite that never ran in full.
+      refute Analysis.fresh?(scope, "exunit")
     end
 
     test "stamps component_id on test problems via the file path join", %{scope: scope} do
