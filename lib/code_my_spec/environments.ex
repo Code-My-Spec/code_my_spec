@@ -255,4 +255,14 @@ defmodule CodeMySpec.Environments do
           {String.t(), non_neg_integer()}
   def cmd(%Environment{type: type} = env, command, args, opts \\ []),
     do: impl(type).cmd(env, command, args, opts)
+
+  @doc """
+  Whether `path` exists in the filesystem `cmd/4` runs in.
+
+  See `c:CodeMySpec.Environments.EnvironmentsBehaviour.exec_file_exists?/2` for
+  why this is not `file_exists?/2`.
+  """
+  @spec exec_file_exists?(Environment.t(), String.t()) :: boolean()
+  def exec_file_exists?(%Environment{type: type} = env, path),
+    do: impl(type).exec_file_exists?(env, path)
 end

@@ -59,6 +59,10 @@ defmodule CodeMySpec.Environments.Cli do
   """
   @spec cmd(Environment.t(), String.t(), [String.t()], keyword()) ::
           {String.t(), non_neg_integer()}
+  # Execution is delegated to Local, so the execution filesystem is Local's
+  # — same filesystem, same host.
+  defdelegate exec_file_exists?(env, path), to: CodeMySpec.Environments.Local
+
   defdelegate cmd(env, command, args, opts), to: CodeMySpec.Environments.Local
 
   @doc """

@@ -155,6 +155,11 @@ defmodule CodeMySpec.Environments.Local do
     """
   end
 
+  # Local runs commands on the same filesystem it reads, so the execution view
+  # and the domain view are one filesystem.
+  @impl true
+  def exec_file_exists?(env, path), do: file_exists?(env, path)
+
   @impl true
   def cmd(%Environment{cwd: cwd}, command, args, opts) do
     # The environment's cwd is the default working directory — that is what

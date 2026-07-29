@@ -33,6 +33,11 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   that `ExCliVcr` already owns by meck-patching `System.cmd/3`. Delegating
   keeps both recorders intact.
   """
+  # Execution is delegated to Local, so the execution filesystem is Local's
+  # — the recorder wraps reads, not the shell.
+  @impl true
+  defdelegate exec_file_exists?(env, path), to: CodeMySpec.Environments.Local
+
   @impl true
   defdelegate cmd(env, command, args, opts), to: CodeMySpec.Environments.Local
 

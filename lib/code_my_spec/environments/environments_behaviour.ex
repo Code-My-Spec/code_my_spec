@@ -122,6 +122,22 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
               opts :: keyword()
             ) :: {output :: String.t(), exit_code :: non_neg_integer()}
 
+  @doc """
+  Whether `path` exists in the filesystem the *shell* sees — the one `cmd/4`
+  runs in.
+
+  Usually the same answer as `file_exists?/2`, and deliberately a separate
+  question. `file_exists?/2` reports on the domain's filesystem; this reports
+  on the execution filesystem. The in-memory test environments are where they
+  come apart: they fake the domain filesystem while delegating execution to
+  the real one, so `deps/credo` is present to a spawned `mix` and absent to
+  `read_file/2`. A tool-availability check has to follow `cmd/4`, not
+  `read_file/2`, or it concludes the tool is missing and silently skips it.
+
+  Paths resolve against the environment's cwd, as everywhere else.
+  """
+  @callback exec_file_exists?(env :: Environment.t(), path :: String.t()) :: boolean()
+
   # Remove later, or reconsider:
 
   @callback environment_setup_command(env :: Environment.t(), attrs :: map()) :: String.t()

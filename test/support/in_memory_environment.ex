@@ -52,6 +52,11 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   would do it by making the memory environment claim authority over something
   it does not model.
   """
+  # Execution is delegated to Local, so the execution filesystem is Local's
+  # — the memfs fakes reads, not the shell.
+  @impl true
+  defdelegate exec_file_exists?(env, path), to: CodeMySpec.Environments.Local
+
   @impl true
   defdelegate cmd(env, command, args, opts), to: CodeMySpec.Environments.Local
 
