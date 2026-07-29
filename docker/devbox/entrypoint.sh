@@ -42,11 +42,15 @@ mix ecto.create
 mix ecto.migrate
 
 # --- harness ----------------------------------------------------------------
+# `start`, not `server`: this is a plain mix release, and `start` is its
+# launcher's foreground boot command. `server` is only a dev-time mix alias
+# and the launcher rejects it outright. (The brew formula runs `cms start`
+# under launchd for the same reason.)
+#
 # Backgrounded: the harness is a companion to the project, not a gate on it.
-# If it dies the app must stay up, so the user can still work while they fix
-# whatever went wrong with `cms`.
+# If it dies the app must stay up so the user can still work.
 log "Starting the cms harness server on :4003"
-cms server &
+cms start &
 
 # --- app --------------------------------------------------------------------
 log "Starting ${APP_NAME} on :4000"
