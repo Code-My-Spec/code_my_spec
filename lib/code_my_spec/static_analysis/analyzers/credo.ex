@@ -10,6 +10,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Problems
   alias CodeMySpec.Users.Scope
@@ -22,14 +23,15 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   @impl true
   @spec available?(Scope.t()) :: boolean()
-  def available?(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "" do
-    with true <- File.dir?(cwd),
-         true <- File.exists?(Path.join(cwd, "mix.exs")),
-         true <- File.dir?(Path.join(cwd, "deps/credo")) do
-      true
-    else
-      _ -> false
-    end
+  def available?(%Scope{cwd: cwd} = scope) when is_binary(cwd) and cwd != "" do
+    # Through the environment, not File.*: this inspects the *project's*
+    # working copy, and on a remote environment that is not this machine's
+    # disk. Raw File calls here would check the wrong host and answer false,
+    # silently skipping the analyzer rather than failing.
+    env = StaticAnalysis.resolve_environment([], scope, cwd)
+
+    Environments.file_exists?(env, "mix.exs") and
+      Environments.file_exists?(env, "deps/credo")
   rescue
     _ -> false
   end
