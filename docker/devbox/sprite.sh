@@ -135,6 +135,16 @@ on first sync, with no agent-driven setup pass."
   fi
 fi
 
+# --- dependencies -------------------------------------------------------------
+# Also on the clone path, not just after generating. A sprite that attaches to
+# an existing repo starts with no deps/ at all, and the analyzers gate on
+# deps/<tool> existing — so credo and sobelow report themselves unavailable and
+# are skipped, and nothing compiles. Cheap when they are already fetched.
+if [ -f "${APP_DIR}/mix.exs" ]; then
+  log "Fetching dependencies"
+  (cd "${APP_DIR}" && mix deps.get) || log "deps.get failed — the agent will need to sort this out"
+fi
+
 # --- harness -----------------------------------------------------------------
 # No migrations: the schema belongs to the server, which owns those rows. The
 # sprite role has DML only, so an accidental migration fails loudly rather than

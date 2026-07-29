@@ -22,23 +22,31 @@ end
 
 ## What a shared given looks like
 
+The module declares `use SexySpex.Givens`, and each given is registered with
+`register_given name, context do` — the context is a named parameter, not an
+implicit variable. Spex files then reach them with a plain `import`.
+
 ```elixir
-given :synced_context_component do
-  scope = context.scope
-  env = context.environment
+defmodule <App>Spex.SharedGivens do
+  use SexySpex.Givens
 
-  :ok = Environments.write_file(env, @spec_path, spec_file_content())
-  :ok = Environments.write_file(env, @impl_path, impl_file_content())
+  register_given :synced_context_component, context do
+    scope = context.scope
+    env = context.environment
 
-  {:ok, sync_live, _html} =
-    live(context.conn, "/projects/#{context.project.name}/sync")
+    :ok = Environments.write_file(env, @spec_path, spec_file_content())
+    :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
-  sync_live |> element("button[phx-click='sync']") |> render_click()
+    {:ok, sync_live, _html} =
+      live(context.conn, "/projects/#{context.project.name}/sync")
 
-  component =
-    Fixtures.get_component_by_module_name(scope, @component_module_name)
+    sync_live |> element("button[phx-click='sync']") |> render_click()
 
-  {:ok, %{component: component}}
+    component =
+      Fixtures.get_component_by_module_name(scope, @component_module_name)
+
+    {:ok, Map.put(context, :component, component)}
+  end
 end
 ```
 
@@ -48,8 +56,11 @@ Properties to preserve:
   include `assert` statements about the system under test. If setup
   breaks, let it break loudly at the point of failure (pattern-match
   failure, `{:ok, _}` mismatch). Assertions belong in `then_`.
-- **Produces keys.** Return `{:ok, %{key: value}}` so downstream steps
-  have something to reference. Document which keys the given adds in
+- **Produces keys by adding to the context, not replacing it.** Return
+  `{:ok, Map.put(context, :key, value)}`. Returning a bare
+  `%{key: value}` drops every key the earlier steps established, and
+  does it silently — the next step fails on a missing key far from the
+  given that discarded it. Document which keys the given adds in
   the `SharedGivens` moduledoc.
 - **Goes through the real surface.** The given above writes files and
   clicks the sync button — it does not call `Components.create/2`.

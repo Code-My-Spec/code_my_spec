@@ -23,7 +23,7 @@ defmodule <App>Spex.Story<id>.Criterion<id>Spex do
 
   use <App>Spex.Case
 
-  import_givens <App>Spex.SharedGivens
+  import <App>Spex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -51,7 +51,7 @@ end
 
 - `use <App>Spex.Case` — wires up ConnTest, LiveViewTest, the
   SexySpex DSL, the DB sandbox, and the `Fixtures` bridge.
-- `import_givens <App>Spex.SharedGivens` — makes `given_ :atom`
+- `import <App>Spex.SharedGivens` — a plain `import`; makes `given_ :atom`
   shortcuts available for common setup.
 - `setup :register_log_in_setup_account` — registers a user, logs them
   in, activates an account.

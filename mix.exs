@@ -222,7 +222,7 @@ defmodule CodeMySpec.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   def cli do
     [
-      preferred_envs: [spex: :test]
+      preferred_envs: [spex: :test, agent_test: :test]
     ]
   end
 
