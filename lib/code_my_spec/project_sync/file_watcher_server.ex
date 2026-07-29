@@ -352,17 +352,36 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
     end)
   end
 
+  # "Every project with a local_path" was a safe definition of "mine" only
+  # while the database was per-machine: the rows in a local SQLite file were
+  # by construction this machine's projects. On a shared database it means
+  # every project anyone has ever linked, and a sprite booting against
+  # centralized data starts watchers for all of them, pointed at directories
+  # that belong to someone else's laptop.
+  #
+  # A sprite has exactly one working copy, so it says which project it is.
+  # Absent that, behaviour is unchanged for a desktop install.
+  #
+  # Note the `File.dir?` guard below would mask this in a container (none of
+  # those paths exist there, so nothing would start) — but that is an accident
+  # of the paths being absent, not scoping. The moment a host path happened to
+  # exist inside the container, it would be watched.
   defp watch_all_linked_projects(state) do
+    Enum.reduce(watchable_projects(), state.watchers, &maybe_add_watcher/2)
+  end
+
+  defp watchable_projects do
     import Ecto.Query
 
     alias CodeMySpec.Projects.Project
 
-    projects =
-      Project
-      |> where([p], not is_nil(p.local_path))
-      |> CodeMySpec.Repo.all()
+    base = where(Project, [p], not is_nil(p.local_path))
 
-    Enum.reduce(projects, state.watchers, &maybe_add_watcher/2)
+    case Application.get_env(:code_my_spec, :project_id) do
+      nil -> base
+      project_id -> where(base, [p], p.id == ^project_id)
+    end
+    |> CodeMySpec.Repo.all()
   end
 
   defp maybe_add_watcher(project, watchers) do

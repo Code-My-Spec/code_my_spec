@@ -145,6 +145,13 @@ if config_env() == :dev_sprite do
   if System.get_env("NO_SERVER") do
     config :code_my_spec, CodeMySpecLocalWeb.Endpoint, server: false
   end
+
+  # Which project this sprite is for. Scopes anything that would otherwise
+  # read "all linked projects" out of a now-shared table — see
+  # ProjectSync.FileWatcherServer.watchable_projects/0.
+  if project_id = System.get_env("CMS_PROJECT_ID") do
+    config :code_my_spec, project_id: project_id
+  end
 end
 
 # Web app mode
