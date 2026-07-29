@@ -148,6 +148,17 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 RUN npm install -g @anthropic-ai/claude-code \
   && npm cache clean --force
 
+# Claude Code keeps its state in two places: credentials and sessions under
+# ~/.claude/, and its config at ~/.claude.json — a sibling of that directory,
+# not a child. Mounting a volume at ~/.claude therefore persists the login and
+# loses the config, and the next container starts with
+# "Claude configuration file not found".
+#
+# Symlinking the config into the directory means one mount covers both. Created
+# in the image so it survives the mount, and writing through a dangling symlink
+# creates the target, so an empty volume still works on first run.
+RUN ln -sf /root/.claude/claude.json /root/.claude.json
+
 ENV PATH="/usr/lib/postgresql/${POSTGRES_VERSION}/bin:${PATH}"
 
 RUN mix local.hex --force && mix local.rebar --force
