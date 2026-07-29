@@ -159,6 +159,24 @@ RUN npm install -g @anthropic-ai/claude-code \
 # creates the target, so an empty volume still works on first run.
 RUN ln -sf /root/.claude/claude.json /root/.claude.json
 
+# A user for the agent to run as.
+#
+# Claude Code's bypassPermissions mode refuses to start under root — and that is
+# the only mode that works unattended, because every other one eventually needs
+# a prompt answered and there is nobody to answer it. Running with a hand-kept
+# --allowedTools list instead is worse than it sounds: anything not named is
+# denied silently, and the agent cannot tell "I lack permission" from "this
+# environment is broken". One run was spent reporting that the sandbox denied
+# `mix` when mix was fine.
+#
+# The container itself stays root — the entrypoint starts Postgres and the
+# harness, which want it. Only the agent drops privileges, via
+# `docker exec -u agent`.
+RUN useradd --create-home --shell /bin/bash agent \
+  && ln -sf /home/agent/.claude/claude.json /home/agent/.claude.json \
+  && mkdir -p /workspace \
+  && chown -R agent:agent /workspace /home/agent
+
 ENV PATH="/usr/lib/postgresql/${POSTGRES_VERSION}/bin:${PATH}"
 
 RUN mix local.hex --force && mix local.rebar --force
