@@ -17,8 +17,12 @@ CMS_PROJECT_ID="${CMS_PROJECT_ID:?CMS_PROJECT_ID is required (CodeMySpec project
 # The clone directory is chosen here, at runtime, and handed to the harness.
 # It is deliberately not read back from the project row: that row is shared
 # with every other checkout, so it cannot describe this container's disk.
-APP_NAME="${APP_NAME:-$(basename "${REPO_URL}" .git)}"
-APP_DIR="${APP_DIR:-/workspace/${APP_NAME}}"
+#
+# Named from the repo, NOT from APP_NAME: the image sets APP_NAME=my_app for
+# the devbox generator path, and a `:-` default cannot tell an image-level ENV
+# from one the operator passed. Reading it here silently cloned every repo into
+# /workspace/my_app. APP_DIR is the override, and nothing else sets it.
+APP_DIR="${APP_DIR:-/workspace/$(basename "${REPO_URL}" .git)}"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 

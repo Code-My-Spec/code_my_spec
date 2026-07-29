@@ -34,6 +34,25 @@
 #
 # The image is deliberately agentless: it mounts the user's own Claude Code
 # credentials rather than brokering model access.
+#
+# --- sprite mode ---------------------------------------------------------
+# Built with `--build-arg CMS_RELEASE_ENV=dev_sprite` (tag it separately), a
+# sprite clones an existing repo and serves MCP against the central Postgres.
+# It has no database of its own, so there is nothing to mount and nothing to
+# back up:
+#
+#   docker run -d --name sprite \
+#     -e REPO_URL=https://github.com/owner/repo \
+#     -e CMS_PROJECT_ID=<project uuid> \
+#     -e CMS_DB_HOST=host.docker.internal \
+#     -e CMS_DB_NAME=code_my_spec_dev \
+#     -e CMS_DB_USER=cms_sprite -e CMS_DB_PASSWORD=... \
+#     -e GITHUB_TOKEN=... \
+#     --entrypoint /usr/local/bin/devbox-sprite \
+#     codemyspec/sprite
+#
+# MCP is on 127.0.0.1:4003 *inside* the container, same as the desktop
+# harness — reach it with `docker exec`, or from the agent that runs in there.
 
 ARG ELIXIR_IMAGE=hexpm/elixir:1.20.2-erlang-29.0.4-debian-trixie-20260713-slim
 
