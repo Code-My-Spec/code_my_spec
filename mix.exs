@@ -37,7 +37,7 @@ defmodule CodeMySpec.MixProject do
   end
 
   defp app_module do
-    if Mix.env() in [:dev_cli, :prod_cli, :cli_demo],
+    if Mix.env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite],
       do: {CodeMySpecLocalWeb.Application, []},
       else: {CodeMySpecWeb.Application, []}
   end
@@ -46,6 +46,7 @@ defmodule CodeMySpec.MixProject do
   # Release modules (Burrito steps) only compile in prod_cli.
   defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
   defp elixirc_paths(:dev_cli), do: ["lib", "lib_cli"]
+  defp elixirc_paths(:dev_sprite), do: ["lib", "lib_cli"]
   defp elixirc_paths(:prod_cli), do: ["lib", "lib_cli"]
   defp elixirc_paths(:cli_demo), do: ["lib", "lib_cli"]
   defp elixirc_paths(_), do: ["lib"]
@@ -135,19 +136,19 @@ defmodule CodeMySpec.MixProject do
       {:sweet_xml, "~> 0.7"},
 
       # Embeddings
-      {:ortex, "~> 0.1", only: [:dev_cli, :prod_cli, :cli_demo]},
-      {:tokenizers, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo]},
-      {:nx, "~> 0.9", only: [:dev_cli, :prod_cli, :cli_demo]},
+      {:ortex, "~> 0.1", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]},
+      {:tokenizers, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]},
+      {:nx, "~> 0.9", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]},
       {:sqlite_vec, "~> 0.1.0", only: [:dev_cli, :prod_cli, :cli_demo]},
 
       # CLI release
       {:burrito,
        github: "Code-My-Spec/burrito",
        ref: "d44eb28befa146f1c12f6b7b4a2cbc598b3c9686",
-       only: [:dev_cli, :prod_cli, :cli_demo],
+       only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite],
        runtime: false,
        override: true},
-      {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo]}
+      {:optimus, "~> 0.5", only: [:dev_cli, :prod_cli, :cli_demo, :dev_sprite]}
     ]
   end
 

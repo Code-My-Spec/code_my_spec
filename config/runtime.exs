@@ -104,8 +104,51 @@ if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
     zone_id: env!("CLOUDFLARE_ZONE_ID", :string, "ba45c3c2010cb275de73f91f4f05edab")
 end
 
+# Sprite mode — the harness on centralized data.
+#
+# Deliberately NOT part of the CLI block above: that block's whole job is to
+# resolve a per-machine SQLite path, and a sprite has no local database at all.
+# Connection details come from the environment so one image can be pointed at
+# a different database without a rebuild — which is what makes a sprite
+# disposable.
+if config_env() == :dev_sprite do
+  repo_config =
+    case System.get_env("CMS_DATABASE_URL") do
+      nil ->
+        [
+          database: System.get_env("CMS_DB_NAME") || "code_my_spec_sprite_dev",
+          hostname: System.get_env("CMS_DB_HOST") || "localhost",
+          port: String.to_integer(System.get_env("CMS_DB_PORT") || "5432"),
+          username: System.get_env("CMS_DB_USER") || System.get_env("USER") || "postgres",
+          password: System.get_env("CMS_DB_PASSWORD") || ""
+        ]
+
+      url ->
+        [url: url]
+    end
+
+  config :code_my_spec,
+         CodeMySpec.Repo,
+         Keyword.merge(
+           Application.get_env(:code_my_spec, CodeMySpec.Repo, []),
+           repo_config
+         )
+
+  # Same escape hatches the CLI block provides, since a sprite needs them for
+  # the same reasons: run a script without binding a port, or coexist with
+  # another harness on the machine.
+  if port = System.get_env("CMS_PORT") do
+    config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
+      http: [ip: {127, 0, 0, 1}, port: String.to_integer(port)]
+  end
+
+  if System.get_env("NO_SERVER") do
+    config :code_my_spec, CodeMySpecLocalWeb.Endpoint, server: false
+  end
+end
+
 # Web app mode
-if config_env() not in [:dev_cli, :prod_cli, :cli_demo] do
+if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
   config :code_my_spec,
     github_client_id: env!("GITHUB_CLIENT_ID"),
     github_client_secret: env!("GITHUB_CLIENT_SECRET"),
