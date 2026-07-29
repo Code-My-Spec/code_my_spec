@@ -112,6 +112,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
   && apt-get install -y --no-install-recommends nodejs \
   && rm -rf /var/lib/apt/lists/*
 
+# Claude Code. The image ships the client but no credentials — mount the
+# user's own ~/.claude at run time. This is the local-development path: using
+# one person's subscription to serve other people would be a licensing
+# problem, so the hosted path needs an API key or Managed Agents instead.
+RUN npm install -g @anthropic-ai/claude-code \
+  && npm cache clean --force
+
 ENV PATH="/usr/lib/postgresql/${POSTGRES_VERSION}/bin:${PATH}"
 
 RUN mix local.hex --force && mix local.rebar --force
@@ -151,7 +158,8 @@ RUN mkdir -p "$PGDATA" /var/run/postgresql \
   && echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
 
 COPY docker/devbox/entrypoint.sh /usr/local/bin/devbox-init
-RUN chmod 0755 /usr/local/bin/devbox-init
+COPY docker/devbox/new-project.sh /usr/local/bin/devbox-new-project
+RUN chmod 0755 /usr/local/bin/devbox-init /usr/local/bin/devbox-new-project
 
 WORKDIR /workspace
 

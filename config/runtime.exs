@@ -72,9 +72,36 @@ if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
   # Demo/sandbox overrides — env-var gated, no effect on a normal dev_cli boot.
   # CMS_PORT runs the local web on another port so a replay instance can
   # coexist with the real dev_cli app on :4004.
-  if demo_port = System.get_env("CMS_PORT") do
-    config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
-      http: [ip: {127, 0, 0, 1}, port: String.to_integer(demo_port)]
+  # CMS_HTTP_IP overrides the bind address. The default is loopback on purpose —
+  # the local app holds the user's OAuth session and project data, and must not
+  # be reachable from the network on a laptop. A container is the case where
+  # loopback is wrong rather than right: the OAuth callback has to come back
+  # from a browser outside the container's network namespace, so there is no
+  # way to complete a login without binding the container interface.
+  #
+  # Set it deliberately (`CMS_HTTP_IP=0.0.0.0`), and only where the container
+  # boundary is doing the isolating. Never set it on a workstation.
+  cms_bind_ip =
+    case System.get_env("CMS_HTTP_IP") do
+      nil ->
+        {127, 0, 0, 1}
+
+      raw ->
+        raw
+        |> String.to_charlist()
+        |> :inet.parse_address()
+        |> case do
+          {:ok, addr} -> addr
+          {:error, _} -> raise "CMS_HTTP_IP is not a valid IP address: #{inspect(raw)}"
+        end
+    end
+
+  demo_port = System.get_env("CMS_PORT")
+
+  if demo_port || System.get_env("CMS_HTTP_IP") do
+    http = [ip: cms_bind_ip]
+    http = if demo_port, do: Keyword.put(http, :port, String.to_integer(demo_port)), else: http
+    config :code_my_spec, CodeMySpecLocalWeb.Endpoint, http: http
   end
 
   # CMS_API_BASE_URL repoints sync/auth at a local demo server instead of
