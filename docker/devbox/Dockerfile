@@ -173,6 +173,15 @@ COPY --from=cms-builder /opt/cms /opt/cms
 RUN printf '#!/bin/bash\nexec /opt/cms/bin/code_my_spec_cli "$@"\n' > /usr/local/bin/cms \
   && chmod 0755 /usr/local/bin/cms
 
+# The Claude Code plugin's MCP config spawns `cms-mcp-relay` by bare name, so it
+# has to be on PATH — the brew formula symlinks it for the same reason. Without
+# this the plugin loads its hooks and skills but no MCP tools, which looks like
+# the harness being down rather than a missing symlink.
+#
+# A symlink is right here where a wrapper was right for `cms`: the relay is a
+# static Go binary that resolves nothing relative to its own path.
+RUN ln -sf /opt/cms/bin/cms-mcp-relay /usr/local/bin/cms-mcp-relay
+
 # --- postgres cluster --------------------------------------------------------
 # Initialised at build time so the first boot isn't paying for initdb. Trust
 # auth on loopback only: this is a single-user dev container, and the

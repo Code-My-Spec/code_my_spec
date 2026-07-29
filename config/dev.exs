@@ -37,7 +37,7 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
   https: [
     ip: {127, 0, 0, 1},
-    port: 4001,
+    port: String.to_integer(System.get_env("HTTPS_PORT") || "4001"),
     cipher_suite: :strong,
     certfile: "priv/cert/selfsigned.pem",
     keyfile: "priv/cert/selfsigned_key.pem"

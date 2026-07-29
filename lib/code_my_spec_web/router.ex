@@ -172,6 +172,15 @@ defmodule CodeMySpecWeb.Router do
     post "/permissions/:id/respond", PermissionController, :respond
     get "/permissions/:id/status", PermissionController, :status
 
+  end
+
+  # Questions are the one API a sprite needs, and a sprite has no user to run
+  # an OAuth flow as — see `Plugs.DeployKeyOrOAuth`. The plug still accepts
+  # OAuth, so the desktop CLI reaches these unchanged; only the accepted
+  # credential widened, and only here.
+  scope "/api", CodeMySpecWeb do
+    pipe_through [:api, CodeMySpecWeb.Plugs.DeployKeyOrOAuth]
+
     post "/questions/ask", QuestionController, :ask
     post "/questions/:id/answer", QuestionController, :answer
     get "/questions/:id/status", QuestionController, :status

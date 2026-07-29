@@ -160,6 +160,22 @@ if config_env() == :dev_sprite do
   if working_dir = System.get_env("CMS_MCP_WORKING_DIR") do
     config :code_my_spec, mcp_working_dir: working_dir
   end
+
+  # The project's deploy key — the sprite's only credential for reaching the
+  # server, and it needs one for exactly one thing: raising a question to a
+  # human when a manual requirement needs a decision. Everything else it does
+  # against the database directly. See Notifications.QuestionClient.
+  if deploy_key = System.get_env("CMS_DEPLOY_KEY") do
+    config :code_my_spec, deploy_key: deploy_key
+  end
+
+  # Point the sprite at a different server than the compile-time default.
+  # dev_sprite.exs wires api/oauth/base to dev.codemyspec.com; this is how a
+  # sprite is aimed at a server running locally, which is the only way to
+  # exercise a server-side change before it is deployed.
+  if api = System.get_env("CMS_API_BASE_URL") do
+    config :code_my_spec, api_base_url: api, oauth_base_url: api, base_url: api
+  end
 end
 
 # Web app mode

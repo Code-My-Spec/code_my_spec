@@ -2,9 +2,9 @@
 
 Sibling guide to `workflow.md` for personas whose actor is an
 **LLM agent class**, not a human. The artifact contract is
-identical to the human path — `create_persona` for the DB record,
-`summary.md` + `sources.md` on disk, `link_persona_to_story` to
-connect — but the research methodology is different.
+identical to the human path — `create_persona` for the DB record and
+`summary.md` + `sources.md` on disk — but the research methodology is
+different.
 
 ## When this applies
 

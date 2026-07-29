@@ -43,21 +43,20 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
 
     You are running a **persona research session** with the Product Manager on
     this project. The deliverable is one persona on the project — a DB record
-    plus two markdown artifacts — linked to at least one story.
+    plus two markdown artifacts.
 
     ## Prereqs
 
-    Personas are **project-scoped**. `create_persona` and
-    `link_persona_to_story` need the scope to carry an `active_project_id`.
+    Personas are **project-scoped**. `create_persona` needs the scope to
+    carry an `active_project_id`.
     If `create_persona` returns `missing_active_project`, run `init_project`
     first to bind the working directory to a project, then retry.
 
     ## Reuse before research
 
     Call `list_personas` early in the intake to see if a prior session
-    already covered this role. Reusing an existing persona via
-    `link_persona_to_story` is often the right answer — don't research a
-    duplicate.
+    already covered this role. Reusing an existing persona is often the
+    right answer — don't research a duplicate.
 
     ## Read the playbook
 
@@ -84,7 +83,6 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
     - `list_personas` — check for reuse before researching.
     - `get_persona` — fetch full persona detail by slug or id.
     - `create_persona` (alias `add_persona`) — write the DB record.
-    - `link_persona_to_story` — required for the done signal.
     - `evaluate_task` — manual validation trigger.
 
     ## Produced artifacts
@@ -96,14 +94,13 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
       Anti-Patterns. Any other H2 fails validation.
     - `.code_my_spec/personas/<slug>/sources.md` — link list (URL, title,
       access date per entry).
-    - Persona ↔ story link via `link_persona_to_story` (≥1 required).
 
     ## Manual validation
 
     The stop hook does NOT auto-evaluate. Stop freely between turns to
     let the PM respond — each stop is cheap, the task stays active. When
-    you believe all artifacts exist and ≥1 story is linked, call
-    `evaluate_task` to run `PersonasChecker.complete?`. Never fabricate
+    you believe all artifacts exist, call `evaluate_task` to run
+    `PersonasChecker.complete?`. Never fabricate
     artifacts to pass the checker. Thin in, nothing out.
     """
   end

@@ -145,5 +145,9 @@ cd "${APP_DIR}"
 
 export CMS_PROJECT_ID
 export CMS_MCP_WORKING_DIR="${APP_DIR}"
+# Optional. Without it `ask_user` cannot reach anybody, which only matters when
+# the agent hits a manual requirement — and an unattended sprite has no
+# terminal to fall back to.
+export CMS_DEPLOY_KEY="${CMS_DEPLOY_KEY:-}"
 
 exec /opt/cms/bin/code_my_spec_cli start

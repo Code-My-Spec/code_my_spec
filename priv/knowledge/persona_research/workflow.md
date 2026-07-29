@@ -2,8 +2,7 @@
 
 The `persona_research` task produces one persona on the active project:
 a DB record (via `create_persona`) plus two markdown artifacts at
-`.code_my_spec/personas/<slug>/` (`summary.md` and `sources.md`), with
-at least one `link_persona_to_story` call before stopping.
+`.code_my_spec/personas/<slug>/` (`summary.md` and `sources.md`).
 
 The framework knowledge corpus (`priv/knowledge/persona_research/`)
 has the full content for each phase — this doc is the workflow
@@ -95,10 +94,12 @@ All three must exist before stopping:
 - **`.code_my_spec/personas/<slug>/sources.md`.** Link list with URL,
   title, and access date per entry — one per line.
 
-### 5. Link to a story
+### 5. Link to a story, when there is one
 
-`link_persona_to_story` with the persona's id and at least one story
-id. The requirement can't satisfy without ≥1 link.
+`link_persona_to_story` with the persona's id and a story id. Optional
+and often deferred: personas are researched before stories exist, and
+`PersonasChecker` does not look at links — Three Amigos enforces persona
+coverage per story later, which is where the linkage actually matters.
 
 ## Evidence bar
 

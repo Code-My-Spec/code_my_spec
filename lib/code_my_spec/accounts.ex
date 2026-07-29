@@ -222,4 +222,30 @@ defmodule CodeMySpec.Accounts do
   def own_role(%Scope{} = scope, account_id) do
     MembersRepository.get_user_role(scope.user.id, account_id)
   end
+  @doc """
+  The user who owns `account_id`, or `nil`.
+
+  Exists for credentials that identify an account rather than a person — a
+  project's deploy key names a project, and a sprite holding one still has to
+  reach somebody when a manual requirement needs a decision. The owner is that
+  somebody: it is their project, so it is their interruption to take.
+
+  Oldest owner when there is more than one, so the answer is stable rather than
+  whichever row came back first.
+  """
+  @spec get_account_owner(Ecto.UUID.t()) :: CodeMySpec.Users.User.t() | nil
+  def get_account_owner(account_id) do
+    import Ecto.Query
+
+    CodeMySpec.Accounts.Member
+    |> where([m], m.account_id == ^account_id and m.role == :owner)
+    |> order_by([m], asc: m.inserted_at)
+    |> limit(1)
+    |> preload(:user)
+    |> CodeMySpec.Repo.one()
+    |> case do
+      %CodeMySpec.Accounts.Member{user: %{} = user} -> user
+      _ -> nil
+    end
+  end
 end
