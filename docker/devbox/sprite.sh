@@ -7,8 +7,9 @@
 # renders. What lives here is a git working copy and nothing else, which is
 # why destroying one mid-run costs nothing that isn't already pushed.
 #
-# It does not generate a project. Generation happens once, on the "new project"
-# path; a sprite attaches to a repo that already exists.
+# Generation is the same path, not a different one: a new project is a sprite
+# whose repo happens to be empty. That is detectable — a clone with no commits —
+# so there is one entrypoint rather than two scripts sharing most of a body.
 set -euo pipefail
 
 REPO_URL="${REPO_URL:?REPO_URL is required (https://github.com/owner/repo)}"
@@ -42,6 +43,95 @@ else
     git -C "${APP_DIR}" remote set-url origin "${REPO_URL}"
   else
     git clone "${REPO_URL}" "${APP_DIR}"
+  fi
+fi
+
+# --- generate, if the repo is empty ------------------------------------------
+# The project row already exists in the central database, so there is nothing to
+# fetch and no server API call to authenticate. That is what removed the blocker
+# here: the previous version asked OAuthClient for a token, and a fresh container
+# has no way to obtain one — the browser flow needs to reach a port that binds
+# loopback *inside* the container by design.
+if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ]; then
+  log "Repo is empty — generating a new project"
+
+  # module_name off the project row, not the repo name. It is what the harness
+  # uses to map spec paths to modules, so a generated app that disagrees with it
+  # produces components the requirement graph cannot link to files.
+  #
+  # `eval` loads the application without starting it, so the Repo has to be
+  # started by hand. A raw table query rather than Repo.get/2 on the schema:
+  # Project has encrypted columns, and loading the struct would need the Vault
+  # up as well for a field we do not want.
+  #
+  # The value is fenced in a sentinel because release boot writes to stdout and
+  # command substitution would swallow it into the app name.
+  APP_NAME="$(CMS_PROJECT_ID="$CMS_PROJECT_ID" /opt/cms/bin/code_my_spec_cli eval '
+    {:ok, _} = Application.ensure_all_started(:ecto_sql)
+    {:ok, _} = Application.ensure_all_started(:postgrex)
+    {:ok, _} = CodeMySpec.Repo.start_link(pool_size: 2, log: false)
+
+    import Ecto.Query
+
+    module_name =
+      CodeMySpec.Repo.one(
+        from(p in "projects",
+          where: p.id == type(^System.fetch_env!("CMS_PROJECT_ID"), :binary_id),
+          select: p.module_name
+        )
+      )
+
+    IO.puts("__CMS_APP__" <> Macro.underscore(module_name))
+  ' | sed -n 's/^__CMS_APP__//p' | tail -1)"
+
+  [ -n "${APP_NAME}" ] || { echo "could not resolve module_name for ${CMS_PROJECT_ID}" >&2; exit 1; }
+  log "Generating ${APP_NAME} with mix cms.new"
+
+  # cms.new refuses to write into a non-empty directory and the clone already
+  # made one (with .git in it), so generate beside it and move the tree in.
+  tmp="$(mktemp -d)"
+  mix cms.new "${tmp}/${APP_NAME}" --no-install
+  # cms.new runs `git init`, and dotglob would move that .git over the clone's —
+  # which fails, and would be wrong if it succeeded: the clone's .git is what
+  # carries the remote we push back to.
+  rm -rf "${tmp}/${APP_NAME}/.git"
+  ( shopt -s dotglob; mv "${tmp}/${APP_NAME}"/* "${APP_DIR}/" )
+  rm -rf "$tmp"
+
+  cd "${APP_DIR}"
+
+  log "Fetching dependencies"
+  # Not optional: the analyzers gate on deps/<tool> existing, so without this
+  # credo and sobelow report themselves unavailable and are silently skipped.
+  mix deps.get
+
+  log "Installing harness files"
+  CMS_APP_DIR="${APP_DIR}" /opt/cms/bin/code_my_spec_cli eval '
+    alias CodeMySpec.Environments.Environment
+    alias CodeMySpec.McpServers.Bootstrap.Installers
+
+    env = Environment.new(:local, System.fetch_env!("CMS_APP_DIR"))
+    {installed, failures} = Installers.install_all(env)
+
+    IO.puts("installed: " <> Enum.join(installed, ", "))
+    for {label, reason} <- failures, do: IO.puts("FAILED #{label}: #{inspect(reason)}")
+  '
+
+  log "Committing and pushing"
+  git -C "${APP_DIR}" config user.name "CodeMySpec"
+  git -C "${APP_DIR}" config user.email "noreply@codemyspec.com"
+  git -C "${APP_DIR}" add -A
+  git -C "${APP_DIR}" commit -q -m "Generate ${APP_NAME} with mix cms.new
+
+Harness-native Phoenix project: satisfies every CodeMySpec ProjectSetup check
+on first sync, with no agent-driven setup pass."
+
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    git -C "${APP_DIR}" push -q \
+      "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}" HEAD:main 2>&1 \
+      | sed 's/x-access-token:[^@]*@/x-access-token:***@/g'
+  else
+    log "No GITHUB_TOKEN — generated and committed locally, not pushed"
   fi
 fi
 
