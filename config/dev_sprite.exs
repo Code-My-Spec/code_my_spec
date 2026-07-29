@@ -55,11 +55,33 @@ config :code_my_spec, embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend
 # different database without a rebuild.
 #
 # pool_size is deliberately small. A sprite is one agent doing one project's
-# work, and the sprite role should carry a CONNECTION LIMIT on the Postgres
-# side as well — that pair is what keeps a runaway sprite from starving the
-# app server, and is why sprites do not need their own instance to start with.
+# work, and the sprite role carries a CONNECTION LIMIT on the Postgres side as
+# well — that pair is what keeps a runaway sprite from starving the app server,
+# and is why sprites do not need their own instance to start with.
+#
+# 3, not 5. The harness serves one agent: an MCP session, the file watcher, and
+# whatever analysis is in flight. Five was picked before anything measured it,
+# and with a role limit of 10 it meant the *second* sprite could not get a
+# connection. What that looked like from the agent's side was not "the database
+# is busy" — the MCP initialize call timed out, the transport reported
+# "Server not initialized", and the agent concluded the plugin was broken and
+# wrote a careful, entirely wrong diagnosis. Headroom here is cheap; that
+# failure was not.
+# Fail a starved checkout fast instead of hanging on it.
+#
+# When the role's connection limit is reached the pool holds nothing and a
+# checkout simply waits. The MCP transport dispatches tool calls through a
+# GenServer.call with a much shorter timeout, so `initialize` died at the
+# transport and every later request got "Server not initialized" from
+# anubis_mcp — a message about protocol state, describing a database problem.
+#
+# Erroring in ~2s puts a real DBConnection error in front of the agent instead,
+# which at least names the database. The generic message is the dependency's and
+# not ours to change; not hanging long enough to trigger it is.
 config :code_my_spec, CodeMySpec.Repo,
-  pool_size: 5,
+  pool_size: 3,
+  queue_target: 100,
+  queue_interval: 2_000,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
 
