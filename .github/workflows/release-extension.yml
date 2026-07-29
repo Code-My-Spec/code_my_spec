@@ -32,6 +32,18 @@ jobs:
           - name: Windows x64
             runner: windows-latest
             asset: cms-windows-x64.tar.gz
+          # Linux targets exist for the devbox container image, which runs
+          # `cms server` alongside a generated project. Both arches are built:
+          # Apple Silicon hosts run linux/arm64 containers natively, and
+          # emulating x64 for a BEAM release is slow enough to be noticeable.
+          # The release is built natively per runner, so there is no
+          # cross-compile here either.
+          - name: Linux x64
+            runner: ubuntu-latest
+            asset: cms-linux-x64.tar.gz
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+            asset: cms-linux-arm64.tar.gz
 
     # Force bash on Windows runners so curl/tar/cp/`>> "$GITHUB_PATH"` work
     # identically across platforms. Git Bash is preinstalled on windows-latest.
