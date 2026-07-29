@@ -12,12 +12,25 @@
 #     --build-context cms_new=../cms_new \
 #     -t codemyspec/devbox .
 #
-# Run:
+# Run (note the host port): a CodeMySpec developer almost certainly has
+# something on 4000/4003/4004 already — the dev server, cli_demo and dev_cli
+# bind those. The container's own ports are unchanged; only the host side is
+# remapped, so pick anything free.
 #
-#   docker run --rm -p 4000:4000 -p 4003:4003 \
+#   docker run --rm -p 4010:4000 \
 #     -e APP_NAME=my_app \
 #     -v "$HOME/.claude:/root/.claude" \
 #     codemyspec/devbox
+#
+# Only the app port is published. `cms` binds 127.0.0.1 inside the container
+# (config/config.exs), so publishing :4003 would map a port nothing answers
+# on. That is the right default and not worth working around here: the agent
+# runs INSIDE the container, where loopback reaches the harness fine.
+# Exposing the harness to the host would mean binding it to 0.0.0.0, which
+# is a real security decision about a service that holds project
+# credentials — make it deliberately, not as a side effect of packaging.
+#
+#   docker exec -it <container> bash   # then run `claude` in /workspace/<app>
 #
 # The image is deliberately agentless: it mounts the user's own Claude Code
 # credentials rather than brokering model access.
@@ -142,8 +155,10 @@ RUN chmod 0755 /usr/local/bin/devbox-init
 
 WORKDIR /workspace
 
-# 4000 = the generated Phoenix app, 4003 = the cms harness server
-EXPOSE 4000 4003
+# Only the app. The harness is loopback-only inside the container by design
+# (see the header), so declaring 4003 here would advertise a port that never
+# answers from outside.
+EXPOSE 4000
 
 ENV APP_NAME=my_app
 
