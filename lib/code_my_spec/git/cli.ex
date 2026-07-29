@@ -43,7 +43,7 @@ defmodule CodeMySpec.Git.CLI do
          {:ok, integration} <- get_integration(scope, provider),
          {:ok, authenticated_url} <- URLParser.inject_token(repo_url, integration.access_token),
          {:ok, _repository} <- Git.clone([authenticated_url, path]),
-         :ok <- set_remote_url(path, repo_url) do
+         :ok <- set_remote_url(scope.environment, path, repo_url) do
       {:ok, path}
     end
   end
@@ -77,17 +77,17 @@ defmodule CodeMySpec.Git.CLI do
   def pull(%Scope{}, ""), do: {:error, :invalid_path}
 
   def pull(%Scope{} = scope, path) when is_binary(path) do
-    with {:ok, original_url} <- get_remote_url(path),
+    with {:ok, original_url} <- get_remote_url(scope.environment, path),
          {:ok, provider} <- URLParser.provider(original_url),
          {:ok, integration} <- get_integration(scope, provider),
          {:ok, authenticated_url} <-
            URLParser.inject_token(original_url, integration.access_token) do
       # Inject credentials, pull, then restore - always restore URL
-      case set_remote_url(path, authenticated_url) do
+      case set_remote_url(scope.environment, path, authenticated_url) do
         :ok ->
           result = execute_pull(path)
           # Always restore original URL, regardless of pull result
-          set_remote_url(path, original_url)
+          set_remote_url(scope.environment, path, original_url)
           result
 
         {:error, _reason} = error ->
@@ -96,7 +96,7 @@ defmodule CodeMySpec.Git.CLI do
     else
       {:error, _reason} = error ->
         # Attempt to restore original URL even on error
-        restore_remote_url(path)
+        restore_remote_url(scope.environment, path)
         error
     end
   end
@@ -110,8 +110,17 @@ defmodule CodeMySpec.Git.CLI do
     end
   end
 
-  defp get_remote_url(path) do
-    case System.cmd("git", ["-C", path, "config", "--get", "remote.origin.url"],
+  # Only the remote-URL plumbing runs through the environment. `Git.clone/1`
+  # and `Git.pull/1` above come from the git_cli dependency, which shells out
+  # on its own — so this module is the one place a remote environment would
+  # still execute locally. Closing that means replacing git_cli with plain
+  # `Environments.cmd(env, "git", ...)` calls, which is a separate change.
+  defp cmd(nil, args, opts), do: System.cmd("git", args, opts)
+
+  defp cmd(env, args, opts), do: CodeMySpec.Environments.cmd(env, "git", args, opts)
+
+  defp get_remote_url(env, path) do
+    case cmd(env, ["-C", path, "config", "--get", "remote.origin.url"],
            stderr_to_stdout: true
          ) do
       {output, 0} -> {:ok, String.trim(output)}
@@ -119,8 +128,8 @@ defmodule CodeMySpec.Git.CLI do
     end
   end
 
-  defp set_remote_url(path, url) do
-    case System.cmd("git", ["remote", "set-url", "origin", url], stderr_to_stdout: true, cd: path) do
+  defp set_remote_url(env, path, url) do
+    case cmd(env, ["remote", "set-url", "origin", url], stderr_to_stdout: true, cd: path) do
       {_output, 0} -> :ok
       {_output, _exit_code} -> {:error, :failed_to_update_remote}
     end
@@ -133,19 +142,19 @@ defmodule CodeMySpec.Git.CLI do
     end
   end
 
-  defp restore_remote_url(path) do
+  defp restore_remote_url(env, path) do
     # Attempt to get current URL and strip credentials
-    case get_remote_url(path) do
-      {:ok, current_url} -> maybe_strip_remote_credentials(path, current_url)
+    case get_remote_url(env, path) do
+      {:ok, current_url} -> maybe_strip_remote_credentials(env, path, current_url)
       _ -> :ok
     end
   end
 
   # Only restore if URL contains credentials (has @ sign before host).
-  defp maybe_strip_remote_credentials(path, current_url) do
+  defp maybe_strip_remote_credentials(env, path, current_url) do
     if String.contains?(current_url, "@") do
       case strip_credentials(current_url) do
-        {:ok, clean_url} -> set_remote_url(path, clean_url)
+        {:ok, clean_url} -> set_remote_url(env, path, clean_url)
         _ -> :ok
       end
     else

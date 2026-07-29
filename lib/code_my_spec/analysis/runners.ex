@@ -30,8 +30,8 @@ defmodule CodeMySpec.Analysis.Runners do
 
   @spec run(String.t(), Scope.t(), [String.t()], keyword()) ::
           {:ok, result()} | {:error, term()}
-  def run("compiler", %Scope{cwd: cwd} = scope, _args, opts) do
-    execute_opts = [cwd: cwd] |> maybe_output_file(opts)
+  def run("compiler", %Scope{} = scope, _args, opts) do
+    execute_opts = [environment: scope.environment] |> maybe_output_file(opts)
     result = Compile.execute(execute_opts)
 
     problems =
@@ -73,8 +73,8 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  def run("exunit", %Scope{cwd: cwd} = scope, args, opts) do
-    exec_opts = [project_root: cwd] |> maybe_output_file(opts)
+  def run("exunit", %Scope{} = scope, args, opts) do
+    exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
 
     case Tests.execute(args, exec_opts) do
       # `mix test` exited nonzero without reporting a single failure: bad args,
@@ -113,8 +113,8 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  def run("spex", %Scope{cwd: cwd} = scope, args, opts) do
-    exec_opts = [project_root: cwd] |> maybe_output_file(opts)
+  def run("spex", %Scope{} = scope, args, opts) do
+    exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
 
     case Spex.execute(args, exec_opts) do
       # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}`

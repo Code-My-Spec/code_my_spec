@@ -359,7 +359,9 @@ defmodule CodeMySpec.Support.TestAdapter do
       # Clean build to ensure fresh compilation
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
-      result = CodeMySpec.Compile.execute(cwd: code_repo_fixture_abs)
+      result = CodeMySpec.Compile.execute(
+          environment: CodeMySpec.Environments.Environment.new(:local, code_repo_fixture_abs)
+        )
       save_compile_result(result, compiler_ok_cache_abs)
 
       if !File.exists?(compiler_ok_cache_abs), do: raise("Compiler OK cache failed to be created")
@@ -376,7 +378,9 @@ defmodule CodeMySpec.Support.TestAdapter do
       # Clean and recompile to get warnings
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
-      result = CodeMySpec.Compile.execute(cwd: code_repo_fixture_abs)
+      result = CodeMySpec.Compile.execute(
+          environment: CodeMySpec.Environments.Environment.new(:local, code_repo_fixture_abs)
+        )
       save_compile_result(result, compiler_warnings_cache_abs)
 
       if !File.exists?(compiler_warnings_cache_abs),
@@ -397,7 +401,9 @@ defmodule CodeMySpec.Support.TestAdapter do
       # Clean and recompile to get errors
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
-      result = CodeMySpec.Compile.execute(cwd: code_repo_fixture_abs)
+      result = CodeMySpec.Compile.execute(
+          environment: CodeMySpec.Environments.Environment.new(:local, code_repo_fixture_abs)
+        )
       save_compile_result(result, compiler_errors_cache_abs)
 
       if !File.exists?(compiler_errors_cache_abs),

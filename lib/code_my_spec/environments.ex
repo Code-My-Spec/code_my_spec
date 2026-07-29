@@ -245,6 +245,14 @@ defmodule CodeMySpec.Environments do
     impl(type).stream_files(env, roots, opts)
   end
 
-  def cmd(environment, command, args, opts \\ []),
-    do: impl(environment).cmd(command, args, opts)
+  @doc """
+  Run a command in the environment.
+
+  Defaults to `env.cwd`; pass `:cd` to override. See
+  `c:CodeMySpec.Environments.EnvironmentsBehaviour.cmd/4`.
+  """
+  @spec cmd(Environment.t(), String.t(), [String.t()], keyword()) ::
+          {String.t(), non_neg_integer()}
+  def cmd(%Environment{type: type} = env, command, args, opts \\ []),
+    do: impl(type).cmd(env, command, args, opts)
 end

@@ -53,6 +53,15 @@ defmodule CodeMySpec.Environments.Cli do
   def destroy(%Environment{}), do: :ok
 
   @doc """
+  Run a command. Delegates to `Local` — both environments are the local
+  filesystem on the local host, so they share one shell. They differ in how
+  paths are resolved, not in where commands run.
+  """
+  @spec cmd(Environment.t(), String.t(), [String.t()], keyword()) ::
+          {String.t(), non_neg_integer()}
+  defdelegate cmd(env, command, args, opts), to: CodeMySpec.Environments.Local
+
+  @doc """
   Read a file from the server-side file system.
 
   Resolves paths relative to the environment's working directory if set.

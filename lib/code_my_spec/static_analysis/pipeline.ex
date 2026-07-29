@@ -54,10 +54,10 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   def compile(scope, opts \\ [])
   def compile(%Scope{cwd: nil}, _opts), do: :ok
 
-  def compile(%Scope{cwd: cwd} = scope, opts) do
+  def compile(%Scope{} = scope, opts) do
     start = System.monotonic_time(:millisecond)
 
-    execute_opts = [cwd: cwd]
+    execute_opts = [environment: scope.environment]
 
     execute_opts =
       case Keyword.get(opts, :compile_output_file) do

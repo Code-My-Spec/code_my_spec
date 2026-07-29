@@ -6,6 +6,8 @@ defmodule CodeMySpec.Tests do
 
   require Logger
 
+  alias CodeMySpec.Environments
+
   alias CodeMySpec.Tests.TestRun
 
   @doc """
@@ -15,7 +17,7 @@ defmodule CodeMySpec.Tests do
 
   - `args` - List of arguments to pass to mix test (e.g., ["test/my_test.exs", "--only", "integration"])
   - `opts` - Keyword list of options:
-    - `:project_root` - Project root directory to run tests from (defaults to cwd)
+    - `:environment` - Environment to run tests in (required); commands run in its cwd
     - `:output_file` - Path for test results JSON (optional, defaults to temp file)
 
   ## Returns
@@ -25,13 +27,13 @@ defmodule CodeMySpec.Tests do
 
   ## Example
 
-      {:ok, test_run} = Tests.execute(["test/my_test.exs"])
+      {:ok, test_run} = Tests.execute(["test/my_test.exs"], environment: env)
       test_run.stats.failures  # => 0
   """
   @spec execute(args :: [String.t()], opts :: keyword()) ::
           {:ok, TestRun.t()} | {:error, {:parse_error, String.t()}}
   def execute(args, opts \\ []) do
-    project_root = Keyword.get(opts, :project_root, File.cwd!())
+    env = Keyword.fetch!(opts, :environment)
 
     temp_file =
       Keyword.get_lazy(opts, :output_file, fn ->
@@ -45,7 +47,7 @@ defmodule CodeMySpec.Tests do
     # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_* so
     # the child `mix`/`erl` boots from the user's installed OTP, not our
     # extracted ERTS ("cannot get bootfile"). Appended last so it wins.
-    env =
+    cmd_env =
       [
         {"MIX_ENV", "test"},
         {"EXUNIT_JSON_OUTPUT_FILE", temp_file}
@@ -56,7 +58,7 @@ defmodule CodeMySpec.Tests do
     # Track whether we're using a caller-provided file (cache) vs a generated temp file
     caller_provided_file = Keyword.has_key?(opts, :output_file)
 
-    case System.cmd("mix", test_args, cd: project_root, stderr_to_stdout: true, env: env) do
+    case Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env) do
       {raw_output, exit_code} ->
         json_content = read_test_results(temp_file, caller_provided_file)
 

@@ -39,6 +39,22 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
     :ok
   end
 
+  @doc """
+  Run a command for real.
+
+  This environment fakes the *filesystem*, not the shell — those are separate
+  seams and both already exist. Specs that must not shell out wrap the call in
+  `use_cmd_cassette`, which meck-patches `System.cmd/3` itself, so replay works
+  underneath this delegation exactly as it did when callers invoked System.cmd
+  directly.
+
+  Returning an error here instead would break every cassette-driven spec, and
+  would do it by making the memory environment claim authority over something
+  it does not model.
+  """
+  @impl true
+  defdelegate cmd(env, command, args, opts), to: CodeMySpec.Environments.Local
+
   @impl true
   def read_file(%Environment{} = env, path) do
     key = normalize(path, env.cwd)
