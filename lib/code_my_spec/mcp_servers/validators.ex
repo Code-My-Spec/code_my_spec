@@ -60,19 +60,31 @@ defmodule CodeMySpec.McpServers.Validators do
     end
   end
 
-  defp resolve_scope_from_working_dir(nil), do: {:error, :no_working_dir}
+  # A configured sprite knows its project without a directory, so a missing
+  # working_dir is only fatal when the directory *is* the identity mechanism.
+  defp resolve_scope_from_working_dir(nil) do
+    case Application.get_env(:code_my_spec, :project_id) do
+      nil -> {:error, :no_working_dir}
+      _ -> do_resolve_scope(nil)
+    end
+  end
 
-  defp resolve_scope_from_working_dir(working_dir) do
+  defp resolve_scope_from_working_dir(working_dir), do: do_resolve_scope(working_dir)
+
+  defp do_resolve_scope(working_dir) do
     require Logger
     alias CodeMySpec.Projects
     alias CodeMySpec.Users.Scope
 
-    with {:ok, project} <- Projects.get_project_by_local_path(working_dir),
-         {:ok, scope} <- Scope.for_local_project(project) do
+    with {:ok, project} <- Projects.resolve_local_project(working_dir),
+         {:ok, scope} <- Scope.for_local_project(project, working_dir) do
       {:ok, scope}
     else
       {:error, reason} ->
-        Logger.warning("[Validators] Failed to resolve scope from #{working_dir}: #{inspect(reason)}")
+        Logger.warning(
+          "[Validators] Failed to resolve scope from #{inspect(working_dir)}: #{inspect(reason)}"
+        )
+
         {:error, :unauthorized}
     end
   end

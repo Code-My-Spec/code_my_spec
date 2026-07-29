@@ -1,9 +1,12 @@
 defmodule CodeMySpecLocalWeb.Plugs.WorkingDirScope do
   @moduledoc """
-  Loads project scope from the working directory by matching `local_path`.
+  Loads project scope for a local request.
 
-  Looks up the project in the DB by its `local_path` field, then builds
-  a scope via `Scope.for_local_project/1`. No config.yml needed.
+  Delegates the "which project is this?" question to
+  `Projects.resolve_local_project/1`: a configured sprite answers from its
+  `:project_id`, and the desktop CLI answers by matching the working directory
+  against `local_path`. The directory is still passed through as the
+  environment root either way, since that is where the files actually are.
   """
 
   import Plug.Conn
@@ -20,8 +23,8 @@ defmodule CodeMySpecLocalWeb.Plugs.WorkingDirScope do
   def call(conn, _opts) do
     working_dir = conn.assigns[:working_dir]
 
-    with {:ok, project} <- Projects.get_project_by_local_path(working_dir),
-         {:ok, scope} <- Scope.for_local_project(project) do
+    with {:ok, project} <- Projects.resolve_local_project(working_dir),
+         {:ok, scope} <- Scope.for_local_project(project, working_dir) do
       assign(conn, :current_scope, scope)
     else
       {:error, :not_found} ->

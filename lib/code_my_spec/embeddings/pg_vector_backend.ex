@@ -86,6 +86,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   cleanup that runs next would then delete the old row too — leaving the
   file with no embeddings at all.
   """
+  @impl true
   def store_chunk(project_id, source, path, index, chunk, hash, file_hash) do
     with {:ok, embedding} <- Serving.embed(chunk) do
       now = DateTime.utc_now() |> DateTime.truncate(:second)

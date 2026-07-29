@@ -123,6 +123,37 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
+  Resolves which project a local request belongs to.
+
+  Two mechanisms, in priority order:
+
+    * `:project_id` in application config — a sprite is provisioned for exactly
+      one project and is told which at boot, so it never has to infer identity
+      from a directory. `working_dir` is ignored entirely.
+    * `working_dir` — the desktop CLI serves many projects from one process, so
+      "which project is this directory?" is a real question there.
+
+  The directory lookup is a poor identity key on shared data: two checkouts of
+  one project have two paths but one column, and `/workspace/<app>` is a
+  plausible collision across sprites. Configuring the id sidesteps both by not
+  asking the question.
+  """
+  def resolve_local_project(working_dir) do
+    # `Elixir.Application` explicitly: this module aliases
+    # `CodeMySpec.Oauth.Application`, which shadows the OTP module.
+    case Elixir.Application.get_env(:code_my_spec, :project_id) do
+      nil ->
+        get_project_by_local_path(working_dir)
+
+      project_id ->
+        case Repo.get(Project, project_id) do
+          nil -> {:error, :not_found}
+          project -> {:ok, project}
+        end
+    end
+  end
+
+  @doc """
   Gets a project by its local filesystem path. For hook endpoints that
   resolve project from X-Working-Dir instead of a project name in the URL.
   """
