@@ -21,15 +21,9 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks do
   def execute(_params, frame) do
     env = Validators.mcp_environment(frame)
 
-    framework_dir = CodeMySpec.Paths.credo_checks_framework_dir()
-    local_dir = CodeMySpec.Paths.credo_checks_local_dir()
-    source_dir = Application.app_dir(:code_my_spec, "priv/credo_checks")
-
-    with :ok <- Environments.ensure_dir(env, framework_dir),
-         :ok <- Environments.ensure_dir(env, local_dir),
-         :ok <- copy_framework_files(env, source_dir, framework_dir) do
-      {:reply, BootstrapMapper.install_success(".code_my_spec/credo_checks/"), frame}
-    else
+    case install(env) do
+      :ok ->
+        {:reply, BootstrapMapper.install_success(".code_my_spec/credo_checks/"), frame}
       {:error, {:source_dir, :enoent}} ->
         {:reply, BootstrapMapper.error(stale_server_message()), frame}
 
@@ -47,6 +41,21 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks do
       "usually means the server was updated while the old process kept running — " <>
       "restart it (macOS: `brew services restart codemyspec`; Windows: restart " <>
       "the CodeMySpec service) and retry."
+  end
+
+  @doc """
+  Install the framework Credo checks. Public because `init_project` runs it
+  directly — see `CodeMySpec.McpServers.Bootstrap.Installers`.
+  """
+  def install(env) do
+    framework_dir = CodeMySpec.Paths.credo_checks_framework_dir()
+    local_dir = CodeMySpec.Paths.credo_checks_local_dir()
+    source_dir = Application.app_dir(:code_my_spec, "priv/credo_checks")
+
+    with :ok <- Environments.ensure_dir(env, framework_dir),
+         :ok <- Environments.ensure_dir(env, local_dir) do
+      copy_framework_files(env, source_dir, framework_dir)
+    end
   end
 
   # Idempotent: never overwrites an existing destination file. Once a

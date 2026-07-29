@@ -45,7 +45,7 @@ defmodule CodeMySpec.AgentTasks.Setup.TestBoundaries do
     Create `test/support/#{app_name}_spex.ex`:
     ```elixir
     defmodule #{mod}Spex do
-      use Boundary, top_level?: true, deps: [#{mod}Test, #{mod}Web]
+      use Boundary, top_level?: true, deps: [#{mod}, #{mod}Web]
     end
     ```
 
@@ -54,6 +54,22 @@ defmodule CodeMySpec.AgentTasks.Setup.TestBoundaries do
     defmodule #{mod}Test do
       use Boundary, top_level?: true, deps: [#{mod}]
     end
+    ```
+
+    Note `#{mod}Spex` does NOT depend on `#{mod}Test`. Spex drive the app
+    the way a user does — over HTTP or LiveView — and own their own sandbox
+    setup; reaching into test support would couple the two boundaries for
+    no gain. Add a dedicated fixtures boundary if spex need shared setup.
+
+    Both root modules also need boundary declarations, or every module in
+    the project compiles with a "not included in any boundary" warning:
+
+    ```elixir
+    # lib/#{app_name}.ex
+    use Boundary, top_level?: true, deps: [], exports: :all
+
+    # lib/#{app_name}_web.ex
+    use Boundary, top_level?: true, deps: [#{mod}], exports: :all
     ```
     """}
   end

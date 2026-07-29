@@ -53,6 +53,8 @@ defmodule CodeMySpec.AgentTasks.Setup.SpexCase do
       \"\"\"
       use ExUnit.CaseTemplate
 
+      alias Ecto.Adapters.SQL.Sandbox
+
       using do
         quote do
           @endpoint #{mod}Web.Endpoint
@@ -67,8 +69,13 @@ defmodule CodeMySpec.AgentTasks.Setup.SpexCase do
         end
       end
 
+      # Owns the sandbox directly rather than calling
+      # #{mod}Test.DataCase.setup_sandbox/1: spex are a separate boundary
+      # from test support, and borrowing that one function would force
+      # #{mod}Spex to depend on #{mod}Test.
       setup tags do
-        #{mod}Test.DataCase.setup_sandbox(tags)
+        pid = Sandbox.start_owner!(#{mod}.Repo, shared: not tags[:async])
+        on_exit(fn -> Sandbox.stop_owner(pid) end)
         {:ok, conn: Phoenix.ConnTest.build_conn()}
       end
     end

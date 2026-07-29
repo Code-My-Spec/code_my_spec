@@ -33,7 +33,11 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd do
     end
   end
 
-  defp install(env) do
+  @doc """
+  Generate `.code_my_spec/AGENTS.md`. Public because `init_project` runs it
+  directly — see `CodeMySpec.McpServers.Bootstrap.Installers`.
+  """
+  def install(env) do
     with {:ok, mix_exs} <- read_mix_exs(env),
          app_name <- Content.extract_app_name_from_source(mix_exs),
          content <- Content.agents_md_content(app_name),
