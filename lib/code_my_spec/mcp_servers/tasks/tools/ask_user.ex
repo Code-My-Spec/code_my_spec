@@ -1,17 +1,28 @@
 defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
   @moduledoc """
-  Ask the user a free-form question and block until they answer.
+  Ask the user a free-form question. Returns once the question is delivered;
+  the reply is collected separately with `check_answer`.
 
   Pushes the message to the user's phone (Web Push → `QuestionLive.Show`, which
-  renders a free-text box for a question with no options) and waits for their
-  typed reply, returned as the tool result. Unlike `AskUserQuestion`, there are
-  no fixed options — use this in autonomous/loop work for open-ended questions
-  ("what should this copy say?", "how do you want this edge case handled?") or a
-  conversational check-in where enumerating choices would be artificial.
+  renders a free-text box for a question with no options). Unlike
+  `AskUserQuestion`, there are no fixed options — use this for open-ended
+  questions ("what should this copy say?", "how do you want this edge case
+  handled?") or a check-in where enumerating choices would be artificial.
 
-  Best-effort: returns a clear error (rather than hanging) when the user isn't
-  connected to CodeMySpec or doesn't answer within the timeout, so the caller
-  can fall back to a sensible default or the local terminal prompt.
+  ## Why this does not block
+
+  It used to wait inline for the reply, up to ten minutes. That could never
+  work: a tool call is dispatched through a `GenServer.call` whose timeout is
+  measured in seconds, so the transport gave up long before any person could
+  answer and the agent saw `-32603 Internal error`. Each attempt still created
+  the question, so a user watching their queue saw the same thing asked over and
+  over while the agent was told the tool was broken.
+
+  Waiting minutes inside a synchronous call was the mistake, not the timeout
+  value. A person is not a slow function; they are an event that arrives later.
+  So this returns a question id and `check_answer` fetches the reply when the
+  agent next looks. In between the agent can stop — the stop hook brings it
+  back, which is the loop that already exists.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -34,23 +45,24 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
       "options" => []
     }
 
-    with {:ok, id} <- QuestionClient.ask([question], "Claude has a message"),
-         {:ok, answers} <- QuestionClient.await_answer(id) do
-      reply = Map.get(answers, message) || (answers |> Map.values() |> List.first()) || ""
-      {:reply, Response.tool() |> Response.text("The user replied:\n#{reply}"), frame}
-    else
+    case QuestionClient.ask([question], "Claude has a message") do
+      {:ok, id} ->
+        {:reply,
+         Response.tool()
+         |> Response.text("""
+         Asked. The user has been notified.
+
+         Question id: #{id}
+
+         They will not answer instantly. Do other work, or stop — the stop hook
+         will bring you back. Call `check_answer` with that id for the reply.
+         """), frame}
+
       {:error, :not_configured} ->
         {:reply,
          Response.tool()
          |> Response.error(
            "Not connected to CodeMySpec, so the user can't be reached remotely. Ask in the terminal instead."
-         ), frame}
-
-      {:error, :timeout} ->
-        {:reply,
-         Response.tool()
-         |> Response.error(
-           "The user hasn't answered yet (timed out). Proceed with a sensible default, or try again later."
          ), frame}
 
       {:error, reason} ->
